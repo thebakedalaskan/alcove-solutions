@@ -7,9 +7,9 @@
  */
 import {
   ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
-  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel,
+  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, searchOf, termsIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
-  type Note, type NoteKind, type NoteProgress, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
+  type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
   type RevisitPatch, type RoomNote, type RoomRef, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
@@ -26,6 +26,7 @@ import * as additions from './additions';
 import { noteObjects, purgeAudio, queueDelete, segments } from './audio';
 import { entriesOf } from './backing';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
+import { Ticked } from './liveNotes';
 import { MeetingManifest } from './meetings';
 import * as personal from './personal';
 import { nameOf, personOf } from './portraits';
@@ -115,7 +116,12 @@ export const NoteManifest = z.object({
    */
   recorded: z.number().nullable().default(null),
   /** What this call came back to from earlier calls in its series, once the notes are written. */
-  revisits: z.array(Revisit).default([])
+  revisits: z.array(Revisit).default([]),
+  /**
+   * Follow-ups ticked during the call, waiting for the notes they go in: each is done in the call's notes or its room's
+   * when those are written (liveNotes.doneInNotes), and leaves this list then. Empty in a note stored before calls kept them.
+   */
+  ticked: z.array(Ticked).default([])
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
@@ -132,7 +138,7 @@ export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; r
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null,
-    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, revisits: []
+    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, revisits: [], ticked: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -165,14 +171,15 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
 
 /**
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
- * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in and what was on
- * shared screens (`shown`, the call's frames as screen moments). Everyone invited gets the note, and it's queued for
- * the notes service (modules/writer.ts), which writes each room's notes too. Runs in the stopping transaction, once the
- * recording has stopped. A call set not to keep its recording loses its audio here, after everything worked out from it
- * (where lines fall, and the seconds billed) is in the note. Returns the objects to delete once that transaction commits.
+ * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in, what was on
+ * shared screens (`shown`, the call's frames as screen moments) and the follow-ups ticked during the call. Everyone
+ * invited gets the note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
+ * Runs in the stopping transaction, once the recording has stopped. A call set not to keep its recording loses its audio
+ * here, after everything worked out from it (where lines fall, and the seconds billed) is in the note. Returns the
+ * objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = []): Promise<string[]> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
   const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
@@ -189,7 +196,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
     recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
-    inference: heardBy
+    inference: heardBy, ticked
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
@@ -197,7 +204,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
-    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0)
+    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length
   });
   return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }
@@ -371,7 +378,7 @@ function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary
   const m = l.note.manifest;
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
-    people: who.map((r) => r.person),
+    people: who.map((r) => r.person), sharedWith: who.filter((r) => r.role === 'shared').map((r) => r.person.email),
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: actionsOf(m).filter((a) => !a.done).length, totalActions: actionsOf(m).length,
     ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) }),
@@ -383,15 +390,33 @@ async function summary(l: Located): Promise<NoteSummary> {
   return summaryOf(l, organizer, await recipients(l, organizer));
 }
 
-export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]> {
-  const text = q.text?.trim().toLowerCase();
-  const all = (await everyNote(o, await myEmail(o)))
-    .filter((l) => {
-      const m = asRead(l);
-      return (!q.kind || m.kind === q.kind) && (!text || `${m.title} ${m.summary} ${(m.transcript ?? []).map((t) => t.text).join(' ')}`.toLowerCase().includes(text));
-    });
-  all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
-  return Promise.all(all.map(summary));
+/** Lines of what was said that a note's row and its preview show, at most. */
+const SAID_SHOWN = 4;
+/** Everything said in a note as someone may read it: the main room, then each breakout room's lines, which say which room. */
+const saidIn = (m: NoteManifest): TranscriptLine[] => [...(m.transcript ?? []), ...m.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
+
+/** What a search finds in a note as someone may read it: the lines with most of its words, best first, and how many lines have any. Nothing, when the note doesn't match. */
+function foundIn(l: Located, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
+  const m = asRead(l);
+  const lines = saidIn(m);
+  const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
+  if (question ? !has : has < terms.length) return undefined;
+  const matched = lines.flatMap((line) => { const n = termsIn(line.text, terms); return n ? [{ line, n }] : []; });
+  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line: { id, at, speaker, room, text } }): NoteSaid => (
+    { id, at, text, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}) }
+  ));
+  return { said, saidCount: matched.length };
+}
+
+export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]> {
+  const search = searchOf(q.text ?? '');
+  const notes = (await everyNote(o, await myEmail(o))).filter((l) => !q.kind || l.note.manifest.kind === q.kind);
+  notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
+  const found = notes.flatMap((l) => {
+    const hit = search.terms.length ? foundIn(l, search) : { said: [], saidCount: 0 };
+    return hit ? [{ l, hit }] : [];
+  });
+  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));
 }
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
 export async function seriesOf(l: Located): Promise<string | undefined> {
@@ -1003,6 +1028,8 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
  * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
  * commit, and your pin to it. Someone else's note is only removed from your notes, with your own notes
  * on it: they can quote it, and you no longer have it. What you added to the shared notes stays with them.
+ * A call's note can't go while the call is on: the call is still writing to it, and everything live hangs
+ * off it. Asked holding the note, as ending the call finishes it holding the note.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
@@ -1015,7 +1042,12 @@ export async function remove(o: Owner, id: string): Promise<void> {
     nlog.info('shared note removed from my notes', { noteId: id });
     return;
   }
-  const { ids, frames } = await tx(o.pool, (c) => deleteOwnNote(o, c, id));
+  const { ids, frames } = await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    const { kind, status } = (await getItem(o, c, 'note', id, NoteManifest, 'Those notes')).manifest;
+    if (kind === 'call' && status === 'recording') throw new ConflictError('This call is still going. You can delete its notes once it ends.', { context: { noteId: id } });
+    return deleteOwnNote(o, c, id);
+  });
   await queueDelete(o, ids);
   await unpin(o, id);
   nlog.info('note deleted', { noteId: id, recordingId: l.note.manifest.recordingId, objects: ids.length, frames });

@@ -42,7 +42,7 @@ const TICK_MS = 1000;
 const REPEAT_MS = 20_000;
 /** How many streams an account holds at once: one a tab, and more tabs than anyone keeps open. */
 const STREAMS_PER_ACCOUNT = 8;
-/** How many streams a process holds at once. Each is one of the 500 requests an instance serves at a time (`deploy.yml`): the rest are for calls. */
+/** How many streams a process holds at once. Each is one of the 1,000 requests an instance serves at a time (`deploy.yml`), which workspaces, documents and calls share. */
 const STREAMS_PER_PROCESS = 300;
 
 /** A ring as kept, sealed. */

@@ -741,8 +741,8 @@ describe('calls with notes', () => {
     expect(note.audio.map((a) => [a.index, a.pieces])).toEqual([[0, 2], [1, 1]]);
 
     // The decrypted segment is exactly the concatenation of what was recorded, and only for this account.
-    expect((await h.browser().fetch(api.notes.audioUrl(noteId, 0))).status).toBe(401);
-    const mine = await own(api.notes.audioUrl(noteId, 0));
+    expect((await h.browser().fetch(api.notes.audioUrl(noteId, 0, 2))).status).toBe(401);
+    const mine = await own(api.notes.audioUrl(noteId, 0, 2));
     expect(Buffer.from(await mine.arrayBuffer()).equals(Buffer.concat(seg0))).toBe(true);
 
     expect((await api.meetings.past())[0]).toMatchObject({ status: 'ended', noteId });
@@ -772,9 +772,169 @@ describe('calls with notes', () => {
     await first.leave();
     await written(api, noteId);
     expect((await api.notes.get(noteId)).audio.map((a) => [a.index, a.pieces, a.seconds])).toEqual([[0, 3, 15], [1, 3, 15]]);
-    const audio = async (segment: number) => Buffer.from(await (await own(api.notes.audioUrl(noteId, segment))).arrayBuffer());
+    const audio = async (segment: number) => Buffer.from(await (await own(api.notes.audioUrl(noteId, segment, 3))).arrayBuffer());
     expect((await audio(0)).equals(Buffer.concat(before))).toBe(true);
     expect((await audio(1)).equals(Buffer.concat(after))).toBe(true);
+  });
+
+  describe('reading a recording', () => {
+    const bytes = async (r: Response) => Buffer.from(await r.arrayBuffer());
+    /** Enough pieces to read ahead of, of every length a sealed piece's base64 can end on, in a recording that's going on. */
+    async function going(count = 30) {
+      const who = await account();
+      const rec = await who.api.recordings.start({ title: 'Long read' });
+      const pieces = Array.from({ length: count }, (_, i) => audioBytes('x'.repeat(i + 1)));
+      for (const [seq, b] of pieces.entries()) await rec.appendAudio(piece(b, 0, seq));
+      const noteId = rec.getSnapshot().noteId ?? '';
+      const ask = (range?: string | undefined, pinned = count, init: RequestInit = {}) => who.fetch(who.api.notes.audioUrl(noteId, 0, pinned), { ...init, ...(range ? { headers: { range } } : {}) });
+      return { ...who, rec, pieces, whole: Buffer.concat(pieces), noteId, ask };
+    }
+    const object = async (noteId: string, seq: number) => (await h.pool.query<{ object_id: string }>('SELECT p.object_id FROM recording_pieces p JOIN recordings r USING (owner_id, recording_id) WHERE r.note_item_id = $1 AND p.seq = $2', [noteId, seq])).rows[0]?.object_id ?? '';
+
+    it('goes to any byte of it, and whole it has no length to keep to', async () => {
+      const { rec, whole, pieces, noteId, ask, api, fetch: own } = await going();
+      const size = whole.length;
+      await rec.stop();
+      await written(api, noteId);
+
+      const plain = await ask();
+      expect(plain.status).toBe(200);
+      expect(plain.headers.get('accept-ranges')).toBe('bytes');
+      expect(plain.headers.get('content-length')).toBeNull();
+      expect((await bytes(plain)).equals(whole)).toBe(true);
+      const blob = await api.notes.audio(noteId, 0, 30);
+      expect(Buffer.from(await blob.arrayBuffer()).equals(whole)).toBe(true);
+
+      // The browsers' first asks, a stretch across two pieces, what starts at a piece's edge, the last bytes, and past the end.
+      const edge = pieces[0]?.length ?? 0;
+      const ranges: [string, number, number][] = [
+        ['bytes=0-1', 0, 1], ['bytes=0-', 0, size - 1], [`bytes=${edge - 3}-${edge + 3}`, edge - 3, edge + 3], [`bytes=${edge}-${edge}`, edge, edge],
+        [`bytes=${edge}-`, edge, size - 1], ['bytes=-5', size - 5, size - 1], [`bytes=-${size + 9}`, 0, size - 1], [`bytes=${size - 1}-${size + 99}`, size - 1, size - 1]
+      ];
+      for (const [range, from, to] of ranges) {
+        const r = await ask(range);
+        expect(r.status).toBe(206);
+        expect(r.headers.get('content-range')).toBe(`bytes ${from}-${to}/${size}`);
+        expect(r.headers.get('content-length')).toBe(String(to - from + 1));
+        expect((await bytes(r)).equals(whole.subarray(from, to + 1))).toBe(true);
+      }
+      const past = await ask(`bytes=${size}-`);
+      expect(past.status).toBe(416);
+      expect(past.headers.get('content-range')).toBe(`bytes */${size}`);
+      // What it doesn't take gets the whole file, as a server that ignored the header would send.
+      for (const range of ['bytes=0-1,4-5', 'bytes=9-2', 'seconds=0-1']) expect((await bytes(await ask(range))).length).toBe(size);
+      // A URL says how much of the recording it means.
+      expect((await own(`${h.baseUrl}/v1/notes/${noteId}/audio/0`)).status).toBe(400);
+      expect((await ask(undefined, 0)).status).toBe(400);
+    });
+
+    it('a URL stays the same file while the recording goes on, and a newer length is a new URL', async () => {
+      const { rec, pieces, whole, noteId, ask, api } = await going(20);
+      // What's there so far plays while it's still going, and a browser holds a URL to the length it first said.
+      expect((await api.notes.get(noteId)).audio.map((a) => a.pieces)).toEqual([20]);
+      const size = whole.length;
+      const first = await ask('bytes=0-1', 20);
+      expect(first.headers.get('content-range')).toBe(`bytes 0-1/${size}`);
+      const later = Array.from({ length: 10 }, (_, i) => audioBytes(`later-${i}`));
+      for (const [i, b] of later.entries()) await rec.appendAudio(piece(b, 0, pieces.length + i));
+      const longer = Buffer.concat([whole, ...later]);
+
+      // The same URL, after more was recorded: as a browser asks again after a pause, a dropped connection or Cloud Run's cut.
+      const again = await ask(`bytes=${size - 5}-`, 20);
+      expect(again.status).toBe(206);
+      expect(again.headers.get('content-range')).toBe(`bytes ${size - 5}-${size - 1}/${size}`);
+      expect((await bytes(again)).equals(whole.subarray(size - 5))).toBe(true);
+      expect((await ask(`bytes=${size}-`, 20)).status).toBe(416);
+      expect((await bytes(await ask(undefined, 20))).equals(whole)).toBe(true);
+
+      // The note says how much there is now, and that's a new URL, with all of it.
+      expect((await api.notes.get(noteId)).audio.map((a) => a.pieces)).toEqual([30]);
+      const now = await ask('bytes=0-', 30);
+      expect(now.headers.get('content-range')).toBe(`bytes 0-${longer.length - 1}/${longer.length}`);
+      expect((await bytes(now)).equals(longer)).toBe(true);
+      // Asking for more than there is gets what there is, and it stays the same file once the recording has stopped.
+      await rec.stop();
+      await written(api, noteId);
+      expect((await bytes(await ask(undefined, 99))).equals(longer)).toBe(true);
+      expect((await bytes(await ask('bytes=0-', 20))).equals(whole)).toBe(true);
+    });
+
+    it('someone who only asks about it, or leaves, costs nothing and is no failure', async () => {
+      const { rec, whole, noteId, ask, api } = await going();
+      await rec.stop();
+      await written(api, noteId);
+      // HEAD says how long it is and reads nothing: it works even with the first piece gone.
+      await h.objects.delete(await object(noteId, 0));
+      expect((await ask(undefined, 30)).status).toBe(500);
+      const head = await ask(undefined, 30, { method: 'HEAD' });
+      expect(head.status).toBe(200);
+      expect(head.headers.get('accept-ranges')).toBe('bytes');
+      expect(head.headers.get('content-length')).toBe(String(whole.length));
+
+      // Someone leaving partway through is ordinary: nothing failed. From the second piece on, it's all still there.
+      const logged = h.logs.length;
+      const leaving = new AbortController();
+      const reply = await ask(`bytes=${whole.length - 8000}-`, 30, { signal: leaving.signal });
+      expect(reply.status).toBe(206);
+      await reply.body?.getReader().read();
+      leaving.abort();
+      await new Promise((r) => setTimeout(r, 200));
+      expect(h.logs.slice(logged).join('')).not.toContain('audio stopped partway through');
+    });
+
+    it('what can’t be read fails where it can be seen, and never passes for the end', async () => {
+      const { rec, pieces, whole, noteId, ask, api } = await going();
+      await rec.stop();
+      await written(api, noteId);
+      const start = (seq: number) => Buffer.concat(pieces.slice(0, seq)).length;
+      const reading = async (r: Response) => {
+        const arrived: Uint8Array[] = [];
+        const reader = r.body?.getReader();
+        await expect((async () => { for (let c = await reader?.read(); c && !c.done; c = await reader?.read()) arrived.push(c.value); })()).rejects.toThrow();
+        return Buffer.concat(arrived);
+      };
+
+      // A piece the store has lost: the reply breaks there, and what did arrive is only the recording, not even word of what went wrong.
+      await h.objects.delete(await object(noteId, 20));
+      const logged = h.logs.length;
+      const broken = await ask();
+      expect(broken.status).toBe(200);
+      const arrived = await reading(broken);
+      expect(arrived.length).toBeLessThanOrEqual(start(20));
+      expect(whole.subarray(0, arrived.length).equals(arrived)).toBe(true);
+      // And the failure can be found by the request it broke.
+      await expect.poll(() => h.logs.slice(logged).find((l) => l.includes('audio stopped partway through')) ?? '').toContain(broken.headers.get('x-request-id') ?? 'no id');
+      // It can't be asked for from there either, and before it the recording still plays.
+      expect((await ask(`bytes=${start(20)}-`)).status).toBe(500);
+      expect((await bytes(await ask(`bytes=0-${start(20) - 1}`))).equals(whole.subarray(0, start(20)))).toBe(true);
+
+      // The second piece of a reply going wrong at once is still a break, not an early, clean end.
+      await h.objects.delete(await object(noteId, 11));
+      const early = await ask(`bytes=${start(10)}-${start(20) - 1}`);
+      expect(early.status).toBe(206);
+      const broke = Date.now();
+      await reading(early);
+      expect(Date.now() - broke).toBeLessThan(2000);
+
+      // A piece that's been changed fails its check, at the start of a reply as anywhere.
+      const changed = await object(noteId, 5);
+      const stored = await h.objects.get(changed);
+      const flipped = Uint8Array.from(stored);
+      flipped[flipped.length - 20] = (flipped[flipped.length - 20] ?? 0) ^ 1;
+      await h.objects.put(changed, flipped);
+      const refused = await ask(`bytes=${start(5)}-${start(6) - 1}`);
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({ code: 'key-unavailable' });
+      await h.objects.put(changed, stored);
+      expect((await bytes(await ask(`bytes=${start(5)}-${start(6) - 1}`))).equals(whole.subarray(start(5), start(6)))).toBe(true);
+
+      // A piece stored at a length it isn't: the same.
+      const wrong = await object(noteId, 7);
+      await h.pool.query('UPDATE recording_pieces SET cipher_bytes = cipher_bytes + 4 WHERE object_id = $1', [wrong]);
+      const short = await ask(`bytes=${start(7)}-${start(7) + 1}`);
+      expect(short.status).toBe(403);
+      expect(await short.json()).toMatchObject({ code: 'key-unavailable' });
+    });
   });
 
   it('joins a call without notes and leaves no note behind', async () => {
@@ -808,7 +968,7 @@ describe('calls with notes', () => {
     expect((await resend('0')).status).toBe(404);
     expect((await resend('7')).status).toBe(404);
     expect(code(await b.api.notes.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
-    expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0))).status).toBe(404);
+    expect((await b.fetch(a.api.notes.audioUrl(state.noteId, 0, 1))).status).toBe(404);
     const steal = await b.fetch(`${h.baseUrl}/v1/recordings/${state.id}/stop`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     expect(steal.status).toBe(404);
     expect(code(await b.api.meetings.get(state.noteId).catch((e: unknown) => e))).toBe('not-found');
@@ -1766,6 +1926,57 @@ describe('the inbox', () => {
   });
 });
 
+describe('finding what was said', () => {
+  /** A call between its organizer and someone invited, with `said` said by the organizer at 4-second steps, written up. */
+  async function talked(said: string[], title = 'Roadmap review') {
+    const org = await account(unique('organizer'));
+    const guestEmail = unique('guest');
+    const guest = await account(guestEmail);
+    const meeting = await org.api.meetings.create({ title, startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [guestEmail], notes: 'on' });
+    const call = await org.api.calls.join(meeting.code, { mic: true, cam: false });
+    for (const [i, words] of said.entries()) await call.transcribe(speech(words, 0, i * 4), call.ticket.identity);
+    const noteId = (await ended(call)).pendingNoteId ?? '';
+    await written(org.api, noteId);
+    return { org, guest, noteId };
+  }
+  const found = async (api: AlcoveApi, text: string) => (await api.notes.list({ text })).map((n) => n.id);
+
+  it('finds the words in what was said, with who said them and when, for everyone who has the notes', async () => {
+    const { org, guest, noteId } = await talked(['The harbour pilot starts in March.', 'Nothing else came up about the budget.', 'The budget for the harbour pilot is agreed.']);
+    const name = org.session.user.name;
+    const [hit] = await org.api.notes.list({ text: 'pilot' });
+    expect(hit).toMatchObject({ id: noteId, saidCount: 2 });
+    expect(hit?.said.map((l) => [l.at, l.text, l.speaker?.name])).toEqual([[0, 'The harbour pilot starts in March.', name], [8, 'The budget for the harbour pilot is agreed.', name]]);
+    expect((await guest.api.notes.list({ text: 'pilot' }))[0]?.said).toEqual(hit?.said);
+
+    // Every word counts, in any order and anywhere in the note: the title is searched too, though nothing said matches it.
+    expect(await found(org.api, 'budget harbour')).toEqual([noteId]);
+    expect(await found(org.api, 'budget tugboat')).toEqual([]);
+    expect(await org.api.notes.list({ text: 'Roadmap' })).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
+    expect(await org.api.notes.list({ text: 'roadmap pilot' })).toMatchObject([{ id: noteId, saidCount: 2 }]);
+
+    // Not a search at all: nothing was looked for, so nothing is quoted.
+    expect(await org.api.notes.list()).toMatchObject([{ id: noteId, said: [], saidCount: 0 }]);
+    // A question shows the notes with any of its words, while it's being typed, and what was said with them.
+    expect(await found(org.api, 'When does the pilot start?')).toEqual([noteId]);
+    expect(await found(org.api, 'Who ordered the cake?')).toEqual([]);
+    // Only what you have: someone else's search finds nothing here, and neither does asking to see every note.
+    const stranger = await account(unique('stranger'));
+    expect(await found(stranger.api, 'pilot')).toEqual([]);
+    expect(await stranger.api.notes.list()).toEqual([]);
+  });
+
+  it('quotes the lines with most of the words first, and says how many there were', async () => {
+    const { org } = await talked([
+      'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.', 'The tide was high all week.', 'The harbour tide table is right now.', 'Then the tide went out.'
+    ]);
+    const [hit] = await org.api.notes.list({ text: 'tide harbour' });
+    expect(hit?.saidCount).toBe(6);
+    expect(hit?.said.map((l) => l.text)).toEqual(['The harbour tide table is right now.', 'The tide table is late.', 'The tide came in early.', 'The tide turned at noon.']);
+    expect(hit?.said.map((l) => l.at)).toEqual([16, 0, 4, 8]);
+  });
+});
+
 describe('asking your notes', () => {
   const NOTHING = 'You don’t have any notes to answer from yet.';
   const WRITING = 'Your notes aren’t written yet. Ask again once they’re ready.';
@@ -2022,7 +2233,8 @@ describe('who has the notes', () => {
     const guestEmail = unique('guest');
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] });
     const call = await org.api.calls.join(c, { mic: true, cam: false });
-    await call.appendAudio(piece(audioBytes('shared-audio'), 0, 0));
+    const recorded = audioBytes('shared-audio');
+    await call.appendAudio(piece(recorded, 0, 0));
     const noteId = call.getSnapshot().notes.noteId ?? '';
     expect(code(await org.api.notes.share(noteId, { emails: [unique()] }).catch((e: unknown) => e))).toBe('invalid');
 
@@ -2036,7 +2248,10 @@ describe('who has the notes', () => {
     expect((await guest.api.notes.list()).find((n) => n.id === noteId)).toMatchObject({ received: { role: 'invited', by: { id: org.session.ownerId } } });
     const note = await guest.api.notes.get(noteId);
     expect(note.recipients.map((r) => [r.person.email, r.role])).toEqual([[org.session.user.email, 'organizer'], [guestEmail, 'invited']]);
-    expect((await guest.fetch(guest.api.notes.audioUrl(noteId, 0))).status).toBe(200);
+    // Everyone who has the notes hears it the way the browser's player asks for it, to the byte.
+    const heard = await guest.fetch(guest.api.notes.audioUrl(noteId, 0, 1), { headers: { range: 'bytes=3-' } });
+    expect(heard.status).toBe(206);
+    expect(Buffer.from(await heard.arrayBuffer()).equals(Buffer.from(recorded).subarray(3))).toBe(true);
 
     // Anyone with the notes can share them on; people who already have them aren't added twice.
     const laterEmail = unique('later');
@@ -2049,12 +2264,16 @@ describe('who has the notes', () => {
     // Someone who was never given them can't reach them.
     const stranger = await account();
     expect(code(await stranger.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
-    expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0))).status).toBe(404);
+    expect((await stranger.fetch(stranger.api.notes.audioUrl(noteId, 0, 1))).status).toBe(404);
 
-    // Removing someone else's note only takes it out of your own notes...
+    // Removing someone else's note only takes it out of your own notes, and out of what your searches find...
+    const search = { text: note.title };
+    expect((await later.api.notes.list(search)).map((n) => n.id)).toEqual([noteId]);
     await later.api.notes.delete(noteId);
     expect(code(await later.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
+    expect(await later.api.notes.list(search)).toEqual([]);
     expect((await guest.api.notes.get(noteId)).id).toBe(noteId);
+    expect((await guest.api.notes.list(search)).map((n) => n.id)).toEqual([noteId]);
     // ...and the organizer deleting it takes it from everyone.
     await org.api.notes.delete(noteId);
     expect(code(await guest.api.notes.get(noteId).catch((e: unknown) => e))).toBe('not-found');
@@ -2118,6 +2337,19 @@ describe('who has the notes', () => {
     expect((await org.api.notes.get(older)).groupShares).toEqual(listed);
     expect((await org.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
     expect((await member.api.notes.list()).find((n) => n.id === newer)?.groupShares).toEqual([]);
+
+    // The list says who got a note afterwards, so nobody counts as having been on a call they were only shared: the
+    // guest was invited to the older one, and everyone else has it from a share, a group's or not. A call nobody was
+    // shared lists nobody.
+    const later = [friend.session.user.email, member.session.user.email];
+    const onOlder = (await org.api.notes.list()).find((n) => n.id === older);
+    expect(onOlder?.people.map((p) => p.email)).toEqual(expect.arrayContaining([org.session.user.email, guest.session.user.email, ...later]));
+    expect(onOlder?.sharedWith).toEqual(expect.arrayContaining(later));
+    expect(onOlder?.sharedWith).not.toContain(guest.session.user.email);
+    expect(onOlder?.sharedWith).not.toContain(org.session.user.email);
+    expect((await guest.api.notes.list()).find((n) => n.id === older)?.sharedWith).toEqual(onOlder?.sharedWith);
+    expect((await org.api.notes.get(older)).sharedWith).toEqual(onOlder?.sharedWith);
+    expect((await org.api.notes.list()).find((n) => n.id === newer)?.sharedWith).toEqual([member.session.user.email]);
 
     // Once everyone a share reached has removed the note, that share isn't listed; one reaching anyone still is.
     await friend.api.notes.delete(older);
@@ -2338,7 +2570,7 @@ describe('room recordings', () => {
     expect(note.audio).toEqual([expect.objectContaining({ index: 0, pieces: 3, seconds: 15 })]);
     expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[1, 'We agreed to start with the roof.'], [9, 'Ben brings the ladder.']]);
     expect(transcribed() - heardBefore).toBe(2);
-    const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0))).arrayBuffer());
+    const audio = Buffer.from(await (await own(api.notes.audioUrl(pendingNoteId, 0, 3))).arrayBuffer());
     expect(audio.equals(Buffer.concat(takes))).toBe(true);
     // The account's stored bytes count each piece once, the resends after stopping included.
     const kept = (await h.pool.query<{ pieces: number; bytes: string; stored: string }>(
@@ -2486,6 +2718,10 @@ describe('deleting an account', () => {
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
     await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
     expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
+    // Its shared live notes, which she was reading.
+    const reading = live.watchNotes();
+    await until(async () => { await live.refresh(); return live.getSnapshot().liveNotes.notes !== null; }, 'the call’s live notes');
+    reading();
     // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
@@ -2506,7 +2742,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_snapshots', 'document_updates', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_members', 'workspaces'
     ]);
@@ -2514,7 +2750,7 @@ describe('deleting an account', () => {
     const before = await counts();
     // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those.
-    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_updates', 'document_snapshots', 'document_versions']);
+    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -2754,6 +2990,17 @@ describe('the shared demo account', () => {
     expect((await demo.api.auth.getSession())?.sample).toBe(true);
     expect((await demo.api.meetings.upcoming()).length).toBeGreaterThan(0);
   });
+
+  it('says so in the session, so the app needn’t offer what the server would refuse', async () => {
+    const shared = h.browser();
+    expect((await shared.api.auth.signIn('microsoft')).session).toMatchObject({ sample: true, sharedDemo: true });
+    expect((await shared.api.auth.getSession())?.sharedDemo).toBe(true);
+    // Every other demo account is its owner's own, and can go.
+    const own = h.browser();
+    expect((await own.api.auth.signIn('sso', { email: unique('own') })).session).toMatchObject({ sample: true, sharedDemo: false });
+    await own.api.account.delete();
+    expect(await own.api.auth.getSession()).toBeNull();
+  });
 });
 
 describe('privacy at rest', () => {
@@ -2794,6 +3041,16 @@ describe('privacy at rest', () => {
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
+    // The call's shared live notes are sealed rows too, and so is who ticked what.
+    await call.transcribe(speech('CANARY-LIVENOTE Kofi will sign the merger by Friday.', 0, 4000), call.ticket.identity);
+    const watching = call.watchNotes();
+    await settle(call, (x) => x.liveNotes.notes !== null && !x.liveNotes.writing);
+    watching();
+    const liveFollowUp = call.getSnapshot().liveNotes.notes?.next[0];
+    expect(liveFollowUp?.text).toContain('CANARY-LIVENOTE');
+    await call.tickFollowUp(liveFollowUp?.id ?? '', true);
+    const liveNoteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_notes x`)).rows[0]?.all ?? '');
+    expect(liveNoteRows).not.toBe('');
     // While the call is on, the live transcript is sealed rows too.
     const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
     expect(liveClips).not.toBe('');
@@ -2814,7 +3071,7 @@ describe('privacy at rest', () => {
     call.messageRooms('CANARY-BROADCAST to every room');
     await settle(call, (x) => x.breakouts.open?.message !== null);
     const caught = await call.catchUp({ kind: 'all' });
-    expect(caught.read.lines).toBe(1);
+    expect(caught.read.lines).toBe(2);
     await call.askSoFar('What closes on Friday? CANARY-ASKED', { kind: 'all' });
     await call.catchUpWindow();
     await call.moment(call.getSnapshot().transcript[0]?.id ?? '');
@@ -2833,7 +3090,7 @@ describe('privacy at rest', () => {
     await call.ring(['canary-rung@canary.example']);
     const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
     expect(ringRows).not.toBe('');
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows}`;
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -2861,6 +3118,7 @@ describe('privacy at rest', () => {
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
+    await rec.transcribe(speech('CANARY-SEARCH words in the room.', 0, 5));
     await new Promise((r) => setTimeout(r, 150));
     const { pendingNoteId: roomNote } = await rec.stop();
     await written(c.api, roomNote);
@@ -2878,7 +3136,8 @@ describe('privacy at rest', () => {
     expect((await member.api.meetings.answer(invitation.id, 'maybe')).rsvp).toBe('maybe');
     const invited = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM meeting_access x`)).rows[0]?.all ?? '');
     expect(invited).not.toBe('');
-    await c.api.notes.list({ text: 'CANARY-SEARCH words' });
+    // A search and the lines it quotes pass through here, and stay out of every row and log line below.
+    expect((await c.api.notes.list({ text: 'CANARY-SEARCH words' })).flatMap((n) => n.said.map((l) => l.text))).toEqual(['CANARY-SEARCH words in the room.']);
     await c.api.people.search('CANARY-PEOPLE query');
     // A workspace: its name, folders, documents and boards, and who's in it, sealed in its state and beside its rows.
     const space = await c.api.workspaces.create('CANARY-WORKSPACE name');
@@ -2931,7 +3190,7 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',

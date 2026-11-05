@@ -3,13 +3,14 @@
  * change to the editor's schema is a change here and nowhere else. A board says what it says by `kind`.
  *
  * Text is one element, `line`, whose `kind` says what it is: none for plain text, or heading, bullet, numbered, todo, quote or
- * callout. Blocks are retired, never deleted, so an edit landing in one is never lost: a retired block has `gone` set, and
- * with no words in it, it isn't on the page. With words, it's a block like any other.
+ * callout. Blocks are retired, never deleted, so an edit landing in one is never lost. What's on the page is `isGone`'s to say,
+ * for the editor and for this: a retired block that's still holding something reads like any other.
  *
  * Nothing here is taken on trust: other people's browsers wrote it. Blocks are flat, so these readers go a fixed few levels
  * deep however deep someone nests what they send.
  */
 import { DOC_FRAGMENT, type DocTextBlock } from '@alcove/api';
+import { isGone } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
 
@@ -56,12 +57,12 @@ function blockWords(el: Y.XmlElement): string {
     default: return wordsIn(el);
   }
 }
-const blocksOf = (doc: Y.Doc): Y.XmlElement[] => elementsIn(doc.getXmlFragment(DOC_FRAGMENT));
+const blocksOf = (doc: Y.Doc): Y.XmlElement[] => elementsIn(doc.getXmlFragment(DOC_FRAGMENT)).filter((el) => !isGone(el));
 
 /** What kind of block something is, as search names it. */
 const typeOf = (el: Y.XmlElement): string => (el.nodeName === 'line' ? textAttr(el, 'kind') || 'paragraph' : el.nodeName);
 
-/** What a document says at the top and in each block, leaving out blocks with no words, which takes retired ones with it. */
+/** What a document says at the top and in each block on the page, leaving out blocks with no words. */
 export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; blocks: DocTextBlock[] } {
   switch (kind) {
     case 'document': {
@@ -79,7 +80,7 @@ export interface DocTodo { block: string; text: string; done: boolean; mentions:
 /** Every todo in a document, in order. One with a mention and a date joins the follow-ups of a call it was worked on in. */
 export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
   switch (kind) {
-    case 'document': return blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo' && (el.getAttribute('gone') === undefined || blockWords(el) !== '')).map((el) => {
+    case 'document': return blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo').map((el) => {
       const inline = elementsIn(el);
       const done: unknown = el.getAttribute('done');
       return {

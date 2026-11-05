@@ -1,13 +1,15 @@
 /* The keyboard: what's on the canvas's Keyboard board, and the typed shortcuts that turn a line into a block. */
+import { newBlockId } from '@alcove/api/retire';
 import { exitCode, toggleMark } from 'prosemirror-commands';
 import { InputRule } from 'prosemirror-inputrules';
 import type { Attrs } from 'prosemirror-model';
 import { TextSelection, type Command } from 'prosemirror-state';
-import { redoCommand, undoCommand } from 'y-prosemirror';
+import { redoCommand, undoCommand, yUndoPluginKey } from 'y-prosemirror';
+import type * as Y from 'yjs';
 import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
 import { arrow, backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
+import { dropSpentSteps } from './retire';
 import type { EditorRuntime } from './runtime';
-import { newBlockId } from './names';
 import { isPlainLine, schema } from './schema';
 import type { BlockKind } from './types';
 
@@ -16,6 +18,12 @@ const n = schema.nodes;
 
 /** Undo that always counts as handled: the browser's own undo would fight the document's. */
 const always = (command: Command): Command => (state, dispatch, view) => { command(state, dispatch, view); return true; };
+
+/** ⌘Z takes back the last thing done here. If someone else has already taken that away, there's nothing to do, and it does nothing rather than something older. */
+const undoStep: Command = (state, dispatch, view) => {
+  const manager: Y.UndoManager | undefined = yUndoPluginKey.getState(state)?.undoManager;
+  return (manager !== undefined && dropSpentSteps(manager)) || undoCommand(state, dispatch, view);
+};
 
 export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
   Enter: enter,
@@ -41,7 +49,7 @@ export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
   'Mod-/': () => openBlockMenu(rt),
   /* Tab is indent here, so this is the way out for someone without a pointer. Menus take Esc first. */
   Escape: () => leaveText(rt),
-  'Mod-z': always(undoCommand),
+  'Mod-z': always(undoStep),
   'Mod-Shift-z': always(redoCommand),
   'Mod-y': always(redoCommand),
   'Mod-Shift-ArrowUp': () => nudgeBlock(rt, -1),

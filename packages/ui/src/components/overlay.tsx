@@ -14,11 +14,13 @@ const EDGE = 12;
  * to it after the panel closes, or after something it opened, and not when a script focuses it.
  * `takeFocus={false}` for one that opens as you hover or focus its anchor: focus doesn't move into it when it
  * opens, nor back to the anchor when it closes, so Tab carries on past it and moving the mouse away doesn't
- * open it again.
+ * open it again. `caret` points it at its anchor, and it keeps pointing there when the panel slides to stay in the window.
+ * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does.
  */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, label, tip, className }: {
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, label, tip, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
-  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; label: string; tip?: ReactNode; className?: string;
+  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; caret?: boolean | undefined;
+  onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; className?: string;
 }) {
   const returning = useRef(false);
   const trigger = <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>;
@@ -41,11 +43,12 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.
           onCloseAutoFocus={(e) => {
-            if (!takeFocus) { e.preventDefault(); return; }
+            if (!takeFocus || onCloseFocus?.()) { e.preventDefault(); return; }
             returning.current = true;
             queueMicrotask(() => { returning.current = false; });
           }}>
           {children}
+          {caret && <RPopover.Arrow className="ac-pop-caret" width={18} height={9} />}
         </RPopover.Content>
       </RPopover.Portal>
     </RPopover.Root>
@@ -53,7 +56,7 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-export interface SelectOption<T extends string> { value: T; label: string }
+export interface SelectOption<T extends string> { value: T; label: string; icon?: IconName | undefined }
 
 /**
  * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
@@ -161,7 +164,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
         className={cn('ac-select', stage && 'is-stage', className)}>
         {icon && <Icon name={icon} size={15} />}
         <span className="v ac-clamp-1">{shown}</span>
-        <Icon name={stage ? 'down' : 'chevronsUpDown'} size={15} />
+        <Icon name="down" size={15} />
       </RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
@@ -178,6 +181,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
             <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
               onClick={() => choose(i)}
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
+              {o.icon && <Icon name={o.icon} size={16} className="lead" />}
               <span>{o.label}</span>
               {i === chosen && <Icon name="check" size={15} />}
             </div>

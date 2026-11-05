@@ -6,7 +6,7 @@ import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, Decisi
 import type { DocSession, DocSessionOptions, DocVersion, DocVersionSummary, SearchDoc } from './workspaceDocuments';
 import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
-  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
+  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteFound, NoteKind, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
@@ -147,11 +147,21 @@ export interface AlcoveApi {
     start(input?: RoomRecordingInput): Promise<RoomRecording>;
   };
   notes: {
-    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]>;
+    /**
+     * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A found note
+     * says what was said that matched, from what you may read of it.
+     */
+    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
     get(id: ID): Promise<Note>;
     progress(id: ID): AsyncIterable<NoteProgress>;
-    /** URL that streams one decrypted audio segment to a signed-in browser. */
-    audioUrl(id: ID, segment: number): string;
+    /**
+     * URL of the first `pieces` of one decrypted audio segment, for a signed-in browser's audio element: it answers byte
+     * ranges, so it starts at once and goes to any moment. A browser holds a URL to the length it first said, so a
+     * recording that has grown is read at a new URL.
+     */
+    audioUrl(id: ID, segment: number, pieces: number): string;
+    /** The same audio whole, for a browser that can't go to a moment by range. */
+    audio(id: ID, segment: number, pieces: number, signal?: AbortSignal | undefined): Promise<Blob>;
     /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
     screenUrl(id: ID, frameId: ID): string;
     /**
@@ -278,7 +288,7 @@ export interface AlcoveApi {
      * once, and stays up through dropped connections and restarts: what's typed meanwhile sends when it can, and with `keep`
      * survives a reload.
      */
-    document(id: ID, documentId: ID, opts?: DocSessionOptions): DocSession;
+    document(id: ID, documentId: ID, opts?: DocSessionOptions): Promise<DocSession>;
     /** What a document looked like: the versions kept of it, the newest first. For anyone who can open it. */
     versions(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocVersionSummary[]>;
     /** One version with its whole state, for showing it. */
@@ -306,7 +316,7 @@ export interface AlcoveApi {
 
 export type AlcoveErrorCode =
   | 'unauthenticated' | 'not-found' | 'forbidden' | 'invalid' | 'insufficient-credits' | 'conflict' | 'unavailable'
-  | 'key-unavailable' | 'network' | 'unknown';
+  | 'key-unavailable' | 'too-large' | 'network' | 'unknown';
 
 /** Where a failed request went, for logs and bug reports. `requestId` matches the server's log lines. */
 export interface ErrorDetails { requestId?: string | undefined; status?: number | undefined; method?: string | undefined; path?: string | undefined; cause?: unknown }
@@ -328,7 +338,7 @@ export class AlcoveApiError extends Error {
 /** The server's request ID behind an error, if it has one: quote it when reporting a problem. */
 export const errorRequestId = (e: unknown): string | undefined => (e instanceof AlcoveApiError ? e.requestId : undefined);
 
-export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'network', 'unknown'];
+export const ALCOVE_ERROR_CODES: readonly AlcoveErrorCode[] = ['unauthenticated', 'not-found', 'forbidden', 'invalid', 'insufficient-credits', 'conflict', 'unavailable', 'key-unavailable', 'too-large', 'network', 'unknown'];
 export const isAlcoveErrorCode = (v: unknown): v is AlcoveErrorCode => typeof v === 'string' && ALCOVE_ERROR_CODES.some((c) => c === v);
 
 /** A user-facing message for anything thrown. */

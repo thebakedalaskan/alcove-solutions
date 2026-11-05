@@ -3,11 +3,13 @@
  * document opens: import it through `lazy.ts`. Everything it needs from outside comes through its props, so it works
  * on any Y.Doc and knows nothing of the API. See types.ts for what's given and what's handed back.
  */
+import { newBlockId, undoMayDelete } from '@alcove/api/retire';
 import { baseKeymap } from 'prosemirror-commands';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { inputRules } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
+import type { Node as PMNode } from 'prosemirror-model';
 import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state';
 import { tableEditing } from 'prosemirror-tables';
 import { EditorView } from 'prosemirror-view';
@@ -20,7 +22,7 @@ import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tu
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
-import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
+import { cleanPastedHTML, cleanSerializer, handlePaste, refuseSlice, refuseText, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
 import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
@@ -32,8 +34,6 @@ import { keepInStep } from './plugins/inStep';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
-import { newBlockId } from './names';
-import { undoMayDelete } from './retire';
 import { safeHref, schema, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
@@ -57,17 +57,34 @@ function undoManagerFor(fragment: Y.XmlFragment): Y.UndoManager {
   });
 }
 
+/** How many cells each row of a table has. */
+const shapeOf = (table: PMNode): string => { const rows: number[] = []; table.forEach((row) => rows.push(row.childCount)); return rows.join(); };
+
+/** Whether a change here altered the rows or columns of a table, rather than what's in its cells. */
+function reshaped(before: PMNode, after: PMNode): boolean {
+  const tables = new Map<unknown, PMNode>();
+  before.forEach((node) => { if (node.type === schema.nodes.table) tables.set(node.attrs['id'], node); });
+  let changed = false;
+  after.forEach((node) => {
+    if (node.type !== schema.nodes.table) return;
+    const was = tables.get(node.attrs['id']);
+    if (was !== node && (!was || shapeOf(was) !== shapeOf(node))) changed = true;
+  });
+  return changed;
+}
+
 /**
- * Tables, kept even as they're edited. Only for what's done here: a browser that also corrected what arrived from elsewhere
- * would write its own padding, and two of them would answer each other for ever. A table left uneven by two people's
- * changes is drawn as it is, and evened out by whoever next edits it.
+ * Tables, kept even as they're edited. Only for what changes a table's shape here: two browsers that each corrected the
+ * same table, on arrival or as they typed in it, would each add what's missing, leave it uneven the other way, and go on
+ * for ever. A table left uneven by two people's changes is drawn as it is, and evened out by whoever next changes its shape,
+ * just before they do (`evenTables`). With the same state twice, this looks at no table and only sees to the selection.
  */
 function tables(rt: EditorRuntime): Plugin {
   const editing = tableEditing();
   const { appendTransaction } = editing.spec;
   return new Plugin({
     ...editing.spec,
-    appendTransaction: (transactions, before, after) => (rt.readOnly || transactions.some(fromSync) ? null : appendTransaction?.call(editing, transactions, before, after))
+    appendTransaction: (transactions, before, after) => (rt.readOnly || transactions.some(fromSync) ? null : appendTransaction?.call(editing, transactions, reshaped(before.doc, after.doc) ? before : after, after))
   });
 }
 
@@ -87,7 +104,6 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     fits = false;
   }
   const plugins: Plugin[] = [
-    /* Before ySyncPlugin: a block's element is retired just before y-prosemirror writes the rest of the change. */
     retirePlugin(rt),
     ySyncPlugin(fragment, { mapping: new NodeRecord(start.mapping) }),
     yUndoPlugin({ undoManager: undoManagerFor(fragment) }),
@@ -115,7 +131,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     clipboardTextParser: (text, $context, plain) => textToSlice(text, $context, plain),
     transformPastedHTML: (html) => cleanPastedHTML(html),
     transformPasted: (slice, view) => transformPasted(rt, slice, view),
-    handlePaste: (view, event) => handlePaste(rt, view, event),
+    handlePaste: (view, event, slice) => handlePaste(rt, view, event, slice),
+    handleDrop: (_, __, slice) => refuseSlice(rt, slice),
     handleClickOn(_, __, node, ___, event, direct) {
       if (!direct || !(event.target instanceof Element)) return false;
       const rect = event.target.getBoundingClientRect();
@@ -127,8 +144,14 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
       }
       return false;
     },
-    /* A link opens from `handleClick`, once. Left alone, the browser would open it as well for someone who can only read. */
-    handleDOMEvents: { click: (_, event) => { if (event.target instanceof Element && event.target.closest('a[href]')) event.preventDefault(); return false; } },
+    handleDOMEvents: {
+      /* A link opens from `handleClick`, once. Left alone, the browser would open it as well for someone who can only read. */
+      click: (_, event) => { if (event.target instanceof Element && event.target.closest('a[href]')) event.preventDefault(); return false; },
+      paste: (_, event) => refuseText(rt, event, event.clipboardData),
+      drop: (_, event) => refuseText(rt, event, event.dataTransfer),
+      /* Blocks move by their handles, through `moveBlock`. Text dragged across blocks would be a rewrite of everything it passes, and whatever anyone was typing there would land in the wrong place. */
+      dragstart: (_, event) => { event.preventDefault(); return true; }
+    },
     handleClick(_, __, event) {
       if (!(event.target instanceof Element)) return false;
       const link = event.target.closest('a[href]');

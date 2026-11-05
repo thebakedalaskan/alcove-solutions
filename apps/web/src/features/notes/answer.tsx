@@ -3,7 +3,7 @@
  * show it. Asking about a note or a series (the ask bar) and asking every note (the palette) all use these.
  */
 import { errorMessage, type AnswerPart, type SeriesAnswerPart } from '@alcove/api';
-import { Dots, Icon, Words, cn, useToast } from '@alcove/ui';
+import { Dots, Icon, IconButton, Words, cn, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
 /**
@@ -17,9 +17,9 @@ export interface Answer { q: string; text: string; cites: Cite[]; done: boolean 
 /**
  * Asks with `ask` and follows the answer as it arrives. Asking again, or `reset`, leaves the earlier
  * answer behind: anything still arriving for it is dropped. If asking fails, a toast says why, unless
- * whatever asked has gone (the palette was closed) by then.
+ * whatever asked has gone (the palette was closed) by then, or `refused` says it took care of it.
  */
-export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>) {
+export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>, refused?: ((e: unknown, question: string) => boolean) | undefined) {
   const toast = useToast();
   const [answer, setAnswer] = useState<Answer | null>(null);
   const run = useRef(0);
@@ -41,22 +41,23 @@ export function useAnswer(ask: (question: string) => AsyncIterable<AnswerPart | 
     } catch (e) {
       if (!current()) return;
       setAnswer(null);
-      toast(errorMessage(e), { icon: 'x' });
+      if (!refused?.(e, q)) toast(errorMessage(e), { icon: 'x' });
     }
-  }, [ask, toast]);
+  }, [ask, refused, toast]);
   return { answer, ask: start, reset };
 }
 
 /**
  * An answer as it arrives: the question, then the words (written in once it's finished), then
  * `children`, which say where it comes from. Until the first words arrive it shows `waiting`, if given.
+ * With `onClose`, it can be put away.
  */
-export function AnswerView({ answer, waiting, className, children }: {
-  answer: Answer; waiting?: string | undefined; className?: string | undefined; children?: ReactNode;
+export function AnswerView({ answer, waiting, onClose, className, children }: {
+  answer: Answer; waiting?: string | undefined; onClose?: (() => void) | undefined; className?: string | undefined; children?: ReactNode;
 }) {
   return (
     <div className={cn('answer', className)} aria-live="polite" aria-busy={!answer.done}>
-      <div className="q"><Icon name="ask" size={15} /><span>{answer.q}</span></div>
+      <div className="q"><Icon name="ask" size={15} /><span>{answer.q}</span>{onClose && <IconButton icon="x" label="Close" size={15} onClick={onClose} />}</div>
       <p>{answer.done ? <Words text={answer.text} /> : answer.text || <span className="wait">{waiting}<Dots /></span>}</p>
       {children}
     </div>

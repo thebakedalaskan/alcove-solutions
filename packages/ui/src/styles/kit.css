@@ -180,11 +180,6 @@
 @keyframes ac-settle { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---- TranscriptLine ---- */
-.ac-line { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); }
-.ac-line b { color: var(--ink); font-weight: 600; margin-right: 6px; }
-.ac-line .ac-time { margin-left: 6px; color: var(--ink-3); font-size: 12px; }
-.ac-line .ac-time-chip { margin-left: 6px; vertical-align: 1px; }
-.ac-line mark { color: inherit; border-radius: 3px; background: linear-gradient(var(--sun-soft), var(--sun-soft)) no-repeat 0 100% / 100% 60%; }
 /* What a transcript can't vouch for: a dotted underline, never colour alone, and the reason on hover or focus. */
 .ac-unsure { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--ink-3); text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none; border-radius: 3px; cursor: help; }
 .ac-unsure:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -212,51 +207,6 @@
 .ac-nav-item:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-
-/* ---- NoteTile: a note as a tile; the foot stays at the bottom when tiles in a row stretch ---- */
-.ac-note-tile { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); color: var(--ink); text-decoration: none; transition: box-shadow var(--duration-2), transform var(--duration-2) var(--ease-out); }
-a.ac-note-tile:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
-a.ac-note-tile:active { transform: none; }
-.ac-note-tile .top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
-.ac-note-tile .t { min-width: 0; }
-.ac-note-tile .t b { display: block; font: 600 15px/1.3 var(--font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-note-tile .t small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-note-tile .ex { min-height: 40px; font-size: 13.5px; line-height: 20px; color: var(--ink-2); }
-.ac-note-tile .foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 24px; margin-top: auto; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
-/* Who has it never shrinks, so the faces never run into `end`, which ends in an ellipsis instead. */
-.ac-note-tile .who { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
-.ac-note-tile .end { flex: 0 1 auto; max-width: 62%; }
-
-/* ---- PersonCard: actions line up at the bottom of every card in a row ---- */
-.ac-person-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 22px 12px 14px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); text-align: center; }
-.ac-person-card > .tag { position: absolute; top: 12px; right: 12px; }
-.ac-person-card > b { max-width: 100%; margin-top: 12px; font: 600 14.5px/1.25 var(--font-sans); color: var(--ink); }
-.ac-person-card > small { max-width: 100%; font-size: 12.5px; line-height: 1.35; color: var(--ink-3); }
-.ac-person-card > .last { max-width: 100%; margin-top: 8px; font: 500 11.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); text-wrap: balance; }
-.ac-person-card > .acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: auto; padding-top: 10px; }
-.ac-person-card > .acts .ac-icon-btn { width: 34px; height: 34px; background: var(--sunk); }
-.ac-person-card > .acts .ac-icon-btn:hover { background: var(--line); color: var(--ink); }
-
-
-/* ---- SettingsCard, SettingRow: a control that can't sit beside its words wraps under them ---- */
-.ac-set-card { padding: 24px 28px 10px; scroll-margin-top: 24px; }
-.ac-set-card > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
-.ac-set-card > .lead { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-card > h3 + .ac-set-row, .ac-set-card > .lead + .ac-set-row { margin-top: 12px; }
-/* MinutesCard: the minutes of notes left. The time sizes to the card, from Team's narrow column to Settings' wide one. */
-.ac-minutes { container-type: inline-size; scroll-margin-top: 24px; }
-.ac-minutes > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
-.ac-minutes .big { margin-top: 14px; font: 450 clamp(34px, 11cqi, 48px)/1.05 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 48; }
-.ac-minutes .big small { margin-left: 8px; font: 500 15px/1 var(--font-sans); letter-spacing: 0; color: var(--ink-3); white-space: nowrap; }
-.ac-minutes > .ac-meter { height: 8px; margin: 16px 0 12px; }
-.ac-minutes .used { padding-bottom: 12px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 17px 0; border-top: 1px solid var(--line); }
-.ac-set-row > .txt { flex: 1 1 220px; min-width: 0; }
-.ac-set-row > .txt > b { display: block; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
-.ac-set-row > .txt > small { display: block; max-width: 54ch; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-row.is-caution > .txt > b { color: var(--caution); }
-.ac-set-row > .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
-@media (max-width: 600px) { .ac-set-card { padding: 20px 18px 6px; } }
 
 /* ---- The palette's line, Field ---- */
 .ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
@@ -349,6 +299,7 @@ a.ac-note-tile:active { transform: none; }
 /* ---- Popover, menu items, tooltip ---- */
 .ac-pop { z-index: 70; min-width: 220px; padding: 6px; border-radius: var(--radius-lg); background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); transform-origin: var(--radix-popover-content-transform-origin); animation: ac-pop-in 180ms var(--ease-out) both; outline: none; }
 .ac-pop[data-state="closed"] { animation: ac-pop-out 120ms var(--ease-in) forwards; }
+.ac-pop-caret { display: block; margin-top: -1px; fill: var(--surface-raised); filter: drop-shadow(0 1px 0 var(--line)); }
 .ac-pop-item { width: 100%; display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 10px 12px; border-radius: 12px; text-align: left; transition: background-color var(--duration-1); }
 .ac-pop-item:hover, .ac-pop-item.sel { background: var(--sunk); }
 .ac-pop-item[disabled] { opacity: .5; pointer-events: none; }
@@ -383,9 +334,11 @@ a.ac-note-tile:active { transform: none; }
 .ac-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .ac-option[aria-selected="true"] { font-weight: 600; }
 .ac-option[aria-selected="true"] > .ac-i { color: var(--sun-text); }
+.ac-option > .ac-i.lead { color: var(--ink-3); }
 .ac-pop.is-stage .ac-option { color: var(--stage-ink); }
 .ac-pop.is-stage .ac-option:focus { background: rgba(255, 255, 255, .07); }
 .ac-pop.is-stage .ac-option[aria-selected="true"] > .ac-i { color: var(--sun); }
+.ac-pop.is-stage .ac-option > .ac-i.lead { color: var(--stage-ink-2); }
 .ac-tip { z-index: 80; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ink); color: var(--ground); font: 600 12px/1.2 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-pop-in 160ms var(--ease-out) both; }
 
 /* ---- EmptyState ---- */
@@ -426,32 +379,10 @@ a.ac-note-tile:active { transform: none; }
 .ac-stage .ac-avatar .initial { color: var(--stage-ink-2); }
 .ac-stage .ac-faces .ac-avatar { --ring: var(--stage); }
 
-/* ---- ThemePreview: a window in each theme's own colours (.light/.dark scope them), ringed in sun when it's the one ---- */
-.ac-theme { display: grid; gap: 10px; min-width: 0; text-align: left; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink-2); cursor: pointer; transition: color var(--duration-1); }
-.ac-theme:hover, .ac-theme[aria-pressed="true"] { color: var(--ink); }
-.ac-theme .win { position: relative; display: grid; height: 104px; border-radius: 14px; overflow: hidden; transition: box-shadow var(--duration-1); }
-.ac-theme .win::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; transition: box-shadow var(--duration-1); }
-.ac-theme:hover .win::after { box-shadow: inset 0 0 0 1px var(--line-control); }
-.ac-theme[aria-pressed="true"] .win { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--sun); }
-.ac-theme:focus-visible { outline: none; }
-.ac-theme:focus-visible .win { outline: 2px solid var(--focus); outline-offset: 3px; }
-.ac-theme[aria-pressed="true"]:focus-visible .win { outline-offset: 6px; }
-.ac-theme .win.is-split { grid-template-columns: 1fr 1fr; }
-.ac-theme .pane { display: grid; grid-template-columns: 30% 1fr; min-width: 0; background: var(--ground); }
-.ac-theme .is-split .pane { grid-template-columns: 44% 1fr; }
-.ac-theme .w-side { display: grid; align-content: start; gap: 6px; padding: 12px 9px; background: var(--frame); }
-.ac-theme .w-side i { display: block; height: 6px; border-radius: 3px; background: var(--line); }
-.ac-theme .w-side i:first-child { width: 70%; height: 8px; background: var(--sun); }
-.ac-theme .w-main { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 12px; }
-.ac-theme .w-main i { display: block; height: 26px; border-radius: 7px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.ac-theme .w-main i + i { width: 80%; height: 18px; }
-
-/* ---- MicLevel: eight bars in horizon; on the stage, the recorder's waveform in speak ---- */
+/* ---- MicLevel: bars in horizon ---- */
 .ac-mic-level { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 18px; vertical-align: middle; }
 .ac-mic-level i { width: 4px; height: 100%; border-radius: 2px; background: var(--sunk); transition: background-color 80ms linear; }
 .ac-mic-level i.on { background: var(--horizon); }
-.ac-mic-level.is-stage { height: 22px; }
-.ac-mic-level.is-stage i { background: var(--speak); transition: height 90ms linear; }
 
 /* ---- GroupChip: the size of a person in the people picker, so the two sit together ---- */
 .ac-group-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; height: 30px; padding: 0 10px 0 8px; border-radius: var(--radius-sm); background: var(--sunk); color: var(--ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; vertical-align: middle; }

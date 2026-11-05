@@ -154,8 +154,9 @@ Read `docs/engineering/logging-and-errors.md`.
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
-  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
-  `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
+  `Segmented`, `SettingsPart`, `SettingRow` and `SettingFact` (Settings' sheet: a heading, then a label and a control on one axis), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
+  the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another), and
   `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
@@ -171,15 +172,14 @@ Read `docs/engineering/logging-and-errors.md`.
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
-  `NoteTile` takes the router's `Link` as `link` to open something. A row's menu is an `IconButton` as the anchor of a
-  `Popover` with a `tip`.
+  A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
-  values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
+  values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` or Record (`.rec`) is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
   you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); Home in `styles/home.css` (`hm-`); the Team page in
-  `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
+  `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); a note and a series in `styles/note.css` (`nd-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
   lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`

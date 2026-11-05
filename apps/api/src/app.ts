@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DocAwarenessBodySchema, DocUpdateBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -70,15 +70,18 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  */
 const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
   /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+/** The most audio one range carries, under Cloud Run's 32 MiB for a reply of a known length. A browser asks again for the rest. */
+const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 /** The one route that takes an image: a frame of someone's own shared screen. */
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
+const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/updates$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
@@ -88,11 +91,11 @@ const ID128 = /^[A-Za-z0-9_-]{22}$/;
  */
 function rateLimit(max: number, windowMs: number) {
   const hits = new Map<string, { n: number; until: number }>();
-  return (key: string, what = 'request') => {
+  return (key: string, what = 'request', cost = 1) => {
     const now = Date.now();
     const h = hits.get(key);
-    if (!h || h.until < now) { hits.set(key, { n: 1, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
-    if (++h.n > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
+    if (!h || h.until < now) { hits.set(key, { n: cost, until: now + windowMs }); if (hits.size > 50_000) hits.clear(); return; }
+    if ((h.n += cost) > max) throw new UnavailableError('Too many attempts. Wait a minute and try again.', { context: { limit: what, max, windowMs } });
   };
 }
 /**
@@ -140,6 +143,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const askNotesLimiter = rateLimit(10, 60_000);
   /** Saying whether others may point at what you share, per person in a call: each change makes every browser fetch the call again. */
   const othersPointLimiter = rateLimit(20, 60_000);
+  /** Ticking follow-ups, per person in a call: the same. */
+  const followUpLimiter = rateLimit(60, 60_000);
+  /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, for each view of each part of the call. */
+  const notesWatchLimiter = rateLimit(120, 60_000);
   /**
    * Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so
    * this only keeps it calm); and the new device checking on its move, at most twice a second, per client address. Each
@@ -197,6 +204,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const documentLiveLimiter = rateLimit(240, 60_000);
   /** Updates to documents, per person: a browser sends at most about seven a second, and someone may have two or three open. */
   const updateLimiter = rateLimit(1200, 60_000);
+  /** How much of them, in KiB: a long paste is megabytes, and nobody pastes one every second. */
+  const updateBytesLimiter = rateLimit(64 * 1024, 60_000);
+  /** Reading a version, per person: History reads one at a time, as someone clicks through them. */
+  const versionLimiter = rateLimit(60, 60_000);
   /** Where a caret or pointer is, per person: a browser sends at most ten a second. */
   const awarenessLimiter = rateLimit(1800, 60_000);
   /** Where someone is in a workspace, per person: every 10 seconds and whenever they move or start typing. */
@@ -240,7 +251,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
     const image = type.startsWith('image/jpeg') && FRAMES.test(c.req.path);
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 
@@ -452,15 +464,16 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand, an ask for notes and whether others may point at your share are anyone's in the call; keeping the
-    // call running is whoever hosts'; the rest is the organizer's.
-    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point') calls.requireIn(c.get('viewer'), a.type);
+    // A raised hand, an ask for notes, whether others may point at your share and ticking a follow-up are anyone's in the
+    // call (calls.act says who gets the notes); keeping the call running is whoever hosts'; the rest is the organizer's.
+    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up') calls.requireIn(c.get('viewer'), a.type);
     else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
+    if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*
@@ -567,6 +580,18 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const { question, timeZone } = await body(c, SeriesAskBodySchema);
     return c.json(await calls.askEarlier(v, c.req.param('id'), o, question, timeZone));
   });
+
+  /*
+   * The call's shared live notes: they come with the call. This says someone is looking at them, which is what keeps
+   * them up to date: a look that finds them due refreshes them and answers once that's done, for everyone in that part
+   * of the call, and any other look at the same time answers at once.
+   */
+  app.post('/v1/live/calls/:id/notes/watch', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'live-notes');
+    notesWatchLimiter(v.pass.identity, 'live-notes');
+    return c.json({ refreshed: await calls.watchNotes(v, c.req.param('id')) });
+  });
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
     const v = c.get('viewer');
     calls.requireIn(v, 'moment');
@@ -623,7 +648,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/workspaces/:id/live', async (c) => {
     const r = await readerOf(c);
     liveLimiter(access.limitKey(r), 'workspace stream');
-    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'));
+    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'), clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -640,14 +665,14 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
    * A document or board: its stream down, its updates and carets up, and its versions. An update that arrives twice changes
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
-  app.use('/v1/workspaces/:id/documents/:doc/updates', capped(Math.ceil((MAX_DOC_UPDATE_BYTES * 4) / 3) + 1024));
+  app.use('/v1/workspaces/:id/documents/:doc/updates', capped(MAX_DOC_UPDATE_BYTES));
   app.use('/v1/workspaces/:id/documents/:doc/awareness', capped(Math.ceil((MAX_DOC_AWARENESS_BYTES * 4) / 3) + 1024));
   app.get('/v1/workspaces/:id/documents/:doc/live', async (c) => {
     const r = await readerOf(c);
     documentLiveLimiter(access.limitKey(r), 'document stream');
     const after = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query('after') ?? '0');
     if (!after.success) throw new ValidationError('Ask from a place in the document.');
-    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data);
+    const run = await workspaceDocuments.open(d, credentials(c), r, c.req.param('id'), c.req.param('doc'), after.data, clientAddress(c));
     c.header('content-type', 'application/x-ndjson');
     c.header('cache-control', 'no-store');
     return stream(c, run);
@@ -655,7 +680,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/workspaces/:id/documents/:doc/updates', async (c) => {
     const r = await readerOf(c);
     updateLimiter(access.limitKey(r), 'document update');
-    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), unb64u((await body(c, DocUpdateBodySchema)).update)));
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(Number(c.req.header('content-length') ?? 0) / 1024) || 1);
+    return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), () => c.req.arrayBuffer()));
   });
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);
@@ -663,8 +689,19 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     await workspaceDocuments.awareness(d, r, c.req.param('id'), c.req.param('doc'), unb64u((await body(c, DocAwarenessBodySchema)).update));
     return c.json({ said: true });
   });
-  app.get('/v1/workspaces/:id/documents/:doc/versions', async (c) => c.json(await workspaceDocuments.versions(d, await readerOf(c), c.req.param('id'), c.req.param('doc'))));
-  app.get('/v1/workspaces/:id/documents/:doc/versions/:version', async (c) => c.json(await workspaceDocuments.version(d, await readerOf(c), c.req.param('id'), c.req.param('doc'), c.req.param('version'))));
+  app.get('/v1/workspaces/:id/documents/:doc/versions', async (c) => {
+    const r = await readerOf(c);
+    versionLimiter(access.limitKey(r), 'document versions');
+    return c.json(await workspaceDocuments.versions(d, r, c.req.param('id'), c.req.param('doc')));
+  });
+  app.get('/v1/workspaces/:id/documents/:doc/versions/:version', async (c) => {
+    const r = await readerOf(c);
+    versionLimiter(access.limitKey(r), 'document version');
+    const run = await workspaceDocuments.version(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('version'));
+    c.header('content-type', 'application/x-ndjson');
+    c.header('cache-control', 'no-store');
+    return stream(c, run);
+  });
   app.post('/v1/workspaces/:id/documents/:doc/versions/:version/restore', async (c) => {
     const r = await readerOf(c);
     treeLimiter(access.limitKey(r), 'workspace change');
@@ -851,18 +888,29 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       }
     });
   });
+  /*
+   * The first `pieces` of a segment, which stay the same file however much more is recorded. A range is for the
+   * browser's own player; all of it, chunked, is for one that can't seek by range and fetches it whole.
+   */
   app.get('/v1/notes/:id/audio/:segment', async (c) => {
+    const gone = c.req.raw.signal;
     const o = c.get('owner');
     const segment = z.coerce.number().int().min(0).parse(c.req.param('segment'));
+    const pieces = z.coerce.number().int().min(1).parse(c.req.query('pieces'));
     const n = await notes.get(o, c.req.param('id'));
     const seg = n.audio.find((a) => a.index === segment);
     if (!seg) throw new NotFoundError('No audio in that part of the recording.');
     const source = await notes.audioSource(o, n.id);
+    const file = await audioMod.file(source.owner, source.recordingId, segment, pieces);
     const mime = seg.mimeType.split(';')[0] ?? '';
-    c.header('content-type', AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream');
-    c.header('x-content-type-options', 'nosniff');
-    c.header('cache-control', 'no-store');
-    return stream(c, async (s) => { for await (const chunk of audioMod.stream(source.owner, source.recordingId, segment)) await s.write(chunk); });
+    const headers = { 'content-type': AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' };
+    if (c.req.method === 'HEAD') return c.body(null, 200, { ...headers, 'content-length': String(file.bytes) });
+    const range = byteRange(c.req.header('range'), file.bytes);
+    if (range === null) return c.body(null, 416, { ...headers, 'content-range': `bytes */${file.bytes}` });
+    if (!range) return c.body(await audioMod.body(file.read(0, file.bytes - 1), gone), 200, headers);
+    const { from } = range;
+    const to = Math.min(range.to, from + MOST_AUDIO_PER_REPLY - 1);
+    return c.body(await audioMod.body(file.read(from, to), gone), 206, { ...headers, 'content-length': String(to - from + 1), 'content-range': `bytes ${from}-${to}/${file.bytes}` });
   });
   /* A note's shared-screen frame, for anyone who has the note: decrypted here, never cached by the browser. */
   app.get('/v1/notes/:id/screens/:frameId', async (c) => {
@@ -989,6 +1037,22 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
 /** A position header: a whole number that fits the integer columns it's stored in. */
 const position = (c: Context, name: string) => z.coerce.number().int().min(0).max(2_147_483_647).parse(c.req.header(name));
+
+/**
+ * What a Range header asks for in `size` bytes: one stretch, `null` if it starts past the end, or `undefined` for the
+ * whole file, which is the answer to no header and to one this doesn't take, such as several ranges.
+ */
+function byteRange(header: string | undefined, size: number): { from: number; to: number } | null | undefined {
+  const asked = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '');
+  if (!asked) return undefined;
+  const [, first = '', last = ''] = asked;
+  if (!first && !last) return undefined;
+  if (!first) return Number(last) > 0 && size > 0 ? { from: Math.max(0, size - Number(last)), to: size - 1 } : null;
+  const from = Number(first);
+  if (from >= size) return null;
+  const to = last ? Math.min(Number(last), size - 1) : size - 1;
+  return to >= from ? { from, to } : undefined;
+}
 
 /** Reads a raw audio piece and its position headers. */
 async function piece(c: Context): Promise<audioMod.Piece> {

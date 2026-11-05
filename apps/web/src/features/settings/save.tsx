@@ -1,11 +1,11 @@
 /*
- * Settings save as each control changes. The change shows at once; once it's kept, the setting's name says Saved for
- * a moment (and screen readers hear it). A change the server refuses goes back, and a toast says why.
+ * Settings save as each control changes. The change shows at once; once it's kept, the row says Saved for a moment,
+ * just left of the control (and screen readers hear it). A change the server refuses goes back, and a toast says why.
  */
-import { errorMessage, type Patch, type Preferences } from '@alcove/api';
-import { Icon, useToast } from '@alcove/ui';
+import { errorCode, errorMessage, type Patch, type Preferences } from '@alcove/api';
+import { SettingRow, Switch, useToast, type SettingRowProps } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode, type Ref } from 'react';
 import { q, usePreferences } from '~/lib/queries';
 
 const SAVED_MS = 2200;
@@ -32,6 +32,9 @@ export function SavedProvider({ children }: { children: ReactNode }) {
 /** Says a setting kept only in this browser (a device, say) is saved. */
 export const useSaved = () => useContext(Saved).done;
 
+/** Why a change went back, naming it. */
+const refused = (e: unknown, name: string) => (errorCode(e) === 'network' ? `Couldn’t reach Alcove, so ${name} is back as it was.` : `${errorMessage(e)} ${name} is back as it was.`);
+
 /**
  * Saves a change to preferences under the setting's `name`. A change that depends on the others (the notifications go
  * together) is worked out from the preferences as they are when it's made, so quick changes build on one another.
@@ -47,12 +50,20 @@ export function useSave() {
     const patch = typeof change === 'function' ? change(now) : change;
     // The choice already made, picked again: nothing to save.
     if (JSON.stringify({ ...now, ...patch }) === JSON.stringify(now)) return;
-    write.mutateAsync(patch).then(() => done(name), (e: unknown) => toast(errorMessage(e), { icon: 'x' }));
+    write.mutateAsync(patch).then(() => done(name), (e: unknown) => toast(refused(e, name), { icon: 'x' }));
   };
 }
 
-/** A setting's name, followed for a moment by Saved once a change to it has been kept. */
-export function Named({ children }: { children: string }) {
+/** A row that says so for a moment once a change to the setting it names is kept. `saying` is what it says, when that's more than Saved. */
+export function Setting({ label, saying = 'Saved', ...row }: Omit<SettingRowProps, 'label' | 'saved'> & { label: string; saying?: string | undefined; ref?: Ref<HTMLDivElement> | undefined }) {
   const { saved } = useContext(Saved);
-  return <>{children}{saved === children && <span className="set-saved" aria-hidden="true"><Icon name="check" size={13} />Saved</span>}</>;
+  return <SettingRow {...row} label={label} saved={saved === label ? saying : undefined} />;
+}
+
+/** A setting that's on or off. Pressing its words turns it too. */
+export function SwitchSetting({ label, help, checked, disabled = false, onChange }: { label: string; help?: ReactNode; checked: boolean; disabled?: boolean | undefined; onChange: (on: boolean) => void }) {
+  return (
+    <Setting label={label} help={help} off={disabled} onLabel={disabled ? undefined : () => onChange(!checked)}
+      control={<Switch label={label} checked={checked} disabled={disabled} onChange={onChange} />} />
+  );
 }

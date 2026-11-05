@@ -18,7 +18,7 @@ import type { Deps, Owner } from '../context';
 import { b64u, blindIndex, id128, mac, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, notFound } from '../errors';
-import { publish } from '../live/hub';
+import { publish, type Hub } from '../live/hub';
 import { log } from '../log';
 import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
@@ -30,6 +30,7 @@ const xlog = log.child({ component: 'access' });
 
 /** IDs are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
+export const isItemId = (id: string): boolean => ID128.test(id);
 /** The notice that the tree, or who can open what, changed: every stream of the workspace looks again. */
 export const TREE_NOTICE = 'tree';
 
@@ -211,6 +212,52 @@ export async function workspaceFor(d: Deps, who: Who, workspaceId: string, db: D
   if (!owner) throw missing(workspaceId);
   return { ...standing, workspaceId, owner, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(db, row.owner_id), version: row.version };
 }
+
+/** How far a workspace has moved on: whatever changes the tree or who has what moves it, so an answer given at this version still holds. */
+export async function workspaceVersion(d: Deps, workspaceId: string): Promise<number | undefined> {
+  return (await maybeOne(d.pool, z.object({ version: bigintText }), 'SELECT version FROM workspaces WHERE workspace_id = $1', [workspaceId]))?.version;
+}
+
+/** A yes to something, as of a version of the workspace. Only that: no keys, and nothing of the tree. */
+interface Yes { version: number; role: WorkspaceRole | null; editedAt: string }
+/** What a remembered yes gives: the keys of this request, and what was true of the tree. */
+export interface Allowed extends Omit<Yes, 'version'> { owner: Owner; workspaceId: string }
+const MAX_REMEMBERED = 4096;
+const yesByHub = new WeakMap<Hub, Map<string, Yes>>();
+const VersionRow = z.object({ owner_id: z.string(), version: bigintText });
+/**
+ * For what's asked many times a second: opening a tree costs in proportion to its size, and someone typing asks every few
+ * keys. So a yes is remembered, for as long as the workspace's version says it still holds, and the answer costs one small
+ * query. A no isn't remembered, and always comes from `workspaceFor`, which is the only thing that decides. `lock` as there.
+ */
+async function remembering(d: Deps, who: Who, workspaceId: string, what: string, ask: (w: Workspace) => string, db: Db, lock?: keyof typeof LOCKS): Promise<Allowed> {
+  if (!ID128.test(workspaceId)) throw missing(workspaceId);
+  const row = await maybeOne(db, VersionRow, `SELECT owner_id, version FROM workspaces WHERE workspace_id = $1${lock ? LOCKS[lock] : ''}`, [workspaceId]);
+  const remembered = yesByHub.get(d.hub) ?? new Map<string, Yes>();
+  yesByHub.set(d.hub, remembered);
+  const key = `${workspaceId}:${what}:${who.email ?? ''}:${who.principals.map(b64u).join()}`;
+  const yes = remembered.get(key);
+  if (row && yes?.version === row.version) {
+    const owner = await findOwner(d, row.owner_id, undefined, db);
+    if (!owner) throw missing(workspaceId);
+    return { owner, workspaceId, role: yes.role, editedAt: yes.editedAt };
+  }
+  const w = await workspaceFor(d, who, workspaceId, db, lock);
+  const editedAt = ask(w);
+  remembered.delete(key);
+  remembered.set(key, { version: w.version, role: w.role, editedAt });
+  for (const oldest of remembered.keys()) {
+    if (remembered.size <= MAX_REMEMBERED) break;
+    remembered.delete(oldest);
+  }
+  return { owner: w.owner, workspaceId, role: w.role, editedAt };
+}
+/** `requireDocument(..., 'edit')`, for each update. */
+export const editableBy = (d: Deps, who: Who, workspaceId: string, documentId: string, db: Db = d.pool, lock?: keyof typeof LOCKS): Promise<Allowed> =>
+  remembering(d, who, workspaceId, `edit:${documentId}`, (w) => requireDocument(who, w, documentId, 'edit').item.editedAt, db, lock);
+/** That someone can open the workspace, and `documentId` in it, if any: for saying where they are. */
+export const placeableIn = (d: Deps, who: Who, workspaceId: string, documentId: string | null): Promise<Allowed> =>
+  remembering(d, who, workspaceId, `read:${documentId ?? ''}`, (w) => (documentId === null ? '' : requireDocument(who, w, documentId, 'read').item.editedAt), d.pool);
 
 /** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
 export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {

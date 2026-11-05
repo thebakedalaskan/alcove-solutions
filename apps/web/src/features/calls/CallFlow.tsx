@@ -62,12 +62,14 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
   useQuery(q.people(''));
   const toast = useToast();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
-  const [view, setView] = useState<View>(later ? 'who' : 'choice');
+  const me = session?.user.email;
+  const [draft, setDraft] = useState<Draft>(() => newDraft(prefs, { people, name }));
+  /* With anyone else picked there's no Who to ask: scheduling goes straight to finding a time with them, and Back still reaches it. */
+  const scheduleFrom = (tokens: Draft['tokens']): View => (guestsOf(tokens, me).length ? 'when' : 'who');
+  const [view, setView] = useState<View>(() => (later ? scheduleFrom(draft.tokens) : 'choice'));
   const [back, setBack] = useState(false);
   const [wide, setWide] = useState(false);
   const [from, setFrom] = useState<View | null>(null);
-  const [draft, setDraft] = useState<Draft>(() => newDraft(prefs, { people, name }));
-  const me = session?.user.email;
   /* Who hears about a call: Google sends invitations when it's reachable and allowed to, and a sample calendar stands in for that. A Google sign-in alone isn't access to its calendar. */
   const invites = calendar?.source === 'sample' || (calendar?.source === 'google' && !calendar.needsAccess && prefs?.addToCalendar !== false);
   const guests = useMemo(() => guestsOf(draft.tokens, me), [draft.tokens, me]);
@@ -100,7 +102,7 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
     <Modal ref={setBox} open={open} onOpenChange={(o) => { if (!o) onClose(); }} label={label} className={cn('cf-modal', widened && 'is-wide')}>
       <FlowView>
         {view === 'choice'
-          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} onClose={onClose} onLater={() => go('who')} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
+          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} onClose={onClose} onLater={() => go(scheduleFrom(draft.tokens))} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
           : <FlowSteps steps={STEPS} at={STEP_OF[view]} busy={schedule.isPending} onBack={previous} onClose={onClose} />}
         {view !== 'choice' && <p className="sr-only" role="status">{`Step ${STEP_OF[view] + 1} of ${STEPS.length}: ${STEPS[STEP_OF[view]] ?? ''}`}</p>}
         {view === 'who' && (
@@ -149,7 +151,7 @@ function Choice({ people, name, team, onClose, onLater, toast }: { people: Perso
     addEventListener('keydown', on);
     return () => removeEventListener('keydown', on);
   }, [onLater]);
-  const who = name ?? (people.length ? someNames(people, 2) : undefined);
+  const who = people.length ? name ?? someNames(people, 2) : undefined;
   return (
     <>
       <FlowHead title={who ? `Start a call with ${who}` : 'Start a call'} onClose={onClose} />

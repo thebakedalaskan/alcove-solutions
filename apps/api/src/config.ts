@@ -84,7 +84,19 @@ const EnvSchema = z.object({
   HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
   HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),
   /** The most workspace and document streams an instance holds, everyone's together: each holds a request, and calls need the rest. */
-  LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(300),
+  LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(500),
+  /** The most of them from one address, whoever's signed in, so a handful of accounts can't take them all. */
+  LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(64),
+  /** How many workers open documents. The first takes big ones. */
+  DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
+  /** How long a worker has for one job on a document, in ms. */
+  DOC_WORK_MS: z.coerce.number().int().min(1).default(20_000),
+  /** How much memory the worker for big documents has, in MiB. */
+  DOC_HEAP_MB: z.coerce.number().int().min(16).default(320),
+  /** The most separate items a document can hold, which is what its memory follows: at about 210 bytes each, this keeps any document inside DOC_HEAP_MB. */
+  DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(500_000),
+  /** How many reads of a version an instance serves at once: each holds a request for as long as its reader takes. */
+  DOC_VERSION_READS: z.coerce.number().int().min(1).default(8),
   /** How long someone stays here in a workspace after their browser last said so, in ms. Browsers say so every 10 seconds. */
   LIVE_PRESENCE_MS: z.coerce.number().int().min(10).default(30_000),
   /** debug | info | warn | error | silent. */

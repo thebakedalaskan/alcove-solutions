@@ -8,6 +8,7 @@
  */
 import { Fragment, Schema, type Attrs, type DOMOutputSpec, type Mark, type MarkSpec, type MarkType, type Node as PMNode, type NodeSpec, type NodeType, type TagParseRule } from 'prosemirror-model';
 import { BlockAttrsSchema } from '@alcove/api';
+import { KEPT_ATTRS, STRUCTURE, TAGS } from '@alcove/api/retire';
 import { tableNodes } from 'prosemirror-tables';
 import { log } from '~/lib/log';
 import type { BlockJSON } from './types';
@@ -25,7 +26,7 @@ export const MAX_INDENT = 2;
 
 /*
  * What every block has. `gone` is set on a block that has left the page: it says which block took its words, and it's ''
- * if none did. See retire.ts.
+ * if none did. See `@alcove/api/retire`.
  */
 const block = { id: { default: null }, gone: { default: null } };
 
@@ -233,7 +234,7 @@ function learnMark(schema: Schema, name: string): MarkType {
 const inlineStandIns = new WeakMap<PMNode, PMNode>();
 
 /** The node to hold for one made from an element: what's in the document, if that's since changed. */
-export const inDocument = (node: PMNode): PMNode => inlineStandIns.get(node) ?? node;
+export const inDocument = (node: PMNode): PMNode => (node.type === schema.nodes.unsupported ? inlineStandIns.get(node) ?? node : node);
 
 /*
  * y-prosemirror deletes, for everyone, any element or text it can't make a node or mark from, and removes from an element
@@ -305,8 +306,35 @@ export const isPlainLine = (node: PMNode): boolean => node.type === schema.nodes
 export const captionKey = (media: string): string => `cap:${media}`;
 export const captionsOf = (node: PMNode): string[] => Object.entries(node.attrs).flatMap(([name, value]: [string, unknown]) => (name.startsWith('cap:') && typeof value === 'string' && value !== '' ? [value] : []));
 
-/** A block that has left the page and has no words of anyone's in it: it stays in the document, drawn as nothing. */
-export const isGone = (node: PMNode): boolean => textAttr(node, 'gone') !== null && node.textContent === '' && captionsOf(node).length === 0;
+/** An attribute this node has that isn't what it would have if nobody had written one. */
+const written = (node: PMNode): boolean => Object.entries<unknown>(node.attrs).some(([key, value]) => (
+  !KEPT_ATTRS.has(key) && value !== null && value !== undefined && value !== '' && value !== node.type.spec.attrs?.[key]?.default
+));
+
+/** `holdsNothing` from `@alcove/api/retire`, on ProseMirror's side of a document: a block carried from a newer Alcove says nothing this release can read. */
+function holdsNothing(node: PMNode): boolean {
+  if (node.isText || TAGS.has(node.type.name)) return false;
+  if (!STRUCTURE.has(node.type.name) && node.type !== schema.nodes.unsupported && node.type !== schema.nodes.unsupportedInline && written(node)) return false;
+  for (let i = 0; i < node.childCount; i += 1) if (!holdsNothing(node.child(i))) return false;
+  return true;
+}
+
+const goneNodes = new WeakMap<PMNode, boolean>();
+
+/**
+ * A block that has left the page and holds nothing anyone said: it stays in the document, drawn as nothing. This is the rule
+ * in `@alcove/api/retire`, which is what the server reads, and it's asked of every block on every keystroke, so each node
+ * is only worked out once: nodes don't change.
+ */
+export function isGone(node: PMNode): boolean {
+  if (textAttr(node, 'gone') === null) return false;
+  let gone = goneNodes.get(node);
+  if (gone === undefined) {
+    gone = holdsNothing(node);
+    goneNodes.set(node, gone);
+  }
+  return gone;
+}
 
 /** Only links that are safe to open. A document's text comes from other people. */
 export function safeHref(href: unknown): string | null {

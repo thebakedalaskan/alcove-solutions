@@ -102,16 +102,18 @@ immutable repository and owner IDs, main ref, deploy workflow and permitted even
 Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
 `production` environment. Automatic deployment requires no environment reviewer gate.
 
-Cloud Run uses one instance, session affinity, gen2, one CPU, 1 GiB, port 8080, a 300-second timeout and 500
+Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, a 300-second timeout and 1,000
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
 The API holds at most 300 of those streams, and 8 for any one account.
 A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 16 of
-documents for any one person on an instance, and 300 of both together for everyone (`LIVE_STREAMS_MAX`), past which they're
-refused with `503` and browsers try again, and the API lets go of each one after 280 seconds for the browser to open it again
-(`LIVE_STREAM_MS`; keep it under the timeout). Those two limits are counted apart and come to 600 together: 200 tabs
-listening for rings with 300 streams open would take all 500 requests and leave calls none, so lower `LIVE_STREAMS_MAX`
-before an instance gets that busy. Node gives its heap about half of the container's memory, so 1 GiB is a
-heap of about 560 MiB. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+documents for any one person on an instance, 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both
+together for everyone (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of
+each one after 280 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Rings and these are
+counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
+them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
+heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 320 MiB for the one that takes big
+documents and 96 MiB for the rest (`DOC_HEAP_MB`, `DOC_WORKERS`), outside that heap, so keep the two inside the container
+together. A document at its item limit and an 8 MB one, in a 1 GiB container, peaked at 884 MiB, which is why it's 2 GiB. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
 checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
 connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion

@@ -74,9 +74,10 @@ Beside every page, dark in both themes:
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
-below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass.
+below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
+its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8).
 
-On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search, **Start a call** (a plus) and
+On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
 when you're on one. Offline, the same notice sits under the top bar.
 
@@ -161,8 +162,9 @@ send to anyone".
 
 1. **Start now** creates the call and goes to the organizer's lobby, with anyone picked already there to ring. Night
    floods out from the card that was pressed. If the call can't be made, the modal stays and says why.
-2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. Back
-   goes the other way, and everything chosen so far stays. No window ever opens over another.
+2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. With
+   someone already picked it starts at **When**. Back goes the other way, and everything chosen so far stays. No window
+   ever opens over another.
 3. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
    company ("Everyone at Vandelay"; without a directory, "Everyone you meet at Harbourline"); on your own it's the
    people you've met and any address. Pasting a list of addresses reads it at once: commas, semicolons, spaces and
@@ -277,18 +279,18 @@ the call that rang.
 
 ## 6. In the call
 
-The call opens full screen: the stage with everyone's tiles, a side panel that slides in beside it, and one
-dock at the bottom.
+The call opens full screen: the stage with everyone's tiles, side panels that slide in beside it and go wherever you
+put them, and one dock at the bottom.
 
 - **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
   unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
   someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
   opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
   the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
-  screens**, or anyone else's **Ask for notes**; your view: **Auto**, **Speaker** or **Grid**, which change only
-  your screen, beside a menu with the same three, two ready-made layouts (**Everyone equal**, **Presenter and
-  me**), where you see yourself, and a reset (on a phone, that menu is the one button); **Reset my view** once
-  you've arranged it; **Catch up**; the shield, whose hover says what confidential compute covers (verified only
+  screens**, or anyone else's **Ask for notes**; **Reset my view** once you've arranged anything; **View**, which
+  changes only your screen: four layouts (**Side by side**, **Stacked**, **Screen first**, **Document first**), how
+  you see people (**Tiles**, **Arches**, **Hidden**), **Auto**, **Speaker** or **Grid**, where you see yourself, and
+  two ready-made layouts (**Everyone equal**, **Presenter and me**); **Catch up**; the shield, whose hover says what confidential compute covers (verified only
   when the server's hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
@@ -302,6 +304,15 @@ dock at the bottom.
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
   are remembered in this browser, and shared screens are never made smaller.
+- **Panels.** Everything can be moved and resized, for you alone. Drag the line between two panels: it follows your
+  pointer, snaps at half, and a double-click evens it. Hover a panel for its handle and drag it: a sunrise glow shows
+  where it will land, on any edge of another panel, an edge of the window, or the middle of a panel to swap them.
+  Drag a tab out of a side panel to keep it open beside the others; drop it back on a panel to merge them. Hover the
+  people to move them, fold them to arches, or hide them (**⇧P**): hidden, they stand small on the horizon beside the
+  dock, and whoever's talking or has a hand up rises, with a line saying so. As the window narrows, tiles fold to arches,
+  side panels float, and what's big takes turns, with a switcher in the top bar. A panel there's no room for waits out
+  of sight: its button in the dock shows it closed, with anything new on it, and one press brings it up. All of it works from the keyboard,
+  and Alcove remembers how you like calls in this browser, so tomorrow's starts the way you left it.
 - **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
   screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
   who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
@@ -359,8 +370,10 @@ dock at the bottom.
   call is still transcribed. Captions show the newest line, in the language you pick (translated in
   confidential compute, for you alone), with the original underneath. Captions need notes on.
 - **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
-  and a summary, read from the transcript as the call goes; each time opens the transcript at that moment. The organizer's
-  **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
+  and a summary, read from the transcript as the call goes, the same for everyone in that part of the call; each time
+  opens the transcript at that moment. Anyone who gets the notes can tick a follow-up, and it's done for everyone and in
+  the notes at the end. A guest with the link gets notes written only from what was said while they were here, and can't tick them. The
+  organizer's **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
 - **Yours** (side panel), beside **Notes**: your own notes on the call, which say **Only you** before you type. Write
   something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark in the dock, or **More**
   on a phone; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
@@ -476,19 +489,41 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 ## 8. Notes
 
 - **Notes** lists every note you have, your own and those from other people, newest first and grouped by day
-  (Today, Yesterday, This week, Last week, then months). Each row has the start of the summary, who has the
-  note, what's still open in it (follow-ups, decisions to confirm), the time or the day, and a pin when it's
-  pinned. Search matches titles, summaries and transcripts. **All**, **Calls**, **In the room** and **Shared
-  with you** (notes someone shared with you afterwards) narrow the list, and **With anyone** picks someone you
-  have notes with: the list shows only the notes they have too, under a chip whose × shows everyone's again.
-  That person is in the address after `#with=` (the Team page links there), which never leaves the browser.
-- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready,
-  **Pin**, **Share** and **Open notes**, when it was and who has it, the summary, decisions (**Confirm** one
-  there) and follow-ups (tick one there). A click picks a note; a double click, Enter or **Open notes** opens
-  it; ↑, ↓, Home and End move through the list. Narrower, a note opens on its own page.
-- When the list has nothing to show, it says why: nothing matches the search (**Clear search**), nothing has
-  been shared with you yet, or you have no notes with that person yet (**Show notes with anyone**). Before your
-  first notes, Notes shows an example of what they'll look like, with **Start a call** and **Record in the room**.
+  (Today, Yesterday, This week, Last week, then months), on the water under a band of sky. Each row has the faces of
+  whoever else has the note (an arch with a microphone for a recording only you have), its title, how you got it, the
+  start of the summary, chips for what's still open in it (decisions to confirm, follow-ups), the time or the day, and
+  a pin when it's pinned. On a wide screen the list scrolls under the horizon, so the sky stays in view; on a phone the
+  page scrolls as one.
+- **Search everything said, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to
+  it; **↓** goes from it to the list, and **Escape** clears it). It finds the words, not just the note: every word typed
+  has to be somewhere in the note's title, summary or what was said, in any order, breakout rooms included. A row quotes
+  the line with most of the words and who said it, unless the summary has them, with a chip for each of the best moments,
+  up to three in the order they were said, and the preview lists up to four of them above the summary. A moment opens the note there, not playing. While a question is
+  being typed the list shows the notes with any of its words, and all of them when none has. Someone who can't read a
+  note's transcript finds the note only by what they can read, and nothing is quoted to them.
+- Under the line are the four people you have most notes with, and **+** to find anyone else you have notes with. Picking
+  someone shows only the notes they have too, under a chip whose × shows everyone's again, and **+** still changes who.
+  That person is in the address after `#with=` (the Team page links there), which never leaves the browser. Then **All**,
+  **Calls**, **In the room** and **Shared with you** (notes someone shared with you afterwards) narrow the list.
+- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready, the pin, **Share**,
+  **More** and **Open notes**; when it was and who has it (pressing the faces shows **Who has these notes**); then the
+  summary, decisions and follow-ups. **Confirm** or **It wasn’t decided** settle a decision there, with **Undo** after,
+  or **Take that back**, or for the organizer **Keep it confirmed** when someone disputes a confirmed one; a follow-up ticks
+  off in place, and the row's chips follow. A click picks a note; a double click, Enter or **Open notes** opens it; ↑, ↓,
+  Home and End move through the list. Narrower, a note opens on its own page. Only one button is filled at a time: while
+  Share or the question in More is up, Open notes turns tinted.
+- **Enter** or **Ask** asks every note you have, whatever the filters are (see below). It reads them in confidential compute
+  while the horizon pulses, and the answer lands on the water above the list, with a chip for each note and moment it
+  comes from. The list and the preview then follow what it cites: each row quotes the line it used, and the preview lists
+  those moments. **×** puts the answer away, and so does typing, or picking someone or a filter. An answer that cites
+  nothing just says so and leaves the list alone. When a note it read was deleted or taken from you while it was being
+  written, it isn't shown, and **Ask again** asks once more.
+- When the list has nothing to show, it says why: nothing matches the search (**Clear search**, and **Search all notes**
+  when a filter is on), the search couldn't get an answer (**Try again**), nothing has been shared with you yet, nothing
+  was recorded in the room yet (**Record in the room**), or you have no notes with that person yet (**Show notes with
+  anyone**). Before your first notes there's nothing to search, so there's no line: **No notes yet**, with **Start a call**
+  and **Record in the room**, takes the middle of the sky, and an example on the water shows what notes look like, with
+  **Open the example**.
 - **Share** gives the notes to more people by email, or to one of your groups (offered first, by name), once
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
@@ -498,9 +533,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More › Delete notes** deletes your own notes for everyone, audio included, with anyone's own notes on them, and
-  then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
+- **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
+  and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
+  Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
   beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
   says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
@@ -512,26 +548,39 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 - **Added by people** shows what people added, with who and when, for everyone with the notes. **Take back** removes
   yours for everyone, once you say so in the row, and it stays in Your notes; the organizer can **Remove** any of them
   the same way.
-- A note's page starts with a way back (**Notes /** its title), the pin (**Pin these notes**, at most eight
-  pinned), **Share** and **More**. Chips above the title say whether it's **Ready**, **Being written** or **Still
-  recording**, the series it's in, and how you got it. Under the title: when it was and who has it, then
-  **Written in confidential compute** with when the hardware was checked, which opens what was checked about
-  the models.
-- A written note shows the summary, decisions, open questions, follow-ups, the transcript (its first lines,
-  then **Show all 24 minutes**) and, beside it, the encrypted recording, chapters, shared screens and who has
-  it. It takes questions about the call: a suggested question or your own, in a bar that stays at the bottom
-  while you read (suggestions show at the end of the note). Answers cite the moments in the recording they
-  come from.
+- A note's page is a slim band of sky, with the call drawn along the horizon. The band has a way back (**Notes /** its
+  title), the pin (**Pin these notes**, at most eight pinned), **Share**, **More**, and one line under the title: when
+  it was, who has it, how you got it, and **Written in confidential compute** with when the hardware was checked, which
+  opens what was checked about the models. Until the notes are written that says **Being written in confidential
+  compute**, or **Still recording** beside what's been checked so far, and while they're written again, **Being written
+  again**.
+- The horizon is the call: **Play** and the time, then a line with the chapters standing on it, what was decided and
+  what's to do sitting on it (hollow until people have said so), where nothing was captured, and light under it drawn
+  from what was said, still where nobody spoke. Pointing at a chapter or a mark says what it is. Pressing one, a moment
+  chip anywhere on the page, or the time of a transcript line goes there: the sun moves along the line, and the
+  transcript goes to that line and marks it, opening the rest if it has to. A chapter that's breakout rooms opens them
+  instead. **Play** starts as soon as the first of the recording arrives; until it's pressed, moving along the line
+  reads nothing. Whatever was pressed last wins, even while the recording is on its way. As it plays the sun moves and
+  the line being said is marked. If part of it won't play, it says so, and **Play** tries again from there. The horizon
+  stays at the top of the page as you read. On a phone it shows the chapter you're in, and the chapters are listed
+  beside the note. While a call is still recording, the line ends where it has got to, and **Play** plays what's there
+  so far and carries on as more is recorded; at the very edge it stops, and says that's all so far. A call that didn't
+  keep its recording has the line and no player.
+- A written note shows the summary, **Decided**, **Still open**, **Follow-ups**, the transcript (its first five lines,
+  then **Show all 24 minutes**, and how many shared screens are further on, which open from there) and, beside it, Your
+  notes, what people added, who has it and its series. On a wide screen the transcript moves beside what was decided, so
+  going to a moment never takes the note away. It takes questions about the call: a suggested question or your own, in
+  a bar that stays at the bottom while you read (suggestions show at the end of the note). Answers cite the moments in
+  the recording they come from.
 - Until the notes are written, the page says the audio is saved and encrypted (or, when the call doesn't keep its
   recording, that the call has ended) and the notes are being written
   in confidential compute, and ticks off each step (the call ended, the audio saved, the transcript) with the
-  one in progress marked. When nothing was said, it says so and offers **Play** for the audio. A call that didn't keep
-  its transcript or recording says so in one line where it would have been, and has no player; you can still ask
-  about what the notes say. After **Delete
-  notes** it lists what went; a note that isn't there (deleted, or never shared with you) says so, with **Back
-  to notes**.
+  one in progress marked. When nothing was said, it says so, the water is still, and **Play** stays on the line for the
+  audio. A call that didn't keep its transcript or recording says so in one line where it would have been, and has no
+  player; you can still ask about what the notes say. After **Delete notes** it lists what went; a note that isn't
+  there (deleted, or never shared with you) says so, with **Back to notes**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
-  behind **Search or ask**, flow 2). The answer comes from those notes only, up
+  behind the line in Notes' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
   comes from. Until a note is written, or when nothing was said in any, it says so instead, and nothing is sent to
   the notes model. An answer written while a note it read was deleted or taken from you isn't shown: ask again.
@@ -550,29 +599,31 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   the call's, and writing the notes again writes each room's section again too, keeping what people settled.
   Questions about the notes cover the rooms. Deleting the notes deletes the rooms' sections with them. A call set
   not to keep its transcript keeps each room's notes and deletes what was said there, as it does for the main room.
-- What the notes heard is a proposal until people say so, and each entry shows **What was said** behind it, with
-  anything to be careful of: nothing said backs it, someone said otherwise, it was hard to hear, or a line behind it or
-  its own words changed since. Each decision says where it stands: **Proposed**, **Confirmed**, **Not decided** or **No longer
-  holds**, and who said so. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
+- What the notes heard is a proposal until people say so. Each entry's row shows anything to be careful of (nothing
+  said backs it, someone said otherwise, it was hard to hear, or a line behind it or its own words changed since), and
+  its menu shows **What was said** behind it. Each decision says where it stands and who said so: proposed, confirmed,
+  not decided, or no longer holding, and it's solid on the horizon once it's confirmed. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
   or last reworded it; someone given the notes afterwards can propose and say what they think, but not confirm. Only
   the organizer can say **It wasn’t decided**, and anyone else saying so flags it, in their name, for the organizer to
   settle. Whoever confirmed a decision, or the organizer, can undo that or mark **It no longer holds**. New words on a
   confirmed decision need someone else to confirm them. If what you're agreeing to changed after you opened it, nothing
   is saved and the page shows what it says now. An open question shows **Not answered yet** until someone taps **It was
   answered**. A follow-up shows who the notes suggest, dashed, and any date as only suggested, until that person taps
-  **I’ll do it**, or **Not mine**, which leaves it with nobody. Its menu lets the organizer or the person it's for
-  give it to anyone who has the notes (giving it to yourself takes it on); once someone has taken it on, only they or
-  the organizer can reword, date or tick it, and the organizer doing so asks them again. **History** on each lists every
-  change: who did what, when, and what the words were.
+  **I’ll do it**, or **Not mine** in its menu, which leaves it with nobody. Its menu lets the organizer or the person it's
+  for give it to anyone who has the notes (giving it to yourself takes it on); once someone has taken it on, only they
+  or the organizer can reword, date or tick it, and the organizer doing so asks them again. **Changes** in each one's
+  menu lists every change: who did what, when, and what the words were.
 - **Propose a decision** and **Add a follow-up** add what the notes missed, in your words, to the call's notes or a
   breakout room's section, and the plus on a transcript line starts one from what was said there.
-- A call's notes say when it's in a series: **Every Tuesday** when the last three calls in it were a week apart,
-  otherwise **In a series**. Beside the note are the series' other calls (the newest three, with the start of
-  each summary), how much is still open across them and, for the organizer, the next call; **All** opens the
-  series page. When it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people
-  and notes setting, at the same time of day a week on (still the same time when the clocks change in
-  between), on the calendar; **Change** in the confirmation moves it or cancels it.
-- The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
+- Beside a call's notes is the series it's in: **Every Tuesday** when the last three calls in it were a week apart,
+  otherwise **In a series**, with the series' other calls (the newest three, with the start of each summary), how much
+  is still open across them and, for the organizer, the next call with **Change**; **All** opens the series page. When
+  it isn't in one, the organizer gets **Meet again › Schedule next week’s call**: the same people and notes setting, at
+  the same time of day a week on (still the same time when the clocks change in between), on the calendar. That starts
+  the series, so the next call shows there; **Change** moves it or cancels it.
+- The series page sits on the same evening as a note. Its calls stand on the horizon, each opening its notes, with the
+  sun on the latest and the next call at the end of the line. Under it is what carries over from the calls you have
+  notes from: decisions (confirmed, not
   confirmed yet, and no longer holding), questions still open and answered since the last call, and follow-ups taken
   on, not taken on yet and done since the last call, each with the call and moment it came from, breakout rooms'
   with their room. Things can be settled there, and
@@ -589,44 +640,53 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ## 9. Record in the room
 
-**Record** in the side panel or the phone's tab bar (raised) opens the Record page:
+**Record** in the side panel or the phone's tab bar (raised) opens the Record page. It's the night in both themes, the
+last moment of the evening, and the recorder stands on the horizon where the sun would: dark until something is recorded.
 
-- **The recorder**: a name for the recording (left empty, it's "Notes from the room") and the microphone it will
-  use, from this browser's microphones (the same choice calls use). Choosing one doesn't open it. **Check the
-  level** opens the microphone and shows how loud it is, recording nothing; **Stop** lets go of it. While it's
-  open, a microphone that doesn't start, or one unplugged, is said under it, and the one still in use stays
-  shown. The page never opens the microphone by itself, and the camera plays no part.
-- **Start recording** (or **R**, or **Enter** in the name) opens the stage recorder, which starts recording the
-  microphone straight away, in 5-second encrypted pieces with a live waveform, and transcribes what's said as
-  it goes, without naming who spoke. Rename by editing the title, pause and resume, then **Finish and write
-  notes** (opens the note) or **Home › Discard recording** (nothing is kept).
-- **Without a connection** it keeps recording: **Offline** shows at the top, and "Saved on this device. It
-  uploads when you're back online." under the waveform. What's said is transcribed once the connection is back;
-  if it comes back while recording, the rest goes up as it's recorded. With a connection that isn't getting
-  through, it says Alcove isn't answering and that it's sent when it does. **Finish and save** keeps it on this
-  device and goes to Record; with a connection, a recording with a short gap still ends on its note. Started
-  offline, it works the same way. A full device pauses it and says so; signed out meanwhile, or with someone
-  else signed in, it keeps it here and says so; signed out on this browser, it pauses and says nothing more can
-  be kept.
-- **On this device**: recordings kept here until they upload, encrypted, each with its name, length and start,
-  and how it stands: **Waiting for a connection**, **Waiting to upload**, **Uploading**, **Recording now** (in
-  another tab), **Can't upload yet** with Alcove's reason, or, for good, **Can't upload** (more than 14 days old)
-  or **Can't be read here** (this device can't open it any more). They upload by themselves when the connection
-  is back, the oldest first, and their notes are written; a toast says when each one has, or that one's note was
-  deleted on Alcove so it's gone from here too. Its menu has **Upload now** and **Delete from this device**, which
-  asks first. A tab closed mid-recording leaves what it recorded here, and it's finished and uploaded as it was.
-  Only the account that recorded them sees or uploads them: if someone else signs in on the browser, they stay
-  here until their own account signs in again. That account signing out deletes them, and Settings' **Sign out**
-  says so first; anyone else's stay.
-- **Record without a connection** (on by default) off: nothing is kept on this device, starting needs a
-  connection, and losing it pauses the recording. The page says so instead of saying it works without one.
-- **Recorded before**: your four newest recordings as tiles (when, how long, the start of the summary, who has
-  it, follow-ups still open), with **In Notes** for the rest. Room notes others shared with you aren't listed.
-  Before the first recording (and with none waiting on this device), **Your recordings** says they'll show up
-  here with their notes.
-- **How it works** says the audio is encrypted as it's recorded, recording needs no connection (or, with **Record
-  without a connection** off, that a dropped connection pauses it), and room notes go to nobody unless you share
-  them.
+- **The recorder**, in the middle of the sky: a name for the recording (left empty, it's "Notes from the room"),
+  **Start recording**, the microphone it will use, from this browser's microphones (the same choice calls use), and
+  under them the reminder to let everyone here know before you start.
+  Choosing one doesn't open it. Until the browser has named them it says **Default microphone**. **Check the level**
+  opens the microphone: the orb's rim lights up and its reflection on the water moves with your voice, recording nothing;
+  **Stop** lets go of it. While it's open, a microphone that doesn't start, or one unplugged, is said under it, and the one
+  still in use stays shown; one that can't be used says what to do, with **Try again** where that can help. The page
+  never opens the microphone by itself, and the camera plays no part.
+- **Start recording** (or **R**, or **Enter** in the name) opens the stage recorder, the same night over the whole window.
+  It starts recording the microphone straight away, in 5-second encrypted pieces: the orb fills with colour, your voice
+  runs across the water, and what's said comes up under it a few seconds later, without naming who spoke. The last three
+  lines show, fading as they get older; scrolling up reads back the rest, with **Latest** to return. Words it couldn't
+  hear well are dotted. For the first moments, and until the first words, the reminder to let everyone here know stays
+  under the voice, connection or not. Rename by editing the title, pause and resume, then **Finish and write notes** (the
+  orb sets, and the note opens) or **Home › Discard recording** (nothing is kept, and you're back on Record). A finish that
+  fails says so, and **Finish** can be pressed again; it never records again after that.
+- **Without a connection** it keeps recording: **Offline** shows at the top, and "Saved on this device. It uploads when
+  you're back online." under the voice. What's said is transcribed once the connection is back; if it comes back while
+  recording, the rest goes up as it's recorded. With a connection that isn't getting through, it says Alcove isn't
+  answering and that it's sent when it does. **Finish and save** keeps it on this device and goes to Record; with a
+  connection, a recording with a short gap still ends on its note. Started offline, it works the same way. A full device
+  pauses it and says so; signed out meanwhile, or with someone else signed in, it keeps it here and says so; signed out on
+  this browser, it pauses and says nothing more can be kept. If it can't start at all, the stage says why, with the way
+  back to Record.
+- **On this device**: recordings kept here until they upload, encrypted, each with its name, length and start, and how it
+  stands, in its own mark and colour: **Waiting for a connection**, **Waiting to upload**, **Uploading**, **Recording now**
+  (in another tab), **Can't upload yet** with Alcove's reason, or, for good, **Can't upload** (more than 14 days old) or
+  **Can't be read here** (this device can't open it any more). They upload by themselves when the connection is back, the
+  oldest first, and their notes are written; a toast says when each one has, or that one's note was deleted on Alcove so
+  it's gone from here too. Its menu has **Upload now** and **Delete from this device**, which asks first, in the same menu,
+  and says so if another tab has it and it wasn't deleted.
+  A tab closed mid-recording leaves what it recorded here, and it's finished and uploaded as it was. Only the account that
+  recorded them sees or uploads them: if someone else signs in on the browser, they stay here until their own account
+  signs in again. That account signing out deletes them, and Settings' **Sign out** says so first; anyone else's stay.
+- **Offline**, the page says **Offline. Recording still works.** at the top of the sky.
+- **Record without a connection** (on by default) off: nothing is kept on this device, and losing the connection pauses
+  the recording. **Resume** waits for the connection, then it's yours to press. Offline, **Start recording** waits, and the
+  page says **Offline. Recording needs a connection.**
+- **Recorded before**: your four newest recordings as rows (the recording's own print, the start of the summary, how many
+  follow-ups are still open, when, how long, and who has it), with **In Notes** for the rest. Room notes others shared with
+  you aren't listed. Offline, a row says notes open when you're back online. Before the first recording (and with none
+  waiting on this device), the water says what will show up there, and the sky takes more of the page.
+- One line at the foot says the audio is encrypted as it's recorded, that it works without a connection (or, with **Record
+  without a connection** off, that a dropped connection pauses it), and that room notes go to nobody until you share them.
 
 Room notes are yours alone until you share them.
 
@@ -636,72 +696,102 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 ## 10. Team
 
-**Team** shows your company and who in it uses Alcove: the company directory where there is one (the demo
-directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
-personal address (gmail.com, outlook.com, icloud.com and the like) has no team.
+**Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
+today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
+(gmail.com, outlook.com, icloud.com and the like) has no team, so it has no Team page: nothing links to it, and its
+address goes to Home.
 
-- **People**: a card for each person on Alcove, you first, then whoever you met most recently, with their
-  title (or address) and **Next call** at a time later today or **Last call** with the day, from your notes.
-  **Start a call** opens Start a call with them already picked; **Notes with** lists the notes you both have
-  (`/notes#with=<address>`: the address stays in the browser, since a fragment is never sent to the web host).
-  The cards can show the colleagues invited, or not on Alcove yet, instead. Eight show before **Show all**.
-- **Not on Alcove yet**: the rest, each with how many calls and calendar meetings you have with them this month.
-  **Invite** (or **Invite all**) opens your own email with an invitation to them (a subject and the link to
-  sign in) and marks them invited; **Remind** opens it again. **Invite people** picks from them the same way,
-  or copies the invite link, which is the address of the page to sign in. Alcove sends no email itself.
-- **Groups**: each with how many people are in it and how many of your calls had any of them. A group opens in
-  place (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least
-  one); **Add people**, from the people picker; **Start a call** with all of them; **Rename**; and
-  **Delete**, which asks once and can be undone for a few seconds. **New group** names one (Enter opens the
-  picker) and fills it; a group half made waits there until you make it or discard it with ×. A name is 1 to 40
-  characters and not one of your other groups'; a group holds up to 50 people, and you can have 30 groups. Groups
-  live in your preferences: only you see them, and only a group's name leaves them, on the notes you share with
-  it. Changes to your preferences (groups, pins, settings) are saved one at a time, in order.
-- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it
-  with Leads", "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from
-  the people who still have each note). Each opens its note.
-- **Your minutes**: the time of notes left and the minutes used this month.
+- **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
+  the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
+  in empty arches with their initial. The low sun stands in an empty arch near where it sets, or just past the end of
+  the line. Nine people stand at full size; up to thirteen, everyone gives up a little room and keeps a name; past
+  that the front stays and the rest recede, smaller, nameless and hazier, on the same line, and pointing at someone
+  or reaching them with the keyboard brings them forward with their name. The line holds 34. On a phone it runs off
+  both sides, with you in the middle to start with, and the sun stands in its empty arch and slides with it.
+- **Someone's popover**: pressing an arch opens a popover under it (on a phone, a sheet): their name, their title or
+  address, and one line about the two of you: **Next call** at a time later today, how many meetings are coming up, or
+  **Last call** with the day. **Ring** starts a call and goes straight to the lobby with them picked. **Schedule** opens
+  Start a call at **When**, with them picked. **Notes you both have** lists the latest five in the same popover: each
+  opens its note, and **Open in Notes** lists them all (`/notes#with=<address>`: the address stays in the browser, since
+  a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring, then **Remind**.
+  Your own arch has your address, the groups you're in and **Settings**.
+- **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
+  someone brings them forward on the line, past the 34 too, and opens their popover.
+- **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
+  or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
+  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and the link to
+  sign in), and marks the people on your team invited. **Copy link** copies the address of the page to sign in. Alcove
+  sends no email itself.
+- **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
+  the same place on every row **Invite**, or **Remind**, which opens your email again. **Invite all** asks everyone who
+  hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
+- **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
+  had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
+  column (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least one);
+  **Add people**, from anyone you could reach; **Start a call** with all of them; **Rename**; and **Delete**, which asks once
+  and can be undone for a few seconds. **New group** is a tile too: it opens to name one (Enter opens the picker) and fill
+  it, **Create group** takes the filled button once it's ready, and a group half made waits on its tile until you make it
+  or discard it with ×. A name is 1 to 40 characters and not one of your other groups'; a group holds up to 50 people,
+  you can have 30 groups, and eight show before **Show all**. Groups live in your preferences: only you see them, and
+  only a group's name leaves them, on the notes you share with it. Changes to your preferences (groups, pins, settings)
+  are saved one at a time, in order.
+- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it with Leads",
+  "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from the people who still
+  have each note). Each opens its note. Five show before **Show all**.
 
-With nobody else at your company on Alcove yet, the page asks you to bring them: you beside empty arches for the
-people you meet most, **Invite people** and **Copy invite link**, then those people, each with **Invite**. A
-personal account shows "Just you, for now", with **Invite people** (an email from your own mail app, with the
-link) and **Copy invite link**, then your groups and the notes shared with groups.
+What the numbers count: a call counts once it has notes, for the people on it who still have them. Someone a note was
+shared with afterwards doesn't count, nor do notes shared with you. Someone who removes a note drops out of that call's
+count, and a call with notes off leaves nothing to count. What's coming up is your Alcove calls and the coming week of
+your calendar, which is as far as Alcove reads it (unless **Show my other meetings on Home** is off), each once.
 
-If the team itself doesn't load, the page says why (or that you're offline), with **Try again**. Your groups and
-notes load beside it: if your groups don't, their card says so, with **Try again**, and the rest of the page works.
+With nobody else at your company on Alcove yet, the page asks you to bring them: **Bring your team to Alcove**, with
+**Invite people** and **Copy invite link**, you beside empty arches for the four people you meet most, then those people,
+each with **Invite**, **Invite everyone**, and how many more there are.
+
+While the team is on its way, empty arches wait on the line beside you, and everyone comes up over the horizon when it
+arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
+Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
+the page works.
 
 ## 11. Settings
 
-**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. It says who
-you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. With
-recordings on this device that haven't uploaded, **Sign out** first says so in place, under it ("2 recordings on
-this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by themselves, or,
-too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
-**Sign out and delete them**. It counts only this account's recordings, and only those go. On a wide
-screen a nav beside the cards jumps to each part and marks the one in view. Every control saves as it changes: the
-setting says **Saved** for a moment once it's kept, and one the server refuses goes back, with a toast saying why.
+**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. You stand on
+the horizon with your name and address, beside **Take the tour** (the tour of Home again, flow 1) and **Sign out**.
+With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
+("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
+themselves, or, too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
+**Sign out and delete them**. It counts only this account's recordings, and only those go. With no connection, signing
+out says so and nothing happens later by itself. Under the water the page is
+one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
+narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
+moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
+goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
 
-- **Profile**: your name, address and photo from the sign-in, with a link to change them at Google or Microsoft
-  (they update here the next time you sign in); your company, from the company directory or the people at your
-  work domain you meet (not at a personal address); and the time zone times are shown in, this computer's.
+- **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
+  the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
+  Team (not at a personal address); and the time zone times are shown in, this computer's.
 - **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
   always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
   summary says (**Short** or **Detailed**). Language and summary apply to notes written from then on.
 - **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
-  recordings, and how much room, wait here to upload, with **See them** (Record's list), or that nothing is waiting.
+  recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
 - **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
   access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
-  instead. Then **Put calls I schedule on my calendar** and **Show my other meetings on Home** (both on by default).
+  instead; signed in another way, **Not connected**, since Google Calendar connects when you sign in with Google. A
+  calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
+  **Show my other meetings on Home** (both on by default).
 - **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
-  one doesn't open it. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the
-  browser asks first if it hasn't been allowed) and its level moves as you speak, records nothing, and closes
-  sooner when pressed again or when this part leaves the screen. **Play test sound** plays through the chosen
-  speaker; the camera is a list only, never opened here, and until the browser has allowed a camera on the join
+  one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
+  have no list. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks
+  first if it hasn't been allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and
+  closes sooner when stopped or when this part leaves the screen. A microphone that won't open says why, with **Try
+  again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
+  system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
 - **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
   recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
-  out and **Turn on browser notifications** asks it (only when pressed; focus stays on the row once it answers);
-  when the browser blocks them, the card says to allow them for the site in the browser's settings. Then: before a
+  out and **Turn on** asks it (only when pressed; focus stays on the row once it answers);
+  when the browser blocks them, the row says to allow them for the site in the browser's settings. Then: before a
   call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
   screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
   someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
@@ -713,18 +803,21 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
   last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
   deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
   preferences, and one changed in another tab or on another device takes effect within a minute.
-- **Appearance**: match the system, light or dark, each shown as a small window in its own colours, kept in this
-  browser.
-- **Plan and credits**: the time of notes left, a meter, and the minutes of notes used this month (since 00:00 UTC
-  on the 1st). Calls without notes are free.
-- **Privacy**: what Alcove knows and what it can't read, and the confidential-compute check with the time the
-  hardware was verified, when this browser could check it.
+- **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
+- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
+  account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
+  (since 00:00 UTC on the 1st). Calls without notes are free.
+- **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
+  verified when this browser could check it, or where your audio is opened and your notes are written.
 
-**Delete account** opens one step in place (never a window over the page) that names what goes: the notes you
-made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your own notes on
-every call, and anything you added from them to other people's notes; your groups
-and pins; your Google Calendar connection; and your sign-in on every browser. It says what stays too: the notes other
-people gave you, which still have what you said in the call and still say where you changed or shared them.
+**Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
+your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
+everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
+documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
+its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
+keeping what you said in the call and your name and address on what you did in them. **Keep my account** has focus, and
+**Escape** does the same.
 **Delete my account** then deletes the account for good:
 the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your own
 notes, and everything you added to anyone's shared notes, whether or not you still had the note; your groups and pins; your
@@ -734,8 +827,10 @@ Your calls on Google Calendar that haven't ended are cancelled there, begun or n
 except a meeting you made an Alcove call with **Use Alcove**: it's your own event, so it stays on your calendar
 as it was, and its Alcove link stops working. Alcove's access to your Google account is revoked. If Google is
 slow or unavailable, the account is deleted all the same, and calls it couldn't cancel stay on the calendar.
-The shared demo account can't be deleted: the step says so and offers only **Close**; any other failure is said
-there too, and **Delete my account** tries again. Once it's deleted you land on the welcome page, signed out, even
+The shared demo account can't be deleted: as soon as **Delete account** is pressed the row says so and offers only
+**Close**. So does a tab left showing one account after another tab changed who's signed in: nothing is deleted, and the
+row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
+tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.
 

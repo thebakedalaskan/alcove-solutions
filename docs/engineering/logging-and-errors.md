@@ -55,6 +55,7 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `IntegrityError` | `key-unavailable` | 403 | error |
 | `NotFoundError` | `not-found` | 404 | info |
 | `ConflictError` | `conflict` | 409 | info |
+| `TooLargeError` | `too-large` | 413 | info |
 | `UnavailableError` | `unavailable` | 503 | warn |
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
 

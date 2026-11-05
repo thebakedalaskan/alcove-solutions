@@ -14,7 +14,9 @@ const and = (names: string[]) => (names.length <= 1 ? names[0] ?? '' : `${names.
  * Share: with people by name or address, or with one of your groups, which reaches all of its people at once and
  * tells each of them it came to them as that group. `onShared` hears who got the notes just now.
  */
-export function ShareNote({ note, size, onShared }: { note: Note; size?: ButtonSize | undefined; onShared?: ((emails: string[]) => void) | undefined }) {
+export function ShareNote({ note, size, align = 'end', className, onShared }: {
+  note: Note; size?: ButtonSize | undefined; align?: 'start' | 'center' | 'end' | undefined; className?: string | undefined; onShared?: ((emails: string[]) => void) | undefined;
+}) {
   const toast = useToast();
   const share = useShareNote();
   const groups = useQuery(q.prefs()).data?.groups;
@@ -31,8 +33,8 @@ export function ShareNote({ note, size, onShared }: { note: Note; size?: ButtonS
     onError: (e) => toast(errorMessage(e), { icon: 'x' })
   });
   return (
-    <PeoplePicker open={open} onOpenChange={setOpen} align="end" title="Share these notes" cta="Share" skip={have} groups={groups}
-      anchor={<Button variant="secondary" size={size} icon="share" loading={share.isPending} disabled={recording} title={recording ? 'You can share these once the recording stops.' : undefined}>Share</Button>}
+    <PeoplePicker open={open} onOpenChange={setOpen} align={align} className={className} title="Share these notes" cta="Share" skip={have} groups={groups}
+      anchor={<Button variant="secondary" size={size} icon="share" loading={share.isPending} disabled={recording} title={recording ? 'You can share these once the recording stops.' : undefined}><span className="share-t">Share</span></Button>}
       note="They find them in Alcove when they sign in with that email."
       after={<div className="pick-have"><span>{note.recipients.length === 1 ? 'Only you have them' : `${note.recipients.length} people have them`}</span></div>}
       onDone={done} />
