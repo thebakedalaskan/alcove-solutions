@@ -8,12 +8,12 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, removeObjects,
+  BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, removeObjects,
   type BoardView, type Box, type Camera, type Pad, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
-import type * as Y from 'yjs';
+import * as Y from 'yjs';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, nextSpot } from './editing';
@@ -96,6 +96,36 @@ const POP_AT_ONCE = 24;
 const NEAR_EVERY_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
+
+type UndoStep = Y.UndoManager['undoStack'][number];
+
+/** Whether anything in this object was written by someone else: a value, or words in its text. */
+function othersIn(type: Y.AbstractType<unknown>, me: number): boolean {
+  for (const item of type._map.values()) {
+    if (item.deleted) continue;
+    if (item.id.client !== me) return true;
+    if (item.content instanceof Y.ContentType && othersIn(item.content.type, me)) return true;
+  }
+  for (let item = type._start; item; item = item.right) if (!item.deleted && item.id.client !== me) return true;
+  return false;
+}
+
+/**
+ * Whether undo has to leave `item`: `step`, the one being taken back, added the object it's in, and someone else has changed
+ * that object since. Taking back the add would take their words with it, so the object stays. Anything this person did to it
+ * in a later step isn't the add, and goes back as usual.
+ */
+function sharedSince(item: Y.Item, step: UndoStep | undefined, me: number): boolean {
+  let object = item;
+  while (object.parent instanceof Y.AbstractType && object.parent._item) object = object.parent._item;
+  return !!step && Y.isDeleted(step.insertions, object.id) && object.content instanceof Y.ContentType && othersIn(object.content.type, me);
+}
+
+/** Whether a step would bring back something that was deleted. */
+function restores(doc: Y.Doc, step: UndoStep): boolean {
+  for (const item of doc.getMap<unknown>(BOARD_OBJECTS)._map.values()) if (Y.isDeleted(step.deletions, item.id)) return true;
+  return false;
+}
 
 export class Board implements LiveStore<BoardState> {
   readonly doc: Y.Doc;
@@ -258,19 +288,43 @@ export class Board implements LiveStore<BoardState> {
     this.later('settling', tokenMs(this.sheet, '--bd-glide') + SETTLE_MS, () => this.set({ settling: NOTHING }));
   }
 
+  /** One change on its own, as one undo, however soon it follows the last one. */
+  private step(change: () => void): void {
+    const within = this.stepping;
+    if (!within) this.beginStep();
+    change();
+    if (!within) this.endStep();
+  }
+
+  /**
+   * Goes a step back or forward. A value someone else wrote over this person's normally stays, which is what makes undo
+   * yours alone. Bringing an object back is different. Someone changing a field at the moment it was deleted would count as
+   * that, the field wouldn't return, and the object would fail to parse and be gone for everyone. So it comes back whole,
+   * as it was deleted: deleting wins over a change made at the same moment, and nothing else is in a step like this.
+   */
+  private travel(undo: Y.UndoManager, stack: readonly UndoStep[], go: () => void): void {
+    const step = stack.at(-1);
+    undo.ignoreRemoteMapChanges = !!step && restores(this.doc, step);
+    this.settle(go);
+    undo.ignoreRemoteMapChanges = false;
+    this.set({ sel: [] });
+  }
+
   /** Takes back this person's last change, and only theirs, whatever anyone else has done since. */
   undo(): void {
     const undo = this.undoManager;
     if (!undo || this.stepping) return;
-    this.settle(() => undo.undo());
-    this.set({ sel: [] });
+    // Steps come off the top as they're taken back, so what's left says which one is going now.
+    const steps = [...undo.undoStack];
+    undo.deleteFilter = (item) => !sharedSince(item, steps[undo.undoStack.length], this.doc.clientID);
+    this.travel(undo, steps, () => undo.undo());
+    undo.deleteFilter = () => true;
   }
 
   redo(): void {
     const undo = this.undoManager;
     if (!undo || this.stepping) return;
-    this.settle(() => undo.redo());
-    this.set({ sel: [] });
+    this.travel(undo, undo.redoStack, () => undo.redo());
   }
 
   /* ---------- selection and tools ---------- */
@@ -301,7 +355,7 @@ export class Board implements LiveStore<BoardState> {
   removeSelected(): boolean {
     const { sel } = this.state;
     if (!sel.length) return false;
-    removeObjects(this.doc, sel, this.origin);
+    this.step(() => removeObjects(this.doc, sel, this.origin));
     this.read();
     this.set({ sel: [] });
     return true;
@@ -310,7 +364,8 @@ export class Board implements LiveStore<BoardState> {
   duplicateSelected(): void {
     const { sel } = this.state;
     if (!sel.length) return;
-    const copies = duplicateObjects(this.doc, sel, COPY_OFFSET, this.origin);
+    let copies: string[] = [];
+    this.step(() => { copies = duplicateObjects(this.doc, sel, COPY_OFFSET, this.origin); });
     if (!copies.length) { this.refuse(); return; }
     this.read();
     this.set({ sel: copies });

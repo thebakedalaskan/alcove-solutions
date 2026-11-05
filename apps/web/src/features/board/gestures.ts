@@ -151,10 +151,10 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
   return id ? moveGesture(board, at, id, e.shiftKey) : marqueeGesture(board, at);
 }
 
-/** Double-click: type in what's there, or put a sticky here. */
+/** Double-click: type in what's there, or put a sticky here. It asks what's at the point, because a captured pointer makes the sheet the event's target. */
 function doubleClick(board: Board, e: MouseEvent): void {
-  const { target } = e;
-  if (!board.canEdit || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
+  const target = document.elementFromPoint(e.clientX, e.clientY);
+  if (!board.canEdit || !target || target.closest(OVER_THE_SHEET)) return;
   const id = pressedId(board, target);
   if (id) {
     const o = board.getSnapshot().view.byId.get(id);
