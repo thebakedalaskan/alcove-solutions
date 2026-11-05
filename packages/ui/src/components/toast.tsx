@@ -2,10 +2,13 @@ import { AnimatePresence, motion } from 'motion/react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
+import { Avatar, type AvatarPerson } from './people';
 
 export interface ToastOptions {
   /** `false` for no icon. */
   icon?: IconName | false | undefined;
+  /** Whose it is, in the arch, in place of an icon. */
+  person?: AvatarPerson | undefined;
   action?: { label: string; onClick: () => void } | undefined;
   ms?: number | undefined;
 }
@@ -36,7 +39,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <AnimatePresence initial={false}>
             {items.map((t) => (
               <motion.div key={t.id} layout className="ac-toast" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }} transition={{ type: 'spring', stiffness: 520, damping: 34 }}>
-                {t.o.icon !== false && <Icon name={t.o.icon ?? 'check'} size={17} />}
+                {t.o.person && <Avatar person={t.o.person} size={24} />}
+                {!t.o.person && t.o.icon !== false && <Icon name={t.o.icon ?? 'check'} size={17} />}
                 <span>{t.text}</span>
                 {t.o.action && <button type="button" onClick={() => { t.o.action?.onClick(); close(t.id); }}>{t.o.action.label}</button>}
               </motion.div>

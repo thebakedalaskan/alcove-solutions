@@ -94,13 +94,16 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const me = session?.user ?? null;
   const { items, change } = useLaidOver(view.tree);
   const tree = useMemo(() => treeOf(items), [items]);
-  const { toasts, say } = useToasts();
+  const { toasts, say: sayHere } = useToasts();
+  const say = call?.say ?? sayHere;
   const glowing = useGlow(view.tree);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [blockInto, setBlockInto] = useState<string | null>(null);
-  const [listOff, setListOff] = useState(() => placesOf(owner).listOff);
+  const [ownListOff, setListOff] = useState(() => placesOf(owner).listOff);
+  /* In a call the list is one of the things that give way, so the call says whether it shows. */
+  const listOff = call?.list.off ?? ownListOff;
   const phone = useMedia('(max-width: 640px)');
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
   const justMade = useRef<string | null>(null);
@@ -114,11 +117,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const documentId = at.kind === 'document' ? at.id : null;
   const item = documentId === null ? undefined : tree.all.get(documentId);
 
+  const toggleInCall = call?.list.onToggle;
   const toggleList = useCallback(() => {
     if (matchMedia('(max-width: 640px)').matches) setPhoneList((on) => !on);
+    else if (toggleInCall) toggleInCall();
     else setListOff((off) => !off);
-  }, []);
-  useEffect(() => { rememberPlaces(owner, (p) => ({ ...p, listOff })); }, [owner, listOff]);
+  }, [toggleInCall]);
+  useEffect(() => { rememberPlaces(owner, (p) => ({ ...p, listOff: ownListOff })); }, [owner, ownListOff]);
 
   /*
    * A phone shows the list until something's open. A screen with room opens what you had open last, once, on arriving:
@@ -148,11 +153,14 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const newFolder = useCallback(() => {
     setDraft({ parent: null });
     setPhoneList(true);
-    setListOff(false);
-  }, []);
+    if (!toggleInCall) setListOff(false);
+    else if (listOff) toggleInCall();
+  }, [toggleInCall, listOff]);
 
   /* N and ⇧N make something outside any folder, and sleep while you're typing. ⌘\ shows or hides the list. */
+  const asleep = call?.closed ?? false;
   useEffect(() => {
+    if (asleep) return;
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || e.key.toLowerCase() !== 'n') return;
@@ -162,17 +170,18 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, newFolder, toggleList]);
+  }, [actions, canChange, newFolder, toggleList, asleep]);
 
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
     onOpenFolder: (id) => setOpen(id, true),
-    onDrop: (id, spot) => { if (spot.kind === 'trash') actions.trash(id); else actions.move(id, spot.to); }
+    canBring: call !== undefined,
+    onDrop: (id, spot) => { if (spot.kind === 'trash') actions.trash(id); else if (spot.kind === 'bring') call?.onBring(id, true); else actions.move(id, spot.to); }
   });
 
   const page = mode === 'page';
   if (view.status === 'closed') {
-    return <WsPane page={page}><WsDoc><WsCantOpen what={at.kind === 'document' ? 'document' : 'workspace'} action={<Button size="sm" onClick={onLeave}>Back to your workspaces</Button>} /></WsDoc></WsPane>;
+    return <WsPane page={page}><WsDoc><WsCantOpen what={at.kind === 'document' ? 'document' : 'workspace'} action={<Button size="sm" onClick={onLeave}>{page ? 'Back to your workspaces' : 'Back to the call'}</Button>} /></WsDoc></WsPane>;
   }
   if (!view.tree) return <WsPane page={page}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
 
@@ -182,23 +191,23 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   };
   return (
     <WsContext value={ws}>
-      <WsPane page={page} listOff={listOff} phoneList={phoneList}>
+      <WsPane page={page} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
-            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
+            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             <WsCantOpen what="document" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
           <WsDoc className="is-bare">
-            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} />
+            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             {empty
               ? <WsEmpty space={spaceName} page={page} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
               : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
           </WsDoc>
         )}
       </WsPane>
-      <WsToasts toasts={toasts} />
+      {!call && <WsToasts toasts={toasts} />}
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
     </WsContext>
   );
