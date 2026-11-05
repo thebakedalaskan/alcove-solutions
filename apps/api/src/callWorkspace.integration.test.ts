@@ -13,6 +13,7 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from './crypto';
 import { NotFoundError } from './errors';
+import { DocFailure } from './live/docPool';
 import { maintain } from './maintenance';
 import { Profile } from './modules/account';
 import { documentText, documentTodos } from './modules/documentText';
@@ -168,6 +169,19 @@ async function storedCall(ownerId: string, callId: string) {
 }
 /** Everything the call told this person, as text: what a name would be found in. */
 const said = (s: CallState) => JSON.stringify(s);
+/** Workers that take `tasks` and don't answer until told to, as a worker with a slow document doesn't, and what's been asked of them meanwhile. */
+function stuckWorkers(...tasks: string[]) {
+  const pool = h.deps.docs;
+  const run = pool.run;
+  const real = pool.run.bind(pool);
+  let free = () => { /* until there's a gate */ };
+  const gate = new Promise<void>((go) => { free = go; });
+  const asked: string[] = [];
+  pool.run = (task, input, o) => { asked.push(task); return tasks.includes(task) ? gate.then(() => real(task, input, o)) : real(task, input, o); };
+  return { asked, free: () => { pool.run = run; free(); } };
+}
+/** What `p` came to, or a failure for taking longer than anything in a live call should. */
+const soon = <T,>(p: Promise<T>, what: string, ms = 5_000): Promise<T> => Promise.race([p, rest(ms).then((): never => { throw new Error(`${what} took more than ${ms} ms`); })]);
 /** An action as a browser sends it, whatever the client would make of it. */
 const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
 
@@ -1557,6 +1571,50 @@ describe('asking Alcove about a selection', () => {
     const answers = await Promise.all(Array.from({ length: 22 }, () => code(collect(art.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' })))));
     expect(answers.filter((x) => x === 'unavailable').length).toBeGreaterThan(0);
     expect(answers.filter((x) => x === 'allowed').length).toBeGreaterThan(0);
+  });
+});
+
+describe('a live call comes first', () => {
+  it('ends at once whatever a document is doing, and keeps its versions afterwards', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const { host } = await callBy(art);
+    await host.setWorkspace(id);
+    (await type(art, host, id, plan, 'words')).close();
+    const { livekit } = h.deps;
+    const deleteRoom = livekit.deleteRoom;
+    let roomGone = false;
+    livekit.deleteRoom = async (room) => { roomGone = true; return deleteRoom.call(livekit, room); };
+    const workers = stuckWorkers('fold', 'read');
+    try {
+      await soon(host.leave(), 'ending a call while a worker is stuck');
+      expect(roomGone).toBe(true);
+    } finally {
+      workers.free();
+      livekit.deleteRoom = deleteRoom;
+    }
+    await until(async () => (await art.api.workspaces.versions(id, plan)).some((v) => v.reason === 'call'), 'the version');
+  });
+
+  it('says so when what comes after a call fails, and the call has ended all the same', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const { host } = await callBy(art);
+    await host.setWorkspace(id);
+    (await type(art, host, id, plan, 'words')).close();
+    const pool = h.deps.docs;
+    const run = pool.run;
+    const real = pool.run.bind(pool);
+    pool.run = (task, input, o) => (task === 'fold' ? Promise.reject(new DocFailure('time', 'over the limit')) : real(task, input, o));
+    try {
+      await soon(host.leave(), 'ending a call with a worker failing');
+      await until(() => h.logs.some((l) => l.includes('version not kept for a call') && l.includes(host.ticket.callId)), 'the failure to be logged');
+    } finally {
+      pool.run = run;
+    }
+    expect((await art.api.workspaces.versions(id, plan)).filter((v) => v.reason === 'call')).toEqual([]);
   });
 });
 

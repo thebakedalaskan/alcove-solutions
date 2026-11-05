@@ -1020,8 +1020,9 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
   person on each document goes into the call's sealed state (`worked`), under the call's row and once only, so typing never
   waits on it, and a failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
-  who) in the transaction that ends it, the call lets go of it, and each document keeps a version with reason `call`,
-  filed under the call. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
+  who) in the transaction that ends it, and the call lets go of it. Once the room has gone, with nobody waiting, each document
+  keeps a version with reason `call`, filed under the call: a worker can take as long as it has on each, and nothing about
+  the call's end depends on it, so a failure is logged and costs only that version. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
   the note is told what they can open now, by the name it has now, and nothing else is listed or counted.
 - **Presenting.** `present-start` needs the document open to whoever starts it, and to be in the call's workspace; `kind` is
   `document` or `board`, and the state is `{ kind, id, section, by }`, one for each part of the call. It's moved and stopped

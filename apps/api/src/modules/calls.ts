@@ -2177,10 +2177,12 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
   // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
   await endSeats(o, [callId]);
-  await space.afterCall(o, callId, end.meetingId, worked);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
+  // What's kept of the workspace is the last thing and nobody waits for it: it can take a worker as long as a worker has for
+  // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
+  void space.afterCall(o, callId, end.meetingId, worked);
   return end;
 }
 
