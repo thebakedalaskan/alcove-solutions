@@ -122,9 +122,10 @@ have made at most 100 workspaces. Who can do what is in
 
 What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
 with the same thing. Browsers exchange binary updates through the API, which seals each and keeps it. Only
-`apps/api/src/modules/documentText.ts` knows what's inside one, and it goes by `kind`, so a board says its own words;
-everything else below is the same for anything that holds a Y.Doc. A document's blocks are the root fragment `content`,
-its comment threads the root map `comments`, and the editor's schema decides the rest.
+`apps/api/src/modules/documentText.ts` knows what's inside one, and it goes by `kind`, so a board says its own words, through
+`@alcove/board`, which is what knows a board's Y.Doc; everything else below is the same for anything that holds a Y.Doc. A
+document's blocks are the root fragment `content`, its comment threads the root map `comments`, and the editor's schema
+decides the rest.
 
 Yjs trusts what it's given, and what's in a document comes from browsers. So nothing here is taken on trust: an update is
 checked before it's stored ([what gets in](#what-gets-into-a-document)), a document is only ever opened in a worker
@@ -185,9 +186,11 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
   plain function of the document and plain data, one line each, which a worker can import. `searchText` streams everything
   someone can open as blocks of words, one document a line, for searching in their browser, and stops as soon as they can't
-  read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
-  is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
-  a retired block still holding something reads like any other.
+  read what's next. A board is one block, `board`, of every word on it (`boardText`): stickies, shapes and text, frames'
+  titles and who was in a room, tables' cells and pictures' captions, frame by frame in reading order, and never a frame's
+  hint or a comment. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in
+  one is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server
+  alike: a retired block still holding something reads like any other.
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
