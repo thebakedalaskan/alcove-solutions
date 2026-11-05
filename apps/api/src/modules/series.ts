@@ -21,6 +21,7 @@ import { log } from '../log';
 import { listItems, type Loaded } from '../vault';
 import { me } from './account';
 import { DOUBT, fenced, oneLine } from './drafting';
+import { entriesOf } from './backing';
 import { all as allMeetings, toMeeting, type MeetingManifest } from './meetings';
 import { NoteManifest, asRead, goneSince, myEmail, receivedBy, seriesOf, sharedWithMe, type Located } from './notes';
 import { personOf } from './portraits';
@@ -93,9 +94,10 @@ export async function get(o: Owner, seriesId: string): Promise<Series> {
     if (m.status !== 'ready') return;
     const noteId = s.note.itemId;
     const stale = later >= STALE_AFTER;
-    for (const d of m.decisions) if (d.state !== 'rejected') decisions.push({ ...d, noteId });
-    for (const q of m.questions) if (q.state === 'open') questions.push({ ...q, noteId, later, stale });
-    for (const a of m.actions) if (!a.done || (doneAt(a) ?? '') >= since) actions.push({ ...a, noteId, later, stale: !a.done && stale });
+    const entries = entriesOf(asRead(s));
+    for (const d of entries.decisions) if (d.state !== 'rejected') decisions.push({ ...d, noteId });
+    for (const q of entries.questions) if (q.state === 'open') questions.push({ ...q, noteId, later, stale });
+    for (const a of entries.actions) if (!a.done || (doneAt(a) ?? '') >= since) actions.push({ ...a, noteId, later, stale: !a.done && stale });
   });
   const notes = sources.map((s): SeriesNote => {
     const m = s.note.manifest;
