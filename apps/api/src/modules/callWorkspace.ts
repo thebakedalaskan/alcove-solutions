@@ -65,6 +65,16 @@ function over(s: Spaced, x: { place: string; by: Controller }): boolean {
   const j = here(s, x.by.person);
   return !placesOf(s).includes(x.place) || s.removed.includes(x.by.person) || (j !== undefined && placeOf(s, j) !== x.place);
 }
+/**
+ * Someone chose to leave on this connection: what they started stops for good, so it doesn't come back if they do. A reload
+ * isn't this, and nor is one device of two: they're still here.
+ */
+export function leftForGood<S extends Spaced>(s: S, person: string, identity: string): S {
+  if (s.people.some((j) => j.person === person && j.status === 'in' && j.identity !== identity)) return s;
+  const w = s.workspace;
+  const others = (x: { by: Controller }) => x.by.person !== person;
+  return w.present.every(others) && w.play.every(others) ? s : { ...s, workspace: { ...w, present: w.present.filter(others), play: w.play.filter(others) } };
+}
 /** The call as it stands, with what's over gone from what it keeps. */
 export function tidied<S extends Spaced>(s: S): S {
   const w = s.workspace;

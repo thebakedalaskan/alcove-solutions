@@ -2202,13 +2202,13 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
  * call for everyone (`end`); a host's page going away (`end` false: it hadn't heard yet that it hosts) hands the call to
  * whoever's next, and is refused when nobody can take it, so a page going away never ends it.
  */
-export async function leave(v: Viewer, callId: string, end: boolean): Promise<CallEndResult | null> {
+export async function leave(v: Viewer, callId: string, end: boolean, onPurpose = false): Promise<CallEndResult | null> {
   if (!v.isHost) {
-    await departed(v.organizer, callId, v.pass.identity);
+    await departed(v.organizer, callId, v.pass.identity, Date.now(), onPurpose);
     return null;
   }
   if (!end) {
-    await handOff(v, callId, null);
+    await handOff(v, callId, null, onPurpose);
     return null;
   }
   const ended = await endCall(v.organizer, callId);
@@ -2222,7 +2222,7 @@ export async function leave(v: Viewer, callId: string, end: boolean): Promise<Ca
  * One transaction takes the leaver out and starts the new host's generation, so the call is never without a host.
  * Refused (409) when they can't host now, and nothing changes: the leaver stays, and can choose again or end the call.
  */
-export async function handOff(v: Viewer, callId: string, to: string | null): Promise<void> {
+export async function handOff(v: Viewer, callId: string, to: string | null, onPurpose = to !== null): Promise<void> {
   const o = v.organizer;
   const ctx = { callId, role: v.pass.role, standIn: !v.isOrganizer };
   const { row: first } = await load(o, o.pool, callId);
@@ -2244,7 +2244,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null): Pro
         { context: { ...ctx, why: 'not eligible', chosen: to !== null } });
     }
     const organizer = (await me(o, c)).name;
-    const { state: after, generation } = await newGeneration(o, c, row, s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
+    const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
     return { room: row.room_name };
   });
@@ -2255,13 +2255,21 @@ export async function handOff(v: Viewer, callId: string, to: string | null): Pro
 /**
  * Someone other than whoever hosts is gone (left, or LiveKit says so): the host's browser removes them from the group,
  * so the keys move on. Someone still asking to be let in takes their request back. The host going is handOff's, or
- * upkeep's (reconcile), never this.
+ * upkeep's (reconcile), never this. `onPurpose`: they chose to, so what they started stops; only they can say so, and a
+ * connection dropping or a page reloading comes back to what it left.
  */
-async function departed(o: Owner, callId: string, identity: string, at = Date.now()): Promise<void> {
+async function departed(o: Owner, callId: string, identity: string, at = Date.now(), onPurpose = false): Promise<void> {
   const r = await tx(o.pool, async (c) => {
-    const { row, state } = await load(o, c, callId, true);
-    const j = state.people.find((x) => x.identity === identity && x.role !== 'host' && x.identity !== state.host);
-    if (row.state !== 'live' || !j || (j.status !== 'in' && j.status !== 'waiting')) return null;
+    const held = await load(o, c, callId, true);
+    const { row } = held;
+    const j = held.state.people.find((x) => x.identity === identity && x.role !== 'host' && x.identity !== held.state.host);
+    const state = j && onPurpose ? space.leftForGood(held.state, j.person, identity) : held.state;
+    if (row.state !== 'live' || !j) return null;
+    if (j.status !== 'in' && j.status !== 'waiting') {
+      // LiveKit's word that they'd gone got here first.
+      if (state !== held.state) await save(o, c, callId, state);
+      return null;
+    }
     // Someone who was in is kept, as having left (a reload's pass brings them back, hand and all), and their shares
     // end. Someone who only asked is kept as turned away: nothing of theirs, a pass included, brings them in without
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
