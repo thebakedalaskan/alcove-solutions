@@ -10,6 +10,7 @@ import { PickTime, PickTimeWaiting } from '~/features/calls/PickTime';
 import { GuestName, GuestTradeOff, SignInHere, SignedInAs } from '~/features/join/JoinAs';
 import { JoinProblem, JoinRefused } from '~/features/join/JoinProblem';
 import { PrejoinCapture, type NotesAudience } from '~/features/join/PrejoinCapture';
+import { PrejoinCarry } from '~/features/join/PrejoinCarry';
 import { JoinMuted, PrejoinMain, usePrejoinMedia, type Prejoining } from '~/features/join/PrejoinMedia';
 import { useAuth } from '~/features/welcome/WaysIn';
 import { api } from '~/lib/api';
@@ -166,6 +167,7 @@ function GuestPrejoin({ card, code, me, media }: { card: CallCard; code: string;
             )}
           </AnimatePresence>
         )}
+        <PrejoinCarry code={code} me={me?.email} />
       </div>
     </div>
   );

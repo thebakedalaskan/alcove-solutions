@@ -4,10 +4,11 @@
  * moments. Nothing here goes into the call, and nothing is kept unless you keep an answer in your own notes: answers come
  * from what was said while notes were on, and point only at lines that were really said.
  */
-import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpItem, type CatchUpRange, type CatchUpRead, type CatchUpWindow, type Evidence, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, TimeChip, cn } from '@alcove/ui';
+import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpItem, type CatchUpRange, type CatchUpRead, type CatchUpWindow, type Evidence, type SeriesAnswerPart, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, Segmented, TimeChip, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
+import { NotesApart, SourceLink } from '~/features/notes/parts';
 import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
@@ -17,11 +18,16 @@ const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
 /**
  * A question or catch-up asked in the Ask view, what it read, and its answer once it's back. `room`: the breakout
- * room it was asked in, whose lines alone it reads (null in the main room).
+ * room it was asked in, whose lines alone it reads (null in the main room). A question about earlier calls reads the
+ * notes you had then (`held`), so its answer stays on screen only while you still have them.
  */
 export type Asked =
   | { id: number; kind: 'question'; q: string; range: CatchUpRange; room: string | null; a: CallAnswer | null; error: string | null }
-  | { id: number; kind: 'catch-up'; range: CatchUpRange; room: string | null; c: CatchUp | null; error: string | null };
+  | { id: number; kind: 'catch-up'; range: CatchUpRange; room: string | null; c: CatchUp | null; error: string | null }
+  | { id: number; kind: 'earlier'; q: string; held: string[]; parts: SeriesAnswerPart[] | null; error: string | null };
+
+/** What questions read: this call, or the earlier calls in its series whose notes you have. */
+export type AskScope = 'call' | 'earlier';
 
 /** A transcript moment being opened from a catch-up or an answer: what was asked for, and what came back. */
 export interface Moment { evidence: TranscriptMoment; found: CallMoment | null; error: string | null }
@@ -294,9 +300,21 @@ function LiveBar({ children, onLive }: { children: ReactNode; onLive: () => void
   );
 }
 
-const SUGGESTED = ['What did we decide?', 'Who’s doing what?'];
+/** An answer about earlier calls: its text, and where it comes from. Each source's link opens beside the call, with your access checked again. */
+function EarlierAnswer({ parts }: { parts: SeriesAnswerPart[] }) {
+  const sources = parts.flatMap((p) => (p.type === 'source' ? [p] : []));
+  return (
+    <NotesApart.Provider value={true}>
+      {parts.map((p) => (p.type === 'text' ? <div key="text" className="txt">{p.text}</div> : null))}
+      {sources.length > 0 && <div className="cites">{sources.map((c) => <SourceLink key={`${c.noteId}/${c.room?.id ?? ''}@${c.at ?? ''}`} c={c} />)}</div>}
+    </NotesApart.Provider>
+  );
+}
 
-export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, onRange, onWindow, onAsk, onCatchUp, onOpen, onLive, keeping }: {
+const SUGGESTED = ['What did we decide?', 'Who’s doing what?'];
+const SUGGESTED_EARLIER = ['Why did we choose this?', 'What’s still open?'];
+
+export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, earlier, scope, onScope, onRange, onWindow, onAsk, onAskEarlier, onCatchUp, onOpen, onLive, keeping }: {
   asks: Asked[];
   /** There's a transcript to ask about. */
   ready: boolean;
@@ -309,16 +327,25 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
   window: CatchUpWindow | null;
   /** You came here to catch up, so the view offers the way back to the call as it is now. */
   catching: boolean;
+  /** The written notes you have from earlier calls in this call's series; null when you can't ask about any. */
+  earlier: string[] | null;
+  scope: AskScope;
+  onScope: (s: AskScope) => void;
   onRange: (r: CatchUpRange) => void; onWindow: () => void;
-  onAsk: (q: string) => void; onCatchUp: () => void; onOpen: (e: TranscriptMoment) => void; onLive: () => void;
-  /** Keeping answers in your own notes, for someone with an account in the call: which you have, and keeping one. */
+  onAsk: (q: string) => void; onAskEarlier: (q: string) => void; onCatchUp: () => void; onOpen: (e: TranscriptMoment) => void; onLive: () => void;
+  /** Keeping answers in your own notes, for someone with an account in the call: which you have, and keeping one. Answers about this call only: one from earlier calls quotes notes that can go. */
   keeping?: { kept: ReadonlySet<number>; keep: (asked: number, question: string, answer: CallAnswer) => Promise<void> } | undefined;
 }) {
   const [text, setText] = useState('');
   const end = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const busy = asks.some((a) => (a.kind === 'question' ? a.a === null && !a.error : a.c === null && !a.error));
+  const busy = asks.some((a) => (a.kind === 'question' ? a.a === null && !a.error : a.kind === 'earlier' ? a.parts === null && !a.error : a.c === null && !a.error));
   const times = callTimes(startedAt);
+  // Asking about earlier calls reads nothing of this one, so it doesn't wait for a transcript; while notes are paused nothing goes.
+  const backwards = scope === 'earlier' && earlier !== null;
+  const can = backwards ? !paused : ready;
+  const ask = backwards ? onAskEarlier : onAsk;
+  const what = backwards ? 'Ask about earlier calls' : 'Ask about this call';
   useEffect(() => { end.current?.scrollIntoView({ block: 'end', behavior: reduce ? 'auto' : 'smooth' }); }, [asks, reduce]);
   const keepFor = (x: Extract<Asked, { kind: 'question' }>) => {
     const answer = x.a;
@@ -328,34 +355,44 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
     <>
       {catching && <LiveBar onLive={onLive}><Icon name="history" size={14} />Catching up · only you</LiveBar>}
       <div className="ic-scroll ic-pad">
-        <Notice icon="lock"><b>Only you see this.</b> Answers come from what’s been said in this call, nothing else.{keeping ? ' Nothing is kept unless you keep it.' : ' Nothing is kept.'}</Notice>
+        <Notice icon="lock"><b>Only you see this.</b> {backwards ? 'Answers come from the earlier calls you have notes from, written in confidential compute. Nothing is kept.' : `Answers come from what’s been said in this call, nothing else. ${keeping ? 'Nothing is kept unless you keep it.' : 'Nothing is kept.'}`}</Notice>
         <div className="ic-qa">
           {!asks.length && paused && <EmptyState title="Notes are paused" className="ic-empty">Nothing goes to the AI, questions included, until they resume.</EmptyState>}
-          {!asks.length && !ready && !paused && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
+          {!asks.length && !paused && !backwards && !ready && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}
+          {!asks.length && !paused && backwards && <EmptyState title="Ask about earlier calls" className="ic-empty">Why something was decided, or who took what on. Each answer says which call it comes from.</EmptyState>}
           {asks.map((a) => (
             <div key={a.id} className="ic-qa-item">
-              {a.kind === 'question' && <div className="q">{a.q}</div>}
+              {a.kind !== 'catch-up' && <div className="q">{a.q}</div>}
               <motion.div className={cn('a', a.kind === 'catch-up' && 'is-catch')} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={reduce ? { duration: 0 } : UI}>
-                <div className="by"><Icon name={a.kind === 'catch-up' ? 'history' : 'sealed'} size={14} />{a.kind === 'catch-up' ? 'Catch up' : 'From this call'} · {rangeName(a.range, times)} · only you</div>
+                {a.kind === 'earlier' ? <div className="by"><Icon name="history" size={14} />From earlier calls · only you</div>
+                  : <div className="by"><Icon name={a.kind === 'catch-up' ? 'history' : 'sealed'} size={14} />{a.kind === 'catch-up' ? 'Catch up' : 'From this call'} · {rangeName(a.range, times)} · only you</div>}
                 {a.error ? <div className="txt bad">{a.error}</div>
-                  : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} room={a.room} times={times} onOpen={onOpen} keep={keepFor(a)} />)
-                    : a.c === null ? <div className="txt ic-writing"><Dots />Reading {rangeName(a.range, times).toLowerCase()}</div> : <CatchUpCard c={a.c} range={a.range} room={a.room} times={times} onOpen={onOpen} />}
+                  : a.kind === 'earlier' ? (a.parts === null ? <div className="txt ic-writing"><Dots />Reading your earlier notes</div>
+                    : a.held.every((id) => earlier?.includes(id)) ? <EarlierAnswer parts={a.parts} />
+                      : <div className="txt ic-quiet">Notes this read aren’t yours any more, so it isn’t shown.</div>)
+                    : a.kind === 'question' ? (a.a === null ? <div className="txt ic-writing"><Dots />Reading the call</div> : <AnswerCard a={a.a} range={a.range} room={a.room} times={times} onOpen={onOpen} keep={keepFor(a)} />)
+                      : a.c === null ? <div className="txt ic-writing"><Dots />Reading {rangeName(a.range, times).toLowerCase()}</div> : <CatchUpCard c={a.c} range={a.range} room={a.room} times={times} onOpen={onOpen} />}
               </motion.div>
             </div>
           ))}
           <div ref={end} />
         </div>
       </div>
-      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const q = text.trim(); if (q && !busy && ready) { onAsk(q); setText(''); } }}>
+      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const q = text.trim(); if (q && !busy && can) { ask(q); setText(''); } }}>
+        {earlier !== null && <Segmented className="cu-scope" label="What to ask about" value={scope} onChange={onScope} options={[{ value: 'call', label: 'This call' }, { value: 'earlier', label: 'Earlier calls' }]} />}
         <div className="chips">
           <Scope>Only you</Scope>
-          <RangeMenu range={range} window={w} times={times} onOpen={onWindow} onPick={onRange} />
-          <button type="button" className="ac-chip" disabled={busy || !ready} onClick={onCatchUp}>Catch me up</button>
-          {SUGGESTED.map((s) => <button key={s} type="button" className="ac-chip" disabled={busy || !ready} onClick={() => onAsk(s)}>{s}</button>)}
+          {backwards ? SUGGESTED_EARLIER.map((s) => <button key={s} type="button" className="ac-chip" disabled={busy || !can} onClick={() => ask(s)}>{s}</button>) : (
+            <>
+              <RangeMenu range={range} window={w} times={times} onOpen={onWindow} onPick={onRange} />
+              <button type="button" className="ac-chip" disabled={busy || !ready} onClick={onCatchUp}>Catch me up</button>
+              {SUGGESTED.map((s) => <button key={s} type="button" className="ac-chip" disabled={busy || !ready} onClick={() => onAsk(s)}>{s}</button>)}
+            </>
+          )}
         </div>
         <div className="inrow">
-          <input className="ac-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask about this call" aria-label="Ask about this call" />
-          <button type="submit" className="ac-btn is-primary" aria-label="Ask" disabled={!text.trim() || busy || !ready}><Icon name="sendLine" size={18} /></button>
+          <input className="ac-input" value={text} onChange={(e) => setText(e.target.value)} placeholder={what} aria-label={what} />
+          <button type="submit" className="ac-btn is-primary" aria-label="Ask" disabled={!text.trim() || busy || !can}><Icon name="sendLine" size={18} /></button>
         </div>
       </form>
     </>

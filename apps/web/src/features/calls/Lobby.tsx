@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { copyUrl, shownUrl, useCopyLink } from '~/features/call/links';
 import { JoinRefused } from '~/features/join/JoinProblem';
 import { PrejoinCapture } from '~/features/join/PrejoinCapture';
+import { PrejoinCarry } from '~/features/join/PrejoinCarry';
 import { JoinMuted, PrejoinMain, type Prejoining } from '~/features/join/PrejoinMedia';
 import { api } from '~/lib/api';
 import { sessions } from '~/lib/live';
@@ -219,6 +220,7 @@ export function Lobby({ meeting, me, capture, team, standIn, media }: { meeting:
         <Button variant="primary" size="lg" icon="video" className="join" loading={joining} onClick={() => void join()}>{standIn ? 'Join and host' : ringing && picked.length ? `Join and ring ${picked.length}` : 'Join'}</Button>
         {problem !== null && <JoinRefused error={problem} />}
         {onATeam && <div className="pj-sub"><button type="button" onClick={() => giveLink(copy)}><Icon name="link" size={15} />Copy link</button></div>}
+        <PrejoinCarry code={meeting.code} me={me.email} />
       </div>
     </div>
   );

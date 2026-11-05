@@ -57,6 +57,20 @@
 .carry > .ac-time-chip { margin-top: 1px; }
 .carry.maybe .g .ac-avatar { opacity: 0.7; }
 .carry .g .ac-check { margin-top: 1px; }
+/* Where a later call came back to it: what the notes think happened, and what the reader can say about that. */
+/* What carries over, in groups, where a call and its pre-join show it. */
+.carry-groups { display: grid; gap: 18px; margin-top: 12px; }
+.carry-g > .ac-eyebrow { display: flex; align-items: center; gap: 8px; }
+.carry-g > .ac-eyebrow span::before { content: "·"; margin-right: 8px; }
+.carry-g > .ac-eyebrow + .carry { border-top: 0; }
+.carry-more { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 8px; font: 600 13px/1.4 var(--font-sans); }
+.carry-more a { color: var(--ink-3); transition: color var(--duration-1); }
+.carry-more a:hover { color: var(--sun-text); }
+.carry-later { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 2px 6px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.carry-later > .ac-i { margin-top: 3px; color: var(--horizon); }
+.carry-later .acts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.carry-later .lk { font-size: 12.5px; }
+.carry.answered .t { color: var(--ink-2); }
 /* Nobody has confirmed it, or nobody is on it: an open ring. */
 .pend { width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--line-control); }
 .carry-list .carry { padding: 13px 0; }

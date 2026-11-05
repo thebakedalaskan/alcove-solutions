@@ -1,12 +1,12 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
   isAssignee, isBy, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, proposerOf,
-  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteAction, type NoteDecision, type NoteQuestion, type NoteReader, type Person,
+  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteAction, type NoteDecision, type NoteQuestion, type NoteReader, type Person, type RoomRef,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, Scope, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
@@ -370,8 +370,23 @@ const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name
 /** Where a link to a moment lands: the transcript line said then, which the router scrolls to the middle of the view. */
 const MOMENT = 'moment';
 const CENTER: ScrollIntoViewOptions = { block: 'center' };
-/** The parts of a link to a note that open it at a moment. */
-const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** The parts of a link to a note that open it at a moment, in a breakout room's section when it was said there. */
+const atMoment = (at: number, room?: RoomRef | undefined) => ({ search: { at: Math.round(at), ...(room ? { room: room.id } : {}) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** Where a link to a breakout room's section lands. */
+export const roomAnchor = (id: string) => `room-${id}`;
+/** The parts of a link to a note that open it at a breakout room's section, or at a moment, when it has one. */
+export const inNote = (at: number | undefined, room: RoomRef | undefined) =>
+  (at !== undefined ? atMoment(at, room) : room ? { search: { room: room.id }, hash: roomAnchor(room.id), hashScrollIntoView: CENTER } : {});
+
+/**
+ * Links to notes under this open in a new tab, each still opened with the reader's access checked: from a call or its
+ * pre-join, leaving the page would leave the call, or turn the camera off.
+ */
+export const NotesApart = createContext(false);
+/** A link's target, under `NotesApart`. */
+export function useNotesApart() {
+  return useContext(NotesApart) ? { target: '_blank', rel: 'noopener' } : {};
+}
 
 /** A note's shared screens among its transcript lines: the moments, and how each is drawn (it opens the frame). */
 export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) => ReactNode }
@@ -409,10 +424,10 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
   );
 }
 
-/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. */
-export function MomentLink({ noteId, at }: { noteId: string; at: number }) {
+/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. In a breakout room's section, that room's. */
+export function MomentLink({ noteId, at, room }: { noteId: string; at: number; room?: RoomRef | undefined }) {
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at)} className="ac-time-chip" title={`Open the notes at ${position(at)}`}>
+    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className="ac-time-chip" title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
       {position(at)}
     </Link>
   );
@@ -467,14 +482,14 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
 }
 
 /** A cite's key among an answer's: a moment, a shared screen, or one of a series' calls (at a moment when it can tell). */
-const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}/${c.room?.id ?? ''}@${c.at ?? ''}`);
 
-/** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
-function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
+/** One of a series' calls an answer comes from: its day, its breakout room and the moment when the answer could tell. */
+export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
   const day = shortDay(new Date(c.startedAt));
   return (
-    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...(c.at === undefined ? {} : atMoment(c.at))} className="src-chip" title={`Open the notes from ${c.title}, ${day}`}>
-      <Icon name="notes" size={13} />{day}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
+    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...inNote(c.at, c.room)} {...useNotesApart()} className="src-chip" title={`Open the notes from ${c.title}, ${day}${c.room ? `, in ${c.room.name}` : ''}`}>
+      <Icon name="notes" size={13} />{day}{c.room && <span>{c.room.name}</span>}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
     </Link>
   );
 }

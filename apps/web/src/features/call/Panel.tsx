@@ -114,13 +114,15 @@ function Summary({ text }: { text: string }) {
 const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
-export function NotesView({ state, live, getting, problems, controls, onSeek, onTranscript }: {
+export function NotesView({ state, live, getting, problems, controls, carried, onSeek, onTranscript }: {
   state: CallState; live: LiveNotes;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
   problems: string[];
   /** Notes on and off, pause and resume (the organizer's), or asking for notes (anyone else's). */
   controls: CaptureControls;
+  /** What carries over from earlier calls, for you alone, when there's anything of yours. */
+  carried?: ReactNode;
   onSeek: (e: TranscriptMoment) => void; onTranscript: () => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
@@ -161,6 +163,7 @@ export function NotesView({ state, live, getting, problems, controls, onSeek, on
         </Popover>
       </div>
       <div className="ic-scroll">
+        {carried}
         {on && state.isHost && !host && c.room && (
           <div className="ic-problems is-top"><Notice tone="caution" icon="alert">You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.</Notice></div>
         )}
