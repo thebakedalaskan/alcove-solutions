@@ -165,6 +165,29 @@ export const DocVersionLineSchema = z.discriminatedUnion('type', [
 /** A version with its whole state: a `Y.Doc` that applies `update` shows it. */
 export interface DocVersion extends DocVersionSummary { update: Uint8Array }
 
+/* ---------- presenter notes ---------- */
+
+/** The longest someone's own notes on a document can be. */
+export const MAX_PRESENTER_NOTES = 20_000;
+/** What you keep beside a document for presenting it, for your eyes only. Empty when you have none. */
+export const PresenterNotesSchema = z.object({ text: z.string() });
+export type PresenterNotes = z.infer<typeof PresenterNotesSchema>;
+export const PresenterNotesBodySchema = z.object({ text: z.string().max(MAX_PRESENTER_NOTES) });
+
+/* ---------- asking Alcove about a selection ---------- */
+
+/** The most of a document's words one question can carry. */
+export const MAX_DOC_ASK = 8000;
+/** The format bar's Make this shorter and Turn this into a checklist. */
+export const DocAskActionSchema = z.enum(['shorter', 'checklist']);
+export type DocAskAction = z.infer<typeof DocAskActionSchema>;
+/** What's selected travels in the body, to the notes model and nowhere else: nothing of it is kept. */
+export const DocAskBodySchema = z.object({ action: DocAskActionSchema, text: z.string().trim().min(1).max(MAX_DOC_ASK) });
+export type DocAskBody = z.infer<typeof DocAskBodySchema>;
+/** What comes back, in order: the words to put in the selection's place, or a to-do for each thing to do. */
+export const DocAskPartSchema = z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }), z.object({ type: z.literal('todo'), text: z.string() })]);
+export type DocAskPart = z.infer<typeof DocAskPartSchema>;
+
 /* ---------- search ---------- */
 
 /** One block's words, for searching in the browser: `id` is what to land on. */
