@@ -5,7 +5,7 @@
  * `data-p` say what was pressed, so one listener on the sheet serves them all, and `memo` keeps a busy board from drawing
  * anything that didn't change.
  */
-import { forwardRef, memo, type CSSProperties, type HTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { forwardRef, memo, useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../cn';
 import { CallDock, DockButton, DockSeparator, SharePointer } from './call';
 import { Icon, type IconName } from './icon';
@@ -136,8 +136,18 @@ export function BoardRail({ tool, onTool, onMore, moreOpen = false, faded = fals
   );
 }
 
+/** The board's name being changed, in its place in the bar: Enter or leaving it keeps what's typed, Escape puts the name back. */
+export interface BoardNaming {
+  value: string;
+  onChange: (value: string) => void;
+  onDone: () => void;
+  onCancel: () => void;
+}
+
 export interface BoardBarProps {
   name: string;
+  /** The name as a field, while it's being renamed. */
+  naming?: BoardNaming | undefined;
   /** What the seal says: Sealed, Sealed to this room, Reconnecting, Not saved, View only. Empty hides it. */
   seal?: string | undefined;
   sealIcon?: IconName | undefined;
@@ -158,12 +168,37 @@ export interface BoardBarProps {
   className?: string | undefined;
 }
 
+/** The board's name as a field, with all of it selected to type over. Its keys go no further than it. */
+function NameField({ naming }: { naming: BoardNaming }) {
+  const field = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  useLayoutEffect(() => {
+    field.current?.focus({ preventScroll: true });
+    field.current?.select();
+  }, []);
+  const finish = (keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    if (keep) naming.onDone(); else naming.onCancel();
+  };
+  return (
+    <input ref={field} className="nm-in" aria-label="The board’s name" value={naming.value} maxLength={200} autoComplete="off" spellCheck={false} enterKeyHint="done"
+      onChange={(e) => naming.onChange(e.target.value)} onBlur={() => finish(true)}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+        else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+      }} />
+  );
+}
+
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
-export function BoardBar({ name, seal = 'Sealed', sealIcon = 'sealed', zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
+export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
   onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
-      <button type="button" className="nm" title="Rename, move or copy this board" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>
+      {naming ? <NameField naming={naming} />
+        : <button type="button" className="nm" title="Rename, move or copy this board" aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
       {seal && <button type="button" className="sv" title="Sealed. Alcove can’t read this board." onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
       <span className="sp" />
       {editable && (
@@ -621,15 +656,18 @@ export function BoardPageActions({ people, onCall, className }: { people: Avatar
   );
 }
 
-/** In the board's place for someone it wasn't opened to: says whose it is, and nothing about what's on it. */
-export function BoardNoAccess({ owner, onAsk, className }: { owner: string; onAsk: () => void; className?: string | undefined }) {
+/**
+ * In the board's place for someone it wasn't opened to: who brought it, and nothing about what's on it. `who` is whoever
+ * opened it, while they're in the call; `onAsk` asks them, and without it there's no button.
+ */
+export function BoardNoAccess({ who, onAsk, className }: { who: string | null; onAsk?: (() => void) | undefined; className?: string | undefined }) {
   return (
     <div className={cn('bd-noaccess', className)}>
       <div>
         <Icon name="lock" size={28} />
         <h3>A board you can’t open</h3>
-        <p>{owner} keeps it in a workspace you’re not in.</p>
-        <Button variant="secondary" onClick={onAsk}>Ask {owner} for access</Button>
+        <p>{who ? `${who} brought it from a workspace you’re not in.` : 'It’s from a workspace you’re not in.'}</p>
+        {who && onAsk && <Button variant="secondary" onClick={onAsk}>Ask {who} for access</Button>}
       </div>
     </div>
   );
@@ -677,37 +715,44 @@ export interface BoardMenuAccess {
   board: string;
   /** Where it's kept, as it should read after "It’s in". */
   where: string;
-  onLetIn: () => void; onWithout: () => void;
+  /** Only for someone who may share the board: without it, the one way on is without them. */
+  onLetIn?: (() => void) | undefined;
+  onWithout: () => void;
 }
 
 const namesList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
 /**
  * The Board button's menu, rising from `anchor` (the dock's button): a new board from a template, the team's recent boards
- * and, in place of those, the access step. `inRoom` says it's only for this room, and leaves the saved boards out.
+ * and, in place of those, the access step. `inRoom` says it's only for this room, and leaves the saved boards out. `tip`
+ * names the button on hover, as a dock button's does. `busy`: something chosen is on its way, so nothing else can be.
  */
-export function BoardMenu({ open, onOpenChange, anchor, inRoom = false, recents, access, onTemplate, onRecent, className }: {
-  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; inRoom?: boolean | undefined;
+export function BoardMenu({ open, onOpenChange, anchor, tip, inRoom = false, recents, access, busy = false, onTemplate, onRecent, className }: {
+  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode; inRoom?: boolean | undefined;
   recents?: BoardMenuRecents | undefined;
   access?: BoardMenuAccess | undefined;
+  busy?: boolean | undefined;
   onTemplate: (template: BoardTemplate) => void; onRecent?: ((id: string) => void) | undefined; className?: string | undefined;
 }) {
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} side="top" align="center" label="Open a board" className={cn('bl', className)}>
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="top" align="center" label="Open a board" className={cn('bl', busy && 'is-busy', className)}>
       <div className="bl-h"><span>New board</span><small>{inRoom ? 'Only this room sees it' : 'Opens for everyone here'}</small></div>
       <div className="bl-tpl">
-        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" onClick={() => onTemplate(t.id)}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
+        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={() => onTemplate(t.id)}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
       </div>
       {!access && !inRoom && recents && recents.boards.length > 0 && (
         <>
           <div className="bl-sub">From {recents.workspace}</div>
-          {recents.boards.map((r) => <button key={r.id} type="button" className="bl-r" onClick={() => onRecent?.(r.id)}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
+          {recents.boards.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={() => onRecent?.(r.id)}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
         </>
       )}
       {access && (
         <div className="bl-q">
           <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
-          <div className="acts"><Button variant="primary" onClick={access.onLetIn}>Let them in for this call</Button><Button variant="secondary" onClick={access.onWithout}>Open without them</Button></div>
+          <div className="acts">
+            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={access.onLetIn}>Let them in for this call</Button>}
+            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={access.onWithout}>Open without them</Button>
+          </div>
         </div>
       )}
       <div className="bl-f"><Icon name="sealed" size={15} /><span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : 'Sealed. Alcove can’t read boards.'}</span></div>
