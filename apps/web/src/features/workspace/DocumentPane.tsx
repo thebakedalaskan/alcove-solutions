@@ -7,6 +7,7 @@ import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFullBar, Ws
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
+import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { agoLabel, shortDay } from '~/lib/time';
 import { focusRow } from './actions';
@@ -18,19 +19,31 @@ import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
 
+const dlog = log.child({ component: 'workspace' });
+
 /** A session for one document, once its first sync is in. `refused`: it wouldn't open at all. */
 function useSession(ws: Ws, documentId: string) {
   const { workspaceId, pass, owner } = ws;
   const [opened, setOpened] = useState<{ session: DocSession; ready: boolean; refused: boolean } | null>(null);
   useEffect(() => {
-    const session = openDocument(workspaceId, documentId, owner, pass);
     let left = false;
-    setOpened({ session, ready: false, refused: false });
-    session.ready.then(
-      () => { if (!left) setOpened({ session, ready: true, refused: false }); },
-      () => { if (!left) setOpened({ session, ready: false, refused: true }); }
-    );
-    return () => { left = true; session.close(); };
+    let held: DocSession | null = null;
+    const open = () => {
+      openDocument(workspaceId, documentId, owner, pass).then((session) => {
+        if (left) { session.close(); return; }
+        held = session;
+        setOpened({ session, ready: false, refused: false });
+        session.ready.then(
+          () => { if (!left) setOpened({ session, ready: true, refused: false }); },
+          () => { if (!left) setOpened({ session, ready: false, refused: true }); }
+        );
+      }, (e: unknown) => {
+        dlog.warn('a document didn’t open', { workspaceId, documentId, err: e });
+        addEventListener('online', open, { once: true });
+      });
+    };
+    open();
+    return () => { left = true; removeEventListener('online', open); held?.close(); };
   }, [workspaceId, documentId, pass, owner]);
   return opened;
 }
@@ -52,7 +65,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const persons = useMemo(() => (people ?? []).map((p) => p.person), [people]);
   /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
   const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
-  const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read';
+  const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -150,8 +163,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     if (line) editor.focusBlock(line, 'end');
     void import('./editor/title').then(({ setTitle, titleOf }) => {
       if (titleOf(session.doc)) return;
-      setTitle(session.doc, t.name);
-      ws.actions.titled(item.id, t.name);
+      setTitle(session.doc, item.name || t.name);
+      if (!item.name) ws.actions.titled(item.id, t.name);
     });
   };
 
@@ -166,7 +179,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     <WsFade id={item.id}>
       <WsPage onKeyDown={leave}>
         <Suspense>
-          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} people={faces}
+          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
@@ -183,7 +196,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
 export function DocumentPane({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
   const opened = useSession(ws, item.id);
-  if (!opened) return <WsDoc><Blank ws={ws} item={item} /></WsDoc>;
+  const online = useOnline();
+  if (!opened) return <WsDoc><Blank ws={ws} item={item} />{!online && <WsOfflineEmpty />}</WsDoc>;
   return <Opened ws={ws} item={item} opened={opened} />;
 }
 
@@ -202,7 +216,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   const member = ws.sent.role !== null;
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
-  const trashed = item.trashedAt !== null || status.trashed;
+  const trashed = item.trashedAt !== null || status.trashed || status.refused === 'trashed';
   const closed = status.closed === 'access' || status.closed === 'deleted';
   /* The browser knows before the document's stream does, which only finds out when it next tries to say something. */
   const online = useOnline();
@@ -247,7 +261,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
       <WsOfflineBar show={offline && ready} />
       <WsFullBar show={status.refused === 'too-large'} />
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
-      <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
+      <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
       {ready ? <WsScroll><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
     </WsDoc>
   );

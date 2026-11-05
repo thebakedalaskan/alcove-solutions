@@ -287,7 +287,7 @@ export default function Editor(props: EditorProps) {
   }, [rt, doc]);
 
   /* Who can edit decides what the page is, and names change under a tag. */
-  useEffect(() => { rt.refresh(); }, [rt, readOnly]);
+  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint]);
   useEffect(() => { rt.names.set(rt.names.get() + 1); });
 
   /* Files from the desktop land between blocks, wherever the page is under the pointer. */
