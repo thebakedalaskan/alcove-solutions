@@ -145,7 +145,9 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
         ) : (
           <p className="set-topup-route">
             {routeName(t.route)}
-            {t.received && ` · ${t.received.amount} ${t.route.token} arrived`}
+            {t.received && (t.received.credits > 0
+              ? ` · ${t.received.amount} USD added as ${number.format(t.received.credits)} credits`
+              : ` · ${t.received.amount} USD arrived`)}
             {lapsed && t.state !== 'waiting' && ' · This address expired. To add credits, start a new top-up.'}
           </p>
         )}

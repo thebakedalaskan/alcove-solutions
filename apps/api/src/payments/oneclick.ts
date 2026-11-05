@@ -43,7 +43,7 @@ const DEADLINE_MS = 24 * 3_600_000;
 
 const TokensSchema = z.array(z.object({ assetId: z.string(), decimals: z.number().int().min(0).max(36) }));
 const QuoteResponseSchema = z.object({
-  quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().min(1).optional(), deadline: z.string().datetime() })
+  quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().nullish(), deadline: z.string().datetime() })
 });
 
 /** What /v0/status says about a deposit. Its swap details are read only once the swap is done. */
@@ -111,7 +111,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
         refundTo: o.treasury, refundType: 'INTENTS', recipient: o.treasury, recipientType: 'INTENTS',
         deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
       });
-      return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo ?? null, expiresAt: data.quote.deadline, minimum: route.minimum, quote: toJson(raw) };
+      return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo || null, expiresAt: data.quote.deadline, minimum: route.minimum, quote: toJson(raw) };
     },
     async check(deposit, was): Promise<DepositCheck> {
       const query = new URLSearchParams({ depositAddress: deposit.address, ...(deposit.memo === null ? {} : { depositMemo: deposit.memo }) });
@@ -130,8 +130,11 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
             providerRef: s.data.intentHashes[0] ?? ''
           };
         }
+        // A finished swap it can't read: money came, so it's arriving (the address no longer shown), and it's asked again.
+        olog.warn('unreadable finished swap', { provider: 'oneclick', status: data.status });
+        return { state: 'arriving' };
       }
-      // A status this code doesn't know, or a finished swap it can't read: keep watching, and say so.
+      // A status this code doesn't know: keep watching, and say so.
       olog.warn('unreadable deposit status', { provider: 'oneclick', status: data.status.slice(0, 40) });
       return { state: was };
     }

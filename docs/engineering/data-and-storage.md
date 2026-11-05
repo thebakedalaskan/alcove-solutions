@@ -61,7 +61,8 @@ A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', o
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
 route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the provider's whole signed quote,
 and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
-and the provider's reference ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)).
+and the provider's reference, and whether its deadline was already pushed back once because the provider couldn't
+answer (`extended`, false in records written before it existed) ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)).
 
 ## Writes, reads and deletes
 

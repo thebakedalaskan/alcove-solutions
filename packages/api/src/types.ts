@@ -863,7 +863,7 @@ export const TopUpSchema = z.object({
   /** Only while money can still be sent to it (`waiting`, `short`); null once the top-up has moved on. */
   address: z.string().nullable(), memo: z.string().nullable(),
   expiresAt: ISODateSchema, state: TopUpStateSchema,
-  /** Once credited or held: what arrived, in tokens as a decimal string, and the credits it added (0 if held). */
+  /** Once credited or held: what reached the treasury, in USD as a decimal string (the USDC out plus any refund), and the credits it added (0 if held). */
   received: z.object({ amount: z.string(), credits: z.number().int() }).nullable()
 });
 export type TopUp = z.infer<typeof TopUpSchema>;

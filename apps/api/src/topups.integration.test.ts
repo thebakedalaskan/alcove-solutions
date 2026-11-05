@@ -43,6 +43,12 @@ const dueOnly = (...ids: string[]) => h.pool.query(
 /** Seconds until the watcher looks at this top-up again. */
 const nextCheckIn = async (id: string) =>
   Number((await h.pool.query<{ s: string }>('SELECT extract(epoch FROM check_after - now())::text AS s FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.s);
+/** Within 3 seconds of `want`: a pass, a query and a busy test machine all take time. */
+const about = (got: number, want: number) => { expect(got).toBeGreaterThanOrEqual(want - 3); expect(got).toBeLessThanOrEqual(want + 3); };
+/** Seconds until the watcher gives up on this top-up. */
+const giveUpIn = async (id: string) =>
+  Number((await h.pool.query<{ s: string }>('SELECT extract(epoch FROM give_up_at - now())::text AS s FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.s);
+const stateOf = async (id: string) => (await h.pool.query<{ state: string }>('SELECT state FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.state;
 const depositRows = async (ownerId: string) => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1', [ownerId])).rows[0]?.n;
 
 describe('top-ups', () => {
@@ -181,12 +187,12 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 10_000);
   });
 
-  it('keeps a top-up open when a finished swap doesn’t say what came out', async () => {
+  it('treats a finished swap that doesn’t say what came out as arriving, and hides the address', async () => {
     const { api } = await account();
     const t = await api.credits.startTopUp(BASE_USDC);
     const from = h.logs.length;
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '25000000', amountOut: null, intentHashes: ['h25'] });
-    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', address: addr(t), received: null });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'arriving', address: null, memo: null, received: null });
     const warned = logsSince(from).filter((l) => l.level === 40 && l.line.includes('SUCCESS'));
     expect(warned.length).toBe(1);
     expect(warned.filter((l) => l.line.includes('25000000'))).toEqual([]);
@@ -215,15 +221,15 @@ describe('top-ups', () => {
     const t = await api.credits.startTopUp(BASE_USDC);
     await dueOnly(t.id);
     expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
-    expect(await nextCheckIn(t.id)).toBeCloseTo(10, 0);
+    about(await nextCheckIn(t.id), 10);
 
     await h.pool.query("UPDATE deposits SET created_at = now() - interval '30 minutes', check_after = now() WHERE deposit_id = $1", [t.id]);
     await watch(h.deps);
-    expect(await nextCheckIn(t.id)).toBeCloseTo(60, 0);
+    about(await nextCheckIn(t.id), 60);
 
     await h.pool.query("UPDATE deposits SET created_at = now() - interval '3 hours', check_after = now() WHERE deposit_id = $1", [t.id]);
     await watch(h.deps);
-    expect(await nextCheckIn(t.id)).toBeCloseTo(300, 0);
+    about(await nextCheckIn(t.id), 300);
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', address: addr(t) });
   });
 
@@ -267,13 +273,95 @@ describe('top-ups', () => {
       h.oneclick.down(false);
     }
     expect(logsSince(from).some((l) => l.level === 40 && l.line.includes(t.id))).toBe(true);
-    expect(await nextCheckIn(t.id)).toBeCloseTo(60, 0);
+    about(await nextCheckIn(t.id), 60);
     expect((await h.pool.query<{ state: string }>('SELECT state FROM deposits WHERE deposit_id = $1', [t.id])).rows[0]?.state).toBe('waiting');
 
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '15000000', amountOut: '15000000', intentHashes: ['hw15'] });
     await dueOnly(t.id);
     expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
     expect((await api.credits.balance()).balance).toBe(10_000 + 15_000);
+  });
+
+  it('never shows the address again once a payment was seen', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC);
+    const address = addr(t);
+    h.oneclick.set(address, 'PROCESSING');
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'arriving', address: null });
+    await forgetCheck(t.id);
+    h.oneclick.set(address, 'PENDING_DEPOSIT');
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'arriving', address: null });
+    await dueOnly(t.id);
+    await watch(h.deps);
+    expect(await stateOf(t.id)).toBe('arriving');
+  });
+
+  it('fails, never expires, a deposit 1Click says is arriving or short at the deadline', async () => {
+    const { api } = await account();
+    const short = await api.credits.startTopUp(BASE_USDC);
+    const arriving = await api.credits.startTopUp(BASE_USDC);
+    // Nobody opened them since: each is still stored as waiting when the last check finds money on its way.
+    h.oneclick.set(addr(short), 'INCOMPLETE_DEPOSIT');
+    h.oneclick.set(addr(arriving), 'PROCESSING');
+    const ids = [short.id, arriving.id];
+    expect([await stateOf(short.id), await stateOf(arriving.id)]).toEqual(['waiting', 'waiting']);
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = ANY($1)", [ids]);
+    await dueOnly(...ids);
+    const from = h.logs.length;
+    expect(await watch(h.deps)).toEqual({ checked: 2, credited: 0 });
+    expect(await api.credits.topUp(short.id)).toMatchObject({ state: 'failed', address: null });
+    expect(await api.credits.topUp(arriving.id)).toMatchObject({ state: 'failed', address: null });
+    const lines = logsSince(from);
+    for (const id of ids) expect(lines.some((l) => l.level === 50 && l.line.includes(id))).toBe(true);
+    expect(lines.filter((l) => l.line.includes('canary-deposit-address'))).toEqual([]);
+    expect(lines.filter((l) => l.level >= 30 && /expired/.test(l.msg))).toEqual([]);
+  });
+
+  it('waits 6 hours more, once, when 1Click can’t answer at the deadline', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC);
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [t.id]);
+    await dueOnly(t.id);
+    const from = h.logs.length;
+    h.oneclick.down(true);
+    try {
+      expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
+      expect(await stateOf(t.id)).toBe('waiting');
+      about(await giveUpIn(t.id), 6 * 3600);
+      expect(logsSince(from).some((l) => l.level === 40 && l.line.includes(t.id))).toBe(true);
+
+      // Still down 6 hours later: it gives up as before.
+      await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [t.id]);
+      await dueOnly(t.id);
+      expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
+      expect(await stateOf(t.id)).toBe('expired');
+    } finally {
+      h.oneclick.down(false);
+    }
+    expect(logsSince(from).filter((l) => l.line.includes('canary-deposit-address'))).toEqual([]);
+  });
+
+  it('opens at most 5 top-ups waiting for a payment, and 10 a minute', async () => {
+    const { api } = await account();
+    const opened: TopUp[] = [];
+    for (let i = 0; i < 5; i++) opened.push(await api.credits.startTopUp(BASE_USDC));
+    const quotes = h.oneclick.quotes.length;
+    const refused = api.credits.startTopUp(BASE_USDC).catch((e: unknown) => e);
+    const e = await refused;
+    expect(code(e)).toBe('conflict');
+    expect(e instanceof AlcoveApiError ? e.message : '').toBe('You already have 5 top-ups waiting for a payment. Use one of those, or wait for them to expire.');
+    expect(h.oneclick.quotes.length).toBe(quotes);
+    // One of them is on its way now, so there's room for another.
+    const first = opened[0];
+    if (!first) throw new Error('no top-up opened');
+    h.oneclick.set(addr(first), 'PROCESSING');
+    expect(await api.credits.topUp(first.id)).toMatchObject({ state: 'arriving' });
+    expect((await api.credits.startTopUp(BASE_USDC)).state).toBe('waiting');
+    expect(await failure(api.credits.startTopUp(BASE_USDC))).toBe('conflict');
+    expect(await failure(api.credits.startTopUp(BASE_USDC))).toBe('conflict');
+    expect(await failure(api.credits.startTopUp(BASE_USDC))).toBe('conflict');
+    // The eleventh attempt in a minute.
+    expect(await failure(api.credits.startTopUp(BASE_USDC))).toBe('unavailable');
   });
 
   it('credits once when the watcher and the app race', async () => {

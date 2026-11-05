@@ -18,7 +18,8 @@ export interface DepositProvider {
   open(route: DepositRoute): Promise<OpenedDeposit>;
   /**
    * What the provider says has happened to a deposit so far, in Alcove's terms. `was` is the state last recorded,
-   * returned again when the provider says something Alcove can't read. Throws UnavailableError if it won't answer.
+   * returned again for a status Alcove doesn't know; a finished swap it can't read is `arriving`. Throws
+   * UnavailableError if it won't answer.
    */
   check(deposit: OpenedDeposit, was: OpenDepositState): Promise<DepositCheck>;
 }

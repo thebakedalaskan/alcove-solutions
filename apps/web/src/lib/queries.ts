@@ -109,7 +109,8 @@ export const q = {
       if (list.some((t) => t.state === 'credited' && was.some((w) => w.id === t.id))) void client.invalidateQueries({ queryKey: qk.balance });
       return list;
     },
-    refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false)
+    refetchInterval: (query) => (query.state.data?.some(topUpOpen) ? 30_000 : false),
+    retry: false
   }),
   /**
    * One top-up, read again every 5 seconds while money can still arrive. Once it has finished, the list catches up,
