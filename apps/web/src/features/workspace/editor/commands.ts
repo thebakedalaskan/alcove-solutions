@@ -6,7 +6,7 @@ import { Fragment, type Attrs, type Node as PMNode, type NodeType, type Resolved
 import { NodeSelection, Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { addRowAfter, CellSelection, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
 import { newBlockId } from './names';
-import { blockIdOf, headingLevel, indentAttr, LIST_TYPES, MAX_INDENT, schema, textAttr } from './schema';
+import { blockIdOf, headingLevel, indentAttr, isListLine, isPlainLine, lineKind, MAX_INDENT, schema, textAttr } from './schema';
 import type { BlockKind } from './types';
 
 const n = schema.nodes;
@@ -56,13 +56,13 @@ export function scrollerOf(el: HTMLElement): HTMLElement | null {
  */
 export function countLine(counts: number[], node: PMNode): number | null {
   const level = indentAttr(node);
-  if (node.type === n.numbered) {
+  if (lineKind(node) === 'numbered') {
     const next = (counts[level] ?? 0) + 1;
     counts[level] = next;
     counts.fill(0, level + 1);
     return next;
   }
-  counts.fill(0, node.type === n.bullet || node.type === n.todo ? level : 0);
+  counts.fill(0, isListLine(node) ? level : 0);
   return null;
 }
 
@@ -71,70 +71,84 @@ export const isBlank = (node: PMNode): boolean => node.isTextblock && node.textC
 
 /** The kind Turn into and `/` call this block. */
 export function kindOf(node: PMNode): BlockKind | null {
-  switch (node.type.name) {
-    case 'paragraph': return 'paragraph';
+  if (node.type === n.toggle) return 'toggle';
+  if (node.type === n.code) return 'code';
+  if (node.type !== n.line) return null;
+  const kind = lineKind(node);
+  switch (kind) {
     case 'heading': { const l = headingLevel(node); return l === 1 ? 'h1' : l === 2 ? 'h2' : 'h3'; }
-    case 'bullet': return 'bullet';
-    case 'numbered': return 'numbered';
-    case 'todo': return 'todo';
-    case 'toggle': return 'toggle';
-    case 'quote': return 'quote';
-    case 'callout': return 'callout';
-    case 'code': return 'code';
-    default: return null;
+    case 'bullet':
+    case 'numbered':
+    case 'todo':
+    case 'quote':
+    case 'callout': return kind;
+    default: return 'paragraph';
   }
 }
 
-const KINDS: Record<Exclude<BlockKind, 'toggle'>, { type: NodeType; attrs: Attrs }> = {
-  paragraph: { type: n.paragraph, attrs: {} },
-  h1: { type: n.heading, attrs: { level: 1 } },
-  h2: { type: n.heading, attrs: { level: 2 } },
-  h3: { type: n.heading, attrs: { level: 3 } },
-  bullet: { type: n.bullet, attrs: {} },
-  numbered: { type: n.numbered, attrs: {} },
-  todo: { type: n.todo, attrs: { done: false } },
-  quote: { type: n.quote, attrs: {} },
-  callout: { type: n.callout, attrs: { icon: 'bulb' } },
-  code: { type: n.code, attrs: {} }
+type LineBlockKind = Exclude<BlockKind, 'toggle' | 'code'>;
+const isLineKind = (kind: BlockKind): kind is LineBlockKind => kind !== 'toggle' && kind !== 'code';
+
+/** What makes a line each kind. Everything else about a line is absent until it means something. */
+const LINE_KINDS: Record<LineBlockKind, Attrs> = {
+  paragraph: {},
+  h1: { kind: 'heading', level: 1 },
+  h2: { kind: 'heading', level: 2 },
+  h3: { kind: 'heading', level: 3 },
+  bullet: { kind: 'bullet' },
+  numbered: { kind: 'numbered' },
+  todo: { kind: 'todo' },
+  quote: { kind: 'quote' },
+  callout: { kind: 'callout', icon: 'bulb' }
+};
+
+const lineAttrs = (kind: LineBlockKind, id: string | null, indent: number): Attrs => ({
+  ...LINE_KINDS[kind], id, indent: indent > 0 && (kind === 'bullet' || kind === 'numbered' || kind === 'todo') ? indent : null
+});
+
+/** What's left of a line in a block that holds plain text only: the words, tags as what they say, and the words a comment hangs on. */
+const codeContent = (content: Fragment): Fragment => {
+  const out: PMNode[] = [];
+  content.forEach((c) => {
+    const text = c.isText ? c.text ?? '' : c.type === n.hardBreak ? '\n' : textAttr(c, 'name') ?? textAttr(c, 'date') ?? '';
+    if (text) out.push(schema.text(text, c.marks.filter((mark) => mark.type === schema.marks.comment)));
+  });
+  return Fragment.fromArray(out);
 };
 
 /** An empty block of a kind, or holding `content`. */
 export function makeBlock(kind: BlockKind, id: string | null = null, content: Fragment = Fragment.empty, indent = 0): PMNode {
   if (kind === 'toggle') return n.toggle.create({ id, open: true }, [n.toggleSummary.create(null, content), n.toggleBody.create()]);
-  const k = KINDS[kind];
-  return k.type.create({ ...k.attrs, id, ...(LIST_TYPES.has(k.type.name) ? { indent } : {}) }, content);
+  if (kind === 'code') return n.code.create({ id }, codeContent(content));
+  return n.line.create(lineAttrs(kind, id, indent), content);
 }
 
-/** What's left of inline content in a block that holds plain text only. */
-const plainText = (content: Fragment): Fragment => {
-  let text = '';
-  content.forEach((c) => { text += c.isText ? c.text ?? '' : c.type === n.hardBreak ? '\n' : ''; });
-  return text ? Fragment.from(schema.text(text)) : Fragment.empty;
-};
-
-/** Changes a block's kind and keeps its ID, its text and the caret's place in it. */
+/**
+ * Changes a block's kind and keeps its ID, its text and the caret's place in it. From one kind of line to another that's
+ * only an attribute. Only what holds text can turn: nothing else has anything to carry over.
+ */
 export function turnBlock(tr: Transaction, ref: BlockRef, kind: BlockKind): void {
-  if (kindOf(ref.node) === kind) return;
+  const was = kindOf(ref.node);
+  if (was === null || was === kind) return;
   const { node, pos, id } = ref;
   const end = pos + node.nodeSize;
-  const indent = LIST_TYPES.has(node.type.name) ? indentAttr(node) : 0;
+  const indent = isListLine(node) ? indentAttr(node) : 0;
+  if (node.type === n.line && isLineKind(kind)) {
+    tr.setNodeMarkup(pos, null, lineAttrs(kind, id, indent));
+    return;
+  }
   if (node.type === n.toggle) {
     const head = node.child(0), body = node.child(1);
     const offset = tr.selection.$from.parent === head ? tr.selection.$from.parentOffset : 0;
-    const out = [makeBlock(kind, id, kind === 'code' ? plainText(head.content) : head.content)];
-    if (body.content.size > 0) out.push(n.paragraph.create({ id: newBlockId() }, body.content));
+    const out = [makeBlock(kind, id, head.content)];
+    if (body.content.size > 0) out.push(n.line.create({ id: newBlockId() }, body.content));
     tr.replaceWith(pos, end, out);
     tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 1 + offset)));
     return;
   }
-  if (kind === 'toggle') {
-    const offset = tr.selection.$from.parent === node ? tr.selection.$from.parentOffset : 0;
-    tr.replaceWith(pos, end, makeBlock('toggle', id, node.content));
-    tr.setSelection(TextSelection.near(tr.doc.resolve(pos + 2 + offset)));
-    return;
-  }
-  const k = KINDS[kind];
-  tr.setBlockType(pos, end, k.type, { ...k.attrs, id, ...(LIST_TYPES.has(k.type.name) ? { indent } : {}) });
+  const offset = tr.selection.$from.parent === node ? tr.selection.$from.parentOffset : 0;
+  tr.replaceWith(pos, end, makeBlock(kind, id, node.content, indent));
+  tr.setSelection(TextSelection.near(tr.doc.resolve(pos + (kind === 'toggle' ? 2 : 1) + offset)));
 }
 
 /** Puts `nodes` after a block, or in its place. The first one keeps the place's ID when it takes its place. */
@@ -175,8 +189,7 @@ function nextCell(dir: 1 | -1): Command {
 
 /** What Enter makes after a line: lists go on, everything else goes back to text. */
 function splitAs(parent: PMNode): { type: NodeType; attrs: Attrs } {
-  if (LIST_TYPES.has(parent.type.name)) return { type: parent.type, attrs: { indent: indentAttr(parent), done: false, id: null } };
-  return { type: n.paragraph, attrs: { id: null } };
+  return { type: n.line, attrs: isListLine(parent) ? { kind: lineKind(parent), indent: parent.attrs['indent'], id: null } : { id: null } };
 }
 
 export const enter: Command = (state, dispatch, view) => {
@@ -190,7 +203,7 @@ export const enter: Command = (state, dispatch, view) => {
     const ref = selectedBlock(state);
     if (!ref) return false;
     if (dispatch) {
-      const tr = state.tr.insert(ref.pos + ref.node.nodeSize, n.paragraph.create({ id: newBlockId() }));
+      const tr = state.tr.insert(ref.pos + ref.node.nodeSize, n.line.create({ id: newBlockId() }));
       dispatch(caretInto(tr, ref.pos + ref.node.nodeSize + 1).scrollIntoView());
     }
     return true;
@@ -210,7 +223,7 @@ export const enter: Command = (state, dispatch, view) => {
     if (!dispatch) return true;
     if (ref.node.attrs['open'] === true) dispatch(caretInto(state.tr, $from.after() + 1).scrollIntoView());
     else {
-      const tr = state.tr.insert(ref.pos + ref.node.nodeSize, n.paragraph.create({ id: newBlockId() }));
+      const tr = state.tr.insert(ref.pos + ref.node.nodeSize, n.line.create({ id: newBlockId() }));
       dispatch(caretInto(tr, ref.pos + ref.node.nodeSize + 1).scrollIntoView());
     }
     return true;
@@ -228,24 +241,24 @@ export const enter: Command = (state, dispatch, view) => {
   if (!here) return false;
 
   /* --- on its own line is a divider. */
-  if (sel.empty && line.type === n.paragraph && line.textContent === '---' && line.childCount === 1) {
-    tr.replaceWith(here.pos, here.pos + line.nodeSize, [n.divider.create({ id: here.id }), n.paragraph.create({ id: newBlockId() })]);
+  if (sel.empty && isPlainLine(line) && line.textContent === '---' && line.childCount === 1) {
+    tr.replaceWith(here.pos, here.pos + line.nodeSize, [n.divider.create({ id: here.id }), n.line.create({ id: newBlockId() })]);
     dispatch(caretInto(tr, here.pos + 2).scrollIntoView());
     return true;
   }
 
   /* Enter on an empty list line steps out one level, then back to text. */
-  if (sel.empty && LIST_TYPES.has(line.type.name) && isBlank(line)) {
+  if (sel.empty && isListLine(line) && isBlank(line)) {
     const indent = indentAttr(line);
-    if (indent > 0) tr.setNodeAttribute(here.pos, 'indent', indent - 1);
+    if (indent > 0) tr.setNodeAttribute(here.pos, 'indent', indent > 1 ? indent - 1 : null);
     else turnBlock(tr, here, 'paragraph');
     dispatch(tr.scrollIntoView());
     return true;
   }
 
   /* At the very start of a line that isn't a list, the line stays what it is and moves down. */
-  if ($c.parentOffset === 0 && line.content.size > 0 && !LIST_TYPES.has(line.type.name)) {
-    tr.insert(here.pos, n.paragraph.create({ id: newBlockId() }));
+  if ($c.parentOffset === 0 && line.content.size > 0 && !isListLine(line)) {
+    tr.insert(here.pos, n.line.create({ id: newBlockId() }));
     dispatch(tr.scrollIntoView());
     return true;
   }
@@ -286,11 +299,11 @@ export const backspace: Command = (state, dispatch) => {
   }
   const tr = state.tr;
   /* A list line steps out first, then any block goes back to text, then the line joins the one above. */
-  if (LIST_TYPES.has(parent.type.name) && indentAttr(parent) > 0) {
-    if (dispatch) dispatch(tr.setNodeAttribute(ref.pos, 'indent', indentAttr(parent) - 1));
+  if (isListLine(parent) && indentAttr(parent) > 0) {
+    if (dispatch) dispatch(tr.setNodeAttribute(ref.pos, 'indent', indentAttr(parent) > 1 ? indentAttr(parent) - 1 : null));
     return true;
   }
-  if (parent.type !== n.paragraph) {
+  if (!isPlainLine(parent)) {
     if (dispatch) { turnBlock(tr, ref, 'paragraph'); dispatch(tr.scrollIntoView()); }
     return true;
   }
@@ -341,9 +354,9 @@ export const indent = (dir: 1 | -1): Command => (state, dispatch, view) => {
   const tr = state.tr;
   state.doc.nodesBetween(from, to, (node, pos, parent) => {
     if (parent !== state.doc) return false;
-    if (LIST_TYPES.has(node.type.name)) {
+    if (isListLine(node)) {
       const next = Math.max(0, Math.min(MAX_INDENT, indentAttr(node) + dir));
-      if (next !== indentAttr(node)) tr.setNodeAttribute(pos, 'indent', next);
+      if (next !== indentAttr(node)) tr.setNodeAttribute(pos, 'indent', next > 0 ? next : null);
     }
     return false;
   });

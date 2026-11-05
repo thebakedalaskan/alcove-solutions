@@ -11,7 +11,7 @@ import { dateLabel } from './blocks/dates';
 import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
 import type { EditorRuntime } from './runtime';
 import { newBlockId } from './names';
-import { headingLevel, indentAttr, MAX_INDENT, safeHref, schema, textAttr } from './schema';
+import { headingLevel, indentAttr, lineKind, MAX_INDENT, safeHref, schema, textAttr } from './schema';
 import type { InsertAt } from './types';
 
 const n = schema.nodes;
@@ -93,12 +93,15 @@ function inlineText(node: PMNode, rt: EditorRuntime): string {
 function blockText(node: PMNode, rt: EditorRuntime, number: number, marked: boolean): string[] {
   const text = inlineText(node, rt);
   const pad = '  '.repeat(indentAttr(node));
-  switch (node.type.name) {
+  switch (lineKind(node)) {
     case 'heading': return [marked ? `${'#'.repeat(headingLevel(node))} ${text}` : text];
     case 'bullet': return [marked ? `${pad}- ${text}` : text];
     case 'numbered': return [marked ? `${pad}${number}. ${text}` : text];
     case 'todo': return [marked ? `${pad}[${node.attrs['done'] === true ? 'x' : ' '}] ${text}` : text];
     case 'quote': return [marked ? `> ${text}` : text];
+    default: break;
+  }
+  switch (node.type.name) {
     case 'divider': return ['---'];
     case 'toggle': return [inlineText(node.child(0), rt), inlineText(node.child(1), rt)].filter(Boolean);
     case 'table': {
@@ -327,12 +330,13 @@ function lineToBlock(line: string): PMNode {
   const heading = /^(#{1,3})\s+(.*)$/.exec(text);
   const quote = /^>\s?(.*)$/.exec(text);
   const id = newBlockId();
-  if (todo) return n.todo.create({ id, indent, done: Boolean(todo[1]?.trim()) }, content(todo[2] ?? ''));
-  if (list) return (list[1] ? n.numbered : n.bullet).create({ id, indent }, content(list[2] ?? ''));
-  if (heading) return n.heading.create({ id, level: heading[1]?.length ?? 1 }, content(heading[2] ?? ''));
-  if (quote) return n.quote.create({ id }, content(quote[1] ?? ''));
+  const nested = indent > 0 ? indent : null;
+  if (todo) return n.line.create({ id, kind: 'todo', indent: nested, done: todo[1]?.trim() ? true : null }, content(todo[2] ?? ''));
+  if (list) return n.line.create({ id, kind: list[1] ? 'numbered' : 'bullet', indent: nested }, content(list[2] ?? ''));
+  if (heading) return n.line.create({ id, kind: 'heading', level: heading[1]?.length ?? 1 }, content(heading[2] ?? ''));
+  if (quote) return n.line.create({ id, kind: 'quote' }, content(quote[1] ?? ''));
   if (text === '---') return n.divider.create({ id });
-  return n.paragraph.create({ id }, content(line));
+  return n.line.create({ id }, content(line));
 }
 
 /** Plain text. One line goes into the line you're on; several become blocks. */
@@ -343,7 +347,7 @@ export function textToSlice(text: string, $context: ResolvedPos, plain: boolean)
     const one = lines.join('\n');
     return one ? new Slice(Fragment.from(schema.text(one, $context.marks())), 0, 0) : Slice.empty;
   }
-  const blocks = lines.filter((l) => l.trim() !== '').map((l) => (plain ? n.paragraph.create({ id: newBlockId() }, schema.text(l)) : lineToBlock(l)));
+  const blocks = lines.filter((l) => l.trim() !== '').map((l) => (plain ? n.line.create({ id: newBlockId() }, schema.text(l)) : lineToBlock(l)));
   return Slice.maxOpen(Fragment.fromArray(blocks));
 }
 
@@ -388,9 +392,13 @@ export function transformPasted(rt: EditorRuntime, slice: Slice, view: EditorVie
   const reached = new Set<string>();
   const nodes: PMNode[] = [];
   slice.content.forEach((node) => {
-    nodes.push(node.type === n.title ? n.paragraph.create(null, node.content) : node);
+    nodes.push(node.type === n.title ? n.line.create(null, node.content) : node);
     for (const media of mediaIn(node)) if (!known.has(media)) reached.add(media);
   });
   for (const media of reached) rt.props.onAttachMedia?.(media);
-  return new Slice(Fragment.fromArray(nodes), slice.openStart, slice.openEnd);
+  const content = Fragment.fromArray(nodes);
+  /* A heading or a list pasted on a blank line stays what it is, instead of pouring its words into the line. */
+  const { $from, empty } = view.state.selection;
+  const kept = empty && $from.depth === 1 && isBlank($from.parent) && lineKind($from.parent) === null && lineKind(content.firstChild ?? n.line.create()) !== null;
+  return new Slice(content, kept ? 0 : slice.openStart, slice.openEnd);
 }

@@ -8,7 +8,7 @@ import type { Mark, Node as PMNode } from 'prosemirror-model';
 import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { createElement } from 'react';
 import type { EditorRuntime } from '../runtime';
-import { blockIdOf, headingLevel, indentAttr, numberAttr, textAttr, textOf } from '../schema';
+import { blockIdOf, headingLevel, indentAttr, lineKind, numberAttr, textAttr, textOf } from '../schema';
 import { dateLabel } from './dates';
 import { CALLOUT_ICONS, iconNode } from './icons';
 import { MediaBlock, PersonFace } from './Media';
@@ -91,17 +91,21 @@ abstract class BlockFrame {
   }
 }
 
-/** A line of text: paragraph, heading, list line, quote, callout or code. */
+/** What's drawn before a line depends on these, so it only changes when they do. */
+const leadKey = (node: PMNode): string => `${lineKind(node)}:${textAttr(node, 'icon')}`;
+
+/** A line of text, of any kind, or code. A line that changes kind stays the same line: only what's around its text changes. */
 class TextBlock extends BlockFrame implements NodeView {
   contentDOM: HTMLElement;
   private text: HTMLElement;
   private box: HTMLButtonElement | null = null;
   private number: HTMLElement | null = null;
+  private lead: HTMLElement | null = null;
+  private drawnLead: string | null = null;
 
   constructor(node: PMNode, private view: EditorView, private getPos: () => number | undefined, rt: EditorRuntime, decorations: readonly Decoration[]) {
     super(node, rt, textClass(node), decorations);
-    const lead = this.leadFor(node);
-    if (lead) this.dom.prepend(lead);
+    this.setLead(node);
     const col = el('div', 'wb-col');
     this.text = el('div', 'wb-t');
     this.contentDOM = this.text;
@@ -112,8 +116,19 @@ class TextBlock extends BlockFrame implements NodeView {
     this.paint(node, decorations);
   }
 
+  private setLead(node: PMNode): void {
+    const key = leadKey(node);
+    if (key === this.drawnLead) return;
+    this.drawnLead = key;
+    this.lead?.remove();
+    this.box = null;
+    this.number = null;
+    this.lead = this.leadFor(node);
+    if (this.lead) this.dom.prepend(this.lead);
+  }
+
   private leadFor(node: PMNode): HTMLElement | null {
-    switch (node.type.name) {
+    switch (lineKind(node)) {
       case 'bullet': { const mark = solid(el('span', 'wb-mk')); mark.setAttribute('aria-hidden', 'true'); return mark; }
       case 'numbered': this.number = solid(el('span', 'wb-n')); return this.number;
       case 'callout': {
@@ -158,6 +173,7 @@ class TextBlock extends BlockFrame implements NodeView {
       this.dom.classList.replace(was, now);
       this.text.setAttribute('data-ph', placeholderOf(node));
     }
+    this.setLead(node);
     this.frame(node, decorations);
     this.paint(node, decorations);
     return true;
@@ -165,22 +181,22 @@ class TextBlock extends BlockFrame implements NodeView {
 }
 
 const textClass = (node: PMNode): string => {
-  switch (node.type.name) {
-    case 'paragraph': return 'is-p';
+  if (node.type.spec.code) return 'is-code';
+  switch (lineKind(node)) {
     case 'heading': return `is-h${headingLevel(node)}`;
     case 'bullet': return 'is-ul';
     case 'numbered': return 'is-ol';
     case 'todo': return 'is-todo';
     case 'quote': return 'is-quote';
     case 'callout': return 'is-callout';
-    case 'code': return 'is-code';
     default: return 'is-p';
   }
 };
 
 function placeholderOf(node: PMNode): string {
-  switch (node.type.name) {
-    case 'paragraph': return 'Press / for blocks, @ to tag someone';
+  if (node.type.spec.code) return '';
+  switch (lineKind(node)) {
+    case null: return 'Press / for blocks, @ to tag someone';
     case 'heading': return `Heading ${headingLevel(node)}`;
     case 'bullet': case 'numbered': return 'List';
     case 'todo': return 'To do';
@@ -427,7 +443,7 @@ export function nodeViews(rt: EditorRuntime): Record<string, NodeViewConstructor
   const atom: NodeViewConstructor = (node, _, getPos, decorations) => new AtomBlock(node, rt, getPos, decorations);
   return {
     title: () => { const dom = el('h1', 'wd-title'); dom.setAttribute('data-ph', 'Untitled'); return { dom, contentDOM: dom }; },
-    paragraph: text, heading: text, bullet: text, numbered: text, todo: text, quote: text, callout: text, code: text,
+    line: text, code: text,
     toggle: (node, view, getPos, decorations) => new ToggleBlock(node, view, getPos, rt, decorations),
     toggleSummary: toggleText('wb-t', ''),
     toggleBody: toggleText('wb-t wb-body', 'Write inside this toggle'),

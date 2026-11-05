@@ -1,14 +1,16 @@
 /*
  * What a document is made of. Blocks are flat: `doc` is `title block+`, so handles, drag and links stay simple, and
- * lists are flat blocks with an `indent`. `toDOM` here is the clean HTML a document copies out as; on screen every
- * block is drawn by a node view (blocks/views.ts). The Yjs documents the server reads hold these same names and
- * attributes, so changing a name or an attribute's meaning is a change to stored data.
+ * lists are flat lines with an `indent`. Every kind of line is one node, `line`, told apart by its `kind`: turning a line
+ * into another kind only changes an attribute, which merges with whatever anyone is typing in it. Code, toggles and
+ * tables are their own nodes, because they hold something a line can't. `toDOM` here is the clean HTML a document copies
+ * out as; on screen every block is drawn by a node view (blocks/views.ts). The Yjs documents the server reads hold these
+ * same names and attributes, so changing a name or an attribute's meaning is a change to stored data.
  */
 import { Fragment, Schema, type Attrs, type DOMOutputSpec, type Mark, type MarkSpec, type MarkType, type Node as PMNode, type NodeSpec, type NodeType, type TagParseRule } from 'prosemirror-model';
 import { tableNodes } from 'prosemirror-tables';
 
 type NodeName =
-  | 'doc' | 'title' | 'paragraph' | 'heading' | 'bullet' | 'numbered' | 'todo' | 'toggle' | 'toggleSummary' | 'toggleBody' | 'quote' | 'callout'
+  | 'doc' | 'title' | 'line' | 'toggle' | 'toggleSummary' | 'toggleBody'
   | 'divider' | 'code' | 'table' | 'table_row' | 'table_cell' | 'table_header' | 'gallery' | 'file' | 'video' | 'doclink' | 'live' | 'moment'
   | 'unsupported' | 'text' | 'hardBreak' | 'mention' | 'dateChip' | 'docref';
 type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment' | 'unsupportedMark';
@@ -17,13 +19,15 @@ type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highligh
 export const MAX_INDENT = 2;
 
 const id = { id: { default: null } };
-const indent = { indent: { default: 0 } };
 
 const clampIndent = (n: number) => Math.max(0, Math.min(MAX_INDENT, Number.isFinite(n) ? Math.round(n) : 0));
 const indentOf = (el: HTMLElement) => clampIndent(Number(el.getAttribute('data-indent') ?? 0));
 
 /** One flat list line, as clipboard.ts writes it when it flattens a pasted list. */
-const listLine = (kind: string): readonly TagParseRule[] => [{ tag: `div[data-alcove="${kind}"]`, getAttrs: (el) => ({ indent: indentOf(el), done: el.getAttribute('data-done') === 'true' }) }];
+const listLine = (kind: string): TagParseRule => ({
+  tag: `div[data-alcove="${kind}"]`,
+  getAttrs: (el) => ({ kind, indent: indentOf(el) || null, done: kind === 'todo' && el.getAttribute('data-done') === 'true' ? true : null })
+});
 
 const tables = tableNodes({ tableGroup: 'block', cellContent: 'inline*', cellAttributes: {} });
 
@@ -61,28 +65,40 @@ function wholeBlock(name: string): readonly TagParseRule[] {
   }];
 }
 
+/** A line, as it copies out. */
+function lineDOM(node: PMNode): DOMOutputSpec {
+  const kind = lineKind(node);
+  switch (kind) {
+    case 'heading': return [`h${headingLevel(node)}`, 0];
+    case 'bullet':
+    case 'numbered': return ['li', { 'data-list': kind, 'data-indent': String(indentAttr(node)) }, 0];
+    case 'todo': return ['li', { 'data-list': 'todo', 'data-indent': String(indentAttr(node)), 'data-done': String(node.attrs['done'] === true) }, 0];
+    case 'quote': return ['blockquote', 0];
+    case 'callout': return ['aside', { 'data-icon': textAttr(node, 'icon') ?? 'bulb' }, 0];
+    default: return ['p', 0];
+  }
+}
+
 const nodes: Record<NodeName, NodeSpec> = {
   doc: { content: 'title block+' },
   title: { content: 'text*', marks: '', defining: true, toDOM: () => ['h1', 0] },
 
-  /* The first block is what fills a blank line, so it stays first. */
-  paragraph: { group: 'block', content: 'inline*', attrs: id, parseDOM: [{ tag: 'p' }], toDOM: () => ['p', 0] },
-  heading: {
-    group: 'block', content: 'inline*', defining: true, attrs: { ...id, level: { default: 1 } },
-    parseDOM: [{ tag: 'h1', attrs: { level: 1 } }, { tag: 'h2', attrs: { level: 2 } }, { tag: 'h3', attrs: { level: 3 } }, { tag: 'h4', attrs: { level: 3 } }, { tag: 'h5', attrs: { level: 3 } }, { tag: 'h6', attrs: { level: 3 } }],
-    toDOM: (node) => [`h${headingLevel(node)}`, 0]
-  },
-  bullet: {
-    group: 'block', content: 'inline*', defining: true, attrs: { ...id, ...indent }, parseDOM: listLine('bullet'),
-    toDOM: (node) => ['li', { 'data-list': 'bullet', 'data-indent': String(indentAttr(node)) }, 0]
-  },
-  numbered: {
-    group: 'block', content: 'inline*', defining: true, attrs: { ...id, ...indent }, parseDOM: listLine('numbered'),
-    toDOM: (node) => ['li', { 'data-list': 'numbered', 'data-indent': String(indentAttr(node)) }, 0]
-  },
-  todo: {
-    group: 'block', content: 'inline*', defining: true, attrs: { ...id, ...indent, done: { default: false } }, parseDOM: listLine('todo'),
-    toDOM: (node) => ['li', { 'data-list': 'todo', 'data-indent': String(indentAttr(node)), 'data-done': String(node.attrs['done'] === true) }, 0]
+  /*
+   * The first block is what fills a blank line, so it stays first. `kind` is absent on plain text, and every attribute
+   * here is absent until it means something, so a line only stores what makes it what it is.
+   */
+  line: {
+    group: 'block', content: 'inline*',
+    attrs: { ...id, kind: { default: null }, level: { default: null }, indent: { default: null }, done: { default: null }, icon: { default: null } },
+    parseDOM: [
+      { tag: 'p' },
+      { tag: 'h1', attrs: { kind: 'heading', level: 1 } }, { tag: 'h2', attrs: { kind: 'heading', level: 2 } }, { tag: 'h3', attrs: { kind: 'heading', level: 3 } },
+      { tag: 'h4', attrs: { kind: 'heading', level: 3 } }, { tag: 'h5', attrs: { kind: 'heading', level: 3 } }, { tag: 'h6', attrs: { kind: 'heading', level: 3 } },
+      { tag: 'blockquote', attrs: { kind: 'quote' } },
+      { tag: 'aside', getAttrs: (el) => ({ kind: 'callout', icon: el.getAttribute('data-icon') ?? 'bulb' }) },
+      listLine('bullet'), listLine('numbered'), listLine('todo')
+    ],
+    toDOM: lineDOM
   },
   toggle: {
     group: 'block', content: 'toggleSummary toggleBody', defining: true, attrs: { ...id, open: { default: true } },
@@ -91,14 +107,9 @@ const nodes: Record<NodeName, NodeSpec> = {
   },
   toggleSummary: { content: 'inline*', defining: true, parseDOM: [{ tag: 'summary' }], toDOM: () => ['summary', 0] },
   toggleBody: { content: 'inline*', parseDOM: [{ tag: 'div[data-alcove="body"]' }], toDOM: () => ['div', { 'data-alcove': 'body' }, 0] },
-  quote: { group: 'block', content: 'inline*', defining: true, attrs: id, parseDOM: [{ tag: 'blockquote' }], toDOM: () => ['blockquote', 0] },
-  callout: {
-    group: 'block', content: 'inline*', defining: true, attrs: { ...id, icon: { default: 'bulb' } },
-    parseDOM: [{ tag: 'aside', getAttrs: (el) => ({ icon: el.getAttribute('data-icon') ?? 'bulb' }) }],
-    toDOM: (node) => ['aside', { 'data-icon': textAttr(node, 'icon') ?? 'bulb' }, 0]
-  },
   divider: { group: 'block', atom: true, attrs: id, parseDOM: [{ tag: 'hr' }], toDOM: () => ['hr'] },
-  code: { group: 'block', content: 'text*', marks: '', code: true, defining: true, attrs: id, parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }], toDOM: () => ['pre', ['code', 0]] },
+  /* Words a comment hangs on stay on them here too. */
+  code: { group: 'block', content: 'text*', marks: 'comment', code: true, defining: true, attrs: id, parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }], toDOM: () => ['pre', ['code', 0]] },
 
   table: { ...tables.table, attrs: id },
   table_row: tables.table_row,
@@ -210,6 +221,11 @@ export const headingLevel = (node: PMNode): 1 | 2 | 3 => { const l: unknown = no
 export const indentAttr = (node: PMNode): number => clampIndent(numberOf(node.attrs['indent']) ?? 0);
 export const blockIdOf = (node: PMNode): string | null => textOf(node.attrs['id']);
 
+/** What kind of line this is: null for plain text, and for anything that isn't a line. */
+export const lineKind = (node: PMNode): string | null => (node.type === schema.nodes.line ? textAttr(node, 'kind') : null);
+/** Plain text: what Enter makes, and what Backspace turns any other line into before joining it to the one above. */
+export const isPlainLine = (node: PMNode): boolean => node.type === schema.nodes.line && lineKind(node) === null;
+
 /** Only links that are safe to open. A document's text comes from other people. */
 export function safeHref(href: unknown): string | null {
   if (typeof href !== 'string') return null;
@@ -220,13 +236,13 @@ export function safeHref(href: unknown): string | null {
 }
 
 /** What Enter makes after these, what Tab can indent, and what a list line is. */
-export const LIST_TYPES: ReadonlySet<string> = new Set(['bullet', 'numbered', 'todo']);
+const LIST_KINDS: ReadonlySet<string | null> = new Set(['bullet', 'numbered', 'todo']);
+export const isListLine = (node: PMNode): boolean => LIST_KINDS.has(lineKind(node));
 /** The blocks whose text someone could be typing in: they're kept when an undo would otherwise remove them under someone else's words. */
-export const TEXT_NODES: ReadonlySet<string> = new Set(['paragraph', 'heading', 'bullet', 'numbered', 'todo', 'quote', 'callout', 'code', 'toggleSummary', 'toggleBody', 'table_cell', 'table_header', 'title']);
+export const TEXT_NODES: ReadonlySet<string> = new Set(['line', 'code', 'toggleSummary', 'toggleBody', 'table_cell', 'table_header', 'title']);
 
 /**
  * A block that gets an ID: everything but the title, and `unsupported`. That one has to stay exactly as it came. Giving
  * it an ID would make it differ from its element, and y-prosemirror would replace the element it can't read with it.
  */
 export const hasBlockId = (node: PMNode): boolean => node.type.spec.group === 'block' && node.type !== schema.nodes.unsupported;
-

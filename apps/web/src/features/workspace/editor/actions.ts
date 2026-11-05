@@ -77,7 +77,7 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
 
   switch (id) {
     case 'divider': {
-      const at = placeFor(tr, ref, (keep) => [n.divider.create({ id: keep ?? newBlockId() }), n.paragraph.create({ id: newBlockId() })]);
+      const at = placeFor(tr, ref, (keep) => [n.divider.create({ id: keep ?? newBlockId() }), n.line.create({ id: newBlockId() })]);
       view.dispatch(caretInto(tr, at + 2).scrollIntoView());
       view.focus();
       return;
@@ -91,7 +91,7 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
     case 'decided':
     case 'followups': {
       const block = empty && ref.id ? ref.id : newBlockId();
-      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id }), n.paragraph.create({ id: newBlockId() })]);
+      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id }), n.line.create({ id: newBlockId() })]);
       view.dispatch(caretInto(tr, at + 2).scrollIntoView());
       view.focus();
       rt.props.call?.onLive?.(id, block);
@@ -149,7 +149,7 @@ export function pickDocument(rt: EditorRuntime, block: string, doc: string): voi
   const ref = view ? findBlock(view.state.doc, block) : null;
   if (!view || !ref) return;
   const tr = view.state.tr;
-  const at = placeFor(tr, ref, (keep) => [n.doclink.create({ id: keep ?? newBlockId(), doc }), n.paragraph.create({ id: newBlockId() })]);
+  const at = placeFor(tr, ref, (keep) => [n.doclink.create({ id: keep ?? newBlockId(), doc }), n.line.create({ id: newBlockId() })]);
   view.dispatch(caretInto(tr, at + 2).scrollIntoView());
   view.focus();
 }
@@ -164,7 +164,7 @@ export function pickMoment(rt: EditorRuntime, block: string, line: MomentLine): 
   const tr = view.state.tr;
   const at = placeFor(tr, ref, () => [
     n.moment.create({ id, person: line.person?.id ?? null, name: line.person?.name ?? line.name, at: line.at, text: line.text, line: line.id }),
-    n.paragraph.create({ id: newBlockId() })
+    n.line.create({ id: newBlockId() })
   ]);
   view.dispatch(caretInto(tr, at + 2).scrollIntoView());
   view.focus();
@@ -177,7 +177,7 @@ export function addBelow(rt: EditorRuntime, id: string): void {
   const ref = view ? findBlock(view.state.doc, id) : null;
   if (!view || !ref) return;
   const at = ref.pos + ref.node.nodeSize;
-  const tr = view.state.tr.insert(at, n.paragraph.create({ id: newBlockId() }, schema.text('/')));
+  const tr = view.state.tr.insert(at, n.line.create({ id: newBlockId() }, schema.text('/')));
   view.focus();
   view.dispatch(tr.setSelection(TextSelection.create(tr.doc, at + 2)).scrollIntoView());
 }

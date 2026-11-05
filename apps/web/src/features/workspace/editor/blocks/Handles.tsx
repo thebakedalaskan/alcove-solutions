@@ -13,7 +13,7 @@ import { useStore } from '../menus/Menus';
 import { decorChange } from '../plugins/decor';
 import { moveBlock } from '../plugins/reconcile';
 import type { DragState, EditorRuntime } from '../runtime';
-import { headingLevel, indentAttr, LIST_TYPES, schema } from '../schema';
+import { headingLevel, indentAttr, isListLine, lineKind, schema } from '../schema';
 import type { MovingBlock, Point } from '../types';
 
 /** How far the pointer goes before a press on the dots is a drag. */
@@ -127,8 +127,8 @@ function gutterAt(view: EditorView, root: HTMLElement, id: string): { top: numbe
   const dom = ref ? view.nodeDOM(ref.pos) : null;
   if (!ref || !(dom instanceof HTMLElement)) return null;
   const box = dom.getBoundingClientRect(), page = root.getBoundingClientRect();
-  const indented = LIST_TYPES.has(ref.node.type.name) || ref.node.type === schema.nodes.toggle;
-  const lower = ref.node.type === schema.nodes.heading && headingLevel(ref.node) === 1 ? 4 : 1;
+  const indented = isListLine(ref.node) || ref.node.type === schema.nodes.toggle;
+  const lower = lineKind(ref.node) === 'heading' && headingLevel(ref.node) === 1 ? 4 : 1;
   return { top: box.top - page.top + lower, left: box.left - page.left + (indented ? indentAttr(ref.node) * INDENT : 0) };
 }
 

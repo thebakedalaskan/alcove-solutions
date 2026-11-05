@@ -8,7 +8,7 @@ import { nudgeBlock, openLinkField, startComment } from './actions';
 import { backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import type { EditorRuntime } from './runtime';
 import { newBlockId } from './names';
-import { schema } from './schema';
+import { isPlainLine, schema } from './schema';
 import type { BlockKind } from './types';
 
 const m = schema.marks;
@@ -59,9 +59,9 @@ function lineRule(pattern: RegExp, kind: BlockKind): InputRule {
 const dividerRule = new InputRule(/^---\s$/, (state, _, start, end) => {
   const $start = state.doc.resolve(start);
   const ref = blockAt($start);
-  if (!ref || $start.depth !== 1 || ref.node.type !== n.paragraph || end - start !== ref.node.content.size) return null;
+  if (!ref || $start.depth !== 1 || !isPlainLine(ref.node) || end - start !== ref.node.content.size) return null;
   const attrs: Attrs = { id: ref.id };
-  const tr = state.tr.replaceWith(ref.pos, ref.pos + ref.node.nodeSize, [n.divider.create(attrs), n.paragraph.create({ id: newBlockId() })]);
+  const tr = state.tr.replaceWith(ref.pos, ref.pos + ref.node.nodeSize, [n.divider.create(attrs), n.line.create({ id: newBlockId() })]);
   return tr.setSelection(TextSelection.near(tr.doc.resolve(ref.pos + 2)));
 });
 

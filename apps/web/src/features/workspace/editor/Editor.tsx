@@ -180,7 +180,7 @@ function goToEnd(rt: EditorRuntime): void {
     return;
   }
   const end = view.state.doc.content.size;
-  const tr = view.state.tr.insert(end, schema.nodes.paragraph.create({ id: newBlockId() }));
+  const tr = view.state.tr.insert(end, schema.nodes.line.create({ id: newBlockId() }));
   view.dispatch(caretInto(tr, end + 1).scrollIntoView());
 }
 

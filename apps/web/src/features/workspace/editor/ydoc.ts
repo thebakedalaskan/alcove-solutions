@@ -49,7 +49,7 @@ function seedUpdate(): Uint8Array {
   if (seedBytes) return seedBytes;
   const doc = new Y.Doc();
   doc.clientID = SEED_CLIENT;
-  const first = new Y.XmlElement('paragraph');
+  const first = new Y.XmlElement('line');
   first.setAttribute('id', SEED_BLOCK);
   contentOf(doc).insert(0, [new Y.XmlElement('title'), first]);
   seedBytes = Y.encodeStateAsUpdate(doc);

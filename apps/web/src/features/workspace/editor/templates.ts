@@ -5,11 +5,11 @@ import type { BlockJSON } from './types';
 export interface Template { id: string; name: string; sub: string; icon: IconName; blocks: BlockJSON[] }
 
 const text = (s: string) => [{ type: 'text', text: s }];
-const h2 = (s: string): BlockJSON => ({ type: 'heading', attrs: { level: 2 }, content: text(s) });
-const todo: BlockJSON = { type: 'todo' };
-const bullet: BlockJSON = { type: 'bullet' };
-const numbered: BlockJSON = { type: 'numbered' };
-const paragraph: BlockJSON = { type: 'paragraph' };
+const h2 = (s: string): BlockJSON => ({ type: 'line', attrs: { kind: 'heading', level: 2 }, content: text(s) });
+const todo: BlockJSON = { type: 'line', attrs: { kind: 'todo' } };
+const bullet: BlockJSON = { type: 'line', attrs: { kind: 'bullet' } };
+const numbered: BlockJSON = { type: 'line', attrs: { kind: 'numbered' } };
+const paragraph: BlockJSON = { type: 'line' };
 
 export const TEMPLATES: readonly Template[] = [
   { id: 'agenda', name: 'Agenda', sub: 'Topics, owners, what carried over', icon: 'listOrdered', blocks: [h2('From last time'), todo, h2('Today'), numbered, h2('Notes'), paragraph] },
