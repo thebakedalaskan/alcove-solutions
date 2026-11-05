@@ -53,7 +53,7 @@ import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords'
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
-import { overlayOpen, typing, withModShift } from '~/lib/keys';
+import { overlayOpen, typing, withMod, withModShift } from '~/lib/keys';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -964,6 +964,8 @@ function InCall({ session }: { session: CallSession }) {
     const onKey = (e: KeyboardEvent) => {
       // Wherever the caret is, this gives you just the document, and everything back.
       if (withModShift(e) && e.key.toLowerCase() === 'f') { if (keys.current.zenOffered) { e.preventDefault(); toggleZen(); } return; }
+      // Find, from anywhere in the call. With the workspace open it's taken this already, and with words selected the editor has.
+      if (withMod(e) && e.key.toLowerCase() === 'k') { if (!e.defaultPrevented && !overlayOpen()) { e.preventDefault(); work.act.find(); } return; }
       // The call's letters sleep while you're typing, in a field or in a document.
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
@@ -1364,7 +1366,7 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} open={work.open} zen={zenOffered ? zenOn : null}
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} open={work.open} finding={work.finding} zen={zenOffered ? zenOn : null}
               listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(

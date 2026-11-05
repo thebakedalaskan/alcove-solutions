@@ -32,6 +32,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   const [at, setAt] = useState<WorkspacePlace>(kept.document ? { kind: 'document', id: kept.document } : { kind: 'home' });
   const [zen, setZen] = useState(false);
   const [peek, setPeek] = useState(false);
+  /** How many times ⌘K has asked for Find here. */
+  const [finding, setFinding] = useState(0);
   /** The call has said which workspace it uses, for this browser. */
   const [settled, setSettled] = useState(false);
   const asked = useRef(false);
@@ -44,6 +46,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     return {
       say, failed, show, hide,
       toggle: () => { if (openNow.current) hide(); else show(); },
+      /** ⌘K: Find, with the workspace opened for it. */
+      find: () => { show(); setFinding((n) => n + 1); },
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
       setZen: (on: boolean) => { if (on) show(); setZen(on); },
@@ -105,12 +109,12 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     return () => globalThis.document.removeEventListener('keydown', esc, true);
   }, [zen, peek]);
 
-  return { open, mounted, at, zen, peek, settled, act };
+  return { open, mounted, at, zen, peek, settled, finding, act };
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, finding, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
   workspace: CallWorkspace;
   /** You're the call's organizer. */
   organizer: boolean;
@@ -118,6 +122,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   at: WorkspacePlace;
   settled: boolean;
   open: boolean;
+  finding: number;
   /** Just the document: on or off, if it's on offer at all. */
   zen: boolean | null;
   listOff: boolean;
@@ -131,10 +136,10 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open,
+    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open, finding,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [top, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  }), [top, documents, act, organizer, chooser, open, finding, zen, onToggleZen, listOff, listPeek, onToggleList]);
   const switchNowhere = useCallback(() => undefined, []);
   /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;

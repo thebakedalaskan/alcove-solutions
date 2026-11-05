@@ -175,7 +175,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return () => removeEventListener('keydown', keys);
   }, [actions, canChange, newFolder, toggleList, asleep]);
 
-  const find = useFindKeys();
+  const find = useFindKeys(asleep, call?.finding ?? 0);
   useWordsFollow(workspaceId, pass, view);
 
   const { drag, arm, ended } = useRowDrag({

@@ -235,7 +235,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   /* The browser knows before the document's stream does, which only finds out when it next tries to say something. */
   const online = useOnline();
   const offline = status.status === 'offline' || (!online && status.status !== 'failed');
-  const history = useHistory(ws, item, session, changing && !trashed && !offline && status.role !== 'read');
+  const history = useHistory(ws, item, session, item.role === 'edit' && !trashed && !offline && status.role !== 'read');
 
   /* Back from being offline, and everything's in. */
   const wasOffline = useRef(false);

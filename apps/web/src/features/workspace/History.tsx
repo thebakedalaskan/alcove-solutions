@@ -8,10 +8,10 @@
  */
 import { DocCaretStateSchema, errorMessage, firstName, type DocSession, type DocVersionSummary, type NoteSummary, type Person, type WorkspaceItem } from '@alcove/api';
 import { WsCantOpen, WsDocBy, WsFade, WsHistory, WsPage, WsScroll, wsToast, type WsRestoreAsk, type WsVersion } from '@alcove/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { overlayOpen } from '~/lib/keys';
-import { useNow } from '~/lib/live';
+import { sessions, useNow } from '~/lib/live';
 import { q, useRestoreVersion } from '~/lib/queries';
 import { daysFromToday, dayMonth, hm, shortDay } from '~/lib/time';
 import type { Ws } from './context';
@@ -183,17 +183,18 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
   /** The row chosen, until someone chooses: the newest there is. */
   const [on, setOn] = useState<string | null>(null);
   const [ask, setAsk] = useState<WsRestoreAsk | null>(null);
-  const qc = useQueryClient();
   const now = useNow(30_000);
   const { workspaceId, pass, me, say } = ws;
   const restore = useRestoreVersion(workspaceId, item.id, pass);
   const versions = useQuery({ ...q.documentVersions(workspaceId, item.id, pass), enabled: open });
   const notes = useQuery({ ...q.notes(), enabled: open && ws.owner !== null }).data;
   const here = open ? othersIn(ws, session, item.id).map((o) => o.name) : [];
+  const inCall = ws.mode === 'call' ? sessions.call?.session.getSnapshot() : undefined;
+  const call = inCall ? { id: inCall.callId, startedAt: inCall.startedAt } : undefined;
 
   const rows = useMemo(
-    () => rowsOf({ versions: versions.data ?? [], item, me, here, notes: notes ?? [], call: ws.call?.now, now }),
-    [versions.data, item, me, here.join(), notes, ws.call?.now, now]
+    () => rowsOf({ versions: versions.data ?? [], item, me, here, notes: notes ?? [], call, now }),
+    [versions.data, item, me, here.join(), notes, call?.id, now]
   );
   const newest = rows.find((r) => r.version !== null);
   const row = rows.find((r) => r.id === on) ?? newest ?? rows[0];
@@ -281,7 +282,7 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
 
   const note = versions.isError ? errorMessage(versions.error) : versions.data?.length === 0 ? 'Nothing to go back to yet. A version is kept every ten minutes of editing, and when a call ends.' : undefined;
   return {
-    show: useCallback(() => { void qc.invalidateQueries({ queryKey: q.documentVersions(workspaceId, item.id).queryKey }); setOpen(true); }, [qc, workspaceId, item.id]),
+    show: useCallback(() => setOpen(true), []),
     reading,
     page: open && row?.version ? <Version key={row.id} ws={ws} item={item} row={row} /> : null,
     panel: open && row ? (

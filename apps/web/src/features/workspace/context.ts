@@ -26,8 +26,6 @@ export interface WorkspaceCall {
   picker?: ReactNode;
   /** The first name of who chooses the workspace, for anyone else. */
   chooser?: string | undefined;
-  /** Which call this is, so History can say what changed during it. */
-  now?: { id: string; startedAt: string } | undefined;
   /** Just the document, at the far right of a document's head. */
   zen?: { on: boolean; onToggle: () => void } | undefined;
   /** Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). */
@@ -36,6 +34,8 @@ export interface WorkspaceCall {
   say: (toast: WsToastData) => void;
   /** Closed, and kept as it was for next time: its keys sleep. */
   closed: boolean;
+  /** Goes up each time ⌘K in the call asks for Find, which opens the workspace first if it's closed. */
+  finding: number;
 }
 
 export interface WorkspaceProps {

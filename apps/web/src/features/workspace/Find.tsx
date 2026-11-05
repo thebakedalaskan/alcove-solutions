@@ -15,12 +15,15 @@ import { wordsOf } from './words';
 
 /**
  * ⌘K and ?, while a workspace is on screen. ⌘K is on `document`, so it comes after the editor, which takes it with words
- * selected, and before the app's palette, which listens on `window`. With anything else open over the page, it's left alone.
+ * selected, and before the app's palette and the call, which listen on `window`. With anything else open over the page,
+ * it's left alone. `asleep`: closed in a call, which asks for Find itself (`asked` goes up) as it opens the workspace.
  */
-export function useFindKeys() {
+export function useFindKeys(asleep: boolean, asked: number) {
   const [finding, setFinding] = useState(false);
   const [listing, setListing] = useState(false);
+  useEffect(() => { if (asked > 0) setFinding(true); }, [asked]);
   useEffect(() => {
+    if (asleep) return;
     const keys = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (withMod(e) && e.key.toLowerCase() === 'k') {
@@ -35,7 +38,7 @@ export function useFindKeys() {
     };
     document.addEventListener('keydown', keys);
     return () => document.removeEventListener('keydown', keys);
-  }, [finding]);
+  }, [finding, asleep]);
   return { finding, setFinding, listing, setListing };
 }
 

@@ -13,7 +13,7 @@ const wlog = log.child({ component: 'workspace-find' });
 /** How often results are shown as documents arrive. */
 const SHOW_EVERY_MS = 80;
 /** The soonest everything is read again, however much changed: Alcove takes twelve of these a minute from someone. */
-const READ_AGAIN_MS = 15_000;
+const READ_AGAIN_MS = 6_000;
 
 /** The words held so far. `reading`: more are on their way. `failed`: the last read didn't finish, and what's here is what got here. */
 export interface Words { docs: ReadonlyMap<string, SearchDoc>; reading: boolean; failed: boolean }

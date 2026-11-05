@@ -195,6 +195,7 @@ export function WsFind<H extends WsFindHit>({ open, onOpenChange, query, onQuery
   const back = useRef<HTMLElement | null>(null);
   useEffect(() => { list.current?.querySelector('.is-sel')?.scrollIntoView({ block: 'nearest' }); }, [selected]);
   const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
     const n = hits.length;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
