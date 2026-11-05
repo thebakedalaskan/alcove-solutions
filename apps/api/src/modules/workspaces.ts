@@ -27,7 +27,7 @@ import { profile } from './account';
 import { nudgeCall } from './calls';
 import { noteOpened, noteUsed } from './callWorkspace';
 import { personOf, portraitFor } from './portraits';
-import { copyContent, kindOf, startContent } from './workspaceDocuments';
+import { copyContent, kindOf, moveClientTags, startContent } from './workspaceDocuments';
 
 const wlog = log.child({ component: 'workspaces' });
 
@@ -782,6 +782,7 @@ export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8A
     if (!w) continue;
     await moveMember(w, db, from, index, address);
     await moveShares(w, db, from, index, address);
+    await moveClientTags(w.owner, db, from, index);
     await exec(db, `INSERT INTO workspace_authors (owner_id, email_index, made_workspace) SELECT owner_id, $3, made_workspace FROM workspace_authors WHERE owner_id = $1 AND email_index = $2
       ON CONFLICT (owner_id, email_index) DO UPDATE SET made_workspace = workspace_authors.made_workspace OR EXCLUDED.made_workspace`, [workspaceOwner, from, index]);
     await exec(db, 'DELETE FROM workspace_authors WHERE owner_id = $1 AND email_index = $2', [workspaceOwner, from]);

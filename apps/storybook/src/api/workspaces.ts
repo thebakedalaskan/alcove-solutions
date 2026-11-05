@@ -4,11 +4,11 @@
  * is ever in it.
  */
 import {
-  AlcoveApiError, DOC_FRAGMENT, DOC_SEED, type DocLocalCopy, type DocSession, type DocSize, type DocStatus, type DocVersion, type DocVersionSummary, type DocumentRole,
+  AlcoveApiError, DOC_SEED, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
   type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
-import { TAGS, isGone, itemsOnPage } from '@alcove/api/retire';
+import { itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { personAt } from '../world/people';
@@ -106,26 +106,6 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
 }
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
 
-/** The words in a line, or anything else that holds them, as the API's copy reads them. */
-function wordsIn(type: Y.XmlFragment): string {
-  return type.toArray().map((child) => {
-    if (child instanceof Y.XmlText) {
-      let words = '';
-      for (let item = child._start; item; item = item.right) if (!item.deleted && item.content instanceof Y.ContentString) words += item.content.str;
-      return words;
-    }
-    if (!(child instanceof Y.XmlElement)) return '';
-    if (child.nodeName === 'hardBreak') return '\n';
-    if (TAGS.has(child.nodeName)) return String(child.getAttribute('name') ?? child.getAttribute('date') ?? '');
-    return `${wordsIn(child)}\n`;
-  }).join('');
-}
-/** What's on a page as plain text, a line to a block. */
-const pageText = (doc: Y.Doc): string => doc.getXmlFragment(DOC_FRAGMENT).toArray().flatMap((block) => {
-  const words = block instanceof Y.XmlElement && !isGone(block) ? wordsIn(block).trim() : '';
-  return words ? [words] : [];
-}).join('\n');
-
 const docs = new Map<string, Y.Doc>();
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
@@ -139,8 +119,8 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.awareness = new Awareness(this.doc);
     this.ready = Promise.resolve();
   }
-  /** Nothing here waits on Alcove, so a copy is the page as it stands. */
-  localCopy(): DocLocalCopy { return { text: pageText(this.doc), state: Y.encodeStateAsUpdate(this.doc) }; }
+  /** Nothing here waits on Alcove, so nobody has words of their own that it hasn't taken. */
+  unsentCopy(): DocUnsentCopy { return { text: '', token: { vector: Y.encodeStateVector(this.doc), keys: [] } }; }
   size(): DocSize { return { bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) }; }
   /** There's never anything unsent here to let go of. */
   discardUnsaved(): Promise<void> { this.close(); return Promise.resolve(); }
