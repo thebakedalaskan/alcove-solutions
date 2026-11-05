@@ -1,10 +1,12 @@
 import { z } from './zod';
+import { CallWorkspaceSchema, type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './callWorkspace';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import { LiveNotesSchema, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
 import { CallCodeSchema, IDSchema, ISODateSchema, NotesChoicesSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage, type SeriesAnswerPart } from './types';
 import { RungSchema } from './rings';
 import type { CallMoveOut, MoveMedia } from './moves';
 import type { PersonalApi } from './personal';
+import type { DocumentRole } from './workspaces';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -310,6 +312,8 @@ export const CallStateSchema = z.object({
   transcript: z.array(TranscriptLineSchema),
   /** The shared live notes of the part of the call you're in, written only from what you may read. Nothing for someone waiting to be let in. */
   liveNotes: LiveNotesSchema,
+  /** The workspace the call uses, as you may know it. Nothing that names anything for someone waiting to be let in, or who can't open it. */
+  workspace: CallWorkspaceSchema,
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
@@ -559,6 +563,48 @@ export interface CallSession extends LiveStore<CallState> {
    * server has it.
    */
   tickFollowUp(id: string, done: boolean): Promise<void>;
+  /**
+   * Opening Workspace, for anyone in the call: the first time, it settles which workspace the call uses (the meeting's, else
+   * the organizer's most recently used, else a new one in their name), and the next call in a series finds its new agenda.
+   * Resolves with `workspace` up to date, which for someone who can't open it says it's private.
+   */
+  openWorkspace(): Promise<void>;
+  /** Organizer only: what changing the call's workspace would mean, for the sheet that asks. Changes nothing. */
+  previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch>;
+  /** Organizer only: moves the call to a workspace they can edit in. Nobody is interrupted; what's being presented and played stops. */
+  setWorkspace(workspaceId: string): Promise<void>;
+  /** Organizer only: makes a workspace with just them in it, named after the call unless it's given a name, and moves the call to it. */
+  newWorkspace(name?: string | undefined): Promise<void>;
+  /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */
+  bringDocument(documentId: string, brought: boolean): Promise<void>;
+  /** Asks the organizer to share something from the workspace, or takes the ask back. It names nothing. */
+  askForWorkspace(up: boolean): Promise<void>;
+  /** Organizer only: answers an ask by opening one document to whoever asked, until the call ends or Share takes it back. */
+  grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void>;
+  /** Organizer only: says not now to an ask. Whoever asked is told. */
+  declineWorkspaceAsk(askId: string): Promise<void>;
+  /** Anyone who can open it: presents a document or board in the call's workspace to the part of the call they're in. */
+  startPresenting(kind: PresentKind, id: string, section?: number | undefined): Promise<void>;
+  /** Whoever started it, or the organizer. */
+  movePresenting(section: number): Promise<void>;
+  /** Whoever started it, or the organizer. */
+  stopPresenting(): Promise<void>;
+  /** Anyone who can open the document: plays a video in it for the part of the call they're in, from `positionMs`. */
+  startPlaying(documentId: string, mediaId: string, positionMs?: number | undefined): Promise<void>;
+  /** Whoever started it, or the organizer: it holds at `positionMs`. */
+  pausePlaying(positionMs: number): Promise<void>;
+  /** Whoever started it, or the organizer: it carries on from where it holds. */
+  resumePlaying(): Promise<void>;
+  /** Whoever started it, or the organizer: it goes to `positionMs`, playing or held as it was. */
+  seekPlaying(positionMs: number): Promise<void>;
+  /** Whoever started it, or the organizer. Nothing about the video changes. */
+  stopPlaying(): Promise<void>;
+  /** The call's follow-ups as you may read them, kept up to date while something here says it's showing them (`watchFollowUps`). */
+  readonly followUps: LiveStore<CallFollowUps | null>;
+  /** Says this browser is showing the follow-ups, until the function it returns is called. */
+  watchFollowUps(): () => void;
+  /** Ticks a to-do in a document from the follow-ups, or takes the tick back, as ticking it in the document does. Needs `edit`. */
+  tickDocumentFollowUp(tick: DocFollowUpTick): Promise<void>;
   /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */
   catchUp(range: CatchUpRange): Promise<CatchUp>;
   /** Asks about what was said in `range`, for you alone, with the moments the answer comes from. */
