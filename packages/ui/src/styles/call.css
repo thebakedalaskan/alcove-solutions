@@ -497,6 +497,9 @@
 /* All six tabs fit a side panel at the width it starts at. */
 .ic-side-head .ac-tabs { gap: 0; border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
+.ic-side-head .ac-tabs.more-before { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-after { -webkit-mask-image: linear-gradient(270deg, transparent, #000 24px); mask-image: linear-gradient(270deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-before.more-after { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
 .ic-side-head .ac-tab { height: 52px; padding: 0 5px; font-size: 13px; flex: none; touch-action: pan-x; }
 .ic-side-head .ac-tab[aria-selected="true"]::after { left: 4px; right: 4px; bottom: 0; }
 .ic-side-head .ttl { flex: 1; padding-left: 8px; font: 600 14.5px/1.2 var(--font-sans); }
