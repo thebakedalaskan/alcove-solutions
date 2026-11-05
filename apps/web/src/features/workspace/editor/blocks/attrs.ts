@@ -3,7 +3,7 @@
  * really in it. A stored file is known here by its media ID: a document says which files it uses by naming them.
  */
 import type { Node as PMNode } from 'prosemirror-model';
-import { schema, textAttr, textOf } from '../schema';
+import { blockFromJSON, captionKey, textAttr, textOf } from '../schema';
 import type { BlockJSON, LiveLine } from '../types';
 
 /** One picture in a `gallery`. `width` and `height` hold its space until it arrives. */
@@ -15,7 +15,11 @@ const numberOr = (v: unknown): number | null => (typeof v === 'number' && Number
 export function galleryItems(node: PMNode): GalleryItem[] {
   const items: unknown = node.attrs['items'];
   if (!Array.isArray(items)) return [];
-  return items.flatMap((v: unknown) => isRecord(v) ? [{ media: textOf(v['media']), name: textOf(v['name']) ?? '', cap: textOf(v['cap']) ?? '', width: numberOr(v['width']), height: numberOr(v['height']) }] : []);
+  return items.flatMap((v: unknown) => {
+    if (!isRecord(v)) return [];
+    const media = textOf(v['media']);
+    return [{ media, name: textOf(v['name']) ?? '', cap: media ? textAttr(node, captionKey(media)) ?? '' : '', width: numberOr(v['width']), height: numberOr(v['height']) }];
+  });
 }
 
 export function liveLines(node: PMNode): LiveLine[] {
@@ -39,4 +43,4 @@ export function mediaIn(node: PMNode): string[] {
 }
 
 /** The stored files a block uses, for a block on its way to a document that isn't open here. */
-export const mediaOfBlock = (block: BlockJSON): string[] => mediaIn(schema.nodeFromJSON(block));
+export const mediaOfBlock = (block: BlockJSON): string[] => mediaIn(blockFromJSON(block));

@@ -184,9 +184,17 @@ function flatLine(doc: Document, kind: string, indent: number, done: boolean): H
 function flatten(list: HTMLElement, indent: number, out: Element[]): void {
   const doc = list.ownerDocument;
   const base = list.tagName === 'OL' ? 'numbered' : 'bullet';
-  for (const child of [...list.children]) {
+  for (const child of [...list.childNodes]) {
     if (isList(child)) { flatten(child, indent + 1, out); continue; }
-    if (!(child instanceof HTMLElement) || child.tagName !== 'LI') continue;
+    if (!(child instanceof HTMLElement) || child.tagName !== 'LI') {
+      /* What a list holds outside a line still says something. */
+      if (!(child.textContent ?? '').trim()) continue;
+      const stray = flatLine(doc, base, indent, false);
+      if (child instanceof Element && isBlock(child)) stray.append(...child.childNodes);
+      else stray.append(child);
+      out.push(stray);
+      continue;
+    }
     const check = checkOf(child);
     const kind = check === null ? base : 'todo';
     let line: HTMLElement | null = flatLine(doc, kind, indent, check === true);
@@ -290,13 +298,27 @@ function toggles(root: HTMLElement): void {
   }
 }
 
-/** A quote of several paragraphs is several quotes: a block holds one text. */
+/**
+ * A quote of several paragraphs is several quotes: a block holds one text. Words sitting straight in the quote, as they do
+ * in an email, are a quote of their own, and what can't be in a line, like a list or a table, comes out beside it.
+ */
 function quotes(root: HTMLElement): void {
   const doc = root.ownerDocument;
   for (const quote of [...root.querySelectorAll('blockquote')]) {
-    const parts = [...quote.children].filter((c) => TEXT_TAGS.has(c.tagName));
-    if (parts.length === 0) continue;
-    const out = parts.map((part) => { const q = doc.createElement('blockquote'); q.append(...part.childNodes); return q; });
+    const out: Node[] = [];
+    let words: HTMLElement | null = null;
+    for (const child of [...quote.childNodes]) {
+      if (isBlock(child)) {
+        words = null;
+        if (TEXT_TAGS.has(child.tagName)) { const q = doc.createElement('blockquote'); q.append(...child.childNodes); out.push(q); }
+        else out.push(child);
+      } else if (words) words.append(child);
+      else if ((child.textContent ?? '').trim()) {
+        words = doc.createElement('blockquote');
+        words.append(child);
+        out.push(words);
+      }
+    }
     quote.replaceWith(...out);
   }
 }
@@ -354,6 +376,11 @@ export function textToSlice(text: string, $context: ResolvedPos, plain: boolean)
     const one = lines.join('\n');
     return one ? new Slice(Fragment.from(schema.text(one, $context.marks())), 0, 0) : Slice.empty;
   }
+  /* A table cell or a toggle holds one text: lines stay lines inside it, instead of tearing it in two. */
+  if ($context.depth > 1) {
+    const parts = lines.flatMap((l, i) => [...(i > 0 ? [n.hardBreak.create()] : []), ...(l ? [schema.text(l, $context.marks())] : [])]);
+    return new Slice(Fragment.fromArray(parts), 0, 0);
+  }
   const blocks = lines.filter((l) => l.trim() !== '').map((l) => (plain ? n.line.create({ id: newBlockId() }, schema.text(l)) : lineToBlock(l)));
   return Slice.maxOpen(Fragment.fromArray(blocks));
 }
@@ -393,6 +420,26 @@ export function handlePaste(rt: EditorRuntime, view: EditorView, event: Clipboar
   return /^https?:\/\/\S+$/i.test(text) ? pasteLink(view, text) : false;
 }
 
+/**
+ * What's pasted, as what a table cell or a toggle can hold: one text, with its lines as line breaks. Null for what can't go
+ * in a line: a photo goes where the schema can fit it, and cells pasted into a table fill the cells around the caret.
+ */
+function asOneText(content: Fragment): Slice | null {
+  const parts: PMNode[] = [];
+  let fits = true;
+  const add = (node: PMNode) => {
+    if (node.type.spec['tableRole'] !== undefined && node.type !== n.table_cell && node.type !== n.table_header) fits = false;
+    else if (node.isInline) parts.push(node);
+    else if (node.isTextblock) {
+      if (parts.length > 0) parts.push(n.hardBreak.create());
+      node.forEach((child) => { parts.push(child); });
+    } else if (node.isAtom) fits = false;
+    else node.forEach(add);
+  };
+  content.forEach(add);
+  return fits ? new Slice(Fragment.fromArray(parts), 0, 0) : null;
+}
+
 /** A pasted copy of a block is a new block. A title can't be anywhere but first. A file from elsewhere needs attaching here. */
 export function transformPasted(rt: EditorRuntime, slice: Slice, view: EditorView): Slice {
   const known = new Set(allBlocks(view.state.doc).flatMap((b) => mediaIn(b.node)));
@@ -404,8 +451,12 @@ export function transformPasted(rt: EditorRuntime, slice: Slice, view: EditorVie
   });
   for (const media of reached) rt.props.onAttachMedia?.(media);
   const content = Fragment.fromArray(nodes);
-  /* A heading or a list pasted on a blank line stays what it is, instead of pouring its words into the line. */
   const { $from, empty } = view.state.selection;
+  if ($from.depth > 1 && $from.parent.isTextblock) {
+    const text = asOneText(content);
+    if (text) return text;
+  }
+  /* A heading or a list pasted on a blank line stays what it is, instead of pouring its words into the line. */
   const kept = empty && $from.depth === 1 && isBlank($from.parent) && lineKind($from.parent) === null && lineKind(content.firstChild ?? n.line.create()) !== null;
   return new Slice(content, kept ? 0 : slice.openStart, slice.openEnd);
 }

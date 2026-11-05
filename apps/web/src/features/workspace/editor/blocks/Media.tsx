@@ -11,7 +11,7 @@ import { createContext, useContext, useEffect, useRef, useState, type CSSPropert
 import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
-import { numberAttr, textAttr } from '../schema';
+import { captionsOf, numberAttr, textAttr } from '../schema';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
 
 export const RuntimeContext = createContext<EditorRuntime | null>(null);
@@ -49,20 +49,34 @@ function Failed({ name, block }: { name: string; block: string | null }) {
   );
 }
 
-/** A caption is typed in peace and written 300 ms after the last key: it's one field, not a shared line of text. */
-function Caption({ value, onChange }: { value: string; onChange: (cap: string) => void }) {
+/**
+ * A caption is typed in peace and written 300 ms after the last key: it's one field, not a shared line of text. What's
+ * still waiting is written if the block is moved or redrawn first. A photo has a caption once it's uploaded.
+ */
+function Caption({ value, block, media }: { value: string; block: string | null; media: string | null }) {
   const rt = useRuntime();
   const [draft, setDraft] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
-  if (rt.readOnly && !value) return null;
-  const commit = (cap: string) => { clearTimeout(timer.current); if (cap !== value) onChange(cap); };
+  const waiting = useRef<string | null>(null);
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    const cap = waiting.current;
+    if (cap !== null && block && media) queueMicrotask(() => setCaption(rt, block, media, cap));
+  }, [rt, block, media]);
+  if ((rt.readOnly && !value) || !block || !media) return null;
+  const commit = (cap: string) => {
+    clearTimeout(timer.current);
+    waiting.current = null;
+    /* Not straight away: the field losing focus can be ProseMirror taking it off the page, in the middle of drawing. */
+    if (cap !== value) queueMicrotask(() => setCaption(rt, block, media, cap));
+  };
   return (
     <input
       className="wb-cap" type="text" aria-label="Caption" placeholder="Add a caption" readOnly={rt.readOnly} value={draft ?? value}
       onChange={(e) => {
         const cap = e.target.value;
         setDraft(cap);
+        waiting.current = cap;
         clearTimeout(timer.current);
         timer.current = setTimeout(() => commit(cap), 300);
       }}
@@ -72,8 +86,14 @@ function Caption({ value, onChange }: { value: string; onChange: (cap: string) =
   );
 }
 
+/** The shape of a picture, within reason: the numbers come from other people's browsers, and a sliver or a tower hides the page. */
+const shapeOf = (width: number | null, height: number | null): string | undefined => {
+  if (!width || !height || width < 0 || height < 0) return undefined;
+  return String(Math.max(0.25, Math.min(4, width / height)));
+};
+
 /** Space for a picture before it's here, so nothing jumps when it arrives. */
-const holdSpace = (item: GalleryItem): CSSProperties => (item.width && item.height ? { aspectRatio: `${item.width} / ${item.height}` } : {});
+const holdSpace = (item: GalleryItem): CSSProperties => { const shape = shapeOf(item.width, item.height); return shape ? { aspectRatio: shape } : {}; };
 
 /** One photo at full width, or narrower: the handles at its sides pull it in. */
 function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos: () => number | undefined }) {
@@ -121,7 +141,7 @@ function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos
         {failed && <Failed name={failed} block={id} />}
         {!rt.readOnly && <><span className="wb-hand l" aria-hidden="true" onPointerDown={resize} /><span className="wb-hand r" aria-hidden="true" onPointerDown={resize} /></>}
       </div>
-      <Caption value={item.cap} onChange={(cap) => { const pos = getPos(); if (pos !== undefined) setCaption(rt, pos, 0, cap); }} />
+      <Caption value={item.cap} block={id} media={item.media} />
     </figure>
   );
 }
@@ -130,6 +150,8 @@ function Gallery({ node, getPos }: { node: PMNode; getPos: () => number | undefi
   const rt = useRuntime();
   const items = galleryItems(node);
   const first = items[0];
+  /* Photos someone took off the page, with a caption that reached them afterwards: what it says is what's left. */
+  if (textAttr(node, 'gone') !== null) return <p className="wb-left">{captionsOf(node).join(' · ')}</p>;
   if (!first) return <div className="wb-drop"><Icon name="imagePlus" size={20} /><span>Drop photos here, or choose them</span></div>;
   if (items.length === 1) return <Photo node={node} item={first} getPos={getPos} />;
   const up = numberAttr(node, 'up');
@@ -141,7 +163,7 @@ function Gallery({ node, getPos }: { node: PMNode; getPos: () => number | undefi
         return (
           <figure key={item.media ?? `${item.name}-${i}`} className="wb-gi">
             <div className="wb-ph">{url ? <img className="wb-img" src={url} alt={item.cap} draggable={false} /> : <div className="wb-img" />}</div>
-            <Caption value={item.cap} onChange={(cap) => { const pos = getPos(); if (pos !== undefined) setCaption(rt, pos, i, cap); }} />
+            <Caption value={item.cap} block={textAttr(node, 'id')} media={item.media} />
           </figure>
         );
       })}
@@ -186,7 +208,7 @@ function VideoBlock({ node }: { node: PMNode }) {
   const play = media?.playing?.block === id ? media?.playing : null;
   const ready = up === null && !failed;
   return (
-    <div className="wb-vid" style={width && height ? { aspectRatio: `${width} / ${height}` } : undefined}>
+    <div className="wb-vid" style={{ aspectRatio: shapeOf(width, height) }}>
       {url && <img className="wb-img" src={url} alt="" draggable={false} />}
       {ready && !play && (
         <div className="wb-vctl">

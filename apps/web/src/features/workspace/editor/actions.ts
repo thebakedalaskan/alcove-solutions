@@ -8,14 +8,13 @@ import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
-import { galleryItems } from './blocks/attrs';
 import type { SlashId } from './menus/rows';
 import { appear, decorChange, flash, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import { newBlockId } from './names';
 import { retire, seenIn } from './retire';
-import { blockFromJSON, hasBlockId, safeHref, schema } from './schema';
+import { blockFromJSON, captionKey, hasBlockId, learnAttrs, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -283,10 +282,14 @@ export function setBlockAttrs(rt: EditorRuntime, pos: number, attrs: Record<stri
   view.dispatch(history ? tr : tr.setMeta('addToHistory', false));
 }
 
-export function setCaption(rt: EditorRuntime, pos: number, index: number, cap: string): void {
-  const node = rt.view?.state.doc.nodeAt(pos);
-  if (!node) return;
-  setBlockAttrs(rt, pos, { items: galleryItems(node).map((item, i) => (i === index ? { ...item, cap } : item)) }, true);
+/** Writes a photo's caption, on its block wherever that's got to. */
+export function setCaption(rt: EditorRuntime, block: string, media: string, cap: string): void {
+  const view = editing(rt);
+  const ref = view ? findBlock(view.state.doc, block) : null;
+  if (!view || !ref) return;
+  const key = captionKey(media);
+  learnAttrs(ref.node.type, { [key]: cap });
+  view.dispatch(view.state.tr.setNodeAttribute(ref.pos, key, cap === '' ? null : cap));
 }
 
 /** What every `live` block of a kind shows. Any browser in the call can write this: it only changes what's different. */

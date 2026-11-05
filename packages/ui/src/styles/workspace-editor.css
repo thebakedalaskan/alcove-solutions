@@ -120,6 +120,7 @@
 .wb-gal { position: relative; flex: 1; min-width: 0; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .wb-gal.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wb-gi .wb-img { aspect-ratio: 3 / 2; object-fit: cover; }
+.wb-left { flex: 1; min-width: 0; font: 400 15.5px/26px var(--font-sans); color: var(--ink-2); word-break: break-word; }
 .wb-up { position: absolute; left: 10px; bottom: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 11px 0 8px; border-radius: 9px; background: rgba(11, 10, 24, .68); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wb-gal .wb-up { bottom: 36px; }
 .wb-ring { --p: 0; flex: none; width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--sun-glow) calc(var(--p) * 1%), rgb(255 255 255 / .22) 0); -webkit-mask: radial-gradient(circle 5px, transparent 98%, #000 100%); mask: radial-gradient(circle 5px, transparent 98%, #000 100%); }

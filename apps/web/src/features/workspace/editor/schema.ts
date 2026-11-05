@@ -133,7 +133,7 @@ const nodes: Record<NodeName, NodeSpec> = {
   /* What can't be typed: drawn from attributes by React, with handlers from the Editor's props. */
   gallery: {
     group: 'block', atom: true, attrs: { ...block, items: { default: [] }, up: { default: null }, failed: { default: null }, width: { default: 100 } },
-    parseDOM: wholeBlock('gallery'), toDOM: (node) => copied(node, 'p', listOf(node, 'items', 'cap').join(' · '))
+    parseDOM: wholeBlock('gallery'), toDOM: (node) => copied(node, 'p', captionsOf(node).join(' · '))
   },
   file: {
     group: 'block', atom: true, attrs: { ...block, media: { default: null }, name: { default: '' }, size: { default: null }, up: { default: null }, failed: { default: null } },
@@ -300,8 +300,12 @@ export const lineKind = (node: PMNode): string | null => (node.type === schema.n
 /** Plain text: what Enter makes, and what Backspace turns any other line into before joining it to the one above. */
 export const isPlainLine = (node: PMNode): boolean => node.type === schema.nodes.line && lineKind(node) === null;
 
+/** A photo's caption is an attribute of its own, so two people captioning two photos of a gallery don't write over each other. */
+export const captionKey = (media: string): string => `cap:${media}`;
+export const captionsOf = (node: PMNode): string[] => Object.entries(node.attrs).flatMap(([name, value]: [string, unknown]) => (name.startsWith('cap:') && typeof value === 'string' && value !== '' ? [value] : []));
+
 /** A block that has left the page and has no words of anyone's in it: it stays in the document, drawn as nothing. */
-export const isGone = (node: PMNode): boolean => textAttr(node, 'gone') !== null && node.textContent === '';
+export const isGone = (node: PMNode): boolean => textAttr(node, 'gone') !== null && node.textContent === '' && captionsOf(node).length === 0;
 
 /** Only links that are safe to open. A document's text comes from other people. */
 export function safeHref(href: unknown): string | null {
