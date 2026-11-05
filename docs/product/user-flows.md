@@ -109,9 +109,12 @@ Each card on Home does one thing, and each says what will appear in it before th
   last call). Each names the call it came from, which opens its notes, and the moment it was said, which
   opens them at that line. **N calls** opens the series. Before a series has notes, the card says nothing
   carries over yet.
-- **Waiting on you**, newest first, four at a time: decisions the notes proposed in any note you have that nobody
-  has confirmed (**Confirm** or **It wasn’t decided**, each with **Undo**); follow-ups the notes suggest are yours,
-  or that someone gave you (it says who), with **Take it on**, which puts it in your follow-ups, or **Not mine**,
+- **Waiting on you**, newest first, four at a time: decisions proposed in any note you organized or were invited to
+  that nobody has confirmed, by the notes or by someone else (**Confirm** or **It wasn’t decided**, each with **Undo**; on
+  someone else's note, **It wasn’t decided** says so for everyone and the organizer settles it, and it stops waiting on
+  you); on your own notes, decisions someone confirmed that someone else says weren't decided (**Keep it confirmed** or
+  **It wasn’t decided**), each with **What was said** and anything to be careful of; follow-ups the notes suggest are yours, that someone gave you (it says
+  who) or that changed since you took them on, with **I’ll do it**, which puts it in your follow-ups, or **Not mine**,
   which leaves it with nobody (then **It’s mine** gives it back to you, taken on); and notes someone shared with you in
   the last 7 days (**Read the notes**). What you answer stays where it is, saying what you did, until you leave
   Home. Each names the note it came from, which opens at the moment it was said when the notes know it.
@@ -141,8 +144,10 @@ Each card on Home does one thing, and each says what will appear in it before th
   it away in this browser.
 
 Waiting on you and your follow-ups come from the inbox (`GET /v1/notes/inbox`): the follow-ups for you that
-aren't done (taken on, or only suggested) and the decisions in written notes that nobody has confirmed or
-rejected, newest note first. Notes someone else shared with you count; ones you removed don't.
+aren't done (taken on, or only suggested); the decisions in written notes that nobody has confirmed or rejected
+and that you can confirm, unless it's you who proposed one or said it wasn't decided; and, in notes you organized,
+confirmed decisions someone disputes; newest note first. Follow-ups in notes someone else shared with you count; ones
+you removed don't.
 
 Before your first notes, Home starts you off: the line to start your first call (until one is scheduled, which
 is then Up next), the example note, marked as an example and never counted (it opens in full), an empty **Your
@@ -461,17 +466,26 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 - A call with breakout rooms has a **Breakout rooms** part under its own notes, one section per room, closed until
   opened: the room's name, who was in it and for how long, and inside, its own summary, decisions, open
   questions, follow-ups and chapters, written from what was said in that room alone, and what was said there.
-  A room where nothing was said says so. Everyone who has the notes reads every room's section, and confirms,
-  answers, takes on and ticks off what a room's notes say as they do the call's; a room's lines are corrected like
+  A room where nothing was said says so. Everyone who has the notes reads every room's section, and proposes,
+  confirms, answers, takes on and ticks off what a room's notes say as far as they can the call's; a room's lines are corrected like
   the call's, and writing the notes again writes each room's section again too, keeping what people settled.
   Questions about the notes cover the rooms. Deleting the notes deletes the rooms' sections with them.
-- What the notes heard is a proposal until people say so. Each decision shows **Proposed by the notes** until
-  someone who has the notes taps **Confirm** (or **It wasn’t decided**); it says who did, and can be reworded,
-  undone or reopened. A confirmed decision that a later one replaced can be marked **It no longer holds**. An
-  open question shows **Not answered yet** until someone taps **It was answered**. A follow-up shows who the
-  notes suggest, dashed, until that person taps **Take it on**. Its menu gives it to anyone who has the notes
-  (giving it to yourself takes it on), sets a due date, rewords it, and lists every change: who did what, and
-  when.
+- What the notes heard is a proposal until people say so, and each entry shows **What was said** behind it, with
+  anything to be careful of: nothing said backs it, someone said otherwise, it was hard to hear, or a line behind it or
+  its own words changed since. Each decision says where it stands: **Proposed**, **Confirmed**, **Not decided** or **No longer
+  holds**, and who said so. The organizer and anyone invited can **Confirm** what's proposed, except whoever proposed it
+  or last reworded it; someone given the notes afterwards can propose and say what they think, but not confirm. Only
+  the organizer can say **It wasn’t decided**, and anyone else saying so flags it, in their name, for the organizer to
+  settle. Whoever confirmed a decision, or the organizer, can undo that or mark **It no longer holds**. New words on a
+  confirmed decision need someone else to confirm them. If what you're agreeing to changed after you opened it, nothing
+  is saved and the page shows what it says now. An open question shows **Not answered yet** until someone taps **It was
+  answered**. A follow-up shows who the notes suggest, dashed, and any date as only suggested, until that person taps
+  **I’ll do it**, or **Not mine**, which leaves it with nobody. Its menu lets the organizer or the person it's for
+  give it to anyone who has the notes (giving it to yourself takes it on); once someone has taken it on, only they or
+  the organizer can reword, date or tick it, and the organizer doing so asks them again. **History** on each lists every
+  change: who did what, when, and what the words were.
+- **Propose a decision** and **Add a follow-up** add what the notes missed, in your words, to the call's notes or a
+  breakout room's section, and the plus on a transcript line starts one from what was said there.
 - A call's notes say when it's in a series: **Every Tuesday** when the last three calls in it were a week apart,
   otherwise **In a series**. Beside the note are the series' other calls (the newest three, with the start of
   each summary), how much is still open across them and, for the organizer, the next call; **All** opens the
