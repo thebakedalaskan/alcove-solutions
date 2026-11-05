@@ -74,6 +74,15 @@ const EnvSchema = z.object({
   NVIDIA_ROOT_CA: RootCa('NVIDIA_ROOT_CA', NVIDIA_NRAS_ROOT_CA),
   /** At most this many shared-screen frames in one call's notes: about one a minute for four hours. Then screen notes turn off for everyone, saying why. */
   SCREEN_FRAMES_MAX: z.coerce.number().int().min(1).max(10_000).default(240),
+  /** How long a browser's stream of rings lasts, at most, before it opens a new one: under Cloud Run's 300-second request timeout. */
+  RING_STREAM_SECONDS: z.coerce.number().int().min(1).max(280).default(240),
+  /** How often a live stream says it's still there, and checks who's reading it, in ms. */
+  LIVE_PING_MS: z.coerce.number().int().min(10).default(25_000),
+  /** How long the API keeps a live stream open before letting go, for the browser to open it again: inside Cloud Run's request timeout, so nothing is cut. */
+  LIVE_STREAM_MS: z.coerce.number().int().min(10).default(280_000),
+  /** How often the hub checks its LISTEN connection is alive, in ms, and how long that connection has to answer. */
+  HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
+  HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

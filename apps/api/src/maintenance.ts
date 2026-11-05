@@ -5,7 +5,10 @@
  *  - retries failed object deletions;
  *  - removes objects older than 24 hours that nothing references (audio or frame writes whose SQL commit failed);
  *  - writes notes still waiting (after a restart, or once a retry is due);
- *  - deletes moves to other devices that ran out.
+ *  - deletes moves to other devices that ran out;
+ *  - deletes rings a day after they ran out, in calls that went on that long;
+ *  - deletes for good what's been in a workspace's Trash for 30 days, and ends seats whose call is over;
+ *  - deletes live notes a call left behind when a release from before them ended it.
  */
 import { z } from 'zod';
 import type { Deps } from './context';
@@ -13,7 +16,10 @@ import { exec, rows } from './db';
 import { errorMessage } from '@alcove/api';
 import { log } from './log';
 import { reconcile } from './modules/calls';
+import { sweep as sweepLiveNotes } from './modules/liveNotes';
 import { sweep as sweepMoves } from './modules/moves';
+import { sweep as sweepRings } from './modules/rings';
+import { sweepSeats, sweepTrash } from './modules/workspaces';
 import { work } from './modules/writer';
 import { sweepSessions } from './sessions';
 
@@ -21,7 +27,7 @@ const mlog = log.child({ component: 'maintenance' });
 
 const ORPHAN_AGE_MS = 24 * 60 * 60_000;
 
-export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
+export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs?: number } = {}) {
   const sessions = await sweepSessions(d);
   const receipts = await exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`);
 
@@ -51,5 +57,11 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number } = {}) {
   const notes = await work(d);
   const calls = await reconcile(d);
   const moves = await sweepMoves(d);
-  return { sessions, receipts, retried, orphans, notes, calls, moves };
+  const rings = await sweepRings(d);
+  const liveNotes = await sweepLiveNotes(d);
+  // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
+  const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
+  const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs));
+  const seats = await quietly('seats', () => sweepSeats(d));
+  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats };
 }

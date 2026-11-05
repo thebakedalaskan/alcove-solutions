@@ -10,7 +10,7 @@ import { Avatar, Button, Card, EmptyState, Faces, Icon, IconButton, Notice, Popo
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
-import { useOpenComposer } from '~/features/shell/context';
+import { useCallFlow } from '~/features/shell/context';
 import { sameEmail } from '~/lib/people';
 import { q, useGroups } from '~/lib/queries';
 import { addressOnly, groupCalls, groupLine, listed } from './data';
@@ -137,7 +137,7 @@ function GroupRow({ group, groups, calls, person, open, made, onFocused, onToggl
   onFocused: () => void;
   onToggle: () => void; change: (how: (now: Group[]) => Group[]) => void; onDelete: () => void;
 }) {
-  const openComposer = useOpenComposer();
+  const flow = useCallFlow();
   const toast = useToast();
   const [renaming, setRenaming] = useState(false);
   const [picking, setPicking] = useState(false);
@@ -191,7 +191,7 @@ function GroupRow({ group, groups, calls, person, open, made, onFocused, onToggl
             <PeoplePicker open={picking} onOpenChange={setPicking} title={`Add people to ${group.name}`} cta="Add" skip={group.emails} note={PRIVATE} onDone={add}
               anchor={<Button size="sm" icon="addUser" disabled={full}>Add people</Button>} />
             <span className="sp" />
-            <IconButton icon="video" size={17} label={`Start a call with ${group.name}`} aria-haspopup="dialog" onClick={() => openComposer({ people })} />
+            <IconButton icon="video" size={17} label={`Start a call with ${group.name}`} aria-haspopup="dialog" onClick={() => flow.start({ people, name: group.name })} />
             <IconButton icon="pen" size={17} label={`Rename ${group.name}`} onClick={() => setRenaming(true)} />
             <Popover open={deleting} onOpenChange={setDeleting} label={`Delete ${group.name}`} align="end" className="w-[300px]"
               anchor={<IconButton icon="trash" size={17} label={`Delete ${group.name}`} />}>

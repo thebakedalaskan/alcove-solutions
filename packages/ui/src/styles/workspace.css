@@ -1,11 +1,11 @@
 /*
- * The workspace: documents and folders beside a page, in a call and in the app. It follows the person's theme, like
- * the call's side panel. Classes: ws- the pane and what floats over the call, wt- the list, wd- a document, wm- menus,
+ * The workspace: documents and folders beside a page, in a call and in the app. It follows the person's theme in the
+ * app, and in a call it's night like the rest of the call. Classes: ws- the pane and what floats over the call, wt- the list, wd- a document, wm- menus,
  * wv- popovers, wp- presenting, wh- history, wl- the call's live pages. A document's blocks and the editor's menus are
  * in workspace-editor.css; the call's frame, tiles and panels in call.css. On a phone (640px and under) popovers become
  * sheets and the list goes full width, by themselves: nothing has to say so.
  */
-.wd-stop kbd { font-family: var(--font-mono); }
+.wd-stop kbd { font-family: var(--font-sans); }
 :where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar, .ws-ncard) .ac-i { flex: none; display: block; }
 .wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wp-notes:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
 
@@ -37,7 +37,7 @@
 .wt-ib { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
 .wt-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; scrollbar-width: thin; }
 .wt-scroll:first-child { padding-top: 6px; }
-.wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); user-select: none; }
+.wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); user-select: none; }
 .wt-sec.is-into { background: var(--horizon-soft); color: var(--horizon); }
 .wt-r { position: relative; display: flex; align-items: center; height: 32px; padding-left: calc(var(--d) * 16px); border-radius: 9px; color: var(--ink-2); user-select: none; transition: background-color var(--duration-1); }
 .wt-r:hover { background: var(--sunk); }
@@ -52,7 +52,7 @@
 .wt-r[data-area="tree"]:not(:has(.wt-tw)) .wt-open { padding-left: 20px; }
 .wt-open .ac-i { color: var(--ink-3); }
 .wt-open .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-.wt-c { flex: none; margin-left: auto; padding: 2px 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-3); font: 500 11.5px/1.1 var(--font-mono); }
+.wt-c { flex: none; margin-left: auto; padding: 2px 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-3); font: 500 11.5px/1.1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wt-r.is-live .wt-open .ac-i { color: var(--rec); }
 .wt-r.is-live.is-quiet .wt-open .ac-i { color: var(--ink-3); }
 .wt-f { flex: none; display: inline-flex; padding: 0 6px 0 0; border-radius: 6px; }
@@ -120,7 +120,7 @@
 .ws-pop { z-index: 60; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); outline: none; font: 400 15px/22px var(--font-sans); animation: ws-pop var(--duration-1) var(--ease-out); transform-origin: var(--radix-popover-content-transform-origin, top left); }
 .wm { width: 264px; padding: 6px; outline: none; }
 .wm-list { position: relative; max-height: 352px; overflow: auto; scrollbar-width: thin; }
-.wm-h { padding: 10px 10px 5px; font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.wm-h { padding: 10px 10px 5px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
 .wm-s { height: 1px; margin: 5px 8px; background: var(--line); }
 .wm-x { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .wm-r { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px; border-radius: 10px; text-align: left; color: var(--ink); font: 500 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
@@ -157,7 +157,7 @@
 .wm-in { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
 .wm-in:focus { box-shadow: inset 0 0 0 2px var(--focus); }
 .wm-in::placeholder { color: var(--ink-3); }
-.ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--sun); color: var(--on-sun); }
+.ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
 .wv-th { display: flex; align-items: center; gap: 8px; }
 .wv-th .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px; border-radius: 6px; background: var(--hl); font-size: 13px; line-height: 1.4; color: var(--ink-2); }
 .wv-m { display: flex; gap: 8px; }
@@ -211,7 +211,7 @@
 .ws-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
 .ws-toasts { position: fixed; z-index: 70; left: 16px; bottom: 16px; display: grid; gap: 8px; justify-items: start; max-width: 300px; pointer-events: none; }
 .ac-toast.ws-toast { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 7px 8px 7px 14px; border-radius: var(--radius-lg); background: var(--stage-ink); color: var(--stage); font: 500 14px/1.3 var(--font-sans); box-shadow: 0 18px 40px -14px rgb(0 0 0 / .7); pointer-events: auto; }
-.ac-toast.ws-toast > .ac-i { color: #C4461B; }
+.ac-toast.ws-toast > .ac-i { color: #A63D02; }
 .ac-toast.ws-toast > span { padding-right: 4px; }
 .ac-toast.ws-toast button { flex: none; height: 30px; padding: 0 11px; border-radius: var(--radius-pill); font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) 10%, transparent); white-space: nowrap; }
 .ac-toast.ws-toast button:hover { background: color-mix(in srgb, var(--stage) 18%, transparent); }
@@ -252,7 +252,7 @@
 .wp-sec .ac-eyebrow { font-size: 11px; color: var(--ink-3); }
 .wp-now { display: flex; gap: 12px; align-items: flex-start; }
 .wp-now .n { flex: none; font: 450 30px/1 var(--font-display); }
-.wp-now .n small { display: block; margin-top: 4px; font: 500 11px/1 var(--font-mono); color: var(--ink-3); }
+.wp-now .n small { display: block; margin-top: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .wp-now > div { min-width: 0; overflow-wrap: anywhere; }
 .wp-now b { display: block; font: 600 14.5px/1.25 var(--font-sans); }
 .wp-now div small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
@@ -302,7 +302,7 @@
 .wl-r:hover { background: var(--sunk); }
 .wl-r .mk { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
 .wl-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wl-at { flex: none; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-mono); }
+.wl-at { flex: none; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wl-at:hover { background: var(--sun-soft); color: var(--sun-text); }
 .wl-todo { display: flex; align-items: flex-start; gap: 4px; margin: 0 -8px; padding: 7px 8px; border-radius: 9px; font: 500 15px/1.4 var(--font-sans); }
 .wl-todo:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
@@ -318,7 +318,7 @@
 .wl-due { flex: none; width: 76px; text-align: right; font: 500 12.5px/1.7 var(--font-sans); color: var(--ink-3); }
 .wl-seg { display: inline-flex; gap: 2px; margin: 14px 0 8px; padding: 3px; border-radius: 10px; background: var(--sunk); }
 .wl-seg button { height: 28px; padding: 0 10px; border-radius: 7px; color: var(--ink-2); font: 600 13px/1 var(--font-sans); }
-.wl-seg button span { margin-left: 6px; color: var(--ink-3); font: 500 11.5px/1 var(--font-mono); }
+.wl-seg button span { margin-left: 6px; color: var(--ink-3); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wl-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
 .wl-add { display: flex; align-items: center; gap: 9px; margin: 8px -8px 0; padding: 0 8px; height: 38px; border-radius: 9px; color: var(--ink-3); }
 .wl-add:focus-within { background: var(--sunk); }

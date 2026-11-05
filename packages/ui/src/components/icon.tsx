@@ -1,27 +1,28 @@
 import {
-  ALargeSmall, AudioWaveform, BringToFront, ChevronLeft, Diamond, Frame, Group, LayoutTemplate, Map as MapIcon, MessageCircle, MoveUpRight, Redo2, SendToBack, Shapes, Spline, StickyNote, Vote, Workflow,
+  ALargeSmall, AudioWaveform, BringToFront, ChevronLeft, Diamond, Frame, Group, LayoutTemplate, Map as MapIcon, MessageCircle, MoveUpRight, Redo2, SendToBack, Shapes, Spline, Vote, Workflow,
   ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
   House, KeyRound, Languages, LayoutGrid, Link, Lock, LogOut, Mail, MessageCircleQuestion, MessageSquare, Mic, MicOff, MonitorUp,
   NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Repeat, Search, Send, Server, Share, ShieldCheck,
   Smartphone, Split, Square, Trash2, UserPlus, Users, Video, VideoOff, Volume2, Wifi, X, type LucideIcon, type LucideProps,
   AppWindow, AudioLines, Captions, ChevronUp, Eye, FileText, Focus, Globe, GripVertical, HistoryIcon, LayoutDashboard, LayoutPanelLeft, Maximize2,
   Minimize2, Monitor, MonitorOff, MoveDiagonal2, NotebookPen, RotateCcw, SendHorizontal, Shuffle, Timer, Hash, ChevronsUpDown, PanelLeft, WifiOff,
+  Bookmark, BookmarkCheck,
   CircleDot, Settings, BadgeCheck, UserCheck, CircleCheck, Compass, EyeOff, Keyboard, PictureInPicture2, Presentation, RotateCw, Volume1,
   VolumeX, TriangleAlert, SlidersHorizontal, SkipForward, PictureInPicture, Scan, StepBack, StepForward, ZoomIn, ZoomOut, Bell, BellOff, CircleUserRound,
   Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload, AtSign, Bold, BuildingComplex, CloudUpload, CodeXml,
   CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
   ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
-  Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type
+  Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall
 } from 'lucide-react';
 import { cn } from '../cn';
 
 /* One icon family: Lucide, 1.8 stroke, round caps and joins, sized by the caller. Filled glyphs say so. */
 const ICONS = {
-  stickyNote: StickyNote, shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
+  shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
   spline: Spline, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, map: MapIcon, 
   workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform, 
   chevronLeft: ChevronLeft, bringToFront: BringToFront, sendToBack: SendToBack,
-  plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
+  moment: AudioLines, plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
   screen: MonitorUp, chat: MessageSquare, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
   check: Check, x: X, right: ArrowRight, left: ArrowLeft, down: ChevronDown, chevron: ChevronRight, link: Link, copy: Copy,
   cal: Calendar, clock: Clock, lock: Lock, key: KeyRound, trash: Trash2, more: Ellipsis, play: Play, speaker: Volume2,
@@ -34,6 +35,7 @@ const ICONS = {
   sendLine: SendHorizontal, eye: Eye, hash: Hash, chevronsUpDown: ChevronsUpDown, panel: PanelLeft, wifiOff: WifiOff, recordDot: CircleDot,
   settings: Settings, badgeCheck: BadgeCheck, userCheck: UserCheck, circleCheck: CircleCheck, repeat: Repeat, compass: Compass, eyeOff: EyeOff,
   keyboard: Keyboard, pip: PictureInPicture2, presenter: Presentation, speakerLow: Volume1, speakerOff: VolumeX, retry: RotateCw, alert: TriangleAlert,
+  bookmark: Bookmark, bookmarked: BookmarkCheck,
   sliders: SlidersHorizontal, live: SkipForward, popIn: PictureInPicture, zoomIn: ZoomIn, zoomOut: ZoomOut, whole: Scan, stepBack: StepBack,
   stepForward: StepForward, user: CircleUserRound, bell: Bell, bellOff: BellOff, palette: Palette, coins: Coins, mapPin: MapPin, pointer: MousePointer2,
   pointerOff: MousePointer2Off, undo: Undo2, eraser: Eraser, hardDrive: HardDrive, cloudOff: CloudOff, upload: Upload, at: AtSign, bold: Bold,
@@ -42,7 +44,7 @@ const ICONS = {
   gripVertical: GripVertical, h1: Heading1, h2: Heading2, h3: Heading3, highlighter: Highlighter, image: Image, imagePlus: ImagePlus, info: Info, italic: Italic,
   link2: Link2, list: List, listChecks: ListChecks, listOrdered: ListOrdered, locate: LocateFixed, megaphone: Megaphone, message: MessageSquareText, minus: Minus,
   moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, table: Table,
-  textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type
+  textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type, calClock: CalendarClock, stickyNote: StickyNote, hourglass: Hourglass, phoneCall: PhoneCall
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);

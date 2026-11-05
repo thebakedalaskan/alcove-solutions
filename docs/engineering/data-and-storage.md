@@ -12,24 +12,34 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 
 | Table | Clear columns | Ciphertext or keyed hash |
 | --- | --- | --- |
-| `owners` | `owner_id`, `stored_bytes`, `version`, `created_at` | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC) |
+| `owners` | `owner_id`, `stored_bytes`, `version`, `created_at`, `series_turn_until` (set only while a change to one of the account's series goes through, so changes take turns; [below](#writes-reads-and-deletes)) | `root_envelope` (`Kowner` under `KMASTER`), `root_check` (HMAC). An account or a [workspace](#workspaces) |
 | `identities` | owner, created and last used | `subject_index` (primary key), `email_index` (the provider's current email, updated at each sign-in) |
 | `sessions` | owner, provider (`google`, `microsoft`, `sso`), created, last seen, expiry | `session_hash` (SHA-256 of the cookie's ID) |
-| `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`), current revision, `deleted_at`, `version` | — |
+| `items` | owner, item ID, `kind` (`profile`, `meeting`, `note`, `connection`, `series`), current revision, `deleted_at`, `version` | — |
 | `revisions` | owner, item, revision, parent revision, `created_at` | `key_envelope`, `manifest_ciphertext` |
 | `operations` | owner, operation ID, method, completion time | `request_commitment` (HMAC), `result_ciphertext` |
 | `transcript_clips` | owner, note item, when it was heard (so a live view, and the next clip's language and prompt, read only the newest clips; the recording's pieces already show when it was recorded) | `clip_tag` (keyed hash of the clip's segment, start and speaker), `clip_ciphertext` (its segment; in a call, the participant ID of whose speech it was; its transcript lines, each with when it starts and ends, the participant ID of who said it, the breakout room it was said in, if any, while rooms were open who may read it, when it was said, and whether Whisper was unsure of its words; the evidence of the verified model that heard them; the language Whisper picked for it when sure, and whether it asked Whisper what its speaker speaks. A breakout room's clips stay until the call ends, when every clip moves into the note) |
 | `transcript_translations` | owner, note item | `line_tag` (keyed hash of the line and the caption language), `translation_ciphertext` (the line in that language) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), the LiveKit identity (random) of the connection that hosts (`host_identity`, `host_joined_at` and `host_left_at`, named before hand-off and kept so: the organizer's connection, or a stand-in's while the organizer is away), when that connection joined and left, locked | `state_ciphertext` (what the call captures: notes off, on or paused, every change with who made it and when, what the host's browser says it can't capture now, the stretches it was out of the call while notes were on, and asks for notes; which connection hosts, when each hosted, and how long a host who let go to move to another device has for its new device to come in; who joined (with the addresses of people signed in whom the notes may go to), when each connection was let in and when it left, whose hand is up, who was removed, spotlight, breakout rooms, who's in which, where each person was before their last move and when they moved, the rooms' messages, each room's MLS epoch and when the organizer paused it or carried on there, when the recording's current segment began, each room's scribes (which connection, from when until when) and everyone who was in it, which the rooms' sections of the note are made from when the call ends, and which stay in the ended call's state, like the rest of it, until its meeting is deleted, whether pointing at shared screens is on and who doesn't let others point at what they share, notices, each for everyone, one room, one connection or everyone but one), and where its MLS groups have got to (counters only: the generation, which starts new groups whenever the connection that hosts changes; the main room's epoch, as the API takes one commit per epoch, in order; and the last seq in its log) |
-| `call_codes` | owner, meeting item | `code_hash` (keyed hash of the call code, so anyone with the link finds the call) |
+| `call_notes` | owner, call, part of the call (`place`: `main` or a breakout room's random ID), `view` (`all`, or a digest of the random IDs of the lines this view can't read), how many of the note's clips the last refresh counted, when the last refresh began (`looked_at`), and until when one is under way (`lease_until`) | `notes_ciphertext` (that view's live notes as a catch-up gives them, what they read, who may read all of it, and each follow-up's ID, the lines behind it, and who ticked it and when; null until the first are written) and `lines_ciphertext` (the IDs of the lines it read and when each was said, and when each line it left out was said and who may read it), sealed under the call's notes key, bound to the call, the part and the view. Deleted when the call ends |
+| `call_codes` | owner, the item the code leads to (a meeting, or for a series' own link its `series` item) | `code_hash` (keyed hash of the code, so anyone with the link finds the call) |
 | `call_moves` | owner, call, move, when it runs out | `secret_hash` (SHA-256 of the move's current secret: the code in the new device's link, then the claim that replaces it), `body_ciphertext` (who's moving, the stage, whether their microphone and camera are on, and the new device's identity, key package and kind, sealed under the call's moves key). Deleted when it runs out, and when the call ends |
+| `call_rings` | owner (the organizer), ring, meeting item, when the ring next shows (`deliver_at`), when it stops (`expires_at`) | `email_index` (keyed hash of the address rung, its own purpose), `ring_ciphertext` (the address and what they said, sealed under the call's rings key). Deleted when the person is let in, when the organizer stops ringing them, when the call ends, and a day after it ran out |
 | `call_mls` | owner, call, `seq`, MLS group generation, kind (`keypackage`, `commit`, `welcome`, `message`), the random identity a key package came from or a welcome is for, the part of the call whose group an entry belongs to (`grp`: `main` or a breakout room's random ID; none for a key package), epoch | `body_ciphertext` (an MLS message, which the API can't read, sealed again under the call's state key, bound to its place in the log and its part of the call). A breakout room's entries are deleted when it closes; the rest when the call ends, and when a new generation starts (waiting people's key packages carry over) |
 | `recordings` | owner, recording, note item, `recording`/`paused`/`stopped`, start (the recording's own, for one made without a connection and uploaded later) and end, `version` | `key_envelope` (`Krec`) |
 | `recording_pieces` | owner, recording, segment, seq, where the piece starts in its segment (`at_ms`), object ID, ciphertext SHA-256 and length, duration, codec | (the object) |
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
+| `meeting_access` | owner (the organizer), meeting item | `email_index` (keyed hash of the address, with a purpose of its own), `answer_ciphertext` (whether they're coming, padded to one length, under the meeting's answers key; null until they answer) |
+| `personal_notes` | owner (the author), the note's organizer and item: one row for each person and note | `body_ciphertext` (everything they keep on it: what they wrote, bookmarks and what they point at, kept questions and answers, and which of it was added to the shared notes), sealed under the author's own keys. Replaced with each change, with no earlier versions |
+| `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
+| `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
+| `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
+| `documents` | owner (the workspace), `document_id`, `next_seq`, `updates_since_snapshot`, `bytes_since_snapshot`, created. One row for each document or board in the tree; a folder has none | — |
+| `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
+| `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -37,29 +47,112 @@ The migration runner adds `schema_migrations`, which records each applied file b
 Constraints: checked domains `alcove_id128` (22 characters) and `alcove_owner_id` (43 characters), composite
 owner-scoped foreign keys, and deferred item-head and parent-revision constraints. Deleting an owner cascades to
 everything it owns; deleting an item cascades to its revisions, its calls, its recording and pieces, its
-transcript clips and its `note_access` rows. The `note_access` rows that give an account other people's notes
-belong to those notes' organizers, so deleting the account deletes them by its email index, unless another
-account still signs in with that address. `object_gc` keeps a plain owner ID with no foreign key, so a failed
-object delete is still retried after its account is gone.
+transcript clips, its `note_access` or `meeting_access` rows, everyone's `personal_notes` on it and its `note_additions`, and a
+meeting's rings go with it. The `note_access` rows that give an account other people's notes belong to those notes'
+organizers, so deleting the account deletes them by its email index, unless another account still signs in with that
+address; on the same condition, what it answered in `meeting_access` is cleared, and the invite stays with its
+organizer. The `call_rings` rows to its address, in other people's calls, go by their own hash and without that
+exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed object delete is still retried after its
+account is gone. A workspace's tables hang off its `workspaces` row, which
+hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` rows go with their document.
+Its `call_id` has no foreign key, because a call belongs to its organizer, a different owner.
 
 ## Manifests (encrypted)
 
 | Item kind | Manifest fields |
 | --- | --- |
 | `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
-| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link and whether the event was the organizer's own before it became an Alcove call (adopted), the series it's in (`seriesId`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), and which guests were added by being let in from the call's link (`addedFromLink`), once any were |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, changes), open questions (text, time, state `open`/`answered`, changes), action items (text, owner when known, due date as said, done, changes), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written) |
+| `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
+| `series` | a series that was scheduled to repeat: title (the one its calls last got together), how it repeats (`repeat`: the rule, the last day and the organizer's time zone), its link's code, and the recurring Google Calendar event that carries its latest calls, when there is one. Its item ID is the `seriesId` its calls share |
 
 Every save writes a full new revision with a fresh `Krecord` and compare-and-set on the item head
 (`409 conflict` if someone else saved first). Reads decrypt the head revision; listing decrypts every live
 item of a kind. Earlier revisions stay until the item is deleted: correcting a transcript line or changing a
-decision never erases what was there before.
+decision never erases what was there before. The one exception is a note whose call was set not to keep its
+transcript: writing its notes deletes every earlier revision, which hold it (`pruneRevisions` in `apps/api/src/vault.ts`).
+
+## Workspaces
+
+A workspace is an **owner**: a row in `owners` with its own root key and a `workspaces` row, so sealing, `owner_id`
+scoping and deleting work as they do for an account. It has no `identities` row, session, profile, credits or receipts:
+nobody signs in as one, and nothing that reads an account's tables finds it. Nothing lists `owners`. Its `owner_id` stays
+on the server; everything outside knows it by `workspace_id`.
+
+Its name and tree are one record, `workspace-state`, under the workspace's key: `name`, and `items`, a map of ID to an
+item's `kind` (`document`, `board` or `folder`), `name`, `parent`, `pos`, who made it (`by`: their name and address as they
+were, or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted` and
+`restrictedBy` (the address of whoever restricted it, when that wasn't its creator). To the tree `kind` is only data: a document and a board are alike, each a row in `documents` that what it holds hangs off, and
+nothing here looks inside. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
+under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
+under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
+they can't open. `pos` is a fractional position, a base-62 string read as a fraction and sorted as plain text, so
+something can always land between two siblings without touching either.
+
+**Trash.** `trashedAt` is set on what was sent there; what's in a folder in Trash is there with it, and comes back with
+it, except anything that went to Trash by itself earlier. Something restored whose folder isn't in the tree comes back to
+the top. A folder takes only what the person sending it there could send by itself: anything they can only read, or can't
+see, moves out to where the folder was, the same for deleting it for good, so nobody decides the fate of something they
+can't. That goes through the tree once, however much moves. `trash_since` is when the oldest thing there went, so
+maintenance finds what's due without opening every workspace. After 30 days it goes for good, as it does at once by Delete
+forever: state, then `documents` rows, and what hangs off them. Each workspace is swept in a transaction of its own, and
+one that can't be read is logged by its ID and left for next time, so it can't hold up the others.
+
+**What nobody can open.** A restricted document with no creator or restrictor left in the workspace, and nobody it's shared
+with, goes to Trash, whenever that happens: someone taken out, an entry removed, a seat ended. Nobody who could decide its
+fate can see it, so it isn't deleted then, and it isn't given to anyone. If its creator comes back within 30 days they
+find it there and can restore it. Otherwise it goes as anything in Trash does.
+
+**People.** `workspace_members` and `document_access` find people by keyed hash and seal who they are beside it, in the
+same row, so taking someone out takes their address with them. `workspace_authors` keeps the hash of every address whose
+name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
+account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
+what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
+have made at most 100 workspaces. Who can do what is in
+[Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
+
+### Live traffic
+
+Live traffic is NDJSON down and `POST` up: a guest authenticates with a header, which a browser's WebSocket can't send,
+and this way it runs through the same auth, origin check and tests as everything else.
+
+- **The hub** (`apps/api/src/live/hub.ts`). Anything that changes a workspace calls `publish(db, workspaceId, notice)` in its
+  own transaction, so `pg_notify` goes out on commit and not on a rollback. Each API instance runs one hub with one
+  `LISTEN` connection of its own, made when someone first subscribes, which hands each notice to whoever subscribed to that
+  workspace on this instance, its own notices included. A notice carries IDs or something sealed, never anything
+  readable, and at most 7,900 bytes. A connection can go quiet without closing, so the hub asks it something every 15
+  seconds and gives it 5 to answer. If it goes, or doesn't answer, it comes back by itself, waiting 250 ms up to 5 seconds,
+  and everyone subscribed hears `missed`, because notices sent meanwhile are gone. It needs a direct connection to
+  Postgres: `LISTEN` doesn't work through a transaction-mode pooler.
+- **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
+  of a workspace. The next is refused with `503 unavailable` rather than closing the oldest, so a stream at work is never
+  taken from anyone, and that's decided before anything is read. The browser tries again by itself and gets in when one closes.
+- **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
+  changes; `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
+  they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
+  read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
+  a notice that finds nobody behind stops at that one small query. The read takes the state and what those readers have,
+  under keys opened for it and not kept. Each stream then works out what its reader sees, and sends nothing if that's what
+  they last saw, which it knows from a hash: a stream holds no tree, because a copy for each is what runs an instance out of
+  memory. A slow browser skips to the latest.
+- **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
+  the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
+  and only people in a call have one. A session or pass that ended, a person out of the call, all end it, within 25 seconds
+  at most. A notice about the workspace does it at once. A stream that finds nothing left for its reader first asks who
+  they are now, because a new address from their provider moves what they have to another hash.
+- **Letting go.** A stream ends without `closed` when the API lets go (after 280 seconds, inside Cloud Run's 300-second
+  request timeout, so it's never cut) or its instance shuts down. The browser opens it again: quietly when it just ended,
+  showing `reconnecting` when it failed, keeping what it last showed either way. A line that can't be written within a ping
+  ends a stream too, which is how one whose browser went as it opened is let go of. A browser that hears nothing for a
+  minute takes the connection for dead.
 
 ## Writes, reads and deletes
 
 - **Audio pieces** are sealed with the recording's `Krec`, written to the object store, read back and checked
-  (length and SHA-256), and only then recorded in SQL. A failed or duplicate write queues the object for deletion.
+  (length and SHA-256), and only then recorded in SQL, holding the recording's row: one that arrives once the
+  recording has stopped is refused. A failed, refused or duplicate write queues the object for deletion.
 - **Streaming** a segment reads pieces in order, checks each digest, decrypts, and streams. Only for the note's
   organizer or someone with a `note_access` row for it, with an allow-listed content type, `nosniff` and
   `no-store`.
@@ -70,6 +163,11 @@ decision never erases what was there before.
   notes model's, as `inference` ([Notes and inference › What a note keeps](notes-and-inference.md#what-a-note-keeps)).
 - **Caption translations** are sealed under the same transcript key, one row per line and language, and are
   deleted with the transcript clips when the recording stops.
+- **Live notes** are sealed in `call_notes`, one row for each view of each part of the call that has had some, opened with
+  every read of the call and written at most every 30 seconds and with each tick. A refresh is claimed and saved under the row's
+  lock and runs with nothing held, so the model's answer never holds up the call. When the call ends, what was ticked
+  moves into the note's manifest and the rows go, in the same transaction
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Shared-screen frames** are sealed under the recording's `Krec` like audio pieces, written to the object
   store, read back and checked, and only then recorded in `screen_frames` under a share lock on the recording;
   a duplicate or a frame that arrives once the recording paused or stopped queues its object for deletion. When
@@ -80,12 +178,37 @@ decision never erases what was there before.
   and deleted when the note is finished ([Notes and inference](notes-and-inference.md#the-notes-worker)).
 - **Google Calendar events** are read from Google whenever the app asks (`GET /v1/calendar`) and never
   stored. An Alcove call's event ID and link are kept in its meeting manifest, and for an occurrence of a
-  recurring event, the recurring event's ID.
-- **Series** aren't stored: a series is read on each request from the meetings that share its ID and the
-  notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)).
+  recurring event, the recurring event's ID. A series that repeats is one recurring event: each call keeps its
+  occurrence's ID and which recurring event that is, and the series keeps the event that carries its latest calls.
+- **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
+  or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only
+  how many ([Privacy › Google sign-in and calendar access](privacy-keys-and-sessions.md#google-sign-in-and-calendar-access)).
+- **Documents** brought to a call are IDs in its meeting manifest, checked against the organizer's own library. There
+  are no real workspaces yet: a demo account's library is a catalog in `apps/api/src/demo.ts`, and anyone else's is empty.
+- **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
+  ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
+  came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to
+  repeat has a `series` item for what belongs to no single call, and a `call_codes` row of its own, which goes
+  when its item does. The item goes in the same transaction as its last call, however that call went. Calls that
+  follow on from each other in older ways have no item.
+- **Taking turns.** A change to a series goes to Google and back, which is too long to hold a row lock: it would
+  stop the account's audio uploads, which update the same `owners` row. So `owners.series_turn_until` says one is
+  under way. Each change sets it for two minutes if it's free and clears it when it's done, unless it's no longer the
+  time that change set: one that took longer lost its turn, and the next one's stays. A second change waits up to 20
+  seconds, and it runs out by itself if the process dies.
+- **Someone's own notes** are a sealed record for each person and note, written whole under an advisory lock on the
+  two, so one person's changes take turns without waiting on any row. They hold pointers, never what's pointed at, and
+  what's in them is read for that person each time
+  ([Notes and inference › Your own notes](notes-and-inference.md#your-own-notes)).
 - **Finding people.** Sign-in looks up `identities` by subject index; people search and the team directory
   check `identities.email_index`; shared notes are found through `note_access.email_index`
   ([Privacy › Blind indexes](privacy-keys-and-sessions.md#blind-indexes)).
+- **Who's invited to a call** is its guests, and `meeting_access` mirrors them by hash so people can find it from
+  their own accounts: the rows change in the transaction that changes the guests, and any that don't match (calls
+  from before the table) are put right when the organizer reads Upcoming. Upcoming, for someone invited, is those
+  rows opened with each organizer's keys, each organizer's read together, for the next 90 days; a call that's over has
+  lost its rows, or loses them as they're read
+  ([Privacy › Who can see a call](privacy-keys-and-sessions.md#who-can-see-a-call)).
 - **Who has a note** is its organizer and everyone with a `note_access` row for it. The note's manifest says how
   each of them got it (invited, or shared by whom, with which group, when), and each reader is told their own
   way as `received`. Every reader's list of notes also carries each share to a group (`groupShares`: who, the
@@ -100,17 +223,35 @@ decision never erases what was there before.
 
 ## What's kept, and for how long
 
-One fixed behaviour, with no settings ([Notes and inference › What's kept, and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
+Everything, unless the call was set not to keep its transcript or its recording ([Notes and inference › What's kept,
+and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 
 - **Speech clips** are never stored: each lives in the API process's memory while it's transcribed.
 - **`transcript_clips` and `transcript_translations`** last while the recording runs and are deleted in the
   transaction that stops it; the lines move into the note.
-- **`call_mls`** lasts while the call runs and is deleted when it ends.
+- **`call_mls`** lasts while the call runs and is deleted when it ends. **`call_notes`** too, once what was ticked is in
+  the note, and upkeep deletes any left by a call a release from before them ended.
+- **`meeting_access`** lasts until a call is over: its rows go in the transaction that ends it, and for a call nobody
+  held, the first time its organizer or someone invited reads it after it's an hour past its time. They go with the
+  call too if it's cancelled or its organizer's account is deleted. A call started again has its rows back.
+- **`call_rings`** lasts at most as long as the call, and goes sooner when someone rung comes in or the organizer
+  stops ringing them. In a call that goes on that long, a ring goes a day after it ran out.
 - **The recording** (`recording_pieces` and their objects), **shared-screen frames** (`screen_frames` and their
   objects), **the note and every revision of it** (transcript, notes, corrections and who made them) are kept
   until the organizer deletes the note. Then everything goes in
   one transaction, and the objects after it (failed deletes retried from `object_gc`).
-- **Questions, answers and catch-ups** are never stored.
+- **A call set not to keep its recording** deletes its `recording_pieces` rows in the transaction that ends the call,
+  once the note has what was worked out from them, and the objects after it. The `recordings` row stays, for its key.
+- **A call set not to keep its transcript** empties it in the revision that writes the notes for the first time, the
+  main room's and every breakout room's, and deletes every earlier revision and the account's receipts in the same
+  transaction. A part whose notes can't be written keeps its lines until they are.
+- **Questions, answers and catch-ups** are never stored, unless someone keeps an answer in their own notes.
+- **Someone's own notes** (`personal_notes`) last while they have the note: they go with the note, when they remove it
+  from theirs, with their account, and at the end of the call if they were taken off the invite.
+- **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
+  account is deleted. It stays when its author removes the note.
+- **What's in a workspace's Trash** stays 30 days, unless someone deletes it for good first.
+- **Seats** in `document_access` last while their call does.
 
 ## Operations
 

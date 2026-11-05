@@ -4,7 +4,7 @@
  * organizer changes it, and their browser says what it can't capture. Crimson only ever means notes are on and
  * capturing.
  */
-import type { CaptureMode, CaptureState, NotesSetting } from '@alcove/api';
+import type { CaptureMode, CaptureState, NotesChoices, NotesSetting } from '@alcove/api';
 import type { ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
@@ -109,14 +109,21 @@ export function CaptureParts({ capture, taker = 'the organizer', stage = false, 
   );
 }
 
+/** What a call won't keep, in a line each: said wherever someone decides whether to join it. */
+export function keptLines(c: NotesChoices): string[] {
+  return [...(c.keepTranscript ? [] : ['The transcript is deleted after the notes are written.']), ...(c.keepRecording ? [] : ['The recording is deleted when the call ends.'])];
+}
+
 /**
  * What a call captures, for someone about to join it, on the night stage: the sign, what happens to what they say,
- * each kind of capture once the call has started, and who gets the notes. Before the organizer starts the call it
- * says what will happen. Never anyone's name or anything that was said.
+ * each kind of capture once the call has started, what won't be kept, and who gets the notes. Before the organizer
+ * starts the call it says what will happen. Never anyone's name or anything that was said.
  */
-export function CaptureSummary({ notes, capture, who, taker = 'the organizer', className }: {
+export function CaptureSummary({ notes, choices, capture, who, taker = 'the organizer', className }: {
   /** Notes as the call was scheduled. */
   notes: NotesSetting;
+  /** What the notes keep. */
+  choices: NotesChoices;
   /** What's captured now; null until the call has started. */
   capture: CaptureState | null;
   /** Who gets the notes, said for the person looking (the organizer, someone invited, someone asking); by default, the people invited. */
@@ -140,6 +147,7 @@ export function CaptureSummary({ notes, capture, who, taker = 'the organizer', c
       <CaptureSign mode={mode} stage />
       <p>{said}</p>
       {capture && mode !== 'off' && <CaptureParts capture={capture} taker={taker} stage compact />}
+      {mode !== 'off' && keptLines(choices).length > 0 && <p>{keptLines(choices).join(' ')}</p>}
       {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>}
     </div>
   );

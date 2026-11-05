@@ -3,18 +3,21 @@
  * sealed in the account's vault. From it, Alcove reads the coming week's other events, and keeps
  * its own calls on the calendar: an Alcove call is a Google event with the Alcove link and a private
  * marker, and Google sends everyone on it the invitation, every change and the cancellation
- * (sendUpdates=all). Access tokens live in memory for under an hour and are never stored.
+ * (sendUpdates=all). Someone invited has their own copy, without the marker, so it's the link that
+ * says it's an Alcove call. Access tokens live in memory for under an hour and are never stored.
  */
-import type { Calendar, CalendarEvent } from '@alcove/api';
+import { isTimeZone, type Busy, type Calendar, type CalendarEvent, type Interval, type Repeat, type RepeatRule, type Rsvp } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { exec, tx } from '../db';
-import { ForbiddenError, NotFoundError, UnavailableError } from '../errors';
+import { inCompany, sampleWeek } from '../demo';
+import { ForbiddenError, NotFoundError, UnavailableError, ValidationError } from '../errors';
 import { CALENDAR_SCOPE, refreshAccess, revokeRefresh, within, type Grant } from '../google';
 import { log } from '../log';
-import { createItem, listItems, saveRevision } from '../vault';
+import { createItem, listItems, saveRevision, type Loaded } from '../vault';
+import { zoned } from '../zones';
 import { profile } from './account';
-import type { MeetingManifest } from './meetings';
+import { isGuestAddress, type MeetingManifest } from './meetings';
 import { personOf } from './portraits';
 
 const clog = log.child({ component: 'calendar' });
@@ -142,8 +145,12 @@ const Attendee = z.object({ email: z.string().optional(), displayName: z.string(
 const GoogleEvent = z.object({
   id: z.string(), status: z.string().optional(), summary: z.string().optional(), description: z.string().optional(), location: z.string().optional(),
   htmlLink: z.string().optional(), start: When.optional(), end: When.optional(), eventType: z.string().optional(),
+  /** `transparent`: it doesn't block time on the calendar, as all-day events usually don't. */
+  transparency: z.string().optional(),
   /** Present on each occurrence of a recurring event: Google's ID for the whole series. */
   recurringEventId: z.string().optional(),
+  /** On a recurring event itself: how it repeats, as iCalendar lines. */
+  recurrence: z.array(z.string()).optional(),
   organizer: z.object({ email: z.string().optional(), displayName: z.string().optional(), self: z.boolean().optional() }).optional(),
   attendees: z.array(Attendee).optional(), hangoutLink: z.string().optional(),
   conferenceData: z.object({
@@ -153,7 +160,7 @@ const GoogleEvent = z.object({
   extendedProperties: z.object({ private: z.record(z.string(), z.string()).optional() }).optional()
 });
 type GoogleEvent = z.infer<typeof GoogleEvent>;
-const GoogleList = z.object({ items: z.array(GoogleEvent).default([]), nextPageToken: z.string().optional() });
+const GoogleList = z.object({ items: z.array(GoogleEvent).default([]), nextPageToken: z.string().optional(), timeZone: z.string().optional() });
 /** The private property that marks an event as an Alcove call. */
 const MARK = 'alcoveMeeting';
 
@@ -177,11 +184,21 @@ function joinOf(e: GoogleEvent): CalendarEvent['join'] {
   return undefined;
 }
 
+const CALL_CODE = /^[a-z]{3}-[a-z]{4}-[a-z]{3}$/;
+/** The code of the Alcove link an event has as its location: everyone's copy of an Alcove call carries one. */
+function alcoveCodeOf(e: GoogleEvent, origin: string): string | undefined {
+  const prefix = `${origin}/join/`;
+  const link = e.location?.trim() ?? '';
+  const code = link.startsWith(prefix) ? link.slice(prefix.length) : '';
+  return CALL_CODE.test(code) ? code : undefined;
+}
+
 /**
  * Someone's own events worth showing beside Alcove's calls: timed, not declined, not Alcove's own.
  * An occurrence of a recurring event they've held in Alcove before says which of their series it continues.
+ * Their copy of someone else's Alcove call says which call it is, and joins it.
  */
-function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>): CalendarEvent | null {
+function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>, origin: string): CalendarEvent | null {
   if (e.status === 'cancelled' || !e.start?.dateTime || !e.end?.dateTime) return null;
   if (e.eventType && e.eventType !== 'default') return null;
   if (e.extendedProperties?.private?.[MARK]) return null;
@@ -189,13 +206,14 @@ function toEvent(e: GoogleEvent, series: ReadonlyMap<string, string>): CalendarE
   if (me?.responseStatus === 'declined') return null;
   const organizerEmail = (e.organizer?.email ?? '').toLowerCase();
   const guests = (e.attendees ?? []).filter((a) => !a.self && !a.resource && a.email && a.email.toLowerCase() !== organizerEmail);
-  const join = joinOf(e);
+  const alcoveCode = alcoveCodeOf(e, origin);
+  const join = alcoveCode ? { url: `${origin}/join/${alcoveCode}`, label: 'Alcove' } : joinOf(e);
   const seriesId = e.recurringEventId ? series.get(e.recurringEventId) : undefined;
   return {
     id: e.id, title: e.summary?.trim() || 'Busy', startsAt: new Date(e.start.dateTime).toISOString(), endsAt: new Date(e.end.dateTime).toISOString(),
     organizer: personOf(organizerEmail || 'unknown@calendar.invalid', e.organizer?.displayName), isOrganizer: !!e.organizer?.self,
     guests: guests.map((a) => personOf(a.email ?? '', a.displayName)), ...(join ? { join } : {}),
-    calendarUrl: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : 'https://calendar.google.com/', ...(seriesId ? { seriesId } : {})
+    calendarUrl: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : 'https://calendar.google.com/', ...(seriesId ? { seriesId } : {}), ...(alcoveCode ? { alcoveCode } : {})
   };
 }
 
@@ -221,7 +239,7 @@ export async function view(o: Owner, series: () => Promise<ReadonlyMap<string, s
     throw e;
   }
   const followed = list.items.some((e) => e.recurringEventId) ? await series() : new Map<string, string>();
-  const events = list.items.flatMap((e) => { const x = toEvent(e, followed); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
+  const events = list.items.flatMap((e) => { const x = toEvent(e, followed, o.cfg.WEB_ORIGIN); return x && new Date(x.endsAt).getTime() > now ? [x] : []; });
   clog.debug('calendar read', { ownerId: o.ownerId, events: events.length });
   return { source: 'google', needsAccess: false, events };
 }
@@ -264,9 +282,138 @@ export async function metEmails(o: Owner): Promise<string[]> {
   }
 }
 
+/* ---------- when people are busy: read when it's asked for, and kept nowhere ---------- */
+
+/** The longest stretch anyone can ask about. */
+const MAX_BUSY_DAYS = 31;
+/** Google answers about at most this many calendars at a time. */
+const FREE_BUSY_CALENDARS = 50;
+/** The most of someone's own events read for one answer, a page at a time: 1,000 in a month is more than a calendar has. */
+const BUSY_PAGES = 4;
+const BUSY_PAGE = 250;
+
+/** A stretch of time, in ms. */
+interface Span { from: number; to: number }
+const FreeBusy = z.object({
+  calendars: z.record(z.string(), z.object({ busy: z.array(z.object({ start: z.string(), end: z.string() })).default([]), errors: z.array(z.unknown()).default([]) })).default({})
+});
+
+/** Stretches as one list: inside the range, soonest first, and whatever overlaps as one. */
+function tidy(spans: Span[], range: { from: Date; to: Date }): Interval[] {
+  const [start, end] = [range.from.getTime(), range.to.getTime()];
+  const inside = spans.map((s) => ({ from: Math.max(s.from, start), to: Math.min(s.to, end) })).filter((s) => s.from < s.to).sort((a, b) => a.from - b.from);
+  const out: Span[] = [];
+  for (const s of inside) {
+    const last = out.at(-1);
+    if (last && s.from <= last.to) last.to = Math.max(last.to, s.to);
+    else out.push({ ...s });
+  }
+  return out.map((s) => ({ from: new Date(s.from).toISOString(), to: new Date(s.to).toISOString() }));
+}
+
+/**
+ * When an event of someone's own holds them: not cancelled, not declined, and not marked free. An all-day event holds
+ * its days on `zone`'s clock. Unlike what `view` shows, every type of event counts, and Alcove's own.
+ */
+function heldBy(e: GoogleEvent, zone: string): Span | null {
+  if (e.status === 'cancelled' || e.transparency === 'transparent' || e.attendees?.find((a) => a.self)?.responseStatus === 'declined') return null;
+  const moment = (w: GoogleEvent['start']) => (w?.dateTime ? Date.parse(w.dateTime) : w?.date ? zoned(w.date, 0, zone).getTime() : Number.NaN);
+  const [from, to] = [moment(e.start), moment(e.end)];
+  return Number.isNaN(from) || Number.isNaN(to) ? null : { from, to };
+}
+
+/** What holds someone on their own calendar, page by page. The calendar's own time zone says where its all-day events fall. */
+async function ownEvents(o: Owner, range: { from: Date; to: Date }, zone: string): Promise<Span[]> {
+  const out: Span[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < BUSY_PAGES; page++) {
+    const list = await api(o, 'GET', '/calendars/primary/events', GoogleList, {
+      query: { timeMin: range.from.toISOString(), timeMax: range.to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: String(BUSY_PAGE), ...(pageToken ? { pageToken } : {}) }
+    });
+    const where = list.timeZone && isTimeZone(list.timeZone) ? list.timeZone : zone;
+    out.push(...list.items.flatMap((e) => { const held = heldBy(e, where); return held ? [held] : []; }));
+    pageToken = list.nextPageToken;
+    if (!pageToken) break;
+  }
+  return out;
+}
+
+/**
+ * When other people are busy, by address, as far as this account can see: Google's free/busy, 50 calendars at a time.
+ * Anyone not in the answer can't be read: their calendar is private, Google said so for that calendar, or it refused the
+ * whole request, as it does (403) for a connection from before free/busy was asked for. None of that fails the answer.
+ * No address reaches the log, and neither does Google's reply, whose keys are addresses: only how many, and what happened.
+ */
+async function othersBusy(o: Owner, emails: string[], range: { from: Date; to: Date }): Promise<Map<string, Interval[]>> {
+  const read = new Map<string, Interval[]>();
+  const chunks = Array.from({ length: Math.ceil(emails.length / FREE_BUSY_CALENDARS) }, (_, i) => emails.slice(i * FREE_BUSY_CALENDARS, (i + 1) * FREE_BUSY_CALENDARS));
+  await Promise.all(chunks.map(async (chunk) => {
+    try {
+      const { calendars } = await api(o, 'POST', '/freeBusy', FreeBusy, {
+        body: { timeMin: range.from.toISOString(), timeMax: range.to.toISOString(), calendarExpansionMax: chunk.length, items: chunk.map((id) => ({ id })) }
+      });
+      for (const [id, c] of Object.entries(calendars)) {
+        if (!c.errors.length) read.set(id.toLowerCase(), tidy(c.busy.map((b) => ({ from: Date.parse(b.start), to: Date.parse(b.end) })), range));
+      }
+    } catch (e) {
+      const status = e instanceof UnavailableError ? e.context['status'] : undefined;
+      clog.at(status === 403 ? 'info' : 'warn', 'free/busy not read', { ownerId: o.ownerId, people: chunk.length, status, errorClass: e instanceof Error ? e.name : 'unknown' });
+    }
+  }));
+  return read;
+}
+
+/** The stretch asked about, refused when it can't be read. */
+function stretch(from: string, to: string): { from: Date; to: Date } {
+  const range = { from: new Date(from), to: new Date(to) };
+  const days = (range.to.getTime() - range.from.getTime()) / DAY;
+  if (Number.isNaN(days) || days <= 0) throw new ValidationError('Ask about a stretch of time that ends after it starts.', { context: { days: Number.isNaN(days) ? 'unreadable' : Math.round(days) } });
+  if (days > MAX_BUSY_DAYS) throw new ValidationError(`Ask about ${MAX_BUSY_DAYS} days at most.`, { context: { days: Math.ceil(days) } });
+  return range;
+}
+
+/** The times a call holds you: still to come or going on, and neither waiting for a guest to pick a time nor started now with nobody in it. */
+const callTimes = (calls: Loaded<MeetingManifest>[]): Span[] =>
+  calls.flatMap(({ manifest: m }) => (m.status === 'ended' || m.offer || (m.instant && m.status === 'scheduled') ? [] : [{ from: Date.parse(m.startsAt), to: Date.parse(m.endsAt) }]));
+
+/** What's known of you and these people: see `busy`. */
+async function busyOf(o: Owner, emails: string[], range: { from: Date; to: Date }, zone: string, calls: Span[]): Promise<Busy> {
+  const nobody = (source: Busy['source'], more: Span[] = []): Busy => ({ source, you: tidy([...calls, ...more], range), people: emails.map((email) => ({ email, busy: null })) });
+  const me = await profile(o);
+  if (me.sample) {
+    const week = sampleWeek(range, zone);
+    return { ...nobody('sample', week(me.email)), people: emails.map((email) => ({ email, busy: inCompany(me.email) && inCompany(email) ? tidy(week(email), range) : null })) };
+  }
+  if (!usable(await connection(o))) return nobody('none');
+  let events: Span[];
+  try {
+    events = await ownEvents(o, range, zone);
+  } catch (e) {
+    // Access withdrawn at Google is found out here, as when reading the calendar.
+    if (!usable(await connection(o))) return nobody('none');
+    throw e;
+  }
+  const read = await othersBusy(o, emails.filter(isGuestAddress), range);
+  return { ...nobody('google', events), people: emails.map((email) => ({ email, busy: read.get(email) ?? null })) };
+}
+
+/**
+ * When you and these people are busy between two times, at most 31 days apart. `you` is your calendar and your own calls
+ * (`calls` reads them). A person's `busy` is null when it can't be read. With no calendar connected, or access withdrawn
+ * at Google, that's everyone, and `you` is your calls alone. A demo account reads a made-up week, its own and the
+ * company's, and nobody's outside it. Only counts reach the log, and nothing is kept.
+ */
+export async function busy(o: Owner, q: { emails: string[]; from: string; to: string; timeZone?: string | undefined }, calls: () => Promise<Loaded<MeetingManifest>[]>): Promise<Busy> {
+  const range = stretch(q.from, q.to);
+  const b = await busyOf(o, [...new Set(q.emails)], range, q.timeZone ?? 'UTC', callTimes(await calls()));
+  clog.info('busy times read', { ownerId: o.ownerId, source: b.source, stretches: b.you.length, people: b.people.length, readable: b.people.filter((p) => p.busy).length });
+  return b;
+}
+
 /* ---------- Alcove's calls on the calendar ---------- */
 function eventBody(o: Owner, meetingId: string, m: MeetingManifest, before?: string | undefined) {
-  const link = `${o.cfg.WEB_ORIGIN}/join/${m.code}`;
+  // In a series the calendar carries its one link, which leads to whichever call is on now or next.
+  const link = `${o.cfg.WEB_ORIGIN}/join/${m.seriesCode ?? m.code}`;
   const lines = [`Join the call: ${link}`, m.notes === 'on' ? 'Notes are on: Alcove writes them privately, and everyone invited gets them afterwards.' : '', before ?? ''];
   return {
     summary: m.title, location: link, description: lines.filter(Boolean).join('\n\n'),
@@ -278,9 +425,12 @@ function eventBody(o: Owner, meetingId: string, m: MeetingManifest, before?: str
   };
 }
 
+/** Whether newly scheduled calls go on a calendar: one is connected, and the account wants them there. */
+export const places = async (o: Owner): Promise<boolean> => (await profile(o)).preferences.addToCalendar && connected(o);
+
 /** Puts a newly scheduled call on the calendar, which sends everyone invited an invitation. Null without a calendar. */
 export async function place(o: Owner, meetingId: string, m: MeetingManifest): Promise<{ eventId: string; url?: string | undefined } | null> {
-  if (!(await profile(o)).preferences.addToCalendar || !(await connected(o))) return null;
+  if (!(await places(o))) return null;
   const e = await api(o, 'POST', '/calendars/primary/events', GoogleEvent, { query: { sendUpdates: 'all' }, body: eventBody(o, meetingId, m) });
   clog.info('call placed on calendar', { ownerId: o.ownerId, meetingId, guests: m.guests.length });
   return { eventId: e.id, url: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : undefined };
@@ -308,6 +458,125 @@ export async function withdraw(o: Owner, eventId: string, meetingId: string, sig
   }
   clog.info('calendar event cancelled', { ownerId: o.ownerId, meetingId });
   return 'cancelled';
+}
+
+/*
+ * A series on the calendar: one recurring event for all its calls, so everyone gets one invitation and not one per
+ * call. Each call is one of its instances, and keeps that instance's ID, so one call can change or go on its own.
+ * Google expands the rule where the organizer is (`start.timeZone`, which it requires of a recurring event), so the
+ * calls keep their clock time when the clocks change, as the browser worked them out.
+ */
+
+const BYDAY = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'] as const;
+/** A moment as iCalendar writes one in UTC. */
+const utcStamp = (at: Date) => at.toISOString().replace(/[-:]|\.\d{3}/g, '');
+/**
+ * How a series repeats, as Google reads it. It runs to the end of the UTC day of its last call: not the end of `until`
+ * in UTC, where an evening call in Los Angeles on the last day falls on the day after and would be lost, and not past
+ * the last call, so a series the browser stopped at the most calls allowed doesn't run on without it.
+ */
+function rrule(rule: RepeatRule, lastStart: string): string {
+  const until = `${lastStart.slice(0, 10).replaceAll('-', '')}T235959Z`;
+  if (rule.every === 'month') return `RRULE:FREQ=MONTHLY;BYDAY=${rule.week}${BYDAY[rule.day]};UNTIL=${until}`;
+  const days = [...rule.days].sort((a, b) => a - b).map((d) => BYDAY[d]).join(',');
+  return `RRULE:FREQ=WEEKLY;INTERVAL=${rule.weeks};BYDAY=${days};UNTIL=${until}`;
+}
+
+/**
+ * A run of a series' calls on one recurring event: how they repeat, and the first and last of them. The event starts
+ * at the first, and takes the rest of what it says from the last: when one call has been changed on its own, it's most
+ * likely the one coming up, and its title and guests shouldn't go to everything after it.
+ */
+export interface SeriesRun { repeat: Repeat; first: MeetingManifest; last: MeetingManifest }
+/** What a recurring event says about its calls. Its times and how it repeats go separately: changing those is what can undo what's been changed on single calls. */
+function seriesDetails(o: Owner, seriesId: string, m: MeetingManifest) {
+  const { start: _start, end: _end, ...details } = eventBody(o, seriesId, m);
+  return details;
+}
+const inZone = (m: MeetingManifest, timeZone: string) => ({ start: { dateTime: m.startsAt, timeZone }, end: { dateTime: m.endsAt, timeZone } });
+const seriesTimes = ({ repeat, first, last }: SeriesRun) => ({ ...inZone(first, repeat.timeZone), recurrence: [rrule(repeat.rule, last.startsAt)] });
+
+/** Puts a run of calls on the calendar as one recurring event: everyone invited gets one invitation. */
+export async function placeSeries(o: Owner, seriesId: string, run: SeriesRun): Promise<string> {
+  const e = await api(o, 'POST', '/calendars/primary/events', GoogleEvent, { query: { sendUpdates: 'all' }, body: { ...seriesDetails(o, seriesId, run.last), ...seriesTimes(run) } });
+  clog.info('series placed on calendar', { ownerId: o.ownerId, seriesId, guests: run.last.guests.length });
+  return e.id;
+}
+
+/**
+ * Brings a recurring event in line with `like`, one of its calls; everyone on it gets one update. Its times and rule
+ * change only with `run`, and who's on it only with `guests`: anything else leaves a call changed on its own as it is.
+ * It's also how a single event starts repeating: it keeps its ID, so nobody gets a second invitation.
+ */
+export async function changeSeries(o: Owner, eventId: string, seriesId: string, like: MeetingManifest, change: { run?: SeriesRun | undefined; guests: boolean }): Promise<void> {
+  const { attendees, ...details } = seriesDetails(o, seriesId, like);
+  await api(o, 'PATCH', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { query: { sendUpdates: 'all' }, body: { ...details, ...(change.guests ? { attendees } : {}), ...(change.run ? seriesTimes(change.run) : {}) } });
+  clog.info('series updated on calendar', { ownerId: o.ownerId, seriesId, guests: like.guests.length, times: !!change.run });
+}
+
+/**
+ * Ends a recurring event before `before`, a call's start, as "this and following events" does in Google Calendar:
+ * everything from there on goes from the calendar, the calls before stay, and everyone on it gets one update. Google
+ * replaces an array that's sent, so all of `recurrence` goes.
+ */
+export async function endSeries(o: Owner, eventId: string, seriesId: string, before: string): Promise<void> {
+  const path = `/calendars/primary/events/${encodeURIComponent(eventId)}`;
+  const e = await api(o, 'GET', path, GoogleEvent);
+  const until = utcStamp(new Date(new Date(before).getTime() - 1000));
+  const ended = (line: string) => `RRULE:${[...line.slice('RRULE:'.length).split(';').filter((part) => !part.startsWith('UNTIL=')), `UNTIL=${until}`].join(';')}`;
+  const recurrence = (e.recurrence ?? []).map((line) => (line.startsWith('RRULE:') ? ended(line) : line));
+  await api(o, 'PATCH', path, GoogleEvent, { query: { sendUpdates: 'all' }, body: { recurrence } });
+  clog.info('series ended early on calendar', { ownerId: o.ownerId, seriesId });
+}
+
+/** One occurrence of a recurring event. `guests` are lower-cased addresses, without the organizer or any room. */
+export interface Instance { id: string; startsAt: string; endsAt: string; title: string; guests: string[]; url?: string | undefined }
+/** The occurrences a recurring event has now, soonest first: what's been cancelled one at a time isn't among them. */
+export async function instances(o: Owner, eventId: string): Promise<Instance[]> {
+  const out: Instance[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await api(o, 'GET', `/calendars/primary/events/${encodeURIComponent(eventId)}/instances`, GoogleList, { query: { maxResults: '250', ...(pageToken ? { pageToken } : {}) } });
+    for (const e of page.items) {
+      if (e.status === 'cancelled' || !e.start?.dateTime) continue;
+      const guests = (e.attendees ?? []).flatMap((a) => (a.email && !a.self && !a.organizer && !a.resource ? [a.email.toLowerCase()] : []));
+      out.push({ id: e.id, startsAt: new Date(e.start.dateTime).toISOString(), endsAt: new Date(e.end?.dateTime ?? e.start.dateTime).toISOString(), title: e.summary ?? '', guests, url: e.htmlLink && isUrl(e.htmlLink) ? e.htmlLink : undefined });
+    }
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+}
+
+/**
+ * Brings one call of a series in line, alone: the rest of the recurring event stays as it is. Everyone on it hears
+ * about this one call. `quietly` is for fixing up an occurrence right after one invitation or update has gone out
+ * about the whole series: without it, a series with a few changed calls would email everyone once for each. Only
+ * what a call can change on its own goes: the rest it has from the recurring event.
+ */
+export async function changeInstance(o: Owner, eventId: string, meetingId: string, m: MeetingManifest, timeZone: string, quietly = false): Promise<void> {
+  const { summary, location, description, attendees } = eventBody(o, meetingId, m);
+  await api(o, 'PATCH', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { query: { sendUpdates: quietly ? 'none' : 'all' }, body: { summary, location, description, attendees, ...inZone(m, timeZone) } });
+  clog.info('call in a series updated on calendar', { ownerId: o.ownerId, meetingId, guests: m.guests.length, quietly });
+}
+
+/** Takes an occurrence the series has no call for off the calendar, without a word: it's part of a change everyone has already heard about. */
+export async function dropInstance(o: Owner, eventId: string): Promise<void> {
+  try {
+    await api(o, 'DELETE', `/calendars/primary/events/${encodeURIComponent(eventId)}`, z.unknown(), { query: { sendUpdates: 'none' } });
+  } catch (e) {
+    if (!(e instanceof NotFoundError)) throw e;
+  }
+}
+
+const SAID = new Map<string, Rsvp>([['accepted', 'yes'], ['tentative', 'maybe'], ['declined', 'no']]);
+/**
+ * What people on a call's event have said in Google, by lower-cased address, for the organizer opening the call: read
+ * now and stored nowhere. Nothing without a calendar, and someone who hasn't said isn't there.
+ */
+export async function answers(o: Owner, eventId: string, signal: AbortSignal): Promise<Map<string, Rsvp>> {
+  if (!(await connected(o))) return new Map();
+  const e = await api(o, 'GET', `/calendars/primary/events/${encodeURIComponent(eventId)}`, GoogleEvent, { signal });
+  return new Map((e.attendees ?? []).flatMap((a): [string, Rsvp][] => { const said = SAID.get(a.responseStatus ?? ''); return a.email && said ? [[a.email.toLowerCase(), said]] : []; }));
 }
 
 /** Google didn't answer in time, or couldn't be reached at all (fetch fails with a TypeError): the next request would fare no better. */

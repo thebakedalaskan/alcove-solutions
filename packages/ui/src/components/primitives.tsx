@@ -153,9 +153,9 @@ export function TimeChip({ seconds, onSeek, label, title }: { seconds: number; o
 }
 
 /* ---------- Check ---------- */
-export function Check({ checked, onChange, label }: { checked: boolean; onChange: (on: boolean) => void; label: string }) {
+export function Check({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean | undefined }) {
   return (
-    <button type="button" role="checkbox" aria-checked={checked} aria-label={label} className={cn('ac-check', checked && 'on')} onClick={() => onChange(!checked)}>
+    <button type="button" role="checkbox" aria-checked={checked} aria-label={label} disabled={disabled} className={cn('ac-check', checked && 'on')} onClick={() => onChange(!checked)}>
       <CheckDraw done={checked} />
     </button>
   );
@@ -174,7 +174,7 @@ export function Segmented<T extends string>({ value, onChange, options, label, d
     <div className={cn('ac-seg', className)} role="group" aria-label={label} aria-disabled={disabled || undefined}>
       {options.map((o) => (
         <button key={o.value} type="button" aria-pressed={o.value === value} disabled={disabled} onClick={() => onChange(o.value)}>
-          {o.value === value && <motion.span layoutId={pill} className="pill" aria-hidden="true" transition={reduce ? { duration: 0 } : { duration: 0.55, ease: EASE.inOut }} />}
+          {o.value === value && <motion.span layoutId={pill} layoutDependency={value} className="pill" aria-hidden="true" transition={reduce ? { duration: 0 } : { duration: 0.55, ease: EASE.inOut }} />}
           <span className="lbl">{o.icon && <Icon name={o.icon} size={16} />}{o.label}</span>
         </button>
       ))}

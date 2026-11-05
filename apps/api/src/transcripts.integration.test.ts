@@ -287,11 +287,12 @@ describe('a transcript that says what it isn’t sure of', () => {
     const balance = (await org.api.credits.balance()).balance;
     const jobs = async () => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM content_jobs WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n ?? 0;
 
-    // Kofi rewords the first decision and confirms it, so it stays whatever the notes say next time (typed on one line,
-    // however it was typed); the organizer corrects what was misheard.
+    // Kofi rewords the first decision and the organizer confirms it, so it stays whatever the notes say next time (typed on
+    // one line, however it was typed); the organizer corrects what was misheard.
     const kofi = await account(kofiEmail);
     const [launch, hire] = note.decisions;
-    note = await kofi.api.notes.updateDecision(noteId, launch?.id ?? '', { text: 'Launch on the 18th,\nafter the security review.', state: 'confirmed' });
+    await kofi.api.notes.updateDecision(noteId, launch?.id ?? '', { text: 'Launch on the 18th,\nafter the security review.' });
+    note = await org.api.notes.updateDecision(noteId, launch?.id ?? '', { state: 'confirmed', seen: { text: 'Launch on the 18th, after the security review.' } });
     const confirmed = note.decisions.find((d) => d.id === launch?.id);
     expect(confirmed).toMatchObject({ text: 'Launch on the 18th, after the security review.', state: 'confirmed' });
     const id = (text: string) => lineIn(note, text)?.id ?? '';
@@ -312,7 +313,7 @@ describe('a transcript that says what it isn’t sure of', () => {
     const during = await kofi.api.notes.get(noteId);
     expect(during).toMatchObject({ status: 'ready', writingAgain: true, summary: note.summary, decisions: note.decisions });
     expect((await asked(kofi.api, noteId, 'When do we launch?')).length).toBeGreaterThan(0);
-    note = await kofi.api.notes.updateDecision(noteId, hire?.id ?? '', { state: 'confirmed' });
+    note = await kofi.api.notes.updateDecision(noteId, hire?.id ?? '', { state: 'confirmed', seen: { text: hire?.text ?? '' } });
     // A correction made after the notes read the transcript isn't in them, so it's offered for next time.
     note = await org.api.notes.correctLine(noteId, id('We decided to hire a designer.'), { text: 'We decided to hire a second designer.' });
     // Asking again while they're being written changes nothing, even after the transcript changed.

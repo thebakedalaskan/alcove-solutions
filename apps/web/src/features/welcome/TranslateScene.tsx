@@ -33,7 +33,7 @@ export function TranslateScene() {
         <div className="lp-scene">
           <div className="lp-tile" style={box([40, 40, 520, 480])}><CallTile person={CAST.priya} name="Priya" speaking /></div>
           <div className="lp-orig">
-            <Caption who={<><Avatar person={CAST.priya} size={18} />Priya</>} lang="HINDI">
+            <Caption who={<><Avatar person={CAST.priya} size={18} />Priya</>} lang="Hindi">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.span key={take} className="block" initial={still ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} exit={out} transition={{ duration: 0.6, ease: EASE.out }}>{sent.hi}</motion.span>
               </AnimatePresence>

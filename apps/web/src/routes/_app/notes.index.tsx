@@ -4,7 +4,7 @@
  * picked in the list shows beside it, with what it decided and what's still to do; narrower, a note opens on its own
  * page. Before the first notes, the page shows what they'll look like.
  */
-import { EmailParamSchema, errorCode, errorMessage, type ActionItem, type Decision, type Note, type NoteKind, type NoteSummary, type Person } from '@alcove/api';
+import { EmailParamSchema, errorCode, errorMessage, mayChangeAction, mayDecide, type ActionItem, type Decision, type Note, type NoteKind, type NoteSummary, type Person } from '@alcove/api';
 import {
   ArchThumb, Avatar, Button, Check, Chip, EmptyArch, EmptyState, Faces, GhostArch, GoneArch, Icon, IconButton, Notice, NotesSign, Popover, SealedBadge, Segmented, Spinner,
   buttonClass, cn, coverFor, useToast, type IconName
@@ -13,13 +13,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useDeferredValue, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react';
 import { NoteCard } from '~/features/notes/NoteCard';
+import { useNoteReader } from '~/features/notes/entries';
 import { highlight } from '~/features/notes/highlight';
 import { peopleLine, receivedLine } from '~/features/notes/meta';
-import { MomentLink, decisionLine } from '~/features/notes/parts';
+import { MomentLink, decisionLine, proposedLine } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
-import { useOpenComposer } from '~/features/shell/context';
-import { fold } from '~/lib/parse';
-import { byEmail, callName, sameEmail, spokenName } from '~/lib/people';
+import { useCallFlow } from '~/features/shell/context';
+import { byEmail, callName, fold, sameEmail, spokenName } from '~/lib/people';
 import { q, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, noteGroup, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
@@ -278,10 +278,11 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
   const decide = useUpdateDecision();
   const act = useUpdateAction();
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
-  const confirm = (d: Decision) => decide.mutate({ noteId: note.id, decisionId: d.id, patch: { state: 'confirmed' } }, { onError: failed });
+  const confirm = (d: Decision) => decide.mutate({ noteId: note.id, decisionId: d.id, patch: { state: 'confirmed', seen: { text: d.text } } }, { onError: failed });
   const tick = (a: ActionItem, done: boolean) => act.mutate({ noteId: note.id, actionId: a.id, patch: { done } }, {
     onSuccess: () => { if (done) toast('Marked done', { ms: 2200 }); }, onError: failed
   });
+  const reader = useNoteReader()(note.received?.role ?? 'organizer');
   const everyone = note.kind === 'room' ? 'They show here when they’re ready.' : 'Everyone invited gets them when they’re ready.';
   const decided = note.decisions.filter((d) => d.state !== 'rejected');
   const unconfirmed = decided.filter((d) => d.state === 'proposed').length;
@@ -305,12 +306,12 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
         <div className="pv-sec"><div className="ac-eyebrow">Summary</div><p className="summary">{note.summary}</p></div>
         {decided.length > 0 && (
           <div className="pv-sec">
-            <div className="ac-eyebrow">Decided{unconfirmed ? ` · ${unconfirmed} to confirm` : ''}</div>
+            <div className="ac-eyebrow">Decisions{unconfirmed ? ` · ${unconfirmed} to confirm` : ''}</div>
             {decided.slice(0, DECISIONS).map((d) => (
               <div key={d.id} className="pv-row">
                 {d.state === 'confirmed' ? <span className="ac-tick"><Icon name="check" size={13} /></span> : <span className="ac-tick maybe" />}
                 <span className="min-w-0">{d.text}
-                  <small>{d.state === 'proposed' ? <>Proposed by the notes · <button type="button" className="lk" onClick={() => confirm(d)}>Confirm</button></> : decisionLine(d, me)}</small>
+                  <small>{d.state === 'proposed' ? <>{proposedLine(d, me)}{mayDecide(d, 'confirmed', reader) && <> · <button type="button" className="lk" onClick={() => confirm(d)}>Confirm</button></>}</> : decisionLine(d, me)}</small>
                 </span>
                 {d.at !== undefined ? <MomentLink noteId={note.id} at={d.at} /> : <span />}
               </div>
@@ -323,7 +324,7 @@ function PreviewBody({ note, me }: { note: Note; me: string | undefined }) {
             <div className="ac-eyebrow">Follow-ups · {open} open</div>
             {note.actions.slice(0, FOLLOW_UPS).map((a) => (
               <div key={a.id} className={cn('pv-act', a.done && 'done')}>
-                <Check checked={a.done} onChange={(on) => tick(a, on)} label={`Mark done: ${a.text}`} />
+                <Check checked={a.done} disabled={!mayChangeAction(a, reader)} onChange={(on) => tick(a, on)} label={`Mark done: ${a.text}`} />
                 <span className="t">{a.text}</span>
                 {a.owner ? (
                   <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
@@ -387,7 +388,7 @@ function WithSomeone({ known, person, button, onPick }: {
 function Nothing({ term, show, person, onClear, onAll, onAnyone }: {
   term: string; show: Show; person: Person | undefined; onClear: () => void; onAll: () => void; onAnyone: () => void;
 }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   const tile = (icon: IconName) => <span className="lib-tile"><Icon name={icon} size={22} /></span>;
   if (term) {
     return (
@@ -419,7 +420,7 @@ function Nothing({ term, show, person, onClear, onAll, onAnyone }: {
     );
   }
   return (
-    <EmptyState title={show === 'call' ? 'No calls with notes yet' : 'No notes yet'} action={<Button size="sm" icon="plus" onClick={() => open()}>New call</Button>}>
+    <EmptyState title={show === 'call' ? 'No calls with notes yet' : 'No notes yet'} action={<Button size="sm" icon="video" onClick={() => flow.start()}>Start a call</Button>}>
       Calls with notes on land here as soon as they end. Everyone invited gets the notes.
     </EmptyState>
   );
@@ -432,13 +433,13 @@ function GhostPair({ person }: { person: Person }) {
 
 /** Before the first notes: what they'll look like, and how to get them. */
 function FirstNotes({ me }: { me: Person | undefined }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   return (
     <>
       <div className="head" style={{ '--d': 0 }}><div><h1>Notes</h1><p className="lede">Calls with notes on, and recordings in the room, land here.</p></div></div>
       <section className="ac-card lib-first" style={{ '--d': 1 }} aria-label="No notes yet">
         <EmptyState className="big left" art={<EmptyArch size={96} />} title="No notes yet"
-          action={<><Button variant="primary" icon="plus" onClick={() => open()}>New call</Button><Link to="/record" className={buttonClass({ variant: 'secondary' })}><Icon name="recordDot" size={18} />Record in the room</Link></>}>
+          action={<><Button variant="primary" icon="video" onClick={() => flow.start()}>Start a call</Button><Link to="/record" className={buttonClass({ variant: 'secondary' })}><Icon name="recordDot" size={18} />Record in the room</Link></>}>
           Your first notes appear here as soon as a call with notes on ends. Everyone invited gets them, and Alcove can’t read them.
         </EmptyState>
         <div className="lib-ex">

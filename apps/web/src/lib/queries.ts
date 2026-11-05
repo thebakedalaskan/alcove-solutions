@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch } from '@alcove/api';
-import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
+import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { api } from './api';
@@ -17,13 +17,20 @@ export const qk = {
   byCode: (code: string) => ['meetings', 'code', code] as const,
   card: (code: string) => ['calls', 'card', code] as const,
   calendar: ['meetings', 'calendar'] as const,
+  meeting: (id: string) => ['meetings', 'one', id] as const,
+  busy: (emails: readonly string[], from: ISODate, to: ISODate) => ['meetings', 'busy', from, to, ...emails] as const,
+  documents: ['documents'] as const,
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
+  /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
+  personal: (id: string) => ['notes', 'personal', id] as const,
+  addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
+  callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
   trust: ['trust'] as const
 };
@@ -77,13 +84,47 @@ export const q = {
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
+  personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
+  /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
+  addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
+  /**
+   * What carries over into a call, for someone signed in, by its link: null when nothing can. Read again every minute
+   * while it's on screen, and whenever the page comes back into view: a note someone stops having goes from here too,
+   * however long the call has been open. A session that ended elsewhere is just another way of having nothing here:
+   * thrown, it would send them out of their call to sign in, and a call doesn't need one.
+   */
+  callSeries: (code: string) => queryOptions({
+    queryKey: qk.callSeries(code),
+    queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
+    retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
+  }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
-  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+
+  /* Starting and scheduling calls. */
+  /** One call as it is now, for its card: the answers people have given change while it's open. */
+  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: () => api.meetings.get(id), retry: false }),
+  /** When you and these people are busy. Nothing is kept: it's read when it's asked for, and a failed read is said plainly, not retried. */
+  busy: (emails: readonly string[], range: { from: ISODate; to: ISODate }) => queryOptions({
+    queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
+  }),
+  /** What you can bring to a call. */
+  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false })
 };
+
+/**
+ * What carries over into a call, while `on`. A read that fails keeps the last answer, as queries do, which would keep
+ * showing what someone may not read any more: once the server says so, there's nothing. A dropped connection changes nothing.
+ */
+export function useCallSeries(code: string, on: boolean): Series | null {
+  const r = useQuery({ ...q.callSeries(code), enabled: on });
+  const refused = r.error !== null && ['forbidden', 'not-found'].includes(errorCode(r.error));
+  return refused ? null : r.data ?? null;
+}
 
 /* ---------- account ---------- */
 
@@ -208,13 +249,14 @@ export function useInviteTeam() {
 
 export function useScheduleCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({ networkMode: 'always', mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
+/** Changes a call. In a series, `scope: 'following'` changes this call and every later one. */
 export function useUpdateCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput> }) => api.meetings.update(v.id, v.input), onSuccess: () => callsChanged(qc) });
+  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput>; scope?: ChangeScope | undefined }) => api.meetings.update(v.id, v.input, { scope: v.scope }), onSuccess: () => callsChanged(qc) });
 }
 /** Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. */
 export function useAdoptEvent() {
@@ -228,13 +270,40 @@ export function useDisconnectCalendar() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
 }
+/**
+ * Cancels a call. In a series, `scope: 'following'` cancels this call and every later one. Its link leads nowhere now, so
+ * what's cached of the link goes with it: coming Back to it reads that first, and opens no lobby or camera on the way.
+ */
 export function useCancelCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => callsChanged(qc) });
+  return useMutation({
+    mutationFn: (v: { id: string; code: string; scope?: ChangeScope | undefined }) => api.meetings.cancel(v.id, { scope: v.scope }),
+    onSuccess: (_r, v) => {
+      qc.removeQueries({ queryKey: qk.byCode(v.code) });
+      qc.removeQueries({ queryKey: qk.card(v.code) });
+      callsChanged(qc);
+    }
+  });
+}
+/** Says whether you're coming to a call you're invited to. The card shows the answer at once, and goes back if it's refused. */
+export function useAnswerCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; answer: Rsvp }) => api.meetings.answer(v.id, v.answer),
+    onMutate: async (v) => {
+      const key = qk.meeting(v.id);
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData(q.meeting(v.id).queryKey);
+      qc.setQueryData(q.meeting(v.id).queryKey, (m) => m && { ...m, rsvp: v.answer });
+      return { before };
+    },
+    onError: (_e, v, ctx) => { if (ctx?.before) qc.setQueryData(q.meeting(v.id).queryKey, ctx.before); },
+    onSuccess: (m) => { qc.setQueryData(q.meeting(m.id).queryKey, m); void qc.invalidateQueries({ queryKey: qk.upcoming }); }
+  });
 }
 export function useStartNow() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({ networkMode: 'always', mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
 /** Schedules the next call after a call (starting its series if it isn't in one): the same clock time here, a week on. */
 export function useScheduleNext() {
@@ -254,13 +323,36 @@ function changed(qc: QueryClient, n: { id: string }) {
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.allSeries });
 }
-/** A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. */
+/**
+ * A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. One that changed since it
+ * was read refused what was asked of it, so it's read again, and the person sees what it says now.
+ */
 const gone = (qc: QueryClient, e: unknown) => {
-  if (errorCode(e) !== 'not-found') return;
+  const code = errorCode(e);
+  if (code === 'conflict') for (const queryKey of [qk.notes, qk.allSeries]) void qc.invalidateQueries({ queryKey });
+  if (code !== 'not-found') return;
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.inbox });
 };
-/** Confirms, rejects, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
+/** Adds a decision the notes didn't hear, in the reader's words; the answer is the note as it is now. */
+export function useProposeDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: DecisionProposal }) => api.notes.proposeDecision(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Adds a follow-up the notes didn't hear; the answer is the note as it is now. */
+export function useProposeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: ActionProposal }) => api.notes.proposeAction(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Confirms, rejects, disputes, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
 export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
@@ -277,7 +369,15 @@ export function useUpdateQuestion() {
     onSuccess: (n) => changed(qc, n)
   });
 }
-/** Takes on, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
+/** Says the notes got it wrong, a later call didn't replace that decision or answer that question, or takes that back. */
+export function useUpdateRevisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; revisitId: string; dismissed: boolean }) => api.notes.updateRevisit(v.noteId, v.revisitId, { dismissed: v.dismissed }),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Takes on, turns down, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
 export function useUpdateAction() {
   const qc = useQueryClient();
   return useMutation({
@@ -292,6 +392,35 @@ export function useCorrectLine() {
   return useMutation({
     mutationFn: (v: { noteId: string; lineId: string; patch: LinePatch }) => api.notes.correctLine(v.noteId, v.lineId, v.patch),
     onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Changes your own notes on a note; the answer is all of them as they are now. */
+export function useOwnNotes(noteId: string) {
+  const qc = useQueryClient();
+  const own = api.notes.personal(noteId);
+  const done = { onSuccess: (p: PersonalNotes) => { qc.setQueryData(qk.personal(noteId), p); }, onError: (e: unknown) => gone(qc, e) };
+  return {
+    add: useMutation({ mutationFn: (input: PersonalInput) => own.add(input), ...done }),
+    edit: useMutation({ mutationFn: (v: { entryId: string; text: string }) => own.edit(v.entryId, v.text), ...done }),
+    remove: useMutation({ mutationFn: (entryId: string) => own.remove(entryId), ...done })
+  };
+}
+/** Adds one of your own entries to the shared notes, as previewed. The answer is the note, for everyone; your own notes say where the copy is. */
+export function useAddToShared(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { entryId: string; body: PromoteBody }) => api.notes.addToShared(noteId, v.entryId, v.body),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Takes something out of the shared notes, for everyone. */
+export function useTakeBack(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (additionId: string) => api.notes.takeBack(noteId, additionId),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
   });
 }
 /** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */
@@ -323,5 +452,33 @@ export function useDeleteNote() {
     onSuccess: () => {
       for (const key of [['notes', 'list'], qk.inbox, qk.meetings, qk.allSeries]) void qc.invalidateQueries({ queryKey: key });
     }
+  });
+}
+
+/* ---------- ringing, and picking a time ---------- */
+
+/**
+ * Which of these people are busy right now, by lowercase address, as far as their calendars can be read: nobody is
+ * "busy" whose calendar can't be. Read when it's asked for; a failed read just says nobody is.
+ */
+export const busyNow = (emails: string[]) => queryOptions({
+  queryKey: ['calendar', 'busy-now', emails],
+  queryFn: async (): Promise<ReadonlySet<string>> => {
+    const now = new Date();
+    const b = await api.calendar.busy(emails, { from: now.toISOString(), to: new Date(now.getTime() + 60_000).toISOString() });
+    return new Set(b.people.filter((p) => p.busy?.some((i) => new Date(i.from) <= now && now < new Date(i.to))).map((p) => p.email.toLowerCase()));
+  },
+  staleTime: 60_000, retry: false, enabled: emails.length > 0
+});
+/** Answers a ring. */
+export function useRingAnswer() {
+  return useMutation({ mutationFn: (v: { id: string; reply: RingReply }) => api.rings.answer(v.id, v.reply) });
+}
+/** Settles a call that offers times on one of them. When someone got there first, the link's card is read again before this finishes: it says the time they took. */
+export function usePickTime(code: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (at: string) => api.calls.pick(code, at),
+    onError: (e) => (errorCode(e) === 'conflict' ? qc.invalidateQueries({ queryKey: qk.card(code) }) : undefined)
   });
 }

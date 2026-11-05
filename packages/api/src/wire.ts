@@ -6,7 +6,8 @@ import { z } from './zod';
 import { CaptureDevicePartSchema } from './capture';
 import { CallPlaceSchema } from './live';
 import { CatchUpRangeSchema } from './catchup';
-import { CaptionLanguageSchema } from './types';
+import { CaptionLanguageSchema, ISODateSchema, RsvpSchema, isTimeZone } from './types';
+import { RingReplySchema } from './rings';
 /**
  * Providers that still sign in a demo identity until they're connected: Microsoft is always Art
  * Vandelay, and single sign-on is whoever's work email is typed. Google is real: the browser goes
@@ -53,8 +54,17 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('hand'), up: z.boolean() }),
   /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
+  /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
+  z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
+  /**
+   * The organizer rings teammates, or people invited who've said yes, into the call: a card on whatever page they have open, for 45 seconds.
+   * Everyone rung is added to the invite, so they get the notes and come in without asking. Ringing someone again starts over.
+   */
+  z.object({ type: z.literal('ring'), emails: z.array(z.string().trim().toLowerCase().max(254)).min(1).max(20) }),
+  /** The organizer stops ringing someone: their card goes, and so does their arch. They stay on the invite. */
+  z.object({ type: z.literal('stop-ring'), ringId: z.string().min(1).max(64) }),
   /** Turns away someone asking to join. Letting someone in is the host's browser adding them to the call's MLS group. */
   z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
   /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
@@ -96,6 +106,8 @@ export const CallJoinBodySchema = z.object({
   /** The pass from this browser's last connection to the call, if it had one: someone let in before is let in again without asking. */
   previous: z.string().max(2000).optional()
 });
+/** What watching the live notes did: true when this look refreshed them, so a browser reads the call again straight away. */
+export const NotesWatchedSchema = z.object({ refreshed: z.boolean() });
 /** The host's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),
@@ -162,15 +174,10 @@ export const ShareEndedBodySchema = z.object({ share: ShareIdSchema });
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
 
-/** Whether dates can be read in `name`: a time zone the runtime knows, such as "Europe/London". Anything else throws a RangeError. */
-function isTimeZone(name: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-GB', { timeZone: name });
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** Saying the notes got a later call wrong, or taking that back. */
+export const RevisitPatchSchema = z.object({ dismissed: z.boolean() });
+export type RevisitPatch = z.infer<typeof RevisitPatchSchema>;
+
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
 /**
@@ -179,14 +186,21 @@ export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().m
  */
 const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
 
+/** The words someone read when they agreed to them. If they've changed since, nothing they read is what they'd be agreeing to. */
+const SeenWords = z.object({ text: z.string().max(2000) });
 /**
- * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, or
- * say a confirmed one no longer holds (superseded).
+ * A change to a decision: confirm it, say it wasn't decided, put it back to proposed, reword it, say a confirmed one no
+ * longer holds (superseded), or (`dispute`) say it wasn't decided as someone who can't reject it, or take that back.
+ * Rewording a confirmed decision puts it back to proposed, unless the organizer confirms the new words in the same change.
+ * Confirming says what was read (`seen`), and is refused if the decision says something else by then.
  */
 export const DecisionPatchSchema = z.object({
   state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']).optional(),
-  text: oneLine(300).optional()
-}).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
+  text: oneLine(300).optional(),
+  dispute: z.boolean().optional(),
+  seen: SeenWords.optional()
+}).refine((p) => p.state !== undefined || p.text !== undefined || p.dispute !== undefined, 'Nothing to change.')
+  .refine((p) => p.state !== 'confirmed' || p.text !== undefined || p.seen !== undefined, 'Say what you read.');
 export type DecisionPatch = z.infer<typeof DecisionPatchSchema>;
 
 /** A change to an open question: say it was answered, open it again, or reword it. */
@@ -196,19 +210,60 @@ export const QuestionPatchSchema = z.object({
 }).refine((p) => p.state !== undefined || p.text !== undefined, 'Nothing to change.');
 export type QuestionPatch = z.infer<typeof QuestionPatchSchema>;
 
+/** Saying whether you're coming to a call you're invited to. */
+export const RsvpBodySchema = z.object({ answer: RsvpSchema });
+/**
+ * When people are busy, between two times. Addresses travel in the body so they never appear in URLs or access logs.
+ * `timeZone` is where the person asking is, which is where an all-day event without a zone of its own falls and where a
+ * demo account's made-up week keeps working hours: a name this server doesn't know reads as none, and none as UTC.
+ */
+export const BusyBodySchema = z.object({
+  emails: z.array(z.string().trim().toLowerCase().max(254)).max(300), from: ISODateSchema, to: ISODateSchema,
+  timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional().catch(undefined)
+});
+/** Picking one of the times a call offers: anyone with the link can, once. */
+export const PickTimeBodySchema = z.object({ at: ISODateSchema });
+/** Answering a ring. */
+export const RingAnswerBodySchema = z.object({ reply: RingReplySchema });
+
 /** Scheduling the next call in a series: when it starts (the app sends the same clock time a week on). */
 export const NextCallBodySchema = z.object({ startsAt: z.string().max(40) });
 
-/** A change to a follow-up. Only its owner can take it on; anyone who has the notes can do the rest. */
+/**
+ * A change to a follow-up. Only the person it's for can take it on (`takeOn`: "I'll do it"). The rest follows `grants.ts`.
+ * Taking something on, or giving it to yourself, says what was read (`seen`), its words and its date: agreeing to something
+ * that's since become something else is refused.
+ */
 export const ActionPatchSchema = z.object({
   done: z.boolean().optional(),
   takeOn: z.literal(true).optional(),
-  /** Give it to someone who has the notes, by email address, or to nobody. */
+  /** Give it to someone who has the notes, by email address, or to nobody: from the person it's for, that's "Not mine". */
   owner: z.string().trim().toLowerCase().max(254).nullable().optional(),
   due: z.string().trim().max(40).nullable().optional(),
-  text: oneLine(300).optional()
+  text: oneLine(300).optional(),
+  seen: SeenWords.extend({ due: z.string().max(100).nullable() }).optional()
 }).refine((p) => Object.values(p).some((v) => v !== undefined), 'Nothing to change.');
 export type ActionPatch = z.infer<typeof ActionPatchSchema>;
+
+/** The most lines someone can pick as what a decision or follow-up they propose rests on. */
+export const MAX_PROPOSAL_LINES = 3;
+/**
+ * Someone with the notes adding a decision the notes didn't hear: its exact words, the lines it rests on, and the
+ * breakout room's section it goes in (the call's, without one). It starts as proposed. This is the only way in: nothing
+ * reaches the shared notes unless someone sends it here themselves.
+ */
+export const DecisionProposalSchema = z.object({
+  text: oneLine(300),
+  lines: z.array(z.string().min(1).max(64)).max(MAX_PROPOSAL_LINES).optional(),
+  room: z.string().min(1).max(64).optional()
+});
+export type DecisionProposal = z.infer<typeof DecisionProposalSchema>;
+/** Someone with the notes adding a follow-up: who it's for (someone who has the notes, who takes it on themselves) and when it's due. */
+export const ActionProposalSchema = DecisionProposalSchema.extend({
+  owner: z.string().trim().toLowerCase().max(254).optional(),
+  due: z.string().trim().min(1).max(40).optional()
+});
+export type ActionProposal = z.infer<typeof ActionProposalSchema>;
 
 /**
  * A correction to a line of a written note's transcript: its words, who said it (someone from the call, by their

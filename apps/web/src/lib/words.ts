@@ -6,12 +6,8 @@
 /** The first letter in capitals and the rest as it is, for a phrase that starts a sentence. */
 export const capital = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
-/**
- * A count with its noun: "1 note", "3 notes". `many` when the plural isn't the noun with an s; `say` writes the
- * number (Home spells small ones out: "four more calls").
- */
-export const plural = (n: number, one: string, many = `${one}s`, say: (n: number) => string = String): string =>
-  `${say(n)} ${n === 1 ? one : many}`;
+/** A count with its noun: "1 note", "3 notes". `many` when the plural isn't the noun with an s. */
+export const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
 /** How much room something takes, as people read it: "under 1 MB", "214 MB", "1.2 GB". */
 export const sizeLabel = (bytes: number): string =>

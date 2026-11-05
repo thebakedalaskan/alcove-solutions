@@ -1,9 +1,9 @@
 /*
  * Calls happen on the stage: night in both themes. Faces first, chrome quiet, controls in one dock.
  * The notes sign sits in the same place for everyone; crimson only ever means notes or recording, and
- * whoever is speaking gets the periwinkle speak ring. Raw colours here are the stage's own overlays.
+ * whoever is speaking gets the speak ring. Raw colours here are the stage's own overlays.
  */
-.stage { position: fixed; inset: 0; z-index: 20; color-scheme: dark; background: radial-gradient(80% 45% at 50% 118%, rgb(255 122 69 / 0.1), transparent 62%), var(--stage); color: var(--stage-ink); }
+.stage { position: fixed; inset: 0; z-index: 20; color-scheme: dark; background: radial-gradient(80% 45% at 50% 118%, color-mix(in srgb, var(--dawn-3) 16%, transparent), transparent 62%), var(--stage); color: var(--stage-ink); }
 .stg { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden auto; transition: opacity var(--duration-3) var(--ease-out), transform var(--duration-3) var(--ease-out); animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .stg.ending { opacity: 0; transform: scale(0.985); }
 .stg-top { flex: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; height: 68px; padding: 0 22px; }
@@ -77,7 +77,7 @@
 .pj .ac-notice.is-caution { background: rgb(243 184 90 / 0.1); color: #F3B85A; box-shadow: inset 0 0 0 1px rgb(243 184 90 / 0.16); }
 /* Information on the stage (someone hosting while the organizer is away): horizon, as the night draws it. */
 .pj .ac-notice.is-info { background: rgb(169 159 255 / 0.1); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(169 159 255 / 0.18); }
-.pj .ac-notice.is-info > .ac-i { color: #A99FFF; }
+.pj .ac-notice.is-info > .ac-i { color: var(--horizon); }
 .pj-refused > div { display: grid; gap: 4px; justify-items: start; }
 .pj-refused > div > span { color: var(--stage-ink); }
 .pj-refused .ac-ref { margin-left: -7px; }
@@ -86,6 +86,17 @@
 .stage .ac-ref:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
 .pj-problem { max-width: 420px; }
 .pj-problem p { max-width: 40ch; }
+/* What carries over, under the way in: the stage's own tile, with a night theme inside it whatever the app's. */
+.pj-carry { display: grid; gap: 8px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--stage-tile); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
+.pj-carry-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pj-carry-h h2 { font: 600 14px/1.3 var(--font-sans); color: var(--stage-ink); }
+.pj-carry-h a { flex: none; border-radius: 4px; color: var(--stage-ink-2); font: 600 13px/1.3 var(--font-sans); text-decoration: underline; text-decoration-color: rgb(255 255 255 / 0.3); text-underline-offset: 3px; }
+.pj-carry-h a:hover { color: var(--stage-ink); }
+.pj-carry > p { font-size: 13.5px; line-height: 1.45; color: var(--stage-ink-2); }
+.pj-carry .carry-groups { gap: 12px; margin-top: 2px; }
+.pj-carry .carry { padding: 6px 0 4px; }
+.pj-carry .carry .t { font-size: 14px; color: var(--stage-ink); }
+.pj-carry .carry .m, .pj-carry .carry-later, .pj-carry .carry-more a { color: var(--stage-ink-2); }
 .pj-sub { display: flex; justify-content: center; }
 .pj-sub button { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; color: var(--stage-ink-2); font: 600 14px/1 var(--font-sans); }
 .pj-sub button:hover { color: var(--stage-ink); background: rgb(255 255 255 / 0.07); }
@@ -98,7 +109,7 @@
 .wait-in p { max-width: 30ch; font-size: 14px; margin-bottom: 8px; }
 .stage .ac-btn.is-secondary { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14); }
 .stage .ac-btn.is-secondary:hover { background: rgb(255 255 255 / 0.14); }
-/* The call's side panel follows the app's theme, so its buttons do too. */
+/* The call's side panel is a surface on the stage, so its buttons are the surface's. */
 .stage .ic-side .ac-btn.is-secondary { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
 .stage .ic-side .ac-btn.is-secondary:hover { background: var(--sunk); }
 
@@ -148,35 +159,36 @@
 }
 
 /* ---- in a call ----
- * Top bar, the stage with the side panel beside it, and the dock. The stage is night in both themes;
- * the panel, menus and sheets follow the app's theme. Tiles are placed in stage pixels by the layout
- * engine (apps/web features/call/stageLayout.ts) and glide there with motion.
+ * Top bar, the panels, and the dock. All of it is night in both themes, the panels, menus and sheets
+ * included. Panels sit where apps/web features/call/panels.ts solves them, and tiles where stageLayout.ts
+ * puts them, in one layer over the whole of the call's area, gliding there with motion.
  */
 .ic-call { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px)); overflow: hidden; animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }
 
 /* top bar */
-.ic-top { display: flex; align-items: center; gap: 14px; height: 72px; min-width: 0; }
+.ic-top { display: flex; align-items: center; gap: 14px; height: 64px; min-width: 0; }
 .ic-top .ttl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.2 var(--font-sans); letter-spacing: -0.01em; color: var(--stage-ink); }
 .ic-top .clock { flex: none; color: var(--stage-ink-2); }
 .ic-top .vr { flex: none; width: 1px; height: 20px; background: rgb(255 255 255 / 0.1); }
 .ic-top .nz { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .ic-top .end { margin-left: auto; display: flex; align-items: center; gap: 10px; flex: none; }
-.ic-vc { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.06); }
-.ic-vc .vbtn { display: grid; place-items: center; width: 32px; height: 28px; border-radius: 8px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
-.ic-vc .vbtn:hover { color: var(--stage-ink); background: rgb(255 255 255 / 0.06); }
-.ic-vc .vbtn[aria-pressed="true"], .ic-vc .vbtn.is-on { background: rgb(255 255 255 / 0.16); color: var(--stage-ink); }
-.ic-vc .vbtn.is-more { width: 26px; }
-.ic-vc .vbtn .wide, .ic-vc .vbtn .narrow { display: grid; place-items: center; }
-.ic-vc .vbtn .narrow { display: none; }
-.ic-top .ac-btn.is-quiet { color: var(--stage-ink-2); }
-.ic-top .ac-btn.is-quiet:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
-.ic-top .ic-reset { height: 32px; padding: 0 10px; }
+.ic-viewbtn { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border-radius: var(--radius-sm); background: rgb(255 255 255 / 0.06); color: var(--stage-ink); font: 600 13.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
+.ic-viewbtn:hover, .ic-viewbtn.is-on { background: rgb(255 255 255 / 0.12); }
+.ic-reset { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-reset:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+/* What's showing, when there isn't room for all of it at once. */
+.ic-swap { flex: 0 1 auto; display: inline-flex; gap: 2px; min-width: 0; margin: 0 auto; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.08); }
+.ic-swap button { min-width: 0; height: 30px; padding: 0 11px; overflow: hidden; border-radius: 8px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
+.ic-swap button[aria-pressed="true"] { background: rgb(255 255 255 / 0.18); color: var(--stage-ink); }
+/* On a phone it sits under the row of arches. */
+.ic-swapbar { position: absolute; z-index: 12; left: 0; right: 0; top: 74px; display: flex; justify-content: center; }
+.ic-swapbar .ic-swap { margin: 0; }
 .ic-top .ic-catch { background: transparent; color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18); }
 .ic-top .ic-catch:hover { background: rgb(255 255 255 / 0.07); }
 .ic-sicon { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
 .ic-sicon:hover, .ic-sicon.is-on { background: rgb(255 255 255 / 0.08); color: var(--stage-ink); }
-.ic-faces { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-mono); transition: background-color var(--duration-1); }
+.ic-faces { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; border-radius: 12px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; transition: background-color var(--duration-1); }
 .ic-faces:hover, .ic-faces.is-on { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
 .ic-faces .ac-faces .ac-avatar { --ring: var(--stage); }
 .ic-faces .badge { position: absolute; top: -2px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--speak); color: var(--stage); font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 0 2px var(--stage); }
@@ -190,10 +202,13 @@
 .ic-seal .rows b { font-weight: 500; color: var(--ink); }
 .ic-seal .last { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.45; color: var(--ink); }
 
-/* the stage and the panel beside it */
+/* the stage: one layer over the whole of the call's area, and its frame for what sits on it */
 .ic-main { position: relative; min-height: 0; }
-.ic-stage-box { position: absolute; left: 0; top: 0; bottom: 0; }
 .ic-stage { position: absolute; inset: 0; }
+.ic-frame { position: absolute; pointer-events: none; }
+.ic-frame.is-rooms, .ic-frame .ic-cap, .ic-frame .rg-alone { pointer-events: auto; }
+/* Someone asking to join is answered whatever's open. */
+.ic-frame .rg-knocks { z-index: 23; }
 .ic-slot { position: absolute; container-type: size; border-radius: var(--radius-md); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* A small tile keeps its pin and spotlight as icons, so they never run into its menu. */
 @container (max-width: 260px) { .ic-tch { height: 26px; padding: 0 2px 0 7px; gap: 4px; } .ic-tch .tl { display: none; } }
@@ -211,21 +226,23 @@
 .ic-slot.is-sizing { z-index: 9; }
 .ic-slot.is-sizing .ac-tile { box-shadow: inset 0 0 0 2px rgba(238, 237, 248, .7); }
 .ic-slot > .ac-tile { position: absolute; inset: 0; }
+.ic-slot .ac-tile-name { left: 8px; bottom: 8px; }
+.ic-slot .ac-tile-mic { right: 8px; top: 8px; }
 .ic-slot .ac-figure { pointer-events: none; }
 .ac-tile-name .you { color: var(--stage-ink-2); }
 .ic-tstate { position: absolute; z-index: 3; left: 8px; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; pointer-events: none; }
 .ic-tstate > * { pointer-events: auto; }
-.ic-tch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 3px 0 9px; border-radius: 8px; background: rgba(11, 10, 24, .72); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
+.ic-tch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 3px 0 9px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 72%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
 .ic-tch.is-spot { background: var(--stage-ink); color: var(--stage); }
 .ic-tch .tx { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; color: inherit; }
 .ic-tch .tx:hover { background: rgb(255 255 255 / 0.16); }
-.ic-tch.is-spot .tx:hover { background: rgba(11, 10, 24, .12); }
-.ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: rgba(11, 10, 24, .62); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
-.ic-more:hover { background: rgba(11, 10, 24, .85); }
+.ic-tch.is-spot .tx:hover { background: color-mix(in srgb, var(--stage) 12%, transparent); }
+.ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
+.ic-more:hover { background: color-mix(in srgb, var(--stage) 85%, transparent); }
 .ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"], .ic-slot:focus-visible .ic-more, .ic-scr:hover .ic-more, .ic-scr:focus-visible .ic-more { opacity: 1; }
 .ac-tile.is-hand .ic-more, .ac-tile:has(.ac-tile-mic) .ic-more { top: 40px; }
 .ic-slot:focus-visible .ic-rs { opacity: 1; }
-.ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgba(11, 10, 24, .62); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
+.ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
 .ac-tile:hover .ic-rs, .is-sizing .ic-rs { opacity: 1; }
 .ic-scr { position: absolute; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06); }
 .ic-scr video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
@@ -236,7 +253,7 @@
 .ic-scr .ac-tile-name .snd { flex: none; color: var(--stage-ink-2); }
 /* A share shown as a tile: a click shows it big. */
 .ic-scr.is-tile { cursor: pointer; }
-.ic-sgrow { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgba(11, 10, 24, .66); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); pointer-events: none; }
+.ic-sgrow { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 66%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); pointer-events: none; }
 .ic-scr.is-tile:hover .ic-sgrow, .ic-scr.is-tile:focus-visible .ic-sgrow { opacity: 1; transform: translate(-50%, -50%); }
 /* A share that just started: a soft ring that fades once, wherever the layout put it. */
 .ic-scr.is-new { animation: ic-arrive var(--duration-5) var(--ease-out) both; }
@@ -258,22 +275,22 @@
 .ic-sv-pic video, .ic-sv-pic canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 /* Held still: a ring that says it isn't live, over the picture. */
 .ic-sv.is-held::after { content: ""; position: absolute; z-index: 2; inset: 0; border-radius: var(--radius-md); box-shadow: inset 0 0 0 2px rgba(169, 159, 255, .9); pointer-events: none; }
-.ic-svbar { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; background: rgba(11, 10, 24, .74); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
+.ic-svbar { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--stage) 74%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
 .ic-scr:hover .ic-svbar, .ic-scr:focus-visible .ic-svbar, .ic-sv.is-on .ic-svbar, .ic-svbar:focus-within { opacity: 1; pointer-events: auto; }
 .ic-svbar button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--stage-ink); transition: background-color var(--duration-1); }
 .ic-svbar button:hover { background: rgb(255 255 255 / 0.12); }
 .ic-svbar button[disabled] { opacity: .36; pointer-events: none; }
-.ic-svbar .lv { width: auto; min-width: 50px; padding: 0 6px; font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.ic-svbar .lv { width: auto; min-width: 50px; padding: 0 6px; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .ic-svbar .lv[disabled] { opacity: .7; }
 .ic-svbar .sep { flex: none; width: 1px; height: 18px; margin: 0 3px; background: rgb(255 255 255 / 0.14); }
 /* Where you are in the picture while zoomed in. */
-.ic-svmap { position: absolute; z-index: 3; right: 10px; bottom: 52px; border-radius: 6px; background: rgba(11, 10, 24, .62); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3); cursor: pointer; touch-action: none; }
+.ic-svmap { position: absolute; z-index: 3; right: 10px; bottom: 52px; border-radius: 6px; background: color-mix(in srgb, var(--stage) 62%, transparent); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3); cursor: pointer; touch-action: none; }
 .ic-svmap i { position: absolute; min-width: 4px; min-height: 4px; border-radius: 3px; background: rgb(255 255 255 / 0.2); box-shadow: inset 0 0 0 1.5px var(--stage-ink); }
 /* A picture held still: how far behind live, and the way back. */
-.ic-svheld { position: absolute; z-index: 4; left: 50%; top: 10px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; height: 36px; max-width: calc(100% - 96px); padding: 0 4px 0 11px; border-radius: 12px; background: rgba(11, 10, 24, .84); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgba(169, 159, 255, .55), 0 12px 28px -12px rgba(0, 0, 0, .8); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: ic-held var(--duration-2) var(--ease-out) both; }
-.ic-svheld .ac-i { flex: none; color: #A99FFF; }
+.ic-svheld { position: absolute; z-index: 4; left: 50%; top: 10px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; height: 36px; max-width: calc(100% - 96px); padding: 0 4px 0 11px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 84%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgba(169, 159, 255, .55), 0 12px 28px -12px rgba(0, 0, 0, .8); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: ic-held var(--duration-2) var(--ease-out) both; }
+.ic-svheld .ac-i { flex: none; color: var(--horizon); }
 .ic-svheld .when { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.ic-svheld .ct { flex: none; color: var(--stage-ink-2); font: 500 12px/1 var(--font-mono); }
+.ic-svheld .ct { flex: none; color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .ic-svheld button, .ic-svaway button, .ic-poph button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-svheld button:hover, .ic-svaway button:hover, .ic-poph button:hover { background: #fff; }
 @keyframes ic-held { from { opacity: 0; translate: -50% -6px; } to { opacity: 1; translate: -50% 0; } }
@@ -285,7 +302,7 @@
 @container (max-width: 340px) { .ic-svbar .lv { display: none; } }
 /* A share open in its own window keeps its place here. */
 .ic-svaway { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 12px; background: radial-gradient(70% 60% at 50% 40%, rgba(169, 159, 255, .1), transparent 70%), var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1.3 var(--font-sans); text-align: center; }
-.ic-svaway .ac-i { color: #A99FFF; }
+.ic-svaway .ac-i { color: var(--horizon); }
 .ic-svaway b { color: var(--stage-ink); font-weight: 600; }
 .ic-scr.is-away { cursor: default; }
 /* The share's own window: its own page, night like the call. */
@@ -298,7 +315,7 @@
 .ic-popbox { position: relative; margin: 0 10px 10px; }
 .ic-popbox.ic-scr { position: relative; }
 .ic-sv.in-window:focus-visible { outline: 2px solid var(--speak); outline-offset: -2px; border-radius: var(--radius-md); }
-.ic-popwait { position: absolute; z-index: 5; left: 50%; bottom: 56px; translate: -50% 0; max-width: calc(100% - 24px); margin: 0; padding: 9px 12px; border-radius: 10px; background: rgba(11, 10, 24, .86); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); text-align: center; }
+.ic-popwait { position: absolute; z-index: 5; left: 50%; bottom: 56px; translate: -50% 0; max-width: calc(100% - 24px); margin: 0; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--stage) 86%, transparent); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); text-align: center; }
 @media (max-width: 520px) { .ic-poph .sub { display: none; } }
 
 /*
@@ -331,7 +348,7 @@
   .ic-mdraw .ac-ptag .n { display: none; }
 }
 .ic-spoint { right: 42px; }
-.ic-pointing { position: absolute; z-index: 5; left: 50%; top: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 11px; border-radius: 12px; background: rgba(11, 10, 24, .8); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 10px 24px -12px rgb(0 0 0 / .8); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.ic-pointing { position: absolute; z-index: 5; left: 50%; top: 10px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 11px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 80%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12), 0 10px 24px -12px rgb(0 0 0 / .8); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; animation: ac-fade var(--duration-2) var(--ease-out) both; }
 .ic-pointing > .ac-i { color: var(--stage-point); filter: drop-shadow(0 0 1px #fff); }
 .ic-pointing .t { margin: 0 4px 0 2px; }
 .ic-pointing .pb { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: var(--stage-ink); transition: background-color var(--duration-1); }
@@ -345,11 +362,68 @@
 /* Nothing on the stage but you, folded away. */
 .ic-stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
 .ic-stage-empty > * { pointer-events: auto; }
-.ic-divider { position: absolute; z-index: 6; display: grid; place-items: center; width: 24px; height: 56px; cursor: ew-resize; touch-action: none; }
-.ic-divider.is-v { width: 56px; height: 24px; cursor: ns-resize; }
-.ic-divider i { display: block; width: 6px; height: 56px; border-radius: 3px; background: rgba(238, 237, 248, .55); box-shadow: 0 0 0 5px rgb(255 255 255 / 0.06); transition: background-color var(--duration-1); }
-.ic-divider.is-v i { width: 56px; height: 6px; }
-.ic-divider:hover i, .ic-divider:focus-visible i { background: rgba(238, 237, 248, .95); }
+/*
+ * Arranging the call: the line between two panels, the handle each has, the glow that shows where something will land,
+ * the people's own small controls, and a share's. Only your screen changes.
+ */
+.ic-div { position: absolute; z-index: 7; display: grid; place-items: center; cursor: col-resize; touch-action: none; outline: none; }
+.ic-div.is-col { cursor: row-resize; }
+.ic-div i { display: block; width: 3px; height: 46px; border-radius: 2px; background: transparent; transition: background-color var(--duration-1); }
+.ic-div.is-col i { width: 46px; height: 3px; }
+.ic-div:hover i, .ic-div:focus-visible i { background: color-mix(in srgb, var(--stage-ink) 50%, transparent); }
+.ic-div.is-on i, .ic-div:active i { background: var(--speak); }
+.ic-main.is-resizing, .ic-main.is-resizing * { transition: none !important; user-select: none; -webkit-user-select: none; }
+.ic-main.is-dragging, .ic-main.is-dragging * { cursor: grabbing !important; user-select: none; -webkit-user-select: none; }
+.ic-grab { position: absolute; z-index: 8; top: 3px; left: 50%; width: 44px; height: 10px; margin-left: -22px; border-radius: 6px; cursor: grab; opacity: 0; touch-action: none; transition: opacity var(--duration-1); }
+.ic-grab::after { content: ""; position: absolute; left: 7px; right: 7px; top: 3px; height: 4px; border-radius: 2px; background: var(--line-control); }
+.ic-scr > .ic-grab::after { background: rgb(255 255 255 / 0.55); }
+.ic-side:hover > .ic-grab, .ic-scr:hover > .ic-grab, .ic-surface:hover > .ic-grab, .ic-grab:focus-visible { opacity: 1; }
+@media (hover: none) { .ic-grab { opacity: .7; } }
+.ic-drop { position: absolute; z-index: 30; border-radius: var(--radius-lg); pointer-events: none; background: linear-gradient(0deg, color-mix(in srgb, var(--dawn-4) 30%, transparent), color-mix(in srgb, var(--speak) 16%, transparent) 70%); box-shadow: inset 0 0 0 2px var(--speak); transition: left var(--duration-1) var(--ease-out), top var(--duration-1) var(--ease-out), width var(--duration-1) var(--ease-out), height var(--duration-1) var(--ease-out); }
+.ic-ghost { position: absolute; z-index: 31; display: inline-flex; align-items: center; gap: 7px; max-width: 280px; height: 32px; padding: 0 10px; border-radius: 9px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); font: 500 13.5px/1 var(--font-sans); pointer-events: none; }
+.ic-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+/* Over the people: move them, fold them to arches, or hide them. */
+.ic-ppl { position: absolute; z-index: 8; display: inline-flex; gap: 1px; padding: 2px; transform: translateX(-50%); border-radius: 9px; background: color-mix(in srgb, var(--stage) 78%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
+.ic-stage:has(.ic-slot:hover, .ic-scr.is-tile:hover) .ic-ppl, .ic-ppl:hover, .ic-ppl:focus-within { opacity: 1; pointer-events: auto; }
+.ic-ppl .b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
+.ic-ppl .b:hover { background: rgb(255 255 255 / 0.14); }
+.ic-ppl .b.is-grab { cursor: grab; touch-action: none; }
+/* On a share that's a panel: more room, and back to a tile. */
+.ic-scr-ac { position: absolute; z-index: 3; right: 76px; top: 9px; display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--stage) 68%, transparent); opacity: 0; transition: opacity var(--duration-1); }
+.ic-scr:hover .ic-scr-ac, .ic-scr-ac:focus-within { opacity: 1; }
+.ic-scr-ac button { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
+.ic-scr-ac button:hover { background: rgb(255 255 255 / 0.14); }
+/* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
+.ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
+.ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
+.ic-slot.is-arch .ac-figure { height: 84%; }
+.ic-slot.is-arch, .ic-slot.is-horizon { cursor: pointer; }
+.ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate), .ic-slot.is-horizon :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
+.ic-slot.is-arch .ic-more, .ic-slot.is-horizon .ic-more { opacity: 0 !important; pointer-events: none; }
+.ic-slot.is-arch .ac-tile-face .ac-avatar { --size: 48px !important; }
+/* People on the horizon: small arches beside the dock. Whoever's talking, or has a hand up, rises. */
+.ic-slot.is-horizon { z-index: 3; }
+.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.ic-slot.is-horizon > .ac-tile::after { display: none; }
+.ic-slot.is-horizon .ac-figure { height: 92%; filter: none; }
+.ic-slot.is-horizon .ac-tile-face .ac-avatar { --size: 24px !important; }
+.ic-slot.is-horizon > .ac-tile.is-speaking { box-shadow: inset 0 0 0 1.5px var(--speak); }
+.ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: inset 0 0 0 1.5px var(--gold); }
+.ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
+/* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
+body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
+.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; }
+/* A share waiting among arches or on the horizon, and whoever there's no room for. */
+.ic-scr.is-arch { border-radius: 14px; }
+.ic-scr.is-horizon { z-index: 3; border-radius: 6px; }
+.ic-scr:is(.is-arch, .is-horizon) :is(.ac-tile-name, .ic-sgrow, .ic-spoint) { display: none; }
+.ic-scr:is(.is-arch, .is-horizon) .ic-more { opacity: 0 !important; pointer-events: none; }
+.ic-scr.is-behind { display: none; }
+.ic-slot.is-off, .ic-scr.is-off { visibility: hidden; pointer-events: none; }
+.ic-tmore { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 600 14px/1 var(--font-sans); transition: color var(--duration-1), background-color var(--duration-1); }
+.ic-tmore:hover { background: var(--stage-raised); color: var(--stage-ink); }
+.ic-tmore.is-arch { border-radius: 999px 999px 14px 14px; }
+.ic-tmore.is-horizon { border-radius: 999px 999px 8px 8px; font-size: 11.5px; }
 .ic-sbar { position: absolute; z-index: 8; left: 0; right: 0; top: 0; height: 36px; display: flex; justify-content: center; align-items: center; gap: 8px; pointer-events: none; }
 .ic-spill { display: inline-flex; align-items: center; gap: 10px; height: 36px; max-width: 100%; min-width: 0; padding: 0 4px 0 12px; border-radius: 12px; background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); white-space: nowrap; pointer-events: auto; }
 .ic-spill .ac-i { flex: none; color: var(--stage-ink); }
@@ -399,15 +473,21 @@
 .ic-banner { display: flex; align-items: center; gap: 10px; max-width: calc(100% - 16px); padding: 7px 16px 7px 7px; border-radius: 999px; background: var(--stage-ink); color: var(--stage); font-size: 13.5px; line-height: 1.3; box-shadow: 0 18px 40px -14px rgba(0, 0, 0, .7); }
 .ic-banner span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* the side panel: the app's own theme on the night stage */
-.ic-side { position: absolute; z-index: 20; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; color-scheme: light; }
-.dark .ic-side { color-scheme: dark; }
+/* side panels: surfaces on the night stage, placed by the panels */
+.ic-side { position: absolute; z-index: 20; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
+.ic-side.is-float { z-index: 22; box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.ic-side.is-off { display: none; }
+/* The workspace and the board on the stage. */
+.ic-surface { position: absolute; z-index: 2; display: flex; min-width: 0; }
+.ic-surface.is-off { display: none; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
-.ic-side-head .ac-tabs { border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
+/* All six tabs fit a side panel at the width it starts at. */
+.ic-side-head .ac-tabs { gap: 0; border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
-.ic-side-head .ac-tab { height: 52px; padding: 0 9px; font-size: 13.5px; flex: none; }
-.ic-side-head .ac-tab[aria-selected="true"]::after { left: 8px; right: 8px; bottom: 0; }
-.ic-side-head .ttl { flex: 1; padding-left: 10px; font: 600 15px/1.2 var(--font-sans); letter-spacing: -0.01em; }
+.ic-side-head .ac-tab { height: 52px; padding: 0 5px; font-size: 13px; flex: none; touch-action: pan-x; }
+.ic-side-head .ac-tab[aria-selected="true"]::after { left: 4px; right: 4px; bottom: 0; }
+.ic-side-head .ttl { flex: 1; padding-left: 8px; font: 600 14.5px/1.2 var(--font-sans); }
+.ic-side-head .ttl[data-tab] { cursor: grab; touch-action: none; }
 .ic-views { position: relative; flex: 1; min-height: 0; }
 .ic-view { position: absolute; inset: 0; display: flex; flex-direction: column; }
 .ic-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
@@ -421,13 +501,18 @@
 .ic-nb { display: grid; gap: 20px; padding: 16px 16px 20px; }
 .ic-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ic-sh .ac-eyebrow { color: var(--ink-2); }
-.ic-sh .n { padding: 3px 6px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-sh .n { padding: 3px 6px; border-radius: 6px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-nr { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: start; margin: 0 -6px; padding: 6px; border-radius: 8px; font: 500 14px/1.4 var(--font-sans); color: var(--ink); }
 .ic-nr .mk { display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
 .ic-nr .mk.av { background: none; }
 .ic-nr .meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-nr .ac-time-chip { margin-top: 1px; }
+.ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ic-nr .nr-text { overflow-wrap: anywhere; }
+.ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+/* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */
+@media (hover: none), (max-width: 600px) { .ic-nr .ac-check::after { content: ""; position: absolute; inset: -6px -12px; } }
 .ic-sum { font: 400 14px/1.6 var(--font-sans); color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .ic-sum.is-open { display: block; }
 .ic-more-text { margin-top: 4px; padding: 2px 0; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }
@@ -435,7 +520,8 @@
 .ic-rgrp { display: grid; gap: 4px; }
 .ic-rgrp + .ic-rgrp { margin-top: 10px; }
 .ic-rgrp .rn { display: flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
-.ic-rgrp .rn span { font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-rgrp .rn span { font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ic-about { display: grid; gap: 6px; }
 .ic-writing { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
 .ic-problems { display: grid; gap: 8px; padding: 0 16px 16px; }
 .ic-nf { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-top: 1px solid var(--line); flex: none; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; }
@@ -469,7 +555,7 @@
 .ic-qa .a .txt { font-size: 14.5px; line-height: 1.55; color: var(--ink); }
 .ic-qa .a .txt.bad { color: var(--caution); }
 .ic-qa .a .cites { display: flex; flex-wrap: wrap; gap: 6px; }
-.ic-qa .a .cu-grp b { display: block; margin: 4px 0 4px; font: 500 11.5px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.ic-qa .a .cu-grp b { display: block; margin: 4px 0 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .ic-qa .a ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; line-height: 1.5; }
 .ic-qa .a .cu-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); }
 .ic-qa .a.is-catch { padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
@@ -512,7 +598,7 @@
 .ic-col.is-drop { background: var(--horizon-soft); box-shadow: inset 0 0 0 1.5px var(--horizon); }
 .ic-col .ch { display: flex; align-items: center; gap: 4px; height: 28px; margin-bottom: 4px; }
 .ic-col .ch .ac-i { flex: none; color: var(--ink-3); }
-.ic-col .cnt { padding-right: 4px; font: 500 11.5px/1 var(--font-mono); color: var(--ink-3); }
+.ic-col .cnt { padding-right: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-rname { flex: 1; min-width: 0; height: 26px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; }
 .ic-rname:hover { background: var(--surface); }
 .ic-rname:focus { outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--focus); }
@@ -530,7 +616,7 @@
 .ic-rtimer .trk { stroke: var(--sunk); }
 .ic-rtimer .prg { stroke: var(--ink-2); transition: stroke var(--duration-2), stroke-dashoffset 1s linear; }
 .ic-rtimer.is-soon .prg { stroke: var(--caution); }
-.ic-rtimer .t { font: 500 26px/1 var(--font-mono); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.ic-rtimer .t { font: 500 26px/1 var(--font-sans); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .ic-rtimer .s { margin-top: 5px; font-size: 12.5px; color: var(--ink-3); }
 .ic-rtimer.is-soon .s { color: var(--caution); }
 .ic-rcards { display: grid; gap: 8px; margin-top: 16px; }
@@ -588,7 +674,7 @@
 .ic-vol-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .ic-vol-row .ac-icon-btn { width: 32px; height: 32px; margin-left: -6px; }
 .ic-vol-row .ac-icon-btn.is-on { color: var(--ink); background: var(--sunk); }
-.ic-vol-row .n { flex: none; min-width: 34px; text-align: right; font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ic-vol-row .n { flex: none; min-width: 34px; text-align: right; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .ic-none { padding: 4px 10px 8px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
 .ic-srow { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .ic-srow .end { margin-left: auto; }
@@ -618,11 +704,43 @@
 .ic-menu .ac-eyebrow:first-child { margin-top: 6px; }
 .ic-tmenu { width: 280px; }
 .ic-mgrp { margin-top: 4px; }
-.ic-vmenu { width: 304px; max-height: min(640px, calc(100dvh - 96px)); overflow-y: auto; }
-.ic-vself { display: grid; gap: 2px; padding: 2px 6px 4px; }
-.ic-vself .ac-seg { display: flex; }
-.ic-vself .ac-seg button { flex: 1; justify-content: center; padding: 0 6px; font-size: 12.5px; }
-.ic-vself .hint { margin: 6px 4px 0; }
+.ic-vmenu { display: grid; gap: 10px; width: 330px; max-height: min(680px, calc(100dvh - 96px)); padding: 12px; overflow-y: auto; }
+.ic-vmenu .ic-msep { margin: 0; }
+.ic-vmenu .hint { margin: 0 2px; max-width: none; }
+.ic-vmenu .mi { margin: 0 -6px; width: calc(100% + 12px); }
+.ic-vhd { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ic-vhd b { font: 600 15px/1.2 var(--font-sans); }
+.ic-vhd span { font-size: 12.5px; color: var(--ink-3); }
+.ic-lays { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.ic-lay { display: grid; gap: 5px; justify-items: center; padding: 6px 2px 5px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-lay:hover { background: var(--sunk); }
+.ic-lay[aria-pressed="true"] { background: var(--sun-soft); color: var(--sun-text); }
+.ic-lay small { font: 500 11.5px/1.15 var(--font-sans); text-align: center; }
+.ic-lay .th { position: relative; display: grid; gap: 2px; width: 60px; height: 40px; padding: 3px; border-radius: 6px; background: var(--stage); }
+.ic-lay .th i { display: block; border-radius: 2px; }
+.ic-lay .th .s { background: var(--dawn-2); }
+.ic-lay .th .d { background: var(--stage-ink); }
+.ic-lay .th .p { background: var(--dawn-4); }
+.ic-lay .t1 { grid-template-columns: 1fr 1.3fr 7px; }
+.ic-lay .t2 { grid-template-columns: 1fr 7px; grid-template-rows: 1fr 1.2fr; }
+.ic-lay .t2 .s { grid-area: 1 / 1; }
+.ic-lay .t2 .d { grid-area: 2 / 1; }
+.ic-lay .t2 .p { grid-area: 1 / 2 / 3 / 3; }
+.ic-lay .t3 { grid-template-columns: 2fr 1fr; grid-template-rows: 6px 1fr; }
+.ic-lay .t3 .s { grid-area: 1 / 1 / 3 / 2; }
+.ic-lay .t3 .p { grid-area: 1 / 2; }
+.ic-lay .t3 .d { grid-area: 2 / 2; }
+.ic-lay .t4 { grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 6px; }
+.ic-lay .t4 .d { grid-area: 1 / 1 / 3 / 2; }
+.ic-lay .t4 .s { grid-area: 1 / 2; }
+.ic-lay .t4 .p { grid-area: 2 / 2; }
+.ic-vrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; font: 500 14px/1.2 var(--font-sans); }
+.ic-vstack { display: grid; gap: 8px; font: 500 14px/1.2 var(--font-sans); }
+.ic-vrow .ac-seg, .ic-vstack .ac-seg { padding: 3px; border-radius: 10px; }
+.ic-vrow .ac-seg button, .ic-vstack .ac-seg button { height: 26px; padding: 0 9px; border-radius: 7px; font: 600 12.5px/1 var(--font-sans); }
+.ic-vrow .ac-seg .pill, .ic-vstack .ac-seg .pill { border-radius: 7px; }
+.ic-vstack .ac-seg { display: flex; }
+.ic-vstack .ac-seg button { flex: 1; justify-content: center; padding: 0 6px; }
 .ic-keys { display: flex; align-items: flex-start; gap: 8px; }
 .ic-keys .ac-i { flex: none; margin-top: 2px; }
 .ic-keys .ac-kbd { margin: 0 1px; }
@@ -677,20 +795,18 @@
 .ic-leave .next-host .pick > :first-child { margin-top: 6px; }
 .ic-leave .next-host .ic-opt { height: 40px; }
 
-/* narrower screens: words give way to icons, the panel covers the stage on phones */
-@media (max-width: 980px) {
-  .ic-top .catchtxt, .ic-top .rtxt { display: none; }
+/* narrower windows: the top bar keeps its controls and drops their words */
+@media (max-width: 1040px) {
+  .ic-top { gap: 10px; }
+  .ic-top .ttl { max-width: 120px; }
+  .ic-top .catchtxt, .ic-top .rtxt, .ic-viewbtn .vt, .ic-faces .n { display: none; }
   .ic-top .ic-catch { padding: 0 10px; }
+  .ic-swap button { padding: 0 8px; font-size: 12.5px; }
   .ic-share .pk-note { display: none; }
 }
 @media (max-width: 760px) {
-  .ic-top { height: 60px; gap: 10px; }
-  .ic-top .clock, .ic-top .vr.v1, .ic-reset { display: none; }
-  .ic-vc { padding: 0; background: none; }
-  .ic-vc .vbtn.is-mode { display: none; }
-  .ic-vc .vbtn.is-more { width: 36px; height: 36px; border-radius: 10px; }
-  .ic-vc .vbtn .wide { display: none; }
-  .ic-vc .vbtn .narrow { display: grid; }
+  .ic-top { height: 60px; }
+  .ic-top .clock, .ic-top .vr.v1 { display: none; }
   .ic-faces .ac-faces .ac-avatar:nth-child(n+3), .ic-faces .ac-faces .more { display: none; }
   .ic-dockbar { height: 76px; }
   .ic-dockbar .ac-dock { gap: 2px; padding: 5px; }
@@ -699,8 +815,7 @@
   .ic-dockbar .ac-dock-sep { margin: 0 2px; }
   .ic-dockbar .ac-dock-leave { padding: 0 12px; }
   .ic-dockbar .ac-dock-leave .lt { display: none; }
-  .ic-rs, .ic-divider { display: none; }
-  .ic-side { left: 0; width: auto !important; }
+  .ic-rs { display: none; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
@@ -708,7 +823,7 @@
   .ic-call { padding: 0 8px; }
   .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
   .ic-menu .only-narrow { display: flex; }
-  .ic-catch, .ic-top .end > .vr { display: none; }
+  .ic-catch, .ic-reset { display: none; }
   .ic-dockbar .ac-dock-chev { display: none; }
   .ic-dockbar .ac-dock-split .ac-dock-btn { border-radius: 12px; }
   .ic-dockbar .ac-dock-btn { width: 36px; height: 36px; }
@@ -826,7 +941,7 @@
 .mv-link { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 4px 4px 12px; border-radius: var(--radius-md); background: var(--sunk); }
 .mv-link .ac-mono { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-2); }
 .mv-carry { color: var(--ink-3) !important; font-size: 13px !important; }
-.mv-left { justify-self: start; font-size: 12px; letter-spacing: .02em; color: var(--ink-3); }
+.mv-left { justify-self: start; font-size: 12px; color: var(--ink-3); }
 .mv-hidden { display: grid; justify-items: center; align-content: center; gap: 10px; width: 196px; height: 196px; padding: 18px; border-radius: var(--radius-md); background: var(--sunk); text-align: center; color: var(--ink-2); }
 .mv-hidden p { font-size: 13px; line-height: 1.4; }
 .mv-there { display: flex; gap: 18px; align-items: flex-start; }
@@ -872,7 +987,7 @@
 .mv-card.is-plain { justify-items: center; text-align: center; }
 .mv-plain { display: grid; justify-items: center; gap: 12px; max-width: 34ch; }
 .mv-plain p { font-size: 14px; line-height: 1.5; color: var(--stage-ink-2); }
-.stage .mv-ic { background: rgb(255 122 69 / 0.14); color: var(--sun-glow); }
+.stage .mv-ic { background: var(--sun-soft); color: var(--sun-text); }
 .stage .mv-ic.is-quiet { background: rgb(255 255 255 / 0.07); color: var(--stage-ink-2); }
 .stage .mv-ic.is-caution { background: rgb(243 184 90 / 0.14); color: #F3B85A; }
 .mv-done { flex: 1; display: grid; place-content: center; justify-items: center; gap: 14px; max-width: 440px; margin: 0 auto; padding: 8px 16px 72px; text-align: center; }

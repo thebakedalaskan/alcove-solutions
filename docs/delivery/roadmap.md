@@ -4,14 +4,14 @@
 
 ## Done
 
-- Monorepo, design system, web app: sign-in, Home with the day's calls, the one-line call composer, pre-join,
+- Monorepo, design system, web app: sign-in, Home for starting calls and what's yours, scheduling calls, pre-join,
   the full-screen call, notes, the room recorder and account.
 - API with encrypted vault, account keys wrapped under `KMASTER` and opened per request, sessions in Postgres,
   meetings, single-participant calls with real camera, mic and screen sharing, chat, encrypted notes
   recordings in calls and in the room, playback, notes for everyone invited, sharing by email, people search
   and credits display.
-- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: the next meeting
-  and the rest of today's on Home, scheduled calls on the organizer's calendar with Google's invitations,
+- Real Google sign-in (OpenID Connect with PKCE, verified emails only) and Google Calendar: meetings with other
+  people in Home's Coming up, scheduled calls on the organizer's calendar with Google's invitations,
   changes and cancellations kept in step, and an organizer's own event made an Alcove call.
 - Live transcript and written notes with NEAR AI Cloud: Whisper transcribes speech while notes are on; when
   the recording stops, a notes worker writes the summary, decisions, open questions, follow-ups, chapters and
@@ -22,10 +22,12 @@
   against a fresh nonce; speech and transcripts go by Oblivious HTTP sealed to the models' attested keys, at
   their own endpoints; notes wait through a verification outage; each note shows which verified models wrote
   it and what was checked ([Verified private inference](../engineering/notes-and-inference.md#verified-private-inference)).
-- Memory across a series: the occurrences of a recurring Google event held in Alcove, and calls scheduled as
-  the next one, carry confirmed decisions, open questions and follow-ups into the next call, on Home and a
-  series page, each with its call and moment, and people can ask across the calls. Everyone sees only the
-  calls whose notes they have ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
+- Memory across a series: calls scheduled to repeat, the occurrences of a recurring Google event held in Alcove,
+  and calls scheduled as the next one, carry confirmed decisions, open questions and follow-ups into the next call,
+  breakout rooms' too, on a call's card, a series page, the pre-join and in the call, each with its call and moment,
+  and people can ask across the calls, during the call too. A later call that seems to replace a decision or answer a
+  question says so to whoever has both notes. Everyone sees only the calls whose notes they have
+  ([Notes and inference › Series](../engineering/notes-and-inference.md#series)).
 - What a call captures, for everyone: recording, transcript, AI notes and shared screens, each on, paused or
   off with who changed it and when, in the call and before joining; one pause that stops every kind of capture
   on the server; asking the organizer for notes; and the gaps marked in the transcript, catch-up and notes
@@ -45,12 +47,23 @@
   or any stretch of the call, sorted into decided, proposed, open and next, each point with the transcript moments
   it came from (only real lines), saying what it couldn't have heard and as of when, with Back to live. In a
   breakout room it reads the room's lines; guests with the link read only what was said while they were there.
-  Nothing is kept ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
+  Nothing is kept unless the person keeps an answer in their own notes ([Notes and inference › Catching up during a call](../engineering/notes-and-inference.md#catching-up-during-a-call)).
+- Your own notes beside the shared ones: what you write for yourself, moments you bookmark and answers you keep, in the
+  call and on the note, sealed under your own keys so nobody else reads them, the organizer included. Every note and AI
+  surface says who it's for. A bookmark reads what it points at again each time, as you may read it then. Adding
+  something to the shared notes shows exactly what goes, where and who reads it first, and it can be taken back
+  ([Notes and inference › Your own notes](../engineering/notes-and-inference.md#your-own-notes)).
 - A transcript honest about what it heard, and correctable: words Whisper heard with little confidence and
   lines heard on two microphones are marked in the call and the note; the organizer corrects any line and people
   their own words, in revisions that say who changed what; the notes are written again on request; and the notes
   recording mixes everyone the organizer's browser hears
   ([Notes and inference › Correcting the transcript](../engineering/notes-and-inference.md#correcting-the-transcript)).
+- Decisions people confirm and follow-ups people acknowledge: what the notes write stays proposed; anyone with the notes
+  can propose, the organizer and people invited confirm, never what they wrote themselves, and the organizer or the person
+  concerned takes things away, with who, when and in what standing on every change; a follow-up and its date are
+  suggestions until the person it's for says **I’ll do it** or **Not mine**;
+  each entry shows the transcript lines and screens behind it, and flags what's missing, in doubt or said otherwise
+  ([Notes and inference › Decisions and follow-ups](../engineering/notes-and-inference.md#decisions-and-follow-ups)).
 - Pointing at shared screens: a pointer with your name and marks that fade, aligned on the shared picture at any
   size and however each person zooms into it, sent from browser to browser end-to-end encrypted and kept to your part
   of the call; the presenter decides
@@ -92,5 +105,4 @@
 | 7 | Pin the model code NEAR AI runs | Check what its compose manager starts against deployments with published provenance; bind the GPU evidence and the model's name to the VM; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
 | 8 | Speaker diarization for room recordings | Room transcripts name nobody today |
 | 9 | Remaining review items | Strict JSON parsing, rollback detection (version-bound associated data, encrypted piece manifest), billing account IDs, key rotation, deletion across backups |
-| 10 | A series during the call and at pre-join | What carries over, and asking across the series, once group calls land; [Notes and inference › What's left](../engineering/notes-and-inference.md#whats-left) |
-| 11 | Each breakout room committed by one of its own members | The host's browser commits for every room's group today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |
+| 10 | Each breakout room committed by one of its own members | The host's browser commits for every room's group today; with host hand-off any connection can commit, so a room's own committer is the next step ([Host hand-off](../engineering/calls-and-recordings.md#host-hand-off)) |

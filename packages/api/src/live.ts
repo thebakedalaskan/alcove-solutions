@@ -1,8 +1,10 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
-import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
-import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import { LiveNotesSchema, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
+import { CallCodeSchema, IDSchema, ISODateSchema, NotesChoicesSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage, type SeriesAnswerPart } from './types';
+import { RungSchema } from './rings';
 import type { CallMoveOut, MoveMedia } from './moves';
+import type { PersonalApi } from './personal';
 
 /* Live sessions push whole snapshots. Subscribers re-render from the snapshot; nothing is patched in the UI. */
 
@@ -27,6 +29,8 @@ export type CallRole = z.infer<typeof CallRoleSchema>;
 export const CallCardSchema = z.object({
   title: z.string(),
   organizerName: z.string(),
+  /** When the call starts. Means nothing while `offer` is open; once someone has picked, it's the time they picked. */
+  startsAt: ISODateSchema,
   /** Someone hosts the call now (the organizer, or someone standing in for them): everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
   /**
@@ -37,6 +41,12 @@ export const CallCardSchema = z.object({
   locked: z.boolean(),
   /** Notes as the call was scheduled: whether they start when it does. */
   notes: NotesSettingSchema,
+  /** What the notes keep, so people know before they join. */
+  choices: NotesChoicesSchema,
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean(),
+  /** Times offered to pick from, until someone with the link has: no joining meanwhile. How long the call is, in minutes. */
+  offer: z.object({ times: z.array(ISODateSchema), minutes: z.number() }).nullable(),
   /** What's being captured now, without anyone's name; null until the organizer has started the call. */
   capture: CaptureStateSchema.nullable(),
   /** The call is over and nobody has started it again. */
@@ -281,6 +291,8 @@ export const CallStateSchema = z.object({
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
+  /** People the organizer rang who aren't in the call, and how each answered; empty for everyone else. */
+  ringing: z.array(RungSchema),
   /**
    * Connections that left but are still in the call's group for a moment, while the host's browser takes them
    * out: whose they were, and that person's connection now (`now`) when they're still in the call, back from a reload
@@ -296,6 +308,8 @@ export const CallStateSchema = z.object({
    * of the call you're in now only. What's said in one breakout room never shows in another, or in the main room.
    */
   transcript: z.array(TranscriptLineSchema),
+  /** The shared live notes of the part of the call you're in, written only from what you may read. Nothing for someone waiting to be let in. */
+  liveNotes: LiveNotesSchema,
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
@@ -441,6 +455,11 @@ export interface CallSession extends LiveStore<CallState> {
   readonly ticket: CallTicket;
   /** The call's encryption as this browser sees it. */
   readonly crypto: LiveStore<CallCrypto>;
+  /**
+   * Your own notes on this call, with this browser's account: only you read them. For the organizer and everyone on the
+   * invite, once notes have been on; someone with only the link has no account to keep them under.
+   */
+  readonly personal: PersonalApi;
   /** A LiveKit token, once you're let in. Rejected before that. */
   room(): Promise<{ serverUrl: string; roomName: string; identity: string; token: string }>;
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
@@ -462,6 +481,8 @@ export interface CallSession extends LiveStore<CallState> {
   admit(identity: string): Promise<void>;
   /** Whoever hosts: turns someone away. */
   deny(identity: string): Promise<void>;
+  /** Organizer only: rings teammates, or people already invited, by address. Anyone rung is added to the invite; ringing someone again starts over. */
+  ring(emails: string[]): Promise<void>;
   /** Organizer only. Everyone in the call sees the change. Resolves once it's made, so capture can wait for it. */
   setNotes(on: boolean): Promise<void>;
   /**
@@ -525,6 +546,19 @@ export interface CallSession extends LiveStore<CallState> {
    * browser's own for its microphone). Only while notes are on.
    */
   transcribe(clip: TranscriptClip, speaker: string): Promise<void>;
+  /**
+   * Says this browser is showing the live notes, until the function it returns is called. While anything here is, the
+   * notes of the part of the call it's in are kept up to date: at most every 30 seconds while there's something new,
+   * in one run however many browsers are watching. The notes themselves arrive with the call (`CallState.liveNotes`).
+   */
+  watchNotes(): () => void;
+  /**
+   * Anyone in the call who gets the notes: ticks a follow-up of the live notes, or takes the tick back, for everyone in
+   * that part of the call. It stays ticked through every refresh, and is done in the note when the call ends. A guest
+   * with the link is refused, and notes written for a narrower view (`read.whileHere`) can't be ticked. Resolves once the
+   * server has it.
+   */
+  tickFollowUp(id: string, done: boolean): Promise<void>;
   /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */
   catchUp(range: CatchUpRange): Promise<CatchUp>;
   /** Asks about what was said in `range`, for you alone, with the moments the answer comes from. */
@@ -533,6 +567,11 @@ export interface CallSession extends LiveStore<CallState> {
   catchUpWindow(): Promise<CatchUpWindow>;
   /** A moment of the live transcript from a catch-up or an answer, with what was said around it. Your access is checked again. */
   moment(lineId: string): Promise<CallMoment>;
+  /**
+   * Asks across the earlier calls in this call's series, for you alone, from the notes your account has now, with the
+   * calls and moments the answer comes from. `timeZone` as in series.ask. Needs a sign-in, and waits while notes are paused.
+   */
+  askEarlier(question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   /* Host controls, for whoever hosts (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;
@@ -540,6 +579,8 @@ export interface CallSession extends LiveStore<CallState> {
   remove(identity: string): Promise<void>;
   /** While locked, nobody new can join except the organizer. */
   lock(on: boolean): Promise<void>;
+  /** Stops ringing someone (their `Rung.id`). A ring that's already over needs no stopping. */
+  stopRing(ringId: string): Promise<void>;
   /** Hides a notice on this screen only. */
   dismissNotice(id: string): void;
   /** Starts moving your place in the call to another device, with your microphone and camera as they are now. */

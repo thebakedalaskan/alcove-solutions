@@ -6,8 +6,8 @@
 import { PreferencesSchema, type Patch, type Person, type Preferences, type Session, type SignInBody, type SignInProvider } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
-import { blindIndex } from '../crypto';
-import { exec, maybeOne, rows, timestamp, tx } from '../db';
+import { blindIndex, equalBytes } from '../crypto';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { demoDay, demoIdentity, isSharedDemo } from '../demo';
 import type { Identity } from '../identity';
 import { ForbiddenError, NotFoundError } from '../errors';
@@ -15,13 +15,18 @@ import { log } from '../log';
 import { createOwner, masterKey, openOwner, ownerFrom } from '../owners';
 import { closeSession, openSession } from '../sessions';
 import { createItem, listItems, saveRevision } from '../vault';
+import { forgetAnswers } from './access';
+import { takeAllBack } from './additions';
 import { queueDelete } from './audio';
 import { openAccount } from './billing';
 import { forgetAccess, grantToRevoke, revokeGrant, unreachable, withdraw } from './calendar';
-import { create as createMeeting, findUpcoming, upcoming } from './meetings';
+import { create as createMeeting, findUpcoming } from './meetings';
 import { deleteOwnNote, heldNoteIds } from './notes';
 import { photoUrl } from './photos';
 import { portraitFor } from './portraits';
+import { eventsToWithdraw } from './repeats';
+import { forget as forgetRings } from './rings';
+import { forgetAccount, moveAddress } from './workspaces';
 
 const alog = log.child({ component: 'account' });
 
@@ -43,25 +48,26 @@ const DEFAULT_PREFERENCES: Preferences = {
   pinned: [], groups: []
 };
 
-async function profileItem(o: Owner) {
-  const [p] = await listItems(o, o.pool, 'profile', Profile);
+async function profileItem(o: Owner, db: Db) {
+  const [p] = await listItems(o, db, 'profile', Profile);
   if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
   return p;
 }
-export const profile = async (o: Owner): Promise<Profile> => (await profileItem(o)).manifest;
+/** `db`: a transaction reads on its own connection. Waiting for a second one while it holds a lock can use up the pool. */
+export const profile = async (o: Owner, db: Db = o.pool): Promise<Profile> => (await profileItem(o, db)).manifest;
 
-export async function updateProfile(o: Owner, fn: (p: Profile) => Profile): Promise<Profile> {
-  return tx(o.pool, async (c) => {
-    const [p] = await listItems(o, c, 'profile', Profile);
-    if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
-    const next = fn(p.manifest);
-    await saveRevision(o, c, p.itemId, p.revisionId, next);
-    return next;
-  });
+async function changeProfile(o: Owner, db: Db, fn: (p: Profile) => Profile): Promise<Profile> {
+  const [p] = await listItems(o, db, 'profile', Profile);
+  if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
+  const next = fn(p.manifest);
+  await saveRevision(o, db, p.itemId, p.revisionId, next);
+  return next;
 }
+export const updateProfile = (o: Owner, fn: (p: Profile) => Profile): Promise<Profile> => tx(o.pool, (c) => changeProfile(o, c, fn));
 
-export async function me(o: Owner): Promise<Person> {
-  const p = await profile(o);
+/** `db`: a transaction reads on its own connection. */
+export async function me(o: Owner, db: Db = o.pool): Promise<Person> {
+  const p = await profile(o, db);
   // A provider photo is served through Alcove (modules/photos.ts): browsers never fetch it from the provider.
   const photo = photoUrl(o, p.photoUrl);
   return { id: o.ownerId, name: p.name, email: p.email, ...(photo ? { photoUrl: photo } : {}), portrait: portraitFor(p.email) };
@@ -73,7 +79,7 @@ export async function sessionFor(o: Owner): Promise<Session> {
   return { user: await me(o), ownerId: o.ownerId, provider: o.session.provider, sample: p.sample, createdAt: o.session.createdAt.toISOString(), expiresAt: o.session.expiresAt.toISOString() };
 }
 
-const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp });
+const IdentityRow = z.object({ owner_id: z.string(), created_at: timestamp, email_index: bytea });
 
 /** Signs in a demo identity: Microsoft as Art Vandelay, or single sign-on as the email typed. */
 export const demoSignIn = (d: Deps, body: SignInBody) => signIn(d, demoIdentity(body.provider, body.email), body.provider);
@@ -89,10 +95,15 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
   const found = await tx(d.pool, async (c) => {
     // Two first sign-ins at once must not make two accounts: serialise on the identity.
     await exec(c, 'SELECT pg_advisory_xact_lock($1)', [Buffer.from(subject.slice(0, 8)).readBigInt64BE()]);
-    const existing = await maybeOne(c, IdentityRow, 'SELECT owner_id, created_at FROM identities WHERE subject_index = $1', [subject]);
+    const existing = await maybeOne(c, IdentityRow, 'SELECT owner_id, created_at, email_index FROM identities WHERE subject_index = $1', [subject]);
     if (existing) {
       // The provider's verified email can change; notes shared by email follow the current one.
       await exec(c, 'UPDATE identities SET last_used_at = now(), email_index = $2 WHERE subject_index = $1', [subject, email]);
+      // And what the account has in workspaces moves with it, along with the profile, so nothing reads the new rows under the old address.
+      if (!equalBytes(existing.email_index, email)) {
+        await changeProfile(await openOwner(d, existing.owner_id, undefined, c), c, (p) => ({ ...p, email: who.email }));
+        await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
+      }
       return { ownerId: existing.owner_id, isNew: false };
     }
     const { ownerId, root } = await createOwner(d, c);
@@ -120,9 +131,9 @@ async function refreshProfile(o: Owner, who: Identity): Promise<void> {
   alog.info('profile updated from provider', { ownerId: o.ownerId });
 }
 
-/** The sample calendar for demo accounts: when nothing is coming up, the demo day is put on it. */
+/** The sample calendar for demo accounts: when nothing of theirs is coming up, the demo day is put on it. */
 async function seedCalendar(o: Owner): Promise<void> {
-  if ((await upcoming(o)).length) return;
+  if ((await findUpcoming(o)).length) return;
   for (const m of demoDay(new Date())) await createMeeting(o, m);
   alog.info('demo calendar placed', { ownerId: o.ownerId });
 }
@@ -143,10 +154,12 @@ const REVOKE_MS = 3_000;
  * logged and never blocks the deletion. After the commit, Google is told to revoke the token, with 3 seconds
  * of its own, once the audio objects have been dealt with.
  *
- * Deletes this account for good, with everything it owns, in one transaction: its meetings with their
- * calls and call links; every note it organized, each the way deleting a note does, so everyone loses it;
- * its access to the notes other people gave its address (unless another account signs in with that address
- * too); and the account's row, which takes its sign-in identity, sessions, profile (pins and groups with it),
+ * Deletes this account for good, with everything it owns, in one transaction: its meetings and series with
+ * their calls and call links; every note it organized, each the way deleting a note does, so everyone loses it;
+ * what it added to other people's shared notes (its own words: a row found by a keyed hash, so nothing of theirs is
+ * opened); its access to the notes other people gave its address and what it answered on their calls (unless another
+ * account signs in with that address too); its place in every workspace and on every document given to that
+ * address, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
  * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
  * objects are deleted, and any the store refuses are queued in object_gc for maintenance. Notes it shared on
@@ -176,8 +189,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
     if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });
     // The rooms of its calls still going, to close once the calls are gone.
     const rooms = (await rows(c, z.object({ room_name: z.string() }), "SELECT room_name FROM calls WHERE owner_id = $1 AND state = 'live' AND room_name IS NOT NULL", [o.ownerId])).map((r) => r.room_name);
+    const callIds = (await rows(c, z.object({ call_id: z.string() }), 'SELECT call_id FROM calls WHERE owner_id = $1', [o.ownerId])).map((r) => r.call_id);
     // Meetings first, with their calls, call links and chat, so no note is left with a meeting to be unlinked from.
-    const meetings = await exec(c, "DELETE FROM items WHERE owner_id = $1 AND kind = 'meeting'", [o.ownerId]);
+    const meetings = await exec(c, "DELETE FROM items WHERE owner_id = $1 AND kind IN ('meeting', 'series')", [o.ownerId]);
     const notes = await rows(c, z.object({ item_id: z.string() }), "SELECT item_id FROM items WHERE owner_id = $1 AND kind = 'note'", [o.ownerId]);
     const objects: string[] = [];
     let frames = 0;
@@ -189,9 +203,15 @@ export async function deleteAccount(o: Owner): Promise<void> {
     // Its profile's address is the one it has other people's notes under (notes.ts › locate).
     const received = await exec(c, `DELETE FROM note_access WHERE email_index = $1 AND owner_id <> $2
                                     AND NOT EXISTS (SELECT 1 FROM identities WHERE email_index = $1 AND owner_id <> $2)`, [blindIndex(masterKey(o), 'email', p.manifest.email), o.ownerId]);
+    const answers = await forgetAnswers(o, c, p.manifest.email);
+    // Rings to its address, in other people's calls: its own calls' went with its meetings.
+    const rings = await forgetRings(o, c, p.manifest.email);
+    const workspaces = await forgetAccount(o, c, p.manifest.email, callIds);
     // Every other table keyed by the account cascades from its row.
     await exec(c, 'DELETE FROM owners WHERE owner_id = $1', [o.ownerId]);
-    return { meetings, notes: notes.length, objects, frames, received, rooms };
+    // After its row: taking its own notes with it waits for anything being added, which is here by now, or fails from now on.
+    const added = await takeAllBack(o, c);
+    return { meetings, notes: notes.length, objects, frames, received, answers, rings, added, rooms, workspaces };
   });
   if (!gone) { alog.info('account already deleted', { ownerId: o.ownerId }); return; }
   forgetAccess(o.ownerId);
@@ -202,14 +222,16 @@ export async function deleteAccount(o: Owner): Promise<void> {
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
-    meetings: gone.meetings, notes: gone.notes, received: gone.received, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length, ms: Math.round(performance.now() - t0)
+    meetings: gone.meetings, notes: gone.notes, received: gone.received, answers: gone.answers, rings: gone.rings, added: gone.added, objects: gone.objects.length, frames: gone.frames, rooms: gone.rooms.length,
+    workspaces: gone.workspaces.workspaces, workspacesDeleted: gone.workspaces.deleted, ms: Math.round(performance.now() - t0)
   });
 }
 
 /**
  * Cancels on Google Calendar every call Upcoming lists, begun or not, as Cancel call does, so their guests are
- * told. An event the organizer made in Google Calendar and moved to Alcove is theirs, so it's kept as it was
- * (its Alcove link stops working). Google has CANCEL_MS in all: cancelling stops at the first timeout or network
+ * told. A series' calls go with their recurring event, which tells everyone once. An event the organizer made in
+ * Google Calendar and moved to Alcove is theirs, so it's kept as it was (its Alcove link stops working). Google has
+ * CANCEL_MS in all: cancelling stops at the first timeout or network
  * failure, or when the time is up. Counts what was cancelled, kept, and not cancelled (failed, left when it
  * stopped, or with no calendar connected any more), with a warning that says why when something went wrong.
  */
@@ -217,12 +239,14 @@ async function withdrawCalls(o: Owner): Promise<{ cancelled: number; kept: numbe
   const out = { cancelled: 0, kept: 0, notCancelled: 0 };
   const due: { meetingId: string; eventId: string }[] = [];
   try {
-    for (const m of await findUpcoming(o)) {
+    const upcoming = await findUpcoming(o);
+    for (const m of upcoming) {
       const event = m.manifest.calendarEvent;
-      if (!event) continue;
+      if (!event || event.master) continue;
       if (event.adopted) out.kept++;
       else due.push({ meetingId: m.itemId, eventId: event.id });
     }
+    due.push(...await eventsToWithdraw(o, upcoming));
   } catch (e) {
     alog.warn('calendar events not cancelled', { ownerId: o.ownerId, err: e });
     return out;

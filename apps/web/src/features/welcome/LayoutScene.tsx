@@ -56,17 +56,17 @@ function SharedScreen() {
   return (
     <div className="ac-tile">
       <svg className="shot" viewBox="0 0 640 400" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <rect width="640" height="400" fill="#F1EFF7" /><rect width="640" height="34" fill="#FFFFFF" />
-        <circle cx="20" cy="17" r="5" fill="#E1DEEA" /><circle cx="36" cy="17" r="5" fill="#E1DEEA" /><circle cx="52" cy="17" r="5" fill="#E1DEEA" />
-        <text x="78" y="22" fontFamily="Hanken Grotesk, sans-serif" fontSize="13" fontWeight="600" fill="#4D4868">Onboarding · v3</text>
-        {(['#3B2EA6', '#C46CA8', '#FFA06A'] as const).map((c, i) => {
+        <rect width="640" height="400" fill="#F3F7FC" /><rect width="640" height="34" fill="#FFFFFF" />
+        <circle cx="20" cy="17" r="5" fill="#D9E1E9" /><circle cx="36" cy="17" r="5" fill="#D9E1E9" /><circle cx="52" cy="17" r="5" fill="#D9E1E9" />
+        <text x="78" y="22" fontFamily="Hanken Grotesk, sans-serif" fontSize="13" fontWeight="600" fill="#394967">Onboarding · v3</text>
+        {(['#17294A', '#AF5E7F', '#F18E6B'] as const).map((c, i) => {
           const x = 92 + i * 160;
           return (
             <g key={c}>
-              <rect x={x} y="70" width="136" height="290" rx="20" fill="#FFFFFF" stroke="#E1DEEA" />
+              <rect x={x} y="70" width="136" height="290" rx="20" fill="#FFFFFF" stroke="#D9E1E9" />
               <path d={`M${x + 22} 200V140a46 46 0 0 1 92 0v60z`} fill={c} />
-              <rect x={x + 18} y="222" width="100" height="10" rx="5" fill="#E1DEEA" /><rect x={x + 18} y="242" width="72" height="10" rx="5" fill="#ECEAF3" />
-              <rect x={x + 18} y="312" width="100" height="30" rx="13" fill="#C4461B" />
+              <rect x={x + 18} y="222" width="100" height="10" rx="5" fill="#D9E1E9" /><rect x={x + 18} y="242" width="72" height="10" rx="5" fill="#E7EEF5" />
+              <rect x={x + 18} y="312" width="100" height="30" rx="13" fill="#153166" />
             </g>
           );
         })}

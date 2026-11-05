@@ -4,16 +4,18 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
-  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema,
+  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording,
-  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
+  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
+  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
+import { HttpRings } from './rings';
+import { HttpWorkspaceLive, QUIET_MS } from './workspaces';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -27,10 +29,19 @@ export interface HttpOptions {
   onEvent?: (e: ClientEvent) => void;
   /** How often a call checks for keys and people while nothing nudges it, in ms (default 1500). Tests go faster. */
   callPollMs?: number | undefined;
+  /** How often a browser showing the live notes says so, in ms (default 5000). Tests go faster. */
+  callNotesMs?: number | undefined;
   /** How long a browser waits after the call's keys move on before it sends with its new one, in ms (default 2000). */
   callKeySwitchMs?: number | undefined;
   /** How often the host's browser moves the call's keys on when nobody comes or goes, in ms (default 10 minutes). */
   callRekeyMs?: number | undefined;
+  /**
+   * How long a stream of rings may say nothing before it's given up on, in ms (default 50 s: the server says something
+   * every 20). A laptop waking up can hold a connection that's dead without knowing it. Tests go faster.
+   */
+  ringSilenceMs?: number | undefined;
+  /** How long a live stream can say nothing before it's taken for gone and opened again, in ms (default a minute). */
+  liveQuietMs?: number | undefined;
 }
 export interface ClientEvent {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -58,14 +69,16 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     }
     return r.data;
   };
-  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}, keepalive = false): Promise<Response> {
+  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}, keepalive = false, signal?: AbortSignal | undefined): Promise<Response> {
     const mutating = method !== 'GET';
     const where = { method, path: safePath(path) };
     const t0 = Date.now();
     let res: Response;
     try {
-      res = await f(base + path, { method, credentials: 'include', keepalive, headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null });
+      res = await f(base + path, { method, credentials: 'include', keepalive, headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null, ...(signal ? { signal } : {}) });
     } catch (cause) {
+      // Whoever asked gave up on it: nothing went wrong.
+      if (signal?.aborted) throw cause;
       emit('warn', 'request could not reach the API', { ...where, ms: Date.now() - t0, error: cause instanceof Error ? cause.name : 'unknown' });
       throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { ...where, cause });
     }
@@ -87,8 +100,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra }, keepalive);
     return parse(schema, await res.json(), `response from ${method} ${path}`);
   }
-  async function* ndjson<S extends z.ZodType>(schema: S, path: string): AsyncIterable<z.infer<S>> {
-    const res = await send('GET', path);
+  async function* ndjson<S extends z.ZodType>(schema: S, path: string, signal?: AbortSignal | undefined, headers: Record<string, string> = {}): AsyncIterable<z.infer<S>> {
+    const res = await send('GET', path, null, headers, false, signal);
     if (!res.body) throw new AlcoveApiError('unknown', 'Empty stream.');
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '';
@@ -104,6 +117,14 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     }
   }
+  /** Every stream of rings this client has open, so an answer leaves them all at once. */
+  const ringing = new Set<HttpRings>();
+  /** A change to a call in a series says how far it reaches in the query. */
+  const inScope = (opts: { scope?: ChangeScope | undefined } | undefined) => (opts?.scope ? `?scope=${opts.scope}` : '');
+  /** What reads a workspace with a call pass sends, for someone who has one. */
+  const withPass = (w?: WorkspaceReadOptions | undefined): Record<string, string> => (w?.pass ? { [CALL_PASS_HEADER]: w.pass } : {});
+  const space = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
+  const itemIn = (id: string, itemId: string) => `${space(id)}/items/${encodeURIComponent(itemId)}`;
   /** Where a piece or clip starts in its segment, in the milliseconds the headers carry. */
   const atMs = (at: number) => String(Math.round(at * 1000));
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
@@ -120,6 +141,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
    */
   const ago = (c: TranscriptClip) => String(Math.max(0, Math.round(c.heardAt === undefined ? 0 : performance.now() - c.heardAt)));
 
+  /** Your own notes on a call, at `path`: by the note, or from inside the call with its pass. */
+  const personal = (path: string, extra: Record<string, string> = {}): PersonalApi => ({
+    get: () => req(PersonalNotesSchema, 'GET', path, undefined, extra),
+    add: (input) => req(PersonalNotesSchema, 'POST', path, input, extra),
+    edit: (entryId, text) => req(PersonalNotesSchema, 'PATCH', `${path}/${encodeURIComponent(entryId)}`, { text }, extra),
+    remove: (entryId) => req(PersonalNotesSchema, 'DELETE', `${path}/${encodeURIComponent(entryId)}`, undefined, extra)
+  });
   /** How often a move to another device is checked on while it's open, in ms. */
   const movePollMs = Math.min(1000, o.callPollMs ?? 1000);
   /** The new device's side of a move: everything by its claim, in the body. */
@@ -134,7 +162,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Every request about the call carries its pass; guests have no session, so this is all they have.
     const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
     const live = (id: string) => `/live/calls/${id}`;
-    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
+    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
@@ -144,10 +172,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
       })).json(), 'frame receipt'),
       shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
+      watchNotes: async (id) => (await req(NotesWatchedSchema, 'POST', `${live(id)}/notes/watch`, {}, p)).refreshed,
       catchUp: (id, range) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, { range }, p),
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
       moment: (id, lineId) => req(CallMomentSchema, 'GET', `${live(id)}/transcript/${encodeURIComponent(lineId)}`, undefined, p),
+      personal: (id) => personal(`${live(id)}/personal`, p),
+      askEarlier: (id, question, timeZone) => req(z.array(SeriesAnswerPartSchema), 'POST', `${live(id)}/series/ask`, { question, timeZone }, p),
       translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
       leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, { end: o.end }, p, o.keepalive ?? false)).ended,
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
@@ -190,12 +221,15 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       get: (id) => req(MeetingSchema, 'GET', `/meetings/${encodeURIComponent(id)}`),
       byCode: (code) => req(MeetingSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/meeting`),
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
-      update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
-      cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); },
+      update: (id, input, opts) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`, input),
+      cancel: async (id, opts) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`); },
+      answer: (id, answer) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/answer`, { answer }),
       scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
     },
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),
+      // Addresses go in the body so they never appear in URLs or access logs.
+      busy: (emails, range) => req(BusySchema, 'POST', '/calendar/busy', { emails, ...range, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       connectUrl: () => `${base}/auth/google?consent=1`,
       disconnect: () => req(CalendarSchema, 'DELETE', '/calendar'),
       adopt: (eventId, notes) => req(MeetingSchema, 'POST', `/calendar/events/${encodeURIComponent(eventId)}/adopt`, notes ? { notes } : {})
@@ -203,6 +237,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     calls: {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
+      pick: (code, at) => req(CallCardSchema, 'POST', `/calls/${encodeURIComponent(code)}/pick`, { at }),
+      series: (code) => req(SeriesSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/series`),
       join: async (code, opts) => {
         // This connection's identity and MLS keys are made here; key packages are all the API gets.
         const identity = newIdentity();
@@ -216,6 +252,20 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         return new HttpMoveIn(opened.claim, opened.move, moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context));
       },
       resumeMove: async (claim) => new HttpMoveIn(claim, await moving.status(claim), moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context))
+    },
+    rings: {
+      live: () => {
+        const rings: HttpRings = new HttpRings((signal) => ndjson(RingsSnapshotSchema, '/rings', signal), o.ringSilenceMs ?? 50_000, emit, () => { ringing.delete(rings); });
+        ringing.add(rings);
+        return rings;
+      },
+      answer: async (id, reply) => {
+        await req(z.object({ answered: z.literal(true) }), 'POST', `/rings/${encodeURIComponent(id)}/answer`, { reply });
+        for (const r of ringing) r.answeredHere(id);
+      }
+    },
+    documents: {
+      list: () => req(DocumentLibrarySchema, 'GET', '/documents')
     },
     recordings: {
       start: async (input) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', input ?? {}), {
@@ -233,9 +283,12 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
       audioUrl: (id, segment) => `${base}/notes/${encodeURIComponent(id)}/audio/${segment}`,
       screenUrl: (id, frameId) => `${base}/notes/${encodeURIComponent(id)}/screens/${encodeURIComponent(frameId)}`,
+      proposeDecision: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/decisions`, proposal),
+      proposeAction: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/actions`, proposal),
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
       updateAction: (noteId, actionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/actions/${encodeURIComponent(actionId)}`, patch),
       updateQuestion: (noteId, questionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/questions/${encodeURIComponent(questionId)}`, patch),
+      updateRevisit: (noteId, revisitId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/revisits/${encodeURIComponent(revisitId)}`, patch),
       inbox: () => req(InboxSchema, 'GET', '/notes/inbox'),
       correctLine: (noteId, lineId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/lines/${encodeURIComponent(lineId)}`, patch),
       rewrite: (noteId) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, {}),
@@ -249,6 +302,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         yield* parts;
       },
       share: (id, to) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/share`, { emails: to.emails, ...(to.group !== undefined ? { group: to.group } : {}) }),
+      personal: (id) => personal(`/notes/${encodeURIComponent(id)}/personal`),
+      previewAddition: (id, entryId) => req(PromotionPreviewSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/preview`),
+      addToShared: (id, entryId, body) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(id)}/personal/${encodeURIComponent(entryId)}/add`, body),
+      takeBack: (id, additionId) => req(NoteSchema, 'DELETE', `/notes/${encodeURIComponent(id)}/additions/${encodeURIComponent(additionId)}`),
       delete: async (id) => { await req(z.unknown(), 'DELETE', `/notes/${encodeURIComponent(id)}`); }
     },
     series: {
@@ -257,6 +314,34 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question, timeZone });
         yield* parts;
       }
+    },
+    workspaces: {
+      list: () => req(z.array(WorkspaceSummarySchema), 'GET', '/workspaces'),
+      create: (name) => req(CreatedSchema, 'POST', '/workspaces', { name }),
+      get: (id, w) => req(WorkspaceTreeSchema, 'GET', space(id), undefined, withPass(w)),
+      rename: async (id, name) => { await req(z.unknown(), 'PATCH', space(id), { name }); },
+      remove: async (id) => { await req(z.unknown(), 'DELETE', space(id)); },
+      people: (id) => req(z.array(WorkspacePersonSchema), 'GET', `${space(id)}/people`),
+      addPerson: (id, email, role) => req(CreatedSchema, 'POST', `${space(id)}/people`, { email, role }),
+      setRole: async (id, personId, role) => { await req(z.unknown(), 'PATCH', `${space(id)}/people/${encodeURIComponent(personId)}`, { role }); },
+      removePerson: async (id, personId) => { await req(z.unknown(), 'DELETE', `${space(id)}/people/${encodeURIComponent(personId)}`); },
+      items: {
+        get: (id, itemId, w) => req(WorkspaceItemSchema, 'GET', itemIn(id, itemId), undefined, withPass(w)),
+        create: (id, input) => req(CreatedSchema, 'POST', `${space(id)}/items`, input),
+        rename: async (id, itemId, name, w) => { await req(z.unknown(), 'PATCH', itemIn(id, itemId), { name }, withPass(w)); },
+        move: async (id, itemId, to) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/move`, to); },
+        duplicate: (id, itemId) => req(CreatedSchema, 'POST', `${itemIn(id, itemId)}/duplicate`, {}),
+        trash: async (id, itemId) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/trash`, {}); },
+        restore: async (id, itemId, w) => { await req(z.unknown(), 'POST', `${itemIn(id, itemId)}/restore`, {}, withPass(w)); },
+        deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
+      },
+      share: {
+        list: (id, documentId) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`),
+        set: async (id, documentId, to, role, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/share`, { to, role }, withPass(w)); },
+        remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
+        restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }
+      },
+      live: (id, w) => new HttpWorkspaceLive((signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS)
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')
@@ -282,10 +367,14 @@ interface CallTransport {
   transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
   frame(id: string, f: ScreenFrame): Promise<ScreenFrameReceipt>;
   shareEnded(id: string, share: string): Promise<void>;
+  /** Says this browser is looking at the live notes. True when that refreshed them. */
+  watchNotes(id: string): Promise<boolean>;
   catchUp(id: string, range: CatchUpRange): Promise<CatchUp>;
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
   moment(id: string, lineId: string): Promise<CallMoment>;
+  personal(id: string): PersonalApi;
+  askEarlier(id: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** `end`: whoever hosts ends the call for everyone; otherwise this connection just leaves (refused for whoever hosts). */
   leave(id: string, o: { end: boolean; keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
@@ -326,10 +415,10 @@ class Live<S extends { elapsed: number }> {
 }
 
 /**
- * How a call keeps up: how often it checks while nothing nudges it, how long a new send key waits, how often the keys
- * move on anyway, and how often a move to another device is checked on.
+ * How a call keeps up: how often it checks while nothing nudges it, how often it says it's showing the live notes, how
+ * long a new send key waits, how often the keys move on anyway, and how often a move to another device is checked on.
  */
-interface CallTiming { pollMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
+interface CallTiming { pollMs: number; notesMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
 /** Epoch keys use 127 indices in each half of LiveKit's ring, all below the void index, which stays free for sending between two parts of the call. */
 const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 /** Asking to come back in after being taken out waits at least this long between tries (the keys move on first). */
@@ -423,17 +512,23 @@ class HttpCall extends Live<CallState> implements CallSession {
   private closed = false;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
+  /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
+  private notesWatchers = 0;
+  private notesTimer: ReturnType<typeof setTimeout> | null = null;
+  private notesLook: Promise<void> | null = null;
   /**
    * This connection hosts the call (the organizer's, or standing in for them), as the log last said: its browser makes
    * and commits for every part of the call's group in this generation (CallMls.committer). Anyone else is in one group.
    */
   private hosting: boolean;
+  readonly personal: PersonalApi;
 
   constructor(initial: CallState, readonly ticket: CallTicket, private readonly mls: MlsKeys, private readonly timing: CallTiming, private readonly t: CallTransport,
     private readonly emit: (level: ClientEvent['level'], msg: string, context: ClientEvent['context']) => void) {
     super(initial, (s) => s.phase === 'in-call');
     this.generation = initial.generation;
     this.hosting = initial.isHost;
+    this.personal = t.personal(initial.callId);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
@@ -476,6 +571,32 @@ class HttpCall extends Live<CallState> implements CallSession {
       } finally { this.fetching = null; }
     })();
     return this.fetching;
+  }
+
+  /**
+   * Says this browser is showing the live notes, and goes on saying so while anything here is. It's what keeps them up
+   * to date; when a look refreshed them, the call is fetched straight away, as a nudge would have it.
+   */
+  watchNotes = () => {
+    if (++this.notesWatchers === 1) this.lookAtNotes();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--this.notesWatchers === 0 && this.notesTimer) { clearTimeout(this.notesTimer); this.notesTimer = null; }
+    };
+  };
+  private lookAtNotes() {
+    if (this.closed || this.notesLook) return;
+    this.notesLook = this.t.watchNotes(this.state.callId).then((refreshed) => (refreshed ? this.fetchState() : undefined))
+      // Notes that don't refresh say so in the call. A look that doesn't arrive is only one look.
+      .catch((e: unknown) => this.emit('debug', 'live notes not looked at', { code: errorCode(e) }))
+      .finally(() => {
+        this.notesLook = null;
+        if (this.closed || !this.notesWatchers) return;
+        this.notesTimer = setTimeout(() => this.lookAtNotes(), this.timing.notesMs);
+        unref(this.notesTimer);
+      });
   }
 
   /** Keeps up with the call's MLS log: one run at a time, and another straight after if something asked meanwhile. */
@@ -877,6 +998,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
+  ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
   /* What the call captures: pause and resume are the organizer's; anyone else asks for notes. Each resolves once the server has done it. */
   pause = async () => { this.take(await this.t.act(this.state.callId, { type: 'pause' })); };
@@ -885,12 +1007,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
+  tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
   /** They're disconnected at once; the host's browser then takes them out of their group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
+  stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
   setHand = (up: boolean) => this.act({ type: 'hand', up });
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
@@ -930,11 +1054,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   askSoFar = (question: string, range: CatchUpRange) => this.t.askSoFar(this.state.callId, question, range);
   catchUpWindow = () => this.t.catchUpWindow(this.state.callId);
   moment = (lineId: string) => this.t.moment(this.state.callId, lineId);
+  askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
     this.closed = true;
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.notesTimer) clearTimeout(this.notesTimer);
+    this.notesTimer = null;
     for (const h of this.groups.values()) { if (h.switchTimer) clearTimeout(h.switchTimer); h.switchTimer = null; }
   };
   /**

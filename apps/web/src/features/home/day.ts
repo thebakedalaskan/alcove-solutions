@@ -1,24 +1,45 @@
 /*
  * The day as Home tells it: what's ahead (Alcove calls and, unless they're hidden, the other meetings on
- * the calendar), what already happened today (today's notes), when follow-ups are due, the words for
- * how many of each, and how often a series meets.
+ * the calendar), what can be joined right now, and when follow-ups are due.
  */
-import type { CalendarEvent, Meeting, NoteSummary, OpenAction, Person } from '@alcove/api';
+import type { CalendarEvent, Inbox, Meeting, NoteSummary, OpenAction, Person } from '@alcove/api';
 import { callName, sameEmail, someNames } from '~/lib/people';
 import { daysFromToday, shortDay, weekday } from '~/lib/time';
-import { capital, plural } from '~/lib/words';
+import { capital } from '~/lib/words';
 
 /** Something ahead: one of your Alcove calls, or another meeting on your calendar. */
 export type Ahead =
   | { kind: 'call'; id: string; title: string; startsAt: string; endsAt: string; call: Meeting }
   | { kind: 'event'; id: string; title: string; startsAt: string; endsAt: string; event: CalendarEvent };
 
-/** Alcove calls that are going or still to come, and calendar meetings that haven't ended, soonest first. */
+/** A call that's offering times: `startsAt` means nothing until someone picks one. */
+export const isOffered = (a: Ahead) => a.kind === 'call' && !!a.call.offer;
+
+/** Still to come: a call offering times until the last of them has gone, anything else until it ends. */
+const stillOn = (m: Meeting, now: number) => {
+  if (m.status === 'live') return true;
+  if (m.status !== 'scheduled') return false;
+  const last = m.offer?.times.at(-1);
+  return new Date(last ?? m.endsAt).getTime() > now;
+};
+
+/**
+ * Alcove calls that are going or still to come, and calendar meetings that haven't ended, soonest first. A series
+ * shows its next call only, and a calendar event that's a copy of a listed call, as someone invited has in their
+ * own calendar, isn't listed twice.
+ */
 export function aheadOf(calls: readonly Meeting[], events: readonly CalendarEvent[], now: number): Ahead[] {
+  const series = new Set<string>();
+  const listed = [...calls].filter((m) => stillOn(m, now)).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).filter((m) => {
+    if (!m.seriesId) return true;
+    if (series.has(m.seriesId)) return false;
+    series.add(m.seriesId);
+    return true;
+  });
+  const codes = new Set(calls.flatMap((m) => [m.code, ...(m.seriesCode ? [m.seriesCode] : [])]));
   return [
-    ...calls.filter((m) => m.status === 'live' || (m.status === 'scheduled' && new Date(m.endsAt).getTime() > now))
-      .map((m): Ahead => ({ kind: 'call', id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, call: m })),
-    ...events.filter((e) => new Date(e.endsAt).getTime() > now)
+    ...listed.map((m): Ahead => ({ kind: 'call', id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, call: m })),
+    ...events.filter((e) => new Date(e.endsAt).getTime() > now && !(e.alcoveCode && codes.has(e.alcoveCode)))
       .map((e): Ahead => ({ kind: 'event', id: e.id, title: e.title, startsAt: e.startsAt, endsAt: e.endsAt, event: e }))
   ].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
@@ -26,16 +47,8 @@ export function aheadOf(calls: readonly Meeting[], events: readonly CalendarEven
 /** The series it continues, when it's in one: an Alcove call's, or a recurring meeting's you've held in Alcove. */
 export const seriesIdOf = (a: Ahead) => (a.kind === 'call' ? a.call.seriesId : a.event.seriesId);
 
-/** "Every Tuesday" when the series' three newest calls (newest first) were seven days apart, otherwise nothing. */
-export function everyWeek(calls: readonly { startedAt: string }[]): string | undefined {
-  const [a, b, c] = calls;
-  if (!a || !b || !c) return undefined;
-  const apart = (x: { startedAt: string }, y: { startedAt: string }) => daysFromToday(new Date(x.startedAt), new Date(y.startedAt));
-  return apart(a, b) === 7 && apart(b, c) === 7 ? `Every ${weekday(new Date(a.startedAt))}` : undefined;
-}
-
-/** It has started: a live call, or a meeting whose time has come. */
-export const started = (a: Ahead, now: number) => (a.kind === 'call' && a.call.status === 'live') || new Date(a.startsAt).getTime() <= now;
+/** It has started: a live call, or a meeting whose time has come. A call nobody has picked a time for hasn't. */
+export const started = (a: Ahead, now: number) => !isOffered(a) && ((a.kind === 'call' && a.call.status === 'live') || new Date(a.startsAt).getTime() <= now);
 
 const organizerOf = (a: Ahead) => (a.kind === 'call' ? a.call.organizer : a.event.organizer);
 const yours = (a: Ahead) => (a.kind === 'call' ? a.call.isOrganizer : a.event.isOrganizer);
@@ -57,58 +70,41 @@ export function whoOn(a: Ahead, me: string | undefined, names = 3): string {
   return people.length ? someNames(people, names) : 'Just you';
 }
 
-/**
- * Today's line: the notes from earlier today, what's going now, and what's still to come today, each
- * soonest first. Now falls between what's going and what's coming; the first of those is up next. `soon`
- * is the next seven days after today.
- */
-export function todayOf(notes: readonly NoteSummary[], ahead: readonly Ahead[], now: number) {
-  // A call that's going shows as the call, not as its note being recorded.
-  const calls = new Set(ahead.flatMap((a) => (a.kind === 'call' ? [a.id] : [])));
-  const past = notes
-    .filter((n) => daysFromToday(new Date(n.startedAt), new Date(now)) === 0 && !(n.meetingId && calls.has(n.meetingId)))
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  const going = ahead.filter((a) => started(a, now));
-  const coming = ahead.filter((a) => !started(a, now) && daysFromToday(new Date(a.startsAt), new Date(now)) === 0);
-  const soon = ahead.filter((a) => { const d = daysFromToday(new Date(a.startsAt), new Date(now)); return d >= 1 && d <= 7; });
-  return { past, going, coming, soon };
-}
-
-/* ---------- words ---------- */
-
-const WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'] as const;
-/** A small count in words, a bigger one in digits: "two", "12". */
-export const inWords = (n: number) => WORDS[n] ?? String(n);
-/** "one decision", "four calls" */
-export const counted = (n: number, one: string, many = `${one}s`) => plural(n, one, many, inWords);
+/** How long before a call Home offers to join it. */
+const JOIN_AHEAD_MS = 5 * 60_000;
 
 /**
- * The line under the greeting: how many calls are left today, then what waits on you. "Four more calls
- * today. One decision and one follow-up are waiting for you."
+ * The call to offer at the top of Home: one that's going, or else one with someone else on it that starts in the next
+ * few minutes. A meeting needs a link to join by. Anything further off stays out of the way: people join from their
+ * calendar.
  */
-export function ledeOf({ left, happened, decisions, suggested }: { left: number; happened: number; decisions: number; suggested: number }): string {
-  const calls = left === 0
-    ? (happened ? 'No more calls today.' : 'No calls today.')
-    : `${capital(inWords(left))} ${happened ? 'more ' : ''}${left === 1 ? 'call' : 'calls'} today.`;
-  const waiting = [decisions && counted(decisions, 'decision'), suggested && counted(suggested, 'follow-up')].filter((w) => typeof w === 'string');
-  if (!waiting.length) return calls;
-  return `${calls} ${capital(waiting.join(' and '))} ${decisions + suggested === 1 ? 'is' : 'are'} waiting for you.`;
+export function joinable(ahead: readonly Ahead[], me: string | undefined, now: number): Ahead | undefined {
+  return ahead.find((a) => a.kind === 'call' && a.call.status === 'live') ?? ahead.find((a) => {
+    if (isOffered(a) || (a.kind === 'event' && !a.event.join)) return false;
+    return new Date(a.startsAt).getTime() - now <= JOIN_AHEAD_MS && peopleOn(a, me).length > 0;
+  });
 }
+
+const WEEK_MS = 7 * 86_400_000;
+/** Notes someone shared with you this past week. */
+export const sharedLately = (notes: readonly NoteSummary[], now: number) => notes.filter((n) => n.received?.role === 'shared' && now - new Date(n.received.at).getTime() < WEEK_MS);
+/** How much is waiting on you: For you's count, and the side panel's. */
+export const openCount = (inbox: Inbox, notes: readonly NoteSummary[], now: number) => inbox.decisions.length + inbox.followUps.length + sharedLately(notes, now).length;
 
 /* ---------- when follow-ups are due ---------- */
 
 /**
  * When a follow-up is due, from its words, counted from when they were said: the latest change to the due
- * date, or else the call. "tomorrow" said yesterday is today; "next week" said last Friday is this week.
+ * date, when someone added it, or else the call. "tomorrow" said yesterday is today; "next week" said last Friday is this week.
  * A day ("Friday", "Nov 5", "EOD") is that day. A span ("next week", "in two weeks", "end of March") is due
  * at its end and keeps its words, as the chip shows them. Words with no date in them ("ASAP", "later")
  * stay as words.
  */
 export type Due = { kind: 'day'; at: Date; words?: string | undefined } | { kind: 'words'; text: string };
 
-/** When the due words were said: the latest change to them, or else the call. */
+/** When the due words were said: the latest change to them, when someone added the follow-up with them, or else the call. */
 export function dueFrom(a: Pick<OpenAction, 'changes' | 'noteStartedAt'>): string {
-  return [...a.changes].reverse().find((c) => c.what === 'due')?.at ?? a.noteStartedAt;
+  return [...a.changes].reverse().find((c) => c.what === 'due' || c.what === 'proposed')?.at ?? a.noteStartedAt;
 }
 
 const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -210,10 +206,6 @@ export function dueOf(due: string | undefined, said: string): Due | undefined {
 }
 
 export type DueGroup = 'overdue' | 'week' | 'later' | 'none';
-/** Your follow-ups are grouped in this order, and each group only shows when it has something. */
-export const DUE_GROUPS: readonly { id: DueGroup; label: string }[] = [
-  { id: 'overdue', label: 'Overdue' }, { id: 'week', label: 'This week' }, { id: 'later', label: 'Later' }, { id: 'none', label: 'No date' }
-];
 
 export function groupOf(d: Due | undefined, now: Date): DueGroup {
   if (!d || d.kind === 'words') return 'none';

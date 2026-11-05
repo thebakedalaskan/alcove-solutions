@@ -1,17 +1,20 @@
 /* The pieces of a note page, shared by real notes and the example. */
 import {
-  firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
+  isAssignee, isBy, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, proposerOf,
+  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteAction, type NoteDecision, type NoteQuestion, type NoteReader, type Person, type RoomRef,
   type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
+import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, Scope, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
 import { sameEmail, spokenName } from '~/lib/people';
-import { hm, position, shortDay } from '~/lib/time';
-import { AnswerView, useAnswer, type Cite } from './answer';
-import { LineRow, type Correcting } from './lines';
+import { position, shortDay } from '~/lib/time';
+import { AnswerView, useAnswer, type Answer, type Cite } from './answer';
+import { Backing, ChangeList, EvidenceFlags, History, byName, notTheirs } from './entries';
+import { LineRow, type Correcting, type FromLine, type LineMarks } from './lines';
 import { peopleLine, roleLine } from './meta';
 import { capital } from '~/lib/words';
 
@@ -41,44 +44,78 @@ export function Section({ title, count, children, className, style }: { title: s
 
 /* ---------- decisions, open questions and follow-ups: what the notes heard, until people say so ---------- */
 
-/** Who did something, as the reader sees them: "you", or a first name. */
-const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by, { email: me }) ? 'you' : firstName(by.name));
-/** A name as kept in a change; someone known only by their address goes by the part before the @. */
-const named = (s: string | undefined) => (s ? (s.includes('@') ? s.slice(0, s.indexOf('@')) : firstName(s)) : 'nobody');
-const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)}, ${hm(d)}`; };
 /** Shows where something was on a shared screen ("On screen" with the moment), on the note page. */
 export type ScreenRefShown = (screen: ScreenRef) => ReactNode;
 
-/** One change, as a sentence. */
-function changeLine(c: Change, me: string | undefined): string {
-  const who = capital(byName(c.by, me));
-  switch (c.what) {
-    case 'confirmed': return `${who} confirmed it`;
-    case 'rejected': return `${who} said it wasn’t decided`;
-    case 'superseded': return `${who} said it no longer holds`;
-    case 'answered': return `${who} said it was answered`;
-    case 'reopened': return `${who} reopened it`;
-    case 'reworded': return `${who} reworded it`;
-    case 'took-on': return c.before ? `${who} took it on from ${named(c.before)}` : `${who} took it on`;
-    case 'reassigned': return c.after ? `${who} gave it to ${named(c.after)}` : `${who} took the owner off`;
-    case 'due': return c.after ? `${who} set it due ${c.after}` : `${who} removed the due date`;
-    case 'done': return `${who} ticked it`;
-    case 'undone': return `${who} unticked it`;
-  }
+const STATE_WORD: Record<Decision['state'], string> = { proposed: 'Proposed', confirmed: 'Confirmed', rejected: 'Not decided', superseded: 'No longer holds' };
+
+/** Whoever last reworded a decision that's still proposed: these are their words now, whoever proposed it. */
+const wordsBy = (d: Decision) => (d.state === 'proposed' ? d.changes.findLast((c) => c.what === 'reworded')?.by : undefined);
+
+/** Whose words a proposed decision is in: whoever last reworded it, whoever proposed it, or the notes. */
+export const proposedLine = (d: Decision, me: string | undefined): string => {
+  const words = wordsBy(d);
+  if (words) return `Reworded by ${byName(words, me)}`;
+  const p = proposerOf(d);
+  return `Proposed by ${p ? byName(p, me) : 'the notes'}`;
+};
+
+/** The latest change to where a decision stands. */
+const lastMove = (d: Decision) => d.changes.findLast((c) => c.what !== 'reworded' && c.what !== 'disputed' && c.what !== 'undisputed');
+
+/** Beside the word for where a decision stands: who put it there, so the row doesn't say the state twice. */
+function decisionBy(d: Decision, me: string | undefined, reader: NoteReader | undefined): string {
+  const last = lastMove(d);
+  if (d.state === 'confirmed' && last) return `By ${byName(last.by, me)}`;
+  if ((d.state === 'rejected' || d.state === 'superseded') && last) return `${capital(byName(last.by, me))} said so`;
+  const words = wordsBy(d);
+  // Whoever wrote these words isn't offered Confirm, so the row says why.
+  if (reader && words && isBy(words, reader) && !mayDecide(d, 'confirmed', reader)) return 'Reworded by you. Someone else has to confirm it';
+  if (last?.what === 'reopened') return `${capital(byName(last.by, me))} reopened this. Nobody has confirmed it since`;
+  if (words) return `Reworded by ${byName(words, me)}. Nobody has confirmed it yet`;
+  const proposer = proposerOf(d);
+  return `By ${proposer ? byName(proposer, me) : 'the notes'}. Nobody has confirmed it yet`;
 }
 
 /** Where a decision stands, in a sentence: confirmed by whom, said not to be decided or to no longer hold, or nobody has confirmed it yet. */
 export function decisionLine(d: Decision, me: string | undefined): string {
-  const last = [...d.changes].reverse().find((c) => c.what !== 'reworded');
+  const last = lastMove(d);
   if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
   if (d.state === 'rejected' && last) return `${capital(byName(last.by, me))} said this wasn’t decided`;
   if (d.state === 'superseded' && last) return `${capital(byName(last.by, me))} said this no longer holds`;
-  return 'Proposed by the notes. Nobody has confirmed it yet';
+  if (last?.what === 'reopened') return `${capital(byName(last.by, me))} reopened this. Nobody has confirmed it since`;
+  return `${proposedLine(d, me)}. Nobody has confirmed it yet`;
 }
-/** Every change to something, one per line, for its tooltip. */
-const history = (changes: Change[], me: string | undefined) => (changes.length ? changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined);
 
-function DecisionRow({ d, n, me, onChange, onSeek, shown }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
+/** Saying a decision wasn't decided: rejecting it, for whoever may; otherwise saying so for the organizer to settle. */
+export const notDecided = (d: Decision, reader: NoteReader): DecisionPatch | undefined =>
+  (mayDecide(d, 'rejected', reader) ? { state: 'rejected' } : mayDispute(d, reader) ? { dispute: true } : undefined);
+
+/** What someone can do with a decision, as `grants.ts` says: only what will work is offered. */
+function DecisionActions({ d, reader, onChange, onReword, editing }: { d: Decision; reader: NoteReader; onChange: (d: Decision, patch: DecisionPatch) => void; onReword: () => void; editing: boolean }) {
+  const may = (to: Decision['state']) => mayDecide(d, to, reader);
+  // Agreeing says what was read, so what changed meanwhile isn't agreed to.
+  const confirm = () => onChange(d, { state: 'confirmed', seen: { text: d.text } });
+  const no = d.state === 'proposed' || d.state === 'confirmed' ? notDecided(d, reader) : undefined;
+  const mine = d.disputes.some((x) => isBy(x.by, reader));
+  return (
+    <>
+      {(d.state === 'proposed' || d.state === 'rejected') && may('confirmed') && <button type="button" className="lk" onClick={confirm}>Confirm</button>}
+      {d.state === 'confirmed' && reader.role === 'organizer' && d.disputes.length > 0 && <button type="button" className="lk" onClick={confirm}>Keep it confirmed</button>}
+      {mine ? <button type="button" className="lk quiet" onClick={() => onChange(d, { dispute: false })}>Take that back</button>
+        : no && <button type="button" className={cn('lk', d.state === 'confirmed' && 'quiet')} onClick={() => onChange(d, no)}>It wasn’t decided</button>}
+      {d.state === 'confirmed' && may('superseded') && <button type="button" className="lk" onClick={() => onChange(d, { state: 'superseded' })}>It no longer holds</button>}
+      {d.state === 'superseded' && may('confirmed') && <button type="button" className="lk" onClick={confirm}>It still holds</button>}
+      {(d.state === 'confirmed' || d.state === 'rejected') && may('proposed') && <button type="button" className="lk quiet" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
+      {!editing && mayRewordDecision(d, reader) && <button type="button" className="lk quiet" onClick={onReword}>Reword</button>}
+    </>
+  );
+}
+
+/** The time of something in a note: plays from it when the note's audio can. */
+const timeOf = (onSeek: ((s: number) => void) | undefined) => (at: number) => <TimeChip seconds={at} onSeek={onSeek} />;
+
+function DecisionRow({ d, n, me, reader, onChange, onSeek, shown }: { d: NoteDecision; n: number; me: string | undefined; reader?: NoteReader | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(d.text);
   useEffect(() => { if (!editing) setText(d.text); }, [d.text, editing]);
@@ -91,42 +128,42 @@ function DecisionRow({ d, n, me, onChange, onSeek, shown }: { d: Decision; n: nu
           ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this decision" onChange={(e) => setText(e.target.value)} onBlur={save}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(d.text); setEditing(false); } }} />
           : <span className="t">{d.text}</span>}
-        <div className="dec-s" title={history(d.changes, me)}>
-          {d.state === 'confirmed' && <Icon name="check" size={14} />}
-          <span>{decisionLine(d, me)}</span>
+        {editing && reader?.role !== 'organizer' && <span className="dec-hint">Someone else has to confirm new words.</span>}
+        {editing && reader?.role === 'organizer' && d.state === 'confirmed' && <span className="dec-hint">New words need confirming again.</span>}
+        <div className="dec-s">
+          <span className="dec-state">{d.state === 'confirmed' && <Icon name="check" size={13} />}{STATE_WORD[d.state]}</span>
+          <span>{decisionBy(d, me, reader)}</span>
           {d.screen && shown?.(d.screen)}
-          {onChange && (
-            <>
-              {(d.state === 'proposed' || d.state === 'rejected') && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
-              {d.state === 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'rejected' })}>It wasn’t decided</button>}
-              {d.state === 'confirmed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'superseded' })}>It no longer holds</button>}
-              {d.state === 'superseded' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>It still holds</button>}
-              {(d.state === 'confirmed' || d.state === 'rejected') && <button type="button" className="lk quiet" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
-              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
-            </>
-          )}
+          <Backing evidence={d.evidence} me={me} moment={timeOf(onSeek)} shown={shown} />
+          <EvidenceFlags evidence={d.evidence} disputes={d.disputes} me={me} />
         </div>
+        {(onChange || d.changes.length > 0) && (
+          <div className="dec-a">
+            {onChange && reader && <DecisionActions d={d} reader={reader} onChange={onChange} onReword={() => setEditing(true)} editing={editing} />}
+            <History changes={d.changes} me={me} what="decision" />
+          </div>
+        )}
       </div>
       {d.at !== undefined ? <TimeChip seconds={d.at} onSeek={onSeek} /> : <span />}
     </div>
   );
 }
 
-/** What the call settled. Each stays proposed until someone who has the notes confirms it. */
-export function Decisions({ items, me, onChange, onSeek, shown }: {
-  items: Decision[]; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
+/** What the call settled, and what people proposed. Each stays proposed until the organizer or someone invited confirms it. */
+export function Decisions({ items, me, reader, onChange, onSeek, shown }: {
+  items: NoteDecision[]; me: string | undefined; reader?: NoteReader | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
-  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
+  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} reader={reader} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
 }
 
 /** Where an open question stands, in a sentence: still open, reopened by someone, or answered. */
 export function questionLine(x: Question, me: string | undefined): string {
-  const last = [...x.changes].reverse().find((c) => c.what !== 'reworded');
+  const last = x.changes.findLast((c) => c.what !== 'reworded');
   if (x.state === 'answered') return last ? `${capital(byName(last.by, me))} said this was answered` : 'Answered';
   return last?.what === 'reopened' ? `Reopened by ${byName(last.by, me)}` : 'Not answered yet';
 }
 
-function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: Question; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
+function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: NoteQuestion; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(x.text);
   useEffect(() => { if (!editing) setText(x.text); }, [x.text, editing]);
@@ -139,17 +176,24 @@ function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: Question; n: nu
           ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this question" onChange={(e) => setText(e.target.value)} onBlur={save}
               onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(x.text); setEditing(false); } }} />
           : <span className="t">{x.text}</span>}
-        <div className="dec-s" title={history(x.changes, me)}>
+        <div className="dec-s">
           {x.state === 'answered' && <Icon name="check" size={14} />}
           <span>{questionLine(x, me)}</span>
           {x.screen && shown?.(x.screen)}
-          {onChange && (
-            <>
-              <button type="button" className="lk" onClick={() => onChange(x, { state: x.state === 'open' ? 'answered' : 'open' })}>{x.state === 'open' ? 'It was answered' : 'Reopen'}</button>
-              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
-            </>
-          )}
+          <Backing evidence={x.evidence} me={me} moment={timeOf(onSeek)} shown={shown} />
+          <EvidenceFlags evidence={x.evidence} me={me} />
         </div>
+        {(onChange || x.changes.length > 0) && (
+          <div className="dec-a">
+            {onChange && (
+              <>
+                <button type="button" className="lk" onClick={() => onChange(x, { state: x.state === 'open' ? 'answered' : 'open' })}>{x.state === 'open' ? 'It was answered' : 'Reopen'}</button>
+                {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
+              </>
+            )}
+            <History changes={x.changes} me={me} what="question" />
+          </div>
+        )}
       </div>
       {x.at !== undefined ? <TimeChip seconds={x.at} onSeek={onSeek} /> : <span />}
     </div>
@@ -158,59 +202,83 @@ function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: Question; n: nu
 
 /** What the call asked and didn't settle. Each stays open until someone who has the notes says it was answered. */
 export function Questions({ items, me, onChange, onSeek, shown }: {
-  items: Question[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
+  items: NoteQuestion[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
   return <>{items.map((x, i) => <QuestionRow key={x.id} x={x} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
 }
 
-/** Who a follow-up is for, in a sentence: suggested by the notes, given by someone, or taken on. */
+/** Who a follow-up is for, in a sentence: suggested by the notes or by someone, turned down, taken on, or to take on again. */
 export function actionLine(a: ActionItem, me: string | undefined): string {
-  if (!a.owner) return 'Nobody is on this yet';
+  if (!a.owner) {
+    const no = a.changes.findLast((c) => c.what === 'declined');
+    return no ? `${notTheirs(no, me)}. Nobody is on this yet` : 'Nobody is on this yet';
+  }
   const mine = !!me && !!a.owner.person && sameEmail(a.owner.person, { email: me });
   const them = mine ? 'you' : spokenName(a.owner, me);
   if (a.takenOn) return mine ? 'You took this on' : `${them} took this on`;
-  const gave = [...a.changes].reverse().find((c) => c.what === 'reassigned');
+  // Nobody with an address can't answer, so nobody is waited for.
+  if (!a.owner.person?.email) return `The notes suggest ${them}. They can’t take it on here, so give it to someone who has the notes`;
   const ask = mine ? 'Take it on if it’s yours' : `Waiting for ${them} to take it on`;
-  return gave ? `${capital(byName(gave.by, me))} gave this to ${them}. ${ask}` : `The notes suggest ${them}. ${ask}`;
+  const last = a.changes.findLast((c) => c.what === 'reopened' || c.what === 'reassigned');
+  if (last?.what === 'reopened') return mine ? `${capital(byName(last.by, me))} changed this since you took it on. Take it on again if it’s still yours` : `${capital(byName(last.by, me))} changed this since ${them} took it on. Waiting for them to take it on again`;
+  if (last) return `${capital(byName(last.by, me))} gave this to ${them}. ${ask}`;
+  const proposer = proposerOf(a);
+  const who = proposer ? byName(proposer, me) : 'the notes';
+  return `${capital(who)} ${who === 'you' || !proposer ? 'suggest' : 'suggests'} ${them}. ${ask}`;
 }
 
-function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | undefined; people: Person[]; onChange: (a: ActionItem, patch: ActionPatch) => void }) {
+function ActionMenu({ a, me, reader, people, onChange }: { a: NoteAction; me: string | undefined; reader: NoteReader; people: Person[]; onChange: (a: ActionItem, patch: ActionPatch) => void }) {
   const [open, setOpen] = useState(false);
   const [due, setDue] = useState(a.due ?? '');
   const [text, setText] = useState(a.text);
   useEffect(() => { if (open) { setDue(a.due ?? ''); setText(a.text); } }, [open, a.due, a.text]);
   const apply = (patch: ActionPatch) => { setOpen(false); onChange(a, patch); };
   const owner = a.owner?.person?.email;
+  // Giving it to yourself is taking it on, so it says what was read.
+  const seen = { text: a.text, due: a.due ?? null };
+  const assign = mayAssign(a, reader);
+  const change = mayChangeAction(a, reader);
+  // The organizer changing what someone took on asks them again, so it says so first.
+  const asks = a.takenOn && !isAssignee(a, reader) && a.owner ? `${spokenName(a.owner, me)} will be asked to take it on again.` : undefined;
   return (
     <Popover open={open} onOpenChange={setOpen} align="end" label="Change this follow-up" className="act-pop"
       anchor={<IconButton icon="more" label="Change this follow-up" size={16} className="act-more" />}>
-      <div className="ac-pop-h">Who it’s for</div>
-      {people.map((p) => {
-        const on = !!owner && sameEmail(p, { email: owner });
-        return (
-          <button key={p.email} type="button" className={cn('ac-pop-item', on && 'sel')} onClick={() => apply({ owner: p.email })}>
-            <Avatar person={p} size={22} />
-            <span><b>{p.name}{me && sameEmail(p, { email: me }) ? ' (you)' : ''}</b>{on && <small>{a.takenOn ? 'Took it on' : 'Hasn’t taken it on yet'}</small>}</span>
-          </button>
-        );
-      })}
-      {a.owner && <button type="button" className="ac-pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>Nobody yet</b></span></button>}
-      <div className="ac-pop-sep" />
-      <form className="act-field" onSubmit={(e) => { e.preventDefault(); apply({ due: due.trim() || null }); }}>
-        <label htmlFor={`due-${a.id}`}>Due</label>
-        <input id={`due-${a.id}`} className="ac-input" value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
-        <Button type="submit" variant="secondary" size="sm">Save</Button>
-      </form>
-      <form className="act-field" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) apply({ text: t }); }}>
-        <label htmlFor={`txt-${a.id}`}>Wording</label>
-        <input id={`txt-${a.id}`} className="ac-input" value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
-        <Button type="submit" variant="secondary" size="sm">Save</Button>
-      </form>
+      {assign ? (
+        <>
+          <div className="ac-pop-h">Who it’s for</div>
+          {people.map((p) => {
+            const on = !!owner && sameEmail(p, { email: owner });
+            return (
+              <button key={p.email} type="button" className={cn('ac-pop-item', on && 'sel')} onClick={() => apply({ owner: p.email, seen })}>
+                <Avatar person={p} size={22} />
+                <span><b>{p.name}{me && sameEmail(p, { email: me }) ? ' (you)' : ''}</b>{on && <small>{a.takenOn ? 'Took it on' : 'Hasn’t taken it on yet'}</small>}</span>
+              </button>
+            );
+          })}
+          {a.owner && <button type="button" className="ac-pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>{isAssignee(a, reader) ? 'Not mine' : 'Nobody yet'}</b></span></button>}
+        </>
+      ) : <p className="act-note">{a.owner ? `Only the organizer or ${spokenName(a.owner, me)} can say who this is for.` : 'Only the organizer can say who this is for.'}</p>}
+      {change && (
+        <>
+          <div className="ac-pop-sep" />
+          <form className="act-field" onSubmit={(e) => { e.preventDefault(); apply({ due: due.trim() || null }); }}>
+            <label htmlFor={`due-${a.id}`}>Due</label>
+            <input id={`due-${a.id}`} className="ac-input" value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
+            <Button type="submit" variant="secondary" size="sm">Save</Button>
+          </form>
+          <form className="act-field" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) apply({ text: t }); }}>
+            <label htmlFor={`txt-${a.id}`}>Wording</label>
+            <input id={`txt-${a.id}`} className="ac-input" value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
+            <Button type="submit" variant="secondary" size="sm">Save</Button>
+          </form>
+          {asks && <p className="act-note">{asks}</p>}
+        </>
+      )}
       {a.changes.length > 0 && (
         <>
           <div className="ac-pop-sep" />
-          <div className="ac-pop-h">Changes</div>
-          <ul className="act-hist">{[...a.changes].reverse().slice(0, 8).map((c, i) => <li key={`${c.at}-${i}`}><span>{changeLine(c, me)}</span><span className="ac-mono">{when(c.at)}</span></li>)}</ul>
+          <div className="ac-pop-h">History</div>
+          <ChangeList changes={a.changes} me={me} />
         </>
       )}
     </Popover>
@@ -218,12 +286,13 @@ function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | u
 }
 
 /**
- * What people said they'd do. The notes only suggest who: the person it's for takes it on, and
- * anyone who has the notes can give it to someone else, date it, reword it or tick it.
+ * What people said they'd do. Who it's for and when it's due are only suggestions until that person says they'll do it,
+ * which nobody can do for them; "Not mine" hands it back. Once they have, it's theirs and the organizer's to change.
  */
-export function FollowUps({ actions, me, people = [], onToggle, onChange, shown }: {
-  actions: ActionItem[]; me: string | undefined; people?: Person[] | undefined;
-  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined; shown?: ScreenRefShown | undefined;
+export function FollowUps({ actions, me, reader, people = [], onToggle, onChange, onSeek, shown }: {
+  actions: NoteAction[]; me: string | undefined; reader?: NoteReader | undefined; people?: Person[] | undefined;
+  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined;
+  onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
 }) {
   return (
     <>
@@ -231,18 +300,31 @@ export function FollowUps({ actions, me, people = [], onToggle, onChange, shown 
         const mine = !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me });
         return (
           <div key={a.id} className={cn('act', a.done && 'done')}>
-            <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
-            <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}{a.screen && shown?.(a.screen)}</span></div>
+            <Check checked={a.done} disabled={!!reader && !mayChangeAction(a, reader)} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
+            <div className="act-b">
+              <span className="t">{a.text}</span>
+              <span className="act-s">
+                <span>{actionLine(a, me)}</span>
+                {a.screen && shown?.(a.screen)}
+                <Backing evidence={a.evidence} me={me} moment={timeOf(onSeek)} shown={shown} />
+                <EvidenceFlags evidence={a.evidence} me={me} />
+              </span>
+            </div>
             <span className="act-who">
               {a.owner && (
                 <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
                   <Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}
                 </span>
               )}
-              {mine && !a.takenOn && onChange && <Button variant="secondary" size="sm" onClick={() => onChange(a, { takeOn: true })}>Take it on</Button>}
+              {mine && !a.takenOn && onChange && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={() => onChange(a, { takeOn: true, seen: { text: a.text, due: a.due ?? null } })}>I’ll do it</Button>
+                  <button type="button" className="lk quiet" onClick={() => onChange(a, { owner: null })}>Not mine</button>
+                </>
+              )}
             </span>
-            <span className="due">{a.due ?? ''}</span>
-            {onChange ? <ActionMenu a={a} me={me} people={people} onChange={onChange} /> : <span />}
+            <span className={cn('due', !a.takenOn && 'maybe')} title={a.due && !a.takenOn ? 'Suggested. Nobody has agreed to this date yet' : undefined}>{a.due ?? ''}</span>
+            {onChange && reader ? <ActionMenu a={a} me={me} reader={reader} people={people} onChange={onChange} /> : <span />}
           </div>
         );
       })}
@@ -256,11 +338,11 @@ const FIRST_LINES = 3;
 /**
  * The transcript of a written note: its first lines under the summary, and all of it on request; all of it at
  * `focus` when a link brought someone to a moment in it. Pauses and shared screens after the lines shown wait too.
- * With `correct`, whoever may corrects lines in place (lines.tsx).
+ * With `correct`, whoever may corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves.
  */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct }: {
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct, fromLine, marks }: {
   lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined;
 }) {
   const [open, setOpen] = useState(focus !== undefined);
   useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
@@ -270,7 +352,7 @@ export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, c
   const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
   return (
     <>
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} />
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} fromLine={fromLine} marks={marks} />
       {lines.length > FIRST_LINES && (
         <div className="tr-more">
           <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -288,8 +370,23 @@ const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name
 /** Where a link to a moment lands: the transcript line said then, which the router scrolls to the middle of the view. */
 const MOMENT = 'moment';
 const CENTER: ScrollIntoViewOptions = { block: 'center' };
-/** The parts of a link to a note that open it at a moment. */
-const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** The parts of a link to a note that open it at a moment, in a breakout room's section when it was said there. */
+const atMoment = (at: number, room?: RoomRef | undefined) => ({ search: { at: Math.round(at), ...(room ? { room: room.id } : {}) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** Where a link to a breakout room's section lands. */
+export const roomAnchor = (id: string) => `room-${id}`;
+/** The parts of a link to a note that open it at a breakout room's section, or at a moment, when it has one. */
+export const inNote = (at: number | undefined, room: RoomRef | undefined) =>
+  (at !== undefined ? atMoment(at, room) : room ? { search: { room: room.id }, hash: roomAnchor(room.id), hashScrollIntoView: CENTER } : {});
+
+/**
+ * Links to notes under this open in a new tab, each still opened with the reader's access checked: from a call or its
+ * pre-join, leaving the page would leave the call, or turn the camera off.
+ */
+export const NotesApart = createContext(false);
+/** A link's target, under `NotesApart`. */
+export function useNotesApart() {
+  return useContext(NotesApart) ? { target: '_blank', rel: 'noopener' } : {};
+}
 
 /** A note's shared screens among its transcript lines: the moments, and how each is drawn (it opens the frame). */
 export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) => ReactNode }
@@ -299,11 +396,11 @@ export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) 
  * shared screen just before the lines said while it was up, and what the transcript isn't sure of dotted and explained
  * at the top. A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line said at
  * that moment is marked, and is where a moment's link lands. With `correct`, whoever may corrects lines in place
- * (lines.tsx).
+ * (lines.tsx). With `marks`, they bookmark lines for themselves.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, className }: {
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, fromLine, marks, className }: {
   lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined; className?: string | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; className?: string | undefined;
 }) {
   const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
@@ -319,7 +416,7 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
         const up = gapsBefore(moments, lines, i);
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
         const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} /></Fragment>;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} fromLine={fromLine} marks={marks} /></Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(moments, lines).map(shown)}
@@ -327,10 +424,10 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
   );
 }
 
-/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. */
-export function MomentLink({ noteId, at }: { noteId: string; at: number }) {
+/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. In a breakout room's section, that room's. */
+export function MomentLink({ noteId, at, room }: { noteId: string; at: number; room?: RoomRef | undefined }) {
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at)} className="ac-time-chip" title={`Open the notes at ${position(at)}`}>
+    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className="ac-time-chip" title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
       {position(at)}
     </Link>
   );
@@ -385,14 +482,14 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
 }
 
 /** A cite's key among an answer's: a moment, a shared screen, or one of a series' calls (at a moment when it can tell). */
-const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}/${c.room?.id ?? ''}@${c.at ?? ''}`);
 
-/** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
-function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
+/** One of a series' calls an answer comes from: its day, its breakout room and the moment when the answer could tell. */
+export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
   const day = shortDay(new Date(c.startedAt));
   return (
-    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...(c.at === undefined ? {} : atMoment(c.at))} className="src-chip" title={`Open the notes from ${c.title}, ${day}`}>
-      <Icon name="notes" size={13} />{day}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
+    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...inNote(c.at, c.room)} {...useNotesApart()} className="src-chip" title={`Open the notes from ${c.title}, ${day}${c.room ? `, in ${c.room.name}` : ''}`}>
+      <Icon name="notes" size={13} />{day}{c.room && <span>{c.room.name}</span>}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
     </Link>
   );
 }
@@ -400,17 +497,21 @@ function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
 /**
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
+ * Only the person asking sees a question or its answer, and neither is kept unless they keep it (`onKeep`).
  */
-export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call' }: {
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', onKeep }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
+  /** Keeps an answer in your own notes. */
+  onKeep?: ((a: Answer) => Promise<unknown>) | undefined;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
   const [text, setText] = useState('');
+  const [keptFor, setKeptFor] = useState<string | null>(null);
   const { answer, ask: start } = useAnswer(ask);
   /*
    * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
@@ -447,6 +548,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
                     : <SourceLink key={citeKey(c)} c={c} />))}
               </div>
             )}
+            {onKeep && answer.done && answer.text && <KeepAnswer kept={keptFor === `${answer.q}\n${answer.text}`} onKeep={() => onKeep(answer).then(() => setKeptFor(`${answer.q}\n${answer.text}`))} />}
           </AnswerView>
         )}
         {(atEnd || focus) && suggestions.length > 0 && (
@@ -455,7 +557,8 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
         <div className="ask-bar">
           <Icon name="ask" size={20} />
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
+            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={`${label}, for you alone`} aria-keyshortcuts={ariaShortcut('J')} />
+          <Scope>Only you</Scope>
           <Button variant="primary" size="sm" icon="send" onClick={() => run(text)}>Ask</Button>
         </div>
       </div>

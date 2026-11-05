@@ -141,6 +141,88 @@ export type Team = z.infer<typeof TeamSchema>;
 
 export const MeetingStatusSchema = z.enum(['scheduled', 'live', 'ended']);
 export type MeetingStatus = z.infer<typeof MeetingStatusSchema>;
+
+/**
+ * What a call's notes keep, set when it's scheduled. Without the transcript, it's used to write the notes and then
+ * deleted. Without the recording, the audio is deleted when the call ends. `readScreens` has shared screens go into
+ * the notes from the moment notes start, instead of when the organizer turns that on.
+ */
+export const NotesChoicesSchema = z.object({ keepTranscript: z.boolean(), keepRecording: z.boolean(), readScreens: z.boolean() });
+export type NotesChoices = z.infer<typeof NotesChoicesSchema>;
+/** What a call keeps unless it's set otherwise: every call before these choices existed kept all of it. */
+export const DEFAULT_NOTES_CHOICES: NotesChoices = { keepTranscript: true, keepRecording: true, readScreens: false };
+
+/** Whether a time zone's name is one the runtime knows, such as "Europe/London". */
+export function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A day of the week: 0 is Sunday. */
+export const WeekdaySchema = z.number().int().min(0).max(6);
+/** How a call repeats: on some days every week or two, or on one weekday of each month (`week` -1 is the last one). */
+export const RepeatRuleSchema = z.discriminatedUnion('every', [
+  z.object({ every: z.literal('week'), weeks: z.union([z.literal(1), z.literal(2)]), days: z.array(WeekdaySchema).min(1).max(7) }),
+  z.object({ every: z.literal('month'), week: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]), day: WeekdaySchema })
+]);
+export type RepeatRule = z.infer<typeof RepeatRuleSchema>;
+/** The most calls one repeat can schedule. */
+export const MAX_SERIES_CALLS = 60;
+export const RepeatSchema = z.object({
+  rule: RepeatRuleSchema,
+  /** The last day a call can fall on, as `YYYY-MM-DD` where the organizer is. */
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** Where the organizer is, as an IANA name: the calls keep their clock time there when the clocks change. */
+  timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.')
+});
+export type Repeat = z.infer<typeof RepeatSchema>;
+/**
+ * A repeat as the app sends it, with when each call starts, soonest first, worked out where the organizer is. The
+ * first is the call's own `startsAt`.
+ */
+export const RepeatInputSchema = RepeatSchema.extend({ occurrences: z.array(z.string()).min(1).max(MAX_SERIES_CALLS) });
+export type RepeatInput = z.infer<typeof RepeatInputSchema>;
+/** Changing or cancelling a call in a series: only this call, or this one and every later one. */
+export const ChangeScopeSchema = z.enum(['this', 'following']);
+export type ChangeScope = z.infer<typeof ChangeScopeSchema>;
+
+/** Someone invited, answering whether they're coming. */
+export const RsvpSchema = z.enum(['yes', 'maybe', 'no']);
+export type Rsvp = z.infer<typeof RsvpSchema>;
+/** How everyone invited has answered, and how many haven't. */
+export const RsvpCountsSchema = z.object({ yes: z.number(), maybe: z.number(), no: z.number(), waiting: z.number() });
+export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
+
+/* ---------- documents ---------- */
+
+export const DocumentKindSchema = z.enum(['doc', 'sheet', 'board']);
+export type DocumentKind = z.infer<typeof DocumentKindSchema>;
+/** A document someone can bring to a call. */
+export const DocumentSchema = z.object({
+  id: IDSchema,
+  name: z.string(),
+  kind: DocumentKindSchema,
+  /** Who it belongs to, by first name. */
+  by: z.string(),
+  updatedAt: ISODateSchema
+});
+export type Document = z.infer<typeof DocumentSchema>;
+/** The documents someone can bring: a team's workspaces, or one person's own. `sample` is a demo account's made-up set; `none` is nothing yet. */
+export const DocumentLibrarySchema = z.object({
+  source: z.enum(['sample', 'none']),
+  workspaces: z.array(z.object({ id: IDSchema, name: z.string(), documents: z.array(DocumentSchema) }))
+});
+export type DocumentLibrary = z.infer<typeof DocumentLibrarySchema>;
+/** The most documents a call can bring. */
+export const MAX_CALL_DOCUMENTS = 12;
+/** A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it. */
+export const CallDocumentSchema = z.object({ id: IDSchema, kind: DocumentKindSchema, by: z.string(), name: z.string().nullable() });
+export type CallDocument = z.infer<typeof CallDocumentSchema>;
+
 export const MeetingSchema = z.object({
   id: IDSchema,
   title: z.string(),
@@ -148,12 +230,28 @@ export const MeetingSchema = z.object({
   endsAt: ISODateSchema,
   organizer: PersonSchema,
   isOrganizer: z.boolean(),
-  /** Everyone invited besides the organizer. When notes are on, they all get them. */
+  /** Everyone invited besides the organizer. When notes are on, they all get them. Someone invited to a big call sees only `guestCount`. */
   guests: z.array(PersonSchema),
+  /** How many people are invited besides the organizer. */
+  guestCount: z.number(),
   notes: NotesSettingSchema,
+  /** What the notes keep. */
+  choices: NotesChoicesSchema,
   /** Short code used in the join link, e.g. `kpw-rnzq-hte`. */
   code: z.string(),
   status: MeetingStatusSchema,
+  /** Started now, not scheduled: it's on nobody's calendar, and isn't listed until someone is in it. */
+  instant: z.boolean(),
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean(),
+  /** What was brought to the call. */
+  documents: z.array(CallDocumentSchema),
+  /** How everyone invited has answered. */
+  rsvps: RsvpCountsSchema,
+  /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
+  rsvp: RsvpSchema.nullable(),
+  /** Times offered to a guest, while they haven't picked one: `startsAt` means nothing until they have. */
+  offer: z.object({ times: z.array(ISODateSchema) }).optional(),
   /** Present once the call has happened with notes on. */
   noteId: IDSchema.optional(),
   /** Seconds the call actually lasted, once ended. */
@@ -161,7 +259,11 @@ export const MeetingSchema = z.object({
   /** The call in the organizer's Google Calendar, which sends its invitations. */
   calendarUrl: z.string().url().optional(),
   /** The series it's in: the calls before and after it, whose decisions, open questions and follow-ups carry over. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** How the series repeats, when it was scheduled to. */
+  repeat: RepeatSchema.optional(),
+  /** The series' own link code, when it repeats: it always leads to the call that's on now or next. Its calendar invitation carries this one. */
+  seriesCode: z.string().optional()
 });
 export type Meeting = z.infer<typeof MeetingSchema>;
 
@@ -183,7 +285,9 @@ export const CalendarEventSchema = z.object({
   /** The event in the calendar it came from. */
   calendarUrl: z.string().url(),
   /** Your series this event continues: it's the next occurrence of a recurring event you've held in Alcove. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** The code of the Alcove link on the event: it's someone's Alcove call, which `join` opens. */
+  alcoveCode: z.string().optional()
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 
@@ -197,13 +301,48 @@ export const CalendarSchema = z.object({
 });
 export type Calendar = z.infer<typeof CalendarSchema>;
 
+/** A stretch of time. */
+export const IntervalSchema = z.object({ from: ISODateSchema, to: ISODateSchema });
+export type Interval = z.infer<typeof IntervalSchema>;
+/**
+ * When people are busy. `you` is your own calendar and calls. A person's `busy` is null when their calendar can't be
+ * read: it's private, or they're outside the company. Read when it's asked for and stored nowhere.
+ */
+export const BusySchema = z.object({
+  /** google: from a connected calendar. sample: a demo account's made-up week. none: nothing connected. */
+  source: z.enum(['google', 'sample', 'none']),
+  you: z.array(IntervalSchema),
+  people: z.array(z.object({ email: z.string(), busy: z.array(IntervalSchema).nullable() }))
+});
+export type Busy = z.infer<typeof BusySchema>;
+
+/** The most people one call can invite, besides its organizer. */
+export const MAX_GUESTS = 300;
+
+/*
+ * What `.partial()` makes of this is how a call is changed, so nothing here has a default: a default would come back
+ * as a change on every update.
+ */
 export const MeetingInputSchema = z.object({
   title: z.string(),
   startsAt: ISODateSchema,
   durationMinutes: z.number(),
   /** Email addresses. */
   guests: z.array(z.string()),
-  notes: NotesSettingSchema
+  notes: NotesSettingSchema,
+  /** What the notes keep. Everything, and screens only when turned on, unless it's set. */
+  choices: NotesChoicesSchema.optional(),
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean().optional(),
+  /** Documents brought to the call, by ID. */
+  documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
+  /** Schedules a call for each occurrence, as one series with one link. */
+  repeat: RepeatInputSchema.optional(),
+  /**
+   * Offers these times to a guest instead of settling on one: the call goes on no calendar until someone with its
+   * link picks one (see calls.pick). `startsAt` is the first of them. Can't be combined with `repeat`.
+   */
+  offer: z.array(ISODateSchema).min(2).max(3).optional()
 });
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
 
@@ -220,15 +359,29 @@ export type InstantCallInput = z.infer<typeof InstantCallInputSchema>;
 export const SpeakerSchema = z.object({ name: z.string(), person: PersonSchema.optional() });
 export type Speaker = z.infer<typeof SpeakerSchema>;
 
+/** How someone came to have a note: they ran the call, were invited to it, or it was shared with them after. */
+export const RecipientRoleSchema = z.enum(['organizer', 'invited', 'shared']);
+export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
+
+/**
+ * Who changed something in a note: their account, their name and address then, and how they had the note (`as`). `id` and
+ * `as` are null on changes from before they were kept.
+ */
+export const ChangerSchema = z.object({ id: z.string().nullable().default(null), name: z.string(), email: z.string(), as: RecipientRoleSchema.nullable().default(null) });
+export type Changer = z.infer<typeof ChangerSchema>;
+
 /**
  * Someone changing a note: its decisions, open questions or follow-ups, or a line of its transcript. Who, when, what,
  * and what it was before. On a transcript line, `reworded` corrects its words, `reassigned` says someone else said it
- * (`before` and `after` are the speakers' names) and `confirmed` says it's right as it was heard.
+ * (`before` and `after` are the speakers' names) and `confirmed` says it's right as it was heard. `proposed` is someone
+ * adding a decision or follow-up the notes didn't hear, always its first change. `disputed` says a decision wasn't
+ * decided, from someone who can't reject it, and `undisputed` takes that back. `declined` is the person a follow-up was
+ * for saying it isn't theirs. `reopened` on a follow-up asks its owner to take it on again, after it was changed.
  */
 export const ChangeSchema = z.object({
-  by: z.object({ name: z.string(), email: z.string() }),
+  by: ChangerSchema,
   at: ISODateSchema,
-  what: z.enum(['confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'reassigned', 'due', 'done', 'undone']),
+  what: z.enum(['proposed', 'confirmed', 'rejected', 'superseded', 'reopened', 'reworded', 'answered', 'took-on', 'declined', 'reassigned', 'due', 'done', 'undone', 'disputed', 'undisputed']),
   /** The wording, owner, speaker or due date before a change to it, and after. */
   before: z.string().optional(),
   after: z.string().optional()
@@ -312,9 +465,22 @@ export const ScreenRefSchema = z.object({ id: IDSchema, region: z.number().optio
 export type ScreenRef = z.infer<typeof ScreenRefSchema>;
 
 /**
- * Something the call settled, as the notes heard it. It stays proposed until someone who has the
- * notes confirms it, or says it wasn't decided. A confirmed decision can later stop holding
- * (superseded), when a later one replaces it.
+ * What an entry in the notes (a decision, an open question or a follow-up) rests on, by transcript line: the lines it
+ * comes from, and any that cut against it, where someone said otherwise. The notes model points at lines it was sent
+ * and anything else is dropped; someone proposing an entry picks the lines themselves. Empty on entries written before
+ * notes pointed at lines, and on anything nobody could tie to one.
+ */
+const Grounds = { lines: z.array(IDSchema).default([]), against: z.array(IDSchema).default([]) };
+
+/** Someone saying a decision wasn't decided, who can't reject it themselves: it stands until they take it back or the organizer settles it. */
+export const DisputeSchema = z.object({ by: ChangerSchema, at: ISODateSchema });
+export type Dispute = z.infer<typeof DisputeSchema>;
+
+/**
+ * Something the call settled, as the notes heard it, or as someone who has the notes proposed it. It stays proposed
+ * until someone who has the notes confirms it; the organizer can say it wasn't decided (rejected). A confirmed decision
+ * can later stop holding (superseded), when a later one replaces it. Rewording a confirmed decision puts it back to
+ * proposed, since what people confirmed was the words before.
  */
 export const DecisionSchema = z.object({
   id: IDSchema,
@@ -324,7 +490,10 @@ export const DecisionSchema = z.object({
   state: z.enum(['proposed', 'confirmed', 'rejected', 'superseded']),
   /** What was on a shared screen when it was settled, if it was about something shown. */
   screen: ScreenRefSchema.optional(),
-  /** Who confirmed, rejected, superseded, reopened or reworded it, oldest first. */
+  ...Grounds,
+  /** The people who say it wasn't decided and aren't the ones to reject it. */
+  disputes: z.array(DisputeSchema).default([]),
+  /** Who proposed, confirmed, rejected, superseded, reopened, disputed or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 export type Decision = z.infer<typeof DecisionSchema>;
@@ -341,28 +510,66 @@ export const QuestionSchema = z.object({
   state: z.enum(['open', 'answered']),
   /** What was on a shared screen when it was asked, if it was about something shown. */
   screen: ScreenRefSchema.optional(),
+  ...Grounds,
   /** Who said it was answered, reopened or reworded it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 export type Question = z.infer<typeof QuestionSchema>;
 
+/**
+ * Something someone said they, or someone else, would do. Who it's for (`owner`) and when it's due are suggestions, the
+ * notes' or a person's, until `takenOn`: the owner said they'll do it, as it's worded, by that date. Nobody but the owner
+ * can say so for them, and changing a follow-up they took on (anyone but them) asks them again.
+ */
 export const ActionItemSchema = z.object({
   id: IDSchema, text: z.string(),
-  /** Who it's for: suggested by the notes, or given to them by someone with the notes. Absent when nobody said. */
+  /** Who it's for: suggested by the notes, or given to them by someone with the notes. Absent when nobody said, or they said it isn't theirs. */
   owner: SpeakerSchema.optional(),
-  /** The owner said they'll do it. The notes only suggest; nobody but the owner can take it on for them. */
+  /** The owner acknowledged it: they said they'll do it. The notes only suggest; nobody but the owner can take it on for them. */
   takenOn: z.boolean(),
-  /** When it's due, as said in the call ("Wed", "end of March"). */
+  /** When it's due, as said in the call ("Wed", "end of March"). A suggestion until the owner takes it on. */
   due: z.string().optional(),
   /** When it came up, in seconds into the recording, if the notes could tell. */
   at: z.number().optional(),
   done: z.boolean(),
   /** What was on a shared screen when it came up, if it was about something shown. */
   screen: ScreenRefSchema.optional(),
-  /** Who took it on, gave it to someone, changed it or ticked it, oldest first. */
+  ...Grounds,
+  /** Who took it on, said it wasn't theirs, gave it to someone, changed it or ticked it, oldest first. */
   changes: z.array(ChangeSchema)
 });
 export type ActionItem = z.infer<typeof ActionItemSchema>;
+
+/**
+ * What was said or shown that an entry rests on, as it stands now: a line of the transcript (`against` when it cuts
+ * against the entry; `corrected` when its words or speaker changed after the entry was last settled) or a moment of a
+ * shared screen. Only moments of the note the entry is in.
+ */
+export const NoteEvidenceMomentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('line'), id: IDSchema, at: z.number(), speaker: SpeakerSchema.optional(), text: z.string(), against: z.boolean(), corrected: z.boolean(), unsure: LineDoubtSchema.optional() }),
+  z.object({ kind: z.literal('screen'), id: IDSchema, at: z.number(), title: z.string(), region: z.number().optional(), part: z.string().optional(), sure: z.boolean() })
+]);
+export type NoteEvidenceMoment = z.infer<typeof NoteEvidenceMomentSchema>;
+/**
+ * What to be careful of in an entry. `missing`: nothing said or shown backs it. `conflict`: someone said otherwise, in
+ * the call (a line against it) or since (a dispute). `unsure`: every line behind it was hard to hear, or may be someone
+ * else's. `corrected`: a line behind it changed after it was last settled. `reworded`: its words changed after it was
+ * last settled, so what was said may not say what it says now.
+ */
+export const NoteEvidenceFlagSchema = z.enum(['missing', 'conflict', 'unsure', 'corrected', 'reworded']);
+export type NoteEvidenceFlag = z.infer<typeof NoteEvidenceFlagSchema>;
+/** What backs an entry for the person reading it: worked out from the note each time they read it, and never kept. */
+export const NoteEvidenceSchema = z.object({ moments: z.array(NoteEvidenceMomentSchema), flags: z.array(NoteEvidenceFlagSchema) });
+export type NoteEvidence = z.infer<typeof NoteEvidenceSchema>;
+
+const Evidenced = { evidence: NoteEvidenceSchema };
+/** An entry in the notes as someone reading them gets it: as kept, with what backs it. */
+export const NoteDecisionSchema = DecisionSchema.extend(Evidenced);
+export type NoteDecision = z.infer<typeof NoteDecisionSchema>;
+export const NoteQuestionSchema = QuestionSchema.extend(Evidenced);
+export type NoteQuestion = z.infer<typeof NoteQuestionSchema>;
+export const NoteActionSchema = ActionItemSchema.extend(Evidenced);
+export type NoteAction = z.infer<typeof NoteActionSchema>;
 
 /** A part of the call: where it starts, a few words, a sentence, and what was on a shared screen through it, when something was. */
 export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string(), screen: ScreenRefSchema.optional() });
@@ -389,9 +596,6 @@ export type NoteStatus = z.infer<typeof NoteStatusSchema>;
 export const AudioSegmentSchema = z.object({ index: z.number(), seconds: z.number(), pieces: z.number(), mimeType: z.string() });
 export type AudioSegment = z.infer<typeof AudioSegmentSchema>;
 
-/** How someone came to have a note: they ran the call, were invited to it, or it was shared with them after. */
-export const RecipientRoleSchema = z.enum(['organizer', 'invited', 'shared']);
-export type RecipientRole = z.infer<typeof RecipientRoleSchema>;
 export const RecipientSchema = z.object({
   person: PersonSchema, role: RecipientRoleSchema,
   /** Who shared the notes with them. Only on people they were shared with. */
@@ -483,23 +687,65 @@ export const RoomNoteSchema = z.object({
   transcript: z.array(TranscriptLineSchema)
 });
 export type RoomNote = z.infer<typeof RoomNoteSchema>;
+/** A breakout room's section as someone reading the note gets it. */
+export const NoteRoomSchema = RoomNoteSchema.extend({ decisions: z.array(NoteDecisionSchema), questions: z.array(NoteQuestionSchema), actions: z.array(NoteActionSchema) });
+export type NoteRoom = z.infer<typeof NoteRoomSchema>;
+
+/**
+ * A moment something points at, as the person reading may read it now: a bookmark, an answer someone kept, or something
+ * added to the shared notes. Never stored like this: what's kept is only a pointer, and it's read again each time.
+ */
+export const SourceMomentSchema = z.object({
+  /** Where it falls: seconds since the call started while the call is on, seconds into the recording in a note. */
+  at: z.number(),
+  /** The transcript line there. */
+  line: z.object({ id: IDSchema, text: z.string(), speaker: SpeakerSchema.optional() }).optional(),
+  /** The breakout room it was said in. Absent for the main room. */
+  room: z.object({ id: IDSchema, name: z.string() }).optional(),
+  /** What was on a shared screen then (a `ScreenMoment`). Only in a note: shared screens are read once the call ends. */
+  screen: z.object({ id: IDSchema, title: z.string() }).optional()
+});
+export type SourceMoment = z.infer<typeof SourceMomentSchema>;
+
+/**
+ * Something someone chose to add to the shared notes from their own, after seeing exactly what goes and who gets it. It's
+ * theirs, under their name: never the notes' own words, and never a decision or a follow-up until someone makes it one.
+ */
+export const NoteAdditionSchema = z.object({
+  id: IDSchema,
+  /** Exactly the words they chose to share. Empty when they shared a moment they bookmarked and said nothing about it. */
+  text: z.string(),
+  /** Who added it, as they were when they did. */
+  by: PersonSchema,
+  at: ISODateSchema,
+  /** The moments it points at, those you may open: checked for each reader, each time they read it. */
+  moments: z.array(SourceMomentSchema),
+  /** You can take it back: you added it, or these are your notes. */
+  removable: z.boolean()
+});
+export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
-  decisions: z.array(DecisionSchema),
+  decisions: z.array(NoteDecisionSchema),
   /** What the call asked and didn't settle. */
-  questions: z.array(QuestionSchema),
-  actions: z.array(ActionItemSchema),
+  questions: z.array(NoteQuestionSchema),
+  actions: z.array(NoteActionSchema),
   chapters: z.array(ChapterSchema),
   /** The stretches of the call with nothing captured, oldest first. Room recordings have none. */
   gaps: z.array(CaptureGapSchema),
   /** What was on shared screens while screen notes were on, oldest first, each with the stretch of the transcript it belongs to. */
   screens: z.array(ScreenMomentSchema),
-  /** What was said while notes were on. Null while the recording is still going. */
+  /**
+   * What was said while notes were on. Null while the recording is still going. Without `kept.transcript` it's empty
+   * once the notes are written, and until then for everyone but the organizer.
+   */
   transcript: z.array(TranscriptLineSchema).nullable(),
   /** Each breakout room's own section, in the order the rooms closed. Empty for a call without rooms and for room recordings. */
-  rooms: z.array(RoomNoteSchema).default([]),
+  rooms: z.array(NoteRoomSchema).default([]),
+  /** What people added from their own notes, oldest first. Everyone with the notes reads them. */
+  additions: z.array(NoteAdditionSchema).default([]),
   /**
    * When the notes were last written from the transcript; null until they have been. Corrections to the transcript
    * after it reach the notes when the organizer has them written again (notes.rewrite).
@@ -513,6 +759,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema),
+  /** What the call was set to keep. Without the transcript it's gone once the notes are written; without the recording, once the call ended. */
+  kept: z.object({ transcript: z.boolean(), recording: z.boolean() }),
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
   /** The series its call is in, when it's in one: see series.get. */
@@ -520,16 +768,20 @@ export const NoteSchema = NoteSummarySchema.extend({
 });
 export type Note = z.infer<typeof NoteSchema>;
 
-export const OpenActionSchema = ActionItemSchema.extend({ noteId: IDSchema, noteTitle: z.string(), noteStartedAt: z.string() });
+/** Where something waiting on you came from: the note, and how you have it, which says what you can do about it. */
+const InNote = { noteId: IDSchema, noteTitle: z.string(), noteStartedAt: z.string(), role: RecipientRoleSchema };
+export const OpenActionSchema = NoteActionSchema.extend(InNote);
 export type OpenAction = z.infer<typeof OpenActionSchema>;
 
 /** A decision nobody has confirmed yet, with the note it came from. */
-export const PendingDecisionSchema = DecisionSchema.extend({ noteId: IDSchema, noteTitle: z.string(), noteStartedAt: z.string() });
+export const PendingDecisionSchema = NoteDecisionSchema.extend(InNote);
 export type PendingDecision = z.infer<typeof PendingDecisionSchema>;
 
 /**
- * What waits on you across every note you have, newest note first: follow-ups for you that aren't
- * done, and decisions in written notes that nobody has confirmed or rejected.
+ * What waits on you across every note you have, newest note first: follow-ups for you that aren't done, taken on
+ * (`takenOn`) or only suggested; decisions in written notes that nobody has confirmed or rejected and that you can
+ * confirm, unless you proposed one or said it wasn't decided; and, in notes you organized, confirmed decisions someone
+ * disputes, for you to settle.
  */
 export const InboxSchema = z.object({ followUps: z.array(OpenActionSchema), decisions: z.array(PendingDecisionSchema) });
 export type Inbox = z.infer<typeof InboxSchema>;
@@ -552,6 +804,8 @@ export type AnswerPart = z.infer<typeof AnswerPartSchema>;
  * the note (`/notes/<id>?at=245`). It comes from the address bar, so the app parses it with this.
  */
 export const NoteMomentSchema = z.number().min(0);
+/** A breakout room's section of a note, as a link opens it (`/notes/<id>?room=<room ID>`). From the address bar too. */
+export const NoteRoomParamSchema = IDSchema.min(1).max(64);
 
 /** What the Team page's `group` opens: one of your groups by its ID, or NEW_GROUP to make one. From the address bar too. */
 export const GroupParamSchema = IDSchema.min(1).max(200);
@@ -583,14 +837,43 @@ export const SeriesNoteSchema = z.object({
 });
 export type SeriesNote = z.infer<typeof SeriesNoteSchema>;
 
-/** A decision from one of the series' notes (`noteId`, one of `Series.notes`). */
-export const CarriedDecisionSchema = DecisionSchema.extend({ noteId: IDSchema });
+/** The breakout room something came from: its section of the call's notes. Absent for the main room. */
+export const RoomRefSchema = z.object({ id: IDSchema, name: z.string() });
+export type RoomRef = z.infer<typeof RoomRefSchema>;
+
+/**
+ * Where a later call came back to something, in notes you have too: the notes model thinks it replaced a decision or
+ * answered a question. It only suggests: the decision or question stands as it was until someone who has the notes
+ * says otherwise, or says the notes got it wrong (notes.updateRevisit, with this `id` on the later call's note).
+ * Someone without both notes is never told: what a later call did is that call's.
+ */
+export const LaterCallSchema = z.object({
+  id: IDSchema,
+  /** The later call's note: one of `Series.notes`. */
+  noteId: IDSchema,
+  /** The breakout room of the later call it came up in. */
+  room: RoomRefSchema.optional(),
+  /** The moment in the later call's recording, in seconds, if the notes could tell. */
+  at: z.number().optional(),
+  /** Someone said the notes got it wrong: who, and when. It stands as said, for anyone with both notes to see, and whoever may to undo. */
+  dismissed: z.object({ by: ChangerSchema, at: ISODateSchema }).optional()
+});
+export type LaterCall = z.infer<typeof LaterCallSchema>;
+/** A later decision that seems to replace an earlier one: where, and what it says. */
+export const ReplacedBySchema = LaterCallSchema.extend({ text: z.string() });
+export type ReplacedBy = z.infer<typeof ReplacedBySchema>;
+
+/** Where something came from: one of `Series.notes`, and the breakout room whose section of it says so, when one does. */
+const CarriedFrom = { noteId: IDSchema, room: RoomRefSchema.optional() };
+/** A decision from one of the series' notes, and the later call that seems to replace it. */
+export const CarriedDecisionSchema = NoteDecisionSchema.extend({ ...CarriedFrom, replacedBy: ReplacedBySchema.optional() });
 export type CarriedDecision = z.infer<typeof CarriedDecisionSchema>;
 /** How long something has gone unsettled: the later calls (whose notes you have) it stayed open through. Stale from two. */
-const Carried = { noteId: IDSchema, later: z.number(), stale: z.boolean() };
-export const CarriedQuestionSchema = QuestionSchema.extend(Carried);
+const Carried = { ...CarriedFrom, later: z.number(), stale: z.boolean() };
+/** A question from one of the series' notes, and the later call that seems to answer it. */
+export const CarriedQuestionSchema = NoteQuestionSchema.extend({ ...Carried, answeredIn: LaterCallSchema.optional() });
 export type CarriedQuestion = z.infer<typeof CarriedQuestionSchema>;
-export const CarriedActionSchema = ActionItemSchema.extend(Carried);
+export const CarriedActionSchema = NoteActionSchema.extend(Carried);
 export type CarriedAction = z.infer<typeof CarriedActionSchema>;
 
 export const SeriesSchema = z.object({
@@ -604,23 +887,30 @@ export const SeriesSchema = z.object({
   next: MeetingSchema.optional(),
   /** For the organizer: the series follows a recurring Google Calendar event, so its next call is the next occurrence there. */
   recurring: z.boolean(),
+  /** For the organizer: how the series repeats, when it was scheduled to in Alcove. */
+  repeat: RepeatSchema.optional(),
   /** The calls in the series whose notes you have, newest first: the newest 24 of them. Everything below comes from these alone. */
   notes: z.array(SeriesNoteSchema),
   /** How many older calls in it you also have notes from. They aren't shown, and nothing carries over from them. */
   older: z.number(),
-  /** Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first. Never ones people said weren't decided. */
+  /**
+   * Confirmed decisions, ones that no longer hold, and ones nobody has confirmed yet, newest call first, each call's
+   * own and then its breakout rooms'. Never ones people said weren't decided.
+   */
   decisions: z.array(CarriedDecisionSchema),
-  /** Questions nobody has said were answered yet. */
+  /** Questions nobody has said were answered yet, the call's and its breakout rooms'. */
   questions: z.array(CarriedQuestionSchema),
-  /** Follow-ups not done yet, and ones done since the latest call started. */
+  /** Questions someone said were answered since the latest call started: said once, like follow-ups just done. */
+  answered: z.array(CarriedQuestionSchema),
+  /** Follow-ups not done yet, and ones done since the latest call started, the call's and its breakout rooms'. */
   actions: z.array(CarriedActionSchema)
 });
 export type Series = z.infer<typeof SeriesSchema>;
 
-/** An answer about a series: its text, then the calls it comes from, with the moment in each when it can tell. */
+/** An answer about a series: its text, then the calls it comes from, with the breakout room and the moment in each when it can tell. */
 export const SeriesAnswerPartSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('text'), text: z.string() }),
-  z.object({ type: z.literal('source'), noteId: IDSchema, title: z.string(), startedAt: ISODateSchema, at: z.number().optional() })
+  z.object({ type: z.literal('source'), noteId: IDSchema, title: z.string(), startedAt: ISODateSchema, room: RoomRefSchema.optional(), at: z.number().optional() })
 ]);
 export type SeriesAnswerPart = z.infer<typeof SeriesAnswerPartSchema>;
 
@@ -721,6 +1011,60 @@ export const CallLayoutSchema = z.object({
   split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
 });
 export type CallLayout = z.infer<typeof CallLayoutSchema>;
+
+/*
+ * How someone likes the call's panels: remembered for their account in this browser, so tomorrow's call starts the way
+ * they left it. It says where kinds of things go and never names a person, a call or anything said or shared: shares are
+ * seats (`share:1`, `share:2`) that whoever shares takes for the length of a share.
+ */
+/** What a side panel can show as a tab. */
+export const CallPanelTabSchema = z.enum(['notes', 'yours', 'transcript', 'ask', 'chat', 'people']);
+export type CallPanelTab = z.infer<typeof CallPanelTabSchema>;
+/** What a side panel can show: a tab, or the organizer's breakout rooms, which are never torn off or kept. */
+export const CallPanelViewSchema = z.enum([...CallPanelTabSchema.options, 'rooms']);
+export type CallPanelView = z.infer<typeof CallPanelViewSchema>;
+/** A panel of tabs: the side panel, or a panel made by tearing a tab off, called after that tab. */
+export const CallPanelGroupIdSchema = z.enum(['side', ...CallPanelTabSchema.options]);
+export type CallPanelGroupId = z.infer<typeof CallPanelGroupIdSchema>;
+/** Everything that can have a place: the stage, people, each seat for a share, the workspace, the board and a panel of tabs. */
+export const CallPanelLeafIdSchema = z.enum(['stage', 'people', 'ws', 'board', 'share:1', 'share:2', 'g:side', 'g:notes', 'g:yours', 'g:transcript', 'g:ask', 'g:chat', 'g:people']);
+export type CallPanelLeafId = z.infer<typeof CallPanelLeafIdSchema>;
+/** How you see people while something else is on the stage. */
+export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
+export type CallPeopleMode = z.infer<typeof CallPeopleModeSchema>;
+export const CALL_PANEL_SIZE_MAX = 100_000;
+const PanelSizeSchema = z.number().positive().max(CALL_PANEL_SIZE_MAX);
+/** A place in the tree: its share of the room (`flex`), or a size you gave it by dragging (`px` wide, `pxh` tall). */
+const PanelPlace = { flex: PanelSizeSchema.optional(), px: PanelSizeSchema.optional(), pxh: PanelSizeSchema.optional() };
+const CallPanelLeafSchema = z.object({ id: CallPanelLeafIdSchema, ...PanelPlace });
+export type CallPanelLeaf = z.infer<typeof CallPanelLeafSchema>;
+export interface CallPanelBranch { dir: 'row' | 'col'; kids: CallPanelNode[]; flex?: number | undefined; px?: number | undefined; pxh?: number | undefined }
+export type CallPanelNode = CallPanelLeaf | CallPanelBranch;
+/** Rows and columns: a row of panels side by side, a column of them one above the other. Twelve leaves, so a small tree. */
+export const CallPanelNodeSchema: z.ZodType<CallPanelNode> = z.lazy(() => z.union([
+  CallPanelLeafSchema,
+  z.object({ dir: z.enum(['row', 'col']), kids: z.array(CallPanelNodeSchema).min(1).max(12), ...PanelPlace })
+]));
+export const CallPanelGroupSchema = z.object({
+  id: CallPanelGroupIdSchema,
+  tabs: z.array(CallPanelTabSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The tab it shows. */
+  active: CallPanelViewSchema,
+  open: z.boolean()
+});
+export type CallPanelGroup = z.infer<typeof CallPanelGroupSchema>;
+export const CallPanelsSchema = z.object({
+  tree: CallPanelNodeSchema,
+  groups: z.array(CallPanelGroupSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The panel you last brought up: the one a phone shows, and the one Escape closes. */
+  front: CallPanelGroupIdSchema.nullable(),
+  people: CallPeopleModeSchema,
+  /** Whether the workspace shows its list of documents. */
+  list: z.boolean(),
+  /** You moved a share or the people yourself, or picked a layout: while something is shared they stand as panels of their own rather than share the stage. */
+  apart: z.boolean()
+});
+export type CallPanels = z.infer<typeof CallPanelsSchema>;
 
 /** That someone finished or closed the tour of Home. Kept in their browser for their account, never sent anywhere. */
 export const HomeTourSchema = z.object({ seenAt: ISODateSchema });

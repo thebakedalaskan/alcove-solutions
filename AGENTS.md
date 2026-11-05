@@ -153,10 +153,14 @@ Read `docs/engineering/logging-and-errors.md`.
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
-  `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
-  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `Select` (a listbox), `Tabs`,
+  `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
+  the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
-  `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another), and
+  `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
+  `SwitchLine`, `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`) and `WsDoc` (`WsDocHead` with `WsSaveState`,
   `WsFollowBar`, `WsOfflineBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`,
@@ -173,18 +177,20 @@ Read `docs/engineering/logging-and-errors.md`.
   `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
   `BoardMap`, `BoardMenu`, `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
   board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
-  `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
-  `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
+  `NoteTile` takes the router's `Link` as `link` to open something. A row's menu is an `IconButton` as the anchor of a
+  `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
-  values on `:root`, dark on `.dark` (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
-  `bg-surface`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `shadow-sun`, `rounded-lg`,
+  values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
+  `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
-  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, phone top bar and tab bar,
-  palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
+  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); Home in `styles/home.css` (`hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
-  start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
-  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
+  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
+  lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
+  (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wp-` presenting, `wh-` history, `wl-` the call's live
+  pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
   Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
   `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the other
@@ -195,12 +201,15 @@ Read `docs/engineering/logging-and-errors.md`.
 - Icons come from Lucide through `Icon` in `@alcove/ui` (one stroke family, 1.8 stroke). Add a name to its map
   rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
-- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `shadow-sun`, one
-  per view. `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
-  information and focus use `horizon`. The mark (`Mark`, `Logo`) is branding, never state. No green.
+- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
+  shadow, one per view. It's navy by day and cream by night, so it never glows against the page. The side panel's
+  Start a call is tinted, so the page's own action is the one filled button in view. The warmth lives in `sun-text` and `sun-soft`.
+  `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
+  information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
 - Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing
-  else; Hanken Grotesk for everything you read and operate, IBM Plex Mono for times, data and eyebrows. Fonts are
-  served from `packages/ui/src/fonts`.
+  else; Hanken Grotesk for everything you read and operate, times and data included (`tabular-nums`, or `ac-mono`,
+  keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
+  uppercase. Fonts are served from `packages/ui/src/fonts`.
 - The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
   `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,

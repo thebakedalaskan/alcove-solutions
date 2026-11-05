@@ -79,8 +79,8 @@ describe('the call’s link, before joining', () => {
     const invited = await account(invitedEmail);
     const stranger = await account();
     expect(await anyone.calls.card(c)).toEqual({
-      title: expect.any(String), organizerName: org.session.user.name, hostHere: false, standIn: null, locked: false, notes: 'off', capture: null, ended: false,
-      you: 'guest', signInForNotes: ['google', 'microsoft', 'sso']
+      title: expect.any(String), organizerName: org.session.user.name, startsAt: expect.any(String), hostHere: false, standIn: null, locked: false, notes: 'off', capture: null, ended: false,
+      choices: { keepTranscript: true, keepRecording: true, readScreens: false }, joinMuted: false, offer: null, you: 'guest', signInForNotes: ['google', 'microsoft', 'sso']
     });
     expect((await invited.api.calls.card(c)).you).toBe('invited');
     // The organizer signed in with a demo stand-in, so another demo account may have the notes when let in.
@@ -88,7 +88,7 @@ describe('the call’s link, before joining', () => {
     expect((await org.api.calls.card(c)).you).toBe('invited');
     // A call scheduled with notes says so before anyone has joined.
     const scheduled = await org.api.meetings.create({ title: 'Planning', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [], notes: 'on' });
-    expect((await anyone.calls.card(scheduled.code)).notes).toBe('on');
+    expect(await anyone.calls.card(scheduled.code)).toMatchObject({ notes: 'on', startsAt: scheduled.startsAt });
 
     // Once the call is on, what it captures is the call's own: the organizer turning notes on shows before anyone asks.
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -221,16 +221,16 @@ describe('signed-in people let in from the link', () => {
     await host.leave();
   });
 
-  it('adds nobody past the invite’s limit of 100: someone let in then is a guest without the notes', async () => {
+  it('adds nobody past the invite’s limit of 300: someone let in then is a guest without the notes', async () => {
     const org = await account();
-    const guests = Array.from({ length: 100 }, (_, i) => `full.${i}.${Date.now().toString(36)}@tests.example`);
+    const guests = Array.from({ length: 300 }, (_, i) => `full.${i}.${Date.now().toString(36)}@tests.example`);
     const { code: c } = await org.api.calls.startNow({ notes: 'on', guests });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
     await inGroup(host);
     const asker = await account(unique('late'));
     const late = await asker.api.calls.join(c, { mic: true, cam: false });
     await letIn(host, late);
-    expect((await invite(org.api, host.getSnapshot().meetingId)).length).toBe(100);
+    expect((await invite(org.api, host.getSnapshot().meetingId)).length).toBe(300);
     expect((await settle(late, (s) => s.participants.length === 2)).role).toBe('guest');
     await host.leave();
   });
@@ -470,6 +470,9 @@ describe('what a guest’s pass reaches', () => {
     const ids: Record<string, string> = { id: noteId, decisionId: 'd', actionId: 'a', questionId: 'q', segment: '0', token: 'nothing', code: next.code };
     const meetingIds: Record<string, string> = { id: next.id };
     const seriesIds: Record<string, string> = { id: next.seriesId ?? '' };
+    // A real workspace, so what a pass gets from one isn't just what it gets from an ID nobody has.
+    const workspace = await org.api.workspaces.create('Standup workspace');
+    const workspaceIds: Record<string, string> = { id: workspace.id, item: (await org.api.workspaces.items.create(workspace.id, { kind: 'document', name: 'Standup agenda' })).id };
 
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -480,7 +483,7 @@ describe('what a guest’s pass reaches', () => {
     // Every route of the API, from its own route table: anything outside the call routes and the public ones needs an account.
     // The new device's side of a move is public too: it has no account, and the move's secret in the body is what it holds.
     const MOVES = ['/v1/moves/claim', '/v1/moves/status', '/v1/moves/ready', '/v1/moves/arrive', '/v1/moves/cancel'];
-    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', ...MOVES]);
+    const PUBLIC = new Set(['/health', '/healthz', '/hooks/livekit', '/v1/telemetry', '/v1/attestation', '/v1/session', '/v1/auth/sign-in', '/v1/auth/google', '/v1/auth/google/callback', '/v1/calls/:code/card', '/v1/calls/:code/join', '/v1/calls/:code/pick', ...MOVES]);
     const table = createApp(h.deps).routes.filter((r) => r.method !== 'ALL');
     // A pass is nothing to them: without a move's secret, they find no move.
     for (const path of MOVES) {
@@ -488,16 +491,28 @@ describe('what a guest’s pass reaches', () => {
       expect(`${path} → ${res.status}`).toBe(`${path} → 404`);
       expect(await res.text()).not.toContain('Standup');
     }
-    const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/'));
+    // The only routes outside the call's that take a pass: what may be shared with someone's seat in a call. Each one is listed
+    // here on purpose, and without anything shared it answers as if the workspace weren't there.
+    const BY_PASS = new Set(['GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore']);
+    const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
+    const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
     expect(routes.length).toBeGreaterThan(30);
     const fill = (path: string) => {
-      const by = path.startsWith('/v1/meetings/') ? { ...ids, ...meetingIds } : path.startsWith('/v1/series/') ? { ...ids, ...seriesIds } : ids;
+      const by = path.startsWith('/v1/meetings/') ? { ...ids, ...meetingIds } : path.startsWith('/v1/series/') ? { ...ids, ...seriesIds } : path.startsWith('/v1/workspaces/') ? { ...ids, ...workspaceIds } : ids;
       return path.replace(/:([A-Za-z]+)/g, (_, name: string) => encodeURIComponent(by[name] ?? 'x'));
     };
-    const send = (method: string, path: string) => {
+    const send = (method: string, path: string, body = '{}') => {
       const mutating = method !== 'GET';
-      return fetch(`${h.baseUrl}${path}`, { method, headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body: '{}' } : {}) });
+      return fetch(`${h.baseUrl}${path}`, { method, headers: { 'x-alcove-call': guest.ticket.pass, origin: ORIGIN, ...(mutating ? { 'content-type': 'application/json' } : {}) }, ...(mutating ? { body } : {}) });
     };
+    const passRoutes = table.filter(byPass);
+    expect(passRoutes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...BY_PASS].sort());
+    for (const r of passRoutes) {
+      const res = await send(r.method, fill(r.path), JSON.stringify({ name: 'Renamed by a guest' }));
+      expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 404`);
+      expect(await res.text()).not.toContain('Standup');
+    }
+    expect((await org.api.workspaces.items.get(workspace.id, workspaceIds['item'] ?? '')).name).toBe('Standup agenda');
     for (const r of routes) {
       const res = await send(r.method, fill(r.path));
       expect(`${r.method} ${r.path} → ${res.status}`).toBe(`${r.method} ${r.path} → 401`);

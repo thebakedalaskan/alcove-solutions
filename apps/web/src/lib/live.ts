@@ -1,6 +1,6 @@
 import type { CallParticipant, CallSession, CallState, LiveStore } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { LocalMedia } from '~/features/call/media';
 import type { StageRecording } from '~/features/record/stage';
 
@@ -16,16 +16,6 @@ const onConnection = (changed: () => void) => {
 };
 /** Whether this browser has a connection. Offline, recording still works (when it's on in Settings); everything else waits for it. */
 export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
-
-/** Whether a media query matches, such as the phone's width, following it as the window changes. */
-export function useMedia(query: string): boolean {
-  const subscribe = useCallback((changed: () => void) => {
-    const m = matchMedia(query);
-    m.addEventListener('change', changed);
-    return () => m.removeEventListener('change', changed);
-  }, [query]);
-  return useSyncExternalStore(subscribe, () => matchMedia(query).matches, () => false);
-}
 
 /** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
 export function useNow(every = 30_000): number {

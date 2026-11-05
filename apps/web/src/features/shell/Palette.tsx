@@ -1,15 +1,15 @@
 /*
  * The palette: one line over the page, to find a note or to ask your notes. ⌘K (Ctrl+K), Search or ask
- * in the side panel and the phone's search button open it. Typing lists the notes that match; Enter
+ * at the top of every page and the phone's search button open it. Typing lists the notes that match; Enter
  * asks every note you have, and the answer arrives here with the notes and moments it comes from.
  * ↑ and ↓ pick a note instead, and Enter opens it. "Pin a note" opens the same line to pick notes to
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
  */
 import { MAX_PINS, errorMessage, firstName, type AnswerPart, type NoteSummary } from '@alcove/api';
-import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Sheet, cn, coverFor, useToast } from '@alcove/ui';
+import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AnswerView, useAnswer, type Cite } from '~/features/notes/answer';
 import { highlight } from '~/features/notes/highlight';
 import { noteMeta } from '~/features/notes/meta';
@@ -27,7 +27,7 @@ export function Palette({ open, onOpenChange, start }: { open: boolean; onOpenCh
   const close = () => onOpenChange(false);
   return (
     <Sheet open={open} onOpenChange={onOpenChange} label={start.mode === 'pin' ? 'Pin a note' : 'Search or ask'} className="pal">
-      {start.mode === 'pin' ? <PinNotes onClose={close} /> : <Find ask={start.ask} onClose={close} />}
+      {start.mode === 'pin' ? <PinNotes onClose={close} /> : <Find onClose={close} />}
     </Sheet>
   );
 }
@@ -56,15 +56,13 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Find a note, or ask every note you have. */
-function Find({ ask, onClose }: { ask: string | undefined; onClose: () => void }) {
+function Find({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const list = useId();
-  const [text, setText] = useState(ask ?? '');
+  const [text, setText] = useState('');
   /** The note ↑ and ↓ picked; -1 is the line itself, where Enter asks. */
   const [active, setActive] = useState(-1);
   const { answer, ask: run, reset } = useAnswer(askAll);
-  const asked = useRef(false);
-  useEffect(() => { if (!ask || asked.current) return; asked.current = true; void run(ask); }, [ask, run]);
   const term = useSettled(text.trim(), 160);
   const all = useQuery(q.notes()).data;
   const found = useQuery(q.notes(undefined, answer ? undefined : term || undefined));
@@ -91,8 +89,8 @@ function Find({ ask, onClose }: { ask: string | undefined; onClose: () => void }
 
   return (
     <>
-      <ComposerLine icon="search" className="pal-line" action={<Kbd className="pal-esc">esc</Kbd>}>
-        <input className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes"
+      <ComposerLine icon="search" className="pal-line" action={<><Scope>Only you</Scope><Kbd className="pal-esc">esc</Kbd></>}>
+        <input className="text" value={text} placeholder="Search your notes, or ask a question" aria-label="Search or ask your notes, for you alone"
           role="combobox" aria-expanded={listed} aria-controls={listed ? list : undefined} aria-autocomplete="list"
           aria-activedescendant={listed && at >= 0 ? `${list}-${at}` : undefined} autoComplete="off" spellCheck={false} enterKeyHint="search"
           onChange={(e) => { setText(e.target.value); setActive(-1); if (answer) reset(); }} onKeyDown={keys} />

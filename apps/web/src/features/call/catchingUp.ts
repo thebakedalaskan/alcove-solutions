@@ -8,7 +8,8 @@ import { errorMessage, type CallSession, type CatchUpRange, type CatchUpWindow, 
 import { useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { log } from '~/lib/log';
-import { WHOLE_CALL, likelyMissed, type Asked, type Moment } from './CatchUp';
+import { timeZone } from '~/lib/time';
+import { WHOLE_CALL, likelyMissed, type AskScope, type Asked, type Moment } from './CatchUp';
 import type { PanelView } from './Panel';
 
 const clog = log.child({ component: 'catch-up' });
@@ -23,11 +24,16 @@ export interface CatchingUp {
   moment: Moment | null;
   /** You came to the panel to catch up, from the call: Back to live returns you to where you were. */
   catching: boolean;
+  /** What questions read now: this call, or the earlier calls whose notes you have. */
+  scope: AskScope;
+  setScope(s: AskScope): void;
   setRange(r: CatchUpRange): void;
   refreshWindow(): void;
   /** Catches you up on `range`, or on what you most likely missed. */
   catchUp(range?: CatchUpRange | undefined): void;
   ask(question: string): void;
+  /** Asks across earlier calls in the series, from `held`, the notes you have from them now. */
+  askEarlier(question: string, held: string[]): void;
   /** Opens the transcript at a moment a catch-up or an answer pointed at. */
   open(e: TranscriptMoment): void;
   /** Back to the call as it is now: the moment closes and the panel goes back to how it was before you caught up. */
@@ -36,14 +42,18 @@ export interface CatchingUp {
   settle(): void;
 }
 
-/** `room`: the breakout room you're in, if any, whose lines alone catching up reads there. */
-export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
+/**
+ * `panel` is the view you last brought up and `showing` everything the side panels show now; `room` is the breakout room
+ * you're in, if any, whose lines alone catching up reads there.
+ */
+export function useCatchingUp(session: CallSession, o: { panel: PanelView | null; showing: PanelView[]; setPanel: (v: PanelView | null) => void; narrow: boolean; everOn: boolean; room: string | null }): CatchingUp {
   const toast = useToast();
   const [asks, setAsks] = useState<Asked[]>([]);
   const [range, setRange] = useState<CatchUpRange>(WHOLE_CALL);
   const [win, setWin] = useState<CatchUpWindow | null>(null);
   const [moment, setMoment] = useState<Moment | null>(null);
   const [before, setBefore] = useState<PanelView | 'closed' | null>(null);
+  const [scope, setScope] = useState<AskScope>('call');
   const id = useRef(0);
 
   const refreshWindow = useCallback(() => {
@@ -65,7 +75,7 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     session.catchUp(r).then((c) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'catch-up' ? { ...x, c } : x))), failed('catch-up', n));
   };
   const catchUp = (r?: CatchUpRange | undefined) => {
-    if (o.panel !== 'ask') leaving();
+    if (!o.showing.includes('ask')) leaving();
     setMoment(null);
     o.setPanel('ask');
     if (r) { run(r); return; }
@@ -77,6 +87,11 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     const r = range;
     setAsks((a) => [...a, { id: n, kind: 'question', q: question, range: r, room: o.room, a: null, error: null }]);
     session.askSoFar(question, r).then((answer) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'question' ? { ...x, a: answer } : x))), failed('question during a call', n));
+  };
+  const askEarlier = (question: string, held: string[]) => {
+    const n = ++id.current;
+    setAsks((a) => [...a, { id: n, kind: 'earlier', q: question, held, parts: null, error: null }]);
+    session.askEarlier(question, timeZone()).then((parts) => setAsks((a) => a.map((x) => (x.id === n && x.kind === 'earlier' ? { ...x, parts } : x))), failed('question about earlier calls', n));
   };
   const open = (e: TranscriptMoment) => {
     leaving();
@@ -99,10 +114,12 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
   const settle = () => { setMoment(null); setBefore(null); };
   // However the panel moves on (Escape, its own buttons), a moment shows only in the transcript view, and a closed
   // panel has no way back to offer.
+  const transcript = o.showing.includes('transcript');
+  const anyOpen = o.showing.length > 0;
   useEffect(() => {
-    if (o.panel !== 'transcript') setMoment(null);
-    if (o.panel === null) setBefore(null);
-  }, [o.panel]);
+    if (!transcript) setMoment(null);
+    if (!anyOpen) setBefore(null);
+  }, [transcript, anyOpen]);
 
   /*
    * Coming back after time away, or joining late: offered once, as a toast, decided by the first window read when the
@@ -122,5 +139,5 @@ export function useCatchingUp(session: CallSession, o: { panel: PanelView | null
     }
   }, [win, o.everOn, toast]);
 
-  return { asks, range, window: win, moment, catching: before !== null, setRange, refreshWindow, catchUp, ask, open, backToLive, settle };
+  return { asks, range, window: win, moment, catching: before !== null, scope, setScope, setRange, refreshWindow, catchUp, ask, askEarlier, open, backToLive, settle };
 }

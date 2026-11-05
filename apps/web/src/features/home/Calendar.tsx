@@ -28,8 +28,8 @@ export function useNotNow() {
 export function ConnectCalendar({ onNotNow }: { onNotNow: () => void }) {
   const h = useId();
   return (
-    <section className="ac-card hm-connect" aria-labelledby={h}>
-      <span className="hm-tile is-lg"><Icon name="cal" size={20} /></span>
+    <section className="hm-connect" aria-labelledby={h}>
+      <span className="hm-tile-i"><Icon name="cal" size={18} /></span>
       <div className="min-w-0">
         <b id={h}>Connect Google Calendar</b>
         <p>See your meetings on Home, and put the calls you schedule on your calendar, with invitations.</p>

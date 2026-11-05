@@ -102,7 +102,15 @@ immutable repository and owner IDs, main ref, deploy workflow and permitted even
 Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
 `production` environment. Automatic deployment requires no environment reviewer gate.
 
-Cloud Run uses one instance, session affinity, gen2, one CPU, 512 MiB, port 8080 and a 300-second timeout.
+Cloud Run uses one instance, session affinity, gen2, one CPU, 1 GiB, port 8080, a 300-second timeout and 500
+requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
+The API holds at most 300 of those streams, and 8 for any one account, so the rest are always there for calls.
+A workspace's live stream holds a request too, for as long as it's open: at most 8 for any one person on an instance, with
+no limit across everyone yet, and the API lets go of each one after 280 seconds for the browser to open it again
+(`LIVE_STREAM_MS`; keep it under the timeout). Node gives its heap about half of the container's memory, so 1 GiB is a
+heap of about 560 MiB. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
+connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
 cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
 signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.
@@ -158,10 +166,12 @@ live transcript and written notes.
 | Verified private inference: each model's TDX quote (Intel collateral, TCB status, debug), OS image (MRTD and RTMR0–2 of a published dstack image), report data with a fresh nonce, RTMR3, measured compose, NVIDIA GPU verdict and OHTTP key checked before anything is sent; every request sealed by Oblivious HTTP to the model's attested key at its own endpoint, its reply sealed the same way; nothing sent when any check fails, each refusal logged with its code; notes waiting through a verification outage; a changed key verified again; a verification that runs out made again; the evidence kept with the note and shown on its page | API integration tests against stand-ins for NEAR AI, Intel's certification service and NVIDIA's attestation service under test roots, with the same verification code and the same measured images; the canary test shows nothing crosses the wire readable. Checked against NEAR AI Cloud, Intel and NVIDIA on 3 November 2026 (both models' evidence, the images reproduced with dstack-mr, a real transcription and notes); repeat on each release, and measure new images when NEAR AI moves |
 | Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
-| Deletion of a note, a meeting or a whole account removes rows, receipts and objects; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
+| Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
+| More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
-| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
+| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
+| Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
 | The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped); verify for each public release |
@@ -174,7 +184,10 @@ live transcript and written notes.
 
 The Google provider is the external Testing app `Alcove` with its test users and the web client
 `AlcoveWeb`, whose redirect URIs are `$API_URL/v1/auth/google/callback` locally and in production.
-Sign-in asks for `openid email profile` and the Calendar events scope
-(`https://www.googleapis.com/auth/calendar.events`), with offline access for a refresh token. Keep
+Sign-in asks for `openid email profile`, the Calendar events scope
+(`https://www.googleapis.com/auth/calendar.events`) and free/busy on the calendars the account can see
+(`https://www.googleapis.com/auth/calendar.events.freebusy`), with offline access for a refresh token. Both
+scopes have to be on the consent screen, which is an operator step. Connections made before free/busy was added
+read their own calendar and nobody else's until the person agrees again. Keep
 credential values and test-user addresses out of documentation. Automated tests must remain API
 integration tests; the repository forbids a browser test suite.

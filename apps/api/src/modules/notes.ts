@@ -6,9 +6,11 @@
  * only after that check.
  */
 import {
-  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type GroupShare, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RoomNote, type ScreenMoment, type Speaker, type TranscriptLine
+  ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
+  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel,
+  type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
+  type Note, type NoteKind, type NoteProgress, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
+  type RevisitPatch, type RoomNote, type RoomRef, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -20,9 +22,13 @@ import { log } from '../log';
 import { findOwner, masterKey } from '../owners';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile, unpin } from './account';
-import { noteObjects, queueDelete, segments } from './audio';
+import * as additions from './additions';
+import { noteObjects, purgeAudio, queueDelete, segments } from './audio';
+import { entriesOf } from './backing';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
+import { Ticked } from './liveNotes';
 import { MeetingManifest } from './meetings';
+import * as personal from './personal';
 import { nameOf, personOf } from './portraits';
 import * as screens from './screens';
 import * as transcripts from './transcripts';
@@ -56,6 +62,27 @@ type Sharer = z.infer<typeof Sharer>;
 const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string() });
 type SharedWith = z.infer<typeof SharedWith>;
 
+/** What a call's notes keep of what they were written from: without the transcript it's deleted once they're written, and without the recording when the call ends. */
+export const NoteKeep = z.object({ transcript: z.boolean(), recording: z.boolean() });
+export type NoteKeep = z.infer<typeof NoteKeep>;
+/** What a note keeps unless its call was set otherwise: a room recording, and every note from before these choices. */
+const KEEP_ALL: NoteKeep = { transcript: true, recording: true };
+
+/**
+ * Where this call came back to something an earlier call in its series left standing, as the notes model read it: a
+ * decision it replaced (`by`, this note's own decision) or a question it answered (`at`, seconds into this recording,
+ * and `room`, the breakout room it was answered in). It names the earlier note and its item by their random IDs and
+ * says nothing of what they said. It's only ever a suggestion, and it lives here, in the later note: someone who has
+ * only the earlier call's notes learns nothing from this one, and it goes when this note does. `dismissed`: someone
+ * who has both said the notes got it wrong, and writing them again doesn't bring it back.
+ */
+export const Revisit = z.object({
+  id: z.string(), kind: z.enum(['replaced', 'answered']), noteId: z.string(), itemId: z.string(),
+  by: z.string().optional(), at: z.number().optional(), room: z.string().optional(),
+  dismissed: z.object({ by: ChangerSchema, at: z.string() }).nullable().default(null)
+});
+export type Revisit = z.infer<typeof Revisit>;
+
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
   meetingId: z.string().optional(), recordingId: z.string(), status: NoteStatusSchema,
@@ -80,21 +107,38 @@ export const NoteManifest = z.object({
   /** Breakout rooms the call held, in seconds into the recording: each time the notes are written, they're among its chapters. */
   breakouts: z.array(HeldRooms),
   /** The verified models that transcribed the speech and wrote the notes, as they were checked. */
-  inference: z.array(InferenceEvidenceSchema)
+  inference: z.array(InferenceEvidenceSchema),
+  /** What the notes keep, as the call was set when they started. */
+  keep: NoteKeep.default(KEEP_ALL),
+  /**
+   * Seconds of audio recorded, saved when the recording stops: what the notes are billed for, whether or not the audio
+   * is kept. Null until then, and on a note stopped before this was saved, whose audio is all still there to count.
+   */
+  recorded: z.number().nullable().default(null),
+  /** What this call came back to from earlier calls in its series, once the notes are written. */
+  revisits: z.array(Revisit).default([]),
+  /**
+   * Follow-ups ticked during the call, waiting for the notes they go in: each is done in the call's notes or its room's
+   * when those are written (liveNotes.doneInNotes), and leaves this list then. Empty in a note stored before calls kept them.
+   */
+  ticked: z.array(Ticked).default([])
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
 const actionsOf = (m: NoteManifest): ActionItem[] => [...m.actions, ...m.rooms.flatMap((r) => r.actions)];
 /** A note's decisions: the call's, then each breakout room's. */
-const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
+export const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
+/** The parts of a note people settle: the call's own, then each breakout room's section, by name. */
+export const partsOf = (m: NoteManifest): (Pick<NoteManifest, 'decisions' | 'questions' | 'actions'> & { room?: RoomRef })[] =>
+  [{ decisions: m.decisions, questions: m.questions, actions: m.actions }, ...m.rooms.map((r) => ({ room: { id: r.id, name: r.name }, decisions: r.decisions, questions: r.questions, actions: r.actions }))];
 
 /** A note about to be recorded, starting when its recording does. */
-export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined }): NoteManifest {
+export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined; keep?: NoteKeep | undefined }): NoteManifest {
   return {
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null,
-    breakouts: [], inference: []
+    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null, revisits: [], ticked: []
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -127,15 +171,19 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
 
 /**
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
- * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in and what was on
- * shared screens (`shown`, the call's frames as screen moments). Everyone invited gets the note, and it's queued for
- * the notes service (modules/writer.ts), which writes each room's notes too. Runs in the stopping transaction.
+ * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in, what was on
+ * shared screens (`shown`, the call's frames as screen moments) and the follow-ups ticked during the call. Everyone
+ * invited gets the note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
+ * Runs in the stopping transaction, once the recording has stopped. A call set not to keep its recording loses its audio
+ * here, after everything worked out from it (where lines fall, and the seconds billed) is in the note. Returns the
+ * objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = []): Promise<void> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
+  const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
-  const all = transcripts.placed(await transcripts.lines(o, db, noteId), await segments(o, recordingId));
+  const all = transcripts.placed(await transcripts.lines(o, db, noteId), audio);
   const heard = all.filter((l) => l.room === undefined);
   // In a call, each line keeps whoever said it; a room recording names nobody.
   const sections: RoomNote[] = rooms.map((r) => ({
@@ -145,17 +193,20 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
+    recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
-    inference: heardBy
+    inference: heardBy, ticked
   }));
   await transcripts.clear(o, db, noteId);
   await grant(o, db, noteId, next.invited, 'invited');
+  await personal.dropUnheld(db, o.ownerId, noteId);
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
-    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0)
+    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length
   });
+  return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }
 
 /** Queues a note's notes for the notes service (modules/writer.ts), for its head revision, in the caller's transaction. */
@@ -174,6 +225,18 @@ export type Located =
   | { owner: Owner; note: Loaded<NoteManifest>; mine: true }
   | { owner: Owner; note: Loaded<NoteManifest>; mine: false; as: string };
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
+
+/**
+ * A note as this person may read it. A transcript that's to be deleted once the notes are written is there to write
+ * them from, for its organizer: everyone else gets the notes, and never reads it, by any path. That goes for the main
+ * room's and every breakout room's, which any of them may still hold while its notes can't be written.
+ */
+export function asRead(l: Located): NoteManifest {
+  const m = l.note.manifest;
+  return l.mine || m.keep.transcript ? m : { ...m, transcript: m.transcript === null ? null : [], rooms: m.rooms.map((r) => ({ ...r, transcript: [] })) };
+}
+/** Whether a note holds anything that was said, in the main room or any breakout room. */
+const said = (m: NoteManifest): boolean => !!m.transcript?.length || m.rooms.some((r) => r.transcript.length > 0);
 
 /** The IDs of every note this person has, their own and ones shared with them, without opening any vault. */
 export async function heldNoteIds(o: Owner): Promise<Set<string>> {
@@ -229,7 +292,7 @@ export async function goneSince(o: Owner, found: Located[]): Promise<number> {
     : 0;
   return found.length - ownLeft - givenLeft;
 }
-async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
+export async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const own = await maybeOne(db, z.object({ n: z.number() }), `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL`, [o.ownerId, id]);
   if (own) return { owner: o, note: await getItem(o, db, 'note', id, NoteManifest, 'Those notes'), mine: true };
   const as = await myEmail(o);
@@ -238,6 +301,18 @@ async function locate(o: Owner, id: string, db: Db = o.pool): Promise<Located> {
   const owner = a && await findOwner(o, a.owner_id, undefined, db);
   if (!owner) throw notFound('Those notes', { noteId: id });
   return { owner, note: await getItem(owner, db, 'note', id, NoteManifest, 'Those notes'), mine: false, as };
+}
+
+/**
+ * Keeps a note, and this person's way to it, in place until the transaction ends, or says they've gone: deleting the
+ * note, or removing it from their notes, waits for what's being written with it, and then takes that too.
+ */
+export async function holdAccess(o: Owner, l: Located, db: Db): Promise<void> {
+  const One = z.object({ n: z.number() });
+  const noteId = l.note.itemId;
+  const note = await maybeOne(db, One, `SELECT 1 AS n FROM items WHERE owner_id = $1 AND item_id = $2 AND kind = 'note' AND deleted_at IS NULL FOR KEY SHARE`, [l.owner.ownerId, noteId]);
+  const given = l.mine || await maybeOne(db, One, 'SELECT 1 AS n FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3 FOR KEY SHARE', [l.owner.ownerId, noteId, emailIndex(o, l.as)]);
+  if (!note || !given) throw notFound('Those notes', { noteId });
 }
 
 const Holder = z.object({ email_index: bytea });
@@ -256,9 +331,9 @@ const sharerOf = (s: Sharer, organizer: Person): Person => (s.id === organizer.i
  * got it, each with who shared it, the group's name and when. Whoever has since removed it from
  * their notes no longer has it, so isn't listed.
  */
-async function recipients(l: Located, organizer: Person): Promise<Recipient[]> {
+async function recipients(l: Located, organizer: Person, db: Db = l.owner.pool): Promise<Recipient[]> {
   const m = l.note.manifest;
-  const holding = await holders(l.owner, l.owner.pool, l.note.itemId);
+  const holding = await holders(l.owner, db, l.note.itemId);
   const holds = (email: string) => holding.has(b64u(emailIndex(l.owner, email)));
   // Someone invited who removed the notes and was given them again has them as shared now.
   const sharedTo = new Set(m.shared.map((s) => s.email));
@@ -269,6 +344,11 @@ async function recipients(l: Located, organizer: Person): Promise<Recipient[]> {
     ...m.shared.filter((s) => holds(s.email))
       .map((s): Recipient => ({ person: personOf(s.email), role: 'shared', by: sharerOf(s.by, organizer), ...(s.group ? { group: s.group } : {}), at: s.at }))
   ];
+}
+
+/** Everyone who has a note now, organizer first: who reads whatever is added to it. */
+export async function audienceOf(l: Located, db: Db = l.owner.pool): Promise<Person[]> {
+  return (await recipients(l, await me(l.owner), db)).map((r) => r.person);
 }
 
 /** How someone came to have a note that isn't theirs, from the address they have it under. */
@@ -314,7 +394,7 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   const text = q.text?.trim().toLowerCase();
   const all = (await everyNote(o, await myEmail(o)))
     .filter((l) => {
-      const m = l.note.manifest;
+      const m = asRead(l);
       return (!q.kind || m.kind === q.kind) && (!text || `${m.title} ${m.summary} ${(m.transcript ?? []).map((t) => t.text).join(' ')}`.toLowerCase().includes(text));
     });
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
@@ -328,13 +408,15 @@ export async function seriesOf(l: Located): Promise<string | undefined> {
 export async function get(o: Owner, id: string): Promise<Note> {
   const l = await locate(o, id);
   const m = l.note.manifest;
+  const read = asRead(l);
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
   const seriesId = await seriesOf(l);
+  const { decisions, questions, actions, rooms } = entriesOf(read);
   return {
-    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms: m.rooms, writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
-    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
+    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, chapters: m.chapters,
+    gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
@@ -358,9 +440,15 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
   const { owner, note } = await locate(o, id);
   const m = note.manifest;
   const stopped = m.status !== 'recording';
-  const seconds = (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
+  const seconds = m.recorded ?? (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
   // The call's lines and every breakout room's.
   const lines = (m.transcript?.length ?? 0) + m.rooms.reduce((n, r) => n + r.transcript.length, 0);
+  const audio = !seconds && (stopped || m.keep.recording) ? 'No audio was recorded'
+    : m.keep.recording ? `${minutesLabel(seconds)} of audio saved, encrypted`
+      : stopped ? 'The recording was deleted when the call ended' : 'The recording is deleted when the call ends';
+  const transcript = !stopped ? 'Transcribing as it goes'
+    : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}${m.keep.transcript ? '' : ', deleted once the notes are written'}`
+      : !m.keep.transcript && m.writtenAt !== null ? 'The transcript was deleted once the notes were written' : 'Nothing was transcribed';
   // Notes being written again leave the note ready meanwhile: they're done when their job is.
   const job = stopped ? await jobOf(owner, owner.pool, id) : undefined;
   const done = m.status === 'ready' && !job;
@@ -373,25 +461,29 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
     noteId: id, title: m.title, ready: done,
     steps: [
       { label: m.kind === 'room' ? 'Recording stopped' : 'Call ended', done: stopped },
-      { label: seconds ? `${minutesLabel(seconds)} of audio saved, encrypted` : 'No audio was recorded', done: stopped },
-      { label: !stopped ? 'Transcribing as it goes' : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}` : 'Nothing was transcribed', done: stopped },
+      { label: audio, done: stopped },
+      { label: transcript, done: stopped },
       { label: done ? 'Notes written' : writing, done }
     ]
   };
 }
 
 /**
- * Answers a question about written notes from their transcript and each breakout room's section, for anyone who has
- * them. The answer goes only if they still have the notes once it's written: it may quote them.
+ * Answers a question about written notes from their transcript and each breakout room's section, or from the notes
+ * themselves once a transcript's been deleted, for anyone who has them. The answer goes only if they still have the
+ * notes once it's written: it may quote them.
  */
 export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
   const l = await locate(o, id);
   const { owner, note } = l;
   const m = note.manifest;
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
-  if (!m.transcript?.length && !m.rooms.some((r) => r.transcript.length)) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
+  const read = asRead(l);
+  if (!said(read) && m.writtenAt === null) {
+    throw new ConflictError(said(m) ? 'These notes aren’t written yet, so there’s nothing to ask about.' : 'Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
+  }
   const t0 = performance.now();
-  const parts = await answer(o.cfg, id, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
+  const parts = await answer(o.cfg, id, briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
   const ms = Math.round(performance.now() - t0);
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
@@ -404,13 +496,13 @@ const NOTHING_TO_ASK = 'You don’t have any notes to answer from yet.';
 const NOT_WRITTEN = 'Your notes aren’t written yet. Ask again once they’re ready.';
 /**
  * Answers a question from every note this person has, their own and ones shared with them: the ones
- * written with a transcript (modules/drafting.ts chooses which go). Without any, it says so, and
- * nothing goes to the notes model. The answer goes only if they still have every note it read once
- * it's written: it may quote any of them.
+ * with notes written or a transcript they can read (modules/drafting.ts chooses which go). Without any,
+ * it says so, and nothing goes to the notes model. The answer goes only if they still have every note
+ * it read once it's written: it may quote any of them.
  */
 export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> {
   const all = await everyNote(o, await myEmail(o));
-  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.transcript?.length ?? 0) > 0);
+  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.writtenAt !== null || (asRead(l).transcript?.length ?? 0) > 0));
   if (!ready.length) {
     const writing = all.some((l) => l.note.manifest.status !== 'ready');
     nlog.info('asked across notes with nothing to answer from', { notes: all.length, writing });
@@ -423,9 +515,9 @@ export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> 
     people.set(owner.ownerId, p);
     return p;
   };
-  const notes = await Promise.all(ready.map(async ({ owner, note }): Promise<NoteBrief> => {
-    const m = note.manifest;
-    return { id: note.itemId, startedAt: m.startedAt, decisions: m.decisions, actions: m.actions, brief: briefOf(m, await person(owner), m.invited.map((e) => personOf(e))) };
+  const notes = await Promise.all(ready.map(async (l): Promise<NoteBrief> => {
+    const m = asRead(l);
+    return { id: l.note.itemId, startedAt: m.startedAt, decisions: decisionsOf(m), actions: actionsOf(m), brief: briefOf(m, await person(l.owner), m.invited.map((e) => personOf(e))) };
   }));
   const t0 = performance.now();
   const { parts, sent, lines } = await answerFromNotes(o.cfg, notes, await person(o), question);
@@ -438,57 +530,116 @@ export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> 
   return parts;
 }
 /**
- * What waits on this person across every note they have, their own and ones shared with them, newest
- * note first: follow-ups that are theirs and not done, and decisions in written notes nobody has
- * confirmed or rejected. Notes they removed aren't theirs any more, so nothing from them is listed.
+ * What waits on this person across every note they have, their own and ones shared with them, newest note first:
+ * follow-ups that are theirs and not done; decisions in written notes nobody has confirmed or rejected and that they can
+ * confirm, unless they proposed one or said it wasn't decided, which is already their answer; and, in notes they
+ * organized, confirmed decisions someone disputes, which are theirs to settle. Notes they removed aren't theirs any more,
+ * so nothing from them is listed, and each entry comes with what backs it as the note stands now.
  */
 export async function inbox(o: Owner): Promise<Inbox> {
   const email = await myEmail(o);
   const all = await everyNote(o, email);
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
-  const from = (l: Located) => ({ noteId: l.note.itemId, noteTitle: l.note.manifest.title, noteStartedAt: l.note.manifest.startedAt });
+  const readerIn = (l: Located): NoteReader => ({ id: o.ownerId, email, role: roleIn(l) });
+  const from = (l: Located) => ({ noteId: l.note.itemId, noteTitle: l.note.manifest.title, noteStartedAt: l.note.manifest.startedAt, role: roleIn(l) });
+  const waiting = (d: Decision, r: NoteReader) => (d.state === 'confirmed' ? r.role === 'organizer' && d.disputes.length > 0
+    : d.state === 'proposed' && mayDecide(d, 'confirmed', r) && !isProposer(d, r) && !d.disputes.some((x) => isBy(x.by, r)));
+  const read = all.map((l) => ({ l, ...entriesOf(asRead(l)) }));
   return {
-    followUps: all.flatMap((l) => actionsOf(l.note.manifest)
-      .filter((a) => !a.done && a.owner?.person && same(a.owner.person.email, email)).map((a): OpenAction => ({ ...a, ...from(l) }))),
-    decisions: all.filter((l) => l.note.manifest.status === 'ready')
-      .flatMap((l) => decisionsOf(l.note.manifest).filter((d) => d.state === 'proposed').map((d): PendingDecision => ({ ...d, ...from(l) })))
+    followUps: read.flatMap(({ l, actions, rooms }) => [...actions, ...rooms.flatMap((r) => r.actions)]
+      .filter((a) => !a.done && isAssignee(a, { email })).map((a): OpenAction => ({ ...a, ...from(l) }))),
+    decisions: read.filter(({ l }) => l.note.manifest.status === 'ready')
+      .flatMap(({ l, decisions, rooms }) => [...decisions, ...rooms.flatMap((r) => r.decisions)].filter((d) => waiting(d, readerIn(l))).map((d): PendingDecision => ({ ...d, ...from(l) })))
   };
 }
 
 /* ---------- confirming what the notes say ---------- */
 
-/** A note that's written, located for someone who has it, and who they are for its history. */
+/** How someone has a note, as a change to it records. */
+const roleIn = (l: Located): RecipientRole => (l.mine ? 'organizer' : l.note.manifest.shared.some((x) => same(x.email, l.as)) ? 'shared' : 'invited');
+
+/** A note that's written, located for someone who has it, and who they are for its history and its grants. */
 async function writtenNote(o: Owner, noteId: string) {
   const l = await locate(o, noteId);
   if (l.note.manifest.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: l.note.manifest.status } });
   const p = await profile(o);
-  const by: Change['by'] = { name: p.name, email: p.email };
-  return { ...l, by, at: new Date().toISOString() };
+  const role = roleIn(l);
+  const by: Change['by'] = { id: o.ownerId, name: p.name, email: p.email, as: role };
+  const reader: NoteReader = { id: o.ownerId, email: p.email, role };
+  return { ...l, by, reader, at: new Date().toISOString() };
 }
 
+/** The most changes a decision, open question or follow-up keeps in the note (`kept`). Nothing reads the note's earlier revisions, so past this they're out of the history. */
+const ENTRY_HISTORY = 40;
+/** The most decisions or follow-ups one part of a note can hold: the notes write 12 and 20, and every change copies the note. */
+const MAX_ENTRIES = 60;
+
+/** Entries in the order of their moments, as the notes write them; ones without a moment last. */
+const inOrder = <T extends { at?: number | undefined }>(xs: T[]): T[] => [...xs].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY));
+
+/** Why someone can't move a decision where they asked to. Refusals name nobody, so no name reaches a log line. */
+function decisionRefusal(d: Decision, to: Decision['state'], r: NoteReader): string {
+  if (to === 'rejected') return 'Only the organizer can say a decision wasn’t decided. You can say you don’t think it was.';
+  if (to === 'confirmed' && r.role === 'shared') return 'Only the organizer and people invited to the call can confirm a decision. You can say you don’t think it was decided.';
+  if (to === 'confirmed' && d.state === 'proposed') return 'Someone else has to confirm words you wrote.';
+  if (to === 'confirmed' && d.state === 'rejected') return 'Only the organizer can confirm what they said wasn’t decided.';
+  return 'Only the organizer, or whoever confirmed this decision, can change where it stands.';
+}
+/** Refused when it isn't what they read: someone may have changed it since, and that isn't what they'd be agreeing to. */
+const CHANGED = 'This changed after you opened it, so nothing was saved. Read it again.';
 
 /**
- * Confirms a decision, says it wasn't decided, puts it back to proposed, rewords it, or says a
- * confirmed one no longer holds: the call's, or a breakout room's. Anyone who has the notes can, and everyone sees who did.
+ * Moves a decision, the call's or a breakout room's, along (`grants.ts` says who may), rewords it, or says it wasn't
+ * decided as someone who can't reject it. New words on a confirmed decision put it back to proposed, since what people
+ * confirmed was the words before, and only the organizer can confirm new words of their own in the same change: anyone
+ * else's words take someone else. Confirming says what was read, and is refused if it says something else by now. A
+ * dispute stands until whoever raised it takes it back, or the organizer settles the decision; their confirming again is
+ * how a confirmed one is settled.
  */
 export async function updateDecision(o: Owner, noteId: string, decisionId: string, patch: DecisionPatch): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
   let made: Change['what'][] = [];
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
     const d = decisionsOf(n).find((x) => x.id === decisionId);
     if (!d) throw new NotFoundError('That decision doesn’t exist.', { context: { noteId, decisionId } });
+    const context = { noteId, decisionId, state: d.state };
+    if (patch.seen && patch.seen.text !== d.text) throw new ConflictError(CHANGED, { context });
     const changes = [...d.changes];
     let next: Decision = d;
-    if (patch.text !== undefined && patch.text !== d.text) { changes.push({ by, at, what: 'reworded', before: d.text, after: patch.text }); next = { ...next, text: patch.text }; }
-    if (patch.state !== undefined && patch.state !== d.state) {
+    const text = patch.text;
+    const reworded = text !== undefined && text !== d.text;
+    if (reworded) {
+      if (!mayRewordDecision(d, reader)) throw new ForbiddenError('Only the organizer, or whoever wrote or confirmed this decision, can reword it now.', { context });
+      changes.push({ by, at, what: 'reworded', before: d.text, after: text });
+      next = { ...next, text };
+    }
+    const to = patch.state ?? (reworded && d.state === 'confirmed' ? 'proposed' : d.state);
+    // Confirming what's confirmed means something only when it stands behind new words, or settles a dispute: the organizer's, either way.
+    const settling = patch.state === 'confirmed' && d.state === 'confirmed' && reader.role === 'organizer' && (reworded || d.disputes.length > 0);
+    if (reworded && to === 'confirmed' && d.state === 'confirmed' && !settling) throw new ForbiddenError('Someone else has to confirm words you wrote.', { context });
+    if (to !== d.state || settling) {
       // Only something that was decided can stop holding; what nobody confirmed is reopened or said not to be decided.
-      if (patch.state === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context: { noteId, decisionId, state: d.state } });
-      changes.push({ by, at, what: patch.state === 'proposed' ? 'reopened' : patch.state });
-      next = { ...next, state: patch.state };
+      if (to === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context });
+      // Asked with the words as they are after this change, so writing them and confirming them is one person doing both.
+      if (to !== d.state && !mayDecide({ state: d.state, changes }, to, reader)) throw new ForbiddenError(decisionRefusal(d, to, reader), { context });
+      changes.push({ by, at, what: to === 'proposed' ? 'reopened' : to });
+      const settled = reader.role === 'organizer' && (to === 'confirmed' || to === 'rejected');
+      next = { ...next, state: to, disputes: settled ? [] : to === 'confirmed' ? next.disputes.filter((x) => !isBy(x.by, reader)) : next.disputes };
+    }
+    if (patch.dispute !== undefined) {
+      const had = next.disputes.some((x) => isBy(x.by, reader));
+      if (patch.dispute && !had) {
+        if (!mayDispute({ state: next.state, changes }, reader)) throw new ForbiddenError('You can’t dispute this decision: it’s yours to change, or it’s settled.', { context });
+        changes.push({ by, at, what: 'disputed' });
+        next = { ...next, disputes: [...next.disputes, { by, at }] };
+      } else if (!patch.dispute && had) {
+        changes.push({ by, at, what: 'undisputed' });
+        next = { ...next, disputes: next.disputes.filter((x) => !isBy(x.by, reader)) };
+      }
     }
     made = changes.slice(d.changes.length).map((x) => x.what);
     // Item IDs are the note's own, so the one list that has it changes, the call's or a room's.
-    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, changes } : x));
+    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, decisions: swap(n.decisions), rooms: n.rooms.map((r) => ({ ...r, decisions: swap(r.decisions) })) } : n;
   }));
   nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
@@ -507,19 +658,29 @@ export async function updateQuestion(o: Owner, noteId: string, questionId: strin
     if (patch.text !== undefined && patch.text !== q.text) { changes.push({ by, at, what: 'reworded', before: q.text, after: patch.text }); next = { ...next, text: patch.text }; }
     if (patch.state !== undefined && patch.state !== q.state) { changes.push({ by, at, what: patch.state === 'answered' ? 'answered' : 'reopened' }); next = { ...next, state: patch.state }; }
     made = changes.slice(q.changes.length).map((x) => x.what);
-    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, changes } : x));
+    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, questions: swap(n.questions), rooms: n.rooms.map((r) => ({ ...r, questions: swap(r.questions) })) } : n;
   }));
   nlog.info('question changed', { noteId, questionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
 
+/** Who a follow-up can go to, by address: the organizer, or someone who has the notes now, so whoever it's for can see it. */
+function assignable(email: string, organizer: Person, holding: Set<string>, owner: Owner, context: Record<string, string>): Speaker {
+  if (!same(email, organizer.email) && !holding.has(b64u(emailIndex(owner, email)))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context });
+  const person = same(email, organizer.email) ? organizer : personOf(email);
+  return { name: nameOf(person), person };
+}
+
 /**
- * Changes a follow-up, the call's or a breakout room's. Anyone who has the notes can give it to someone who has them
- * too, reword it, date it or tick it. Only the person it's for can take it on: the notes only ever suggest.
+ * Changes a follow-up, the call's or a breakout room's, as far as `grants.ts` lets this person: `takeOn` is the person
+ * it's for saying they'll do it, and nobody else can, since the notes only ever suggest. Taking it on, or giving it to
+ * yourself, says what was read, and is refused if it says something else by now. Taking the owner off is that person
+ * saying it isn't theirs, or the organizer deciding it isn't. Whatever someone took on stays as they agreed to it: the
+ * organizer changing its words or its date asks them again.
  */
 export async function updateAction(o: Owner, noteId: string, actionId: string, patch: ActionPatch): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
   const organizer = await me(owner);
   let made: Change['what'][] = [];
   await tx(owner.pool, async (c) => {
@@ -529,41 +690,63 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
     await updateNote(owner, c, noteId, (n) => {
       const a = actionsOf(n).find((x) => x.id === actionId);
       if (!a) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
+      const context = { noteId, actionId };
+      const taking = patch.takeOn === true || (typeof patch.owner === 'string' && same(patch.owner, by.email) && !isAssignee(a, reader));
+      if (taking && !patch.seen) throw new ValidationError('Say what you read.', { context });
+      if (patch.seen && (patch.seen.text !== a.text || patch.seen.due !== (a.due ?? null))) throw new ConflictError(CHANGED, { context });
+      const changing = () => { if (!mayChangeAction(a, reader)) throw new ForbiddenError('Only the organizer, or whoever took this on, can change it now.', { context }); };
+      const assigning = () => { if (!mayAssign(a, reader)) throw new ForbiddenError('Only the organizer, or the person it’s for, can say who this is for.', { context }); };
       const changes = [...a.changes];
       let next: ActionItem = a;
-      if (patch.text !== undefined && patch.text !== a.text) { changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text }); next = { ...next, text: patch.text }; }
+      let agreedTo = false;
+      if (patch.text !== undefined && patch.text !== a.text) {
+        changing();
+        changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text });
+        next = { ...next, text: patch.text };
+        agreedTo = true;
+      }
       if (patch.owner === null && next.owner) {
-        changes.push({ by, at, what: 'reassigned', before: next.owner.name });
+        assigning();
+        // From the person it's for, that's their answer: not mine. From the organizer, it's taking it away.
+        changes.push({ by, at, what: isAssignee(a, reader) ? 'declined' : 'reassigned', before: next.owner.name });
         const { owner: _gone, ...rest } = next;
         void _gone;
         next = { ...rest, takenOn: false };
       } else if (typeof patch.owner === 'string' && !(next.owner?.person && same(next.owner.person.email, patch.owner))) {
-        const email = patch.owner;
-        // Follow-ups go to people who have the notes now, so whoever it's for can see it.
-        if (!same(email, organizer.email) && !holding.has(b64u(emailIndex(owner, email)))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
-        const person = same(email, organizer.email) ? organizer : personOf(email);
-        const name = nameOf(person);
+        assigning();
+        const to = assignable(patch.owner, organizer, holding, owner, context);
         // Giving it to yourself is taking it on; anyone else has to say yes themselves.
-        const self = same(email, by.email);
-        changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });
-        next = { ...next, owner: { name, person }, takenOn: self };
+        const self = same(patch.owner, by.email);
+        changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: to.name });
+        next = { ...next, owner: to, takenOn: self };
       }
       if (patch.takeOn) {
-        if (!next.owner?.person || !same(next.owner.person.email, by.email)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context: { noteId, actionId } });
+        if (!isAssignee(next, reader)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context });
         if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
       }
       if (patch.due !== undefined) {
         const due = patch.due || undefined;
         if (due !== next.due) {
+          changing();
           changes.push({ by, at, what: 'due', ...(next.due ? { before: next.due } : {}), ...(due ? { after: due } : {}) });
           const { due: _old, ...rest } = next;
           void _old;
           next = due ? { ...rest, due } : rest;
+          agreedTo = true;
         }
       }
-      if (patch.done !== undefined && patch.done !== next.done) { changes.push({ by, at, what: patch.done ? 'done' : 'undone' }); next = { ...next, done: patch.done }; }
+      // What someone took on, changed by someone else: it's not what they said they'd do any more, so they say again.
+      if (agreedTo && a.takenOn && next.takenOn && !isAssignee(a, reader) && !isAssignee(next, reader)) {
+        changes.push({ by, at, what: 'reopened' });
+        next = { ...next, takenOn: false };
+      }
+      if (patch.done !== undefined && patch.done !== next.done) {
+        changing();
+        changes.push({ by, at, what: patch.done ? 'done' : 'undone' });
+        next = { ...next, done: patch.done };
+      }
       made = changes.slice(a.changes.length).map((x) => x.what);
-      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, changes } : x));
+      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
       return made.length ? { ...n, actions: swap(n.actions), rooms: n.rooms.map((r) => ({ ...r, actions: swap(r.actions) })) } : n;
     });
   });
@@ -571,15 +754,116 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
   return get(o, noteId);
 }
 
+/* ---------- adding to what the notes say ---------- */
+
+/** The part of a note a proposal goes in: the call's, or a breakout room's section. A room that isn't in the note is refused. */
+function partOf(n: NoteManifest, noteId: string, room: string | undefined) {
+  if (room === undefined) return { lines: n.transcript ?? [], decisions: n.decisions, actions: n.actions, put: (x: Partial<Pick<NoteManifest, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, ...x }) };
+  const r = n.rooms.find((x) => x.id === room);
+  if (!r) throw new NotFoundError('That breakout room isn’t in these notes.', { context: { noteId, room } });
+  return { lines: r.transcript, decisions: r.decisions, actions: r.actions, put: (x: Partial<Pick<RoomNote, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, rooms: n.rooms.map((y) => (y.id === room ? { ...y, ...x } : y)) }) };
+}
+
+/** The lines someone says a proposal rests on, and the moment of the first, from that part of the note alone. */
+function linesOf(part: TranscriptLine[], ids: string[] | undefined, noteId: string): { lines: string[]; at?: number } {
+  const lines = [...new Set(ids ?? [])];
+  const found = lines.map((id) => part.find((l) => l.id === id));
+  if (found.some((l) => !l)) throw new ValidationError('That line isn’t in this part of the notes.', { context: { noteId } });
+  const first = found[0];
+  return { lines, ...(first ? { at: Math.round(first.at) } : {}) };
+}
+
+/**
+ * Adds a decision the notes didn't hear, in the words of someone who has them, the call's or a breakout room's. It
+ * starts proposed, with who proposed it as its first change, and takes someone else confirming it. This is someone
+ * saying the call decided something: what they add from their own notes is `additions.ts`, which says only who added it.
+ * The same words again add nothing, so a retry can't add it twice.
+ */
+export async function proposeDecision(o: Owner, noteId: string, p: DecisionProposal): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  let added = false;
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const part = partOf(n, noteId, p.room);
+    if (part.decisions.some((x) => x.text === p.text)) return n;
+    if (part.decisions.length >= MAX_ENTRIES) throw new ConflictError('There are too many decisions here to add another.', { context: { noteId } });
+    const d: Decision = { id: id128(), text: p.text, ...linesOf(part.lines, p.lines, noteId), state: 'proposed', against: [], disputes: [], changes: [{ by, at, what: 'proposed' }] };
+    added = true;
+    return part.put({ decisions: inOrder([...part.decisions, d]) });
+  }));
+  nlog.info('decision proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/**
+ * Adds a follow-up the notes didn't hear, as `proposeDecision` does. Who it's for and when it's due are only suggestions
+ * until that person takes it on, unless it's for whoever proposed it.
+ */
+export async function proposeAction(o: Owner, noteId: string, p: ActionProposal): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  const organizer = await me(owner);
+  let added = false;
+  await tx(owner.pool, async (c) => {
+    await lockItem(owner, c, noteId);
+    const holding = await holders(owner, c, noteId);
+    await updateNote(owner, c, noteId, (n) => {
+      const part = partOf(n, noteId, p.room);
+      if (part.actions.some((x) => x.text === p.text)) return n;
+      if (part.actions.length >= MAX_ENTRIES) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
+      const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
+      const a: ActionItem = {
+        id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: !!p.owner && same(p.owner, by.email), ...(p.due ? { due: p.due } : {}), done: false,
+        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }]
+      };
+      added = true;
+      return part.put({ actions: inOrder([...part.actions, a]) });
+    });
+  });
+  nlog.info('follow-up proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, assigned: p.owner !== undefined, mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/**
+ * Says the notes got it wrong, this later call didn't replace that decision or answer that question, or takes that back.
+ * Everyone with both notes sees who said so. Whoever is shown a revisit has both, so only they can: having this one
+ * alone says nothing about the earlier call, and finds nothing here. For a decision it goes as far as the grants on
+ * that decision do, in the earlier note (`maySayNotReplaced`): it settles the suggestion for all of them. Saying it
+ * twice changes nothing.
+ */
+export async function updateRevisit(o: Owner, noteId: string, revisitId: string, patch: RevisitPatch): Promise<Note> {
+  const { owner, note, by, reader, at } = await writtenNote(o, noteId);
+  const r = note.manifest.revisits.find((x) => x.id === revisitId);
+  if (!r) throw notFound('That later call', { noteId, revisitId });
+  const earlier = await locate(o, r.noteId);
+  if (r.kind === 'replaced') {
+    const d = decisionsOf(earlier.note.manifest).find((x) => x.id === r.itemId);
+    if (!d) throw notFound('That decision', { noteId, revisitId });
+    if (!maySayNotReplaced(d, { ...reader, role: roleIn(earlier) })) {
+      throw new ForbiddenError('Only the organizer, or whoever confirmed this decision, can say a later call didn’t replace it.', { context: { noteId, revisitId } });
+    }
+  }
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => (
+    n.revisits.some((x) => x.id === revisitId && Boolean(x.dismissed) !== patch.dismissed)
+      ? { ...n, revisits: n.revisits.map((x) => (x.id === revisitId ? { ...x, dismissed: patch.dismissed ? { by, at } : null } : x)) } : n
+  )));
+  nlog.info('revisit changed', { noteId, revisitId, kind: r.kind, dismissed: patch.dismissed, mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
 /* ---------- correcting the transcript ---------- */
 
 /** The most corrections a line keeps: who changed it and when. The first (what was heard) always stays, then the latest. */
 const LINE_HISTORY = 20;
-/** A line's corrections, kept within LINE_HISTORY: the first, which says what was heard, and the latest after it. */
-const kept = (changes: Change[]): Change[] => {
-  const [first, ...rest] = changes;
-  return first && changes.length > LINE_HISTORY ? [first, ...rest.slice(-(LINE_HISTORY - 1))] : changes;
-};
+/**
+ * Changes kept within a limit: the first, which says what something was to begin with; the latest of every kind, since
+ * who may do what and what the note says are read from them (who proposed it, who confirmed it, who said it wasn't
+ * theirs); and then as many of the latest as fit. Saying something and taking it back can't push those out.
+ */
+function kept(changes: Change[], limit: number): Change[] {
+  if (changes.length <= limit) return changes;
+  const keep = new Set<number>([0, ...new Map(changes.map((c, i) => [c.what, i])).values()]);
+  for (let i = changes.length - 1; i >= 0 && keep.size < limit; i--) keep.add(i);
+  return changes.filter((_, i) => keep.has(i));
+}
 
 /**
  * Who a line can be said by: anyone the transcript already names (guests by the name they joined with), the organizer,
@@ -651,7 +935,7 @@ export async function correctLine(o: Owner, noteId: string, lineId: string, patc
     }
     made = changes.map((x) => x.what);
     if (!changes.length) return n;
-    const corrected: TranscriptLine = { ...next, changes: kept([...(line.changes ?? []), ...changes]) };
+    const corrected: TranscriptLine = { ...next, changes: kept([...(line.changes ?? []), ...changes], LINE_HISTORY) };
     const swap = (ls: TranscriptLine[]) => ls.map((x) => (x.id === lineId ? corrected : x));
     return inRoom ? { ...n, rooms: n.rooms.map((r) => (r.id === inRoom.id ? { ...r, transcript: swap(r.transcript) } : r)) } : { ...n, transcript: swap(n.transcript ?? []) };
   }));
@@ -672,7 +956,9 @@ export async function rewrite(o: Owner, noteId: string): Promise<Note> {
   if (!l.mine) throw new ForbiddenError('Only the organizer can have the notes written again.', { context: { noteId } });
   if (m.status === 'recording') throw new ConflictError('The notes are written once the recording stops.', { context: { noteId } });
   const roomLines = m.rooms.flatMap((r) => r.transcript);
-  if (!m.transcript?.length && !roomLines.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to write from.', { context: { noteId } });
+  if (!m.transcript?.length && !roomLines.length) {
+    throw new ConflictError(m.writtenAt === null ? 'Nothing was said while notes were on, so there’s nothing to write from.' : 'The transcript was deleted once the notes were written, so they can’t be written again.', { context: { noteId } });
+  }
   if (m.status === 'ready') {
     const again = await tx(o.pool, async (c) => {
       // Holding the note while its job is looked for, so two asks at once queue one job.
@@ -722,17 +1008,28 @@ export async function share(o: Owner, id: string, to: { emails: string[]; group?
 
 /**
  * Deletes your own note for everyone (deleteOwnNote), its audio and shared-screen objects after the
- * commit, and your pin to it. Someone else's note is only removed from your notes.
+ * commit, and your pin to it. Someone else's note is only removed from your notes, with your own notes
+ * on it: they can quote it, and you no longer have it. What you added to the shared notes stays with them.
+ * A call's note can't go while the call is on: the call is still writing to it, and everything live hangs
+ * off it. Asked holding the note, as ending the call finishes it holding the note.
  */
 export async function remove(o: Owner, id: string): Promise<void> {
   const l = await locate(o, id);
   if (!l.mine) {
-    await exec(o.pool, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
+    await tx(o.pool, async (c) => {
+      await exec(c, 'DELETE FROM note_access WHERE owner_id = $1 AND note_item_id = $2 AND email_index = $3', [l.owner.ownerId, id, emailIndex(o, l.as)]);
+      await personal.forget(c, o.ownerId, l.owner.ownerId, id);
+    });
     await unpin(o, id);
     nlog.info('shared note removed from my notes', { noteId: id });
     return;
   }
-  const { ids, frames } = await tx(o.pool, (c) => deleteOwnNote(o, c, id));
+  const { ids, frames } = await tx(o.pool, async (c) => {
+    await lockItem(o, c, id);
+    const { kind, status } = (await getItem(o, c, 'note', id, NoteManifest, 'Those notes')).manifest;
+    if (kind === 'call' && status === 'recording') throw new ConflictError('This call is still going. You can delete its notes once it ends.', { context: { noteId: id } });
+    return deleteOwnNote(o, c, id);
+  });
   await queueDelete(o, ids);
   await unpin(o, id);
   nlog.info('note deleted', { noteId: id, recordingId: l.note.manifest.recordingId, objects: ids.length, frames });
@@ -740,8 +1037,9 @@ export async function remove(o: Owner, id: string): Promise<void> {
 
 /**
  * Deletes one of this owner's notes for good, in the caller's transaction: every revision, its
- * recording and pieces, its shared-screen frames, its jobs, everyone's access, the link from its
- * meeting, and this owner's operation receipts (which may hold copies of responses); stored bytes go
+ * recording and pieces, its shared-screen frames, its jobs, everyone's access, everyone's own notes on
+ * it and what they added to it (both cascade from its row), the link from its meeting, and this
+ * owner's operation receipts (which may hold copies of responses); stored bytes go
  * down to match. Returns the audio and frame objects, for the caller to delete once the transaction
  * commits (failures are retried by maintenance), and how many of them were frames. Deleting a whole
  * account deletes each of its notes this way.

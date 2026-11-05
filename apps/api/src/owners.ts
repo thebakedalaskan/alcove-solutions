@@ -13,7 +13,7 @@ import type { Session } from './sessions';
 const ROOT_SCOPE = 'owner-root';
 export const masterKey = (d: Deps) => unb64u(d.cfg.KMASTER, 32);
 
-/** Creates an account row with a fresh root key, in the caller's transaction. */
+/** Creates an owner with a fresh root key, in the caller's transaction: an account, or a workspace (modules/workspaces.ts). */
 export async function createOwner(d: Deps, db: Db): Promise<{ ownerId: string; root: Uint8Array }> {
   const ownerId = b64u(random(32));
   const root = random(32);

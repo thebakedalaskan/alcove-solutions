@@ -1,10 +1,12 @@
 /*
- * The layout engine: where everything on the stage goes, in stage pixels. `arrange` turns the call (who's here, what's
- * shared, who's talking) and your own view (view.ts) into a plan: what leads, in what order, and where you see
- * yourself. `place` turns a plan into rectangles for the stage's size. Both are pure, so the same call and the same
+ * The layout engine: where everything on the stage goes. `arrange` turns the call (who's here, what's shared, who's
+ * talking) and your own view (view.ts) into a plan: what leads, in what order, and where you see yourself. `place` turns
+ * a plan into rectangles for the stage's size, and `placeFrame` puts them where the stage is among the panels (panels.ts),
+ * or, once the people and shares are panels of their own, where those are. All are pure, so the same call and the same
  * choices always look the same, and nothing moves unless one of them changed.
  */
-import type { CallLayout, CallViewPrefs, StageCorner } from '@alcove/api';
+import type { CallLayout, CallPeopleMode, CallViewPrefs, StageCorner } from '@alcove/api';
+import { placePeople, type Horizon, type TileMode } from './panels';
 
 export type Rect = [x: number, y: number, w: number, h: number];
 export interface Box { x: number; y: number; w: number; h: number }
@@ -19,8 +21,12 @@ export const MAX_FEATURED = 2;
 /** A share's tile is keyed apart from people's (participant IDs), by its sharer's participant ID. */
 export const shareKey = (id: string) => `share:${id}`;
 export const isShareKey = (key: string) => key.startsWith('share:');
+/** Someone rung who isn't here yet takes a tile too, keyed apart from people. */
+export const waitKey = (id: string) => `ring:${id}`;
+export const isWaitKey = (key: string) => key.startsWith('ring:');
 
-export interface StagePerson { id: string; seat: string; isMe: boolean }
+/** Someone on the stage, or (`waiting`) someone rung who isn't in the call: a tile, and nobody to follow or lead with. */
+export interface StagePerson { id: string; seat: string; isMe: boolean; waiting?: boolean | undefined }
 export interface ArrangeInput {
   /** Everyone on the stage, in the call's order. */
   people: StagePerson[];
@@ -39,6 +45,12 @@ export interface ArrangeInput {
   dominant: string | null;
   prefs: CallViewPrefs;
   layout: CallLayout;
+  /** Something else has the room (the workspace or the board): a share that starts waits as a tile until you bring it in, and nobody leads by themselves. */
+  hold: boolean;
+  /** The shares big until now: they stay big when something else takes the room, so opening it moves nothing that's on screen. */
+  kept: string[];
+  /** You've set the people and shares apart: with a share shown big, they're panels of their own. */
+  apart: boolean;
 }
 export interface Plan {
   shape: Shape;
@@ -54,6 +66,8 @@ export interface Plan {
   auto: boolean;
   /** Your own picture when it isn't in the grid: in a corner, or folded into a small chip there. */
   self: { id: string; corner: StageCorner; folded: boolean } | null;
+  /** You, while nobody else is here and people rung are on their way: you're big, with their arches beside you. */
+  awaiting: string | null;
   /** Every seat in your order, whether they're here now or not: what a move rearranges. */
   order: string[];
 }
@@ -62,9 +76,22 @@ export function arrange(i: ArrangeInput): Plan {
   const { prefs, layout } = i;
   const bySeat = new Map(i.people.map((p) => [p.seat, p]));
   const me = i.people.find((p) => p.isMe) ?? null;
-  const alone = i.people.length <= 1 && i.shares.length === 0;
+  const awaited = i.people.filter((p) => p.waiting).length;
+  const alone = i.people.length - awaited <= 1 && i.shares.length === 0;
+  // Shares: once you've chosen how to see any of them, the ones you last made big (as many as fit, maybe none). Until
+  // then, everyone else's, the first to start, except in Grid or while something else has the room. A share that starts
+  // later never takes the place of what you see, and never undoes what you chose.
+  const live = new Set(i.shares);
+  const chose = layout.shares.filter((s) => live.has(s.id));
+  const picked = chose.length ? chose.filter((s) => s.show === 'big' && !i.away.includes(s.id)).map((s) => s.id).slice(-i.fit)
+    : i.hold ? i.shares.filter((s) => i.kept.includes(s) && !i.away.includes(s)).slice(0, i.fit)
+      : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own && !i.away.includes(s)).slice(0, i.fit);
+  const featured = i.shares.filter((s) => picked.includes(s));
+  const tiles = i.shares.filter((s) => !featured.includes(s)).map(shareKey);
+  // People standing as a panel have no stage to have a corner of: there, your own picture is one of them.
+  const panelled = i.hold || (i.apart && featured.length > 0);
   // You leave the grid for a corner once there's someone or something else to see; folded away, always.
-  const self = me && prefs.self !== 'grid' && !(alone && prefs.self === 'corner') ? { id: me.id, corner: prefs.corner, folded: prefs.self === 'hidden' } : null;
+  const self = me && prefs.self !== 'grid' && !(prefs.self === 'corner' && (alone || panelled)) ? { id: me.id, corner: prefs.corner, folded: prefs.self === 'hidden' } : null;
   // Your order: as you arranged it, then as people first came in, then anyone not counted yet.
   const order = [...new Set([...layout.order, ...layout.arrived, ...i.people.map((p) => p.seat)])];
   const people = order.flatMap((seat) => { const p = bySeat.get(seat); return p && p.id !== self?.id ? [p] : []; });
@@ -72,30 +99,22 @@ export function arrange(i: ArrangeInput): Plan {
   const idOf = (seat: string) => { const p = bySeat.get(seat); return p && here.has(p.id) ? [p.id] : []; };
   // Who leads: the organizer's spotlight, then your pins in the order you pinned them.
   let leads = [...new Set([...(i.spotlight && here.has(i.spotlight) ? [i.spotlight] : []), ...layout.pins.flatMap(idOf)])];
-  // Shares: once you've chosen how to see any of them, the ones you last made big (as many as fit, maybe none). Until
-  // then, everyone else's, the first to start, except in Grid. A share that starts later never takes the place of what
-  // you see, and never undoes what you chose.
-  const live = new Set(i.shares);
-  const chose = layout.shares.filter((s) => live.has(s.id));
-  const pick = chose.length ? chose.filter((s) => s.show === 'big' && !i.away.includes(s.id)).map((s) => s.id).slice(-i.fit)
-    : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own && !i.away.includes(s)).slice(0, i.fit);
-  const featured = i.shares.filter((s) => pick.includes(s));
-  const tiles = i.shares.filter((s) => !featured.includes(s)).map(shareKey);
   // Nobody chosen and nothing shared: Speaker follows whoever talks; Auto follows someone doing most of the talking,
   // but only while you haven't arranged anything, so what you arranged stays put.
   let auto = false;
-  if (!leads.length && !featured.length) {
-    const others = people.filter((p) => !p.isMe).map((p) => p.id);
+  if (!leads.length && !featured.length && !i.hold) {
+    const others = people.filter((p) => !p.isMe && !p.waiting).map((p) => p.id);
     const arranged = layout.order.length > 0 || layout.big.length > 0;
     const pick = prefs.mode === 'speaker' ? (i.speaker && here.has(i.speaker) ? i.speaker : others[0] ?? null)
       : prefs.mode === 'auto' && !arranged && i.dominant && here.has(i.dominant) ? i.dominant : null;
     if (pick) { leads = [pick]; auto = true; }
   }
   const count = people.length + tiles.length;
-  const shape: Shape = featured.length ? 'side' : prefs.mode !== 'grid' && leads.length && count > 1 ? 'focus' : 'grid';
+  const shape: Shape = featured.length || i.hold ? 'side' : prefs.mode !== 'grid' && leads.length && count > 1 ? 'focus' : 'grid';
   const rest = [...tiles, ...people.map((p) => p.id).filter((id) => !leads.includes(id))];
   const big = new Set(shape === 'focus' ? [] : [...leads, ...layout.big.flatMap(idOf)]);
-  return { shape, featured, leads, rest, big, auto, self, order };
+  const awaiting = me && !self && alone && awaited > 0 ? me.id : null;
+  return { shape, featured, leads, rest, big, auto, self, awaiting, order: order.filter((seat) => !bySeat.get(seat)?.waiting) };
 }
 
 /** `full` with the members of a group (`before`, in their old order) put back in their new order, in the same places. */
@@ -237,6 +256,14 @@ export interface Placed {
   split: Handle | null;
   /** Your own picture in its corner, or the chip it folds into. */
   self: Rect | null;
+  /** Where the people are while something else is on the stage, if they're anywhere. */
+  people: Box | null;
+  /** Tiles that aren't tiles: arches, or small arches on the horizon. */
+  modes: Map<string, TileMode>;
+  /** Tiles with no room: kept in place, out of sight. */
+  off: Set<string>;
+  /** What stands in for them: how many they are, and where it goes. */
+  more: { rect: Rect; mode: TileMode; n: number } | null;
 }
 export interface PlaceInput { width: number; height: number; top: number; bottom: number; ratio: number; split: number }
 
@@ -246,8 +273,9 @@ const SHARE_ASPECT = 1.6;
 /** How much of a w × h box a shared screen's picture fills, kept whole. */
 const shown = (w: number, h: number) => (w / Math.max(1, h) > SHARE_ASPECT ? h * h * SHARE_ASPECT : (w * w) / SHARE_ASPECT);
 
+type Shapes = Pick<Placed, 'shape' | 'slots' | 'shares' | 'divider' | 'split' | 'people'>;
 /** The plan in a box: the shapes without your corner picture. */
-function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, 'self'> {
+function inBox(plan: Plan, b: Box, ratio: number, split: number): Shapes {
   const slots = new Map<string, Rect>();
   const shares = new Map<string, Rect>();
   const portrait = b.w < b.h * 1.05;
@@ -256,18 +284,20 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, '
   if (plan.shape === 'side') {
     let area: Box = b;
     let divider: Handle | null = null;
+    let people: Box | null = null;
     if (tiles.length) {
       if (!portrait) {
         const sw = Math.round((b.w - GAP) * ratio);
         area = { x: b.x, y: b.y, w: sw, h: b.h };
-        const people: Box = { x: b.x + sw + GAP, y: b.y, w: b.w - sw - GAP, h: b.h };
+        people = { x: b.x + sw + GAP, y: b.y, w: b.w - sw - GAP, h: b.h };
         divider = { x: b.x + sw + GAP / 2, y: b.y + b.h / 2, along: 'x', area: b };
         set(tiles, packGrid(tiles.map((k) => (plan.big.has(k) ? 2 : 1)), people.x, people.y, people.w, people.h, 1.2));
       } else {
         const sh = Math.min(Math.round((b.h - GAP) * ratio), Math.round(b.w / 1.5));
         area = { x: b.x, y: b.y, w: b.w, h: sh };
+        people = { x: b.x, y: b.y + sh + GAP, w: b.w, h: b.h - sh - GAP };
         divider = { x: b.x + b.w / 2, y: b.y + sh + GAP / 2, along: 'y', area: b };
-        set(tiles, fitGrid(tiles.length, b.x, b.y + sh + GAP, b.w, b.h - sh - GAP, 1.2, 8));
+        set(tiles, fitGrid(tiles.length, people.x, people.y, people.w, people.h, 1.2, 8));
       }
     }
     // Two shares side by side, or one above the other where that shows both pictures bigger (shared screens are wide),
@@ -288,7 +318,7 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, '
         splitHandle = { x: area.x + area.w / 2, y: area.y + ah + GAP / 2, along: 'y', area };
       }
     }
-    return { shape: 'side', slots, shares, divider, split: splitHandle };
+    return { shape: 'side', slots, shares, divider, split: splitHandle, people };
   }
   if (plan.shape === 'focus') {
     const m = plan.rest.length;
@@ -301,14 +331,22 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, '
     // One lead fills the main stage; several share all of it.
     set(plan.leads, fillGrid(plan.leads.length, b.x, b.y, b.w, mh, portrait ? 0.8 : 1.3, gq));
     plan.rest.forEach((k, n) => slots.set(k, [x0 + n * (fw + gq), yy, fw, fh]));
-    return { shape: 'focus', slots, shares, divider: null, split: null };
+    return { shape: 'focus', slots, shares, divider: null, split: null, people: null };
+  }
+  const you = plan.awaiting;
+  if (you !== null) {
+    const arches = tiles.filter((k) => k !== you);
+    const part = Math.round(((portrait ? b.h : b.w) - GAP) * (portrait ? 0.42 : 0.4));
+    slots.set(you, portrait ? [b.x, b.y, b.w, b.h - part - GAP] : [b.x, b.y, b.w - part - GAP, b.h]);
+    set(arches, portrait ? fillGrid(arches.length, b.x, b.y + b.h - part, b.w, part, 1.1, 8) : fillGrid(arches.length, b.x + b.w - part, b.y, part, b.h, 1.1, GAP));
+    return { shape: 'grid', slots, shares, divider: null, split: null, people: null };
   }
   set(tiles, packGrid(tiles.map((k) => (portrait ? 1 : plan.big.has(k) ? 2 : 1)), b.x, b.y, b.w, b.h, portrait ? 1 : 1.45, portrait ? 8 : GAP));
-  return { shape: 'grid', slots, shares, divider: null, split: null };
+  return { shape: 'grid', slots, shares, divider: null, split: null, people: null };
 }
 
 const overlaps = (a: Rect, b: Rect) => a[0] < b[0] + b[2] - 1 && b[0] < a[0] + a[2] - 1 && a[1] < b[1] + b[3] - 1 && b[1] < a[1] + a[3] - 1;
-const areaOf = (p: Omit<Placed, 'self'>) => [...p.slots.values(), ...p.shares.values()].reduce((n, r) => n + r[2] * r[3], 0);
+const areaOf = (p: Shapes) => [...p.slots.values(), ...p.shares.values()].reduce((n, r) => n + r[2] * r[3], 0);
 
 /** How big your own picture is in a corner (landscape on a wide stage, portrait on a phone), or the chip it folds into. */
 function selfSize(b: Box, folded: boolean): [number, number] {
@@ -325,7 +363,8 @@ function selfSize(b: Box, folded: boolean): [number, number] {
 export function place(plan: Plan, i: PlaceInput): Placed {
   const b: Box = { x: 0, y: i.top, w: Math.max(0, i.width), h: Math.max(0, i.height - i.top - i.bottom) };
   const self = plan.self;
-  if (!self) return { ...inBox(plan, b, i.ratio, i.split), self: null };
+  const tilesOnly = { modes: new Map<string, TileMode>(), off: new Set<string>(), more: null };
+  if (!self) return { ...inBox(plan, b, i.ratio, i.split), self: null, ...tilesOnly };
   const [sw, sh] = selfSize(b, self.folded);
   const left = self.corner.endsWith('left');
   const top = self.corner.startsWith('top');
@@ -334,8 +373,62 @@ export function place(plan: Plan, i: PlaceInput): Placed {
   const above: Box = { x: b.x, y: top ? b.y + sh + GAP : b.y, w: b.w, h: b.h - sh - GAP };
   const whole = inBox(plan, b, i.ratio, i.split);
   // Nothing under your picture as it is: that's the most room anything can have.
-  if (![...whole.slots.values(), ...whole.shares.values()].some((t) => overlaps(t, r))) return { ...whole, self: r };
+  if (![...whole.slots.values(), ...whole.shares.values()].some((t) => overlaps(t, r))) return { ...whole, self: r, ...tilesOnly };
   const side = inBox(plan, beside, i.ratio, i.split);
   const band = inBox(plan, above, i.ratio, i.split);
-  return { ...(areaOf(band) > areaOf(side) + 1 ? band : side), self: r };
+  return { ...(areaOf(band) > areaOf(side) + 1 ? band : side), self: r, ...tilesOnly };
+}
+
+/** What the stage is given by the panels around it. */
+export interface StageFrame {
+  /** The stage, in the call's area. Once the people and shares are panels, the room they share. */
+  box: Box;
+  /** The room to keep for the status bar and captions on a stage that holds them. */
+  top: number;
+  bottom: number;
+  ratio: number;
+  split: number;
+  /** The people and shares as panels of their own, or null while the stage holds them. */
+  panels: {
+    /** Each share shown big, by share ID. One with no box is behind something else for now. */
+    shares: ReadonlyMap<string, Box>;
+    people: Box | null;
+    mode: CallPeopleMode;
+    horizon: Horizon;
+    /** Who's talking or has a hand up: there's always a place for them. */
+    loud: ReadonlySet<string>;
+    /** The row of arches on a phone. */
+    small: boolean;
+  } | null;
+}
+const rectOf = (b: Box): Rect => [b.x, b.y, b.w, b.h];
+const moved = (b: Box, x: number, y: number): Box => ({ ...b, x: b.x + x, y: b.y + y });
+const handleAt = (h: Handle | null, x: number, y: number): Handle | null => h && { ...h, x: h.x + x, y: h.y + y, area: moved(h.area, x, y) };
+
+/** How high the chip you fold into is, under the people when they're a panel. */
+const CHIP_H = 36;
+
+/** Everything on the stage, placed in the call's area. */
+export function placeFrame(plan: Plan, f: StageFrame): Placed {
+  const p = f.panels;
+  if (!p) {
+    const { x, y } = f.box;
+    const L = place(plan, { width: f.box.w, height: f.box.h, top: f.top, bottom: f.bottom, ratio: f.ratio, split: f.split });
+    const at = (r: Rect): Rect => [r[0] + x, r[1] + y, r[2], r[3]];
+    const all = (m: Map<string, Rect>) => new Map([...m].map(([k, r]) => [k, at(r)]));
+    return { ...L, slots: all(L.slots), shares: all(L.shares), divider: handleAt(L.divider, x, y), split: handleAt(L.split, x, y), self: L.self && at(L.self), people: L.people && moved(L.people, x, y) };
+  }
+  const folded = plan.self?.folded && p.people && p.mode === 'tiles';
+  const people = folded && p.people ? { ...p.people, h: Math.max(0, p.people.h - CHIP_H - GAP) } : p.people;
+  // Someone rung waits in a tile: among arches or on the horizon they're in People, with what they said.
+  const who = [...plan.leads, ...plan.rest].filter((id) => p.mode === 'tiles' || !isWaitKey(id));
+  const placed = placePeople(people, who.map((id) => ({ id, share: isShareKey(id) })), p.mode, p.horizon, p.loud, p.small);
+  const modes = new Map<string, TileMode>();
+  const slots = new Map<string, Rect>();
+  for (const [k, s] of placed.spots) { slots.set(k, rectOf(s.box)); if (s.mode !== 'tile') modes.set(k, s.mode); }
+  return {
+    shape: plan.shape, slots, shares: new Map([...p.shares].map(([id, b]) => [id, rectOf(b)])), divider: null, split: null,
+    self: folded && p.people ? [p.people.x + p.people.w - 112, p.people.y + p.people.h - CHIP_H, 112, CHIP_H] : null,
+    people: p.people, modes, off: placed.off, more: placed.more && { rect: rectOf(placed.more.box), mode: placed.more.mode, n: placed.more.n }
+  };
 }

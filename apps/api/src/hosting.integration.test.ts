@@ -410,12 +410,15 @@ describe('host hand-off', () => {
     // from Design, and his browser stays there.
     await drop(host, hostRoom);
     await upkeepAfter(HANDOFF_MS);
-    await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    // Kofi hosting starts a new segment and new groups, in the state that says he hosts. Until Mia is back in Design's group the
+    // room has no scribe, so what her browser last read says nothing unless it's from this generation.
+    const hosting = await settle(kofi.call, (x) => x.isHost, 'Kofi hosting');
+    const { segment } = hosting.notes.recording;
     await inPlace(kofi.call, design);
     await inPlace(mia.call, design);
     await inPlace(lena.call, support);
     const taken = (p: Promise<unknown>) => p.then(() => 'taken', (e: unknown) => code(e));
-    const segment = (await settle(mia.call, (x) => x.capture.room?.scribe === mia.call.ticket.identity, 'Mia hearing Design')).notes.recording.segment;
+    await settle(mia.call, (x) => x.generation === hosting.generation && x.capture.room?.scribe === mia.call.ticket.identity, 'Mia hearing Design');
 
     // Design goes on with Mia's browser: whoever hosts is never a room's scribe, and Kofi's voice is heard there like anyone's.
     expect(mia.call.getSnapshot().capture.room).toMatchObject({ id: design, mode: 'on', transcript: { mode: 'on' } });
@@ -442,6 +445,38 @@ describe('host hand-off', () => {
     const note = await org.api.notes.get(noteId);
     expect(note.transcript?.map((l) => l.text)).toEqual(['Sam, back in the main room.']);
     expect(note.rooms.map((r) => [r.name, r.transcript.map((l) => l.text)])).toEqual([['Design', ['Kofi hosts, and we carry on.']], ['Support', []]]);
+  });
+
+  it('gives a stand-in nothing of a series’ earlier calls for hosting: what carries over goes by the notes they have', async () => {
+    const org = await account(unique('organizer'));
+    const { code: first } = await org.api.calls.startNow({ title: 'Board', notes: 'on' });
+    const earlier = await org.api.calls.join(first, { mic: true, cam: false });
+    await inGroup(earlier);
+    await earlier.transcribe(speech('We agreed to CANARY-STANDIN sell the barn.', 0, 0), earlier.ticket.identity);
+    await settle(earlier, (x) => x.transcript.length > 0, 'the line');
+    const noteId = (await earlier.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const meeting = await org.api.meetings.get((await org.api.notes.get(noteId)).meetingId ?? '');
+    const priyaEmail = unique('priya');
+    const next = await org.api.meetings.scheduleNext(meeting.id, new Date(Date.parse(meeting.startsAt) + 7 * 86_400_000).toISOString());
+    await org.api.meetings.update(next.id, { guests: [priyaEmail] });
+
+    const host = await org.api.calls.join(next.code, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const priya = await account(priyaEmail);
+    const inPriya = await priya.api.calls.join(next.code, { mic: true, cam: false });
+    await joinRoom(inPriya);
+    expect((await org.api.calls.series(next.code))?.decisions.map((d) => d.text)).toEqual(['We agreed to CANARY-STANDIN sell the barn.']);
+    await drop(host, hostRoom);
+    await goneFor(host.ticket.callId, 2.1);
+    await upkeepAfter(HANDOFF_MS);
+    await settle(inPriya, (x) => x.isHost, 'Priya hosting');
+
+    const sent = h.near.prompts.length;
+    expect(await priya.api.calls.series(next.code)).toBeNull();
+    expect(code(await inPriya.askEarlier('What did we decide?', 'Europe/London').catch((e: unknown) => e))).toBe('not-found');
+    expect(h.near.prompts.length).toBe(sent);
+    await inPriya.leave();
   });
 
   it('counts a stand-in whose connection dropped as gone from then when the organizer comes back', async () => {

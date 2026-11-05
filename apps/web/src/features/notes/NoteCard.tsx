@@ -1,6 +1,6 @@
 /*
- * The example note: a call's notes as they look when they're done. Home shows it before someone has
- * notes of their own, and the first sign-in flies it there.
+ * The example note: a call's notes as they look when they're done. Notes shows it before someone has
+ * notes of their own.
  */
 import { Chip, Faces, NoteRow, NotesPanel, NotesSection, SealedBadge, type AvatarPerson } from '@alcove/ui';
 import { CAST } from './cast';
@@ -17,7 +17,7 @@ export function NoteCard({ you, example = false, className }: {
   className?: string;
 }) {
   const people: AvatarPerson[] = [CAST.theo, CAST.priya, CAST.kofi, ...(you ? [you] : [])];
-  /* As Home's example it says so twice, and keeps the promise short enough to sit beside the faces in a narrow column. */
+  /* As an example it says so twice, and keeps the promise short enough to sit beside the faces in a narrow column. */
   return (
     <NotesPanel className={className} title="Weekly product call" meta={example ? 'Example · 24 min' : 'Today · 24 min'}
       end={example ? <Chip tone="sun">Example</Chip> : <Chip tone="sun" icon="check">Ready</Chip>}

@@ -1,9 +1,12 @@
-import type { CallCard, CallSession, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
+import type { CallCard, CallSession, LiveStore, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { CallMoveIn } from './moves';
-import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
+import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
+import type { IncomingRing, RingReply } from './rings';
+import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
+import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
-  AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
-  Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
+  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
+  PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
 /** A partial update: any field may be missing or explicitly undefined. */
@@ -44,16 +47,27 @@ export interface AlcoveApi {
     inviteToTeam(emails: string[]): Promise<Team>;
   };
   meetings: {
+    /** Your calls still to come, and the calls you're invited to, soonest first. */
     upcoming(): Promise<Meeting[]>;
     past(): Promise<Meeting[]>;
+    /** One of your calls, or one you're invited to that hasn't ended. */
     get(id: ID): Promise<Meeting>;
     byCode(code: string): Promise<Meeting | null>;
-    /** Schedules a call. With Google Calendar connected it goes on the calendar, which sends everyone invited an invitation. */
+    /**
+     * Schedules a call, or with `repeat` a series of them, with one link. With Google Calendar connected it goes on the
+     * calendar, which sends everyone invited one invitation. With `offer` it goes on no calendar until a time is picked.
+     */
     create(input: MeetingInput): Promise<Meeting>;
-    /** Changes a call; a connected calendar sends everyone the update. */
-    update(id: ID, input: Patch<MeetingInput>): Promise<Meeting>;
-    /** Cancels a call; a connected calendar tells everyone. */
-    cancel(id: ID): Promise<void>;
+    /**
+     * Changes a call; a connected calendar sends everyone the update. In a series, `scope: 'following'` changes this
+     * call and every later one too, and moving them says how with `repeat`, whose occurrences start at this call.
+     * `repeat` on a call that doesn't repeat makes it a series.
+     */
+    update(id: ID, input: Patch<MeetingInput>, opts?: { scope?: ChangeScope | undefined }): Promise<Meeting>;
+    /** Cancels a call; a connected calendar tells everyone. In a series, `scope: 'following'` cancels this call and every later one. */
+    cancel(id: ID, opts?: { scope?: ChangeScope | undefined }): Promise<void>;
+    /** Says whether you're coming to a call you're invited to. Your organizer sees the answer; Google Calendar doesn't hear about it. */
+    answer(id: ID, answer: Rsvp): Promise<Meeting>;
     /**
      * Schedules the next call in a call's series, starting the series if it isn't in one: the same
      * title, people, length and notes setting, at `startsAt`, which must be still to come and after the
@@ -66,6 +80,8 @@ export interface AlcoveApi {
   calendar: {
     /** The coming week's other calendar events, beside Alcove's own calls. */
     get(): Promise<Calendar>;
+    /** When you and these people are busy between two times, from what's readable: see `Busy`. */
+    busy(emails: string[], range: { from: ISODate; to: ISODate }): Promise<Busy>;
     /** Where the browser goes to give Alcove access to the Google Calendar of the account it's signed in with. */
     connectUrl(): string;
     /** Forgets the Google connection: Alcove's stored access is deleted and scheduling no longer touches Google. Connect again from `connectUrl()`. */
@@ -78,6 +94,17 @@ export interface AlcoveApi {
     startNow(input?: InstantCallInput): Promise<{ code: string }>;
     /** What a call's link says before joining, for anyone, signed in or not: its title and organizer, whether notes are on, and where you stand. */
     card(code: string): Promise<CallCard>;
+    /**
+     * Settles a call that offers times on one of them, for anyone with its link, signed in or not. It goes on the organizer's
+     * calendar then. Picking again once it's settled is refused.
+     */
+    pick(code: string, at: ISODate): Promise<CallCard>;
+    /**
+     * What carries over into a call, for someone signed in: its series as you see it, from the earlier notes you have
+     * now, before joining and during the call. Null when the call isn't in a series, or you aren't its organizer and
+     * have no notes from it: being invited to this call opens nothing from the others.
+     */
+    series(code: string): Promise<Series | null>;
     /**
      * Joins a call by its link. The organizer hosts; invited people join with their accounts; anyone else asks to
      * join: signed in, under their account, otherwise with `name` (1–60 characters). Refused until the organizer is
@@ -92,6 +119,23 @@ export interface AlcoveApi {
     openMove(code: string): Promise<CallMoveIn>;
     /** Picks up a move this tab opened before it went to sign in, by the claim it kept (in this tab's sessionStorage). */
     resumeMove(claim: string): Promise<CallMoveIn>;
+  };
+  rings: {
+    /**
+     * Who's ringing you now, pushed as it changes for as long as it's open. It reconnects by itself; `close` ends it.
+     * A browser opens one and the whole app reads it.
+     */
+    live(): LiveStore<IncomingRing[]> & { close(): void };
+    /**
+     * Answers a ring, which leaves `live()` at once: `join` takes it off your screen on the way to the call; the others
+     * tell the organizer, and `in-5` and `in-15` ring you again then. `not-found` once the ring is gone: it was stopped,
+     * or the call ended.
+     */
+    answer(id: ID, reply: RingReply): Promise<void>;
+  };
+  documents: {
+    /** The documents you can bring to a call. */
+    list(): Promise<DocumentLibrary>;
   };
   recordings: {
     /**
@@ -109,13 +153,26 @@ export interface AlcoveApi {
     audioUrl(id: ID, segment: number): string;
     /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
     screenUrl(id: ID, frameId: ID): string;
-    /** Confirms a decision, says it wasn't decided, reopens or rewords it. Anyone who has the notes can. */
+    /**
+     * Adds a decision the notes didn't hear, proposed by you, in your exact words. Anyone who has the notes can. Sending
+     * the same words again adds nothing.
+     */
+    proposeDecision(noteId: ID, proposal: DecisionProposal): Promise<Note>;
+    /** Adds a follow-up the notes didn't hear, as `proposeDecision` does. It's only a suggestion until whoever it's for takes it on. */
+    proposeAction(noteId: ID, proposal: ActionProposal): Promise<Note>;
+    /** Confirms a decision, says it wasn't decided, reopens or rewords it, as far as `grants.ts` lets you. */
     updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
-    /** Takes on (owner only), gives, rewords, dates or ticks a follow-up. */
+    /** Takes on or turns down (the person it's for), gives, rewords, dates or ticks a follow-up, as far as `grants.ts` lets you. */
     updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
     /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
     updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
-    /** Follow-ups for you that aren't done, and decisions nobody has confirmed, from every note you have. */
+    /**
+     * Says the notes got it wrong: a later call (this note) didn't replace that decision or answer that question
+     * (`Series` gives the revisit's ID), or takes that back. Everyone with both notes sees who said so, and writing the
+     * notes again doesn't change it. Needs both calls' notes, and for a decision, what `mayDecide` asks of saying it stopped holding.
+     */
+    updateRevisit(noteId: ID, revisitId: ID, patch: RevisitPatch): Promise<Note>;
+    /** Follow-ups for you that aren't done, taken on or only suggested, and decisions nobody has confirmed, from every note you have. */
     inbox(): Promise<Inbox>;
     /**
      * Corrects a line of a written note's transcript: its words, who said it, or that it's right as heard. The
@@ -127,7 +184,7 @@ export interface AlcoveApi {
      * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are.
      */
     rewrite(noteId: ID): Promise<Note>;
-    /** Answers a question about one written note from its transcript, citing moments in it and the shared screens it read. */
+    /** Answers a question about one written note from its transcript, or from the notes once that's deleted, citing moments in it and the shared screens it read. */
     ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
     /**
      * Answers a question from every note you have, your own and ones shared with you, citing the notes
@@ -140,7 +197,18 @@ export interface AlcoveApi {
      * Alcove when they sign in.
      */
     share(id: ID, to: { emails: string[]; group?: string | undefined }): Promise<Note>;
-    /** Deletes your own notes for everyone, or removes someone else's from your notes. */
+    /** Your own notes on these notes: only ever yours, whoever else has them. */
+    personal(id: ID): PersonalApi;
+    /** What adding one of your own entries to the shared notes would do: exactly what goes, where, and who gets it. Sends nothing. */
+    previewAddition(id: ID, entryId: ID): Promise<PromotionPreview>;
+    /** Adds it, as previewed, for everyone with the notes. Refused if the people or the moments changed since the preview. */
+    addToShared(id: ID, entryId: ID, body: PromoteBody): Promise<Note>;
+    /** Takes something added to the shared notes out of them, for good: your own addition, or any on your own notes. */
+    takeBack(id: ID, additionId: ID): Promise<Note>;
+    /**
+     * Deletes your own notes for everyone, with everyone's own notes on them; or removes someone else's from your notes,
+     * with your own notes on them. What you added to the shared notes stays with them.
+     */
     delete(id: ID): Promise<void>;
   };
   series: {
@@ -152,6 +220,58 @@ export interface AlcoveApi {
      * calls' dates are read in it, so they're the days the asker sees.
      */
     ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
+  };
+  workspaces: {
+    /** Every workspace you're in, then each one you only have documents in. */
+    list(): Promise<WorkspaceSummary[]>;
+    /** Makes a workspace with you as its admin. */
+    create(name: string): Promise<{ id: ID }>;
+    /** A workspace as you see it. Anyone who can't open it gets the same `not-found` as for a workspace that doesn't exist. */
+    get(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceTree>;
+    /** Admins only. */
+    rename(id: ID, name: string): Promise<void>;
+    /** Deletes a workspace for good, for everyone, with everything in it. Admins only. */
+    remove(id: ID): Promise<void>;
+    /** Everyone in a workspace, for anyone in it. */
+    people(id: ID): Promise<WorkspacePerson[]>;
+    /** Adds someone by address, whether or not they use Alcove yet, or sets their role if they're in it. Admins only. */
+    addPerson(id: ID, email: string, role: WorkspaceRole): Promise<{ id: ID }>;
+    /** Admins only, and a workspace always keeps an admin. */
+    setRole(id: ID, personId: ID, role: WorkspaceRole): Promise<void>;
+    /** Takes someone out: an admin can anyone, and anyone can themselves. A workspace always keeps an admin. */
+    removePerson(id: ID, personId: ID): Promise<void>;
+    items: {
+      /** One document, board or folder, if you can open it. */
+      get(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceItem>;
+      /** Makes one, last in `parent` (the top when left out) unless `after` says otherwise. */
+      create(id: ID, input: ItemInput): Promise<{ id: ID }>;
+      /** Anyone who can edit it, so a document's title can follow what's typed. */
+      rename(id: ID, itemId: ID, name: string, opts?: WorkspaceReadOptions): Promise<void>;
+      /** Moves it to another folder or another place among its siblings. A folder can't go inside itself. */
+      move(id: ID, itemId: ID, to: ItemPlace): Promise<void>;
+      /** A copy just after it, with everything you can open inside a folder. A copy isn't shared with anyone, and a copy of something restricted is restricted, to you. */
+      duplicate(id: ID, itemId: ID): Promise<{ id: ID }>;
+      /** Moves it to Trash, for everyone, for 30 days. A folder takes what's in it, except anything you can't open, which stays in the tree. */
+      trash(id: ID, itemId: ID): Promise<void>;
+      /** Brings it back, to the top if its folder isn't in the tree any more. Anyone who can edit it. */
+      restore(id: ID, itemId: ID, opts?: WorkspaceReadOptions): Promise<void>;
+      /** Deletes something in Trash for good, for everyone. */
+      deleteForever(id: ID, itemId: ID): Promise<void>;
+    };
+    share: {
+      /** Who has a document: for people in the workspace who can edit it, like everything else here. */
+      list(id: ID, documentId: ID): Promise<DocumentShare>;
+      /**
+       * Opens a document for everyone in `to`, all of them or none, or changes what they can do with it. Sharing with a
+       * seat takes the pass of the call it's in, and ends with the call.
+       */
+      set(id: ID, documentId: ID, to: ShareTarget[], role: DocumentRole, opts?: WorkspaceReadOptions): Promise<void>;
+      remove(id: ID, documentId: ID, entryId: ID): Promise<void>;
+      /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
+      restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
+    };
+    /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
+    live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
   };
   credits: {
     balance(): Promise<CreditBalance>;

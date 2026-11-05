@@ -31,7 +31,8 @@ export function getRouter() {
     scrollRestoration: true,
     defaultPendingMinMs: 0,
     defaultErrorComponent: RouteError,
-    defaultOnCatch: (err) => log.error('screen crashed', { err })
+    // Notes or a series that have gone are a page saying so, and the API client logged the refusal: nothing crashed.
+    defaultOnCatch: (err) => { if (errorCode(err) !== 'not-found') log.error('screen crashed', { err }); }
   });
   return router;
 }
