@@ -1144,6 +1144,30 @@ describe('presenting', () => {
     expect((await space(t)).present).toMatchObject({ section: 0 });
   });
 
+  it('stops for good when whoever started it leaves on purpose, and they don’t bring it back', async () => {
+    const { priya, plan, host, c, p, t } = await presented();
+    await p.startPresenting('document', plan, 4);
+    await p.leave();
+    await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
+    const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
+    await inGroup(back);
+    await settle(host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
+    expect((await space(t)).present).toBeNull();
+    expect((await space(back)).present).toBeNull();
+  });
+
+  it('stops for good when the host hands the call on and goes', async () => {
+    const { art, plan, host, c, p, t } = await presented();
+    await host.startPresenting('document', plan, 2);
+    inRoom.push(await connect(await p.room(), { sending: p.crypto }));
+    await host.handOff(p.ticket.identity);
+    await settle(p, (s) => s.isHost);
+    expect((await space(t)).present).toBeNull();
+    const back = await art.api.calls.join(c, { mic: false, cam: false, previous: host.ticket.pass });
+    await inGroup(back);
+    expect((await space(back)).present).toBeNull();
+  });
+
   it('isn’t shown to a part of the call whoever started it came back to somewhere else from', async () => {
     const { priya, plan, host, c, p, t } = await presented();
     await p.startPresenting('document', plan);
@@ -1331,6 +1355,24 @@ describe('playing a video together', () => {
     expect(await code(host.startPlaying(madeUp(), media))).toBe('not-found');
     expect((await action(art, host, { type: 'play-start', documentId: film, mediaId: media, positionMs: -1 })).status).toBe(400);
     expect((await action(art, host, { type: 'play-seek', positionMs: 86_400_001 })).status).toBe(400);
+  });
+
+  it('stops for good when whoever started it leaves on purpose, and carries on when they only reload', async () => {
+    const { priya, film, media, host, c, p } = await playing();
+    await p.startPlaying(film, media);
+    p.closing();
+    await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
+    expect((await space(host)).play).toBeNull();
+    const reloaded = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
+    await inGroup(reloaded);
+    expect((await space(host)).play).toMatchObject({ mediaId: media });
+    await reloaded.leave();
+    await settle(host, (s) => !s.participants.some((x) => x.id === reloaded.ticket.identity));
+    const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: reloaded.ticket.pass });
+    await inGroup(back);
+    await settle(host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
+    expect((await space(host)).play).toBeNull();
+    expect((await space(back)).play).toBeNull();
   });
 
   it('stops for whoever loses the document, for everyone when whoever started it does, and when the workspace, room or call changes', async () => {

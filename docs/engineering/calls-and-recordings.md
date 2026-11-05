@@ -1038,8 +1038,9 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing.
 - **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
   - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
-  - Their part of the call closing, their being removed, or their moving to another part stops it for good, as a change of
-    workspace and the call ending do.
+  - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
+    for good, as a change of workspace and the call ending do. Only they can say they left on purpose (`onPurpose` on `leave`,
+    which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
     tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never

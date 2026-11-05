@@ -659,7 +659,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json(await calls.translate(v, c.req.param('id'), language, lines));
   });
   /* Whoever hosts leaving ends the call for everyone, unless they hand it to someone; anyone else leaving is taken out of the call's group. */
-  app.post('/v1/live/calls/:id/leave', async (c) => c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), (await body(c, CallLeaveBodySchema)).end) }));
+  app.post('/v1/live/calls/:id/leave', async (c) => {
+    const { end, onPurpose } = await body(c, CallLeaveBodySchema);
+    return c.json({ ended: await calls.leave(c.get('viewer'), c.req.param('id'), end, onPurpose) });
+  });
   app.post('/v1/live/calls/:id/hand-off', async (c) => {
     const v = hostOnly(c);
     await calls.handOff(v, c.req.param('id'), (await body(c, CallHandOffBodySchema)).to);
