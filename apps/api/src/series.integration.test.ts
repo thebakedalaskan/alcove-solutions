@@ -277,6 +277,8 @@ describe('memory across a series', () => {
     const first = await b.api.calendar.adopt(soon.id, 'on');
     const seriesId = first.seriesId ?? '';
     expect(seriesId).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    const { id: crits } = await b.api.workspaces.create('Crits');
+    await b.api.meetings.update(first.id, { workspaceId: crits });
     expect((await b.api.calendar.get()).events.map((e) => [e.id, e.seriesId])).toEqual([[`once${n}`, undefined], [later.id, seriesId]]);
     await hold(b.api, first.code, 'We agreed to keep the darker header. // Will the new font load fast enough?');
     expect(await b.api.series.get(seriesId)).toMatchObject({ title: 'Design crit', recurring: true, isOrganizer: true, questions: [{ text: 'Will the new font load fast enough?' }] });
@@ -285,6 +287,7 @@ describe('memory across a series', () => {
     // The next occurrence made an Alcove call joins the same series.
     const second = await b.api.calendar.adopt(later.id);
     expect(second.seriesId).toBe(seriesId);
+    expect(second.workspaceId).toBe(crits);
     expect((await b.api.series.get(seriesId)).next?.id).toBe(second.id);
   });
 
