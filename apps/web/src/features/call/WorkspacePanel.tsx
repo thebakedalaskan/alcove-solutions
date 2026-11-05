@@ -6,16 +6,24 @@
  * (PanelHost.tsx), so the page keeps its caret, its scroll and its undo, and where you were is kept with how you arranged
  * this call (view.ts), so a reload finds that too. Only your screen changes, whatever you do here.
  */
-import { errorMessage, firstName, type CallSession, type CallWorkspace } from '@alcove/api';
+import { errorMessage, firstName, type CallSession, type CallWorkspace, type Person } from '@alcove/api';
 import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
+import type { CallPerson, CallTogether, WorkspaceCall, WorkspacePlace, WorkspaceTogether } from '~/features/workspace/context';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
+import { q, useMentionSeen } from '~/lib/queries';
 import type { CallView } from './view';
 
 const wlog = log.child({ component: 'call-workspace' });
+
+const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {} };
+/** How long someone's tile stays lit for being tagged. */
+const LIT_MS = 2600;
+/** How often someone who hasn't opened the workspace in this call looks for tags: once it's open, its stream says. */
+const TAGS_MS = 20_000;
 
 /** Where a workspace opens: this call's agenda, or the first thing brought to it. With neither, it opens what you had open last. */
 function firstPlace(w: CallWorkspace): WorkspacePlace {
@@ -35,6 +43,13 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   /** The call has said which workspace it uses, for this browser. */
   const [settled, setSettled] = useState(false);
   const asked = useRef(false);
+  /** What the tiles show of people working together. */
+  const [together, setTogether] = useState<CallTogether>(NOBODY_TOGETHER);
+  /** Whose tile just lit up, for being tagged. */
+  const [lit, setLit] = useState<string | null>(null);
+  const reach = useRef<WorkspaceTogether | null>(null);
+  const unlit = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(unlit.current), []);
 
   /** What the workspace said last: it says one thing at a time, so a second toast never climbs over the foot of the list. */
   const said = useRef<(() => void) | null>(null);
@@ -59,6 +74,18 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
         const name = () => session.getSnapshot().workspace.documents.find((d) => d.id === id)?.name || 'Untitled';
         session.bringDocument(id, brought).then(() => { if (brought) say(wsToast.broughtToCall(name())); }, failed);
       },
+      /** Opens the workspace at this place. */
+      openAt: (to: WorkspacePlace) => { setAt(to); setPeek(false); reveal(); },
+      /** Follow, on a tile. */
+      follow: (connection: string) => { reach.current?.follow(connection); },
+      stopFollowing: () => { reach.current?.stop(); },
+      setTogether,
+      /** The tile's ring pulses once. */
+      tagged: (connection: string) => {
+        clearTimeout(unlit.current);
+        setLit(connection);
+        unlit.current = setTimeout(() => setLit(null), LIT_MS);
+      },
       /** A workspace of their own, for an organizer who's lost the one the call uses. */
       newWorkspace: () => {
         session.newWorkspace().then(() => {
@@ -71,6 +98,20 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   }, [push, session]);
   const openNow = useRef(open);
   openNow.current = open;
+
+  /* Tagged here with the workspace not open: the call says so, and nothing moves until Go there. Someone with no account has only their stream. */
+  const signedIn = !!useQuery(q.session()).data;
+  const waiting = useQuery({ ...q.mentions(), enabled: signedIn && !mounted && workspace.id !== null, refetchInterval: TAGS_MS }).data;
+  const saidSeen = useMentionSeen();
+  const seen = saidSeen.mutate;
+  const told = useRef(new Set<string>());
+  useEffect(() => {
+    const next = waiting?.find((m) => m.workspaceId === workspace.id && !told.current.has(m.id));
+    if (!next) return;
+    told.current.add(next.id);
+    act.announce(wsToast.tagged(next.by, firstName(next.by.name), next.name || 'Untitled', () => act.openAt({ kind: 'document', id: next.document, block: next.block ?? undefined })));
+    seen({ workspaceId: next.workspaceId, mention: next.id });
+  }, [waiting, workspace.id, act, seen]);
 
   /* The first time it opens here, the call settles which workspace it uses, and finds its agenda. */
   useEffect(() => {
@@ -116,13 +157,17 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     return () => document.removeEventListener('keydown', esc, true);
   }, [zen, peek]);
 
-  return { open, mounted, at, zen, peek, settled, act };
+  return { open, mounted, at, zen, peek, settled, act, together, lit, reach };
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, zen, listOff, listPeek, top, act, reach, people, invited, onToggleList, onToggleZen }: {
   workspace: CallWorkspace;
+  /** Who's in the call, and who's invited if you can know, for `@`. */
+  people: readonly CallPerson[];
+  invited: readonly Person[];
+  reach: WorkspacePanelState['reach'];
   /** You're the call's organizer. */
   organizer: boolean;
   pass: string;
@@ -143,10 +188,10 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing,
+    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [top, documents, act, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  }), [top, documents, act, reach, people, invited, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */

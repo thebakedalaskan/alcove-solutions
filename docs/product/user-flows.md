@@ -465,8 +465,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
-the server today, and its screens are being built.
+Opening it, sharing beside it, arranging it, going to just the document and working together work on screen. The rest of this
+list comes from the server today, and its screens are being built.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
@@ -488,6 +488,12 @@ the server today, and its screens are being built.
    - **Just the document** (**⌘⇧F**, the arrows at the top right of the page, or View): the bars slide off, everyone drops to
      arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
      who has a hand up. **Show everything** or **Esc** brings it all back as it was, with the caret where you left it.
+   - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
+     its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
+     **@** lists who's in the call first, then who's invited, then the workspace and the company, and tagging someone in
+     the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
+     **Go there** opens it on the line. Putting the workspace away, or bringing in something it takes turns with, stops
+     following, and for everyone else you've left it.
    - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
      document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
    - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of
@@ -843,11 +849,12 @@ goes back, with a toast saying why. Parts that don't load say so, with **Try aga
   call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
   screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
   someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
-  so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
+  so itself); when someone tags you in a document you can open, while you're somewhere else (in front of you, the
+  workspace says so itself); and on the due day of a follow-up you've taken on, at 9:00 (off by default; for every due Home shows
   as a day, so not "next week" or "ASAP"; not when the due day was set after 9:00 that day). One tab in the browser shows them, and the next takes over when it closes. Each shows
   once, in any tab and across reloads, and several at once (after the computer wakes, or the connection comes back)
   arrive as one: "3 notes are ready", "2 follow-ups are due today". Clicking one brings Alcove forward: on the
-  call's join page, the note, Notes, Home, or the call you're in, in the tab already there or else the one used
+  call's join page, the note, Notes, Home, the line someone tagged you on, or the call you're in, in the tab already there or else the one used
   last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
   deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
   preferences, and one changed in another tab or on another device takes effect within a minute.
@@ -924,6 +931,30 @@ knows); they can edit, and their row changes that to **Can read** or takes them 
 document to **Only people added here**: then it opens only for whoever made it and the people listed, and it's gone from
 everyone else's list. Someone it's shared with who isn't in the workspace sees that document alone.
 
+**Who's here.** Faces on a row and at the top of a document show who has it open, live, and go when they do. Pressing a face
+opens their card: where they are, in the words you may know (a document you can't open is **A document you can’t open**, never
+its name), **Follow**, **Go to where they are**, and **Tag them in this document** where you can write. Their caret shows their
+face and first name while they move, which fade after three seconds of quiet. Opening a document only moves you.
+
+**Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
+say so, and the page scrolls to them. Nobody else moves, and they do nothing. If they open something you can't, you stay put
+and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following** or **Esc** ends
+it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are, and a toast offers
+**Follow again**.
+
+**Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
+first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
+before you pick. Whoever can open the document hears about it; if they can't, Alcove asks once, right by the name: **Let them
+edit**, **Read only** or **Not now**. A tag never shares anything by itself, and someone who can't open it isn't told. Being
+tagged is a toast saying who and where, and nothing moves until **Go there**, which lands on the line. Someone away hears when
+they're back: **Workspace** in the side panel counts what's waiting, and a browser notification says so, if they've allowed them.
+
+**Comments.** Select words: the bar over them has **Comment**, as does a block's menu, and **⌘⇧M** does the same. The words
+stay marked while you write, and **@** works here too, for people and dates. **Enter** marks them for everyone, with a count in
+the margin; pressing the words or the count opens the thread, and replies arrive as they're sent. **Resolve** takes the mark
+away for everyone, and the toast's **Reopen** brings it back for a moment; History keeps the thread. Someone who can only
+read can open a thread and has nothing to press.
+
 **Workspaces.** The name at the top of the list lists your workspaces with who's in each, and opens another. **People**
 shows who's in this one in the same sheet as Share: an admin adds people by name or address and sets each to **Admin**,
 **Can edit** or **Can read**, or removes them; anyone can leave. **Rename** (admins) and **New workspace** turn the name
@@ -949,4 +980,4 @@ your workspaces.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
-touch screen: **Move to…** does that.
+touch screen: **Move to…** does that. Someone's card and a comment are sheets too, and faces are on the list's rows.

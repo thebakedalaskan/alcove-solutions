@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type ISODate, type InstantCallInput, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type ISODate, type InstantCallInput, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -38,6 +38,7 @@ export const qk = {
   balance: ['credits'] as const,
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  mentions: ['workspaces', 'mentions'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
 
@@ -123,8 +124,10 @@ export const q = {
   documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** What you've been tagged in and haven't seen, anywhere. */
+  mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
+  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 })
 };
 
 /**
@@ -570,13 +573,22 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
     deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id) })
   };
 }
+/** Tells someone they were tagged. `pass`: someone in a call. */
+export function useMention(workspaceId: string, pass?: string | undefined) {
+  return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
+}
+/** You've heard about a tag. */
+export function useMentionSeen() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
-export function useDocumentShare(workspaceId: string, documentId: string) {
+export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {
   const qc = useQueryClient();
   const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
   const s = api.workspaces.share;
   return {
-    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role), onSuccess: reread }),
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role, pass ? { pass } : undefined), onSuccess: reread }),
     remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
     restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
   };

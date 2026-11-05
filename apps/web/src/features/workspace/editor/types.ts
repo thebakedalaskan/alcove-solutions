@@ -58,7 +58,7 @@ export interface CommentDraft {
   block: string;
   rect: Rect;
   /** Marks the words and starts the thread with its first message. Returns the thread's ID. */
-  send: (message: { by: string; name: string; text: string }) => string;
+  send: (message: { by: string; name: string; text: string; tags?: { id: string; name: string }[] | undefined }) => string;
   cancel: () => void;
 }
 
@@ -186,6 +186,8 @@ export interface EditorProps {
 export interface EditorHandle {
   /** Puts the caret in the title, or at the start or end of the blocks. */
   focus: (where?: 'title' | 'start' | 'end') => void;
+  /** Gives the keyboard back to the text, with the caret at the end of whatever was selected. */
+  resume: () => void;
   focusBlock: (id: string, at?: 'start' | 'end') => void;
   /** Brings a block into view, 110 px from the top. `flash` makes it glow for 1.6 s, `smooth` takes 420 ms. */
   scrollToBlock: (id: string, options?: { smooth?: boolean | undefined; flash?: boolean | undefined }) => void;
@@ -206,6 +208,8 @@ export interface EditorHandle {
   /** Opens `/` or `@` at the caret, for a phone's keyboard bar. */
   openSlash: () => void;
   openMention: () => void;
+  /** Tag someone in this document: their name on the last line, or a new one, with the caret after it. */
+  tag: (person: Person) => void;
   /** Bold, italic and so on, for a phone's keyboard bar. */
   toggleMark: (mark: 'bold' | 'italic' | 'strike' | 'inlineCode' | 'highlight') => void;
   /** Turns the block the caret is in into another kind, for a phone's keyboard bar. */
