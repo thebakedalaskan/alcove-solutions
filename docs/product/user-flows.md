@@ -670,7 +670,8 @@ address goes to Home.
 - **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
   someone brings them forward on the line, past the 34 too, and opens their popover.
 - **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
-  or type anyone's whole address. **Invite** opens your own email with an invitation to them (a subject and the link to
+  or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
+  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and the link to
   sign in), and marks the people on your team invited. **Copy link** copies the address of the page to sign in. Alcove
   sends no email itself.
 - **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
@@ -690,10 +691,10 @@ address goes to Home.
   "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from the people who still
   have each note). Each opens its note. Five show before **Show all**.
 
-Every number here can be counted by hand. A call counts once it has notes, for the people who were on it: someone a
-note was shared with afterwards doesn't count, nor do notes shared with you. What's coming up is your Alcove calls and
-the coming week of your calendar, which is as far as Alcove reads it (unless **Show my other meetings on Home** is off),
-each once. A call with notes off leaves nothing to count.
+What the numbers count: a call counts once it has notes, for the people on it who still have them. Someone a note was
+shared with afterwards doesn't count, nor do notes shared with you. Someone who removes a note drops out of that call's
+count, and a call with notes off leaves nothing to count. What's coming up is your Alcove calls and the coming week of
+your calendar, which is as far as Alcove reads it (unless **Show my other meetings on Home** is off), each once.
 
 With nobody else at your company on Alcove yet, the page asks you to bring them: **Bring your team to Alcove**, with
 **Invite people** and **Copy invite link**, you beside empty arches for the four people you meet most, then those people,

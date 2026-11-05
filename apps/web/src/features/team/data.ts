@@ -1,8 +1,7 @@
 /*
- * What the Team page says about people, worked out from what the app already has. Every count can be checked by hand.
- * A call counts once it has notes, for the people who were on it, and not for anyone the notes reached afterwards. What's
- * coming up is your Alcove calls and the coming week of your calendar, which is all of it Alcove reads, so nothing here
- * claims to know a whole month.
+ * What the Team page says about people, worked out from what the app already has. A call counts once it has notes, for
+ * the people on it who still have them, and not for anyone the notes reached afterwards. What's coming up is your Alcove
+ * calls and the coming week of your calendar, which is all of it Alcove reads, so nothing here claims to know a whole month.
  */
 import type { CalendarEvent, Group, GroupShare, Meeting, NoteSummary, Person, Team } from '@alcove/api';
 import { aheadOf, isOffered, peopleOn, started } from '~/features/home/day';
@@ -17,7 +16,7 @@ const time = (iso: string) => new Date(iso).getTime();
 
 /** A call you were on: not a room recording, and not notes someone shared with you afterwards. */
 const yourCall = (n: NoteSummary) => n.kind === 'call' && n.received?.role !== 'shared';
-/** The addresses on a call: everyone with its notes, but for the people they were shared with afterwards. */
+/** The addresses on a call: everyone with its notes, but for the people they were shared with afterwards. Anyone who removed them isn't there to count. */
 function onCall(n: NoteSummary): Set<string> {
   const later = new Set(n.sharedWith.map(key));
   return new Set(n.people.map((p) => key(p.email)).filter((e) => !later.has(e)));

@@ -5,7 +5,7 @@
  * with), and notes shared with groups. Nobody else here yet, it asks you to bring them. Someone on their own has no team,
  * so no Team page: nothing links here, and its address goes Home.
  */
-import { GroupParamSchema, errorCode, errorMessage, type NoteSummary, type Team } from '@alcove/api';
+import { GroupParamSchema, NEW_GROUP, errorCode, errorMessage, type NoteSummary, type Team } from '@alcove/api';
 import { Button, Evening, Icon, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -97,8 +97,8 @@ function TeamPage() {
       : first ? (off.length ? inLine([], off.slice(0, FIRST_DAY), undefined) : blanks(2))
         : inLine(on, off, forward));
   const sun = sunOf(line);
-  /* One filled button: an open popover has its own, and so does a group ready to be made. */
-  const filled = open === undefined && !readyToMake(draft);
+  /* One filled button: an open popover has its own, and so does a group ready to be made, while its editor's open. */
+  const filled = open === undefined && !(group === NEW_GROUP && readyToMake(draft));
 
   const groups = <Groups open={group} onOpen={openGroup} notes={notes} person={person} shown={shown} draft={draft} onDraft={setDraft} />;
   const shared = <SharedWithGroups notes={notes} me={me} now={now} />;
@@ -108,10 +108,10 @@ function TeamPage() {
       style={{ '--tp-sum': line.width.toFixed(3), '--tp-sun-x': sun.x.toFixed(3), '--tp-sun-r': sun.r.toFixed(3) }}>
       <div className="tp-sky" style={{ '--d': 0 }}>
         <section className="tp-hero" aria-labelledby="tp-h">
-          <h1 id="tp-h">{first ? 'Bring your team to Alcove' : here?.name ?? (trouble === 'offline' ? 'You’re offline' : trouble === 'failed' ? 'Your team didn’t load' : 'Your team')}</h1>
+          <h1 id="tp-h" className="ac-clamp-2">{first ? 'Bring your team to Alcove' : here?.name ?? (trouble === 'offline' ? 'You’re offline' : trouble === 'failed' ? 'Your team didn’t load' : 'Your team')}</h1>
           {trouble && <p className="tp-why"><Icon name={trouble === 'offline' ? 'wifiOff' : 'alert'} size={18} />{trouble === 'offline' ? 'Your team shows here when you’re back.' : errorMessage(team.error)}</p>}
           <div className="tp-acts">
-            {here && <InvitePeople team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
+            {here && <InvitePeople me={me} team={here} meets={meets} now={now} anchor={<Button variant={filled ? 'primary' : 'secondary'} size="lg" icon="addUser">Invite people</Button>} />}
             {first && <Button size="lg" icon="link" onClick={() => void copy()}>Copy invite link</Button>}
             {here && line.recedes && (
               <AllPeople me={me} team={here} onFind={(email) => { setForward(email); setOpen(() => personPop(email)); }}

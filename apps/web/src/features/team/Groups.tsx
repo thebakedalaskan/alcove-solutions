@@ -10,11 +10,11 @@ import { Avatar, Button, GhostArch, Icon, IconButton, Notice, Popover, useToast 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type Ref } from 'react';
 import { useCallFlow } from '~/features/shell/context';
-import { byEmail, callName, isEmail, listNames, sameEmail } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, listNames, sameEmail } from '~/lib/people';
 import { q, useGroups } from '~/lib/queries';
 import { groupCalls, groupLine, listed, type Shown } from './data';
 import { useOpen, usePop } from './open';
-import { PickList, type PickRow } from './PickList';
+import { PickList, typedIn, type PickRow } from './PickList';
 
 /** Groups listed before "Show all". */
 const SHOWN = 8;
@@ -150,7 +150,7 @@ function GroupTile({ group, calls, person, shown, take, onTaken, onOpen }: {
   return (
     <article className="tp-g">
       <button ref={open} type="button" className="tp-g-o" aria-expanded={false} aria-label={`Open ${group.name}`} onClick={onOpen} />
-      <div className="tp-g-t"><b className="ac-clamp-1">{group.name}</b><small>{groupLine(group, calls)}</small></div>
+      <div className="tp-g-t"><b className="ac-clamp-1">{group.name}</b><small className="ac-clamp-1">{groupLine(group, calls)}</small></div>
       <div className="tp-g-b">
         <div className="tp-g-f">
           {faces.map((p) => <span key={p.email} className="tp-mini"><Face person={p} shown={shown} size={34} /></span>)}
@@ -166,7 +166,7 @@ function NewTile({ ref, onOpen }: { ref: Ref<HTMLButtonElement>; onOpen: () => v
   return (
     <article className="tp-g is-new">
       <button ref={ref} type="button" className="tp-g-o" aria-label="New group" onClick={onOpen} />
-      <div className="tp-g-t"><b className="ac-clamp-1"><Icon name="plus" size={16} />New group</b></div>
+      <div className="tp-g-t"><b><Icon name="plus" size={16} />New group</b></div>
       <div className="tp-g-b"><div className="tp-g-f" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="tp-mini"><GhostArch size={34} /></span>)}</div></div>
     </article>
   );
@@ -374,30 +374,37 @@ const whereFrom = (s: PersonSuggestion, about: string | undefined) =>
 
 function AddList({ skip, shown, onDone }: { skip: string[]; shown: (p: Person) => Shown; onDone: (people: Person[]) => void }) {
   const [query, setQuery] = useState('');
-  const [picked, setPicked] = useState<Person[]>([]);
-  const found = useQuery(q.people(query.trim())).data ?? [];
-  const typed = query.trim().toLowerCase();
+  const [picked, setPicked] = useState<PersonSuggestion[]>([]);
+  const typed = typedIn(query);
+  const found = useQuery(q.people(typed)).data ?? [];
   const inAlready = (p: { email: string }) => skip.some((e) => sameEmail({ email: e }, p));
-  const has = (p: { email: string }) => picked.some((x) => sameEmail(x, p));
+  const has = (p: { email: string }) => picked.some((x) => sameEmail(x.person, p));
+  const matches = (p: Person) => !typed || fold(p.name).includes(fold(typed)) || p.email.toLowerCase().includes(typed);
   const row = (s: PersonSuggestion): PickRow => {
     const about = shown(s.person);
     return { key: s.person.email, name: s.source === 'new' ? s.person.email : listed(s.person), sub: whereFrom(s, about.about), person: s.person, ghost: about.ghost, on: has(s.person) };
   };
   const pool = found.filter((s) => !inAlready(s.person));
-  /* A whole address that isn't listed, ready to tick: finishing takes it too, so nobody has to press Enter first. */
-  const fresh = isEmail(typed) && !inAlready({ email: typed }) && !has({ email: typed }) && !pool.some((s) => s.person.email === typed) ? byEmail(typed) : undefined;
+  /* A whole address counts as it's typed, whoever it is: the search answers with it too, and finishing takes it, so nobody has to press Enter first. */
+  const whole = isEmail(typed);
+  const offered: PersonSuggestion | undefined = whole && !inAlready({ email: typed }) && !has({ email: typed })
+    ? pool.find((s) => sameEmail(s.person, { email: typed })) ?? { person: byEmail(typed), source: 'new', onAlcove: false } : undefined;
   const rows: PickRow[] = [
-    ...(fresh ? [{ ...row({ person: fresh, source: 'new', onAlcove: false }), on: true }] : []),
-    ...picked.filter((p) => !pool.some((s) => sameEmail(s.person, p))).map((p) => row({ person: p, source: 'met', onAlcove: false })),
-    ...pool.map(row)
+    ...(offered ? [{ ...row(offered), on: true, typed: true }] : []),
+    ...picked.filter((s) => matches(s.person) && !pool.some((x) => sameEmail(x.person, s.person))).map(row),
+    ...pool.filter((s) => s !== offered).map(row)
   ];
-  const going = fresh ? [...picked, fresh] : picked;
+  const going = (offered ? [...picked, offered] : picked).map((s) => s.person);
   const done = () => { if (going.length) onDone(going); };
+  const toggle = (r: PickRow) => setPicked((now) => {
+    if (now.some((x) => sameEmail(x.person, r.person))) return now.filter((x) => !sameEmail(x.person, r.person));
+    const s = offered && sameEmail(offered.person, r.person) ? offered : pool.find((x) => sameEmail(x.person, r.person));
+    return s ? [...now, s] : now;
+  });
   return (
     <PickList label="Name or email" query={query} onQuery={setQuery} rows={rows} ticks
-      none={typed ? 'Type their full email address.' : 'Nobody else to add.'}
-      onPress={(r) => { setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person])); if (r.person === fresh) setQuery(''); }}
-      onFinish={done}
+      none={whole && inAlready({ email: typed }) ? 'They’re in this group already.' : typed ? 'Type their full email address.' : 'Nobody else to add.'}
+      onPress={toggle} onFinish={done}
       foot={<>
         <span className="tp-priv"><Icon name="lock" size={14} />Only you see your groups</span>
         <Button variant={going.length ? 'primary' : 'secondary'} size="sm" disabled={!going.length} onClick={done}>{going.length ? `Add ${going.length}` : 'Add'}</Button>

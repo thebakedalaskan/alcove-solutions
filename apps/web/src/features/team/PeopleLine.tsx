@@ -127,7 +127,8 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
   }
 
   const about = a.me ? person.email : a.member?.title ?? (addressOnly(person) ? undefined : person.email);
-  const invited = a.member?.invited === true;
+  /* Anyone who took the invitation up is on Alcove now, whatever you once marked. */
+  const invited = a.ghost && a.member?.invited === true;
   const when = a.me ? (inGroups ? `In ${plural(inGroups, 'group')}` : undefined) : invited ? 'Invited' : callLine(m, now);
   const lead = view === 'card';
   return (
@@ -142,7 +143,7 @@ function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person
           <>
             {a.ghost
               ? <InviteLink people={[person]} remind={invited} variant="primary" size="md" icon>{invited ? 'Remind' : 'Invite'}</InviteLink>
-              : <Button variant="primary" icon="phoneCall" autoFocus={lead} onClick={(e) => ring(e.currentTarget, person.email)}>Ring</Button>}
+              : <Button variant="primary" icon="phoneCall" autoFocus={lead} onClick={(e) => { ring(e.currentTarget, person.email); onLeave(); }}>Ring</Button>}
             <Button icon="cal" aria-haspopup="dialog" onClick={() => { onLeave(); flow.start({ people: [person], later: true }); }}>Schedule</Button>
           </>
         )}

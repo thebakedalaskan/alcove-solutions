@@ -60,6 +60,9 @@
   --sun-soft: #FDEBDA;
   --sun-text: #A63D02;
   --sun-glow: #EB7C33;
+  /* The low sun and the haze along the horizon, for what stands in the scene. */
+  --dusk-sun: #FFDD97;
+  --dusk-haze: #FBCFD5;
   /* Information and focus */
   --horizon: #215DB3;
   --horizon-soft: #DBE9FC;
@@ -158,6 +161,8 @@
   --sun-soft: #483124;
   --sun-text: #FAAD77;
   --sun-glow: #FFAE5D;
+  --dusk-sun: #F3C992;
+  --dusk-haze: #844161;
   --horizon: #8EBCEC;
   --horizon-soft: #1F3856;
   --rose: #ECA1BE;

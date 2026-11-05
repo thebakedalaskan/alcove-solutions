@@ -6,11 +6,11 @@ import { errorMessage, type Person, type Team } from '@alcove/api';
 import { Button, GhostArch, Icon, Popover, buttonClass, cn, useToast, type ButtonVariant } from '@alcove/ui';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { log } from '~/lib/log';
-import { byEmail, fold, isEmail, sameEmail, someNames } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, sameEmail, someNames } from '~/lib/people';
 import { useInviteTeam } from '~/lib/queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { useOpen, usePop } from './open';
-import { PickList, type PickRow } from './PickList';
+import { PickList, typedIn, type PickRow } from './PickList';
 
 const tlog = log.child({ component: 'team' });
 
@@ -77,36 +77,41 @@ export function InviteLink({ people, remind = false, variant = 'secondary', size
 }
 
 /** Invite people: tick colleagues who aren't on Alcove yet, or type anyone's address, and your email opens with an invitation to them. Or copy the link to sign in. */
-export function InvitePeople({ team, meets, now, anchor }: { team: Team; meets: (email: string) => Meets; now: Date; anchor: ReactNode }) {
+export function InvitePeople({ me, team, meets, now, anchor }: { me: Person; team: Team; meets: (email: string) => Meets; now: Date; anchor: ReactNode }) {
   const pop = usePop('invite');
   return (
     <Popover {...pop} anchor={anchor} align="center" caret label="Invite people" className="tp-pop is-list">
-      <InviteList team={team} meets={meets} now={now} onClose={() => pop.onOpenChange(false)} />
+      <InviteList me={me} team={team} meets={meets} now={now} onClose={() => pop.onOpenChange(false)} />
     </Popover>
   );
 }
 
-function InviteList({ team, meets, now, onClose }: { team: Team; meets: (email: string) => Meets; now: Date; onClose: () => void }) {
+function InviteList({ me, team, meets, now, onClose }: { me: Person; team: Team; meets: (email: string) => Meets; now: Date; onClose: () => void }) {
   const { setPicked: showPicked } = useOpen();
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Person[]>([]);
   const mark = useMarkInvited();
   const copy = useCopyInvite();
-  const typed = query.trim().toLowerCase();
+  const typed = typedIn(query);
+  const whole = isEmail(typed);
   const asked = [...team.members.filter((m) => !m.onAlcove && !m.invited)].sort(byMeetings(meets));
-  const known = (email: string) => team.members.some((m) => sameEmail(m.person, { email }));
-  const has = (p: Person) => picked.some((x) => sameEmail(x, p));
+  const member = (email: string) => team.members.find((m) => sameEmail(m.person, { email }));
+  const known = (email: string) => member(email) !== undefined;
+  const yours = whole && sameEmail(me, { email: typed });
+  const has = (p: { email: string }) => picked.some((x) => sameEmail(x, p));
   const row = (p: Person, sub: string | undefined): PickRow => ({ key: p.email, name: listed(p), sub, person: p, ghost: true, on: has(p) });
   const matches = (p: Person) => !typed || fold(p.name).includes(fold(typed)) || p.email.toLowerCase().includes(typed);
 
+  /* A whole address counts as it's typed, a colleague's or anyone else's: finishing takes it too, so nobody has to press Enter first. */
+  const offered = whole && !yours && !has({ email: typed }) ? asked.find((m) => sameEmail(m.person, { email: typed }))?.person ?? (known(typed) ? undefined : byEmail(typed)) : undefined;
   const rows = [
-    ...picked.filter((p) => !known(p.email)).map((p) => row(p, 'New to you')),
+    ...picked.filter((p) => !known(p.email) && matches(p)).map((p) => row(p, 'New to you')),
     ...asked.filter((m) => matches(m.person)).map((m) => row(m.person, [m.title, callLine(meets(m.person.email), now)].filter(Boolean).join(' · ') || undefined))
   ];
-  /* A whole address nobody here has, ready to tick: finishing takes it too, so nobody has to press Enter first. */
-  const fresh = isEmail(typed) && !known(typed) && !picked.some((p) => sameEmail(p, { email: typed })) ? byEmail(typed) : undefined;
-  if (fresh) rows.unshift({ ...row(fresh, 'New to you'), on: true });
-  const going = fresh ? [...picked, fresh] : picked;
+  if (offered && !known(offered.email)) rows.unshift(row(offered, 'New to you'));
+  const shown = rows.map((r) => (offered && sameEmail(r.person, offered) ? { ...r, on: true, typed: true } : r));
+  const going = offered ? [...picked, offered] : picked;
+  const someone = whole ? member(typed) : undefined;
 
   useEffect(() => {
     showPicked(picked.map((p) => p.email));
@@ -120,9 +125,10 @@ function InviteList({ team, meets, now, onClose }: { team: Team; meets: (email: 
     onClose();
   };
   return (
-    <PickList label="Name or email" query={query} onQuery={setQuery} rows={rows} ticks
-      none={typed ? 'Nobody here by that name. Type their address.' : !team.members.length ? 'Type their address.' : team.members.every((m) => m.onAlcove) ? 'Everyone here is on Alcove.' : 'Everyone here has been asked.'}
-      onPress={(r) => { setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person])); if (r.person === fresh) setQuery(''); }}
+    <PickList label="Name or email" query={query} onQuery={setQuery} rows={shown} ticks
+      none={yours ? 'That’s you.' : someone ? `${callName(someone.person)} ${someone.onAlcove ? 'is on Alcove' : 'has been asked'}.`
+        : typed ? 'Nobody here by that name. Type their address.' : !team.members.length ? 'Type their address.' : team.members.every((m) => m.onAlcove) ? 'Everyone here is on Alcove.' : 'Everyone here has been asked.'}
+      onPress={(r) => setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person]))}
       onFinish={send}
       foot={<>
         <Button variant="quiet" size="sm" icon="link" onClick={() => { onClose(); void copy(); }}>Copy link</Button>
@@ -139,7 +145,7 @@ function Row({ member: m, line }: { member: Member; line: string | undefined }) 
       <GhostArch size={32} initial={listed(p)} />
       <b className="ac-clamp-1">{listed(p)}</b>
       <span className="tp-r-s ac-clamp-1">{m.title ?? (addressOnly(p) ? undefined : p.email)}</span>
-      <span className="tp-r-m ac-clamp-1">{m.invited ? <><Icon name="check" size={14} />Invited</> : line}</span>
+      <span className="tp-r-m">{m.invited ? <><Icon name="check" size={14} />Invited</> : line}</span>
       <InviteLink people={[p]} remind={m.invited} variant={m.invited ? 'quiet' : 'secondary'}>{m.invited ? 'Remind' : 'Invite'}</InviteLink>
     </li>
   );
