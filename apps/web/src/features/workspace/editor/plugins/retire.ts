@@ -227,6 +227,9 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       }
     },
 
+    /* The last word on who writes: whatever a key or a menu does, someone who can only read changes nothing. */
+    filterTransaction: (tr) => !tr.docChanged || fromSync(tr) || !(rt.readOnly || rt.halted),
+
     appendTransaction(transactions, before, after) {
       const sync = syncOf(after);
       if (!sync) return null;

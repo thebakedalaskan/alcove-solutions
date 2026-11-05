@@ -106,6 +106,8 @@ export class EditorRuntime {
   dismissed: number | null = null;
   /** The page couldn't be drawn from its document: nothing is typed or written until it can. */
   halted = false;
+  /** Stops the drag under way, if there is one, for when the page goes away under it. */
+  endDrag: (() => void) | null = null;
   private refreshing = false;
 
   constructor(props: EditorProps) {

@@ -7,7 +7,7 @@
 import { Avatar, Icon, cn } from '@alcove/ui';
 import type { EditorView } from 'prosemirror-view';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { addBelow, movingBlock, removeBlock } from '../actions';
+import { addBelow, departure, movingBlock } from '../actions';
 import { allBlocks, findBlock, scrollerOf } from '../commands';
 import { useStore } from '../menus/Menus';
 import { decorChange } from '../plugins/decor';
@@ -67,6 +67,8 @@ function useDrag(rt: EditorRuntime) {
 
     /* A long document scrolls under the block while the pointer waits at its edge. */
     const creep = () => {
+      /* Someone else deleted it: there's nothing left to drag. */
+      if (view.isDestroyed || !findBlock(view.state.doc, id)) { finish(false); return; }
       frame = requestAnimationFrame(creep);
       if (!scroller) return;
       const box = scroller.getBoundingClientRect();
@@ -88,6 +90,7 @@ function useDrag(rt: EditorRuntime) {
     };
 
     const finish = (commit: boolean) => {
+      rt.endDrag = null;
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
       handle.removeEventListener('pointercancel', onCancel);
@@ -102,7 +105,9 @@ function useDrag(rt: EditorRuntime) {
       if (!view.isDestroyed) view.dispatch(decorChange(view.state.tr, { ghost: null }));
       if (drag.outside) {
         const drop = rt.props.blockDrop;
-        if (commit && drop) void Promise.resolve(drop.drop(drag.at, moving)).then((gone) => { if (gone) removeBlock(rt, id); });
+        /* What lands is what's there now: someone may have been typing in it all this time. */
+        const leaving = commit ? departure(rt, id) : null;
+        if (drop && leaving) void Promise.resolve(drop.drop(drag.at, leaving.moving)).then((gone) => { if (gone) leaving.arrived(); });
         drop?.leave();
       } else if (commit && drag.target) moveBlock(rt, id, drag.target.id, drag.target.side);
     };
@@ -118,6 +123,7 @@ function useDrag(rt: EditorRuntime) {
     handle.addEventListener('pointerup', onUp);
     handle.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey, true);
+    rt.endDrag = () => finish(false);
   };
 }
 

@@ -8,11 +8,12 @@ import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { inputRules } from 'prosemirror-inputrules';
 import { keymap } from 'prosemirror-keymap';
-import { EditorState, Selection, TextSelection, type Plugin } from 'prosemirror-state';
+import { EditorState, Plugin, Selection, TextSelection } from 'prosemirror-state';
 import { tableEditing } from 'prosemirror-tables';
 import { EditorView } from 'prosemirror-view';
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { log } from '~/lib/log';
 import { defaultDeleteFilter, initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
@@ -24,7 +25,7 @@ import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } f
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
-import { blockIds } from './plugins/blockIds';
+import { blockIds, fromSync } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
@@ -34,7 +35,9 @@ import { EditorRuntime, type ThreadView } from './runtime';
 import { newBlockId } from './names';
 import { safeHref, schema, TEXT_NODES, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
-import { contentOf, seedDocument } from './ydoc';
+import { contentOf } from './ydoc';
+
+const elog = log.child({ component: 'editor' });
 
 const SCROLL_MARGIN = 110;
 const SCROLL_TIME = 420;
@@ -53,21 +56,42 @@ function undoManagerFor(fragment: Y.XmlFragment): Y.UndoManager {
   });
 }
 
+/**
+ * Tables, kept even as they're edited. Only for what's done here: a browser that also corrected what arrived from elsewhere
+ * would write its own padding, and two of them would answer each other for ever. A table left uneven by two people's
+ * changes is drawn as it is, and evened out by whoever next edits it.
+ */
+function tables(rt: EditorRuntime): Plugin {
+  const editing = tableEditing();
+  const { appendTransaction } = editing.spec;
+  return new Plugin({
+    ...editing.spec,
+    appendTransaction: (transactions, before, after) => (rt.readOnly || transactions.some(fromSync) ? null : appendTransaction?.call(editing, transactions, before, after))
+  });
+}
+
 function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
   const { doc, awareness } = rt.props;
-  seedDocument(doc);
   const fragment = contentOf(doc);
+  /* Every document is made with its title and first line, so nothing was synced here. Writing now would make a second title. */
+  if (fragment.length === 0) {
+    elog.error('the editor opened on a document with nothing in it, so it won’t write until something arrives');
+    rt.halted = true;
+  }
   const start = initProseMirrorDoc(fragment, schema);
   /* A document that doesn't fit the schema goes through y-prosemirror's own render, which repairs what it can. */
   let fits = true;
-  try { start.doc.check(); } catch { fits = false; }
+  try { start.doc.check(); } catch (err) {
+    elog.warn('a document doesn’t fit the schema, so it’s drawn from what fits', { err, blocks: fragment.length });
+    fits = false;
+  }
   const plugins: Plugin[] = [
     /* Before ySyncPlugin: a block's element is retired just before y-prosemirror writes the rest of the change. */
     retirePlugin(rt),
     ySyncPlugin(fragment, fits ? { mapping: start.mapping } : {}),
     yUndoPlugin({ undoManager: undoManagerFor(fragment) }),
     caretsPlugin(rt, awareness),
-    tableEditing(),
+    tables(rt),
     inputRules({ rules: typedShortcuts }),
     keymap(editorKeys(rt)),
     keymap(baseKeymap),
@@ -135,6 +159,7 @@ function scrollTo(scroller: HTMLElement, top: number, smooth: boolean): void {
 
 function makeHandle(rt: EditorRuntime): EditorHandle {
   const put = (run: (view: EditorView) => void) => { const v = rt.view; if (v) run(v); };
+  const write = (run: (view: EditorView) => void) => { if (!rt.readOnly) put(run); };
   const focusAt = (view: EditorView, selection: Selection) => {
     view.focus();
     view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
@@ -173,16 +198,16 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
     selectionBlock: () => (rt.view ? selectedBlock(rt.view.state)?.id ?? null : null),
     blockJSON: (id) => (rt.view ? movingBlock(rt.view.state, id)?.block ?? null : null),
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
-    openSlash: () => put((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
-    openMention: () => put((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
-    toggleMark: (mark) => put((view) => {
+    openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
+    openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
+    toggleMark: (mark) => write((view) => {
       const { from, to, empty } = view.state.selection;
       const type = schema.marks[mark];
       if (empty) return;
       const tr = view.state.doc.rangeHasMark(from, to, type) ? view.state.tr.removeMark(from, to, type) : view.state.tr.addMark(from, to, type.create());
       view.dispatch(tr);
     }),
-    turnInto: (kind) => put((view) => {
+    turnInto: (kind) => write((view) => {
       const id = selectedBlock(view.state)?.id;
       if (id) turnInto(rt, id, kind);
     })
@@ -230,6 +255,7 @@ export default function Editor(props: EditorProps) {
     rt.layout.set(rt.layout.get() + 1);
     if (autoFocus) handle.focus(autoFocus);
     return () => {
+      rt.endDrag?.();
       rt.view = null;
       rt.settled = false;
       rt.menu.set(null);

@@ -5,7 +5,7 @@
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import { absolutePositionToRelativePosition, yUndoPluginKey } from 'y-prosemirror';
+import { absolutePositionToRelativePosition, ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
 import { galleryItems } from './blocks/attrs';
@@ -14,9 +14,10 @@ import { appear, decorChange, flash, heldRange, type HeldRange } from './plugins
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, OpenMenu } from './runtime';
 import { newBlockId } from './names';
+import { retire, seenIn } from './retire';
 import { hasBlockId, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
-import { syncOf } from './ydoc';
+import { elementOf, syncOf } from './ydoc';
 
 const n = schema.nodes;
 const m = schema.marks;
@@ -230,13 +231,31 @@ export function movingBlock(state: EditorState, id: string): MovingBlock | null 
   return { id, block, label: blockLabel(ref.node) };
 }
 
+/**
+ * A block on its way to another document, as it is now, and what to call once it's safely there. Only what went with it
+ * leaves: whatever is typed in it while it's on its way stays here, on the page.
+ */
+export function departure(rt: EditorRuntime, id: string): { moving: MovingBlock; arrived: () => void } | null {
+  const view = editing(rt);
+  const sync = view ? syncOf(view.state) : null;
+  const moving = view ? movingBlock(view.state, id) : null;
+  if (!sync || !moving) return null;
+  const seen = seenIn(sync.doc);
+  return {
+    moving,
+    arrived: () => {
+      const found = rt.readOnly ? null : elementOf(sync.type, id);
+      if (found) sync.doc.transact(() => { retire(found.element, newBlockId(), '', seen); }, ySyncPluginKey);
+    }
+  };
+}
+
 /** A block leaves for another document: gone from here once it's safely there. */
 export async function sendBlock(rt: EditorRuntime, id: string, to: string): Promise<void> {
   rt.menu.set(null);
-  const view = editing(rt);
-  const moving = view ? movingBlock(view.state, id) : null;
-  if (!moving || !rt.props.onMoveBlock) return;
-  if (await rt.props.onMoveBlock(moving, to)) removeBlock(rt, id);
+  const leaving = departure(rt, id);
+  if (!leaving || !rt.props.onMoveBlock) return;
+  if (await rt.props.onMoveBlock(leaving.moving, to)) leaving.arrived();
 }
 
 /** Moves a block one place up or down, from the keyboard. */
@@ -332,7 +351,7 @@ const selectionRect = (view: EditorView): Rect => {
 
 /** Holds the selected words for a comment, then hands over a draft. ⌘⇧M and the bar's Comment both come here. */
 export function startComment(rt: EditorRuntime): boolean {
-  const view = rt.view;
+  const view = editing(rt);
   const onComment = rt.props.onComment;
   if (!view || !onComment) return false;
   const { state } = view;
@@ -365,7 +384,7 @@ export function startComment(rt: EditorRuntime): boolean {
 
 /** Comment, in a block's menu: on the block's first five words. */
 export function commentOnBlock(rt: EditorRuntime, id: string): void {
-  const view = rt.view;
+  const view = editing(rt);
   rt.menu.set(null);
   const ref = view ? findBlock(view.state.doc, id) : null;
   if (!view || !ref) return;

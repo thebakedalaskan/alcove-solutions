@@ -1,13 +1,15 @@
 /*
  * The Yjs side of a document. The blocks live in the root fragment `content`, comments in the root map `comments`.
  * Nothing here needs a view, so it works on a document that isn't open: dropping a block on another document in
- * the list writes straight to that document.
+ * the list writes straight to that document. A document's first title and line come from the server, which makes every
+ * document from the same fixed bytes (`DOC_SEED` in `@alcove/api`), so nothing here or in the editor ever makes them.
  */
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import { initProseMirrorDoc, updateYFragment, ySyncPluginKey, type absolutePositionToRelativePosition } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { FRAGMENT } from './names';
+import { FRAGMENT, newBlockId } from './names';
+import { retire } from './retire';
 import { schema } from './schema';
 import type { BlockJSON } from './types';
 
@@ -40,38 +42,23 @@ export interface SyncState {
 export const syncOf = (state: EditorState): SyncState | null => ySyncPluginKey.getState(state) ?? null;
 
 /**
- * The start of every document, the same bytes in every browser. A document's title is the first element of its
- * fragment, so two browsers each making their own for a new document would merge into two titles. Writing the
- * same structs under one fixed client instead means they merge into one, whoever gets there first and however
- * often: a new document needs no one to create it. No real client gets this ID (they're random 32-bit numbers).
+ * Adds blocks to the end of a document, open or not, and returns their IDs. A block arriving here is a new block: every
+ * document starts with the same first line, so an ID brought from another document can already be taken in this one.
  */
-const SEED_CLIENT = 1;
-const SEED_BLOCK = 'first';
-let seedBytes: Uint8Array | null = null;
-function seedUpdate(): Uint8Array {
-  if (seedBytes) return seedBytes;
-  const doc = new Y.Doc();
-  doc.clientID = SEED_CLIENT;
-  const first = new Y.XmlElement('line');
-  first.setAttribute('id', SEED_BLOCK);
-  contentOf(doc).insert(0, [new Y.XmlElement('title'), first]);
-  seedBytes = Y.encodeStateAsUpdate(doc);
-  doc.destroy();
-  return seedBytes;
-}
-
-/** Gives a document with nothing in it its title and first line. */
-export function seedDocument(doc: Y.Doc): void {
-  if (contentOf(doc).length === 0) Y.applyUpdate(doc, seedUpdate());
-}
-
-/** Adds blocks to the end of a document, open or not. A block's stable ID goes with it, so it must not stay behind as well. */
-export function appendBlocks(doc: Y.Doc, blocks: readonly BlockJSON[]): void {
-  seedDocument(doc);
+export function appendBlocks(doc: Y.Doc, blocks: readonly BlockJSON[]): string[] {
   const fragment = contentOf(doc);
+  if (fragment.length === 0) throw new Error('A document holds its first line from the moment it’s made, so this one hasn’t synced yet.');
   const { doc: current, meta } = initProseMirrorDoc(fragment, schema);
-  const added = blocks.map((b) => schema.nodeFromJSON(b));
+  const ids = blocks.map(() => newBlockId());
+  const added = blocks.map((b, i) => { const node = schema.nodeFromJSON(b); return node.type.create({ ...node.attrs, id: ids[i] ?? null, gone: null }, node.content, node.marks); });
   updateYFragment(doc, fragment, current.copy(current.content.append(Fragment.fromArray(added))), meta);
+  return ids;
+}
+
+/** Takes a block off the page of a document, open or not, by its stable ID. */
+export function removeBlockFrom(doc: Y.Doc, id: string): void {
+  const found = elementOf(contentOf(doc), id);
+  if (found) doc.transact(() => { retire(found.element, newBlockId(), ''); });
 }
 
 /** The element a block is, by its stable ID. */
