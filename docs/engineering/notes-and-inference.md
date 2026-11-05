@@ -1060,6 +1060,28 @@ nothing, and one it already used stays with the first.
 A part of the notes that couldn't be written keeps its ticks waiting in `ticked`, and they're done when the organizer has
 them written after all. Writing the notes again keeps them done, as anything with a change is kept (`keepSettled`).
 
+### Follow-ups from documents
+
+A call's follow-ups are also the to-dos with a mention and a date in the documents worked on in it, for whoever can open
+each ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). They're the document's
+own: ticking one writes to the document, they aren't kept anywhere else, and they don't go into the note, whose
+follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them.
+
+## Asking about a selection
+
+The format bar's Make this shorter and Turn this into a checklist: `POST /v1/workspaces/:id/documents/:doc/ask` with what's
+selected in the body, at most 8,000 characters. It needs `edit`, so it's also for a guest who's been given that, and it's
+the only thing in a document that reaches a model. `drafting.editSelection` sends the selection and nothing else about
+the document, fenced so it's read as words to edit, to the notes model, checked and sealed like every request
+([Verified private inference](#verified-private-inference)). What comes back is for the person asking to put in the
+document: nothing is written to it from here, nothing is kept, and it has no receipt.
+
+It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
+`AsyncIterable`, as `notes.ask`); nobody's credits pay for it; and it has the same limit, 20 a minute per person. Asked from
+inside a call, it waits while notes, or the room someone's in, are paused, as everything that reaches the AI does: outside
+a call, nothing holds it. Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
+what came back. A reply that isn't the shape asked for is refused, and nothing is made of it.
+
 ## Captions in another language
 
 `POST /v1/live/calls/:id/translate` with `{language, lines}` (one of `en`, `es`, `fr`, `de`, `pt`, `it`, `ja`,
