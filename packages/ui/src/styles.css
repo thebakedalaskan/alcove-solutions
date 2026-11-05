@@ -12,7 +12,7 @@
  * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
- * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the other screens in styles/{app,call,welcome}.css.
+ * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the notes list in styles/notes.css (`nt-`); the other screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -24,6 +24,7 @@
 @import "./styles/team.css";
 @import "./styles/record.css";
 @import "./styles/call.css";
+@import "./styles/notes.css";
 @import "./styles/library.css";
 @import "./styles/capture.css";
 @import "./styles/ringing.css";

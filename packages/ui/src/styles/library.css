@@ -1,55 +1,7 @@
 /*
- * Notes: the list grouped by day with its search and filters, the picked note beside it (pv-), what the list says
- * when nothing is in it, and the page before the first notes (classes start with lib- and pv-; rows are lrow).
- * Then a note's own page, whose frame the series page shares.
+ * The picked note's old frame (pv-), then a note's own page, whose frame the series page shares. The notes list is in
+ * notes.css.
  */
-
-/* ------------------------------------------------------------ the list */
-.lib-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
-.lib-search { position: relative; flex: 1 1 300px; max-width: 480px; }
-.lib-search > .ac-i { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
-.lib-search .ac-input { padding-left: 44px; }
-.lib-with .ac-faces { margin-right: 2px; }
-.lib-with > .ac-i { color: var(--ink-3); }
-/* Someone picked: a chip that says who, to change, with an × that takes them off. */
-.lib-with-on { display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 100%; height: 36px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
-.lib-with-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; height: 28px; padding: 0 8px 0 4px; border-radius: 7px; font: 600 13px/1.3 var(--font-sans); color: var(--ink); transition: background-color var(--duration-1); }
-.lib-with-who:hover { background: var(--line); }
-.lib-with-x.ac-icon-btn { width: 28px; height: 28px; border-radius: 7px; color: var(--ink-3); }
-.lib-with-x.ac-icon-btn:hover { background: var(--line); color: var(--ink); }
-
-.ac-pop.with-pop { width: min(320px, calc(100vw - 24px)); padding: 8px; }
-.with-find { display: flex; align-items: center; gap: 8px; height: 40px; margin-bottom: 6px; padding: 0 12px; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink-3); transition: box-shadow var(--duration-1); }
-.with-find:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
-.with-find input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: 400 14px/1 var(--font-sans); }
-.with-find input::placeholder { color: var(--ink-3); }
-.with-list { display: grid; gap: 2px; max-height: min(360px, 50dvh); overflow-y: auto; overscroll-behavior: contain; }
-.with-row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; padding: 7px 10px; border-radius: 10px; text-align: left; transition: background-color var(--duration-1); }
-.with-row:hover, .with-row.sel { background: var(--sunk); }
-.with-row b { font: 600 14px/1.3 var(--font-sans); }
-.with-row small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
-.with-any { display: grid; place-items: center; width: 26px; height: 28px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); }
-.with-none { padding: 12px 10px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
-
-/* The list, and the picked note beside it while there's room. */
-.notes-split { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr); gap: 24px; align-items: start; }
-.lib { padding: 6px 12px 12px; }
-.lib .grp { margin: 0; padding: 16px 12px 6px; }
-.lrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px; border-radius: var(--radius-md); transition: background-color var(--duration-1); }
-.lrow:hover { background: var(--sunk); }
-.lrow.on { background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
-.lrow:focus-visible { outline-offset: 0; border-radius: var(--radius-md); }
-.lrow .ac-arch-thumb { --w: 34px; }
-.lrow .body { display: grid; min-width: 0; }
-.lrow b { font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
-.lrow .sum { margin-top: 3px; font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
-.lrow .by { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 7px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
-.lrow .by > .ac-i, .lrow .by > .ac-faces { flex: none; }
-.lrow .side { display: grid; justify-items: end; gap: 8px; }
-.lrow .dt { display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
-.lrow .dt .pin { color: var(--sun-text); }
-.lrow .side .ac-chip { height: 24px; font-size: 12px; }
-.lrow mark { padding: 0 2px; border-radius: 4px; background: var(--sun-soft); color: var(--sun-text); }
 
 /* ---------------------------------------------------- the picked note */
 .pv { position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 26px 28px 22px; }
@@ -83,30 +35,6 @@
 .pv-gone p { max-width: 34ch; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
 .pv-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 .pv-foot .have { font-size: 13px; color: var(--ink-3); }
-
-/* ---------------------------------------------- nothing in the list */
-.lib-none { padding: 26px 24px 30px; }
-.lib-tile { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 16px; background: var(--sunk); color: var(--ink-2); }
-.lib-ghosts { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 4px; }
-
-/* Before the first notes: how to get them beside what they'll look like, then three facts. */
-.lib-first { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 40px; align-items: center; padding: 40px 44px; }
-.lib-first .ac-empty { justify-items: start; gap: 12px; padding: 20px 8px; text-align: left; }
-.lib-first .ac-empty b { font: 450 30px/1.12 var(--font-display); letter-spacing: -0.02em; }
-.lib-first .ac-empty p { max-width: 30em; font-size: 15px; }
-.lib-first .ac-empty .ac-empty-act { justify-content: flex-start; }
-.lib-ex { display: grid; gap: 10px; min-width: 0; }
-.lib-ex-note { display: block; border-radius: var(--radius-lg); transition: transform var(--duration-2) var(--ease-out); }
-.lib-ex-note .ac-notes { transition: box-shadow var(--duration-2); }
-.lib-ex-note:hover { transform: translateY(-1px); }
-.lib-ex-note:hover .ac-notes { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
-.lib-ex-note:focus-visible { border-radius: var(--radius-lg); }
-.lib-ex .cap { display: flex; align-items: center; gap: 8px; padding: 0 6px; font-size: 13px; color: var(--ink-3); }
-.lib-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 20px 32px; margin-top: 32px; padding: 0 8px; }
-.lib-fact { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: start; }
-.lib-fact .lib-tile { width: 36px; height: 36px; border-radius: 11px; }
-.lib-fact b { display: block; font: 600 14.5px/1.3 var(--font-sans); }
-.lib-fact p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
 
 /* -------------------------------------------------------------- a note */
 /*
@@ -380,18 +308,12 @@
 
 /* ---------------------------------------------------------- narrower */
 @media (max-width: 1240px) {
-  .notes-split, .lib-first, .note { grid-template-columns: minmax(0, 1fr); }
+  .note { grid-template-columns: minmax(0, 1fr); }
   .note { gap: 32px; }
   .rail { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .rail .player { grid-column: 1 / -1; }
 }
 @media (max-width: 860px) {
-  .lib { padding: 4px 6px 8px; }
-  .lib .grp { padding: 14px 10px 4px; }
-  .lrow { gap: 12px; padding: 10px; }
-  .lib-first { gap: 28px; padding: 26px 22px; }
-  .lib-first .ac-empty { padding: 4px 0; }
-  .lib-first .ac-empty b { font-size: 26px; }
   .doc h1 { font-size: 36px; }
   .rail { grid-template-columns: minmax(0, 1fr); }
   .act { grid-template-columns: 20px minmax(0, 1fr) 36px; row-gap: 8px; }
@@ -405,16 +327,4 @@
   /* Above the tab bar there's no room for an ask bar that stays: it waits at the end of the note. */
   .ask { position: static; }
   .ask::before { display: none; }
-}
-/* On a phone the time goes beside the title, and the summary and who get the row's whole width. */
-@media (max-width: 560px) {
-  .lib-search { flex-basis: 100%; max-width: none; }
-  .lrow { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "thumb title dt" "thumb sum sum" "thumb by by" "thumb chip chip"; gap: 0 12px; align-items: start; }
-  .lrow .body, .lrow .side { display: contents; }
-  .lrow > .ac-arch-thumb { grid-area: thumb; align-self: center; }
-  .lrow b { grid-area: title; }
-  .lrow .sum { grid-area: sum; }
-  .lrow .by { grid-area: by; }
-  .lrow .dt { grid-area: dt; padding-top: 3px; }
-  .lrow .side .ac-chip { grid-area: chip; justify-self: start; margin-top: 8px; }
 }
