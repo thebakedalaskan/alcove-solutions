@@ -4,7 +4,7 @@
  * ever. Whole flows run here on a server with a single connection, where one such read can't get past itself, and the
  * real API over HTTP via @alcove/api-http does everything else as it always does.
  */
-import { DEFAULT_NOTES_CHOICES, type AudioPiece, type CallSession, type CallState, type MeetingInput, type NoteProgress, type TranscriptClip } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, errorCode, errorMessage, errorRequestId, type AudioPiece, type CallSession, type CallState, type MeetingInput, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -189,5 +189,49 @@ describe('every connection taken', () => {
       await server.close();
       await pool.end();
     }
+  });
+});
+
+describe('a connection lost in the middle of a request', () => {
+  const LogLine = z.object({ level: z.number(), msg: z.string(), requestId: z.string().optional() });
+  const logged = () => h.logs.flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+
+  it('fails only that request, plainly and where its ID finds it, and everything else carries on', async () => {
+    const onMain = () => h.baseUrl;
+    const ann = await account(unique('ann'), onMain);
+    const ben = await account(unique('ben'), onMain);
+    // A second connection holds Ann's row, so making a workspace waits for it inside its transaction.
+    const holder = new pg.Client({ connectionString: h.deps.cfg.DATABASE_URL });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      expect((await holder.query('SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [ann.session.ownerId])).rowCount).toBe(1);
+      const making = ann.api.workspaces.create('Launch').then(() => null, (e: unknown) => e);
+      // Read on its own each time: in the holder's transaction, what this view says is fixed at its first read.
+      const waiting = async () => z.array(z.object({ pid: z.number() })).parse((await h.deps.pool.query(
+        "SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%FROM owners%'")).rows);
+      await waitFor(async () => (await waiting()).length === 1, 'Ann’s request to wait for her row');
+      const [stuck] = await waiting();
+      if (!stuck) throw new Error('nothing is waiting for the row');
+      // Ben's request goes on beside it, on a connection of its own, as Ann's is cut off mid-transaction.
+      const bens = ben.api.workspaces.create('Elsewhere').then(({ id }) => ({ made: id }), (e: unknown) => ({ failed: errorCode(e) }));
+      await holder.query('SELECT pg_terminate_backend($1)', [stuck.pid]);
+      const failed = await making;
+      expect(errorCode(failed)).toBe('unavailable');
+      expect(errorMessage(failed)).toBe('Alcove lost its connection to the database. Try again.');
+      const requestId = errorRequestId(failed);
+      expect(requestId).toBeTruthy();
+      expect(logged().filter((l) => l.requestId === requestId && l.level === 40).map((l) => l.msg)).toContain('lost the connection to the database');
+      // Postgres rolled the transaction back with the connection: nothing tried to, and failed.
+      expect(logged().filter((l) => l.requestId === requestId).map((l) => l.msg)).not.toContain('rollback failed');
+      expect(await bens).toEqual({ made: expect.any(String) });
+    } finally {
+      await holder.query('ROLLBACK').catch(() => undefined);
+      await holder.end();
+    }
+    // Nothing of the request that was cut off was kept, and it goes through now.
+    expect((await ann.api.workspaces.list()).filter((w) => w.name === 'Launch')).toHaveLength(0);
+    await ann.api.workspaces.create('Launch');
+    expect((await ann.api.workspaces.list()).filter((w) => w.name === 'Launch')).toHaveLength(1);
   });
 });

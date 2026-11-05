@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { z } from 'zod';
-import { DatabaseError } from './errors';
+import { DatabaseError, LostConnectionError } from './errors';
 import { log } from './log';
 
 const dblog = log.child({ component: 'db' });
@@ -17,10 +17,24 @@ async function query(db: Db, sql: string, params: unknown[]) {
     else if (dblog.isDebug()) dblog.debug('query', { sql: label(sql), ms, rows: r.rowCount ?? 0 });
     return r;
   } catch (e) {
-    throw new DatabaseError(undefined, { cause: e, context: { sql: label(sql), pgCode: pgCode(e), ms: Math.round(performance.now() - t0) } });
+    const context = { sql: label(sql), pgCode: pgCode(e), ms: Math.round(performance.now() - t0) };
+    if (!gone(e)) throw new DatabaseError(undefined, { cause: e, context });
+    // Said here, where whatever was using the connection can be found: the request it fails, or the job.
+    dblog.warn('lost the connection to the database', context);
+    throw new LostConnectionError(undefined, { cause: e, context });
   }
 }
 const pgCode = (e: unknown) => (e instanceof Error && 'code' in e && typeof e.code === 'string' ? e.code : undefined);
+/** What pg says when a connection has gone, from Postgres's side or this one's: what was running on it won't finish. */
+const GONE_CODES = new Set(['57P01', '57P02', '57P03', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT']);
+const GONE_MESSAGES = new Set(['Connection terminated unexpectedly', 'Connection terminated', 'Client has encountered a connection error and is not queryable', 'Client was closed and is not queryable']);
+const gone = (e: unknown) => e instanceof Error && (GONE_MESSAGES.has(e.message) || GONE_CODES.has(pgCode(e) ?? '') || (pgCode(e) ?? '').startsWith('08'));
+/**
+ * A client that's lent out lost its connection. pg says so as an error event, and the pool only listens for those on the
+ * clients it's holding: one nobody listens for is an uncaught error, which stops the server. Whatever has the client hears
+ * from the query it was running, or its next one, and says so in its own request (`query`).
+ */
+const lent = (e: Error) => dblog.debug('a lent connection went', { err: e });
 
 export type Db = pg.Pool | pg.PoolClient;
 
@@ -33,6 +47,8 @@ const CONNECTION_WAIT_MS = 10_000;
 export function createPool(url: string): pg.Pool {
   const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: 15_000, connectionTimeoutMillis: CONNECTION_WAIT_MS });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
+  pool.on('acquire', (c) => { c.on('error', lent); });
+  pool.on('release', (_e, c) => { c.off('error', lent); });
   return pool;
 }
 
@@ -55,17 +71,20 @@ export async function exec(db: Db, sql: string, params: unknown[] = []): Promise
 /** One transaction; constraints declared DEFERRABLE are checked at commit. */
 export async function tx<T>(pool: pg.Pool, fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
   const c = await pool.connect();
+  /** The connection went, and the transaction with it: there's nothing to roll back, and it never goes back to the pool. */
+  let lost = false;
   try {
-    await c.query('BEGIN');
+    await exec(c, 'BEGIN');
     const out = await fn(c);
-    await c.query('COMMIT');
+    await exec(c, 'COMMIT');
     return out;
   } catch (e) {
-    await c.query('ROLLBACK').catch((r: unknown) => dblog.error('rollback failed', { err: r }));
+    lost = e instanceof LostConnectionError;
+    if (!lost) await exec(c, 'ROLLBACK').catch((r: unknown) => { lost = r instanceof LostConnectionError; if (!lost) dblog.error('rollback failed', { err: r }); });
     dblog.debug('transaction rolled back', { err: e });
     throw e;
   } finally {
-    c.release();
+    c.release(lost);
   }
 }
 
