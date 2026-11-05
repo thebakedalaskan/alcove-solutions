@@ -933,7 +933,7 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
 document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
-gone), the page offers what to do with them, only ever your own words that didn't save, never the rest of the document:
+gone), the page offers what to do with it, holding only your own words that didn't save, never the rest of the document:
 **Copy text**; **Save as new document**, for someone who can make one, which makes "Your words from" and the document's
 name beside it, says so with **Open**, and lets this one carry on from what Alcove has; and **Discard**, which asks once,
 with the keyboard on **Keep it**. On a document that's gone, only **Copy text** is offered until it's sure the document
