@@ -707,9 +707,9 @@ function linesOf(part: TranscriptLine[], ids: string[] | undefined, noteId: stri
 
 /**
  * Adds a decision the notes didn't hear, in the words of someone who has them, the call's or a breakout room's. It
- * starts proposed, with who proposed it as its first change, and takes someone else confirming it. Nothing else adds to
- * the shared notes: whatever someone keeps for themselves stays theirs unless they send it here. The same words again
- * add nothing, so a retry can't add it twice.
+ * starts proposed, with who proposed it as its first change, and takes someone else confirming it. This is someone
+ * saying the call decided something: what they add from their own notes is `additions.ts`, which says only who added it.
+ * The same words again add nothing, so a retry can't add it twice.
  */
 export async function proposeDecision(o: Owner, noteId: string, p: DecisionProposal): Promise<Note> {
   const { owner, by, at } = await writtenNote(o, noteId);

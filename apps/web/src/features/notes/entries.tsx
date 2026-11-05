@@ -71,7 +71,7 @@ export function History({ changes, me, what }: { changes: Change[]; me: string |
   const [open, setOpen] = useState(false);
   if (!changes.length) return null;
   return (
-    <Popover open={open} onOpenChange={setOpen} align="end" label={`History of this ${what}`} className="ent-pop"
+    <Popover open={open} onOpenChange={setOpen} align="start" label={`History of this ${what}`} className="ent-pop"
       anchor={<IconButton icon="history" label={`History of this ${what}`} size={15} className="ent-icon" />}>
       <div className="ac-pop-h">History</div>
       <ChangeList changes={changes} me={me} />

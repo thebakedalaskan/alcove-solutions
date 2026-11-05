@@ -652,9 +652,10 @@ manifest, the call's own lists and each breakout room's, so it has no table of i
 - **Adding to the notes.** `POST /v1/notes/:id/decisions` and `…/actions` with the exact words, optionally the `lines` it
   rests on (at most three, of that part of the note, or `400 invalid`) and a breakout room's section (`room`, or
   `404 not-found`). Nothing asks a model, and the same words again add nothing, so a retry is safe and no receipt is kept.
-  A part holds at most 60 of each (`409 conflict`). This is the only way anything reaches the shared notes besides the
-  notes model, so nothing someone keeps for themselves can get in without them sending it. A person's entry has `proposed`
-  as its first change, which is also what keeps it when the notes are written again.
+  A part holds at most 60 of each (`409 conflict`). Besides the notes model, this and **Added by people**
+  ([Adding to the shared notes](#adding-to-the-shared-notes)) are the only ways anything reaches the shared notes, and both
+  take someone sending exactly those words, so nothing someone keeps for themselves gets in by itself. A person's entry has
+  `proposed` as its first change, which is also what keeps it when the notes are written again.
 - **In the app.** The note says where each decision stands in words as well as colour, who said so, **What was said**
   (the lines and screens, each opening the moment), anything to be careful of, and a history that's reachable by keyboard
   and touch, with what the words were. Only what `grants.ts` allows is offered. A line of the transcript starts a
