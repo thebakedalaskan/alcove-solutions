@@ -398,6 +398,10 @@
 /* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
 .ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
 .ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
+/* A ring has to clear whoever's camera is on: it's drawn over the picture. */
+.ic-slot.is-arch > .ac-tile::after { border-radius: inherit; transition: box-shadow var(--duration-2) var(--ease-out); }
+.ic-slot.is-arch > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 2px var(--speak); }
+.ic-slot.is-arch > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 2px var(--gold); }
 .ic-slot.is-arch .ac-figure { height: 84%; }
 .ic-slot.is-arch, .ic-slot.is-horizon { cursor: pointer; }
 .ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate), .ic-slot.is-horizon :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
@@ -405,15 +409,20 @@
 .ic-slot.is-arch .ac-tile-face .ac-avatar { --size: 48px !important; }
 /* People on the horizon: small arches beside the dock. Whoever's talking, or has a hand up, rises. */
 .ic-slot.is-horizon { z-index: 3; }
-.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
-.ic-slot.is-horizon > .ac-tile::after { display: none; }
+.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: none; transition: transform var(--duration-2) var(--ease-out); }
+.ic-slot.is-horizon > .ac-tile::after { background: none; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: box-shadow var(--duration-2) var(--ease-out); }
 .ic-slot.is-horizon .ac-figure { height: 92%; filter: none; }
 .ic-slot.is-horizon .ac-tile-face .ac-avatar { --size: 24px !important; }
-.ic-slot.is-horizon > .ac-tile.is-speaking { box-shadow: inset 0 0 0 1.5px var(--speak); }
-.ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: inset 0 0 0 1.5px var(--gold); }
+.ic-slot.is-horizon > .ac-tile.is-speaking, .ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: none; }
+.ic-slot.is-horizon > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 1.5px var(--speak); }
+.ic-slot.is-horizon > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 1.5px var(--gold); }
 .ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
 /* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
-body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
+/* With people on the horizon, the left of the dock is theirs, and toasts take the right. Above the dock they'd sit on the list's foot. */
+@media (min-width: 1101px) {
+  body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
+  body:has(.ic-call.is-zen) .ac-toasts.on-stage { bottom: 6px; }
+}
 .ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; }
 /* A share waiting among arches or on the horizon, and whoever there's no room for. */
 .ic-scr.is-arch { border-radius: 14px; }
@@ -488,6 +497,9 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 /* All six tabs fit a side panel at the width it starts at. */
 .ic-side-head .ac-tabs { gap: 0; border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
+.ic-side-head .ac-tabs.more-before { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-after { -webkit-mask-image: linear-gradient(270deg, transparent, #000 24px); mask-image: linear-gradient(270deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-before.more-after { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
 .ic-side-head .ac-tab { height: 52px; padding: 0 5px; font-size: 13px; flex: none; touch-action: pan-x; }
 .ic-side-head .ac-tab[aria-selected="true"]::after { left: 4px; right: 4px; bottom: 0; }
 .ic-side-head .ttl { flex: 1; padding-left: 8px; font: 600 14.5px/1.2 var(--font-sans); }
@@ -833,7 +845,7 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 }
 @media (max-width: 560px) {
   .ic-call { padding: 0 8px; }
-  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
+  .ic-dockbar .d-rooms, .ic-dockbar .d-share, .ic-dockbar .ac-dock-sep:first-of-type { display: none; }
   .ic-menu .only-narrow { display: flex; }
   .ic-catch, .ic-reset { display: none; }
   .ic-dockbar .ac-dock-chev { display: none; }

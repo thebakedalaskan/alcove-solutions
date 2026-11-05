@@ -29,7 +29,7 @@ import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostCo
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
 import {
   PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView, zenRoom,
-  type Leaf, type PanelFacts, type PanelPreset
+  type Leaf, type PanelFacts, type PanelPreset, type ShareLeaf
 } from '~/features/call/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { useNotesAskedNotifications } from '~/features/shell/notify';
@@ -181,6 +181,8 @@ function InCall({ session }: { session: CallSession }) {
   const spaceKey = JSON.stringify(told.workspace);
   const space = useMemo(() => told.workspace, [spaceKey]);
   const work = useWorkspacePanel(session, space, layout);
+  // What's been brought to this call, as the list will show it.
+  const broughtHere = space.documents.filter((d) => space.id === null || d.workspaceId === space.id).length;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -713,13 +715,17 @@ function InCall({ session }: { session: CallSession }) {
    * watching that stops, too. Not while the room connects or reconnects, when shares come and go with the connection.
    */
   const settledAt = useRef<number | null>(null);
+  /* What a share's toast offers goes once it's been taken up some other way, or the share stops. */
+  const offers = useRef(new Map<string, () => void>());
   // Starts again whenever the connection or your part of the call changes: shares come and go with either. A call that
   // ends empties the call (its state, or the room's disconnect, whichever comes first) in the render that says so, as a
   // reconnect does: `live` and `connected` cover those.
   useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
   const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
-    if (!big && settled()) work.act.say(wsToast.sharing(s.presenter, callName(s.presenter), () => { work.act.setZen(false); show(); }));
+    if (big || !settled()) return;
+    offers.current.get(s.id)?.();
+    offers.current.set(s.id, work.act.announce(wsToast.sharing(s.presenter, callName(s.presenter), () => { work.act.setZen(false); show(); })));
   };
   const shareStopped = (s: StageShare, wasBig: boolean) => { if (wasBig && settled()) toast(`${callName(s.presenter)} stopped sharing`, { icon: 'stopShare' }); };
 
@@ -798,7 +804,8 @@ function InCall({ session }: { session: CallSession }) {
     if (roomsHold()) return;
     undoable(id === 'equal' ? 'Everyone the same size, you included' : 'Whoever presents is big, and you’re in a corner', id === 'equal' ? 'grid' : 'presenter', layout.preset(id));
   };
-  const custom = isCustom(layout.prefs, layout.layout) || isArranged(panels);
+  // A share brought in beside the workspace is what the workspace is for: that's not you arranging anything.
+  const custom = isCustom(layout.prefs, work.open ? { ...layout.layout, shares: [] } : layout.layout) || isArranged(panels);
   /** While rooms are open the organizer's stage shows every room; their own view comes back after. */
   const roomsHold = () => { if (open && organizer) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
   const resetView = () => { if (!roomsHold()) undoable('Your view is back to the call’s layout', 'reset', layout.reset()); };
@@ -882,8 +889,9 @@ function InCall({ session }: { session: CallSession }) {
   };
   useCaptureAlerts(state, controls);
   useNotesAskedNotifications(state);
-  const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
-  const flip = (v: PanelView) => layout.arrange((p) => toggleView(p, v, phone, crowded));
+  // Whatever brings a panel up gives everything back: nothing else has a place while it's just the document.
+  const openPanel = (v: PanelView) => { setPop(null); work.act.setZen(false); setPanel(v); };
+  const flip = (v: PanelView) => { work.act.setZen(false); layout.arrange((p) => toggleView(p, v, phone, crowded)); };
   /* Notes in the dock stands for what's written from the call: whichever panel shows any of it closes, or Notes opens. */
   const isNotes = (v: PanelView) => v === 'notes' || v === 'yours' || v === 'transcript' || v === 'ask';
   const notesShowing = showing.some(isNotes);
@@ -948,8 +956,9 @@ function InCall({ session }: { session: CallSession }) {
   /** Hides the people, or brings them back, as ⇧P and the People row do. It only ever changes your screen. */
   const setPeopleMode = (m: CallPeopleMode) => {
     if (roomsHold()) return;
+    work.act.setZen(false);
     layout.arrange((p) => setPeople(p, m));
-    if (m !== 'tiles' && !roomy) toast('People stay on the stage until something is shared', { icon: 'eye' });
+    if (m !== 'tiles' && !roomy) toast('People stay on the stage until the workspace is open or something is shared', { icon: 'eye' });
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
@@ -1259,6 +1268,16 @@ function InCall({ session }: { session: CallSession }) {
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
   const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
+  const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
+  const wasBig = useRef(new Set(seats.keys()));
+  useEffect(() => {
+    const here = new Set(shareKey ? shareKey.split(' ') : []);
+    const big = new Map(bigKey ? bigKey.split(' ').flatMap((kv): [string, ShareLeaf][] => { const [id, s] = kv.split('='); return id && (s === 'share:1' || s === 'share:2') ? [[id, s]] : []; }) : []);
+    for (const [id, close] of offers.current) if (big.has(id) || !here.has(id)) { close(); offers.current.delete(id); }
+    // With the workspace open a share goes big only because you brought it in: when things take turns, it's the one you asked to see.
+    if (surfaces.ws) for (const [id, seat] of big) if (!wasBig.current.has(id)) setFront(seat);
+    wasBig.current = new Set(big.keys());
+  }, [bigKey, shareKey, surfaces.ws]);
   const roomy = surfaces.ws || surfaces.board || seats.size > 0;
   const seatsKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const top = bar ? 46 : 0;
@@ -1412,7 +1431,7 @@ function InCall({ session }: { session: CallSession }) {
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
             <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
-              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={() => pickShare()} />
+              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} className="d-share" onClick={() => pickShare()} />
             <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
               on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
             <DockSplit>
@@ -1424,7 +1443,7 @@ function InCall({ session }: { session: CallSession }) {
             <DockSeparator />
             {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
             {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
-            <DockButton icon="folderOpen" label={!work.open && space.documents.length > 0 ? `Workspace, ${space.documents.length} in this call` : 'Workspace'} tip="Workspace · W" on={work.open} badge={work.open ? 0 : space.documents.length} onClick={work.act.toggle} />
+            <DockButton icon="folderOpen" label={!work.open && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} tip="Workspace · W" aria-keyshortcuts="W" on={work.open} badge={work.open ? 0 : broughtHere} onClick={work.act.toggle} />
             <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
             <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
             <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
@@ -1446,6 +1465,7 @@ function InCall({ session }: { session: CallSession }) {
                   <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   <button type="button" className="mi" onClick={() => { setPop(null); moving.show(); }}><Icon name="phone" size={17} /><span className="t">Move to another device</span></button>
                   {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
+                  <button type="button" className="mi only-narrow" onClick={() => { setPop(null); pickShare(); }}><Icon name="screen" size={17} /><span className="t">{m.screen ? 'Change what you share' : 'Share a tab, window or screen'}</span></button>
                 </>
               )}
             </Popover>
