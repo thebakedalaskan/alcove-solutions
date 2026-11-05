@@ -55,6 +55,8 @@ interface Root {
 interface Since {
   back: (part: unknown) => boolean;
   wrote: (line: unknown) => boolean;
+  /** The cells that can't be written to now, as their row or column has gone. */
+  away: ReadonlySet<string>;
 }
 
 /** What one change did to one id. Null means it didn't exist. Undoing goes from `after` to `before`. */
@@ -128,7 +130,7 @@ function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, 
   for (const key of new Set([...Object.keys(was), ...Object.keys(left)])) {
     const words = wordsOf(was[key]), mine = wordsOf(left[key]);
     const spent = !mine && (since.back(`${key}${words}`) || key.split(':').some((line) => !lines.has(line) && !here.has(line) && since.back(line)));
-    if (words === mine || wordsOf(held[key]) !== mine || spent) continue;
+    if (words === mine || since.away.has(key) || wordsOf(held[key]) !== mine || spent) continue;
     const cell = cells.get(key);
     if (cell instanceof Y.Text) rewrite(cell, words);
     else cells.set(key, new Y.Text(words));
@@ -160,6 +162,13 @@ function linesBack(lines: Y.Array<unknown>, before: readonly unknown[], after: r
       place += 1;
     }
   }
+}
+
+/** The cells this change wrote in, without taking their row or column itself, that have since lost one. They read as empty, but what's in them is in someone's undo, so they wait for it. */
+function cellsAway(before: Copy, after: Copy, now: Copy): Set<string> {
+  const left = new Set(partsOf(after)), here = new Set(partsOf(now)), was = recordOf(before['cells']), wrote = recordOf(after['cells']);
+  const changed = Object.keys({ ...was, ...wrote }).filter((key) => wordsOf(was[key]) !== wordsOf(wrote[key]));
+  return new Set(changed.filter((key) => key.split(':').every((line) => left.has(line)) && key.split(':').some((line) => !here.has(line))));
 }
 
 /**
@@ -204,10 +213,13 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     for (const listener of listeners) listener();
   };
 
-  /** One id changed. Within a step that's one entry per id, keeping the first `before`, until someone else writes to it. */
+  /**
+   * One id changed. Within a step that's one entry per id, keeping the first `before`, until someone else writes to it. A removal
+   * has an entry of its own, so what it took comes back with it, even if this browser made it in the same step.
+   */
   const record = (at: Root, id: string, before: Copy | null, after: Copy | null): void => {
     const others = at.others.get(id) ?? 0, key = `${at.name}:${id}`, entry = latest.get(key);
-    if (entry?.others === others) {
+    if (after && entry?.others === others) {
       entry.after = after;
       return;
     }
@@ -216,7 +228,7 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     latest.set(key, next);
   };
 
-  /** What's been recorded, leaving out whatever came to nothing, like a sticky added and taken away again. */
+  /** What's been recorded, leaving out whatever came to nothing, like a drag that ended where it began. */
   const take = (): Entry[] => {
     const step = pending.filter(({ before, after }) => !same(before, after));
     pending = [];
@@ -285,22 +297,32 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     for (const { root: at, id } of asLeft) if (going.has(id)) at.map.delete(id);
   };
 
-  /** Walks a step back, last to first. What was added waits for the end, when what it depends on has settled. */
-  const walk = (step: readonly Entry[]): void => {
+  /** Walks a step back, last to first. What was added waits for the end, when what it depends on has settled. Returns the changes to something that has gone, which can't apply until it's back. */
+  const walk = (step: readonly Entry[]): Entry[] => {
+    const waiting: Entry[] = [];
     doc.transact(() => {
       const added: Entry[] = [];
       for (const entry of [...step].reverse()) {
         const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyOf(m);
         const notes = (of: Map<string, number>) => (part: unknown): boolean => (of.get(`${id}/${String(part)}`) ?? 0) > entry.others;
         if (!before) added.push(entry);
-        else if (!after && !now && untouched(entry)) at.make(at.map, id, before);
-        else if (after && m && now) fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote) });
+        else if (!after) { if (!now && untouched(entry)) at.make(at.map, id, before); }
+        else if (m && now) {
+          const away = cellsAway(before, after, now);
+          const only = (copy: Copy): Copy => ({ ...after, cells: Object.fromEntries(Object.entries(recordOf(copy['cells'])).filter(([key]) => away.has(key))) });
+          fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote), away });
+          if (away.size) waiting.unshift({ ...entry, before: only(before), after: only(after) });
+        } else waiting.unshift(entry);
       }
       takeAway(added);
     }, applying);
+    return waiting;
   };
 
-  /** Walks back steps until one changes something. What that actually did goes on the other stack, and what it didn't do is forgotten. */
+  /**
+   * Walks back steps until one changes something. What that did goes on the other stack, and what it didn't do is forgotten,
+   * except a change to something that has gone: that stays where it is, and a press moves past it, as it can apply when it's back.
+   */
   const travel = (from: Entry[][], to: Entry[][]): StepResult => {
     if (open) return { ok: true, changed: false };
     const landed = (): boolean => {
@@ -309,8 +331,10 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
       return step.length > 0;
     };
     try {
-      for (let step = from.pop(); step; step = from.pop()) {
-        walk(step);
+      for (let at = from.length - 1; at >= 0; at -= 1) {
+        const [step] = from.splice(at, 1);
+        const waiting = step ? walk(step) : [];
+        if (waiting.length) from.splice(at, 0, waiting);
         if (landed()) return { ok: true, changed: true };
       }
       return { ok: true, changed: false };
