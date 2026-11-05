@@ -1236,7 +1236,7 @@ function InCall({ session }: { session: CallSession }) {
   const [front, setFront] = useState<Leaf | null>(null);
   const setApart = panels.apart || panels.people !== 'tiles';
   const surfaces = { ws: false, board: false };
-  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0 };
+  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
   // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
