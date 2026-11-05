@@ -48,16 +48,11 @@
 .carry .m { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
 .carry .m .ac-chip { height: 22px; padding: 0 8px; font-size: 12px; }
 .carry .m .lk { font-size: 12.5px; }
-/* Rarer changes wait under the pointer, or for focus; a touch screen shows them. */
-.carry .m .on-hover { opacity: 0; transition: opacity var(--duration-1); }
-.carry:hover .m .on-hover, .carry:focus-within .m .on-hover { opacity: 1; }
-@media (hover: none) { .carry .m .on-hover { opacity: 1; } }
 .carry-from { font-weight: 600; color: var(--ink-2); border-radius: 4px; transition: color var(--duration-1); }
 .carry-from:hover { color: var(--sun-text); text-decoration: underline; text-underline-offset: 3px; }
 .carry > .ac-time-chip { margin-top: 1px; }
 .carry.maybe .g .ac-avatar { opacity: 0.7; }
 .carry .g .ac-check { margin-top: 1px; }
-/* Where a later call came back to it: what the notes think happened, and what the reader can say about that. */
 /* What carries over, in groups, where a call and its pre-join show it. */
 .carry-groups { display: grid; gap: 18px; margin-top: 12px; }
 .carry-g > .ac-eyebrow { display: flex; align-items: center; gap: 8px; }
@@ -66,6 +61,7 @@
 .carry-more { display: flex; flex-wrap: wrap; gap: 2px 18px; margin-top: 8px; font: 600 13px/1.4 var(--font-sans); }
 .carry-more a { color: var(--ink-3); transition: color var(--duration-1); }
 .carry-more a:hover { color: var(--sun-text); }
+/* Where a later call came back to it: what the notes think happened, and what the reader can say about that. */
 .carry-later { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 2px 6px; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
 .carry-later > .ac-i { margin-top: 3px; color: var(--horizon); }
 .carry-later .acts { grid-column: 2; display: flex; flex-wrap: wrap; gap: 2px 12px; }
@@ -73,29 +69,6 @@
 .carry.answered .t { color: var(--ink-2); }
 /* Nobody has confirmed it, or nobody is on it: an open ring. */
 .pend { width: 12px; height: 12px; border-radius: 50%; border: 1.5px dashed var(--line-control); }
-.carry-list .carry { padding: 13px 0; }
-.carry-list .carry .t { font-size: 15.5px; }
-.carry-list .grp + .carry { border-top: 0; }
-.ser-p { margin-top: 2px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
-.ser-p + .ser-p { margin-top: 10px; }
-.ser-btn { margin-top: 14px; }
-.ser-next { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13.5px; color: var(--ink-2); }
-.ser-next > .ac-i { flex: none; color: var(--ink-3); }
-.ser-next b { margin-left: 4px; font-weight: 500; color: var(--ink); }
-.ser-when { display: grid; gap: 5px; margin-top: 6px; }
-.ser-when b { font-size: 15px; font-weight: 600; }
-.ser-when .ac-mono { font-size: 13px; color: var(--ink-3); }
-.ser-acts { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
-/* A call in the series' list: its arch, when, and a chevron that comes in on hover. */
-.nrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; margin: 0 -10px; padding: 10px; border-radius: var(--radius-md); transition: background-color var(--duration-1); text-align: left; }
-.nrow:hover { background: var(--sunk); }
-.nrow b { display: block; font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nrow small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.nrow .go { color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), transform var(--duration-1); }
-.nrow:hover .go { opacity: 1; transform: translateX(2px); }
-.ser-calls { margin-top: 6px; }
-.ser-calls .nrow b { font-size: 14px; }
-.ser-calls + .ser-older { margin-top: 10px; color: var(--ink-3); }
 .src-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 8px; background: var(--sunk); color: var(--ink-2); font: 500 12.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
 .src-chip .ac-mono { font-size: 11.5px; color: var(--ink-3); transition: color var(--duration-1); }
 .src-chip:hover, .src-chip:hover .ac-mono { background: var(--sun-soft); color: var(--sun-text); }

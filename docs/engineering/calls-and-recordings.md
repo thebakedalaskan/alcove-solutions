@@ -72,6 +72,22 @@ sequenceDiagram
   room's, for an earlier segment, or naming a speaker who isn't in the call. See [Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript).
 - **Leaving.** The browser stops the recorder, sends the last audio and speech, then calls `leave`. The
   server finishes the note in the same transaction that ends the call, then starts the notes worker.
+- **Playing it back.** `GET /v1/notes/:id/audio/:segment?pieces=N` decrypts the first `N` pieces of a segment for anyone
+  who has the note. That number makes it one file however much more is recorded: a browser holds a URL to the length it
+  first said, and reading further is a new URL, from the note's own count of pieces. A range is what the browser's audio
+  element asks for, so it starts at once and goes to any moment: 206 with the exact length, from what the pieces are
+  stored at (`recordPlainBytes`) with nothing read, and at most 24 MiB, because Cloud Run refuses a reply of a known
+  length over 32 MiB; the browser asks again for the rest. A recording has no cues, so going far ahead reads through
+  what's between, once. Firefox won't do that: for a recording with no cues it seeks only inside what it has read, says
+  that's the duration, and stops there. So the player compares where it's going with `seekable` and with where a seek
+  landed, and if the browser can't get there it fetches the segment whole and plays it from memory until someone leaves.
+  With no range the reply is that whole segment, chunked, with no length, so it has no size limit. Pieces are read eight
+  or 2 MiB ahead of the one being sent, whichever is less, in order, and only as fast as the listener takes them. The
+  first piece of a reply is read before anything is sent, so one that can't be read is an ordinary error; a failure after
+  that breaks the connection, so nothing takes a short file for a whole one. Someone leaving isn't a failure, and it stops
+  the reading and wipes the key, even before the reply began. HEAD says how long it is and reads nothing. While a call is
+  recording, the note doesn't update by itself, so the player reads it again when it reaches the end of what it had, and
+  plays on from there if there's more.
 ## Group calls
 
 Media goes through LiveKit (an SFU: a local server in Docker for development, LiveKit Cloud in
