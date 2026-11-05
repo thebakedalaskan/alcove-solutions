@@ -99,23 +99,23 @@ export function keptUpdates(owner: string, workspace: string, document: string):
       for (const row of rows) {
         const edit = KeptEditSchema.safeParse(row);
         if (!edit.success) { klog.error('a kept edit is damaged', { workspace, document, err: edit.error }); continue; }
-        const { sealed, key: at } = edit.data;
+        const { sealed, key: place, at } = edit.data;
         try {
-          const bytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.iv, additionalData: placeOf(owner, workspace, document, at) }, key, sealed.data);
-          out.push({ key: at, update: new Uint8Array(bytes) });
+          const bytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: sealed.iv, additionalData: placeOf(owner, workspace, document, place) }, key, sealed.data);
+          out.push({ key: place, update: new Uint8Array(bytes), at });
         } catch (e) {
           klog.error('a kept edit didn’t open', { workspace, document, err: e });
         }
       }
       return out;
     },
-    add: async (update) => {
-      const at = nextKey();
+    add: async (update, at) => {
+      const place = nextKey();
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: placeOf(owner, workspace, document, at) }, await deviceKey(), new Uint8Array(update));
-      const edit: KeptEdit = { owner, workspace, document, key: at, sealed: { iv: iv.buffer, data } };
+      const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: placeOf(owner, workspace, document, place) }, await deviceKey(), new Uint8Array(update));
+      const edit: KeptEdit = { owner, workspace, document, key: place, at, sealed: { iv: iv.buffer, data } };
       await change([EDITS], (tx) => { tx.objectStore(EDITS).put(edit); });
-      return at;
+      return place;
     },
     remove: async (keys) => {
       await change([EDITS], (tx) => { for (const k of keys) tx.objectStore(EDITS).delete([owner, workspace, document, k]); });
