@@ -24,7 +24,7 @@ import { isFollowUp, type Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
-import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Who, type Workspace } from './workspaceAccess';
+import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
 import { editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
 import { addBeside, createIn } from './workspaces';
 
@@ -120,9 +120,61 @@ export const withoutLost = (w: CallSpace, lost: Lost): CallSpace => ({
   ...w, present: w.present.filter((p) => !lost.present.some((x) => sameStart(x, p) && x.id === p.id)), play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId))
 });
 
+/* ---------- what calls read of a tree: once for each version, for everyone ---------- */
+
+/** What reading a call needs of one item in a tree: what it is, what it's called, and enough to say who can open it. */
+interface Facts { item: Pick<StoredItem, 'kind' | 'name' | 'by' | 'restricted' | 'restrictedBy'>; trashed: boolean }
+/** A tree as calls have read it at one version: its name, and each item they've asked after (null when it isn't there). */
+interface Seen { version: number; name: string; items: Map<string, Facts | null> }
+const MAX_SEEN = 1024;
+const seenByHub = new WeakMap<Hub, Map<string, Seen>>();
+const openingByHub = new WeakMap<Hub, Map<string, Promise<HeldWorkspace | undefined>>>();
+/**
+ * These items as a workspace's tree has them at `version`, for everyone reading a call that uses it. Opening a tree costs in
+ * proportion to its size, and everyone in a call reads it every few seconds while something shows, so, as for each update
+ * typed (`editableBy`), what's read holds for as long as the version does, and costs one small query; a tree is opened once
+ * for each version, however many ask at once. All that's kept between reads is what calls asked after, by ID: names and who
+ * can open them, never keys and never the tree. Whatever changes the tree moves its version on (`saveState`), and who holds
+ * what is read afresh every time, so nobody's told anything that no longer holds. Undefined once it's gone.
+ */
+async function seenAt(d: Deps, workspaceId: string, version: number, ids: string[]): Promise<Seen | undefined> {
+  const seen = seenByHub.get(d.hub) ?? new Map<string, Seen>();
+  seenByHub.set(d.hub, seen);
+  const known = seen.get(workspaceId);
+  if (known?.version === version && ids.every((id) => known.items.has(id))) return known;
+  const opening = openingByHub.get(d.hub) ?? new Map<string, Promise<HeldWorkspace | undefined>>();
+  openingByHub.set(d.hub, opening);
+  const key = `${workspaceId}:${version}`;
+  let read = opening.get(key);
+  if (!read) {
+    read = serverWorkspace(d, workspaceId).finally(() => opening.delete(key));
+    opening.set(key, read);
+  }
+  const w = await read;
+  if (!w) return undefined;
+  const was = seen.get(workspaceId);
+  const items = new Map(was?.version === w.version ? was.items : []);
+  for (const id of ids) {
+    const item = w.state.items[id];
+    items.set(id, item ? { item: { kind: item.kind, name: item.name, by: item.by, restricted: item.restricted, restrictedBy: item.restrictedBy }, trashed: trashOf(w.state, id) !== null } : null);
+  }
+  const now: Seen = { version: w.version, name: w.state.name, items };
+  seen.delete(workspaceId);
+  seen.set(workspaceId, now);
+  for (const oldest of seen.keys()) {
+    if (seen.size <= MAX_SEEN) break;
+    seen.delete(oldest);
+  }
+  return now;
+}
+
 /**
  * The call's workspace as this person may know it, and what's been lost. One that can't be read says it's private: a call
  * doesn't depend on what's in a workspace, so nothing here can stop anyone reading the call.
+ *
+ * Someone with nothing in a workspace has nothing of it read for them, whatever's going on there: they're told only that
+ * something's being presented, and by whom, so what they're told, and what a read costs them, is the same either way.
+ * Whether what's going on there still stands is found by whoever can open something in it, or started it.
  */
 export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: Lost }> {
   const { v, s, place, meeting } = x;
@@ -140,40 +192,49 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     const reader = await readerInCall(v);
     const out = { ...shut };
     const documents = new Map<string, CallBrought>();
+    const startedHere = (p: { by: Controller } | undefined) => p !== undefined && p.by.person === v.pass.person;
     for (const workspaceId of workspaces) {
-      const ownerId = await workspaceOwner(d.pool, workspaceId);
-      if (!ownerId) continue;
+      const at = await workspaceAt(d.pool, workspaceId);
+      if (!at) continue;
       const inCall = workspaceId === inUse;
       const present = inCall ? s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
       const play = inCall ? s.workspace.play.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
-      const others = [present, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
-      const holders = await holdersOf(d.pool, ownerId, [...reader.principals, ...others.flatMap((o) => o.principals)]);
-      const standing = standingIn(holders, reader);
-      // Its keys are opened only for someone with something in it, or to see whether what's going on there still stands.
-      if (!canOpen(standing) && !present && !play) continue;
-      const w = await serverWorkspace(d, workspaceId);
-      if (!w) continue;
-      for (const b of brought.filter((y) => y.workspaceId === workspaceId)) {
-        const item = w.state.items[b.documentId];
-        const role = item && !trashOf(w.state, b.documentId) ? roleOf(reader, standing, b.documentId, item) : undefined;
-        if (item && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: item.kind, name: item.name, role });
+      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+      const opensSomething = canOpen(standing);
+      if (!opensSomething && !startedHere(present) && !startedHere(play)) {
+        if (present) out.present = presentAs(v, present, '', false);
+        continue;
+      }
+      const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : [])];
+      const seen = await seenAt(d, workspaceId, at.version, ids);
+      if (!seen) continue;
+      /** What `who`, standing as they do, can do with something that's still in the tree. */
+      const roleIn = (who: Who, as: Standing, id: string) => { const f = seen.items.get(id); return f && !f.trashed ? roleOf(who, as, id, f.item) : undefined; };
+      if (opensSomething) {
+        for (const b of brought.filter((y) => y.workspaceId === workspaceId)) {
+          const f = seen.items.get(b.documentId);
+          const role = roleIn(reader, standing, b.documentId);
+          if (f && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: f.item.kind, name: f.item.name, role });
+        }
       }
       if (!inCall) continue;
-      if (canOpen(standing)) {
+      if (opensSomething) {
         out.id = workspaceId;
-        out.name = standing.role === null ? null : w.state.name;
+        out.name = standing.role === null ? null : seen.name;
         out.canOpen = true;
         out.role = standing.role;
       }
-      /** What `who` can do with something that's still in the tree. */
-      const roleIn = (who: Who, id: string) => { const item = w.state.items[id]; return item && !trashOf(w.state, id) ? roleOf(who, standingIn(holders, who), id, item) : undefined; };
+      // Whatever's going on there goes on while whoever started it can still open it.
+      const starters = [present, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
+      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : { members: [], shares: [] };
+      const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
       if (present) {
-        if (!roleIn(whoStarted(d, x.callId, present.by), present.id)) lost.present.push(present);
-        else out.present = presentAs(v, present, w.state.items[present.id]?.name ?? '', roleIn(reader, present.id) !== undefined);
+        if (!stands(present.by, present.id)) lost.present.push(present);
+        else out.present = presentAs(v, present, seen.items.get(present.id)?.item.name ?? '', roleIn(reader, standing, present.id) !== undefined);
       }
       if (play) {
-        if (!roleIn(whoStarted(d, x.callId, play.by), play.documentId)) lost.play.push(play);
-        else if (roleIn(reader, play.documentId)) out.play = playAs(v, play);
+        if (!stands(play.by, play.documentId)) lost.play.push(play);
+        else if (roleIn(reader, standing, play.documentId)) out.play = playAs(v, play);
       }
     }
     const inOrder = meeting.documents.flatMap((id) => documents.get(id) ?? []);
