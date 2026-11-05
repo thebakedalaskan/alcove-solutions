@@ -927,8 +927,9 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
   taking edits, and opens again by itself, a little later each time.
 - A document too big to save says so: delete something, or send a block to another document, and what's waiting saves.
   Anything Alcove can't take at all says so too, and so does losing the right to edit with something unsaved.
-- Your session ends by itself (it expired): a bar says your edits are safe in this browser, and save when you sign in
-  again. Signing out on purpose asks first (flow 11), and every other tab goes to the welcome page at once.
+- Your session ends by itself (it expired): the app goes to the welcome page to sign in again, saying your edits are safe
+  in this browser and save when you sign in again (a document that finds out first says so in its bar). Signing out on
+  purpose asks first (flow 11), and every other tab goes to the welcome page at once.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
 
 **Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
