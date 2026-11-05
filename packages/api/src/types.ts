@@ -50,6 +50,8 @@ export const SessionSchema = z.object({
   provider: SignInProviderSchema,
   /** A demo account, with a sample calendar and company directory instead of connected ones. */
   sample: z.boolean(),
+  /** The one demo account everyone who tries Alcove signs in to, which can't be deleted. */
+  sharedDemo: z.boolean(),
   createdAt: ISODateSchema,
   /** The session ends at this time at the latest. */
   expiresAt: ISODateSchema
@@ -658,6 +660,8 @@ export const NoteSummarySchema = z.object({
   id: IDSchema, kind: NoteKindSchema, status: NoteStatusSchema, title: z.string(), startedAt: ISODateSchema, duration: z.number(),
   /** Everyone who has the notes, organizer first. */
   people: z.array(PersonSchema),
+  /** Who in `people` got the notes afterwards, by address: they weren't on the call. */
+  sharedWith: z.array(z.string()),
   /** The start of the summary; empty until the notes are written. */
   excerpt: z.string(), openActions: z.number(), totalActions: z.number(), meetingId: IDSchema.optional(),
   /** How you got the note, when it's someone else's. Absent on your own. */

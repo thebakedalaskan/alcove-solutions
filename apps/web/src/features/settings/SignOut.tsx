@@ -1,8 +1,8 @@
 /*
- * Signing out, from Settings' head. It deletes what this device kept for the account, recordings that haven't uploaded
- * among them (features/record/offline.ts), so with any waiting it says so first, in one step in place under the button
- * (never a dialog): stay signed in, or sign out and delete them. Focus goes to staying signed in, the choice that loses
- * nothing; Escape closes the step and goes back to Sign out.
+ * Signing out, from the sky. It deletes what this device kept for the account, recordings that haven't uploaded among
+ * them (features/record/offline.ts), so with any waiting it says so first: the sky grows to hold one step, stay signed in
+ * or sign out and delete them, and for a moment the page is that one action. Focus goes to staying signed in, the choice
+ * that loses nothing; Escape closes the step and goes back to Sign out.
  */
 import { errorMessage } from '@alcove/api';
 import { Button, Spinner, useToast } from '@alcove/ui';
@@ -13,14 +13,15 @@ import { useLive } from '~/lib/live';
 import { useSignOut } from '~/lib/queries';
 import { plural } from '~/lib/words';
 
-/** The Sign out button for the head's actions, and the step it opens when recordings here haven't uploaded yet. */
-export function useSignOutStep(): { button: ReactNode; step: ReactNode } {
+/** The Sign out button, the step it opens when recordings here haven't uploaded yet, and how tall that step is for the sky to hold it. */
+export function useSignOutStep(): { button: ReactNode; step: ReactNode; asking: boolean; height: number } {
   const signOut = useSignOut();
   const navigate = useNavigate();
   const toast = useToast();
   const { list } = useLive(uploads);
   const waiting = list.length;
   const [asking, setAsking] = useState(false);
+  const [height, setHeight] = useState(0);
   const opener = useRef<HTMLButtonElement>(null);
   const id = useId();
   const go = () => signOut.mutate(undefined, { onSuccess: () => void navigate({ to: '/welcome', replace: true }), onError: (e) => toast(errorMessage(e), { icon: 'x' }) });
@@ -36,10 +37,10 @@ export function useSignOutStep(): { button: ReactNode; step: ReactNode } {
     if (inside) opener.current?.focus();
   }, [asking, waiting, id]);
   const button = (
-    <Button ref={opener} variant="secondary" icon="signOut" loading={signOut.isPending && !asking}
+    <Button ref={opener} variant="quiet" size="sm" icon="signOut" loading={signOut.isPending && !asking}
       aria-expanded={waiting > 0 ? asking : undefined} aria-controls={asking ? id : undefined} onClick={press}>Sign out</Button>
   );
-  return { button, step: asking ? <SignOutStep id={id} kept={list} pending={signOut.isPending} onStay={close} onSignOut={go} /> : null };
+  return { button, asking, height, step: asking ? <SignOutStep id={id} kept={list} pending={signOut.isPending} onStay={close} onSignOut={go} onHeight={setHeight} /> : null };
 }
 
 /** What staying signed in does for them: they upload by themselves, unless they're too old or won't open here. */
@@ -59,22 +60,33 @@ function staying(count: number, stuck: number): string {
   return `Stay signed in and ${upload} once you’re online, then the notes are written.${rest}`;
 }
 
-function SignOutStep({ id, kept, pending, onStay, onSignOut }: { id: string; kept: readonly KeptItem[]; pending: boolean; onStay: () => void; onSignOut: () => void }) {
+function SignOutStep({ id, kept, pending, onStay, onSignOut, onHeight }: { id: string; kept: readonly KeptItem[]; pending: boolean; onStay: () => void; onSignOut: () => void; onHeight: (px: number) => void }) {
   const title = useId();
+  const box = useRef<HTMLDivElement>(null);
   const stay = useRef<HTMLButtonElement>(null);
   useEffect(() => { stay.current?.focus({ preventScroll: true }); }, []);
+  // However it wraps, the sky holds it, from before it's first drawn.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const say = () => onHeight(el.offsetHeight);
+    say();
+    const watch = new ResizeObserver(say);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, [onHeight]);
   const keys = (e: KeyboardEvent<HTMLDivElement>) => { if (e.key === 'Escape' && !pending) { e.stopPropagation(); onStay(); } };
   const count = kept.length;
   const one = count === 1;
   const stuck = kept.filter((k) => k.status === 'expired' || k.status === 'unreadable').length;
   return (
-    <div id={id} className="set-confirm set-out" role="group" aria-labelledby={title} onKeyDown={keys}>
+    <div ref={box} id={id} className="set-ask" role="group" aria-labelledby={title} onKeyDown={keys}>
       <b id={title}>{plural(count, 'recording')} on this device {one ? 'hasn’t' : 'haven’t'} uploaded. Signing out deletes {one ? 'it' : 'them'}.</b>
       <p>{staying(count, stuck)}</p>
-      <div className="btns">
+      <div className="set-ask-a">
         {/* aria-disabled, not disabled, while signing out: focus stays on the button pressed. */}
-        <Button ref={stay} variant="secondary" size="sm" aria-disabled={pending || undefined} onClick={() => { if (!pending) onStay(); }}>Stay signed in</Button>
-        <Button size="sm" icon={pending ? undefined : 'signOut'} className="set-caution" aria-disabled={pending || undefined} onClick={() => { if (!pending) onSignOut(); }}>
+        <Button ref={stay} variant="primary" aria-disabled={pending || undefined} onClick={() => { if (!pending) onStay(); }}>Stay signed in</Button>
+        <Button className="set-sky" aria-disabled={pending || undefined} onClick={() => { if (!pending) onSignOut(); }}>
           {pending && <Spinner />}{pending ? 'Signing out' : `Sign out and delete ${one ? 'it' : 'them'}`}
         </Button>
       </div>

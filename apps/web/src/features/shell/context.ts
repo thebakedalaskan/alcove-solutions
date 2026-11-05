@@ -1,7 +1,7 @@
 import type { Meeting, Person } from '@alcove/api';
 import { createContext, useContext } from 'react';
 
-/** What Start a call opens with: people already picked, the group's name when they're one, and `later` to go straight to scheduling. */
+/** What Start a call opens with: people already picked, the group's name when they're one, and `later` to go straight to scheduling: to When, with people picked. */
 export interface StartOptions { people?: Person[] | undefined; name?: string | undefined; later?: boolean | undefined }
 /**
  * Starting and opening calls, from anywhere inside the app shell. `start` opens Start a call. `open` opens a call's
