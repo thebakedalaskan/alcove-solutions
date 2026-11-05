@@ -54,12 +54,15 @@ function usePicture(id: string | null): MediaState {
   return url ? { kind: 'ready', url } : LOADING;
 }
 
+/** What a block's upload is known by: its `upload` token, which follows the block when it's moved, or the block's ID. */
+const uploadKey = (node: PMNode): string | null => textAttr(node, 'upload') ?? textAttr(node, 'id');
+
 /** A block that says it's uploading. Whether it's going on somewhere, or nobody's sending it any more. */
 function uploadOf(media: MediaHandlers | undefined, node: PMNode): { percent: number | null; stalled: boolean } {
   const up = numberAttr(node, 'up');
-  const id = textAttr(node, 'id');
+  const key = uploadKey(node);
   if (up === null || textAttr(node, 'failed') !== null) return { percent: null, stalled: false };
-  const stalled = id !== null && media?.stalled?.(id) === true;
+  const stalled = key !== null && media?.stalled?.(key) === true;
   return { percent: stalled ? null : Math.round(up), stalled };
 }
 
@@ -79,9 +82,9 @@ function Uploading({ percent, failed }: { percent: number | null; failed: boolea
 
 /**
  * What failed, with what to do about it. The rest of the document is untouched. Try again only where this browser still
- * has what it was sending.
+ * has what it was sending, and for a photo it can't read, Add as a file in its place.
  */
-function Failed({ name, block, retry }: { name: string; block: string | null; retry: boolean }) {
+function Failed({ name, block, upload, retry, asFile }: { name: string; block: string | null; upload: string | null; retry: boolean; asFile: boolean }) {
   const rt = useRuntime();
   return (
     <span className="wb-fail">
@@ -89,7 +92,8 @@ function Failed({ name, block, retry }: { name: string; block: string | null; re
       <span>Couldn’t upload {name}</span>
       {!rt.readOnly && block && (
         <>
-          {retry && <button type="button" className="ac-btn is-secondary is-xs" onClick={() => rt.props.media?.onRetry?.(block)}>Try again</button>}
+          {upload && asFile && <button type="button" className="ac-btn is-secondary is-xs" onClick={() => rt.props.media?.onAsFile?.(upload, block)}>Add as a file</button>}
+          {upload && retry && <button type="button" className="ac-btn is-secondary is-xs" onClick={() => rt.props.media?.onRetry?.(upload)}>Try again</button>}
           <button type="button" className="ac-btn is-quiet is-xs" onClick={() => removeBlock(rt, block)}>Delete</button>
         </>
       )}
@@ -97,12 +101,16 @@ function Failed({ name, block, retry }: { name: string; block: string | null; re
   );
 }
 
+interface Failure { name: string; retry: boolean; asFile: boolean }
+
 /** A block's failure, as it says it: what it says it failed with, or what it was sending when nobody was any more. */
-function failureOf(media: MediaHandlers | undefined, node: PMNode, stalled: boolean, name: string): { name: string; retry: boolean } | null {
+function failureOf(media: MediaHandlers | undefined, node: PMNode, stalled: boolean, name: string): Failure | null {
   const failed = textAttr(node, 'failed');
-  const id = textAttr(node, 'id');
-  if (failed !== null) return { name: failed, retry: id !== null && media?.onRetry !== undefined && media.canRetry?.(id) === true };
-  return stalled ? { name, retry: false } : null;
+  const key = uploadKey(node);
+  const retry = key !== null && media?.onRetry !== undefined && media.canRetry?.(key) === true;
+  const asFile = key !== null && media?.onAsFile !== undefined && media.canAddAsFile?.(key) === true;
+  if (failed !== null) return { name: failed, retry, asFile };
+  return stalled ? { name, retry, asFile: false } : null;
 }
 
 /** Where a picture was, once it's deleted for good: in this document, in another, or in an older version. */
@@ -163,10 +171,10 @@ const holdSpace = (item: GalleryItem): CSSProperties => ({ aspectRatio: shapeOf(
  * What a photo shows: the stored picture once it's here, and until then, in the browser sending it, the file it's sending.
  * That stays until the stored one has come, so the picture never blinks as it lands.
  */
-function useShown(item: GalleryItem, block: string | null, index: number): { src: string | undefined; state: MediaState } {
+function useShown(item: GalleryItem, upload: string | null, index: number): { src: string | undefined; state: MediaState } {
   const media = useMediaHandlers();
   const state = usePicture(item.media);
-  const preview = block ? media?.preview?.(block, index) : undefined;
+  const preview = upload ? media?.preview?.(upload, index) : undefined;
   return { src: state.kind === 'ready' ? state.url : preview, state };
 }
 
@@ -178,7 +186,7 @@ function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos
   const stored = numberAttr(node, 'width') ?? 100;
   const [width, setWidth] = useState<number | null>(null);
   const id = textAttr(node, 'id');
-  const { src, state } = useShown(item, id, 0);
+  const { src, state } = useShown(item, uploadKey(node), 0);
   const upload = uploadOf(media, node);
   const failed = failureOf(media, node, upload.stalled, item.name);
 
@@ -218,7 +226,7 @@ function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos
         {!src && state.kind === 'gone' && <Deleted what="photo" />}
         {!src && state.kind === 'failed' && <NotLoaded />}
         <Uploading percent={upload.percent} failed={failed !== null} />
-        {failed && <Failed name={failed.name} block={id} retry={failed.retry} />}
+        {failed && <Failed name={failed.name} block={id} upload={uploadKey(node)} retry={failed.retry} asFile={failed.asFile} />}
         {!rt.readOnly && !bare && <><span className="wb-hand l" aria-hidden="true" onPointerDown={resize} /><span className="wb-hand r" aria-hidden="true" onPointerDown={resize} /></>}
       </div>
       <Caption value={item.cap} block={id} media={item.media} />
@@ -227,8 +235,8 @@ function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos
 }
 
 /** A photo in a gallery: cropped to the same shape as the others. */
-function GalleryPhoto({ item, block, index }: { item: GalleryItem; block: string | null; index: number }) {
-  const { src, state } = useShown(item, block, index);
+function GalleryPhoto({ item, block, upload, index }: { item: GalleryItem; block: string | null; upload: string | null; index: number }) {
+  const { src, state } = useShown(item, upload, index);
   return (
     <figure className="wb-gi">
       <div className="wb-ph">
@@ -268,9 +276,9 @@ function Gallery({ node, getPos }: { node: PMNode; getPos: () => number | undefi
   const failed = failureOf(media, node, upload.stalled, items.find((i) => i.media === null)?.name ?? first.name);
   return (
     <div className={items.length === 3 ? 'wb-gal n3' : 'wb-gal'}>
-      {items.map((item, i) => <GalleryPhoto key={i} item={item} block={id} index={i} />)}
+      {items.map((item, i) => <GalleryPhoto key={i} item={item} block={id} upload={uploadKey(node)} index={i} />)}
       <Uploading percent={upload.percent} failed={failed !== null} />
-      {failed && <Failed name={failed.name} block={id} retry={failed.retry} />}
+      {failed && <Failed name={failed.name} block={id} upload={uploadKey(node)} retry={failed.retry} asFile={failed.asFile} />}
     </div>
   );
 }
@@ -294,7 +302,7 @@ function FileRow({ node }: { node: PMNode }) {
     <div className={cn('wb-file', gone && 'is-gone')}>
       <span className="i"><Icon name="clip" size={17} /></span>
       <span className="m"><b>{name}</b><small>{gone ? 'Deleted' : sizeLabel(numberAttr(node, 'size'))}</small></span>
-      {failed ? <Failed name={failed.name} block={textAttr(node, 'id')} retry={failed.retry} /> : upload.percent !== null ? <span className="wb-ring" style={{ '--p': upload.percent }} /> : null}
+      {failed ? <Failed name={failed.name} block={textAttr(node, 'id')} upload={uploadKey(node)} retry={failed.retry} asFile={failed.asFile} /> : upload.percent !== null ? <span className="wb-ring" style={{ '--p': upload.percent }} /> : null}
       {!failed && upload.percent === null && file && !gone && open && <button type="button" className="wb-dl" aria-label={`Download ${name}`} onClick={() => open({ media: file, name })}><Icon name="download" size={16} /></button>}
     </div>
   );
@@ -349,7 +357,8 @@ function VideoBlock({ node }: { node: PMNode }) {
   const file = textAttr(node, 'media');
   const title = textAttr(node, 'title') ?? '';
   const poster = usePicture(textAttr(node, 'poster'));
-  const preview = id ? media?.preview?.(id, 0) : undefined;
+  const key = uploadKey(node);
+  const preview = key ? media?.preview?.(key, 0) : undefined;
   const still = poster.kind === 'ready' ? poster.url : preview;
   const dur = numberAttr(node, 'dur') ?? 0;
   const upload = uploadOf(media, node);
@@ -387,7 +396,7 @@ function VideoBlock({ node }: { node: PMNode }) {
       {play && <Showing play={play} dur={dur} />}
       {!player.src && <span className="wb-vt">{title}</span>}
       <Uploading percent={upload.percent} failed={failed !== null} />
-      {failed && <Failed name={failed.name} block={id} retry={failed.retry} />}
+      {failed && <Failed name={failed.name} block={id} upload={uploadKey(node)} retry={failed.retry} asFile={failed.asFile} />}
     </div>
   );
 }

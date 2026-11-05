@@ -450,17 +450,24 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
 - **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
   read as one `gallery`, a film it can play as a `video`, anything else as a `file`. The block holds the space at once, with each
   file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
-  it fill. Only the browser sending writes to it, by the block's ID, and always through one session of its own for that
-  document, open from the first upload into it until a moment after the last, so leaving the document or the workspace doesn't
-  stop it. Two sessions writing the same attribute without having heard each other could leave the older value standing, which
-  is why it's never the page's. A block put in through the page waits to reach that session before anything's written. As each file
-  is stored its ID goes into the block, and a photo's caption, an attribute of its own (`cap:<id>`), starts as the file's name
-  without its extension. A film's first frame goes first, as a picture of its own, so there's something to see while the film
-  goes; one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block
-  says which file. What the API refuses goes into the block as failed, and the refusal's own words to whoever sent it. That
-  browser says in the document's awareness which blocks it's sending (their IDs, nothing else), so a block that says it's
-  uploading with nobody saying so for 20 seconds shows as failed, with only Delete. The browser that sent one that failed
-  offers Try again for ten minutes, while it still has the file; that opens the document's session for uploads again.
+  it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
+  the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15
+  seconds to come back with redo before the upload's let go of. The token goes when the upload's done, and retiring a block
+  takes it away like any other attribute. Only the browser sending writes to the block, and always through one session of its
+  own for that document, so leaving the document or the workspace doesn't stop it. Two sessions writing the same attribute
+  without having heard each other could leave the older value standing, which is why it's never the page's. Nothing is stored
+  until the block has reached that session, which is to say Alcove has it: a block a full document turns away, or that never
+  gets there in a minute, holds no file anywhere, and the page offers Try again. The session closes only once everything it
+  wrote has reached Alcove, however long the connection is away, and until then the upload still says it's on and closing the
+  tab asks first. As each file is stored its ID goes into the block, and a photo's caption, an attribute of its own
+  (`cap:<id>`), starts as the file's name without its extension. A film's first frame goes first, as a picture of its own
+  named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
+  one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
+  which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API
+  refuses goes into the block as failed, and the refusal's own words to whoever sent it. That browser says in the document's
+  awareness which uploads it's sending (their tokens, nothing else), so a block that says it's uploading with nobody saying so
+  for 20 seconds shows as failed. The browser that sent one that failed offers Try again for ten minutes, while it still has the
+  file; that opens the document's session for uploads again.
 - **Shown in a document.** Every picture, a film's frame included, goes through `picture`, read once for as long as anything
   shows it, kept a minute after so a block redrawn or scrolled back to isn't read again, and let go of with `revokeObjectURL`
   (`apps/web/src/features/workspace/pictures.ts`). A block pasted or dropped from another document, or sent there with Move

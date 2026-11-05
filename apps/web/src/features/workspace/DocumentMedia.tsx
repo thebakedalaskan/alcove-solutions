@@ -14,7 +14,7 @@ import { q, qk, useMediaChanges } from '~/lib/queries';
 import type { Ws } from './context';
 import type { BlockJSON, EditorHandle, EditorProps, InsertAt, MediaDeletion, MediaHandlers, MediaPick, Rect } from './editor/types';
 import { fileUrl, type Pictures } from './pictures';
-import { canRetry, discard, isSending, prepare, previewOf, retry, start, stemOf, uploadsStore } from './uploads';
+import { asFile, canAddAsFile, canRetry, discard, FRAME_SUFFIX, isSending, pageTurnedAway, prepare, previewOf, retry, start, stemOf, uploadsStore } from './uploads';
 
 const mlog = log.child({ component: 'workspace-media' });
 
@@ -34,6 +34,8 @@ interface Picking { kind: MediaPick['kind']; at: InsertAt; anchor: string | null
 const LINE: BlockJSON = { type: 'line' };
 const sizeLabel = (bytes: number): string => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 const isPicture = (m: WorkspaceMedia) => m.type.startsWith('image/');
+/** A video's first frame, stored as a picture of its own: it's the video's, not a photo to offer. */
+const isFrame = (m: WorkspaceMedia) => isPicture(m) && m.name.endsWith(FRAME_SUFFIX);
 const isVideo = (m: WorkspaceMedia) => m.type.startsWith('video/');
 const ACCEPT: Record<MediaPick['kind'], string> = { photo: 'image/*', video: 'video/*', file: '' };
 
@@ -198,6 +200,13 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     session.awareness.on('change', heard);
     return () => { session.awareness.off('change', heard); };
   }, [session, bumps]);
+  /* A page Alcove turned away can't get a block to it: nothing waits for one put in here meanwhile. */
+  useEffect(() => {
+    const look = () => pageTurnedAway(workspaceId, documentId, session.getSnapshot().refused !== null);
+    look();
+    const stop = session.subscribe(look);
+    return () => { stop(); pageTurnedAway(workspaceId, documentId, false); };
+  }, [session, workspaceId, documentId]);
 
   /* Blocks that say they're uploading, from when nobody here or anywhere else was heard sending them. */
   const unclaimed = useRef(new Map<string, number>());
@@ -210,23 +219,28 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
 
   const handlers = useMemo<MediaHandlers>(() => ({
     ...view,
-    preview: (block, index) => previewOf(block, index),
-    stalled: (block) => {
-      if (isSending(block)) { unclaimed.current.delete(block); return false; }
+    preview: (key, index) => previewOf(key, index),
+    stalled: (key) => {
+      if (isSending(key)) { unclaimed.current.delete(key); return false; }
       for (const state of session.awareness.getStates().values()) {
         const said = DocUploadsStateSchema.safeParse(state);
-        if (said.success && said.data.uploading?.includes(block)) { unclaimed.current.delete(block); return false; }
+        if (said.success && said.data.uploading?.includes(key)) { unclaimed.current.delete(key); return false; }
       }
-      const since = unclaimed.current.get(block);
+      const since = unclaimed.current.get(key);
       if (since === undefined) {
-        unclaimed.current.set(block, Date.now());
+        unclaimed.current.set(key, Date.now());
         setTimeout(bumps.bump, NOBODY_MS + 50);
         return false;
       }
       return Date.now() - since >= NOBODY_MS;
     },
-    onRetry: (block) => retry(block),
-    canRetry: (block) => canRetry(block),
+    onRetry: (key) => retry(key),
+    canRetry: (key) => canRetry(key),
+    canAddAsFile: (key) => canAddAsFile(key),
+    onAsFile: (key, block) => {
+      const file = now.current.readOnly ? null : asFile(key);
+      if (file) sending.current([file], { replace: block }, false, true).catch((err: unknown) => { mlog.warn('a file couldn’t be added', { workspaceId, documentId, err }); });
+    },
     onDuration: (block, seconds) => { if (!now.current.readOnly) now.current.editor?.updateBlock(block, { dur: seconds }); },
     onChoose: (block, rect) => { if (!now.current.readOnly) setPicking({ kind: 'photo', at: { replace: block }, anchor: block, rect }); },
     onDeleteFiles: (files) => { if (!now.current.readOnly) setDeleting(files); }
@@ -242,9 +256,12 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     const page = now.current.editor;
     if (!page || now.current.readOnly) { discard(drafts); return; }
     const blocks = drafts.map((d) => d.block);
-    const ids = fromPicker ? page.insertBlocks([...blocks, LINE], at, { focus: true }) : page.insertBlocks(blocks, at);
-    start({ workspaceId, documentId, owner: now.current.owner, pass }, drafts, ids);
+    if (fromPicker) page.insertBlocks([...blocks, LINE], at, { focus: true });
+    else page.insertBlocks(blocks, at);
+    start({ workspaceId, documentId, owner: now.current.owner, pass }, drafts);
   };
+  const sending = useRef(upload);
+  sending.current = upload;
 
   /** Files already in the workspace, put where the picker was: attached to this document first, so nobody here gets `not-found`. */
   const reuse = async (pick: Picking, chosen: readonly WorkspaceMedia[]) => {
@@ -296,7 +313,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
 
   const list = listedNow ?? [];
   /* The newest few, in the order they came, so Add all keeps them as they were added. */
-  const offered = (kind: MediaPick['kind']) => list.filter((m) => m.documents.length > 0 && (kind === 'photo' ? isPicture(m) : kind === 'video' ? isVideo(m) : !isPicture(m) && !isVideo(m))).slice(0, REUSE).reverse();
+  const offered = (kind: MediaPick['kind']) => list.filter((m) => m.documents.length > 0 && !isFrame(m) && (kind === 'photo' ? isPicture(m) : kind === 'video' ? isVideo(m) : !isPicture(m) && !isVideo(m))).slice(0, REUSE).reverse();
   const anchorOf = (p: { anchor: string | null; rect: Rect | null }) => () => blockRect(p.anchor) ?? (p.rect ? toDOMRect(p.rect) : new DOMRect(innerWidth / 2, innerHeight / 3, 1, 1));
   const heading = ws.spaceName;
 

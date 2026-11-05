@@ -63,27 +63,35 @@ export function removeBlockFrom(doc: Y.Doc, id: string): void {
   if (found) doc.transact(() => { retire(found.element, newBlockId(), ''); });
 }
 
+/** The blocks on the page carrying an upload's token (`upload`), wherever they've been moved to: not one that has left it. */
+export function uploadBlocks(doc: Y.Doc, token: string): Y.XmlElement[] {
+  return contentOf(doc).toArray().filter((c): c is Y.XmlElement => c instanceof Y.XmlElement && c.getAttribute('upload') === token && c.getAttribute('gone') === undefined);
+}
+
 /**
- * Sets a block's attributes from outside the page, by its stable ID, open or not: what an upload says as it goes. Null
- * takes one away. False if no block on the page has that ID any more. `own` are attributes only this writer puts on this
- * block: one of them on a copy someone retired as they moved the block was written after they took it, so it comes off
- * again, or the old copy would come back holding just that.
+ * Sets an upload's attributes from outside the page, open or not, on every block on the page carrying its token: what an
+ * upload says as it goes. Null takes one away. How many blocks there were: none while the block is off the page. `own` are
+ * attributes only the upload puts on its block: one of them on a copy someone retired as they moved the block was written
+ * after they took it, so it comes off again, or the old copy would come back holding just that.
  */
-export function setBlockAttrsIn(doc: Y.Doc, id: string, attrs: Readonly<Record<string, unknown>>, own: readonly string[], origin: unknown): boolean {
+export function setUploadAttrs(doc: Y.Doc, token: string, attrs: Readonly<Record<string, unknown>>, own: readonly string[], origin: unknown): number {
   const fragment = contentOf(doc);
-  const found = elementOf(fragment, id);
-  if (!found) return false;
+  const found = uploadBlocks(doc, token);
+  if (found.length === 0) return 0;
   doc.transact(() => {
-    for (const [key, value] of Object.entries(attrs)) {
-      if (value === null || value === undefined) { if (found.element.getAttribute(key) !== undefined) found.element.removeAttribute(key); }
-      else setAttr(found.element, key, value);
-    }
-    for (const child of fragment.toArray()) {
-      if (!(child instanceof Y.XmlElement) || child === found.element || child.getAttribute('gone') !== id) continue;
-      for (const key of own) if (child.getAttribute(key) !== undefined) child.removeAttribute(key);
+    for (const element of found) {
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value === null || value === undefined) { if (element.getAttribute(key) !== undefined) element.removeAttribute(key); }
+        else setAttr(element, key, value);
+      }
+      const id: unknown = element.getAttribute('id');
+      for (const child of fragment.toArray()) {
+        if (!(child instanceof Y.XmlElement) || child === element || typeof id !== 'string' || child.getAttribute('gone') !== id) continue;
+        for (const key of own) if (child.getAttribute(key) !== undefined) child.removeAttribute(key);
+      }
     }
   }, origin);
-  return true;
+  return found.length;
 }
 
 /** A document's first line, while nobody has written in it, leaves the page: what's put in a new document takes its place. */
@@ -93,9 +101,6 @@ export function retireBlankStart(doc: Y.Doc): void {
     doc.transact(() => { retire(first, newBlockId(), ''); });
   }
 }
-
-/** Whether a document has a block with this ID on its page. */
-export const hasBlock = (doc: Y.Doc, id: string): boolean => elementOf(contentOf(doc), id) !== null;
 
 /** The element a block is, by its stable ID. */
 export function elementOf(fragment: Y.XmlFragment, id: string): { element: Y.XmlElement; index: number } | null {
