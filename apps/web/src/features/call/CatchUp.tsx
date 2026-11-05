@@ -13,6 +13,7 @@ import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { hm, hms } from '~/lib/time';
+import { useDraft, type Draft } from './PanelHost';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
@@ -314,7 +315,7 @@ function EarlierAnswer({ parts }: { parts: SeriesAnswerPart[] }) {
 const SUGGESTED = ['What did we decide?', 'Who’s doing what?'];
 const SUGGESTED_EARLIER = ['Why did we choose this?', 'What’s still open?'];
 
-export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, earlier, scope, onScope, onRange, onWindow, onAsk, onAskEarlier, onCatchUp, onOpen, onLive, keeping }: {
+export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, draft, earlier, scope, onScope, onRange, onWindow, onAsk, onAskEarlier, onCatchUp, onOpen, onLive, keeping }: {
   asks: Asked[];
   /** There's a transcript to ask about. */
   ready: boolean;
@@ -327,6 +328,7 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
   window: CatchUpWindow | null;
   /** You came here to catch up, so the view offers the way back to the call as it is now. */
   catching: boolean;
+  draft: Draft;
   /** The written notes you have from earlier calls in this call's series; null when you can't ask about any. */
   earlier: string[] | null;
   scope: AskScope;
@@ -336,7 +338,7 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
   /** Keeping answers in your own notes, for someone with an account in the call: which you have, and keeping one. Answers about this call only: one from earlier calls quotes notes that can go. */
   keeping?: { kept: ReadonlySet<number>; keep: (asked: number, question: string, answer: CallAnswer) => Promise<void> } | undefined;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useDraft(draft);
   const end = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   const busy = asks.some((a) => (a.kind === 'question' ? a.a === null && !a.error : a.kind === 'earlier' ? a.parts === null && !a.error : a.c === null && !a.error));

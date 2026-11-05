@@ -106,9 +106,11 @@ export interface ShareWindowMenu { open: boolean; toggle: (() => void) | null; w
  * A shared screen's menu: see it big or as a tile, look closer, open it in its own window, and mute its sound, for you;
  * and point at it, which everyone sees.
  */
-export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, look, own, point }: {
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, sound, look, own, point, onMove }: {
   presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
   sound: { muted: boolean; toggle: () => void } | null;
+  /** Picks it up to move it with the arrow keys, as a panel of its own. */
+  onMove?: (() => void) | undefined;
   /** Shown big: zoom, freeze, earlier pictures. */
   look?: ShareLookMenu | undefined;
   /** Its own window, for someone else's share. */
@@ -127,6 +129,7 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       <div className="mh"><Avatar person={presenter} size={22} /><b>{label}</b></div>
       <p className="scope">Only your view changes</p>
       {!own?.open && <Item icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb="P" keys="P" onPick={pick(onToggle)} />}
+      {onMove && <Item icon="grip" label="Move it" kb="G" keys="G" onPick={pick(onMove)} />}
       {look && (
         <>
           <Item icon="zoomIn" label="Zoom in" kb={LOOK_KEYS.zoomIn.shown} keys={LOOK_KEYS.zoomIn.aria} disabled={look.max} onPick={pick(look.zoomIn)} />
