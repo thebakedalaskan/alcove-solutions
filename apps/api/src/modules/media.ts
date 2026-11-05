@@ -221,12 +221,13 @@ const opens = (who: Who, w: Workspace, documentId: string): boolean => {
   const item = w.state.items[documentId];
   return item !== undefined && roleOf(who, w, documentId, item) !== undefined;
 };
-/** The documents this reader can reach a file through: they say whether it exists for them at all. */
-async function reachedThrough(who: Who, w: Workspace, db: Db, mediaId: string): Promise<string[]> {
+/** Every document that has a file, whoever can open it. */
+async function documentsWith(w: Workspace, db: Db, mediaId: string): Promise<string[]> {
   if (!ID128.test(mediaId)) return [];
-  const uses = await rows(db, z.object({ document_id: z.string() }), 'SELECT document_id FROM workspace_media_uses WHERE owner_id = $1 AND media_id = $2 ORDER BY document_id', [w.owner.ownerId, mediaId]);
-  return uses.map((u) => u.document_id).filter((id) => opens(who, w, id));
+  return (await rows(db, z.object({ document_id: z.string() }), 'SELECT document_id FROM workspace_media_uses WHERE owner_id = $1 AND media_id = $2 ORDER BY document_id', [w.owner.ownerId, mediaId])).map((u) => u.document_id);
 }
+/** The documents this reader can reach a file through: they say whether it exists for them at all. */
+const reachedThrough = async (who: Who, w: Workspace, db: Db, mediaId: string): Promise<string[]> => (await documentsWith(w, db, mediaId)).filter((id) => opens(who, w, id));
 const wire = (id: string, info: Info, createdAt: Date, documents: string[]): WorkspaceMedia => ({ id, name: info.name, type: info.type, size: info.size, width: info.width, height: info.height, createdAt: createdAt.toISOString(), documents });
 
 /* ---------- what can be kept ---------- */
@@ -682,10 +683,11 @@ async function forget(o: Pick<Owner, 'ownerId'>, db: Db, mediaIds: string[]): Pr
  * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit a document
  * that has it, because deleting is physical and a photo put in by mistake mustn't wait for its document to go. Every use
  * goes with it, so a version or another document that showed it now gets `not-found`, which the app shows as removed.
- * Someone who can open a document that has it and can't edit that one is refused, or reusing a picture would make it
- * theirs to delete. A document they can't open doesn't count, because being stopped by it would tell them it's there.
- * Someone who can edit this one only through a seat in a call is refused too: a seat is for working on it in the call,
- * which taking the file's block out of it is, and deleting the file for everyone isn't.
+ * They have to be able to edit every document that has it, beyond a seat in a call, whether they can open it or not:
+ * reusing a picture doesn't make it theirs to delete, and nobody's file goes from a document they were never shown. A
+ * document they can't open refuses in the same words as one they can't edit, naming neither. Someone who can edit this
+ * one only through a seat is refused before anything else: a seat is for working on it in the call, which taking the
+ * file's block out of it is, and deleting the file for everyone isn't.
  */
 export async function remove(d: Deps, who: Who, workspaceId: string, documentId: string, mediaId: string): Promise<void> {
   const ownerId = await tx(d.pool, async (c) => {
@@ -695,8 +697,8 @@ export async function remove(d: Deps, who: Who, workspaceId: string, documentId:
       throw new ForbiddenError('You can work on this in the call, but you can’t delete its files for good.', { level: 'info', context: { workspaceId, documentId, mediaId, why: 'only a seat' } });
     }
     if (!(await fileIn(w, c, documentId, mediaId))) throw noFile(w, documentId, mediaId);
-    const shown = await reachedThrough(who, w, c, mediaId);
-    const stays = shown.find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, w, id, item) !== 'edit'; });
+    const lasting = { role: w.role, grants: w.lasting };
+    const stays = (await documentsWith(w, c, mediaId)).find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, lasting, id, item) !== 'edit'; });
     if (stays) throw new ForbiddenError('This file is also in a document you can’t edit.', { context: { workspaceId, documentId: stays, mediaId } });
     await forget(w.owner, c, [mediaId]);
     return w.owner.ownerId;

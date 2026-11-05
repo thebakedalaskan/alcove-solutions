@@ -425,11 +425,12 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   refuses stays queued for maintenance. Use rows only change under the workspace's lock: adding one shares the lock and
   taking one away holds it alone, so a file can't be given out as it goes.
 - **Deleting one.** `DELETE …/media/:media` deletes a file for good, the same way, for anyone who can edit a document that has
-  it: every use goes with it. They have to be able to edit every document that has it that they can open, or it's `forbidden`,
-  so reusing a picture doesn't make it yours to delete. Someone who can edit the document only through a seat in a call is
-  refused too, as `forbidden`: a seat is for working on it in the call, and taking the file's block out of it still works. A
-  version or another document that still shows it gets `not-found` from then on, as for any file that isn't there, and the app
-  shows it as removed.
+  it: every use goes with it. They have to be able to edit every document that has it, whether they can open it or not, or
+  it's `forbidden`: reusing a picture doesn't make it yours to delete, and nobody's file goes from a document you were never
+  shown. One you can't open is refused in the same words as one you can only read, "This file is also in a document you can’t
+  edit.", so it names neither. Someone who can edit the document only through a seat in a call is refused too, as `forbidden`:
+  a seat is for working on it in the call, and taking the file's block out of it still works. A version or another document
+  that still shows it gets `not-found` from then on, as for any file that isn't there, and the app shows it as removed.
 
 ### Live traffic
 

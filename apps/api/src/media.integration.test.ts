@@ -2150,17 +2150,32 @@ describe('deleting a file', () => {
     expect((await ann.api.workspaces.media.list(id)).map((x) => x.id)).toEqual([]);
   });
 
-  it('isn’t stopped by a document someone can’t open, which they mustn’t be able to tell from any other', async () => {
+  it('is stopped by a document someone can’t open, in the same words as one they can only read, naming neither', async () => {
     const ann = await account();
     const theo = await account();
-    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const id = await workspace(ann, 'Ours', [[theo, 'read']]);
     const shared = await make(ann, id, 'document', 'Plan');
-    const secret = await make(ann, id, 'document', 'Theirs alone');
-    const m = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
-    await ann.api.workspaces.media.attach(id, secret, m.id);
+    await ann.api.workspaces.share.set(id, shared, [{ email: theo.email }], 'edit');
+    const secret = await make(ann, id, 'document', 'CANARY-HIDDEN-DOC');
     await ann.api.workspaces.share.restrict(id, secret, true);
-    await theo.api.workspaces.media.remove(id, shared, m.id);
-    expect(await code(ann.api.workspaces.media.url(id, secret, m.id))).toBe('not-found');
+    const notes = await make(ann, id, 'document', 'Notes');
+    // One picture Ann also put in her restricted document, which Theo was never shown. Another in one he can only read.
+    const hidden = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
+    await ann.api.workspaces.media.attach(id, secret, hidden.id);
+    const readOnly = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
+    await ann.api.workspaces.media.attach(id, notes, readOnly.id);
+    expect(await code(theo.api.workspaces.media.url(id, secret, hidden.id))).toBe('not-found');
+
+    // Both are refused, the same way: nothing says which kind of document kept it, or names it.
+    const from = h.logs.length;
+    const refused = await refusal(theo.api.workspaces.media.remove(id, shared, hidden.id));
+    expect(refused).toEqual({ code: 'forbidden', message: 'This file is also in a document you can’t edit.', status: 403 });
+    expect(await refusal(theo.api.workspaces.media.remove(id, shared, readOnly.id))).toEqual(refused);
+    expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-HIDDEN-DOC');
+    // Ann's restricted copy is still there, and she, who can edit both, can still delete it.
+    expect((await read(ann, await ann.api.workspaces.media.url(id, secret, hidden.id))).status).toBe(200);
+    await ann.api.workspaces.media.remove(id, shared, hidden.id);
+    expect(await code(ann.api.workspaces.media.url(id, secret, hidden.id))).toBe('not-found');
   });
 
   it('leaves a document in Trash as it is, like everything else in it', async () => {
