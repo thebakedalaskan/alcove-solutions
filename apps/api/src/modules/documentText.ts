@@ -96,6 +96,15 @@ export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
 }
 /** Whether a todo is one of a call's follow-ups: it says who and when. */
 export const isFollowUp = (t: Pick<DocTodo, 'mentions' | 'dates'>): boolean => t.mentions.length > 0 && t.dates.length > 0;
+/** How much of a document's follow-ups a call is given: so many, so long, with so many people and dates each. */
+export interface FollowUpLimits { max: number; chars: number; tags: number }
+const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+/** A document's follow-ups as a call shows them: the first `max`, each cut to size, so a document of thousands gives a page. */
+export function followUpsIn(doc: Y.Doc, kind: ContentKind, l: FollowUpLimits): DocTodo[] {
+  return documentTodos(doc, kind).filter(isFollowUp).slice(0, l.max).map((t) => ({
+    ...t, text: cut(t.text, l.chars), mentions: t.mentions.slice(0, l.tags).map((m) => ({ id: cut(m.id, l.chars), name: cut(m.name, l.chars) })), dates: t.dates.slice(0, l.tags).map((d) => cut(d, l.chars))
+  }));
+}
 
 /** Attributes as y-prosemirror writes them: of any type, though Yjs's types say strings. */
 const setAttr = (el: Y.XmlElement, name: string, value: unknown): void => { Reflect.apply(el.setAttribute, el, [name, value]); };

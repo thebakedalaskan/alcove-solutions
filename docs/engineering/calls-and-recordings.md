@@ -1022,10 +1022,16 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 - **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, plus every
   to-do with a mention and a date in the documents worked on in this call, for whoever can open each, with `notes` saying
   what the notes are doing there. With notes off they come from documents alone, and say so. It reads documents, so it isn't
-  part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the
+  part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. They come from
+  the 20 documents most recently worked on, 25 from each and 100 in all, each to-do's words cut at 300 characters with five
+  mentions and dates at most, worked out in the worker that reads the document, so nothing past that comes back from it.
+  What's in each is read once for each place the document gets to, for everyone in the call however many poll at once, and
+  that stands three seconds more while people type, so everyone's polls read a document at most every few seconds between
+  them. Who can open what is asked on every read, and a closed document is left out without a worker. `POST` to the
   same path ticks a to-do with `writeDocument`, as a server-made update that sets the block's own `done`, as the editor does,
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
-  counts as working on it. Access is checked again under the workspace's row in the transaction that writes it. Someone who
+  counts as working on it, and whoever ticked it sees the tick at once. Access is checked again under the workspace's row in
+  the transaction that writes it. Someone who
   can't open the document gets the same `404` as for a follow-up that never was, whether or not it was worked on in this call.
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
   person on each document goes into the call's sealed state (`worked`), under the call's row and once only: that first
