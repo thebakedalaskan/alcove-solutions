@@ -587,12 +587,10 @@ function lineHoldsOthers(entry: Y.Item, lines: Y.Array<unknown>, axis: TableAxis
  *
  * Nothing goes with an object that has someone else's work in it. Yjs asks after popping the step, so the step isn't there
  * to look at, but an object is only going if this undo added it, in one of `steps`, and that step has left the stack. Your
- * own edits inside something shared still undo: only its removal is refused, and whole. A copy someone else's undo restored
- * is theirs, so that's refused too.
+ * own edits inside something shared still undo: only its removal is refused, and whole.
  */
 function undoKeeps(undo: Y.UndoManager, steps: readonly UndoStep[], item: Y.Item): boolean {
   const me = undo.doc.clientID;
-  if (item.id.client !== me) return true;
   const [top = item, field, entry] = pathTo(item);
   if (item === field) return true;
   const addedIn = (list: readonly UndoStep[]): boolean => list.some((step) => Y.isDeleted(step.insertions, top.id));
@@ -627,12 +625,12 @@ function lastCopy(item: Y.Item, doc: Y.Doc): Y.Item | Y.GC {
   return at;
 }
 
-/** Whether someone else's value now stands where a map value would come back: in a field, or a table's cell. */
+/** Whether someone else had the last word where a map value would come back: in a field, or a table's cell. */
 function overtaken(item: Y.Item, doc: Y.Doc): boolean {
   const holder = holderOf(item), copy = holder ? lastCopy(holder, doc) : null;
   const type = copy instanceof Y.Item && copy.content instanceof Y.ContentType ? copy.content.type : null;
   const now = type && item.parentSub !== null ? type._map.get(item.parentSub) : undefined;
-  return now !== undefined && !now.deleted && now.id.client !== doc.clientID;
+  return now !== undefined && now.id.client !== doc.clientID;
 }
 
 /**
