@@ -9,12 +9,12 @@ import { MAX_GROUPS, MAX_GROUP_NAME, MAX_GROUP_PEOPLE, NEW_GROUP, errorMessage, 
 import { Avatar, Button, GhostArch, Icon, IconButton, Notice, Popover, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { PickList, type PickRow } from '~/features/people/PickList';
 import { useCallFlow } from '~/features/shell/context';
 import { byEmail, callName, isEmail, listNames, sameEmail } from '~/lib/people';
 import { q, useGroups } from '~/lib/queries';
 import { groupCalls, groupLine, listed, type Shown } from './data';
 import { useOpen, usePop } from './open';
+import { PickList, type PickRow } from './PickList';
 
 /** Groups listed before "Show all". */
 const SHOWN = 8;
@@ -388,7 +388,7 @@ function AddList({ skip, shown, onDone }: { skip: string[]; shown: (p: Person) =
   /* A whole address that isn't listed, ready to tick: finishing takes it too, so nobody has to press Enter first. */
   const fresh = isEmail(typed) && !inAlready({ email: typed }) && !has({ email: typed }) && !pool.some((s) => s.person.email === typed) ? byEmail(typed) : undefined;
   const rows: PickRow[] = [
-    ...(fresh ? [row({ person: fresh, source: 'new', onAlcove: false })] : []),
+    ...(fresh ? [{ ...row({ person: fresh, source: 'new', onAlcove: false }), on: true }] : []),
     ...picked.filter((p) => !pool.some((s) => sameEmail(s.person, p))).map((p) => row({ person: p, source: 'met', onAlcove: false })),
     ...pool.map(row)
   ];

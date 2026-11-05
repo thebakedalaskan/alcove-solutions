@@ -7,9 +7,8 @@
 import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/api';
 import { Avatar, Button, GhostArch, Icon, IconButton, Popover, PopoverClose, buttonClass, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useFloodToCall } from '~/features/calls/parts';
-import { PickList, type PickRow } from '~/features/people/PickList';
 import { useCallFlow } from '~/features/shell/context';
 import { callName, fold } from '~/lib/people';
 import { useStartNow } from '~/lib/queries';
@@ -19,6 +18,7 @@ import { addressOnly, callLine, listed, notesWith, type Meets } from './data';
 import type { Arch, Line, Sun } from './line';
 import { personPop, useOpen, usePop } from './open';
 import { InviteLink } from './People';
+import { PickList, type PickRow } from './PickList';
 
 /** What people's popovers read. */
 export interface Between { notes: NoteSummary[]; meets: (email: string) => Meets; now: Date; inGroups: number }
@@ -73,18 +73,23 @@ function Place({ arch: a, sun, between, ring }: { arch: Arch; sun: Sun; between:
 function Standing({ arch: a, person, style, sunny, between, ring }: { arch: Arch; person: Person; style: Record<`--${string}`, string | number>; sunny: boolean; between: Between; ring: Ring }) {
   const pop = usePop(personPop(person.email));
   const { picked } = useOpen();
+  const place = useRef<HTMLLIElement>(null);
+  const arch = useRef<HTMLButtonElement>(null);
   const name = listed(person);
+  /* On a phone the line slides, so whoever's opened from the list comes into the middle of it. */
+  useEffect(() => { if (pop.open) place.current?.scrollIntoView({ inline: 'center', block: 'nearest' }); }, [pop.open]);
   const label = a.me ? `You, ${name}` : a.ghost ? `${name}, not on Alcove yet` : name;
   return (
-    <li className={cn('tp-p', a.far && 'is-far', pop.open && 'is-on', sunny && 'has-sun', a.me && 'is-me', picked.includes(person.email) && 'is-picked')} style={style}>
+    <li ref={place} className={cn('tp-p', a.far && 'is-far', pop.open && 'is-on', sunny && 'has-sun', a.me && 'is-me', picked.includes(person.email) && 'is-picked')} style={style}>
       <Popover {...pop} side="bottom" align="center" caret label={name} className="tp-pop is-person"
         anchor={(
-          <button type="button" className="tp-who" aria-label={label} title={a.far ? name : undefined}>
+          <button ref={arch} type="button" className="tp-who" aria-label={label} title={a.far ? name : undefined}>
             <span className="tp-arch"><span className="tp-fig">{a.ghost ? <GhostArch initial={name} /> : <Avatar person={person} size={Math.round(72 * a.k)} />}</span></span>
             <span className="tp-n">{a.me ? 'You' : callName(person)}</span>
           </button>
         )}>
-        <About arch={a} person={person} between={between} ring={ring} onClose={() => pop.onOpenChange(false)} />
+        {/* The arch takes the focus first: the call's modal hands it back there, and what was pressed is going. */}
+        <About arch={a} person={person} between={between} ring={ring} onLeave={() => { arch.current?.focus({ preventScroll: true }); pop.onOpenChange(false); }} />
       </Popover>
     </li>
   );
@@ -94,7 +99,7 @@ function Standing({ arch: a, person, style, sunny, between, ring }: { arch: Arch
 const NOTES = 5;
 
 /** What's in someone's popover: who they are, what you can do, and the notes you both have, a step further in. */
-function About({ arch: a, person, between, ring, onClose }: { arch: Arch; person: Person; between: Between; ring: Ring; onClose: () => void }) {
+function About({ arch: a, person, between, ring, onLeave }: { arch: Arch; person: Person; between: Between; ring: Ring; onLeave: () => void }) {
   const flow = useCallFlow();
   const [view, setView] = useState<'card' | 'notes' | 'back'>('card');
   const { now, meets, inGroups } = between;
@@ -138,7 +143,7 @@ function About({ arch: a, person, between, ring, onClose }: { arch: Arch; person
             {a.ghost
               ? <InviteLink people={[person]} remind={invited} variant="primary" size="md" icon>{invited ? 'Remind' : 'Invite'}</InviteLink>
               : <Button variant="primary" icon="phoneCall" autoFocus={lead} onClick={(e) => ring(e.currentTarget, person.email)}>Ring</Button>}
-            <Button icon="cal" aria-haspopup="dialog" onClick={() => { onClose(); flow.start({ people: [person], later: true }); }}>Schedule</Button>
+            <Button icon="cal" aria-haspopup="dialog" onClick={() => { onLeave(); flow.start({ people: [person], later: true }); }}>Schedule</Button>
           </>
         )}
       </div>

@@ -31,9 +31,10 @@ export const you = (person: Person): Someone => ({ key: person.email, person, me
 /** The people on Alcove, then the ones who aren't. Someone found in the list of everyone (`forward`) always has a place. */
 export function inLine(on: Member[], off: Member[], forward: string | undefined): Someone[] {
   const everyone = [...on, ...off].map(asMember);
-  const beyond = forward ? everyone.findIndex((s, i) => i >= MOST - 1 && sameEmail({ email: s.key }, { email: forward })) : -1;
-  const found = everyone[beyond];
-  return found ? [...everyone.slice(0, MOST - 2), found] : everyone;
+  const at = forward ? everyone.findIndex((s) => sameEmail({ email: s.key }, { email: forward })) : -1;
+  const found = everyone[at];
+  if (!found || at < MOST - 1) return everyone;
+  return [...everyone.slice(0, MOST - 2), found, ...everyone.slice(MOST - 2, at), ...everyone.slice(at + 1)];
 }
 
 export function lineOf(me: Someone, rest: Someone[]): Line {

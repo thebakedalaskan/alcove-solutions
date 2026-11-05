@@ -157,9 +157,11 @@
 .tp-g.is-new .ac-ghost { opacity: .7; }
 /* With no groups yet it's the whole of the section. */
 .tp-g.is-new:only-child { grid-column: 1 / -1; }
-.tp-note.ac-notice { grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; padding: 10px 12px 10px 16px; border-radius: 16px; }
+.tp-note.ac-notice { align-items: center; min-height: 60px; padding: 10px 12px 10px 16px; border-radius: 16px; background: color-mix(in oklch, var(--caution) 10%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 30%, var(--line)); color: var(--ink-2); }
+.tp-note > .ac-i { margin: 0; color: var(--caution); }
+.tp-note > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .tp-note b { color: var(--ink); }
-.tp-note > span { color: var(--ink-2); }
+.tp-note .ac-btn { flex: none; height: 32px; font-size: 13px; }
 
 /* A group, opened where it is. */
 .tp-o { position: relative; grid-column: 1 / -1; order: -1; min-width: 0; padding: 12px 12px 8px 18px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); }
@@ -206,7 +208,7 @@
 
 /* ------------------------------------------------------------ a phone: you in the middle of a line that runs off both sides */
 @media (max-width: 860px) {
-  .tp { --hz: 340px; --u0: 86px; --u: 86px; }
+  .tp { --hz: 288px; --u0: 86px; --u: 86px; }
   .dusk.tp .hz { --hz-sun-x: calc(-1.72 * var(--u)); --hz-sun-r: 31px; }
   /* The line slides, so a sun behind it would be cut into slices: it stands in its empty arch instead and slides too. */
   .tp[data-line="long"] .hz-sun { display: none; }
@@ -231,7 +233,7 @@
   .ac-pop.tp-pop, .ac-pop.tp-pop.is-list, .ac-pop.tp-pop.is-del { position: relative; width: auto; max-width: none; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); border-radius: 20px 20px 0 0; animation: tp-sheet var(--duration-2) var(--ease-out); }
   .ac-pop.tp-pop.is-person, .ac-pop.tp-pop.is-del { padding-inline: 16px; }
   .ac-pop.tp-pop[data-state="closed"] { animation: ac-fade-out 120ms var(--ease-in) forwards; }
-  .tp-pop .ac-pop-caret { display: none; }
+  .tp-pop .ac-pop-caret { visibility: hidden; }
   .tp-list, .tp-list.is-tall { max-height: 48vh; }
 
   /* Groups run sideways, as Home's tiles do, until one opens. */
@@ -241,7 +243,7 @@
   .tp-o { padding-left: 14px; }
   .tp-o-h { flex-wrap: wrap; }
   .tp-o-n { flex-basis: 100%; }
-  .tp-o-a { flex-wrap: wrap; width: 100%; }
+  .tp-o-a { flex-wrap: wrap; gap: 4px; width: 100%; }
   .tp-o-a > .ac-icon-btn:last-child { position: absolute; top: 12px; right: 10px; }
   .tp-ms { grid-template-columns: minmax(0, 1fr); }
 

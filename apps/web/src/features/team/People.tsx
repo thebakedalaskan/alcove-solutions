@@ -5,12 +5,12 @@
 import { errorMessage, type Person, type Team } from '@alcove/api';
 import { Button, GhostArch, Icon, Popover, buttonClass, cn, useToast, type ButtonVariant } from '@alcove/ui';
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { PickList, type PickRow } from '~/features/people/PickList';
 import { log } from '~/lib/log';
 import { byEmail, fold, isEmail, sameEmail, someNames } from '~/lib/people';
 import { useInviteTeam } from '~/lib/queries';
 import { addressOnly, byMeetings, callLine, listed, type Meets, type Member } from './data';
 import { useOpen, usePop } from './open';
+import { PickList, type PickRow } from './PickList';
 
 const tlog = log.child({ component: 'team' });
 
@@ -105,7 +105,7 @@ function InviteList({ team, meets, now, onClose }: { team: Team; meets: (email: 
   ];
   /* A whole address nobody here has, ready to tick: finishing takes it too, so nobody has to press Enter first. */
   const fresh = isEmail(typed) && !known(typed) && !picked.some((p) => sameEmail(p, { email: typed })) ? byEmail(typed) : undefined;
-  if (fresh) rows.unshift(row(fresh, 'New to you'));
+  if (fresh) rows.unshift({ ...row(fresh, 'New to you'), on: true });
   const going = fresh ? [...picked, fresh] : picked;
 
   useEffect(() => {
@@ -121,7 +121,7 @@ function InviteList({ team, meets, now, onClose }: { team: Team; meets: (email: 
   };
   return (
     <PickList label="Name or email" query={query} onQuery={setQuery} rows={rows} ticks
-      none={typed ? 'Nobody here by that name. Type their address.' : asked.length || !team.members.length ? 'Type their address.' : 'Everyone here has been asked.'}
+      none={typed ? 'Nobody here by that name. Type their address.' : !team.members.length ? 'Type their address.' : team.members.every((m) => m.onAlcove) ? 'Everyone here is on Alcove.' : 'Everyone here has been asked.'}
       onPress={(r) => { setPicked((now) => (now.some((p) => sameEmail(p, r.person)) ? now.filter((p) => !sameEmail(p, r.person)) : [...now, r.person])); if (r.person === fresh) setQuery(''); }}
       onFinish={send}
       foot={<>
