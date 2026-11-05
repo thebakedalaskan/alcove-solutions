@@ -4,18 +4,18 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, DocVersionWireSchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema,
   NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
+import type { DocVersionSummary } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
-import { HttpDocSession } from './workspaceDocuments';
 import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './workspaces';
 import { z } from 'zod';
 
@@ -351,19 +351,33 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         (signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS,
         (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS
       ),
-      document: (id, documentId, opts) => {
+      // Yjs comes with the first document anyone opens, and stays out of everything else.
+      document: async (id, documentId, opts) => {
         const at = `${space(id)}/documents/${encodeURIComponent(documentId)}`;
         const headers = withPass(opts);
+        const { HttpDocSession } = await import('./workspaceDocuments');
         return new HttpDocSession({
           open: (after, signal) => ndjson(DocLiveEventSchema, `${at}/live?after=${after}`, signal, headers),
-          update: (update) => req(DocAppendedSchema, 'POST', `${at}/updates`, { update }, headers),
+          update: async (update) => parse(DocAppendedSchema, await (await send('POST', `${at}/updates`, new Uint8Array(update), { 'content-type': DOC_UPDATE_TYPE, ...headers })).json(), `response from POST ${at}/updates`),
           awareness: (update, keepalive) => req(z.unknown(), 'POST', `${at}/awareness`, { update }, headers, keepalive)
         }, opts?.keep, o.liveQuietMs ?? QUIET_MS);
       },
       versions: (id, documentId, w) => req(z.array(DocVersionSummarySchema), 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions`, undefined, withPass(w)),
       version: async (id, documentId, versionId, w) => {
-        const { update, ...version } = await req(DocVersionWireSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`, undefined, withPass(w));
-        return { ...version, update: fromBase64Url(update) };
+        const parts: Uint8Array[] = [];
+        let about: DocVersionSummary | null = null;
+        let expected = 0;
+        for await (const line of ndjson(DocVersionLineSchema, `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`, undefined, withPass(w))) {
+          if (line.type === 'part') { parts.push(fromBase64Url(line.update)); continue; }
+          const { type: _, parts: count, ...summary } = line;
+          about = summary;
+          expected = count;
+        }
+        if (!about || parts.length !== expected) throw new AlcoveApiError('network', 'That version didn’t arrive whole. Try again.');
+        const update = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+        let at = 0;
+        for (const p of parts) { update.set(p, at); at += p.length; }
+        return { ...about, update };
       },
       restoreVersion: async (id, documentId, versionId, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/restore`, {}, withPass(w)); },
       searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w))
