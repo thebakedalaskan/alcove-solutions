@@ -236,7 +236,7 @@ const MORE: { id: BoardMoreItem; icon: IconName; label: string; key?: string }[]
   { id: 'workspace', icon: 'transcript', label: 'From your workspace' },
   { id: 'table', icon: 'table', label: 'Table' },
   { id: 'mindMap', icon: 'workflow', label: 'Mind map' },
-  { id: 'comment', icon: 'comment', label: 'Comment', key: 'K' },
+  { id: 'comment', icon: 'commentBubble', label: 'Comment', key: 'K' },
   { id: 'templates', icon: 'layoutTemplate', label: 'Templates' }
 ];
 const LINES: { id: BoardLineStyle; icon: IconName; label: string }[] = [

@@ -8,6 +8,7 @@ apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible obje
 packages/ui         The design system: tokens, components, illustrations. Everything visual lives here.
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
+packages/board      The shape of a board's Y.Doc and the logic the app and API share. No React.
 infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
 docs/               Product, engineering and design docs. Keep them true to the code.
 ```
