@@ -19,11 +19,12 @@ import { isOnline } from '../browser';
 import { changer, foundOf } from '../world/build';
 import { personAt } from '../world/people';
 import { session as sessionFor, type World } from '../world';
-import { ScriptedCall } from './call';
+import { joinCall, type ScriptedCall } from './call';
 import { Pushed, pause } from './live';
 import { audioUrlFor, quietAudio, screenImage } from './media';
 import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
+import { atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
 import * as spaces from './workspaces';
 
@@ -206,6 +207,11 @@ function cardOf(w: World, code: string): CallCard {
     capture: null, ended: m.status === 'ended', you: 'invited', signInForNotes: ['google']
   };
 }
+/** What the link says as the call stands: the call's script and the call itself say who's there (script.ts). */
+const doorOf = (w: World, code: string): CallCard => {
+  const m = byCode(w, code);
+  return m ? atTheDoor(cardOf(w, code), m) : cardOf(w, code);
+};
 function documentsFor(w: World, ids: string[] | undefined): CallDocument[] {
   const all = w.documents.workspaces.flatMap((s) => s.documents);
   return (ids ?? []).flatMap((id) => { const d = all.find((x) => x.id === id); return d ? [{ id, kind: d.kind, by: d.by, name: d.name }] : []; });
@@ -224,7 +230,27 @@ function meetingFrom(w: World, input: MeetingInput): Meeting {
   };
 }
 
-const ringing = new Set<Pushed<IncomingRing[]>>();
+/** Everything ringing you, as one tab's stream has it: a ring nobody answers leaves by itself when it runs out. */
+class Rings extends Pushed<IncomingRing[]> {
+  constructor(rings: IncomingRing[]) {
+    super(rings);
+    for (const r of rings) this.runsOut(r);
+  }
+  ring(r: IncomingRing): void {
+    this.update((rs) => [...rs.filter((x) => x.id !== r.id), r]);
+    this.runsOut(r);
+  }
+  private runsOut(r: IncomingRing): void {
+    this.after(Math.max(0, Date.parse(r.expiresAt) - Date.now()), () => this.update((rs) => rs.filter((x) => x.id !== r.id || x.expiresAt !== r.expiresAt)));
+  }
+}
+const ringing = new Set<Rings>();
+/** Someone rings you while the story is open: the card drops in on whatever page is open. */
+export function ringYou(r: IncomingRing): void {
+  const w = current();
+  w.rings = [...w.rings.filter((x) => x.id !== r.id), r];
+  for (const store of ringing) store.ring(structuredClone(r));
+}
 const calls = new Set<ScriptedCall>();
 const recordings = new Set<ScriptedRecording>();
 /** Whatever the last story left open stops: its calls, its recordings, its rings. */
@@ -347,23 +373,23 @@ export const standIn: AlcoveApi = {
       w.meetings.push(m);
       return { code: m.code };
     }),
-    card: (code: string) => answer((w) => cardOf(w, code), 'anyone'),
+    card: (code: string) => answer((w) => doorOf(w, code), 'anyone'),
     pick: (code: string, at: string) => answer((w) => {
       const m = byCode(w, code);
       if (!m?.offer) throw refused('conflict', 'Someone has picked a time already.');
       const { offer: _offer, ...settled } = { ...m, startsAt: at, endsAt: addMinutes(at, (Date.parse(m.endsAt) - Date.parse(m.startsAt)) / 60_000) };
       w.meetings = w.meetings.map((x) => (x.id === m.id ? settled : x));
-      return cardOf(w, code);
+      return doorOf(w, code);
     }, 'anyone'),
     series: (code: string) => answer((w) => { const m = byCode(w, code); return m?.seriesId && w.notes.some((n) => n.seriesId === m.seriesId) ? seriesIn(w, m.seriesId) : null; }),
-    join: async (code: string): Promise<CallSession> => {
+    join: async (code: string, opts: { name?: string | undefined }): Promise<CallSession> => {
       const m = await answer((w) => {
         const found = byCode(w, code);
         if (!found) throw refused('not-found', 'That call link doesn’t lead anywhere.');
         if (found.status === 'ended') throw refused('conflict', 'This call has ended.');
         return found;
       }, 'anyone');
-      const live = new ScriptedCall(m);
+      const live = joinCall(m, opts);
       calls.add(live);
       current().meetings = current().meetings.map((x) => (x.id === m.id ? { ...x, status: 'live' } : x));
       return live;
@@ -373,7 +399,7 @@ export const standIn: AlcoveApi = {
   },
   rings: {
     live: () => {
-      const store = new Pushed<IncomingRing[]>(structuredClone(current().rings));
+      const store = new Rings(structuredClone(current().rings.filter((r) => Date.parse(r.expiresAt) > Date.now())));
       ringing.add(store);
       return store;
     },
