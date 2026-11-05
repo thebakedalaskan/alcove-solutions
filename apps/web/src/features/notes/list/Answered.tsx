@@ -7,26 +7,16 @@ import { Avatar, Button, Dots, IconButton } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import type { MouseEvent } from 'react';
 import type { Answer } from '~/features/notes/answer';
-import { MomentChip, othersIn } from './parts';
+import { MomentChip, byTime, othersIn, type Said } from './parts';
 
-/** Each note an answer cites, once, with its moments in order. A cite at 0:00 is the note as a whole, without a moment of its own. */
-function sources(answer: Answer, notes: NoteFound[]): { note: NoteFound; at: number[] }[] {
-  const rows: { note: NoteFound; at: number[] }[] = [];
-  for (const c of answer.cites) {
-    if (c.type !== 'cite') continue;
-    const row = rows.find((r) => r.note.id === c.noteId);
-    const moment = c.at > 0 ? [c.at] : [];
-    if (row) row.at = [...new Set([...row.at, ...moment])].sort((a, b) => a - b);
-    else {
-      const note = notes.find((n) => n.id === c.noteId);
-      if (note) rows.push({ note, at: moment });
-    }
-  }
-  return rows;
-}
+/** Each note an answer cites, once, in the order it uses them. A note that's gone isn't shown. */
+const sources = (answer: Answer, notes: NoteFound[]) =>
+  [...new Set(answer.cites.flatMap((c) => (c.type === 'cite' ? [c.noteId] : [])))].flatMap((id) => notes.filter((n) => n.id === id));
 
-export function Answered({ answer, lost, notes, me, onClose, onAgain, onPick }: {
+export function Answered({ answer, lost, notes, me, saidOf, onClose, onAgain, onPick }: {
   answer: Answer | null; lost: string | null; notes: NoteFound[]; me: string | undefined;
+  /** The moments it cites in a note. */
+  saidOf: (n: NoteFound) => Said;
   onClose: () => void; onAgain: () => void; onPick: (e: MouseEvent<HTMLAnchorElement>, id: string) => void;
 }) {
   const cited = answer ? sources(answer, notes) : [];
@@ -39,14 +29,14 @@ export function Answered({ answer, lost, notes, me, onClose, onAgain, onPick }: 
           <p className="nt-ans-t">{answer.text}</p>
           {cited.length > 0 && (
             <div className="nt-cites">
-              {cited.map(({ note, at }) => {
+              {cited.map((note) => {
                 const face = othersIn(note.people, me)[0];
                 return (
                   <span key={note.id} className="nt-cite">
                     <Link to="/notes/$noteId" params={{ noteId: note.id }} className="nt-cite-n" title={`Show ${note.title}`} onClick={(e) => onPick(e, note.id)}>
                       {face && <Avatar person={face} size={20} />}<span className="ac-clamp-1">{note.title}</span>
                     </Link>
-                    {at.map((s) => <MomentChip key={s} noteId={note.id} noteTitle={note.title} at={s} />)}
+                    {byTime(saidOf(note).lines).map((l) => <MomentChip key={l.id} noteId={note.id} noteTitle={note.title} at={l.at} room={l.room} />)}
                   </span>
                 );
               })}

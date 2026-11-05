@@ -66,12 +66,12 @@ export function WithPeople({ known, person, add, onPick }: {
     <div className="nt-people">
       {person ? (
         <span className="hm-who nt-with">
-          <Avatar person={person} size={26} /><span>{callName(person)}</span>
+          <Avatar person={person} size={26} /><span className="ac-clamp-1">{callName(person)}</span>
           <IconButton icon="x" size={14} label="Show notes with anyone" className="nt-with-x" onClick={() => onPick(undefined)} />
         </span>
       ) : known.slice(0, PEOPLE).map((k) => (
         <button key={k.person.email} type="button" className="hm-who" aria-label={`Notes with ${k.person.name}`} title={`Notes with ${k.person.name}`} onClick={() => onPick(k.person.email)}>
-          <Avatar person={k.person} size={26} /><span>{callName(k.person)}</span>
+          <Avatar person={k.person} size={26} /><span className="ac-clamp-1">{callName(k.person)}</span>
         </button>
       ))}
       <Someone known={known} person={person} add={add} onPick={onPick} />

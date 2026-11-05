@@ -1,40 +1,4 @@
-/*
- * The picked note's old frame (pv-), then a note's own page, whose frame the series page shares. The notes list is in
- * notes.css.
- */
-
-/* ---------------------------------------------------- the picked note */
-.pv { position: sticky; top: 24px; max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 26px 28px 22px; }
-.pv-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
-.pv-acts { display: flex; align-items: center; gap: 8px; margin-left: auto; }
-/* Pinned, beside the list: the pin in sun, without the filled square the note's page gives it. */
-.pv-acts .ac-icon-btn.is-on { background: transparent; }
-.pv-acts .ac-icon-btn.is-on:hover { background: var(--sunk); }
-.pv h2 { font-size: 30px; line-height: 1.12; font-weight: 480; letter-spacing: -0.015em; font-variation-settings: 'opsz' 30; }
-.pv .doc-meta { margin-top: 12px; }
-.pv .doc-meta .who { min-width: 0; }
-.pv .doc-meta .from { display: inline-flex; align-items: center; gap: 7px; }
-.pv .doc-meta .from > .ac-i { color: var(--ink-3); }
-.pv-sec { margin-top: 24px; }
-.pv-sec > .ac-eyebrow { margin-bottom: 8px; }
-.pv .summary { font-size: 15.5px; line-height: 1.6; }
-.pv-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 0; font-size: 14.5px; line-height: 1.4; }
-.pv-row small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--ink-3); }
-.pv-row .lk { font-size: 12.5px; line-height: 1.2; }
-/* The due column has one width, so owners line up down the list. */
-.pv-act { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto 76px; gap: 12px; align-items: center; padding: 8px 0; font-size: 14.5px; line-height: 1.4; }
-.pv-act.done .t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
-.pv-act .due-t { font: 500 12px/1.3 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
-.pv-more { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
-.pv-more:hover { color: var(--sun-text); }
-.pv-quiet { font-size: 14px; line-height: 1.5; color: var(--ink-3); }
-.pv-wait { display: grid; place-items: center; padding: 48px 0; color: var(--ink-3); }
-.pv-gone { display: grid; justify-items: center; gap: 8px; padding: 32px 8px 8px; text-align: center; }
-.pv-gone .ac-arch-art { width: 48px; height: 54px; }
-.pv-gone b { font: 480 20px/1.2 var(--font-display); letter-spacing: -0.015em; }
-.pv-gone p { max-width: 34ch; font-size: 13.5px; line-height: 1.5; color: var(--ink-3); }
-.pv-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
-.pv-foot .have { font-size: 13px; color: var(--ink-3); }
+/* A note's own page, whose frame the series page shares. The notes list is in notes.css. */
 
 /* -------------------------------------------------------------- a note */
 /*

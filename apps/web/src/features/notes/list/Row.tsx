@@ -7,7 +7,7 @@ import { marked, nearMatch } from '~/features/notes/highlight';
 import { spokenName } from '~/lib/people';
 import { daysFromToday, hm, shortDay } from '~/lib/time';
 import { plural } from '~/lib/words';
-import { MomentChip, howOf, noSummary, othersIn, type Said } from './parts';
+import { MomentChip, byTime, howOf, noSummary, othersIn, type Said } from './parts';
 
 /** Moments a row links to; its preview lists more. */
 const MOMENTS = 3;
@@ -25,7 +25,7 @@ export function Row({ n, me, terms, said, cited, toConfirm, pinned, on, wide, on
   // A summary that has the words says what the note is about; otherwise the line they were said in does.
   const quoted = quote && (cited || !termsIn(n.excerpt, terms));
   const recent = daysFromToday(new Date(n.startedAt)) >= -1;
-  const moments = said.lines.slice(0, MOMENTS);
+  const moments = byTime(said.lines.slice(0, MOMENTS));
   const chips = moments.length > 0 || n.status !== 'ready' || toConfirm > 0 || n.openActions > 0;
   return (
     <div className={cn('nt-row', on && 'is-on')} data-note={n.id}>

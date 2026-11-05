@@ -1,5 +1,5 @@
 /* What the notes list shares: who you have notes with, what a note shows of what was said, and the way to a moment. */
-import type { NoteSaid, NoteSummary, Person, RoomRef } from '@alcove/api';
+import type { Note, NoteSaid, NoteSummary, Person, RoomRef } from '@alcove/api';
 import { Icon, type IconName } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { receivedLine } from '~/features/notes/meta';
@@ -42,8 +42,20 @@ export const noSummary = (n: { kind: NoteSummary['kind']; status: NoteSummary['s
     : n.status === 'pending' ? 'The summary, decisions and follow-ups show here once they’re written.'
       : n.kind === 'room' ? 'Nothing was said while recording.' : 'Nothing was said while notes were on.';
 
-/** What was said in a note that a search or an answer points at: the lines, and how many there are in all. */
+/** What was said in a note that a search or an answer points at: the lines, what fits it best first, and how many there are in all. */
 export interface Said { lines: NoteSaid[]; count: number }
+/** Lines in the order they were said. */
+export const byTime = (lines: NoteSaid[]): NoteSaid[] => [...lines].sort((a, b) => a.at - b.at);
+
+/**
+ * The line an answer cites at second `at`, in the main room or a breakout room's, as far as the reader has what was said.
+ * A cite is a whole second read from a line's own mark, so a line further off is another line: then it's only a moment.
+ */
+export function citedLine(note: Note | undefined, noteId: string, at: number): NoteSaid {
+  const heard = note ? [...(note.transcript ?? []), ...note.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))] : [];
+  const line = heard.filter((l) => Math.abs(l.at - at) < 1).sort((a, b) => Math.abs(a.at - at) - Math.abs(b.at - at))[0];
+  return { id: `${noteId}@${at}`, at, text: line?.text ?? '', ...(line?.speaker ? { speaker: line.speaker } : {}), ...(line?.room ? { room: line.room } : {}) };
+}
 
 /** A moment in a note: it opens the note there, not playing. */
 export function MomentChip({ noteId, noteTitle, at, room, tabIndex }: { noteId: string; noteTitle: string; at: number; room?: RoomRef | undefined; tabIndex?: number | undefined }) {

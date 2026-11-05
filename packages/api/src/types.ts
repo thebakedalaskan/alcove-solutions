@@ -669,7 +669,7 @@ export type NoteSummary = z.infer<typeof NoteSummarySchema>;
 /** A line of what was said that a search found: where it is, who said it, the room it was said in, and the words. */
 export const NoteSaidSchema = TranscriptLineSchema.pick({ id: true, at: true, speaker: true, room: true, text: true });
 export type NoteSaid = z.infer<typeof NoteSaidSchema>;
-/** A note as a search finds it: what was said that matched (empty without a search), and how many lines did in all. */
+/** A note as a search finds it: what was said that matched, the lines with most of its words first (empty without a search), and how many lines did in all. */
 export const NoteFoundSchema = NoteSummarySchema.extend({ said: z.array(NoteSaidSchema), saidCount: z.number() });
 export type NoteFound = z.infer<typeof NoteFoundSchema>;
 

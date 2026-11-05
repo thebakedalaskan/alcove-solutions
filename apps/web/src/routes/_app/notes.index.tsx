@@ -14,7 +14,7 @@ import { useAnswer } from '~/features/notes/answer';
 import { Answered } from '~/features/notes/list/Answered';
 import { FirstDay } from '~/features/notes/list/FirstDay';
 import { Nothing } from '~/features/notes/list/Nothing';
-import { peopleIn, type Said } from '~/features/notes/list/parts';
+import { citedLine, peopleIn, type Said } from '~/features/notes/list/parts';
 import { Preview } from '~/features/notes/list/Preview';
 import { Row } from '~/features/notes/list/Row';
 import { SearchLine, ShowTabs, WithPeople, type Show } from '~/features/notes/list/Sky';
@@ -94,12 +94,11 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
   const cites = answer?.done ? answer.cites.flatMap((c) => (c.type === 'cite' ? [c] : [])) : [];
   const cited = all.filter((n) => cites.some((c) => c.noteId === n.id));
   const read = useQueries({ queries: cited.map((n) => ({ ...q.note(n.id), retry: false })) });
-  /** What an answer's moments in a note said: the line at each, as far as the reader has what was said. */
+  /** What an answer cites in a note, in the order it uses it. A cite at 0:00 is the note as a whole, without a moment of its own. */
   const citedIn = (n: NoteFound): Said => {
-    const lines = read.find((r) => r.data?.id === n.id)?.data?.transcript ?? [];
-    const at = [...new Set(cites.filter((c) => c.noteId === n.id && c.at > 0).map((c) => c.at))].sort((a, b) => a - b);
-    const said = at.map((s) => { const l = lines.findLast((x) => x.at <= s + 0.5); return { id: `${n.id}@${s}`, at: s, text: l?.text ?? '', ...(l?.speaker ? { speaker: l.speaker } : {}) }; });
-    return { lines: said, count: said.length };
+    const note = read.find((r) => r.data?.id === n.id)?.data;
+    const lines = [...new Set(cites.filter((c) => c.noteId === n.id && c.at > 0).map((c) => c.at))].map((at) => citedLine(note, n.id, at));
+    return { lines, count: lines.length };
   };
 
   const shown = (n: NoteFound) => (show !== 'shared' || n.received?.role === 'shared') && (!who || n.people.some((p) => sameEmail(p, { email: who })));
@@ -115,8 +114,16 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
   /* The answer's first note is the one to read first. */
   const firstCited = cites[0]?.noteId;
   useEffect(() => { if (firstCited) setPicked(firstCited); }, [firstCited]);
-  /* A different list starts at its top. */
-  useEffect(() => { box.current?.scrollTo({ top: 0 }); }, [term, show, who, firstCited]);
+  /* A different list starts at its top. Coming back to this one, the router puts your place back, so that's left alone. */
+  const listed = useRef({ term, show, who, firstCited });
+  useEffect(() => {
+    const was = listed.current;
+    listed.current = { term, show, who, firstCited };
+    if (was.term !== term || was.show !== show || was.who !== who || was.firstCited !== firstCited) box.current?.scrollTo({ top: 0 });
+  }, [term, show, who, firstCited]);
+  /* An empty list says what it's for once the search is answered: until then, the last one that was. */
+  const [answered, setAnswered] = useState(term);
+  useEffect(() => { if (!searched.isPlaceholderData) setAnswered(term); }, [term, searched.isPlaceholderData]);
 
   const change = (typed: string) => {
     setText(typed);
@@ -177,10 +184,10 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
       </section>
       <p className="sr-only" role="status">{narrowed ? plural(list.length, 'note') : ''}</p>
       <div className="nt-water" style={{ '--d': 2 }}>
-        {(answer || lost) && <Answered answer={answer} lost={lost} notes={all} me={me} onClose={putAway} onAgain={() => { if (lost) { setLost(null); void ask(lost); } }} onPick={pick} />}
+        {(answer || lost) && <Answered answer={answer} lost={lost} notes={all} me={me} saidOf={citedIn} onClose={putAway} onAgain={() => { if (lost) { setLost(null); void ask(lost); } }} onPick={pick} />}
         {list.length ? (
           <div className="nt-split">
-            <div ref={box} className="nt-list" role="group" aria-label={person ? `Notes with ${person.name}` : 'Notes'}>
+            <div ref={box} className="nt-list" role="group" aria-label={person ? `Notes with ${person.name}` : 'Notes'} data-scroll-restoration-id="notes-list">
               {groups.map((g) => (
                 <div key={g} className="nt-g">
                   <h2 className="nt-gh">{g}</h2>
@@ -192,7 +199,7 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
             </div>
             {wide && current && <Preview key={current.id} s={current} me={me} terms={search.terms} said={saidOf(current)} onDropped={() => { dropped.current = true; }} />}
           </div>
-        ) : <Nothing term={term} show={show} person={person} failed={searched.isError ? errorMessage(searched.error) : undefined} onRetry={() => void searched.refetch()} onClear={clear} onAll={() => { setShow('all'); if (who) anyone(); }} onAnyone={anyone} />}
+        ) : <Nothing term={searched.isPlaceholderData ? answered : term} show={show} person={person} failed={searched.isError ? errorMessage(searched.error) : undefined} onRetry={() => void searched.refetch()} onClear={clear} onAll={() => { setShow('all'); if (who) anyone(); }} onAnyone={anyone} />}
       </div>
     </Evening>
   );

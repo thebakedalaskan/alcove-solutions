@@ -9,7 +9,7 @@ import {
   ActionItemSchema, CaptureGapSchema, ChangerSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
   isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, maySayNotReplaced, minutesLabel, searchOf, termsIn,
   type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
-  type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
+  type Note, type NoteFound, type NoteKind, type NoteProgress, type NoteReader, type NoteSaid, type NoteSearch, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
   type RevisitPatch, type RoomNote, type RoomRef, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
@@ -395,24 +395,28 @@ const SAID_SHOWN = 4;
 /** Everything said in a note as someone may read it: the main room, then each breakout room's lines, which say which room. */
 const saidIn = (m: NoteManifest): TranscriptLine[] => [...(m.transcript ?? []), ...m.rooms.flatMap((r) => r.transcript.map((l) => ({ ...l, room: { id: r.id, name: r.name } })))];
 
+/** What a search finds in a note as someone may read it: the lines with most of its words, best first, and how many lines have any. Nothing, when the note doesn't match. */
+function foundIn(l: Located, { terms, question }: NoteSearch): Pick<NoteFound, 'said' | 'saidCount'> | undefined {
+  const m = asRead(l);
+  const lines = saidIn(m);
+  const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
+  if (question ? !has : has < terms.length) return undefined;
+  const matched = lines.flatMap((line) => { const n = termsIn(line.text, terms); return n ? [{ line, n }] : []; });
+  const said = matched.sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map(({ line: { id, at, speaker, room, text } }): NoteSaid => (
+    { id, at, text, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}) }
+  ));
+  return { said, saidCount: matched.length };
+}
+
 export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]> {
-  const { terms, question } = searchOf(q.text ?? '');
+  const search = searchOf(q.text ?? '');
   const notes = (await everyNote(o, await myEmail(o))).filter((l) => !q.kind || l.note.manifest.kind === q.kind);
   notes.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
   const found = notes.flatMap((l) => {
-    const m = asRead(l);
-    const lines = saidIn(m);
-    const has = termsIn(`${m.title} ${m.summary} ${lines.map((t) => t.text).join(' ')}`, terms);
-    if (terms.length && (question ? !has : has < terms.length)) return [];
-    const matched = terms.length ? lines.flatMap((line) => { const n = termsIn(line.text, terms); return n ? [{ line, n }] : []; }) : [];
-    // The lines with most of the words, read in the order they were said.
-    const said = [...matched].sort((a, b) => b.n - a.n || a.line.at - b.line.at).slice(0, SAID_SHOWN).map((x): NoteSaid => {
-      const { id, at, speaker, room, text } = x.line;
-      return { id, at, text, ...(speaker ? { speaker } : {}), ...(room ? { room } : {}) };
-    }).sort((a, b) => a.at - b.at);
-    return [{ l, said, saidCount: matched.length }];
+    const hit = search.terms.length ? foundIn(l, search) : { said: [], saidCount: 0 };
+    return hit ? [{ l, hit }] : [];
   });
-  return Promise.all(found.map(async ({ l, said, saidCount }) => ({ ...await summary(l), said, saidCount })));
+  return Promise.all(found.map(async ({ l, hit }) => ({ ...await summary(l), ...hit })));
 }
 /** The series a note's call is in, read from the call in its organizer's vault. Room recordings have no call, so no series. */
 export async function seriesOf(l: Located): Promise<string | undefined> {

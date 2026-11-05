@@ -17,7 +17,7 @@ import { sameEmail, spokenName } from '~/lib/people';
 import { q, useDeleteNote, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
-import { MomentChip, howOf, noSummary, othersIn, type Said } from './parts';
+import { MomentChip, byTime, howOf, noSummary, othersIn, type Said } from './parts';
 
 /* At most this many beside the list; the note has the rest. */
 const DECISIONS = 3;
@@ -145,6 +145,7 @@ function More({ s, note, onAsking, onDropped }: { s: NoteSummary; note: Note | u
   const [open, setOpen] = useState(false);
   const [sure, setSure] = useState(false);
   const mine = !s.received;
+  const inCall = s.kind === 'call' && s.status === 'recording';
   useEffect(() => { onAsking(sure); if (sure) cancel.current?.focus(); }, [sure, onAsking]);
   const change = (o: boolean) => { setOpen(o); if (!o) setSure(false); };
   const copy = () => {
@@ -179,9 +180,9 @@ function More({ s, note, onAsking, onDropped }: { s: NoteSummary; note: Note | u
             <span className="nt-pop-ic"><Icon name="copy" size={18} /></span>
             <span className="nt-pop-b"><b>Copy as text</b>{s.status !== 'ready' && <small>Once the notes are written.</small>}</span>
           </button>
-          <button type="button" className="nt-pop-row" onClick={() => setSure(true)}>
+          <button type="button" className="nt-pop-row" disabled={inCall} onClick={() => setSure(true)}>
             <span className="nt-pop-ic"><Icon name="trash" size={18} /></span>
-            <span className="nt-pop-b"><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{mine ? 'For everyone. Can’t be undone.' : 'Everyone else keeps them.'}</small></span>
+            <span className="nt-pop-b"><b>{mine ? 'Delete notes' : 'Remove from your notes'}</b><small>{!mine ? 'Everyone else keeps them.' : inCall ? 'Once the call ends.' : 'For everyone. Can’t be undone.'}</small></span>
           </button>
         </>
       )}
@@ -191,7 +192,7 @@ function More({ s, note, onAsking, onDropped }: { s: NoteSummary; note: Note | u
 
 /** What was found in the note, above its summary: each line, who said it, and the moment it was said. */
 function Moments({ s, me, terms, said }: { s: NoteSummary; me: string | undefined; terms: string[]; said: Said }) {
-  const lines = said.lines.filter((l) => l.text).slice(0, MOMENTS);
+  const lines = byTime(said.lines.filter((l) => l.text).slice(0, MOMENTS));
   if (!lines.length) return null;
   return (
     <section className="nt-sec" aria-label="What was said">
@@ -214,12 +215,14 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
   const reader = useNoteReader()(note.received?.role ?? 'organizer');
   /* What you said here wasn't decided stays in place, saying so, with Undo, until you pick another note. */
   const [touched, setTouched] = useState<ReadonlySet<string>>(new Set());
-  const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
-  const change = (d: Decision, patch: DecisionPatch) => {
+  // Each press keeps its own answer (mutateAsync), so a quick second press, or picking another note, never loses the first one's error.
+  const change = async (d: Decision, patch: DecisionPatch) => {
     setTouched((t) => new Set(t).add(d.id));
-    decide.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
+    try { await decide.mutateAsync({ noteId: note.id, decisionId: d.id, patch }); } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
   };
-  const tick = (a: ActionItem, done: boolean) => act.mutate({ noteId: note.id, actionId: a.id, patch: { done } }, { onError: failed });
+  const tick = async (a: ActionItem, done: boolean) => {
+    try { await act.mutateAsync({ noteId: note.id, actionId: a.id, patch: { done } }); } catch (e) { toast(errorMessage(e), { icon: 'x' }); }
+  };
   const more = (n: number, what: string) => n > 0 && <Link to="/notes/$noteId" params={{ noteId: note.id }} className="nt-more">{n} more {what} in the notes<Icon name="right" size={14} /></Link>;
 
   if (note.status !== 'ready') {
@@ -238,13 +241,13 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
       <p className={cn('nt-pv-s', short && 'ac-clamp-2')}>{note.summary}</p>
       {decided.length > 0 && (
         <section className="nt-sec" aria-label="Decisions">
-          {decided.slice(0, DECISIONS).map((d) => <DecisionRow key={d.id} d={d} note={note} me={me} reader={reader} busy={decide.isPending} onChange={change} />)}
+          {decided.slice(0, DECISIONS).map((d) => <DecisionRow key={d.id} d={d} note={note} me={me} reader={reader} busy={decide.isPending} onChange={(x, patch) => void change(x, patch)} />)}
           {more(decided.length - DECISIONS, decided.length - DECISIONS === 1 ? 'decision' : 'decisions')}
         </section>
       )}
       {note.actions.length > 0 && (
         <section className="nt-sec" aria-label="Follow-ups">
-          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} onTick={tick} />)}
+          {note.actions.slice(0, FOLLOW_UPS).map((a) => <FollowUp key={a.id} a={a} note={note} me={me} reader={reader} onTick={(x, done) => void tick(x, done)} />)}
           {more(note.actions.length - FOLLOW_UPS, note.actions.length - FOLLOW_UPS === 1 ? 'follow-up' : 'follow-ups')}
         </section>
       )}

@@ -496,8 +496,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 - **Search everything said, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to
   it; **↓** goes from it to the list, and **Escape** clears it). It finds the words, not just the note: every word typed
   has to be somewhere in the note's title, summary or what was said, in any order, breakout rooms included. A row quotes
-  the line and who said it, with a chip for each moment, up to three, unless the summary has the words, and the preview
-  lists up to four of those moments above the summary. A moment opens the note there, not playing. While a question is
+  the line with most of the words and who said it, unless the summary has them, with a chip for each of the best moments,
+  up to three in the order they were said, and the preview lists up to four of them above the summary. A moment opens the note there, not playing. While a question is
   being typed the list shows the notes with any of its words, and all of them when none has. Someone who can't read a
   note's transcript finds the note only by what they can read, and nothing is quoted to them.
 - Under the line are the four people you have most notes with, and **+** to find anyone else you have notes with. Picking
@@ -535,7 +535,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 - **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
   and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
-  Beside the list it asks in place, and the row leaves the list.
+  Beside the list it asks in place, and the row leaves the list. While the call is going, it waits until the call ends.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
   beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
   says **Everyone with the notes**: nobody else reads Your notes, the organizer included.

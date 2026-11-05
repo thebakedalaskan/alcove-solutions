@@ -304,8 +304,10 @@ button.nt-pop-row:disabled { opacity: .5; cursor: default; }
   .nt-q input { font-size: 20px; }
   .nt-q-k.ac-kbd, .nt-q-ask .kb { display: none; }
   .ac-btn.nt-q-ask { padding: 0 14px; }
+  /* One row, whoever's in it: a long name gives way, and + stays. */
   .nt-people { flex-wrap: nowrap; width: 100%; }
-  .nt-people .hm-who, .nt-people .hm-add { flex: none; }
+  .nt-people .hm-who { flex: 0 1 auto; min-width: 0; max-width: 38%; }
+  .nt-people .hm-add { flex: none; }
   .nt-tabs.ac-tabs { justify-content: center; }
   .nt-tabs .ac-tab { padding: 0 9px; }
   .nt-water { display: block; padding-top: 32px; }

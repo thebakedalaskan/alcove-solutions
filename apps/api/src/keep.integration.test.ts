@@ -580,6 +580,9 @@ describe('a call with breakout rooms', () => {
     expect(unwritten.rooms.map((r) => r.transcript.length)).toEqual([3, 3]);
     expect(await lena.browser.api.notes.get(noteId)).toMatchObject({ transcript: [], writtenAt: null });
     expect((await lena.browser.api.notes.get(noteId)).rooms.map((r) => r.transcript)).toEqual([[], []]);
+    // A search reads no more than that: what was said in a room is the organizer's alone, whoever said it.
+    expect(await lena.browser.api.notes.list({ text: SUPPORT_CANARY })).toEqual([]);
+    expect((await org.api.notes.list({ text: SUPPORT_CANARY }))[0]?.said).toMatchObject([{ text: expect.stringContaining(SUPPORT_CANARY), room: { name: 'Support' } }]);
     expect(await fails(asked(lena.browser.api, noteId, 'Who is the bank?'))).toEqual(['conflict', 'These notes aren’t written yet, so there’s nothing to ask about.']);
     await asked(org.api, noteId, 'Who is the bank?');
     expect(h.near.prompts.at(-1)).toContain(SUPPORT_CANARY);
