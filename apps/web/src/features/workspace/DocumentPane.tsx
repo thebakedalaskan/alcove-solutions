@@ -112,6 +112,12 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     return () => cancelAnimationFrame(frame);
   }, [editor, followed]);
 
+  /* Done with a comment: the keyboard goes back to the words, unless something else has it by then. */
+  const openComment = useCallback((to: CommentOpen | null) => {
+    setComment(to);
+    if (!to) requestAnimationFrame(() => { if (document.activeElement === document.body) editor?.resume(); });
+  }, [editor]);
+
   /* Tag from a card: only where you can write. */
   useEffect(() => {
     if (!editor) return;
@@ -204,23 +210,23 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
-        {comment && (
-          <Suspense>
-            <Comments doc={session.doc} open={comment} onOpen={setComment} self={ws.self} people={byId} canWrite={!readOnly} hidden={ask !== null}
-              sections={sections} onTagged={(person, block, rect) => { void onTagged(person, block, rect); }} say={ws.say} />
-          </Suspense>
-        )}
-        {ask && (
-          <WsPopover open at={ask.rect} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
-            <WsMentionPrompt person={ask.person} document={nameOf(item)} onEdit={() => answer('edit')} onRead={() => answer('read')} onNotNow={notNow} />
-          </WsPopover>
-        )}
-        {named && (
-          <WsPopover open at={() => new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height)} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
-            <PersonCard person={named.person} onDone={() => setNamed(null)} />
-          </WsPopover>
-        )}
       </WsPage>
+      {comment && (
+        <Suspense>
+          <Comments doc={session.doc} open={comment} onOpen={openComment} self={ws.self} people={byId} canWrite={!readOnly} hidden={ask !== null}
+            sections={sections} onTagged={(person, block, rect) => { void onTagged(person, block, rect); }} say={ws.say} />
+        </Suspense>
+      )}
+      {ask && (
+        <WsPopover open at={ask.rect} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
+          <WsMentionPrompt person={ask.person} document={nameOf(item)} onEdit={() => answer('edit')} onRead={() => answer('read')} onNotNow={notNow} />
+        </WsPopover>
+      )}
+      {named && (
+        <WsPopover open at={() => new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height)} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
+          <PersonCard person={named.person} onDone={() => setNamed(null)} />
+        </WsPopover>
+      )}
     </WsFade>
   );
 }

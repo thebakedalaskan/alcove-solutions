@@ -74,8 +74,11 @@ async function heard(who: Who, w: Workspace, waiting: Waiting[], db: Db): Promis
   return out;
 }
 
-/** What's waiting for someone in one workspace, the oldest first. For a stream, which holds no keys: they're opened for this and not kept. */
+/** What's waiting for someone in one workspace, the oldest first. For a stream, which holds no keys: they're opened for this and not kept, and only if there's something. */
 export async function waitingFor(d: Deps, who: Who, workspaceId: string): Promise<WorkspaceMention[]> {
+  const any = await rows(d.pool, z.object({ n: z.number() }), `SELECT 1 AS n FROM workspace_mentions m JOIN workspaces w ON w.owner_id = m.owner_id
+    WHERE w.workspace_id = $1 AND m.principal_index = ANY($2::bytea[]) LIMIT 1`, [workspaceId, who.principals]);
+  if (!any.length) return [];
   const w = await workspaceFor(d, who, workspaceId);
   const waiting = await rows(d.pool, Waiting, `SELECT mention_id, document_id, info_ciphertext, created_at FROM workspace_mentions
     WHERE owner_id = $1 AND principal_index = ANY($2::bytea[]) ORDER BY created_at, mention_id LIMIT $3`, [w.owner.ownerId, who.principals, ONE_READ]);

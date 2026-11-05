@@ -47,16 +47,20 @@ function useThread(doc: Doc, id: string): Thread | null {
 
 /** What `@` offers in a comment: people and dates. A comment is plain words read by everyone, so it can't name a document only some can open. */
 function useTagging(sections: CommentsProps['sections']) {
+  const offered = useRef(new Map<string, Person>());
   const picked = useRef(new Map<string, Person>());
   const tagging = useMemo<WsTagging>(() => ({
     sections: (query) => sections(query, { docsOnly: false }).flatMap((s) => {
       const choices = s.items.flatMap((i): WsTagChoice[] => {
-        if (i.kind === 'person') return [{ key: `p:${i.person.id}`, label: i.person.name, person: i.person, sub: i.sub, words: firstName(i.person.name) }];
-        return i.kind === 'date' ? [{ key: `t:${i.date}`, label: i.label, icon: 'cal', words: i.label }] : [];
+        if (i.kind === 'person') {
+          offered.current.set(i.person.id, i.person);
+          return [{ key: i.person.id, label: i.person.name, person: i.person, sub: i.sub, words: firstName(i.person.name) }];
+        }
+        return i.kind === 'date' ? [{ key: i.date, label: i.label, icon: 'cal', words: i.label }] : [];
       });
       return choices.length ? [{ title: s.title, choices }] : [];
     }),
-    onPick: (c) => { if (c.person) picked.current.set(c.key, { id: c.key.slice(2), name: c.person.name, email: c.person.email ?? '' }); }
+    onPick: (c) => { const person = offered.current.get(c.key); if (person) picked.current.set(c.key, person); }
   }), [sections]);
   /** Who's still in the words, for what's about to be sent, and it starts over. */
   const take = (text: string): Person[] => {

@@ -186,6 +186,8 @@ export interface EditorProps {
 export interface EditorHandle {
   /** Puts the caret in the title, or at the start or end of the blocks. */
   focus: (where?: 'title' | 'start' | 'end') => void;
+  /** Gives the keyboard back to the text, with the caret where it was. */
+  resume: () => void;
   focusBlock: (id: string, at?: 'start' | 'end') => void;
   /** Brings a block into view, 110 px from the top. `flash` makes it glow for 1.6 s, `smooth` takes 420 ms. */
   scrollToBlock: (id: string, options?: { smooth?: boolean | undefined; flash?: boolean | undefined }) => void;
