@@ -9,10 +9,12 @@ import {
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
+import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { openJson, sealJson, stateKey, toJson } from './crypto';
+import { id128, openJson, sealJson, stateKey, toJson } from './crypto';
+import { tx } from './db';
 import { NotFoundError } from './errors';
 import { DocFailure } from './live/docPool';
 import { maintain } from './maintenance';
@@ -20,7 +22,7 @@ import { Profile } from './modules/account';
 import { documentText, documentTodos } from './modules/documentText';
 import { MeetingManifest } from './modules/meetings';
 import { NoteManifest } from './modules/notes';
-import { grantDocumentToCall, workspaceForCall } from './modules/workspaceAccess';
+import { grantDocumentToCall, saveState, serverWorkspace, workspaceForCall, type StoredItem } from './modules/workspaceAccess';
 import { openOwner } from './owners';
 import { speechWav } from './testing/fake-near';
 import { startHarness, type Browser, type Harness } from './testing/harness';
@@ -183,6 +185,23 @@ function stuckWorkers(...tasks: string[]) {
 }
 /** What `p` came to, or a failure for taking longer than anything in a live call should. */
 const soon = <T,>(p: Promise<T>, what: string, ms = 5_000): Promise<T> => Promise.race([p, rest(ms).then((): never => { throw new Error(`${what} took more than ${ms} ms`); })]);
+/**
+ * A busy team's tree: `n` documents in `parent`, written straight into the workspace's sealed state, because making them one
+ * at a time through the API would take minutes. What's tested is still done through the API.
+ */
+async function seedTree(workspaceId: string, n: number, parent: string | null = null): Promise<void> {
+  await tx(h.pool, async (c) => {
+    const w = await serverWorkspace(h.deps, workspaceId, c, 'change');
+    if (!w) throw new Error('no workspace');
+    const now = new Date().toISOString();
+    const items: Record<string, StoredItem> = { ...w.state.items };
+    for (let i = 0; i < n; i++) items[id128()] = { kind: 'document', name: `Quarterly planning notes for team ${i}, second draft`, parent, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+    w.state = { ...w.state, items };
+    await saveState(w, c);
+  });
+}
+/** Connections waiting on a row's lock now, everyone's. */
+const waitingOnLocks = () => count("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
 /** An action as a browser sends it, whatever the client would make of it. */
 const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
 
@@ -1862,6 +1881,88 @@ describe('a live call comes first', () => {
       livekit.deleteRoom = deleteRoom;
     }
     await until(async () => (await art.api.workspaces.versions(id, plan)).some((v) => v.reason === 'call'), 'the version');
+  });
+
+  it('lets a hand go up while a big duplicate holds the workspace, and answers an ask behind it', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const folder = (await art.api.workspaces.items.create(id, { kind: 'folder', name: 'Old', parent: null })).id;
+    const plan = await doc(art, id, 'Plan');
+    await seedTree(id, 2400, folder);
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    const jamie = await guest(host, c, 'Jamie');
+    const kim = await guest(host, c, 'Kim');
+    await jamie.call.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    const base = await waitingOnLocks();
+    // Someone duplicates a folder of 2,400 documents, which holds the workspace's row while it makes them; the organizer
+    // answers the ask, which has to wait for that row.
+    const duplicate = art.api.workspaces.items.duplicate(id, folder);
+    void duplicate.catch(() => undefined);
+    await rest(200);
+    let answered = false;
+    const granted = host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read').then(() => { answered = true; });
+    void granted.catch(() => undefined);
+    await until(async () => (await waitingOnLocks()) > base, 'the grant to wait for the workspace', 30_000);
+    // Someone else in the call raises a hand meanwhile: it's back while the grant still waits, so nothing about the call did.
+    const t0 = performance.now();
+    const hand = await action(kim, kim.call, { type: 'hand', up: true });
+    const ms = performance.now() - t0;
+    expect(hand.status).toBe(200);
+    expect(answered, `the hand took ${Math.round(ms)} ms`).toBe(false);
+    expect(ms).toBeLessThan(2000);
+    await Promise.all([duplicate, granted]);
+    expect((await settle(jamie.call, (x) => x.workspace.canOpen)).workspace.documents).toEqual([]);
+    expect(await code(jamie.api.workspaces.items.get(id, plan, { pass: jamie.call.ticket.pass }))).toBe('allowed');
+    await host.leave();
+  });
+
+  it('can’t be held up by a workspace someone else holds: the call carries on, and so does everyone else', async () => {
+    const art = await account();
+    const lena = await account();
+    const sam = await account();
+    const id = await workspace(art, 'Product');
+    const plan = await doc(art, id, 'Plan');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    const jamie = await guest(host, c, 'Jamie');
+    const kim = await guest(host, c, 'Kim');
+    await jamie.call.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    const elsewhere = await callBy(sam);
+    const base = await waitingOnLocks();
+    // Something holds the workspace's row, as a long change to it does, on a connection of its own.
+    const holder = new pg.Client({ connectionString: process.env['TEST_DATABASE_URL'] });
+    await holder.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT 1 FROM workspaces WHERE workspace_id = $1 FOR NO KEY UPDATE', [id]);
+      // A grant waits for it, as it must: it changes the workspace.
+      let answered = false;
+      const granted = host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read').then(() => { answered = true; });
+      void granted.catch(() => undefined);
+      await until(async () => (await waitingOnLocks()) > base, 'the grant to wait for the workspace');
+      // Ten things done in the call, the organizer presenting and choosing that workspace again, and people nowhere near it:
+      // none of them waits, and none is left without a connection.
+      const status = (r: Response) => r.status;
+      const everything = Promise.all([
+        ...Array.from({ length: 10 }, (_, i) => action(i % 2 ? jamie : kim, i % 2 ? jamie.call : kim.call, { type: 'hand', up: i % 3 === 0 }).then(status)),
+        action(art, host, { type: 'present-start', kind: 'document', id: plan, section: 0 }).then(status),
+        action(art, host, { type: 'workspace-set', workspaceId: id }).then(status),
+        lena.fetch(`${h.baseUrl}/v1/session`).then(status),
+        sam.fetch(`${h.baseUrl}/v1/live/calls/${elsewhere.host.ticket.callId}`, { headers: { 'x-alcove-call': elsewhere.host.ticket.pass } }).then(status)
+      ]);
+      expect(await soon(everything, 'the call and everyone else carrying on', 3000)).toEqual(Array.from({ length: 14 }, () => 200));
+      expect(answered).toBe(false);
+      await holder.query('COMMIT');
+      await granted;
+    } finally {
+      await holder.end();
+    }
+    expect((await settle(jamie.call, (x) => x.workspace.canOpen)).workspace.canOpen).toBe(true);
+    await host.leave();
+    await elsewhere.host.leave();
   });
 
   it('spends no worker on a document that’s closed, and closes one that proves too much', async () => {
