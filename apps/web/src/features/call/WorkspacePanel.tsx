@@ -110,7 +110,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   useEffect(() => {
     if (!zen && !peek) return;
     const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || overlayOpen() || document.querySelector('.ws-pop')) return;
+      if (e.key !== 'Escape' || overlayOpen() || document.querySelector('.ws-pop, .wh')) return;
       e.preventDefault();
       e.stopPropagation();
       if (peek) setPeek(false);

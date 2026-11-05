@@ -8,7 +8,7 @@
  */
 import { DocCaretStateSchema, errorMessage, firstName, type DocSession, type DocVersionSummary, type NoteSummary, type Person, type WorkspaceItem } from '@alcove/api';
 import { WsCantOpen, WsDocBy, WsFade, WsHistory, WsPage, WsScroll, wsToast, type WsRestoreAsk, type WsVersion } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { overlayOpen } from '~/lib/keys';
 import { sessions, useNow } from '~/lib/live';
@@ -42,8 +42,8 @@ function namesOf(by: readonly { name: string }[], me: Person | null): string[] {
 const possessive = (names: string[]) => {
   if (names.length === 0) return 'Edits';
   if (names.length > 2) return `${names.length} people’s edits`;
-  if (names.length === 1 && names[0] === 'you') return 'Your edits';
-  return `${joined(names)}’s edits`;
+  if (names[0] === 'you') return 'Your edits';
+  return names[1] === 'you' ? `${names[0] ?? ''}’s and your edits` : `${joined(names)}’s edits`;
 };
 const counted = (names: string[]) => (names.length === 0 ? '' : names.length === 1 ? ` · ${names[0] === 'you' ? 'You' : names[0]}` : ` · ${names.length} people`);
 /** When something's from, as a toast says it. */
@@ -200,6 +200,7 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
   const [on, setOn] = useState<string | null>(null);
   const [ask, setAsk] = useState<WsRestoreAsk | null>(null);
   const now = useNow(30_000);
+  const qc = useQueryClient();
   const { workspaceId, pass, me, say } = ws;
   const restore = useRestoreVersion(workspaceId, item.id, pass);
   const versions = useQuery({ ...q.documentVersions(workspaceId, item.id, pass), enabled: open });
@@ -224,8 +225,9 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
   }, []);
 
   /* Esc puts it away first, before the page or the call take the key. */
+  const showing = open && !ws.call?.closed;
   useEffect(() => {
-    if (!open) return;
+    if (!showing) return;
     const keys = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || overlayOpen()) return;
       e.preventDefault();
@@ -234,7 +236,7 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
     };
     document.addEventListener('keydown', keys, true);
     return () => document.removeEventListener('keydown', keys, true);
-  }, [open, close]);
+  }, [showing, close]);
 
   /* Whoever's here is told who restored what, by the browser that did. What was said before you came isn't news. */
   useEffect(() => {
@@ -247,14 +249,16 @@ export function useHistory(ws: Ws, item: WorkspaceItem, session: DocSession, can
         const key = `${client}:${said.restored.n}`;
         if (told.has(key)) return;
         told.add(key);
-        if (tell) say(wsToast.restoredBy(firstName(said.user?.name ?? '') || 'Someone', whenFrom(said.restored.from), () => setOpen(true)));
+        if (!tell) return;
+        void qc.invalidateQueries({ queryKey: q.documentVersions(workspaceId, item.id).queryKey });
+        say(wsToast.restoredBy(firstName(said.user?.name ?? '') || 'Someone', whenFrom(said.restored.from), () => setOpen(true)));
       });
     };
     listen(false);
     const heard = () => listen(true);
     awareness.on('change', heard);
     return () => awareness.off('change', heard);
-  }, [session, say]);
+  }, [session, say, qc, workspaceId, item.id]);
 
   const saysRestored = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(saysRestored.current), []);

@@ -50,9 +50,9 @@ function useSession(ws: Ws, documentId: string) {
   return opened;
 }
 
-/** Lands on a line: it glows, and the caret's there, so what's typed next goes where you are. */
+/** Lands on a line: it glows, and the caret's there, so what's typed next goes where you are. A touch screen's keyboard stays down. */
 export function landOn(editor: EditorHandle, block: string): void {
-  editor.focusBlock(block, 'end');
+  if (!matchMedia('(hover: none)').matches) editor.focusBlock(block, 'end');
   editor.scrollToBlock(block, { flash: true });
 }
 
@@ -74,7 +74,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
   const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
-  const ask = useAsk(ws, item);
+  const alcove = useAsk(ws, item);
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -197,11 +197,11 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
-            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : ask.onAsk}
+            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : alcove.onAsk}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
-        {ask.menu}
+        {alcove.menu}
       </WsPage>
     </WsFade>
   );
