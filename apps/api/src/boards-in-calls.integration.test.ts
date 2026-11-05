@@ -87,7 +87,7 @@ async function workspace(who: Account, name: string, people: [Account, Workspace
 const saved = (who: Account, id: string, name: string) => who.api.workspaces.items.create(id, { kind: 'board', name }).then((x) => x.id);
 const first = (who: { name: string }) => who.name.split(' ')[0] ?? '';
 async function open(who: Browser, id: string, document: string, opts: DocSessionOptions = {}): Promise<DocSession> {
-  const s = who.api.workspaces.document(id, document, opts);
+  const s = await who.api.workspaces.document(id, document, opts);
   await s.ready;
   return s;
 }

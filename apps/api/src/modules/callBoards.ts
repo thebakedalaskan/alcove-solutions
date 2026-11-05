@@ -266,8 +266,8 @@ export function change<S extends Boarded>(x: Changing<S>, a: BoardAction): Promi
 
 /**
  * Fills a new board from its template: the one thing here still to complete. It waits for `@alcove/board`, which isn't on this
- * branch. Yjs work is moving into worker threads, so a closure can't cross: this will call that package's pure function by name
- * through `writeDocument`, with plain arguments and nothing captured, so everyone gets the same frames and nobody's undo can
- * take them away. Until then a board starts empty, and the template is stored nowhere.
+ * branch. Yjs work happens in worker threads, so this will be `writeDocument` naming an edit in `documentOps.ts`, a pure function
+ * of that package's, with plain arguments, so everyone gets the same frames and nobody's undo can take them away. Until then a
+ * board starts empty, and the template is stored nowhere.
  */
 export const fillBoard = (_d: Deps, _workspace: HeldWorkspace, _documentId: string, _template: BoardTemplate): Promise<void> => Promise.resolve();
