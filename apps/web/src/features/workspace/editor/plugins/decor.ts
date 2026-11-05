@@ -1,6 +1,7 @@
 /*
  * What's drawn on the blocks without being part of them: the placeholder on an empty line, the glow where something
- * landed, the fading block while it's dragged, words held for a comment, and each block's count of open comments.
+ * landed, the fading block while it's dragged, words held for a comment, each block's count of open comments, and the
+ * numbers of a numbered list, which follow every move because they're counted here and stored nowhere.
  * `tr.replace` over the whole document is how every remote change arrives, so nothing here maps positions: it's all
  * worked out again from the document, which is a walk over a few hundred blocks.
  */
@@ -12,14 +13,14 @@ import * as Y from 'yjs';
 import type { EditorRuntime } from '../runtime';
 import { schema, textOf } from '../schema';
 import { syncOf } from '../ydoc';
-import { allBlocks } from '../commands';
+import { allBlocks, countLine } from '../commands';
 
 /** A range held by relative positions, so it stays on the same words while others type around it. */
 export interface HeldRange { anchor: Y.RelativePosition; head: Y.RelativePosition }
 
-interface DecorState { focused: boolean; flash: ReadonlySet<string>; ghost: string | null; held: HeldRange | null }
+interface DecorState { focused: boolean; flash: ReadonlySet<string>; appear: ReadonlySet<string>; ghost: string | null; held: HeldRange | null }
 
-type DecorChange = Partial<Pick<DecorState, 'focused' | 'ghost' | 'held'>> & { flash?: { id: string; on: boolean } | undefined; threads?: true | undefined };
+type DecorChange = Partial<Pick<DecorState, 'focused' | 'ghost' | 'held' | 'appear'>> & { flash?: { id: string; on: boolean } | undefined };
 
 const key = new PluginKey<DecorState>('block-decor');
 
@@ -56,7 +57,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
   return new Plugin<DecorState>({
     key,
     state: {
-      init: () => ({ focused: false, flash: new Set(), ghost: null, held: null }),
+      init: () => ({ focused: false, flash: new Set(), appear: new Set(), ghost: null, held: null }),
       apply(tr, was) {
         const change: DecorChange | undefined = tr.getMeta(key);
         if (!change) return was;
@@ -66,6 +67,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
         return {
           focused: change.focused ?? was.focused,
           flash,
+          appear: change.appear ?? was.appear,
           ghost: change.ghost === undefined ? was.ghost : change.ghost,
           held: change.held === undefined ? was.held : change.held
         };
@@ -78,7 +80,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
         const out: Decoration[] = [];
         const title = state.doc.child(0);
         if (title.content.size === 0) out.push(Decoration.node(0, title.nodeSize, { class: 'is-empty' }));
-        out.push(Decoration.widget(title.nodeSize, rt.byline, { key: 'byline', side: -1, ignoreSelection: true }));
+        out.push(Decoration.widget(title.nodeSize, rt.byline, { key: 'byline', side: -1, ignoreSelection: true, stopEvent: () => true }));
 
         /* A placeholder shows on the line you're on, while you're in the document. */
         const sel = state.selection;
@@ -86,13 +88,16 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
           out.push(Decoration.node(sel.$from.before(), sel.$from.after(), { class: 'is-empty' }));
         }
 
+        const counts = [0, 0, 0];
         for (const b of allBlocks(state.doc)) {
+          const number = countLine(counts, b.node);
           const classes = [];
           if (b.id && s.flash.has(b.id)) classes.push('is-flash');
+          if (b.id && s.appear.has(b.id)) classes.push('is-appear');
           if (b.id && b.id === s.ghost) classes.push('is-ghosted');
           const threads = threadsIn(b.node, rt);
-          if (classes.length || threads) {
-            out.push(Decoration.node(b.pos, b.pos + b.node.nodeSize, classes.length ? { class: classes.join(' ') } : {}, threads ? { threadId: threads.id, threadCount: threads.count } : {}));
+          if (classes.length || threads || number !== null) {
+            out.push(Decoration.node(b.pos, b.pos + b.node.nodeSize, classes.length ? { class: classes.join(' ') } : {}, { number, threadId: threads?.id, threadCount: threads?.count }));
           }
         }
 
@@ -106,6 +111,12 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
       }
     }
   });
+}
+
+/** Fades blocks in together, 140 ms, as a template's do. */
+export function appear(view: EditorView, ids: readonly string[]): void {
+  view.dispatch(decorChange(view.state.tr, { appear: new Set(ids) }));
+  setTimeout(() => { if (!view.isDestroyed) view.dispatch(decorChange(view.state.tr, { appear: new Set() })); }, 160);
 }
 
 /** Makes a block glow for 1.6 s. */

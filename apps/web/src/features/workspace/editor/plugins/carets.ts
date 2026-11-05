@@ -59,9 +59,10 @@ const selections = (state: EditorState, awareness: Awareness): DecorationSet => 
 export function caretsPlugin(rt: EditorRuntime, awareness: Awareness): Plugin {
   const moved = new Map<number, number>();
   let quiet: ReturnType<typeof setTimeout> | undefined;
+  let frame = 0;
 
   /** Where everyone's caret is now, relative to the editor. */
-  const draw = (view: EditorView) => {
+  const measure = (view: EditorView) => {
     const root = rt.root;
     if (!root || view.isDestroyed) return;
     const box = root.getBoundingClientRect();
@@ -76,6 +77,11 @@ export function caretsPlugin(rt: EditorRuntime, awareness: Awareness): Plugin {
       out.push({ client: o.client, top: at.top - box.top, left: at.left - box.left, height: at.bottom - at.top, name: firstName(name), person, tag: now - (moved.get(o.client) ?? 0) < QUIET });
     }
     rt.carets.set(out);
+  };
+
+  /* Once a frame at most, when layout has settled, so a keystroke never waits on measuring. */
+  const draw = (view: EditorView) => {
+    if (frame === 0) frame = requestAnimationFrame(() => { frame = 0; measure(view); });
   };
 
   return new Plugin<DecorationSet>({
@@ -129,6 +135,7 @@ export function caretsPlugin(rt: EditorRuntime, awareness: Awareness): Plugin {
         update: () => { publish(); draw(view); },
         destroy: () => {
           clearTimeout(quiet);
+          cancelAnimationFrame(frame);
           resized.disconnect();
           awareness.off('change', changed);
           view.dom.removeEventListener('focusin', publish);

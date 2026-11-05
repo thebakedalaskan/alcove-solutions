@@ -5,7 +5,8 @@
 import { Fragment, type Attrs, type Node as PMNode, type NodeType, type ResolvedPos } from 'prosemirror-model';
 import { NodeSelection, Selection, TextSelection, type Command, type EditorState, type Transaction } from 'prosemirror-state';
 import { addRowAfter, CellSelection, goToNextCell, isInTable, selectedRect, TableMap } from 'prosemirror-tables';
-import { blockIdOf, headingLevel, indentAttr, LIST_TYPES, MAX_INDENT, newBlockId, schema, textAttr } from './schema';
+import { newBlockId } from './names';
+import { blockIdOf, headingLevel, indentAttr, LIST_TYPES, MAX_INDENT, schema, textAttr } from './schema';
 import type { BlockKind } from './types';
 
 const n = schema.nodes;
@@ -38,6 +39,31 @@ export function selectedBlock(state: EditorState): BlockRef | null {
     return index === 0 ? null : { node: sel.node, pos: sel.from, index, id: blockIdOf(sel.node) };
   }
   return blockAt(sel.$from);
+}
+
+/** What scrolls the page. */
+export function scrollerOf(el: HTMLElement): HTMLElement | null {
+  for (let at = el.parentElement; at; at = at.parentElement) {
+    const { overflowY } = getComputedStyle(at);
+    if (overflowY === 'auto' || overflowY === 'scroll') return at;
+  }
+  return null;
+}
+
+/**
+ * Walks the blocks in order, keeping a count per indent. A line starts the deeper levels over; a bullet or checklist
+ * line breaks the count at its own level and deeper; anything else breaks all of it. Returns a numbered line's number.
+ */
+export function countLine(counts: number[], node: PMNode): number | null {
+  const level = indentAttr(node);
+  if (node.type === n.numbered) {
+    const next = (counts[level] ?? 0) + 1;
+    counts[level] = next;
+    counts.fill(0, level + 1);
+    return next;
+  }
+  counts.fill(0, node.type === n.bullet || node.type === n.todo ? level : 0);
+  return null;
 }
 
 /** Nothing typed: no words and no tags. */
@@ -156,6 +182,10 @@ function splitAs(parent: PMNode): { type: NodeType; attrs: Attrs } {
 export const enter: Command = (state, dispatch, view) => {
   const sel = state.selection;
   if (sel instanceof CellSelection) return true;
+  if (sel instanceof BlocksSelection) {
+    if (dispatch) dispatch(state.tr.deleteSelection().scrollIntoView());
+    return true;
+  }
   if (sel instanceof NodeSelection) {
     const ref = selectedBlock(state);
     if (!ref) return false;
@@ -322,6 +352,19 @@ export const indent = (dir: 1 | -1): Command => (state, dispatch, view) => {
 };
 
 /* -------- selecting */
+/**
+ * Every block, whatever they are. Text selections have to start and end in text, so without this a document ending
+ * in a photo couldn't be selected whole; ProseMirror's own select-all would take the title with it.
+ */
+export class BlocksSelection extends Selection {
+  constructor(doc: PMNode) { super(doc.resolve(doc.child(0).nodeSize), doc.resolve(doc.content.size)); }
+  override map(doc: PMNode): Selection { return new BlocksSelection(doc); }
+  override eq(other: Selection): boolean { return other instanceof BlocksSelection; }
+  override toJSON(): { type: string } { return { type: 'blocks' }; }
+  static override fromJSON(doc: PMNode): BlocksSelection { return new BlocksSelection(doc); }
+}
+Selection.jsonID('blocks', BlocksSelection);
+
 /** ⌘A: the title, the block you're in if it's a world of its own, else every block, never the title with them. */
 export const selectAll: Command = (state, dispatch) => {
   const { doc, selection: sel } = state;
@@ -329,10 +372,10 @@ export const selectAll: Command = (state, dispatch) => {
   const select = (from: number, to: number) => { if (dispatch) dispatch(state.tr.setSelection(TextSelection.create(doc, from, to))); return true; };
   const whole = $from.parent.isTextblock && sel.from === $from.start() && sel.to === $from.end();
   if (!whole && $from.parent.isTextblock && ($from.parent.type === n.title || $from.parent.type.spec.code || isInTable(state))) return select($from.start(), $from.end());
-  const first = Selection.findFrom(doc.resolve(doc.child(0).nodeSize), 1, true);
-  const last = Selection.findFrom(doc.resolve(doc.content.size), -1, true);
-  if (!first || !last) return false;
-  if (dispatch) dispatch(state.tr.setSelection(TextSelection.between(first.$from, last.$to)));
+  if (!dispatch) return true;
+  const first = doc.child(1), last = doc.lastChild;
+  /* Text at both ends can be an ordinary selection, which is one the format bar can sit on. */
+  dispatch(state.tr.setSelection(first.isTextblock && last?.isTextblock ? TextSelection.create(doc, doc.child(0).nodeSize + 1, doc.content.size - 1) : new BlocksSelection(doc)));
   return true;
 };
 

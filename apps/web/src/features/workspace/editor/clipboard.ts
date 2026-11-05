@@ -8,9 +8,10 @@ import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { galleryItems, liveLines, mediaIn } from './blocks/attrs';
 import { dateLabel } from './blocks/dates';
-import { allBlocks, isBlank, selectedBlock } from './commands';
+import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
 import type { EditorRuntime } from './runtime';
-import { headingLevel, indentAttr, MAX_INDENT, newBlockId, safeHref, schema, textAttr } from './schema';
+import { newBlockId } from './names';
+import { headingLevel, indentAttr, MAX_INDENT, safeHref, schema, textAttr } from './schema';
 import type { InsertAt } from './types';
 
 const n = schema.nodes;
@@ -120,14 +121,7 @@ export function sliceText(rt: EditorRuntime, slice: Slice): string {
   const marked = slice.content.childCount > 1 || slice.openStart === 0;
   const lines: string[] = [];
   const counts = [0, 0, 0];
-  slice.content.forEach((node) => {
-    const indent = indentAttr(node);
-    if (node.type === n.numbered) {
-      counts[indent] = (counts[indent] ?? 0) + 1;
-      counts.fill(0, indent + 1);
-    } else counts.fill(0, node.type === n.bullet || node.type === n.todo ? indent : 0);
-    lines.push(...blockText(node, rt, counts[indent] ?? 1, marked));
-  });
+  slice.content.forEach((node) => { lines.push(...blockText(node, rt, countLine(counts, node) ?? 1, marked)); });
   return lines.join('\n');
 }
 

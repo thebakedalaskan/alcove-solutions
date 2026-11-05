@@ -171,6 +171,8 @@ export interface EditorProps {
   onToast?: ((toast: EditorToast) => void) | undefined;
   /** Sits between the title and the first block: who wrote this and when. */
   byline?: ReactNode | undefined;
+  /** Sits under the last block, above the space that adds a line: what a new document can start from. */
+  below?: ReactNode | undefined;
   /** Where the caret starts when the document opens. */
   autoFocus?: 'title' | 'end' | undefined;
   ref?: Ref<EditorHandle> | undefined;
@@ -184,8 +186,8 @@ export interface EditorHandle {
   /** Brings a block into view, 110 px from the top. `flash` makes it glow for 1.6 s, `smooth` takes 420 ms. */
   scrollToBlock: (id: string, options?: { smooth?: boolean | undefined; flash?: boolean | undefined }) => void;
   flashBlock: (id: string) => void;
-  /** Adds blocks, with fresh IDs, and returns them. `focus` puts the caret at the end of the last one, `flash` makes them glow. */
-  insertBlocks: (blocks: BlockJSON[], at: InsertAt, options?: { focus?: boolean | undefined; flash?: boolean | undefined }) => string[];
+  /** Adds blocks, with fresh IDs, and returns them. `focus` puts the caret at the end of the last one, `flash` makes them glow, `appear` fades them in together. */
+  insertBlocks: (blocks: BlockJSON[], at: InsertAt, options?: { focus?: boolean | undefined; flash?: boolean | undefined; appear?: boolean | undefined }) => string[];
   /** Changes a block's attributes. Keep `history` false for what the writer didn't do, like upload progress. */
   updateBlock: (id: string, attrs: Record<string, unknown>, options?: { history?: boolean | undefined }) => void;
   removeBlock: (id: string) => void;

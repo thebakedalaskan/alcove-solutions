@@ -4,14 +4,14 @@
  * block is drawn by a node view (blocks/views.ts). The Yjs documents the server reads hold these same names and
  * attributes, so changing a name or an attribute's meaning is a change to stored data.
  */
-import { Fragment, Schema, type Attrs, type DOMOutputSpec, type MarkSpec, type Mark, type Node as PMNode, type NodeSpec, type NodeType, type TagParseRule } from 'prosemirror-model';
+import { Fragment, Schema, type Attrs, type DOMOutputSpec, type Mark, type MarkSpec, type MarkType, type Node as PMNode, type NodeSpec, type NodeType, type TagParseRule } from 'prosemirror-model';
 import { tableNodes } from 'prosemirror-tables';
 
 type NodeName =
   | 'doc' | 'title' | 'paragraph' | 'heading' | 'bullet' | 'numbered' | 'todo' | 'toggle' | 'toggleSummary' | 'toggleBody' | 'quote' | 'callout'
   | 'divider' | 'code' | 'table' | 'table_row' | 'table_cell' | 'table_header' | 'gallery' | 'file' | 'video' | 'doclink' | 'live' | 'moment'
   | 'unsupported' | 'text' | 'hardBreak' | 'mention' | 'dateChip' | 'docref';
-type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment';
+type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment' | 'unsupportedMark';
 
 /** Lists go no deeper than this. */
 export const MAX_INDENT = 2;
@@ -50,6 +50,8 @@ function copied(node: PMNode, tag: string, words: string): DOMOutputSpec {
 function wholeBlock(name: string): readonly TagParseRule[] {
   return [{
     tag: `[data-alcove-block="${name}"]`,
+    /* Before the rule for the plain `p` or `blockquote` this is written as. */
+    priority: 60,
     getAttrs: (el) => {
       try {
         const attrs: unknown = JSON.parse(el.getAttribute('data-attrs') ?? '{}');
@@ -176,17 +178,25 @@ const marks: Record<MarkName, MarkSpec> = {
   },
   highlight: { parseDOM: [{ tag: 'mark' }], toDOM: () => ['mark', { class: 'whl' }, 0] },
   /* Words a thread hangs on. It can overlap another thread. Nothing parses it, so a pasted copy never reopens a thread. */
-  comment: { attrs: { id: { default: '' } }, excludes: '', inclusive: false, toDOM: (mark) => ['mark', { class: 'wc', 'data-c': textOf(mark.attrs['id']) ?? '' }, 0] }
+  comment: { attrs: { id: { default: '' } }, excludes: '', inclusive: false, toDOM: (mark) => ['mark', { class: 'wc', 'data-c': textOf(mark.attrs['id']) ?? '' }, 0] },
+  /* A mark from a newer Alcove: the words stay, and the styling just doesn't show here. */
+  unsupportedMark: { toDOM: () => ['span', 0] }
 };
 
 /*
- * y-prosemirror deletes, for everyone, any element it can't make a node from. A tab left open across a deploy
- * must not do that to a block added by the release after it, so an unknown block becomes `unsupported`.
+ * y-prosemirror deletes, for everyone, any element or text it can't make a node or mark from. A tab left open across a
+ * deploy must not do that to what the release after it adds, so an unknown block becomes `unsupported`, and words with
+ * an unknown mark stay as words.
  */
 class BlockSchema extends Schema<NodeName, MarkName> {
   override node(type: string | NodeType, attrs?: Attrs | null, content?: Fragment | PMNode | readonly PMNode[], marks?: readonly Mark[]): PMNode {
-    if (typeof type === 'string' && !Object.hasOwn(this.nodes, type)) return super.node('unsupported', { name: type });
+    if (typeof type === 'string' && !Object.hasOwn(this.nodes, type)) return super.node('unsupported', { id: attrs?.['id'] ?? null, name: type });
     return super.node(type, attrs, content, marks);
+  }
+
+  override mark(type: string | MarkType, attrs?: Attrs | null): Mark {
+    if (typeof type === 'string' && !Object.hasOwn(this.marks, type)) return super.mark('unsupportedMark');
+    return super.mark(type, attrs);
   }
 }
 
@@ -214,14 +224,9 @@ export const LIST_TYPES: ReadonlySet<string> = new Set(['bullet', 'numbered', 't
 /** The blocks whose text someone could be typing in: they're kept when an undo would otherwise remove them under someone else's words. */
 export const TEXT_NODES: ReadonlySet<string> = new Set(['paragraph', 'heading', 'bullet', 'numbered', 'todo', 'quote', 'callout', 'code', 'toggleSummary', 'toggleBody', 'table_cell', 'table_header', 'title']);
 
-const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
-/** A block's stable ID. Random, so two browsers can never make the same one. */
-export function newBlockId(): string {
-  let out = '';
-  for (const b of crypto.getRandomValues(new Uint8Array(12))) out += ID_ALPHABET.charAt(b % ID_ALPHABET.length);
-  return out;
-}
-
-/** A block that has an `id` attribute. Everything in the doc but the title does. */
-export const hasBlockId = (node: PMNode): boolean => Object.hasOwn(node.type.spec.attrs ?? {}, 'id') && node.type.spec.group === 'block';
+/**
+ * A block that gets an ID: everything but the title, and `unsupported`. That one has to stay exactly as it came. Giving
+ * it an ID would make it differ from its element, and y-prosemirror would replace the element it can't read with it.
+ */
+export const hasBlockId = (node: PMNode): boolean => node.type.spec.group === 'block' && node.type !== schema.nodes.unsupported;
 

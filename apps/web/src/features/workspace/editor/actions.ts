@@ -10,10 +10,11 @@ import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlo
 import { startThread } from './comments';
 import { galleryItems } from './blocks/attrs';
 import type { SlashId } from './menus/rows';
-import { decorChange, flash, heldRange, type HeldRange } from './plugins/decor';
+import { appear, decorChange, flash, heldRange, type HeldRange } from './plugins/decor';
 import { moveBlock } from './plugins/reconcile';
 import type { EditorRuntime, OpenMenu } from './runtime';
-import { hasBlockId, newBlockId, safeHref, schema } from './schema';
+import { newBlockId } from './names';
+import { hasBlockId, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { syncOf } from './ydoc';
 
@@ -303,7 +304,7 @@ function insertSpan(state: EditorState, at: InsertAt): { from: number; to: numbe
   return { from: ref.pos, to: after };
 }
 
-export function insertBlocks(rt: EditorRuntime, blocks: BlockJSON[], at: InsertAt, options: { focus?: boolean | undefined; flash?: boolean | undefined } = {}): string[] {
+export function insertBlocks(rt: EditorRuntime, blocks: BlockJSON[], at: InsertAt, options: { focus?: boolean | undefined; flash?: boolean | undefined; appear?: boolean | undefined } = {}): string[] {
   const view = editing(rt);
   if (!view || blocks.length === 0) return [];
   const nodes = blocks.map((b) => withFreshId(schema.nodeFromJSON(b)));
@@ -317,6 +318,7 @@ export function insertBlocks(rt: EditorRuntime, blocks: BlockJSON[], at: InsertA
   }
   view.dispatch(tr);
   if (options.flash) for (const id of ids) flash(view, id);
+  if (options.appear) appear(view, ids);
   return ids;
 }
 

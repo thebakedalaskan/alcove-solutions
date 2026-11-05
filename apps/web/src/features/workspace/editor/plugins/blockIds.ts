@@ -4,7 +4,8 @@
  */
 import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
 import { ySyncPluginKey } from 'y-prosemirror';
-import { blockIdOf, hasBlockId, newBlockId } from '../schema';
+import { newBlockId } from '../names';
+import { blockIdOf, hasBlockId } from '../schema';
 
 /** A change that came from the shared document, which this browser doesn't get to correct. */
 export const fromSync = (tr: Transaction): boolean => tr.getMeta(ySyncPluginKey)?.isChangeOrigin === true;

@@ -15,11 +15,11 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import { createPortal } from 'react-dom';
 import { initProseMirrorDoc, ySyncPlugin, yUndoPlugin } from 'y-prosemirror';
 import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
-import { Carets, FileLine, Handles, landing, scrollerOf } from './blocks/Handles';
+import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
 import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformPasted } from './clipboard';
-import { allBlocks, caretInto, findBlock, isBlank, selectedBlock } from './commands';
+import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
@@ -29,7 +29,8 @@ import { decorPlugin, flash } from './plugins/decor';
 import { reconcilePlugin } from './plugins/reconcile';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
-import { newBlockId, safeHref, schema, TEXT_NODES, textAttr } from './schema';
+import { newBlockId } from './names';
+import { safeHref, schema, TEXT_NODES, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, seedDocument } from './ydoc';
 
@@ -195,17 +196,19 @@ export default function Editor(props: EditorProps) {
   const handle = useMemo(() => makeHandle(rt), [rt]);
   useImperativeHandle(props.ref, () => handle, [handle]);
 
-  useMemo(() => { rt.people = new Map((people ?? []).map((p) => [p.id, p])); }, [rt, people]);
+  rt.people = useMemo(() => new Map((people ?? []).map((p) => [p.id, p])), [people]);
 
   useLayoutEffect(() => {
     if (!mount || !root) return;
     rt.root = root;
     const view = createView(rt, mount);
     rt.view = view;
+    rt.settled = true;
     rt.layout.set(rt.layout.get() + 1);
     if (autoFocus) handle.focus(autoFocus);
     return () => {
       rt.view = null;
+      rt.settled = false;
       rt.menu.set(null);
       rt.bar.set(null);
       rt.hover.set(null);
@@ -275,6 +278,7 @@ export default function Editor(props: EditorProps) {
         {createPortal(byline, rt.byline)}
         <Menus rt={rt} root={root} />
       </div>
+      {props.below}
       {!readOnly && <button type="button" className="wd-tail" aria-label="Add a line at the end" onClick={end} />}
     </RuntimeContext>
   );

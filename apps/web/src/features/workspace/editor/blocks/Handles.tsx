@@ -8,7 +8,7 @@ import { Avatar, Icon, cn } from '@alcove/ui';
 import type { EditorView } from 'prosemirror-view';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { addBelow, movingBlock, removeBlock } from '../actions';
-import { allBlocks, findBlock } from '../commands';
+import { allBlocks, findBlock, scrollerOf } from '../commands';
 import { useStore } from '../menus/Menus';
 import { decorChange } from '../plugins/decor';
 import { moveBlock } from '../plugins/reconcile';
@@ -21,15 +21,6 @@ const DRAG_FROM = 5;
 const INDENT = 26;
 /** How near an edge of the page the pointer has to be to scroll it. */
 const SCROLL_EDGE = 56;
-
-/** What scrolls the page. */
-export function scrollerOf(el: HTMLElement): HTMLElement | null {
-  for (let at = el.parentElement; at; at = at.parentElement) {
-    const { overflowY } = getComputedStyle(at);
-    if ((overflowY === 'auto' || overflowY === 'scroll') && at.scrollHeight > at.clientHeight) return at;
-  }
-  return null;
-}
 
 /** The space between blocks nearest a height on the window, and what's either side of it. */
 export function landing(rt: EditorRuntime, y: number): { line: number; id: string; side: 'before' | 'after' } | null {
@@ -193,7 +184,7 @@ export function Carets({ rt, root }: { rt: EditorRuntime; root: HTMLElement | nu
   return (
     <>
       {carets.map((c) => (
-        <span key={c.client} className={cn('rc', c.tag && 'is-tag', width > 0 && c.left > width - 110 && 'is-flip')} style={{ top: c.top, left: c.left, height: c.height }} aria-hidden="true">
+        <span key={c.client} className={cn('wb-rc', c.tag && 'is-tag', width > 0 && c.left > width - 110 && 'is-flip')} style={{ top: c.top, left: c.left, height: c.height }} aria-hidden="true">
           <i />
           <em>{c.person ? <Avatar person={c.person} size={14} /> : <Avatar person={{ name: c.name }} size={14} />}{c.name}</em>
         </span>

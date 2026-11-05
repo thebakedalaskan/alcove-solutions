@@ -7,11 +7,9 @@ import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import { initProseMirrorDoc, updateYFragment, ySyncPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
+import { FRAGMENT } from './names';
 import { schema } from './schema';
 import type { BlockJSON } from './types';
-
-export const FRAGMENT = 'content';
-export const COMMENTS = 'comments';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 

@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import {
   applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
 } from '../actions';
-import { findBlock, kindOf } from '../commands';
+import { findBlock, kindOf, scrollerOf } from '../commands';
 import type { EditorRuntime, OpenMenu, Store } from '../runtime';
 import { schema } from '../schema';
 import type { BlockKind, MentionItem, Rect } from '../types';
@@ -60,7 +60,8 @@ function Popover({ anchor, className, label, children, onMeasure }: { anchor: Re
     onMeasure?.();
   }, [anchor.left, anchor.top, anchor.bottom, onMeasure, children]);
   return (
-    <div ref={box} className={cn('ws-pop', className)} role="menu" aria-label={label} style={at ?? { visibility: 'hidden' }} onMouseDown={(e) => e.preventDefault()}>
+    /* Unseen while it's measured, but not `hidden`: what's inside may need focus straight away. */
+    <div ref={box} className={cn('ws-pop', className)} role="menu" aria-label={label} style={at ?? { opacity: 0 }} onMouseDown={(e) => e.preventDefault()}>
       {children}
     </div>
   );
@@ -119,9 +120,9 @@ function ListMenu({ rows, anchor, className, start, reset, caret, onClose }: { r
     <Popover anchor={anchor} className={cn('wm', className)}>
       <div ref={list} className="wm-list">
         {rows.map((r, i) => {
-          if (r.kind === 'head') return <div key={`h${i}`} className="wm-h">{r.label}</div>;
-          if (r.kind === 'sep') return <div key={`s${i}`} className="wm-s" />;
-          if (r.kind === 'text') return <p key={`t${i}`} className="wm-x">{r.label}</p>;
+          if (r.kind === 'head') return <div key={`head-${i}`} className="wm-h">{r.label}</div>;
+          if (r.kind === 'sep') return <div key={`sep-${i}`} className="wm-s" />;
+          if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x">{r.label}</p>;
           if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
           return (
             <button key={r.key} type="button" role="menuitem" className={cn('wm-r', r === selected && 'is-sel', r.className)} onClick={r.run}>
@@ -270,9 +271,9 @@ function FormatBar({ rt }: { rt: EditorRuntime }) {
   useLayoutEffect(() => {
     const el = box.current;
     if (!el || !rect) { setAt(null); return; }
-    const pane = rt.root?.getBoundingClientRect();
-    const most = (pane ? pane.right + 72 : window.innerWidth) - el.offsetWidth - EDGE;
-    setAt({ left: Math.max(EDGE, Math.min(rect.left + (rect.width - el.offsetWidth) / 2, most, window.innerWidth - el.offsetWidth - EDGE)), top: Math.max(EDGE, rect.top - el.offsetHeight - 8) });
+    const page = rt.view ? scrollerOf(rt.view.dom) : null;
+    const most = (page?.getBoundingClientRect().right ?? window.innerWidth) - el.offsetWidth - EDGE;
+    setAt({ left: Math.max(EDGE, Math.min(rect.left + (rect.width - el.offsetWidth) / 2, most)), top: Math.max(EDGE, rect.top - el.offsetHeight - 8) });
   }, [rect, rt]);
   if (!bar) return null;
   const mark = (type: Parameters<typeof toggleMark>[0]) => () => { const v = rt.view; if (v) toggleMark(type)(v.state, v.dispatch); };

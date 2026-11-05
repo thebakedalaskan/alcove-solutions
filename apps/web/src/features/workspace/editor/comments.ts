@@ -4,8 +4,7 @@
  * them, so Reopen and History need nothing brought back. This works on a plain Y.Doc: the thread UI needs no editor.
  */
 import * as Y from 'yjs';
-import { newBlockId } from './schema';
-import { COMMENTS } from './ydoc';
+import { COMMENTS, newBlockId } from './names';
 
 export interface ThreadMessage { id: string; by: string; name: string; text: string; at: string }
 export interface Thread { id: string; quote: string; block: string; resolved: boolean; messages: ThreadMessage[] }

@@ -98,6 +98,8 @@ export class EditorRuntime {
   readonly names = new Store(0);
   /** Where the byline goes: ProseMirror keeps this under the title. */
   readonly byline: HTMLElement;
+  /** The page has been drawn. What appears after this is new, and moves as it arrives. */
+  settled = false;
   /** A mouse button is down on the text, so the selection is still being made. */
   selecting = false;
   /** A menu was closed with Esc while the caret stayed in this trigger, so it stays closed. */

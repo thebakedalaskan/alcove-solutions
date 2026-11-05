@@ -7,7 +7,8 @@ import { redoCommand, undoCommand } from 'y-prosemirror';
 import { nudgeBlock, openLinkField, startComment } from './actions';
 import { backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import type { EditorRuntime } from './runtime';
-import { newBlockId, schema } from './schema';
+import { newBlockId } from './names';
+import { schema } from './schema';
 import type { BlockKind } from './types';
 
 const m = schema.marks;

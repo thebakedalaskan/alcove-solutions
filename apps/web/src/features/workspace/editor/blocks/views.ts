@@ -5,7 +5,7 @@
  */
 import { firstName } from '@alcove/api';
 import type { Mark, Node as PMNode } from 'prosemirror-model';
-import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor } from 'prosemirror-view';
+import type { Decoration, EditorView, MarkView, MarkViewConstructor, NodeView, NodeViewConstructor, ViewMutationRecord } from 'prosemirror-view';
 import { createElement } from 'react';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, headingLevel, indentAttr, numberAttr, textAttr, textOf } from '../schema';
@@ -27,12 +27,19 @@ function solid<T extends HTMLElement>(node: T): T {
 
 const onControl = (e: Event): boolean => e.target instanceof Element && e.target.closest('.wb-box, .wb-fold, .wb-th') !== null;
 
+/** Moves as it arrives, once: left on, the animation would run again each time the page is shown. */
+function arrive(el: HTMLElement): void {
+  el.classList.add('is-new');
+  el.addEventListener('animationend', () => el.classList.remove('is-new'), { once: true });
+}
+
 /** Keeps the caret where it is when something beside the text is pressed. */
 const keepCaret = (control: HTMLElement) => control.addEventListener('mousedown', (e) => e.preventDefault());
 
 /** What every top-level block has: its ID, its indent and the count of comments in the margin. */
 abstract class BlockFrame {
   readonly dom: HTMLElement;
+  abstract contentDOM: HTMLElement | null;
   private margin: HTMLButtonElement | null = null;
   private thread: string | null = null;
 
@@ -72,6 +79,16 @@ abstract class BlockFrame {
   }
 
   stopEvent(e: Event): boolean { return onControl(e); }
+
+  /*
+   * By default ProseMirror rebuilds a node when anything in it changes, even outside its text. Everything drawn around
+   * the text is ours to change: left to the default, ticking a box or renumbering a line rebuilds the block, faces and all.
+   */
+  ignoreMutation(m: ViewMutationRecord): boolean {
+    const text = this.contentDOM;
+    if (!text) return m.type !== 'selection';
+    return !text.contains(m.target) || (m.type === 'attributes' && m.target === text);
+  }
 }
 
 /** A line of text: paragraph, heading, list line, quote, callout or code. */
@@ -79,6 +96,7 @@ class TextBlock extends BlockFrame implements NodeView {
   contentDOM: HTMLElement;
   private text: HTMLElement;
   private box: HTMLButtonElement | null = null;
+  private number: HTMLElement | null = null;
 
   constructor(node: PMNode, private view: EditorView, private getPos: () => number | undefined, rt: EditorRuntime, decorations: readonly Decoration[]) {
     super(node, rt, textClass(node), decorations);
@@ -91,13 +109,13 @@ class TextBlock extends BlockFrame implements NodeView {
     if (node.type.spec.code) this.text.spellcheck = false;
     col.append(this.text);
     this.dom.insertBefore(col, this.dom.querySelector('.wb-th'));
-    this.paint(node);
+    this.paint(node, decorations);
   }
 
   private leadFor(node: PMNode): HTMLElement | null {
     switch (node.type.name) {
       case 'bullet': { const mark = solid(el('span', 'wb-mk')); mark.setAttribute('aria-hidden', 'true'); return mark; }
-      case 'numbered': return solid(el('span', 'wb-n'));
+      case 'numbered': this.number = solid(el('span', 'wb-n')); return this.number;
       case 'callout': {
         const icon = solid(el('span', 'wb-ci'));
         const name = textAttr(node, 'icon');
@@ -110,6 +128,7 @@ class TextBlock extends BlockFrame implements NodeView {
         box.setAttribute('role', 'checkbox');
         box.setAttribute('aria-label', 'Done');
         box.append(iconNode('check'));
+        if (this.rt.settled) arrive(box);
         keepCaret(box);
         box.addEventListener('click', () => {
           const pos = this.getPos();
@@ -123,11 +142,13 @@ class TextBlock extends BlockFrame implements NodeView {
     }
   }
 
-  private paint(node: PMNode): void {
+  private paint(node: PMNode, decorations: readonly Decoration[]): void {
     const done = node.attrs['done'] === true;
     this.dom.classList.toggle('is-done', done);
     this.box?.setAttribute('aria-checked', String(done));
     this.box?.toggleAttribute('disabled', this.rt.readOnly);
+    const count: unknown = decorations.find((d) => typeof d.spec.number === 'number')?.spec.number;
+    if (this.number && typeof count === 'number') this.number.textContent = `${count}.`;
   }
 
   update(node: PMNode, decorations: readonly Decoration[]): boolean {
@@ -138,7 +159,7 @@ class TextBlock extends BlockFrame implements NodeView {
       this.text.setAttribute('data-ph', placeholderOf(node));
     }
     this.frame(node, decorations);
-    this.paint(node);
+    this.paint(node, decorations);
     return true;
   }
 }
@@ -239,6 +260,8 @@ class TableBlock extends BlockFrame implements NodeView {
 }
 
 class DividerBlock extends BlockFrame implements NodeView {
+  contentDOM = null;
+
   constructor(node: PMNode, rt: EditorRuntime, decorations: readonly Decoration[]) {
     super(node, rt, 'is-divider', decorations);
     this.dom.prepend(el('hr', 'wb-hr'));
@@ -266,6 +289,7 @@ function atomClass(node: PMNode): string {
 
 /** A block that isn't text: React draws it from its attributes. */
 class AtomBlock extends BlockFrame implements NodeView {
+  contentDOM = null;
   private portal: number;
   private classes: string;
 
@@ -273,9 +297,8 @@ class AtomBlock extends BlockFrame implements NodeView {
     super(node, rt, atomClass(node), decorations);
     this.classes = atomClass(node);
     this.getPos = getPos;
+    if (rt.settled) arrive(this.dom);
     this.portal = rt.portals.add(this.dom, () => this.draw());
-    /* React draws beside the comment count, not over it. */
-    this.dom.setAttribute('contenteditable', 'false');
   }
 
   private getPos: () => number | undefined;
@@ -302,7 +325,8 @@ class AtomBlock extends BlockFrame implements NodeView {
     return e.target instanceof Element && e.target.closest('button, input, a, video, audio, .wb-hand') !== null;
   }
 
-  ignoreMutation(): boolean { return true; }
+  /* React draws all of it, and the caption's own selection is the caption's. */
+  override ignoreMutation(): boolean { return true; }
 
   destroy(): void { this.rt.portals.remove(this.portal); }
 }
@@ -390,6 +414,7 @@ function commentMark(rt: EditorRuntime): MarkViewConstructor {
     const id = textOf(mark.attrs['id']) ?? '';
     const dom = el('mark', 'wc');
     dom.setAttribute('data-c', id);
+    if (rt.settled) arrive(dom);
     const paint = () => dom.classList.toggle('is-resolved', rt.threads.get().get(id)?.open === false);
     paint();
     const stop = rt.threads.subscribe(paint);
