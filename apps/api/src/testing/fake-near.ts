@@ -308,7 +308,7 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
   }
   if (system.startsWith('You edit a passage')) {
     // Says what it was given, so tests can see what went and came back.
-    const selection = /<selection>\n([\s\S]*)\n<\/selection>/.exec(user)?.[1] ?? '';
+    const selection = /<selection-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/selection-\1>/.exec(user)?.[2] ?? '';
     return user.includes('"items"') ? { items: selection.split(/\s*;\s*/) } : { text: `Shorter: ${selection}` };
   }
   if (system.startsWith('You help someone catch up')) {

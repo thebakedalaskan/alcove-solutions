@@ -1024,37 +1024,52 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
 
 /* ---------- the workspace a call uses: what's done is modules/callWorkspace.ts; the call's row is held here ---------- */
 
+/** How many times something done about the call's workspace is asked afresh when the call moved on under it, before it's refused. */
+const SPACE_TRIES = 3;
 /**
- * Something done about the call's workspace, under its row. Who's asking, and whether a video to play is in its document, are
- * settled before that's taken: they read accounts and documents, and nothing in the call waits on those.
+ * Something done about the call's workspace. A live call comes first, so it's in two steps (`space.prepare`): everything that
+ * reads a workspace or changes one, with nothing of the call held; then the call's row, held only to check again what that
+ * went by, from the call's own state, and to save. When the call moved on in between, it's all asked afresh.
  */
 async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): Promise<CallState> {
   const o = v.organizer;
   const reader = await readerInCall(v);
-  if (a.type === 'play-start') {
-    const { row } = await load(o, o.pool, callId);
-    await space.mayPlay(o, reader, (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest.workspaceId, a.documentId, a.mediaId);
-  }
-  const { room, moved, meetingId } = await tx(o.pool, async (c) => {
-    const { row, state } = await load(o, c, callId, true);
-    const ctx = { callId, action: a.type };
+  const ctx = { callId, action: a.type };
+  const seats = seatKey(o, callId);
+  const seatOfJ = (j: Joined) => seatOf(seats, j);
+  /** The call as it stands, read with `db`: the pool, or the transaction that holds its row. */
+  const read = async (db: Db, held: boolean) => {
+    const { row, state } = await load(o, db, callId, held);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     if (!anyone(a)) stillHosting(v, state, ctx);
-    const settled = settle(state, row);
-    const mine = settled.people.find((j) => j.identity === v.pass.identity);
-    const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-    const seats = seatKey(o, callId);
-    const done = await space.change({ v, reader, c, callId, meeting, s: settled, place: mine ? placeOf(settled, mine) : MAIN_PLACE, now: Date.now(), seatOf: (j) => seatOf(seats, j) }, a);
-    await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
-    clog.info('call action', { callId, action: a.type, present: done.s.workspace.present.length, play: done.s.workspace.play.length, asks: done.s.workspace.asks.length });
-    return { room: row.room_name, moved: done.moved, meetingId: row.meeting_item_id };
-  });
-  if (moved) {
-    await space.noteUsed(o, moved.to);
-    await space.carryForward(o, meetingId, moved.from, moved.to);
+    const s = settle(state, row);
+    const mine = s.people.find((j) => j.identity === v.pass.identity);
+    const meeting = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+    return { row, state, changing: { v, reader, callId, meeting, s, place: mine ? placeOf(s, mine) : MAIN_PLACE, now: Date.now(), seatOf: seatOfJ } };
+  };
+  for (let tries = 1; ; tries++) {
+    const apply = await space.prepare((await read(o.pool, false)).changing, a);
+    const done = await tx(o.pool, async (c) => {
+      const { row, state, changing } = await read(c, true);
+      const changed = await apply({ ...changing, c });
+      if (changed === 'again') return 'again';
+      await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, changed.s)));
+      clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
+      return { room: row.room_name, moved: changed.moved, ended: changed.ended, meetingId: row.meeting_item_id };
+    });
+    if (done === 'again') {
+      if (tries < SPACE_TRIES) continue;
+      throw new ConflictError('This call changed while that was being done. Try again.', { context: { ...ctx, tries } });
+    }
+    // A grant to someone removed while it was made goes, as their removal took everything else.
+    if (done.ended) await endSeat(o, callId, done.ended);
+    if (done.moved) {
+      await space.noteUsed(o, done.moved.to);
+      await space.carryForward(o, done.meetingId, done.moved.from, done.moved.to);
+    }
+    await nudge(o, done.room, callId, { call: true, log: false });
+    return view(v, o.pool, callId);
   }
-  await nudge(o, room, callId, { call: true, log: false });
-  return view(v, o.pool, callId);
 }
 
 /**
@@ -1077,18 +1092,20 @@ async function stopLost(o: Owner, callId: string, lost: space.Lost): Promise<voi
 
 /**
  * The workspace a call uses, settled the first time it's asked for, under the call's row so that everyone asking at once
- * gets the same one. A workspace deleted since it was chosen is settled again.
+ * gets the same one. A workspace deleted since it was chosen is settled again. Which one the organizer used last is asked
+ * before the row is taken: nothing under it opens a workspace.
  */
 export async function settledWorkspace(o: Owner, callId: string): Promise<string> {
   const { row } = await load(o, o.pool, callId);
   const { workspaceId } = (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest;
   if (workspaceId && await workspaceOwner(o.pool, workspaceId)) return workspaceId;
+  const recent = await space.recentFor(o);
   const chosen = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
     if (held.row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'workspace' } });
     const was = (await getItem(o, c, 'meeting', held.row.meeting_item_id, MeetingManifest, 'That meeting')).manifest.workspaceId;
     if (was && await workspaceOwner(c, was)) return { id: was, was, room: null };
-    const id = await space.chooseFor(o, c);
+    const id = recent && await workspaceOwner(c, recent) ? recent : await space.newFor(o, c);
     await updateManifest(o, c, held.row.meeting_item_id, (m) => ({ ...m, workspaceId: id }));
     clog.info('call settled on a workspace', { callId, workspaceId: id });
     return { id, was, room: held.row.room_name };
@@ -1102,24 +1119,44 @@ export async function settledWorkspace(o: Owner, callId: string): Promise<string
 }
 
 /**
- * Looks once, in each run of a call, for an agenda to make: what it says is worked out with nothing held, and it's made under
- * the call's row, so there's one however many people open Workspace at once. What goes in it is written after that.
+ * Looks, in each run of a call, for an agenda to make, until there is one or there's none to make. What it says is worked out
+ * with nothing held. Whoever opens Workspace first takes it on, under the call's row, so there's one however many open it at
+ * once; it's made in the workspace's own transaction and filled in with nothing of the call held, and only once it's filled in
+ * does the call say it's done, the meeting name it, and it take the last one's place. A try that fails lets go, keeping the
+ * document it was making, so the next person opening Workspace fills that one in.
  */
 async function agendaFor(o: Owner, callId: string): Promise<void> {
   const { row, state } = await load(o, o.pool, callId);
-  if (row.state !== 'live' || state.workspace.agendaLooked) return;
+  if (row.state !== 'live' || state.workspace.agendaLooked || space.makingAgenda(state.workspace, Date.now())) return;
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const plan = await space.planAgenda(o, meeting);
-  const made = await tx(o.pool, async (c) => {
+  const draft = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
-    if (held.row.state !== 'live' || held.state.workspace.agendaLooked) return undefined;
-    await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, agendaLooked: true } });
-    return plan ? space.claimAgenda(o, c, meeting.itemId, plan) : undefined;
+    if (held.row.state !== 'live' || held.state.workspace.agendaLooked || space.makingAgenda(held.state.workspace, Date.now())) return undefined;
+    const claimed = space.claimAgenda(held.state.workspace, plan, Date.now());
+    await save(o, c, callId, { ...held.state, workspace: claimed.space });
+    return claimed.draft;
   });
-  if (!made || !plan) return;
-  await space.fillAgenda(made, plan, callId);
-  clog.info('next agenda made', { callId, workspaceId: plan.workspaceId, documentId: made.documentId, carried: plan.open.length });
-  await nudge(o, row.room_name, callId, { call: true, log: false });
+  if (!draft || !plan) return;
+  try {
+    const made = await space.makeAgenda(o, plan, draft);
+    if (made) await space.fillAgenda(made, plan, callId);
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      if (held.row.state === 'live') await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, agendaLooked: true, agendaDraft: null } });
+      if (made) await updateManifest(o, c, meeting.itemId, (m) => space.withAgenda(m, plan, made.documentId));
+    });
+    if (!made) return;
+    clog.info('next agenda made', { callId, workspaceId: plan.workspaceId, documentId: made.documentId, carried: plan.open.length });
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+  } catch (e) {
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      const w = held.state.workspace;
+      if (held.row.state === 'live' && w.agendaDraft?.documentId === draft.documentId) await save(o, c, callId, { ...held.state, workspace: { ...w, agendaDraft: { ...w.agendaDraft, until: 0 } } });
+    }).catch((err: unknown) => clog.warn('next agenda not let go of', { callId, err }));
+    throw e;
+  }
 }
 
 /**

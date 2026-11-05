@@ -29,16 +29,24 @@ export type Playing = z.infer<typeof Playing>;
 const SpaceAsk = z.object({ id: z.string(), person: z.string(), at: z.number(), state: z.enum(['asking', 'declined']) });
 export type SpaceAsk = z.infer<typeof SpaceAsk>;
 
+/**
+ * The next agenda while it's being made: the document it's made as, so trying again fills the same one, and until when
+ * whoever's making it has it, so two people opening Workspace at once don't both make one. Nothing names it until it's filled.
+ */
+const AgendaDraft = z.object({ workspaceId: z.string(), documentId: z.string(), until: z.number() });
+export type AgendaDraft = z.infer<typeof AgendaDraft>;
+
 export const CallSpace = z.object({
   asks: z.array(SpaceAsk).default([]),
   present: z.array(Presenting).default([]),
   play: z.array(Playing).default([]),
   worked: z.array(WorkedDocument).default([]),
-  /** This run of the call has looked for its agenda, so nobody opening Workspace looks again. */
-  agendaLooked: z.boolean().default(false)
+  /** This run of the call has its agenda, or has found there's none to make, so nobody opening Workspace looks again. */
+  agendaLooked: z.boolean().default(false),
+  agendaDraft: AgendaDraft.nullable().default(null)
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false };
+export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null };
 
 /** Nothing presented or playing is left: the call moved to another workspace. */
 export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });

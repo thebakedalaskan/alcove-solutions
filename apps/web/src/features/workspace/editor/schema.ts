@@ -26,7 +26,7 @@ export const MAX_INDENT = 2;
 
 /*
  * What every block has. `gone` is set on a block that has left the page: it says which block took its words, and it's ''
- * if none did. See retire.ts.
+ * if none did. See `@alcove/api/retire`.
  */
 const block = { id: { default: null }, gone: { default: null } };
 
@@ -234,7 +234,7 @@ function learnMark(schema: Schema, name: string): MarkType {
 const inlineStandIns = new WeakMap<PMNode, PMNode>();
 
 /** The node to hold for one made from an element: what's in the document, if that's since changed. */
-export const inDocument = (node: PMNode): PMNode => inlineStandIns.get(node) ?? node;
+export const inDocument = (node: PMNode): PMNode => (node.type === schema.nodes.unsupported ? inlineStandIns.get(node) ?? node : node);
 
 /*
  * y-prosemirror deletes, for everyone, any element or text it can't make a node or mark from, and removes from an element
