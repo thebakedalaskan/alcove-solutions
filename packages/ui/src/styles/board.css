@@ -96,7 +96,7 @@
 .bf-h .sub { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ink-3); }
 /* Typing a title: in the title's own type and place, on one line, across all the room a title can take. */
 .bf-h:has(.bo-edit) { width: calc(100% + 12px); }
-.bf-h .bo-edit { position: static; width: 100%; min-width: 0; height: 1.1em; overflow: hidden; white-space: pre; font: inherit; letter-spacing: inherit; font-variation-settings: inherit; }
+.bf-h .bo-edit { position: static; width: 100%; min-width: 0; height: 1.1em; padding: 0; overflow: hidden; white-space: pre; font: inherit; letter-spacing: inherit; font-variation-settings: inherit; }
 /* Where the browser can, it's only as wide as the words, so what's beside the title stays beside it. */
 @supports (field-sizing: content) { .bf-h .bo-edit { field-sizing: content; width: auto; max-width: 100%; } }
 .bf-hint { position: absolute; left: 0; right: 0; top: 50%; translate: 0 -50%; margin: 0; padding: 0 44px; text-align: center; font: 400 17px/1.4 var(--font-sans); color: var(--ink-3); }
@@ -155,16 +155,15 @@
 .bo.has-dots .bo-dots { display: flex; }
 .bo-dots i { width: 13px; height: 13px; border-radius: 50%; background: var(--horizon); box-shadow: 0 0 0 2px var(--nc); animation: bd-pop var(--duration-1) var(--ease-out) both; }
 
-/* Typing in an object */
-.bo-edit { position: absolute; left: 14px; right: 14px; top: 14px; bottom: 26px; width: calc(100% - 28px); height: calc(100% - 40px); padding: 0; border: 0; resize: none; outline: none; background: transparent; color: inherit; font: 500 15.5px/1.32 var(--font-sans); letter-spacing: -.005em; user-select: text; -webkit-user-select: text; }
-.bo.k-text .bo-edit { font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; }
-.bo.k-label .bo-edit { left: 0; top: 0; width: 100%; height: 100%; font: 600 16px/1.2 var(--font-sans); letter-spacing: -.008em; color: var(--ink-2); }
+/* Typing in an object. The field covers all of it, so a press anywhere on it places the caret, and its padding keeps the words where they sit at rest. */
+.bo-edit { position: absolute; left: 0; top: 0; width: 100%; height: 100%; box-sizing: border-box; padding: 14px 14px 26px; border: 0; resize: none; outline: none; background: transparent; color: inherit; font: 500 15.5px/1.32 var(--font-sans); letter-spacing: -.005em; user-select: text; -webkit-user-select: text; }
+.bo.k-text .bo-edit { padding: 0; font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; }
+.bo.k-label .bo-edit { padding: 0; font: 600 16px/1.2 var(--font-sans); letter-spacing: -.008em; color: var(--ink-2); }
 .bo.k-text.is-body .bo-edit { font: 400 15px/1.4 var(--font-sans); color: var(--ink-2); }
-.bo.k-shape .bo-edit { font: 500 15.5px/1.28 var(--font-sans); letter-spacing: 0; text-align: center; }
-/* Text and shapes sit in the middle of their box, so the editor lies exactly over the words it hides, however many lines they run to, and nothing moves as typing starts. */
-.bo.is-live-edit:is(.k-text, .k-shape) { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; align-content: center; }
-.bo.is-live-edit:is(.k-text, .k-shape) > :is(.bo-t, .bo-edit) { grid-area: 1 / 1; }
-.bo.is-live-edit:is(.k-text, .k-shape) .bo-edit { position: relative; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+.bo.k-shape .bo-edit { padding: 0 14px; font: 500 15.5px/1.28 var(--font-sans); letter-spacing: 0; text-align: center; }
+/* Text and shapes can sit anywhere down their box, which a field can't, so `fitBoardEdit` says how far down the words start. A blank shape's first line is where its words will be. */
+.bo.is-live-edit:is(.k-text, .k-label, .k-shape) .bo-edit { overflow: hidden; }
+.bo.k-shape.is-live-edit .bo-t:empty::before { content: "\200b"; }
 
 /* A comment: a pin with their face on it, and what they said */
 .bo-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }

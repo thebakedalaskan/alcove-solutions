@@ -5,7 +5,7 @@
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
 import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardObject, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
-import { BoardEdit } from '@alcove/ui';
+import { BoardEdit, fitBoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
 import type { Board } from './useBoard';
@@ -164,6 +164,7 @@ export function BoardTyping({ board, id, label, field = 't' }: { board: Board; i
     let text = objectText(board.doc, id, field);
     if (!el || !text) return undefined;
     let binding = bindText(el, text, board.origin);
+    const stopFitting = fitBoardEdit(el);
     // Undo makes a deleted object again with a new Y.Text. Someone can be typing in it, and a reconnect can bring the delete and the undo at once, so nothing closes this field: without following, what they type next would go nowhere.
     const follow = (): void => {
       const now = objectText(board.doc, id, field);
@@ -231,6 +232,7 @@ export function BoardTyping({ board, id, label, field = 't' }: { board: Board; i
     return () => {
       board.flushTyping = null;
       stopFollowing();
+      stopFitting();
       binding.stop();
       removeEventListener('mousedown', press, true);
       removeEventListener('focus', back);

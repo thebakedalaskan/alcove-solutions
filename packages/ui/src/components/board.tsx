@@ -420,6 +420,26 @@ function objectAttrs(o: ObjectProps, kind: string, ...more: (string | false | un
   };
 }
 
+/**
+ * Keeps a `BoardEdit` over the whole of a text or a shape with its words where they sit at rest, which only the words themselves
+ * can say. Words too long for the object take the field past it with them, as they run past it at rest. Returns how to stop.
+ */
+export function fitBoardEdit(edit: HTMLElement): () => void {
+  const object = edit.parentElement, words = object?.querySelector(':scope > .bo-t');
+  if (!object?.matches('.k-text, .k-label, .k-shape') || !(words instanceof HTMLElement)) return () => undefined;
+  const fit = (): void => {
+    const top = Math.min(0, words.offsetTop), bottom = Math.max(object.offsetHeight, words.offsetTop + words.offsetHeight);
+    edit.style.top = `${top}px`;
+    edit.style.height = `${bottom - top}px`;
+    edit.style.paddingTop = `${words.offsetTop - top}px`;
+  };
+  const sizes = new ResizeObserver(fit);
+  sizes.observe(words);
+  sizes.observe(object);
+  fit();
+  return () => sizes.disconnect();
+}
+
 /** Where typing goes: over an object, in that object's type. `label` says what's being edited, as in "Edit this sticky". */
 export const BoardEdit = forwardRef<HTMLTextAreaElement, Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'aria-label'> & { label: string }>(function BoardEdit({ className, label, ...rest }, ref) {
   return <textarea ref={ref} className={cn('bo-edit', className)} aria-label={label} {...rest} />;
