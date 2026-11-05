@@ -224,6 +224,11 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
     removeBlock: (id) => removeBlock(rt, id),
     selectionBlock: () => (rt.view ? selectedBlock(rt.view.state)?.id ?? null : null),
     blockJSON: (id) => (rt.view ? movingBlock(rt.view.state, id)?.block ?? null : null),
+    placeOf: (id) => {
+      const blocks = rt.view ? allBlocks(rt.view.state.doc) : [];
+      const before = blocks[blocks.findIndex((b) => b.id === id) - 1]?.id;
+      return before ? { after: before } : 'start';
+    },
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
     openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
     openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
@@ -341,6 +346,7 @@ export default function Editor(props: EditorProps) {
   }, [rt, root, mount]);
 
   const drag = useStore(rt.drag);
+  const blank = useStore(rt.blank);
   const end = useCallback(() => goToEnd(rt), [rt]);
 
   return (
@@ -354,7 +360,7 @@ export default function Editor(props: EditorProps) {
         {createPortal(byline, rt.byline)}
         <Menus rt={rt} root={root} />
       </div>
-      {props.below}
+      {blank && props.whenBlank ? props.whenBlank : props.below}
       {!readOnly && <button type="button" className="wd-tail" aria-label="Add a line at the end" onClick={end} />}
     </RuntimeContext>
   );
