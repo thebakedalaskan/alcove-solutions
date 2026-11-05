@@ -37,9 +37,9 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
-| `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
+| `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
-| `document_clients` | owner (the workspace), document, `client_id` (a Yjs client: a random number), `next_clock` (how far it's written). Kept as long as the document | `people`: keyed hashes of who it belongs to, each bound to this client and document, so no two rows can be linked. Empty for what the server wrote |
+| `document_clients` | owner (the workspace), document, `client_id` (a Yjs client: a random number), `next_clock` (how far it's written). Kept as long as the document | `people`: keyed hashes of who it belongs to, by every way access knows them and by their account, each bound to this client and document, so no two rows can be linked. Empty for what the server wrote |
 | `document_snapshots` | owner (the workspace), document, `through_seq`. One row a document | `snapshot_ciphertext` (its Yjs state through that seq), `editors_ciphertext` (who has edited it since the last version) |
 | `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
@@ -137,8 +137,11 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   the item is made. A browser that can only read never has to write, two people opening a new document find one title, and
   two people typing there first type in the same text. A board starts with nothing. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
-  outside it, one document at a time, with a document's title changed to say what the tree calls the copy.
-- **Updates** go up as bytes (`application/octet-stream`), at most 4 MiB each, and are sealed and appended in one
+  outside it, one document at a time, with a document's title changed to say what the tree calls the copy. A copy holds only
+  each map key's last value, since nobody can be behind it. If the workers stay busy it waits about 15 seconds and then
+  fails, and the copy is deleted for good, so nobody's left with a blank one that looks like the real thing. A document whose records
+  won't open still leaves its copy as it started, and the rest are made all the same.
+- **Updates** go up as bytes (`application/octet-stream`), as big as a document can be, and are sealed and appended in one
   transaction, under the workspace's row lock for reading (so nothing lands after someone loses access) and the `documents`
   row's lock. `seq` comes from `next_seq` under that lock, so rows commit in order, and whoever has read past a `seq` has
   missed nothing before it. `pg_notify` goes out on commit. An update that arrives twice is known by its clocks and stored
@@ -170,18 +173,31 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   not the row's lock because a big document takes a while, and everyone typing would each hold a connection. A restore that
   would leave the document past its limit is refused. The tree's name follows the title, because a browser renames only what
   it types.
-- **Size.** A document stops at 16 MiB or 500,000 items (`DOC_ITEMS_MAX`), whichever comes first: a Y.Doc's memory follows how
-  many separate pieces it's made of, about 210 bytes each, whatever they come to in bytes. Past either, what's refused is what
-  adds to it: new text and new elements, past what the same update takes out (`413 too-large`, and the browser's status says
-  `failed`, `too-large`). So a full document can always be made smaller: deleting words, a block leaving the page, which
-  writes two small attributes, and joining two lines all go through. A move adds an element, so it waits with everything else
-  that adds one. It isn't free of limits, because a new attribute is an item too: at twice either figure only deletes are taken, which nothing but someone doing it on purpose comes near. These
-  figures are what could be there, not what is, so a refusal compacts the document, which finds out, and a browser tries
-  again by itself. Nobody's words are lost: they stay in the browser that typed them. Deleting always goes through, but only
-  frees what Yjs lets go of: words and items go once what holds them does, and a run typed in one go merges, but items
-  deleted one by one inside something that stays are tombstones, and still count. Nothing prunes retired blocks in this
-  release either, so a document's size follows what's been written to it: see [In a browser](#in-a-browser) for what's kept with
-  an eye to that.
+- **Size.** What's on a document's page stops at 16 MiB or 150,000 items (`MAX_DOC_ITEMS`, `DOC_ITEMS_MAX`), about 37,500 lines,
+  whichever comes first. An item is one Yjs struct that isn't deleted and isn't in a retired block, so a line is about four, and
+  a page someone emptied has room again. Past either, what's refused is what adds to it: new text and new elements, past what
+  the same update takes out, up to 4,096 of them (`413 too-large`, and the browser's status says `failed`, `too-large`). An
+  update a browser rebuilt says everything that's ever been deleted, which is why that's bounded: deletes can't bring a paste in
+  with them. So a full document can always be made smaller: deleting words, a block leaving the page, which writes two small
+  attributes, and joining two lines all go through. A move adds an element, so it waits with everything else that adds one.
+  These figures are what could be there, not what is, so a refusal compacts the document, which finds out, and the update is
+  judged again. Nobody's words are lost: they stay in the browser that typed them.
+- **What it can hold.** Everything a document holds costs memory, on the page or not, so there are ceilings past which only
+  deletes are taken: 300,000 items on the page, 32 MiB, and 900,000 structs in all. Nothing but someone doing it on purpose
+  comes near the first two. The third counts what Yjs has to keep: tombstones, retired blocks, and every value a map key has
+  ever had. A value that's been overwritten stays a struct for good, at about 350 bytes of memory and 10 stored, and these
+  don't merge across keys, so 1,000,000 writes to the keys of 5,000 objects left 1,090,000 structs, 95,000 of them live. No
+  compaction can let them go: a browser that's behind holds part of a key's chain and needs the rest to find what's current,
+  and given a state without it, the key comes back empty. Only a copy, which has nobody behind it, starts without them. So a
+  store that writes the same things over and over keeps them in a list, not in map keys: one shared `Y.Array` of entries,
+  where each write deletes the old entry and pushes a new one (y-utility's `YKeyValue`). What's deleted there merges, at most
+  one struct a batch: the same 1,000,000 writes left 2 structs with one person, and about 5,000 with people taking turns. A
+  document that does reach a ceiling still opens, and loses nothing, and carries on in a copy.
+
+  Measured in a worker with its real limits, building, encoding and proving a state: the worst shape, 300,000 live items that
+  are each a map, peaks at 530 MiB of 640 (`DOC_HEAP_MB`); lines peak at 377; 1,000,000 structs with 320,000 of them live at
+  547. 1,490,000 structs run a worker out of memory, which is why the ceiling is where it is. A real block holds about 700 to
+  1,000 bytes an item once it's open.
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
@@ -190,6 +206,11 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
   is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
   a retired block still holding something reads like any other.
+- **A known limit in Yjs.** Undoing the delete of an element that holds text two people typed into at once can write an item
+  whose left origin is to the right of its right origin (`redoItem`). It applies, states agree, and nothing can tell, but a word
+  comes out scrambled, the same for everyone: 25 runs in about 13,000 random ones, and none in over 12,000 where no element
+  was deleted. `proveOpens` can't see it. Blocks are retired and never deleted, which avoids it for them. Table rows and a board's
+  objects are deleted, so they could reach it, by reasoning rather than a run. It's upstream, and nothing here can catch it.
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
@@ -204,7 +225,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 
 `apps/api/src/modules/documentFirewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
 It goes by Yjs's structs and never by what a document means, so a board goes through the same door as a page. Whoever can't
-write there hears so first, before anything of it is read. Refused means `400 invalid`, a reason in the log, and no row.
+write there hears so first, before anything of it is read. Refused means a reason in the log and no row, and a browser hears
+which kind it was: `400 invalid` for what no honest client could send, and `413 too-large` for what's only too much, which
+taking something out can change.
 
 What can be told from the update alone is checked with nothing held, in a worker past 32 KiB:
 
@@ -212,18 +235,23 @@ What can be told from the update alone is checked with nothing held, in a worker
   Yjs can write back. Yjs's own decoder lets several of these past, and a zero-length struct applies, then makes a snapshot
   nobody can read. A `GC` is fine as long as it holds something: a browser sends one when something's made and deleted in
   one transaction.
-- At most 200,000 structs, from 256 clients, and 1,024 items with the same left neighbour, which is what makes Yjs's conflict
-  scan quadratic. The cap can't be on a shared right neighbour: every key typed mid-line shares one.
+- As many structs as a document can hold, from any number of clients, so nothing fits in a document and not in an update, and
+  1,024 items with the same left neighbour, which is what makes Yjs's conflict scan quadratic. The cap can't be on a shared
+  right neighbour: every key typed mid-line shares one. These, and types nested too deep in one update, are `too-large`.
 - Everything in it can be placed: it's worked through as Yjs would, and anything that waits for what it can't ever have is
   refused, because Yjs would carry it pending for ever, in every snapshot.
 
 What depends on the log is checked under the document's lock, against `document_clients`, without opening the document:
 
 - Structs only for clients this person owns. The first to write as a client has it, and a person is known by every way
-  access knows them, so someone who signs in during a call keeps theirs. Nobody can write as someone else, which is what
-  a forged clock would need: Yjs would believe it, and everything that client wrote next would vanish.
+  access knows them, and by their account, so someone who signs in during a call keeps theirs, and so does someone whose
+  address changes, in an open tab or with words kept offline. A client's row takes on whatever else its writer goes by each
+  time they write, so a row from before accounts were counted carries forward. Nobody can write as someone else, which is
+  what a forged clock would need: Yjs would believe it, and everything that client wrote next would vanish.
 - Clocks carry on from where a client got to, with no gap, or go over what's there, as a retry does.
-- Origins, right origins and parents are clocks that exist, or arrive with this. Deletes reach only clocks that exist.
+- Origins, right origins and parents are clocks that exist, or arrive with this. That's anything before or after what the
+  update brings of a client, too: two tabs share a store, so an old part of a client can go with something built on a later
+  part, which the log has by now. Deletes reach only clocks that exist.
 - A running count of items and of how deep types nest: deleting a type recurses into it, in every browser, so nesting stops
   at 1,024. Depth can't be seen from an update, so it's counted as if everything nested below the deepest thing there, and a
   compaction, which walks the document, puts the figure right.
@@ -237,10 +265,26 @@ Sealed rows go in with the document's key, which is wiped when the job ends, and
 records are opened and sealed there too.
 
 There are 2 workers (`DOC_WORKERS`), each job has 20 seconds (`DOC_WORK_MS`), and the first worker, which takes documents past
-256 KiB or 50,000 items one at a time, has 320 MiB (`DOC_HEAP_MB`) and the others 96. A worker that runs out of either fails
-that one job. It's replaced when it's next needed, and the event loop never noticed. A worker with nothing to do for 30
-seconds goes, which gives its memory back, and one that's held a big document goes after a second. At most 256 jobs and 128 MiB can wait, and at most 64 MiB of states can be on their
-way to browsers, known from the row before anything's opened: past either, the browser is told to try again.
+256 KiB or 25,000 items one at a time, has 640 MiB (`DOC_HEAP_MB`) and the others 96. An update past 4 MiB is sealed and read
+there too, since it goes through a few copies as text. A worker that runs out of either fails that one job. It's replaced when
+it's next needed, and the event loop never noticed. A worker with nothing to do for 30 seconds goes, which gives its memory
+back, and one that's held a big document goes after a second.
+
+People take turns. Each has a line of their own, or a workspace for what nobody in particular asked for, and a free worker
+goes to the next person in turn with nothing running, so someone opening a document waits behind one job, however much anyone
+else has asked for. What a lock is waiting on goes first. A document that takes a second or more is treated as big for ten
+minutes, whatever its size says, so slow documents stay off the other workers. At most 256 jobs and 128 MiB can wait, and of
+that 32 jobs (`DOC_WAITING_PER_PERSON`) and 32 MiB for one person: past either, the browser is told to try again. Searching
+honours a document being closed, and one that takes more than a worker has is closed for everyone, as it is for opening it.
+
+What's on its way to browsers is counted before anything's opened, and stays counted until the last of it has left or the
+reader has: at most 64 MiB on an instance (`DOC_SENDING_MB`), and half of that for one person, past which opening a big
+document waits for the browser to try again. Someone with nothing on its way is held back only by the instance's limit, and
+with nothing at all on its way anything goes, however big. Anything under 256 KiB always goes, so nobody's unread streams hold
+up anyone's ordinary document. Everything big goes in pieces of 64 KiB, each only once the last has left, and a
+reader who hasn't taken a piece within a ping is let go of: a write is over when the connection has it, not the browser, so
+written whole it would sit in memory for as long as nobody read it. At most 128 MiB of updates can be coming in at once, past
+what's small enough to be typing.
 
 ### Presenter notes
 
@@ -260,13 +304,23 @@ survives a reload: what's kept is applied when the session starts and sent when 
 the last `seq` it heard, however it ended, and never moves on from what this browser sent, only from what the stream
 said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise.
 
-An update that's refused for its size can't hold up what's behind it. A client's clocks have to reach the API in order, so
-everything written as that client is stuck with it: the session moves to a new client, and what's written next goes as
-usual, unless it builds on what's stuck, which waits too. What's stuck is worked out afresh in a scratch document, a second
-after anything changes and every 30 seconds: nothing's keeping what was deleted for undo there, so a paste that's been undone
-or cut down is a small thing now, and goes in place of everything that was waiting. That holds through a reload. An update
-Alcove refuses outright (`rejected`) is worked out afresh once, in case it's a gap in what was kept, and then let go of: what's on
-screen stays for someone to copy, and a reload starts from what Alcove has. A browser shouldn't ever see this.
+A refusal never lets go of anything. What's refused stays in memory and in `keep`, through reloads, and the status says so:
+`unsent` is true until Alcove has everything or someone chooses to let it go, and `saved` only ever means that. `localCopy()`
+gives what's here as text and as a state, however the session ended, with anything Yjs had nowhere to put added at the end, and
+`saveCopy` makes a new document of that state (`POST …/adopt`, which only takes a document nobody's written to, and judges
+what it's given like anything from a browser). `discardUnsaved()` is the only thing that forgets what Alcove doesn't have, for
+someone who chose to. A document that's deleted while someone has unsent words works the same way.
+
+An update that's refused can't hold up what's behind it. A client's clocks have to reach the API in order, so everything
+written as that client is stuck with it: the session moves to a new client, and what's written next goes as usual, unless it
+builds on what's stuck, which waits too. It only moves four times in one stretch, as a client costs the API a row for good:
+after that what's written waits with the rest, without a request for each batch. What's stuck is worked out afresh in a scratch
+document, a second after anything changes, then after 3, 6, 12, 24 and every 30 seconds, and as soon as `edit` access returns:
+nothing's keeping what was deleted for undo there, so a paste that's been undone or cut down is a small thing now, and goes in
+place of everything that was waiting. That holds through a reload. While that's too much, everything deleted of what Alcove has
+goes without it, as that's how a full document gets room. Only what was in what went is let go of: anything Yjs couldn't place
+stays, and says `rejected`, as does anything Alcove refuses outright. A browser shouldn't ever see that, and what doesn't
+depend on it carries on regardless.
 
 `KeptUpdate` says when each edit was made (`at`). Nothing reads that yet: retired blocks can't be pruned while someone may
 still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
@@ -303,7 +357,7 @@ and this way it runs through the same auth, origin check and tests as everything
 - **A document's stream** (`GET /v1/workspaces/:id/documents/:doc/live?after=<seq>`). First `sync`: what this browser
   doesn't have as one update, the `seq` that reaches, and what they can do. Then `update`, in order; `awareness`; `access`,
   when their role changes or it goes to Trash or comes back; `ping`; and `closed`, saying why it's over: `access`, `deleted`,
-  `session` or `unavailable`. Up: `POST …/updates` and `POST …/awareness`. A notice is `<document>:<seq>`, and each is read once on
+  `session` or `unavailable`. Up: `POST …/updates`, `POST …/awareness`, and `POST …/adopt` for a new document's first state ([In a browser](#in-a-browser)). A notice is `<document>:<seq>`, and each is read once on
   each instance, by the document's room, which keeps the lines not everyone has been told, each made once. Rows are read before
   how far the snapshot reaches, and it's the rows that say what a compaction took: seqs have no gaps until one makes them, and
   anyone who hadn't been told what's gone starts again from where they got to. A stream keeps only its place: nothing of

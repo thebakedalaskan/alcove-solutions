@@ -111,9 +111,13 @@ together for everyone (`LIVE_STREAMS_MAX`), past which they're refused with `503
 each one after 280 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Rings and these are
 counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
 them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
-heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 320 MiB for the one that takes big
+heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big
 documents and 96 MiB for the rest (`DOC_HEAP_MB`, `DOC_WORKERS`), outside that heap, so keep the two inside the container
-together. A document at its item limit and an 8 MB one, in a 1 GiB container, peaked at 884 MiB, which is why it's 2 GiB. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+together: a document at its ceilings peaks at about 550 MiB in the big worker. What's on its way in and out is outside the heap
+too, at most 128 MiB of updates and 64 MiB of documents (`DOC_SENDING_MB`), plus what's waiting for a worker, at most 128 MiB.
+Before the limits were set from real blocks, a document at its item limit and an 8 MB one, in a 1 GiB container, peaked at
+884 MiB, which is why it's 2 GiB. Set a process-wide `--max-old-space-size` on no instance: it overrides what a worker is
+limited to. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
 checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
 connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
