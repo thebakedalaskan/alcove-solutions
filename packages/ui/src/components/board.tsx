@@ -212,16 +212,16 @@ export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', s
           <span className="vr" />
         </>
       )}
-      <IconButton className="bt" icon="minus" size={16} label="Zoom out" onClick={onZoomOut} />
+      <IconButton className="bt zm" icon="minus" size={16} label="Zoom out" onClick={onZoomOut} />
       <button type="button" className="pct" title="Show everything · ⇧1" onClick={onFit}>{Math.round(zoom * 100)}%</button>
-      <IconButton className="bt" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
-      <IconButton className="bt" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
+      <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
+      <IconButton className="bt zm" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
       {acts && (
         <>
           <span className="vr" />
-          <IconButton className="bt" icon="timer" size={17} label="Timer" onClick={onTimer} />
-          <IconButton className="bt" icon="vote" size={17} label="Vote" onClick={onVote} />
-          <IconButton className="bt" icon="play" size={15} label="Present" onClick={onPresent} />
+          <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} />
+          <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} />
+          <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} />
           <IconButton className="bt" icon="more" size={17} label="More" onClick={onMore} />
         </>
       )}

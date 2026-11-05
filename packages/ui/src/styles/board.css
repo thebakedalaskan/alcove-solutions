@@ -246,6 +246,10 @@
 @container (max-width: 760px) { .bd-head.is-full .sv { flex-shrink: 1; } .bd-head.is-full .nm { max-width: 220px; } }
 @container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
 @container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
+/* A phone's bar keeps the name, the seal, undo, redo, how near you are and More: a pinch zooms, and the map and running a session are for bigger screens. */
+@container (max-width: 480px) { .bd-head .zm, .bd-head .run { display: none; } }
+/* On a board's own page the name keeps room to be read, however narrow, and the page's own button comes in close. */
+@container (max-width: 480px) { .bd-head .nm { min-width: 84px; } .bd-head .vr { display: none; } .bd-head .bpg-acts { margin-left: 2px; } }
 
 /* The board's own button, on top of IconButton */
 .bt { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
