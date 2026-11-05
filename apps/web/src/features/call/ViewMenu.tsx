@@ -1,65 +1,94 @@
 /*
- * Your view, in the top bar: Auto, Speaker and Grid one press away on wider screens, and a menu with all of it (the
- * modes, two ready-made layouts, where you see yourself, Reset) that a phone reaches through one button.
+ * Your view, from one button in the top bar: four ways to lay the call out, how you see people, whether the workspace
+ * shows its list, then Auto, Speaker or Grid, two ready-made layouts for the people, where you see yourself, and Reset my
+ * view once there's anything to reset. Everything in it says the same thing: only your screen changes.
  */
-import type { CallViewMode, SelfView } from '@alcove/api';
-import { Icon, Kbd, Popover, Segmented, Tooltip, cn, type IconName } from '@alcove/ui';
+import type { CallPeopleMode, CallViewMode, SelfView } from '@alcove/api';
+import { Icon, Kbd, Popover, Segmented, Switch, cn, type IconName } from '@alcove/ui';
 import { useState } from 'react';
+import type { PanelPreset } from './panels';
 import { PRESETS, type Preset } from './view';
 
-const VIEWS: { mode: CallViewMode; icon: IconName; label: string; detail: string; tip: string }[] = [
-  { mode: 'auto', icon: 'viewAuto', label: 'Auto', detail: 'Alcove picks', tip: 'Auto: Alcove picks the layout · changes your view only' },
-  { mode: 'speaker', icon: 'viewSpeaker', label: 'Speaker', detail: 'Whoever’s talking, big', tip: 'Speaker and sidebar · changes your view only' },
-  { mode: 'grid', icon: 'grid', label: 'Grid', detail: 'Everyone the same size', tip: 'Grid · changes your view only' }
-];
+const VIEWS: { mode: CallViewMode; label: string }[] = [{ mode: 'auto', label: 'Auto' }, { mode: 'speaker', label: 'Speaker' }, { mode: 'grid', label: 'Grid' }];
 const PRESET_ICON: Record<Preset, IconName> = { equal: 'people', presenter: 'presenter' };
+/** How each layout looks, drawn small: screen, document and people. */
+const LAYOUTS: { id: PanelPreset; label: string; cls: string; order: ('s' | 'd' | 'p')[] }[] = [
+  { id: 'beside', label: 'Side by side', cls: 't1', order: ['s', 'd', 'p'] },
+  { id: 'stacked', label: 'Stacked', cls: 't2', order: ['s', 'd', 'p'] },
+  { id: 'screen', label: 'Screen first', cls: 't3', order: ['s', 'p', 'd'] },
+  { id: 'doc', label: 'Document first', cls: 't4', order: ['d', 's', 'p'] }
+];
 
-export function ViewMenu({ mode, preset, self, custom, onMode, onPreset, onSelf, onReset }: {
-  mode: CallViewMode; preset: Preset | null; self: SelfView; custom: boolean;
+export function ViewMenu({ mode, preset, self, custom, layout, people, list, roomy, phone, onMode, onPreset, onSelf, onReset, onLayout, onPeople, onList }: {
+  mode: CallViewMode; preset: Preset | null; self: SelfView;
+  /** There's something for Reset my view to do. */
+  custom: boolean;
+  /** The layout you're in, if you've moved nothing since. */
+  layout: PanelPreset | null;
+  people: CallPeopleMode;
+  /** Whether the workspace shows its list, or null with no workspace open. */
+  list: boolean | null;
+  /** There's something beside the people to make room for: otherwise they stay on the stage for now. */
+  roomy: boolean;
+  /** One thing at a time: there's nothing to lay out. */
+  phone: boolean;
   onMode: (m: CallViewMode) => void; onPreset: (p: Preset) => void; onSelf: (s: SelfView) => void; onReset: () => void;
+  onLayout: (l: PanelPreset) => void; onPeople: (m: CallPeopleMode) => void; onList: (on: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const pick = (f: () => void) => () => { setOpen(false); f(); };
-  const current = VIEWS.find((v) => v.mode === mode) ?? VIEWS[0];
   return (
-    <div className="ic-vc" role="group" aria-label="Your view. Only your view changes">
-      {VIEWS.map((v) => (
-        <Tooltip key={v.mode} label={v.tip} side="bottom">
-          <button type="button" className="vbtn is-mode" aria-label={`${v.label} layout`} aria-pressed={mode === v.mode} onClick={() => onMode(v.mode)}><Icon name={v.icon} size={16} /></button>
-        </Tooltip>
-      ))}
-      <Popover open={open} onOpenChange={setOpen} side="bottom" align="end" label="Your view" className="ic-menu ic-vmenu"
-        anchor={(
-          <button type="button" className={cn('vbtn is-more', open && 'is-on')} aria-label="Your view: layouts, where you see yourself, reset" aria-haspopup="menu">
-            <span className="wide"><Icon name="down" size={16} /></span>
-            <span className="narrow">{current && <Icon name={current.icon} size={17} />}</span>
-          </button>
-        )}>
-        <div className="ac-eyebrow">Layout</div>
-        {VIEWS.map((v) => (
-          <button key={v.mode} type="button" className="mi" role="menuitemradio" aria-checked={mode === v.mode} onClick={pick(() => onMode(v.mode))}>
-            <Icon name={v.icon} size={17} /><span className="t">{v.label}<span className="sub">{v.detail}</span></span><Icon name="check" size={16} className="tick" />
-          </button>
-        ))}
-        <div className="ac-eyebrow">Ready-made</div>
-        {PRESETS.map((p) => (
-          <button key={p.id} type="button" className="mi is-two" role="menuitemradio" aria-checked={preset === p.id} onClick={pick(() => onPreset(p.id))}>
-            <Icon name={PRESET_ICON[p.id]} size={17} /><span className="t">{p.label}<span className="sub">{p.detail}</span></span><Icon name="check" size={16} className="tick" />
-          </button>
-        ))}
-        <div className="ac-eyebrow">See yourself</div>
-        <div className="ic-vself">
-          <Segmented value={self} onChange={onSelf} label="See yourself" options={[
-            { value: 'grid', label: 'In the grid' }, { value: 'corner', label: 'In a corner' }, { value: 'hidden', label: 'Hidden' }
-          ]} />
-          {self === 'hidden' && <p className="hint">Everyone else still sees you.</p>}
-        </div>
-        <div className="ic-msep" />
-        <button type="button" className="mi" disabled={!custom} onClick={pick(onReset)}>
-          <Icon name="reset" size={17} /><span className="t">Reset my view<span className="sub">Auto, nobody pinned, the call’s order and sizes</span></span>
+    <Popover open={open} onOpenChange={setOpen} side="bottom" align="end" label="Your view" className="ic-menu ic-vmenu"
+      anchor={(
+        <button type="button" className={cn('ic-viewbtn', open && 'is-on')} aria-label="Your view" title="Your view. Only your screen changes" aria-haspopup="menu">
+          <Icon name="viewAuto" size={16} /><span className="vt">View</span><Icon name="down" size={13} />
         </button>
-        <p className="hint ic-keys"><Icon name="keyboard" size={15} /><span>On a tile: <Kbd>P</Kbd> pin, <Kbd>⇧←</Kbd> <Kbd>⇧→</Kbd> move, <Kbd>+</Kbd> <Kbd>−</Kbd> size, <Kbd>↵</Kbd> more. <Kbd>Esc</Kbd> unpins everyone.</span></p>
-      </Popover>
-    </div>
+      )}>
+      <div className="ic-vhd"><b>Your view</b><span>Only your screen changes</span></div>
+      {!phone && (
+        <>
+          <div className="ic-lays">
+            {LAYOUTS.map((l) => (
+              <button key={l.id} type="button" className="ic-lay" aria-pressed={layout === l.id} onClick={pick(() => onLayout(l.id))}>
+                <span className={cn('th', l.cls)} aria-hidden="true">{l.order.map((k) => <i key={k} className={k} />)}</span><small>{l.label}</small>
+              </button>
+            ))}
+          </div>
+          <div className="ic-vrow">
+            <span>People</span>
+            <Segmented value={people} onChange={onPeople} label="People" options={[{ value: 'tiles', label: 'Tiles' }, { value: 'arches', label: 'Arches' }, { value: 'hidden', label: 'Hidden' }]} />
+          </div>
+          {!roomy && <p className="hint">Layouts and how you see people apply once something is shared.</p>}
+          {list !== null && <div className="ic-vrow"><span>Document list</span><Switch checked={list} label="Show the document list" onChange={onList} /></div>}
+          <div className="ic-msep" />
+        </>
+      )}
+      <div className="ic-vrow">
+        <span>Stage</span>
+        <Segmented value={mode} onChange={onMode} label="Stage" options={VIEWS.map((v) => ({ value: v.mode, label: v.label }))} />
+      </div>
+      <div className="ic-vstack">
+        <span>See yourself</span>
+        <Segmented value={self} onChange={onSelf} label="See yourself" options={[
+          { value: 'grid', label: 'In the grid' }, { value: 'corner', label: 'In a corner' }, { value: 'hidden', label: 'Hidden' }
+        ]} />
+        {self === 'hidden' && <p className="hint">Everyone else still sees you.</p>}
+      </div>
+      <div className="ic-msep" />
+      {PRESETS.map((p) => (
+        <button key={p.id} type="button" className="mi is-two" role="menuitemradio" aria-checked={preset === p.id} onClick={pick(() => onPreset(p.id))}>
+          <Icon name={PRESET_ICON[p.id]} size={17} /><span className="t">{p.label}<span className="sub">{p.detail}</span></span><Icon name="check" size={16} className="tick" />
+        </button>
+      ))}
+      {custom && (
+        <>
+          <div className="ic-msep" />
+          <button type="button" className="mi" onClick={pick(onReset)}>
+            <Icon name="reset" size={17} /><span className="t">Reset my view<span className="sub">Back to the call’s layout</span></span>
+          </button>
+        </>
+      )}
+      <p className="hint ic-keys"><Icon name="keyboard" size={15} /><span>{!phone && <><Kbd>⇧P</Kbd> hides people. </>}On a tile: <Kbd>P</Kbd> pin, <Kbd>⇧←</Kbd> <Kbd>⇧→</Kbd> move, <Kbd>+</Kbd> <Kbd>−</Kbd> size, <Kbd>↵</Kbd> more. <Kbd>Esc</Kbd> unpins everyone.</span></p>
+    </Popover>
   );
 }

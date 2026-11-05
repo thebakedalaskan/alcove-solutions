@@ -1012,6 +1012,60 @@ export const CallLayoutSchema = z.object({
 });
 export type CallLayout = z.infer<typeof CallLayoutSchema>;
 
+/*
+ * How someone likes the call's panels: remembered for their account in this browser, so tomorrow's call starts the way
+ * they left it. It says where kinds of things go and never names a person, a call or anything said or shared: shares are
+ * seats (`share:1`, `share:2`) that whoever shares takes for the length of a share.
+ */
+/** What a side panel can show as a tab. */
+export const CallPanelTabSchema = z.enum(['notes', 'yours', 'transcript', 'ask', 'chat', 'people']);
+export type CallPanelTab = z.infer<typeof CallPanelTabSchema>;
+/** What a side panel can show: a tab, or the organizer's breakout rooms, which are never torn off or kept. */
+export const CallPanelViewSchema = z.enum([...CallPanelTabSchema.options, 'rooms']);
+export type CallPanelView = z.infer<typeof CallPanelViewSchema>;
+/** A panel of tabs: the side panel, or a panel made by tearing a tab off, called after that tab. */
+export const CallPanelGroupIdSchema = z.enum(['side', ...CallPanelTabSchema.options]);
+export type CallPanelGroupId = z.infer<typeof CallPanelGroupIdSchema>;
+/** Everything that can have a place: the stage, people, each seat for a share, the workspace, the board and a panel of tabs. */
+export const CallPanelLeafIdSchema = z.enum(['stage', 'people', 'ws', 'board', 'share:1', 'share:2', 'g:side', 'g:notes', 'g:yours', 'g:transcript', 'g:ask', 'g:chat', 'g:people']);
+export type CallPanelLeafId = z.infer<typeof CallPanelLeafIdSchema>;
+/** How you see people while something else is on the stage. */
+export const CallPeopleModeSchema = z.enum(['tiles', 'arches', 'hidden']);
+export type CallPeopleMode = z.infer<typeof CallPeopleModeSchema>;
+export const CALL_PANEL_SIZE_MAX = 100_000;
+const PanelSizeSchema = z.number().positive().max(CALL_PANEL_SIZE_MAX);
+/** A place in the tree: its share of the room (`flex`), or a size you gave it by dragging (`px` wide, `pxh` tall). */
+const PanelPlace = { flex: PanelSizeSchema.optional(), px: PanelSizeSchema.optional(), pxh: PanelSizeSchema.optional() };
+const CallPanelLeafSchema = z.object({ id: CallPanelLeafIdSchema, ...PanelPlace });
+export type CallPanelLeaf = z.infer<typeof CallPanelLeafSchema>;
+export interface CallPanelBranch { dir: 'row' | 'col'; kids: CallPanelNode[]; flex?: number | undefined; px?: number | undefined; pxh?: number | undefined }
+export type CallPanelNode = CallPanelLeaf | CallPanelBranch;
+/** Rows and columns: a row of panels side by side, a column of them one above the other. Twelve leaves, so a small tree. */
+export const CallPanelNodeSchema: z.ZodType<CallPanelNode> = z.lazy(() => z.union([
+  CallPanelLeafSchema,
+  z.object({ dir: z.enum(['row', 'col']), kids: z.array(CallPanelNodeSchema).min(1).max(12), ...PanelPlace })
+]));
+export const CallPanelGroupSchema = z.object({
+  id: CallPanelGroupIdSchema,
+  tabs: z.array(CallPanelTabSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The tab it shows. */
+  active: CallPanelViewSchema,
+  open: z.boolean()
+});
+export type CallPanelGroup = z.infer<typeof CallPanelGroupSchema>;
+export const CallPanelsSchema = z.object({
+  tree: CallPanelNodeSchema,
+  groups: z.array(CallPanelGroupSchema).min(1).max(CallPanelTabSchema.options.length),
+  /** The panel you last brought up: the one a phone shows, and the one Escape closes. */
+  front: CallPanelGroupIdSchema.nullable(),
+  people: CallPeopleModeSchema,
+  /** Whether the workspace shows its list of documents. */
+  list: z.boolean(),
+  /** You moved a share or the people yourself, or picked a layout: while something is shared they stand as panels of their own rather than share the stage. */
+  apart: z.boolean()
+});
+export type CallPanels = z.infer<typeof CallPanelsSchema>;
+
 /** That someone finished or closed the tour of Home. Kept in their browser for their account, never sent anywhere. */
 export const HomeTourSchema = z.object({ seenAt: ISODateSchema });
 export type HomeTour = z.infer<typeof HomeTourSchema>;
