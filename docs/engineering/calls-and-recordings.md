@@ -983,7 +983,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   edit in it, else a new one in their name. It's settled under the call's row, so people opening it at once get one, and
   it's the organizer's whoever opened it: a guest's click can make it, and tells the guest nothing. "Most recently used" is
   sealed in the account's profile (`recentWorkspace`): making one, opening one they can edit in, or a call moving to one
-  uses it. A workspace deleted since it was chosen is settled again.
+  uses it. Opening one counts once every ten minutes for each workspace, because every change to a profile is a revision,
+  and tabs come and go. A workspace deleted since it was chosen is settled again.
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
   starts with it. A call that settles on a workspace or moves to one takes the later calls that were using the old one along,
   once the call's row is let go. A later call someone gave a workspace of its own keeps it.
@@ -1021,10 +1022,11 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
   counts as working on it. Access is checked again under the workspace's row in the transaction that writes it.
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
-  person on each document goes into the call's sealed state (`worked`), under the call's row and once only, so typing never
-  waits on it, and a failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
-  who) in the transaction that ends it, the call lets go of it, and each document keeps a version with reason `call`,
-  filed under the call. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
+  person on each document goes into the call's sealed state (`worked`), under the call's row and once only: that first
+  update waits on it, and everything typed after doesn't. A failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
+  who) in the transaction that ends it, and the call lets go of it. Once the room has gone, with nobody waiting, each document
+  keeps a version with reason `call`, filed under the call: a worker can take as long as it has on each, and nothing about
+  the call's end depends on it, so a failure is logged and costs only that version. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
   the note is told what they can open now, by the name it has now, and nothing else is listed or counted.
 - **Presenting.** `present-start` needs the document open to whoever starts it, and to be in the call's workspace; `kind` is
   `document` or `board`, and the state is `{ kind, id, section, by }`, one for each part of the call. It's moved and stopped
@@ -1039,8 +1041,9 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing.
 - **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
   - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
-  - Their part of the call closing, their being removed, or their moving to another part stops it for good, as a change of
-    workspace and the call ending do.
+  - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
+    for good, as a change of workspace and the call ending do. Only they can say they left on purpose (`onPurpose` on `leave`,
+    which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
     tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never

@@ -1107,8 +1107,11 @@ document: nothing is written to it from here, nothing is kept, and it has no rec
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an
 `AsyncIterable`, as `notes.ask`); nobody's credits pay for it; and it has the same limit, 20 a minute per person. Asked from
-inside a call, it waits while notes, or the room someone's in, are paused, as everything that reaches the AI does: outside
-a call, nothing holds it. Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
+inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
+been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
+can edit the document. Demo accounts cost nothing to make, so a limit for each is no limit: they share one, 60 a minute on
+each instance, on top of their own. They aren't refused outright, because the shared demo is how people try Alcove.
+Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
 what came back. A reply that isn't the shape asked for is refused, and nothing is made of it.
 
 ## Captions in another language

@@ -108,8 +108,14 @@ const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${St
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
+/** Takes a tag out of words someone else wrote, until none is left: taking one out closes up what was either side of it, which can make another. */
+const without = (tag: RegExp) => (s: string): string => {
+  let out = s;
+  for (let was = ''; was !== out;) { was = out; out = out.replace(tag, ''); }
+  return out;
+};
 /** Never the fence the transcript is sent in, so nothing said or shown can end it early. */
-const unfenced = (s: string) => s.replace(/<\/?transcript>/gi, '');
+const unfenced = without(/<\s*\/?\s*transcript\s*>/gi);
 /** On one line, and never the fence. */
 export const oneLine = (s: string) => unfenced(s).replace(/\s+/g, ' ').trim();
 /** Who said it, as the model reads it: on one line, and marked when it's a guest, who named themselves. */
@@ -752,7 +758,7 @@ const SELECTION_ASKS: Record<DocAskAction, string> = {
 const MAX_CHECKLIST = 40;
 const Shorter = z.object({ text: z.string().regex(/[\p{L}\p{N}]/u) });
 const Checklist = z.object({ items: z.array(z.string()).min(1) });
-const unselected = (s: string) => s.replace(/<\/?selection>/gi, '');
+const unselected = without(/<\s*\/?\s*selection\s*>/gi);
 
 /** What the notes model makes of a selection, in parts to put in the document. A reply that isn't what was asked for fails, and nothing is made of it. */
 export async function editSelection(cfg: Config, action: DocAskAction, text: string): Promise<DocAskPart[]> {

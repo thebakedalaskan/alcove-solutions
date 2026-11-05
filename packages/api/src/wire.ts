@@ -168,7 +168,8 @@ export const CallHandOffBodySchema = z.object({ to: CallIdentity });
  * Leaving a call. Anyone but whoever hosts just leaves. Whoever hosts ends it for everyone, unless `end` is false: then
  * they hand the call to whoever's next (refused when nobody can take it), so a page going away never ends a call.
  */
-export const CallLeaveBodySchema = z.object({ end: z.boolean().default(true) });
+/** `onPurpose`: someone chose to go, and isn't a page going away that may come back: what they started stops with them. */
+export const CallLeaveBodySchema = z.object({ end: z.boolean().default(true), onPurpose: z.boolean().default(false) });
 
 export const RecordingActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rename'), title: z.string().trim().min(1).max(160) }),
