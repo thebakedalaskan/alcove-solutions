@@ -120,7 +120,7 @@ function Find({ onClose }: { onClose: () => void }) {
 }
 
 /** Where an answer comes from: each note it cites, once, with its moments in order. A note that's gone isn't shown. */
-function Sources({ cites, notes, onPick }: { cites: Cite[]; notes: NoteSummary[]; onPick: () => void }) {
+export function Sources({ cites, notes, onPick }: { cites: Cite[]; notes: NoteSummary[]; onPick: () => void }) {
   const rows: { note: NoteSummary; at: number[] }[] = [];
   for (const c of cites) {
     // Asking every note cites moments in notes; screens and a series' calls come from asking about one note or one series.

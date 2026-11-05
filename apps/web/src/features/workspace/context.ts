@@ -3,6 +3,7 @@ import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } f
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
+import type { EditorHandle } from './editor/types';
 import type { Tree } from './tree';
 
 /** Where in the list something was opened from, in a call: a document brought to it is in both. */
@@ -25,6 +26,8 @@ export interface WorkspaceCall {
   picker?: ReactNode;
   /** The first name of who chooses the workspace, for anyone else. */
   chooser?: string | undefined;
+  /** Which call this is, so History can say what changed during it. */
+  now?: { id: string; startedAt: string } | undefined;
   /** Just the document, at the far right of a document's head. */
   zen?: { on: boolean; onToggle: () => void } | undefined;
   /** Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). */
@@ -110,8 +113,10 @@ export interface Ws {
   toggleList: () => void;
   /** The document just made here, whose page opens with the caret in its title. */
   justMade: RefObject<string | null>;
-  /** The document open on the page, so naming it in the list reaches its title. */
-  openDoc: RefObject<{ id: string; doc: Doc } | null>;
+  /** The document open on the page, so naming it in the list reaches its title, and its editor once it's drawn. */
+  openDoc: RefObject<{ id: string; doc: Doc; editor: EditorHandle | null } | null>;
+  /** Find, from the magnifier. ⌘K does the same. */
+  openFind: () => void;
 }
 
 export const WsContext = createContext<Ws | null>(null);

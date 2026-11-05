@@ -17,10 +17,13 @@ import { WsContext, type FolderDraft, type Ws, type WorkspaceProps } from './con
 import { DocumentPane } from './DocumentPane';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
+import { Find, useFindKeys } from './Find';
+import { Keys } from './Keys';
 import { List } from './List';
-import { placesOf, rememberPlaces } from './places';
+import { openedIn, placesOf, rememberPlaces } from './places';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, treeOf, type Tree } from './tree';
+import { useWordsFollow } from './words';
 
 const GLOW_MS = 1400;
 
@@ -144,7 +147,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
-    rememberPlaces(owner, (p) => ({ ...p, workspace: workspaceId, documents: documentId ? { ...p.documents, [workspaceId]: documentId } : p.documents }));
+    rememberPlaces(owner, (p) => (documentId ? openedIn({ ...p, workspace: workspaceId }, workspaceId, documentId) : { ...p, workspace: workspaceId }));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);
@@ -172,6 +175,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return () => removeEventListener('keydown', keys);
   }, [actions, canChange, newFolder, toggleList, asleep]);
 
+  const find = useFindKeys();
+  useWordsFollow(workspaceId, pass, view);
+
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
     onOpenFolder: (id) => setOpen(id, true),
@@ -187,7 +193,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, items, tree, at, go, switchTo: onSwitch, owner, me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, openFind: () => find.setFinding(true)
   };
   return (
     <WsContext value={ws}>
@@ -208,6 +214,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         )}
       </WsPane>
       {!call && <WsToasts toasts={toasts} />}
+      <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
+      <Keys open={find.listing} onOpenChange={find.setListing} />
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
     </WsContext>
   );

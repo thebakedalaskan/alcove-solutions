@@ -3,7 +3,7 @@
  * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFullBar, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsPop } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFullBar, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, WsVersionBar, Button, wsToast, type WsPop } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
@@ -11,8 +11,10 @@ import { log } from '~/lib/log';
 import { q } from '~/lib/queries';
 import { agoLabel, shortDay } from '~/lib/time';
 import { focusRow } from './actions';
+import { useAsk } from './Ask';
 import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
+import { useHistory } from './History';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
 import { openDocument, withDocument } from './session';
@@ -48,6 +50,12 @@ function useSession(ws: Ws, documentId: string) {
   return opened;
 }
 
+/** Lands on a line: it glows, and the caret's there, so what's typed next goes where you are. */
+export function landOn(editor: EditorHandle, block: string): void {
+  editor.focusBlock(block, 'end');
+  editor.scrollToBlock(block, { flash: true });
+}
+
 /** The dates `@` offers: today, tomorrow and the next Friday. */
 function dateChoices(now: number): { label: string; date: string }[] {
   const today = new Date(now);
@@ -66,14 +74,15 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
   const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
+  const ask = useAsk(ws, item);
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
   /* Naming it in the list reaches the title on this page. */
   useEffect(() => {
-    ws.openDoc.current = { id: item.id, doc: session.doc };
+    ws.openDoc.current = { id: item.id, doc: session.doc, editor };
     return () => { if (ws.openDoc.current?.doc === session.doc) ws.openDoc.current = null; };
-  }, [ws.openDoc, item.id, session.doc]);
+  }, [ws.openDoc, item.id, session.doc, editor]);
 
   /* What the title says is what the list says: a name that didn't get through, offline say, goes when it can. */
   const reachable = status.status !== 'offline';
@@ -94,7 +103,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     if (!editor || !block) return;
     let tries = 0, frame = 0;
     const land = () => {
-      if (editor.blockJSON(block)) { editor.scrollToBlock(block, { flash: true }); return; }
+      if (editor.blockJSON(block)) { landOn(editor, block); return; }
       if (++tries < 60) frame = requestAnimationFrame(land);
     };
     land();
@@ -188,10 +197,11 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
-            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
+            moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop} onAsk={readOnly ? undefined : ask.onAsk}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
+        {ask.menu}
       </WsPage>
     </WsFade>
   );
@@ -225,6 +235,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   /* The browser knows before the document's stream does, which only finds out when it next tries to say something. */
   const online = useOnline();
   const offline = status.status === 'offline' || (!online && status.status !== 'failed');
+  const history = useHistory(ws, item, session, changing && !trashed && !offline && status.role !== 'read');
 
   /* Back from being offline, and everything's in. */
   const wasOffline = useRef(false);
@@ -250,6 +261,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
     ) : (
       <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
+        onHistory={() => { close(); history.show(); }}
         onDuplicate={changing ? () => { close(); ws.actions.duplicate(item.id); } : undefined}
         onMove={changing ? () => setMore('move') : undefined}
         onCopyLink={() => { close(); ws.actions.copyLink(item.id); }}
@@ -258,6 +270,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   };
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
   return (
+    <>
     <WsDoc>
       <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
@@ -266,7 +279,12 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
       <WsFullBar show={status.refused === 'too-large'} />
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
       <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
-      {ready ? <WsScroll><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
+      <WsVersionBar when={history.reading} />
+      {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
+      {ready ? <WsScroll hidden={history.reading !== null} inert={history.reading !== null}><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
+      {history.page}
     </WsDoc>
+    {history.panel}
+    </>
   );
 }
