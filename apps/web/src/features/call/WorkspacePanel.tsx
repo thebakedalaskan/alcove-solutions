@@ -36,17 +36,22 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   const [settled, setSettled] = useState(false);
   const asked = useRef(false);
 
+  /** What the workspace said last: it says one thing at a time, so a second toast never climbs over the foot of the list. */
+  const said = useRef<(() => void) | null>(null);
   const act = useMemo(() => {
-    const say = (t: WsToastData) => { push(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms }); };
+    const show = (t: WsToastData) => push(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms });
+    const say = (t: WsToastData) => { said.current?.(); said.current = show(t); };
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
-    const show = () => { setMounted(true); setOpen(true); };
+    const reveal = () => { setMounted(true); setOpen(true); };
     const hide = () => { setOpen(false); setZen(false); setPeek(false); };
     return {
-      say, failed, show, hide,
-      toggle: () => { if (openNow.current) hide(); else show(); },
+      say, failed, hide,
+      /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
+      announce: show,
+      toggle: () => { if (openNow.current) hide(); else reveal(); },
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
-      setZen: (on: boolean) => { if (on) show(); setZen(on); },
+      setZen: (on: boolean) => { if (on) reveal(); setZen(on); },
       setPeek,
       bring: (id: string, brought: boolean) => {
         const name = () => session.getSnapshot().workspace.documents.find((d) => d.id === id)?.name || 'Untitled';

@@ -247,7 +247,7 @@ function solvePhone(a: CallPanels, size: Size, f: PanelFacts, A: Adapted): Solve
   const body: Box = { x: 0, y: top, w: size.w, h: Math.max(0, size.h - top) };
   if (A.apart) {
     rects.people = { x: 8, y: 4, w: size.w - 16, h: 64 };
-    for (const id of mains(f)) rects[id] = body;
+    for (const id of mains(f)) if (!A.tabs || id === A.front) rects[id] = body;
   } else {
     rects.stage = box;
     // The rooms keep the stage, and what's open goes over it until it's closed: one thing at a time.
