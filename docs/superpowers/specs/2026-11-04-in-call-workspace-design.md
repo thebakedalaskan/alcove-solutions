@@ -138,8 +138,9 @@ doesn't carry. So nothing read from a document is refused, and a tab left open a
 `unsupported` stands in for an unknown block or one that doesn't fit where it is, `unsupportedInline` for an unknown tag,
 and unknown marks and attributes are learned as they're met and written back as they came.
 
-The server makes every document with its title and first line: one fixed Yjs update under a fixed client ID, `DOC_SEED` in
-`@alcove/api`, so a document's first `sync` always has them and the editor never seeds. Mount the editor after that.
+The server makes every document with its title and first line, each with an empty text in it: one fixed Yjs update under a
+fixed client ID, `DOC_SEED` in `@alcove/api`, so a document's first `sync` always has them and the editor never seeds. Mount
+the editor after that.
 
 A block's element is never deleted. Yjs has no move, and what lands in a deleted element is lost on every replica, so a
 move, a join, a delete and a turn into something structural retire the element instead: what the browser can see is
@@ -183,8 +184,6 @@ What can't be kept this way:
 - A tag dropped into the middle of a text divides it: what's after the tag is written again as a new text. Words being typed
   in that stretch at the time stay before the tag, and if two people do this to one text at once, what's after their tags
   is there twice. Nothing is lost.
-- `DOC_SEED`'s title and first line have no text in them yet, so two people typing there first each make one, and
-  y-prosemirror's reader merges them by deleting one. A third person's words in flight to that text would be lost.
 
 A retired element stays in the document. Nothing can say nobody is still offline with an edit for it, so nothing prunes one
 in this release. What each costs, after compaction: 85 bytes for Enter then Backspace, 108 for moving a line, 193 for a

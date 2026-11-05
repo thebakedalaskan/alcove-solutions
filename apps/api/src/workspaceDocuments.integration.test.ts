@@ -228,9 +228,12 @@ describe('a document', () => {
     // The editor's seed, made as the editor makes it: the bytes are fixed for good.
     const made = new Y.Doc();
     made.clientID = 1;
+    const heading = new Y.XmlElement('title');
+    heading.insert(0, [new Y.XmlText()]);
     const first = new Y.XmlElement('line');
     first.setAttribute('id', 'first');
-    made.getXmlFragment('content').insert(0, [new Y.XmlElement('title'), first]);
+    first.insert(0, [new Y.XmlText()]);
+    made.getXmlFragment('content').insert(0, [heading, first]);
     expect(toBase64Url(Y.encodeStateAsUpdate(made))).toBe(toBase64Url(DOC_SEED));
 
     const ann = await account();
@@ -247,6 +250,9 @@ describe('a document', () => {
     await saved(t);
     await until(() => body(a) === body(t) && body(a).includes('Ann') && body(a).includes('Theo'), 'both to hear each other');
     expect(a.doc.getXmlFragment('content').length).toBe(2);
+    // In the one text that was there, so nothing has to merge two.
+    const top = a.doc.getXmlFragment('content').get(0);
+    expect(top instanceof Y.XmlElement ? top.length : 0).toBe(1);
     const again = await open(ann, id, doc);
     expect(body(again)).toBe(body(a));
     // A server-made write lands in the same first line, not a second title.
@@ -2304,7 +2310,7 @@ describe('what a browser sends', () => {
     await saved(a);
     expect((await sendUpdate(mal, id, doc, onlyDeletes([12345, 0, 1_000_000]))).status).toBe(400);
     expect((await sendUpdate(mal, id, doc, onlyDeletes([a.doc.clientID, 0, 1_000_000]))).status).toBe(400);
-    expect((await sendUpdate(mal, id, doc, onlyDeletes([1, 0, 4]))).status).toBe(400);
+    expect((await sendUpdate(mal, id, doc, onlyDeletes([1, 0, 6]))).status).toBe(400);
     const row = await h.pool.query<{ next_seq: string }>('SELECT next_seq FROM documents WHERE document_id = $1', [doc]);
     expect(Number(row.rows[0]?.next_seq)).toBe(2);
     // What's there can be deleted, and adding more still works.
@@ -2333,7 +2339,7 @@ describe('what a browser sends', () => {
     expect((await sendUpdate(mal, id, doc, block(client, reached, [gc(2 ** 40)]))).status).toBe(400);
     expect((await sendUpdate(mal, id, doc, block(client, reached, [item({ root: 'content', text: 'Not Bob' })]))).status).toBe(400);
     // Nor as the seed, nor under what the server wrote.
-    expect((await sendUpdate(mal, id, doc, block(1, 3, [item({ root: 'content' })]))).status).toBe(400);
+    expect((await sendUpdate(mal, id, doc, block(1, 5, [item({ root: 'content' })]))).status).toBe(400);
 
     link.back();
     await saved(b);
@@ -2362,7 +2368,7 @@ describe('what a browser sends', () => {
       ['a parent past its own client', block(C, 0, [item({ parent: [C, 5] })])],
       ['an origin on itself', block(C, 0, [item({ origin: [C, 0] })])],
       ['an origin on someone who never wrote', block(C, 0, [item({ origin: [99, 0] })])],
-      ['a right origin past what the seed holds', block(C, 0, [item({ right: [1, 3] })])],
+      ['a right origin past what the seed holds', block(C, 0, [item({ right: [1, 5] })])],
       ['a parent nobody wrote', block(C, 0, [item({ parent: [99, 0] })])],
       ['two clients waiting on each other', structsOf([{ client: 7001, clock: 0, structs: [item({ origin: [7002, 0] })] }, { client: 7002, clock: 0, structs: [item({ origin: [7001, 0] })] }])],
       ['one client twice', structsOf([{ client: C, clock: 0, structs: [item({ root: 'content' })] }, { client: C, clock: 1, structs: [item({ root: 'content' })] }])],
@@ -2758,7 +2764,7 @@ describe('a full document', () => {
       // Twice the limit, and a client of someone's own: past that, nothing but deletes.
       const client = 8080;
       const statuses: number[] = [];
-      for (let i = 0; i < 40; i++) statuses.push((await sendUpdate(ann, id, doc, block(client, i, [attribute({ parent: [1, 1], key: `k${i}`, value: 'x' })]), second.baseUrl)).status);
+      for (let i = 0; i < 40; i++) statuses.push((await sendUpdate(ann, id, doc, block(client, i, [attribute({ parent: [1, 2], key: `k${i}`, value: 'x' })]), second.baseUrl)).status);
       expect(statuses[0]).toBe(200);
       expect(statuses).toContain(413);
       expect(statuses.lastIndexOf(200)).toBeLessThan(statuses.indexOf(413));
@@ -2766,7 +2772,7 @@ describe('a full document', () => {
       // A big value is content, whatever it's written on.
       const fresh = await h.secondServer({ DOC_ITEMS_MAX: 8 });
       try {
-        expect((await sendUpdate(ann, id, doc, block(8081, 0, [attribute({ parent: [1, 1], key: 'big', value: 'x'.repeat(2000) })]), fresh.baseUrl)).status).toBe(413);
+        expect((await sendUpdate(ann, id, doc, block(8081, 0, [attribute({ parent: [1, 2], key: 'big', value: 'x'.repeat(2000) })]), fresh.baseUrl)).status).toBe(413);
       } finally {
         await fresh.close();
       }

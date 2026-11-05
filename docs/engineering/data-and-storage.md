@@ -130,9 +130,10 @@ Yjs trusts what it's given, and what's in a document comes from browsers. So not
 checked before it's stored ([what gets in](#what-gets-into-a-document)), a document is only ever opened in a worker
 ([opening one](#opening-a-document)), and nothing is deleted until what replaces it is proved to open.
 
-- **Starting.** A new document has its title and first line before anyone opens it: the seed, one fixed Yjs update that
-  browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when the item is made. A browser that
-  can only read never has to write, and two people opening a new document find one title. A board starts with nothing. A
+- **Starting.** A new document has its title and first line before anyone opens it, each with an empty text in it: the
+  seed, one fixed Yjs update that browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when
+  the item is made. A browser that can only read never has to write, two people opening a new document find one title, and
+  two people typing there first type in the same text. A board starts with nothing. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
   outside it, one document at a time, with a document's title changed to say what the tree calls the copy.
 - **Updates** go up as bytes (`application/octet-stream`), at most 4 MiB each, and are sealed and appended in one
