@@ -512,7 +512,8 @@ function dayOf(iso: string, timeZone: string): string {
   let parts: Intl.DateTimeFormatPart[];
   try {
     parts = formatted(timeZone);
-  } catch {
+  } catch (e) {
+    wlog.warn('an agenda’s title fell back to UTC', { err: e });
     parts = formatted('UTC');
   }
   return `${parts.find((p) => p.type === 'day')?.value ?? ''} ${parts.find((p) => p.type === 'month')?.value ?? ''}`;
