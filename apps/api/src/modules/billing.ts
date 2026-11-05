@@ -42,21 +42,21 @@ async function read(d: Service, ownerId: string) {
   if (!r) throw new NotFoundError('No billing account.');
   return openJson(key(d), header(ownerId), r.state_ciphertext, State);
 }
-/** Takes credits for written notes, in the caller's transaction, with the account row locked. */
-export async function charge(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: { amount: number; label: string }): Promise<void> {
+/** Changes the balance by `delta` with a history entry, in the caller's transaction, with the account row locked. */
+async function adjust(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, delta: number, label: string): Promise<void> {
   const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
   if (!r) throw new NotFoundError('No billing account.', { context: { ownerId } });
   const s = openJson(key(d), header(ownerId), r.state_ciphertext, State);
-  const next = { balance: s.balance - c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: -c.amount }] };
+  const next = { balance: s.balance + delta, history: [...s.history, { id: id128(), at: new Date().toISOString(), label, amount: delta }] };
   await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
+}
+/** Takes credits for written notes, in the caller's transaction, with the account row locked. */
+export async function charge(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: { amount: number; label: string }): Promise<void> {
+  await adjust(d, db, ownerId, -c.amount, c.label);
 }
 /** Adds credits for a payment, in the caller's transaction, with the account row locked. */
 export async function credit(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: { amount: number; label: string }): Promise<void> {
-  const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
-  if (!r) throw new NotFoundError('No billing account.', { context: { ownerId } });
-  const s = openJson(key(d), header(ownerId), r.state_ciphertext, State);
-  const next = { balance: s.balance + c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: c.amount }] };
-  await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
+  await adjust(d, db, ownerId, c.amount, c.label);
 }
 /** When `now`'s month began: 00:00 UTC on the 1st. */
 const monthOf = (now: Date) => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);

@@ -49,10 +49,15 @@ const QuoteResponseSchema = z.object({
 /** What /v0/status says about a deposit. Its swap details are read only once the swap is done. */
 const StatusSchema = z.object({ status: z.string(), swapDetails: z.unknown() });
 const units = z.string().regex(/^\d+$/);
-/** A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead. */
-const SettledSchema = z.object({
-  depositedAmount: units, amountOut: units.nullish(), refundedAmount: units.nullish(), intentHashes: z.array(z.string().min(1)).min(1)
-});
+/**
+ * A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead.
+ * A swap that succeeded must say what came out, a refunded one what was refunded; only the other may be missing (0).
+ */
+const settled = z.object({ depositedAmount: units, amountOut: units.nullish(), refundedAmount: units.nullish(), intentHashes: z.array(z.string().min(1)).min(1) });
+const SETTLED = {
+  SUCCESS: settled.extend({ amountOut: units }),
+  REFUNDED: settled.extend({ refundedAmount: units })
+} as const;
 /** 1Click's statuses for a deposit still on its way, in Alcove's terms. */
 const IN_PROGRESS = new Map<string, OpenDepositState>([
   ['PENDING_DEPOSIT', 'waiting'], ['KNOWN_DEPOSIT_TX', 'arriving'], ['PROCESSING', 'arriving'], ['INCOMPLETE_DEPOSIT', 'short']
@@ -115,7 +120,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
       if (progress) return { state: progress };
       if (data.status === 'FAILED') return { state: 'failed', reason: 'FAILED' };
       if (data.status === 'SUCCESS' || data.status === 'REFUNDED') {
-        const s = SettledSchema.safeParse(data.swapDetails);
+        const s = SETTLED[data.status].safeParse(data.swapDetails);
         if (s.success) {
           return {
             state: 'settled',

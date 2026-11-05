@@ -41,7 +41,7 @@ const QuoteRequestBodySchema = z.object({
 export type QuoteRequestBody = z.infer<typeof QuoteRequestBodySchema>;
 /** What 1Click says about a deposit's swap: amounts in the token's smallest unit, as integer strings. */
 export interface SwapDetails {
-  intentHashes: string[]; nearTxHashes: string[]; amountIn: string; amountOut: string; depositedAmount: string; refundedAmount: string;
+  intentHashes: string[]; nearTxHashes: string[]; amountIn: string; amountOut: string | null; depositedAmount: string; refundedAmount: string | null;
   originChainTxHashes: { hash: string; explorerUrl: string }[]; destinationChainTxHashes: { hash: string; explorerUrl: string }[];
 }
 

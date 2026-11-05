@@ -175,6 +175,23 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 10_000);
   });
 
+  it('keeps a top-up open when a finished swap doesn’t say what came out', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC);
+    const from = h.logs.length;
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '25000000', amountOut: null, intentHashes: ['h25'] });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', address: addr(t), received: null });
+    const warned = logsSince(from).filter((l) => l.level === 40 && l.line.includes('SUCCESS'));
+    expect(warned.length).toBe(1);
+    expect(warned.filter((l) => l.line.includes('25000000'))).toEqual([]);
+    expect((await api.credits.balance()).balance).toBe(10_000);
+
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'SUCCESS', { amountOut: '25000000' });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', received: { amount: '25', credits: 25_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 25_000);
+  });
+
   it('credits once when the watcher and the app race', async () => {
     const email = unique();
     const one = await account(email);
