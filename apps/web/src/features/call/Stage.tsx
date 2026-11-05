@@ -335,7 +335,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
     if (g && target !== undefined) reorder(g, id, target);
   };
   /** Shows a share big (beside what's big, or in place of the one that's been big longest when they don't all fit), or as a tile. */
-  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
+  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); if (!onGrowShare) onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
   /** How you look at someone else's share you see big here (zoom, a picture held still): ShareSurface.tsx. */
@@ -372,14 +372,14 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   };
 
   const liveShares = new Set(shares.map((s) => s.id));
-  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares });
-  latest.current = { L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares };
+  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares, beside: !!onGrowShare });
+  latest.current = { L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares, beside: !!onGrowShare };
   /** Shows a share big from a toast, later, beside whatever is big by then (unless it has stopped since). */
   const showLater = (id: string) => () => {
     const c = latest.current;
     if (!c.live.has(id)) return;
     c.view.showShare(id, c.plan.featured);
-    c.onCustom();
+    if (!c.beside) c.onCustom();
   };
 
   /* Someone else's share starting or stopping is told to the call screen, which says so when it isn't plain to see. */
