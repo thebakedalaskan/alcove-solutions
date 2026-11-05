@@ -17,6 +17,14 @@ export const TIERS: readonly { fromMicroUsd: bigint; creditsPerUsd: { num: bigin
   { fromMicroUsd: 45_000_000n, creditsPerUsd: { num: 10_000n, den: 9n } },
   { fromMicroUsd: 80_000_000n, creditsPerUsd: { num: 1250n, den: 1n } }
 ];
+/**
+ * The credits a payment adds: the tier is picked from what was sent, its rate applied to what was credited (what
+ * reached the treasury), rounded down to whole credits.
+ */
+export function creditsFor(sentMicroUsd: bigint, creditedMicroUsd: bigint): number {
+  const tier = TIERS.reduce((best, t) => (sentMicroUsd >= t.fromMicroUsd ? t : best));
+  return Number((creditedMicroUsd * tier.creditsPerUsd.num) / (tier.creditsPerUsd.den * 1_000_000n));
+}
 /** Every change to the balance, kept with it so charges can be explained. */
 const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), amount: z.number() });
 const State = z.object({ balance: z.number(), history: z.array(Entry) });
@@ -40,6 +48,14 @@ export async function charge(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: {
   if (!r) throw new NotFoundError('No billing account.', { context: { ownerId } });
   const s = openJson(key(d), header(ownerId), r.state_ciphertext, State);
   const next = { balance: s.balance - c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: -c.amount }] };
+  await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
+}
+/** Adds credits for a payment, in the caller's transaction, with the account row locked. */
+export async function credit(d: Pick<Deps, 'cfg'>, db: Db, ownerId: string, c: { amount: number; label: string }): Promise<void> {
+  const r = await maybeOne(db, z.object({ state_ciphertext: bytea }), 'SELECT state_ciphertext FROM billing_accounts WHERE owner_id = $1 FOR UPDATE', [ownerId]);
+  if (!r) throw new NotFoundError('No billing account.', { context: { ownerId } });
+  const s = openJson(key(d), header(ownerId), r.state_ciphertext, State);
+  const next = { balance: s.balance + c.amount, history: [...s.history, { id: id128(), at: new Date().toISOString(), label: c.label, amount: c.amount }] };
   await exec(db, 'UPDATE billing_accounts SET state_ciphertext = $2, version = version + 1 WHERE owner_id = $1', [ownerId, sealJson(key(d), header(ownerId), toJson(next))]);
 }
 /** When `now`'s month began: 00:00 UTC on the 1st. */

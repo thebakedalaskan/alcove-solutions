@@ -7,7 +7,10 @@
 import { z } from 'zod';
 import { toJson } from '../crypto';
 import { UnavailableError } from '../errors';
-import type { DepositProvider, DepositRoute, OpenedDeposit } from './provider';
+import { log } from '../log';
+import { toMicroUsd, type DepositCheck, type DepositProvider, type DepositRoute, type OpenDepositState, type OpenedDeposit } from './provider';
+
+const olog = log.child({ component: 'oneclick' });
 
 /** USDC on NEAR: every payment ends as this, in the treasury's Intents balance. */
 const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
@@ -42,6 +45,18 @@ const TokensSchema = z.array(z.object({ assetId: z.string(), decimals: z.number(
 const QuoteResponseSchema = z.object({
   quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().min(1).optional(), deadline: z.string().datetime() })
 });
+
+/** What /v0/status says about a deposit. Its swap details are read only once the swap is done. */
+const StatusSchema = z.object({ status: z.string(), swapDetails: z.unknown() });
+const units = z.string().regex(/^\d+$/);
+/** A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead. */
+const SettledSchema = z.object({
+  depositedAmount: units, amountOut: units.nullish(), refundedAmount: units.nullish(), intentHashes: z.array(z.string().min(1)).min(1)
+});
+/** 1Click's statuses for a deposit still on its way, in Alcove's terms. */
+const IN_PROGRESS = new Map<string, OpenDepositState>([
+  ['PENDING_DEPOSIT', 'waiting'], ['KNOWN_DEPOSIT_TX', 'arriving'], ['PROCESSING', 'arriving'], ['INCOMPLETE_DEPOSIT', 'short']
+]);
 
 const unavailable = (context: Record<string, string | number>) =>
   new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context } });
@@ -92,6 +107,28 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
         deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
       });
       return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo ?? null, expiresAt: data.quote.deadline, minimum: route.minimum, quote: toJson(raw) };
+    },
+    async check(deposit, was): Promise<DepositCheck> {
+      const query = new URLSearchParams({ depositAddress: deposit.address, ...(deposit.memo === null ? {} : { depositMemo: deposit.memo }) });
+      const { data } = await call(StatusSchema, 'GET', `/v0/status?${query.toString()}`);
+      const progress = IN_PROGRESS.get(data.status);
+      if (progress) return { state: progress };
+      if (data.status === 'FAILED') return { state: 'failed', reason: 'FAILED' };
+      if (data.status === 'SUCCESS' || data.status === 'REFUNDED') {
+        const s = SettledSchema.safeParse(data.swapDetails);
+        if (s.success) {
+          return {
+            state: 'settled',
+            sentMicroUsd: toMicroUsd(BigInt(s.data.depositedAmount), deposit.route.decimals),
+            outMicroUsd: BigInt(s.data.amountOut ?? '0'),
+            refundedMicroUsd: toMicroUsd(BigInt(s.data.refundedAmount ?? '0'), deposit.route.decimals),
+            providerRef: s.data.intentHashes[0] ?? ''
+          };
+        }
+      }
+      // A status this code doesn't know, or a finished swap it can't read: keep watching, and say so.
+      olog.warn('unreadable deposit status', { provider: 'oneclick', status: data.status.slice(0, 40) });
+      return { state: was };
     }
   };
 }

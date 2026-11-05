@@ -7,18 +7,25 @@ import { TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from 
 import { z } from 'zod';
 import type { Deps } from '../context';
 import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../crypto';
-import { bytea, exec, maybeOne, rows, timestamp } from '../db';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { invalid, notFound, UnavailableError } from '../errors';
 import { log } from '../log';
-import { depositProviders, formatUnits, type DepositProvider, type DepositRoute } from '../payments/provider';
-import { TIERS } from './billing';
+import {
+  depositProviders, formatUnits, type DepositCheck, type DepositProvider, type DepositRoute, type OpenDepositState, type OpenedDeposit
+} from '../payments/provider';
+import { TIERS, credit, creditsFor } from './billing';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 /** How long after its address expires a deposit is still watched, for a payment that was on its way. */
 const GIVE_UP_AFTER_MS = 24 * 3_600_000;
+/** Opening a top-up asks the provider about it at most this often. */
+const CHECK_EVERY_MS = 5_000;
+/** A refund below this, in micro-USD, isn't credited: the deposit is held instead. */
+const REFUND_FLOOR = 1_000_000n;
 const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
+const isOpen = (s: TopUpState): s is OpenDepositState => s === 'waiting' || s === 'arriving' || s === 'short';
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
@@ -34,7 +41,13 @@ export const DepositRecord = z.object({
   expiresAt: z.string(),
   minimum: units,
   /** The provider's whole quote response, signature included, kept for disputes. */
-  quote: z.unknown()
+  quote: z.unknown(),
+  /**
+   * Once settled: what was sent, what reached the treasury as USDC and what was refunded to it instead (micro-USD,
+   * integer strings), the credits it added (0 when held), and the provider's name for the settlement.
+   */
+  settled: z.object({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, credits: z.number().int(), providerRef: z.string() })
+    .nullable().default(null)
 });
 export type DepositRecord = z.infer<typeof DepositRecord>;
 
@@ -52,7 +65,10 @@ function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp 
   const sendable = state === 'waiting' || state === 'short';
   return {
     id: depositId, route: toRoute(r.route), address: sendable ? r.address : null, memo: sendable ? r.memo : null,
-    expiresAt: r.expiresAt, state, received: null
+    expiresAt: r.expiresAt, state,
+    received: r.settled
+      ? { amount: formatUnits(BigInt(r.settled.outMicroUsd) + BigInt(r.settled.refundedMicroUsd), 6), credits: r.settled.credits }
+      : null
   };
 }
 
@@ -72,7 +88,8 @@ export async function start(d: Deps, ownerId: string, routeId: string): Promise<
   const depositId = id128();
   const record: DepositRecord = {
     route: { ...opened.route, minimum: opened.route.minimum.toString() },
-    address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt, minimum: opened.minimum.toString(), quote: opened.quote
+    address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt, minimum: opened.minimum.toString(), quote: opened.quote,
+    settled: null
   };
   const giveUpAt = new Date(Date.parse(opened.expiresAt) + GIVE_UP_AFTER_MS);
   await exec(d.pool, 'INSERT INTO deposits (owner_id, deposit_id, provider, state, give_up_at, record_ciphertext) VALUES ($1,$2,$3,$4,$5,$6)',
@@ -82,16 +99,85 @@ export async function start(d: Deps, ownerId: string, routeId: string): Promise<
 }
 
 const Row = z.object({ deposit_id: z.string(), state: TopUpStateSchema, record_ciphertext: bytea, created_at: timestamp });
-const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) =>
-  toTopUp(r.deposit_id, openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord), r.state);
+const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
+const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.deposit_id, record(d, ownerId, r), r.state);
+/** The deposit as its provider handed it out. */
+const opened = (r: DepositRecord): OpenedDeposit => ({
+  route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo, expiresAt: r.expiresAt,
+  minimum: BigInt(r.minimum), quote: toJson(r.quote)
+});
 
+const Checked = Row.extend({ checked_at: timestamp.nullable() });
+const find = (db: Db, ownerId: string, depositId: string) => ID128.test(depositId)
+  ? maybeOne(db, Checked, 'SELECT deposit_id, state, record_ciphertext, created_at, checked_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId])
+  : Promise.resolve(undefined);
+
+/** A top-up, asking its provider first while it's open and hasn't been asked in the last 5 seconds. */
 export async function get(d: Deps, ownerId: string, depositId: string): Promise<TopUp> {
-  providers(d); // off here: unavailable, even for a top-up opened before
-  const r = ID128.test(depositId)
-    ? await maybeOne(d.pool, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId])
-    : undefined;
+  const all = providers(d); // off here: unavailable, even for a top-up opened before
+  const r = await find(d.pool, ownerId, depositId);
   if (!r) throw notFound('That top-up');
-  return open(d, ownerId, r);
+  if (!isOpen(r.state) || (r.checked_at && Date.now() - r.checked_at.getTime() < CHECK_EVERY_MS)) return open(d, ownerId, r);
+  const rec = record(d, ownerId, r);
+  const p = all.find((x) => x.name === rec.route.provider);
+  if (!p) return toTopUp(depositId, rec, r.state);
+  let check: DepositCheck;
+  try {
+    check = await p.check(opened(rec), r.state);
+  } catch (e) {
+    dlog.warn('top-up check failed', { depositId, provider: p.name, err: e });
+    return toTopUp(depositId, rec, r.state);
+  }
+  await apply(d, ownerId, depositId, check);
+  const now = await find(d.pool, ownerId, depositId);
+  if (!now) throw notFound('That top-up');
+  return open(d, ownerId, now);
+}
+
+/**
+ * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
+ * however many watchers and requests race on it: a final state is never changed again. A settled deposit credits the
+ * tier's rate on what reached the treasury (the USDC out, plus a refund of at least 1 USD), or is held when that
+ * comes to no credits.
+ */
+export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
+  return tx(d.pool, async (c) => {
+    const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+    if (!r) throw notFound('That top-up');
+    if (!isOpen(r.state)) return r.state;
+    const rec = record(d, ownerId, r);
+    const provider = rec.route.provider;
+    if (check.state === 'settled') {
+      const refundCounted = check.refundedMicroUsd >= REFUND_FLOOR ? check.refundedMicroUsd : 0n;
+      const credits = creditsFor(check.sentMicroUsd, check.outMicroUsd + refundCounted);
+      const state: TopUpState = credits > 0 ? 'credited' : 'held';
+      if (credits > 0) await credit(d, c, ownerId, { amount: credits, label: `Credits added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}` });
+      const next: DepositRecord = {
+        ...rec,
+        settled: {
+          sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
+          credits, providerRef: check.providerRef
+        }
+      };
+      await exec(c, 'UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4 WHERE owner_id = $1 AND deposit_id = $2',
+        [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
+      dlog.info('top-up settled', { depositId, provider, state });
+      return state;
+    }
+    if (check.state === 'failed') {
+      await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, 'failed']);
+      dlog.error('top-up failed', { depositId, provider });
+      return 'failed';
+    }
+    await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, check.state]);
+    if (check.state !== r.state) dlog.info('top-up moved', { depositId, provider, state: check.state });
+    return check.state;
+  });
+}
+
+/** Checks the deposits that are due and records what their providers say. Claims nothing yet. */
+export function watch(_d: Deps): Promise<{ checked: number; credited: number }> {
+  return Promise.resolve({ checked: 0, credited: 0 });
 }
 
 /** Top-ups still open, and the last 10 finished, newest first. */

@@ -16,14 +16,21 @@ export interface DepositProvider {
   routes(): Promise<DepositRoute[]>;
   /** Opens a deposit: a quote whose recipient is the treasury. Throws UnavailableError if the provider won't quote. */
   open(route: DepositRoute): Promise<OpenedDeposit>;
+  /**
+   * What the provider says has happened to a deposit so far, in Alcove's terms. `was` is the state last recorded,
+   * returned again when the provider says something Alcove can't read. Throws UnavailableError if it won't answer.
+   */
+  check(deposit: OpenedDeposit, was: OpenDepositState): Promise<DepositCheck>;
 }
+/** The states of a deposit that money can still be on its way to. */
+export type OpenDepositState = 'waiting' | 'arriving' | 'short';
 
 /** One token on one chain. `minimum` is in the token's smallest unit; `chainName` is the chain as people call it. */
 export interface DepositRoute { id: string; provider: DepositProviderName; chain: string; chainName: string; token: 'USDC' | 'USDT'; decimals: number; minimum: bigint }
 export interface OpenedDeposit { route: DepositRoute; address: string; memo: string | null; expiresAt: string; minimum: bigint; quote: Json }
 /** What has happened to a deposit so far, in Alcove's terms. Amounts are micro-USD; `providerRef` is the provider's name for the settlement. */
 export type DepositCheck =
-  | { state: 'waiting' | 'arriving' | 'short' }
+  | { state: OpenDepositState }
   | { state: 'settled'; sentMicroUsd: bigint; outMicroUsd: bigint; refundedMicroUsd: bigint; providerRef: string }
   | { state: 'failed'; reason: string };
 
