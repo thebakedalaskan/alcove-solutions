@@ -1124,7 +1124,8 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   someone does to an entry stands, so an address taken back stays taken back, from a new tab too, and one set to `read` stays `read`.
   Someone on the invite because they were let in from the link, or rung, has a seat instead, as taking them out takes them off the
   invite and a seat goes with them. When the call ends they keep the board by email, at the role their seats have, if every seat
-  it knows of theirs is still there, and an entry someone gave their address stays as it is. Someone taken out of the call stays
+  it knows of theirs, from connections not taken out of the call, is still there, and an entry someone gave their address stays
+  as it is. Someone taken out of the call stays
   on the invite if they were invited from the start. While they're out they aren't given what's opened, and what they had before
   they keep, as they keep the note. Back in the call, a board made from then on goes to their address, and one made while they
   were out is a seat, for that call. A call can let everyone into 50 boards, the ones it made included.
@@ -1142,8 +1143,12 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   boards the call made too, whether they're open or not. Upkeep calls it as well, for anyone a crash left without their seat.
   Each board is done on its own, so one that can't take anyone more stops nothing else. Each remembers who it's been worked out
   for, so a seat taken back in Share stays taken back, through a reload and through anyone else being let in, until someone
-  chooses `letIn` again. A new tab with no earlier pass is a new person with a new seat, so someone added during the call can get
-  a seat back that way for the rest of it, and nothing lasting comes of that. Whoever let people in is asked about again each time, so once they can't share it nobody new gets a
+  chooses `letIn` again. A new tab with no earlier pass is a new person with a new seat. For someone the call knows by address it's
+  seated only as the seats on that board from their other connections stand: not at all if one was taken back, at `read` if one
+  is `read`. So opening a tab never undoes what someone did to a seat. A guest is known only by the name they typed, so a guest's
+  new tab can't be told from someone new, and is seated as anyone new is, for that call: nothing lasting comes of it. Someone taken
+  out of the call and let in again starts afresh, as taking them out ended their seats and letting them back in is the organizer's
+  new decision. Whoever let people in is asked about again each time, so once they can't share it nobody new gets a
   seat in their name. A board the call made is given on the call's word, so that stops, and nothing turns into an email entry
   when the call ends, once the board is restricted or the organizer can't edit in its workspace. Someone who may share it can
   still let people in, on their own word. `letIn: false` changes nothing about anyone: whoever can't open it sees a board they

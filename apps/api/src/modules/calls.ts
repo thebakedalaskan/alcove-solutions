@@ -1196,6 +1196,8 @@ function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here[] {
 }
 /** Everyone in the call now, wherever they are in it: a main board is for the whole call. */
 const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in'));
+/** Everyone the call has had who wasn't taken out of it, here now or not. Taking someone out ends their seats, so those don't count. */
+const knownIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => !s.removed.includes(j.person)));
 /** The part of the call someone asking is in. */
 function whereIs(v: Viewer, s: Stored): string {
   const mine = s.people.find((j) => j.identity === v.pass.identity);
@@ -1223,7 +1225,7 @@ async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Pro
     const mine = settled.people.find((j) => j.identity === v.pass.identity);
     const { manifest } = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
     const done = await boards.change({
-      v, reader, c, callId, meeting: manifest, s: settled, place: whereIs(v, settled), here: hereIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
+      v, reader, c, callId, meeting: manifest, s: settled, place: whereIs(v, settled), here: hereIn(o, callId, settled), known: knownIn(o, callId, settled), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }
     }, a);
     await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
     return { room: row.room_name, made: done.made };
@@ -1261,7 +1263,7 @@ export async function syncBoardSeats(call: CallRef): Promise<void> {
       const seated = await tx(o.pool, async (c) => {
         const held = await load(o, c, callId, true);
         if (held.row.state !== 'live') return false;
-        const board = await boards.seatNewcomers(o, c, callId, e.documentId, held.state.board, hereIn(o, callId, held.state));
+        const board = await boards.seatNewcomers(o, c, callId, e.documentId, held.state.board, hereIn(o, callId, held.state), knownIn(o, callId, held.state));
         if (board !== held.state.board) await save(o, c, callId, { ...held.state, board });
         return board !== held.state.board;
       }).catch((err: unknown) => {
@@ -2278,7 +2280,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     if (row.state === 'live') {
       worked = s.workspace.worked;
       keptBoards = s.board;
-      everyone = seatsOf(o, callId, s.people);
+      everyone = knownIn(o, callId, s);
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.

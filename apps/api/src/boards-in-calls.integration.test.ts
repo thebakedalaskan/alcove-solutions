@@ -567,6 +567,26 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(2);
   });
 
+  it('keeps a seat taken back from someone signed in taken back on a saved board too, until someone lets them in again', async () => {
+    const { art, priya, theo, id, board, host, code: c } = await room();
+    const p = await invited(host, c, priya);
+    const t = await invited(host, c, theo);
+    await p.openBoard({ documentId: board, letIn: true });
+    expect(await opened(t)).toMatchObject({ role: 'edit' });
+    const taken = (await art.api.workspaces.share.list(id, board)).entries.find((e) => e.person.name === theo.name);
+    await art.api.workspaces.share.remove(id, board, taken?.id ?? '');
+    const again = await invited(host, c, theo);
+    const jamie = await guest(host, c);
+    await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for Jamie');
+    expect(await opened(again)).toMatchObject({ role: null, name: null });
+    expect(await seats(board)).toBe(1);
+    // Someone who may share it letting everyone in again is a new decision, about everyone here, both his tabs included.
+    await p.openBoard({ documentId: board, letIn: true });
+    expect(await opened(again)).toMatchObject({ role: 'edit' });
+    expect(await opened(t)).toMatchObject({ role: 'edit' });
+    expect(await seats(board)).toBe(3);
+  });
+
   it('stops letting people in once whoever did it can’t share it any more', async () => {
     const { art, priya, id, board, host, code: c } = await room();
     const p = await invited(host, c, priya);
@@ -977,16 +997,17 @@ describe('what someone decided about a board the call made', () => {
     const seat = (await read(host)).participants.find((p) => p.id === r.ticket.identity)?.seat ?? '';
     await art.api.workspaces.share.set(id, board, [{ seat }], 'read', { pass: host.ticket.pass });
     expect(await opened(r)).toMatchObject({ role: 'read' });
-    // A new tab is a new seat, and the one that was set to read still counts.
+    // A new tab is a new seat, seated as her other seat stands: at read. And the one that was set to read still counts.
     const again = await rosa.api.calls.join(c, { mic: false, cam: false });
     await inGroup(again);
     await until(async () => (await seats(board)) === 2, 'a seat for the new tab');
+    expect(await opened(again)).toMatchObject({ documentId: board, role: 'read' });
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
     expect((await rosa.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'read']]);
   });
 
-  it('gives nothing lasting to someone whose seat was taken back, however many tabs they open', async () => {
+  it('keeps a seat taken back from someone signed in taken back, from a new tab too, and after the call', async () => {
     const art = await account();
     const rosa = await account();
     const id = await workspace(art, 'Product');
@@ -999,13 +1020,42 @@ describe('what someone decided about a board the call made', () => {
     await until(async () => (await opened(r))?.role === 'edit', 'a seat for Rosa');
     const taken = (await art.api.workspaces.share.list(id, board)).entries.find((e) => e.person.name === rosa.name);
     await art.api.workspaces.share.remove(id, board, taken?.id ?? '');
+    expect(await opened(r)).toMatchObject({ role: null });
+    // A new tab has no earlier pass, so it's a new person on a new seat. The call knows her by her address, so it's seated as
+    // her other seat stands: not at all.
     const again = await rosa.api.calls.join(c, { mic: false, cam: false });
     await inGroup(again);
-    await until(async () => (await seats(board)) === 1, 'the new tab’s seat, which is what remains');
+    // Someone let in after her is seated as anyone is, and by then her new tab has been worked out too.
+    const jamie = await guest(host, c);
+    await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for Jamie');
+    expect(await opened(again)).toMatchObject({ role: null, name: null });
+    expect(await seats(board)).toBe(1);
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
     expect(await entries(board)).toBe(0);
     expect(await code(rosa.api.workspaces.get(id))).toBe('not-found');
+  });
+
+  it('starts afresh for someone taken out and let in again: letting them back is the organizer’s new decision', async () => {
+    const art = await account();
+    const omar = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    const o = await omar.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, o);
+    await until(async () => (await opened(o))?.role === 'edit', 'a seat for Omar');
+    await host.remove(o.ticket.identity);
+    await until(async () => (await seats(board)) === 0, 'his seat to go with him');
+    // He asks again and the organizer lets him in: someone new to the call, back on the invite.
+    const back = await omar.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, back);
+    await until(async () => (await opened(back))?.role === 'edit', 'a seat for Omar, let in again');
+    await host.leave();
+    await until(async () => (await seats(board)) === 0, 'the seat to end with the call');
+    expect((await omar.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
   });
 
   it('leaves an entry someone gave an address as it is, when a seat would have become one', async () => {
