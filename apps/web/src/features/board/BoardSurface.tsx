@@ -4,7 +4,8 @@
  *
  * What's drawn is split by how often it changes. `Objects` draws when the board does, and a change to one object draws that
  * object alone, because `readBoard` keeps the identity of the rest and the kit's objects are memoised. The camera doesn't
- * reach it at all: it moves one transform, and only `OverSheet`, which sits in screen pixels, follows it.
+ * reach it at all: it moves one transform, and only `OverSheet`, which sits in screen pixels, follows it. What each tool does
+ * and what the bars offer is in `tools/`.
  */
 import { shapePath, type BoardView, type PlacedObject } from '@alcove/board';
 import {

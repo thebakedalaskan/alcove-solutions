@@ -139,10 +139,15 @@ function finishLine(board: Board, from: LineEnd, start: SheetPoint, at: SheetPoi
 function lineGesture(board: Board, from: LineEnd, start: SheetPoint, fromDot: boolean): Gesture {
   const show = ({ x, y }: SheetPoint): void => board.set({ draft: { kind: 'line', from, to: [x, y] } });
   const stop = (): void => board.set({ draft: null });
+  // Esc takes the draft away, and that's the end of the line, whenever the pointer lets go.
+  const dropped = (): boolean => board.getSnapshot().draft === null;
   show(start);
   return {
-    move: show,
+    move(at) {
+      if (!dropped()) show(at);
+    },
     up(at) {
+      if (dropped()) return;
       stop();
       finishLine(board, from, start, at, fromDot);
     },

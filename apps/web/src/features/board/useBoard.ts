@@ -406,8 +406,8 @@ export class Board implements LiveStore<BoardState> {
 
   /** Back to Select. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
-    const { tool, sel, following, fly } = this.state;
-    if (tool === 'select' && !sel.length && !following && !fly) return false;
+    const { tool, sel, following, fly, draft } = this.state;
+    if (tool === 'select' && !sel.length && !following && !fly && !draft) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
