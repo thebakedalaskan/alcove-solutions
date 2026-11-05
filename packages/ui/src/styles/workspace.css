@@ -6,7 +6,7 @@
  * sheets and the list goes full width, by themselves: nothing has to say so.
  */
 .wd-stop kbd { font-family: var(--font-sans); }
-:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar, .ws-ncard) .ac-i { flex: none; display: block; }
+:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar) .ac-i { flex: none; display: block; }
 .wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wp-notes:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
 
 @keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -306,14 +306,17 @@
 
 /* ------------------------------------------------------------ outside the call: the same workspace in the app */
 .ws-pane.in-app { background: var(--surface); }
-.ws-ncard { display: grid; gap: 6px; align-content: start; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
-.ws-ncard .ac-eyebrow { margin-bottom: 4px; font-size: 11.5px; color: var(--ink-3); }
-.ws-ndocs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ws-ndoc { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--ink-3); }
-.ws-ndoc:hover { background: var(--sunk); }
-.ws-ndoc span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ws-ndoc b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
-.ws-ndoc small { display: block; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+/* What was worked on in a call, on its note: a row for each document, between hairlines like the note's own lists. */
+.ws-ndocs { display: grid; border-bottom: 1px solid var(--line); }
+.ws-ndoc { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 56px; padding: 9px 2px 9px 0; border-top: 1px solid var(--line); text-align: left; color: var(--ink-3); transition: color var(--duration-1) var(--ease-out); }
+.ws-ndoc > .ac-i { flex: none; display: block; }
+.ws-ndoc > .ac-i:first-child { justify-self: center; }
+.ws-ndoc > .ac-i:last-child { transition: transform var(--duration-1) var(--ease-out); }
+.ws-ndoc:hover { color: var(--ink-2); }
+.ws-ndoc:hover > .ac-i:last-child { transform: translateX(2px); }
+.ws-ndoc span { min-width: 0; overflow-wrap: anywhere; }
+.ws-ndoc b { display: block; font: 500 15px/1.4 var(--font-sans); color: var(--ink); }
+.ws-ndoc small { display: block; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
 
 /* ------------------------------------------------------------ Trash */
 .wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -448,5 +451,4 @@
   .ws-play .m b, .ws-play .m small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
-  .ws-ndocs { grid-template-columns: minmax(0, 1fr); }
 }

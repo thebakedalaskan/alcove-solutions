@@ -971,14 +971,20 @@ describe('what was worked on', () => {
     const noteId = ended?.pendingNoteId;
     const asArt = await noteOf(art, noteId);
     const by = (n: Note, doc2: string) => n.workedOn.find((x) => x.id === doc2)?.by.map((x) => x.name).sort();
+    /** Who the reader of the note is told is them. */
+    const me = (n: Note, doc2: string) => n.workedOn.find((x) => x.id === doc2)?.by.filter((x) => x.isMe).map((x) => x.name);
     expect(asArt.workedOn.map((x) => x.id).sort()).toEqual([plan, hidden, board].sort());
     expect(asArt.workedOn.find((x) => x.id === plan)).toMatchObject({ workspaceId: id, kind: 'document', name: 'Launch plan' });
     expect(asArt.workedOn.find((x) => x.id === board)).toMatchObject({ kind: 'board', name: 'Board' });
     expect(by(asArt, plan)).toEqual([art.name, priya.name].sort());
+    expect(me(asArt, plan)).toEqual([art.name]);
     // Priya has the note and can open only two of them: the third isn't counted, or named.
     const asPriya = await priya.api.notes.get(noteId ?? '');
     expect(asPriya.workedOn.map((x) => x.id).sort()).toEqual([plan, board].sort());
     expect(JSON.stringify(asPriya)).not.toContain('CANARY-RESTRICTED');
+    // Each reader is told which of the people who worked on it they are, and nobody else.
+    expect(me(asPriya, plan)).toEqual([priya.name]);
+    expect(me(asPriya, board)).toEqual([]);
     // Theo has the note and can open none of them.
     const asTheo = await theo.api.notes.get(noteId ?? '');
     expect(asTheo.workedOn).toEqual([]);
@@ -986,6 +992,8 @@ describe('what was worked on', () => {
     await art.api.workspaces.share.set(id, plan, [{ email: theo.email }], 'read');
     await art.api.workspaces.items.rename(id, plan, 'Launch plan, renamed');
     expect((await theo.api.notes.get(noteId ?? '')).workedOn.map((x) => x.name)).toEqual(['Launch plan, renamed']);
+    // Being given it afterwards doesn't make Theo one of the people who worked on it.
+    expect(me(await theo.api.notes.get(noteId ?? ''), plan)).toEqual([]);
     await art.api.workspaces.items.trash(id, plan);
     expect((await theo.api.notes.get(noteId ?? '')).workedOn).toEqual([]);
     await art.api.workspaces.items.restore(id, plan);

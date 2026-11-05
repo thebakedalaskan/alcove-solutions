@@ -742,10 +742,11 @@ export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
 /**
  * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
- * from a note what they couldn't open. `by`: who changed it during the call.
+ * from a note what they couldn't open. `by`: who changed it during the call, by the name they were in the call under, and
+ * `isMe` for the one reading the note.
  */
 export const NoteWorkedOnSchema = z.object({
-  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema }))
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema, isMe: z.boolean() }))
 });
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 
