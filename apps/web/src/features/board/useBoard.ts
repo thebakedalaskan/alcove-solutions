@@ -8,8 +8,8 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
-  type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeHistory, objectText, observeBoard, readBoard, removeObjects,
+  type BoardHistory, type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
@@ -115,8 +115,7 @@ export class Board implements LiveStore<BoardState> {
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
-  private undoManager: Y.UndoManager | null = null;
-  private capture = 0;
+  private history: BoardHistory | null = null;
   private stepping = false;
   /** A sticky made by this edit, which goes again if nothing's written on it. */
   private fresh: string | null = null;
@@ -156,12 +155,9 @@ export class Board implements LiveStore<BoardState> {
   /** Starts watching the doc and the sheet. Returns how to stop. */
   attach(sheet: HTMLElement, world: HTMLElement): () => void {
     this.sheet = sheet;
-    const undo = makeUndo(this.doc, this.origin);
-    this.undoManager = undo;
-    this.capture = undo.captureTimeout;
-    undo.on('stack-item-added', this.stacks);
-    undo.on('stack-item-popped', this.stacks);
-    undo.on('stack-cleared', this.stacks);
+    const history = makeHistory(this.doc, this.origin);
+    this.history = history;
+    history.subscribe(this.stacks);
 
     const stopCamera = this.camera.attach(sheet, world);
     const stopDoc = observeBoard(this.doc, this.changed);
@@ -179,8 +175,8 @@ export class Board implements LiveStore<BoardState> {
       stopNear();
       stopDoc();
       stopCamera();
-      undo.destroy();
-      this.undoManager = null;
+      history.destroy();
+      this.history = null;
       this.sheet = null;
       this.stepping = false;
       if (this.frame) cancelAnimationFrame(this.frame);
@@ -241,26 +237,24 @@ export class Board implements LiveStore<BoardState> {
   /* ---------- undo ---------- */
 
   private stacks = (): void => {
-    const undo = this.undoManager;
-    if (undo) this.set({ canUndo: undo.canUndo(), canRedo: undo.canRedo() });
+    const { history, state } = this;
+    if (!history) return;
+    const canUndo = history.canUndo(), canRedo = history.canRedo();
+    if (canUndo !== state.canUndo || canRedo !== state.canRedo) this.set({ canUndo, canRedo });
   };
 
   /** Everything until `endStep` is one undo, however long it takes: a drag with a pause in it, or all that's typed in one go. */
   beginStep(): void {
-    const undo = this.undoManager;
-    if (!undo || this.stepping) return;
+    if (!this.history || this.stepping) return;
     this.stepping = true;
     this.untouched = false;
-    undo.stopCapturing();
-    undo.captureTimeout = Number.MAX_SAFE_INTEGER;
+    this.history.begin();
   }
 
   endStep(): void {
-    const undo = this.undoManager;
-    if (!undo || !this.stepping) return;
+    if (!this.history || !this.stepping) return;
     this.stepping = false;
-    undo.captureTimeout = this.capture;
-    undo.stopCapturing();
+    this.history.end();
   }
 
   /** Makes a change whose objects then travel to their new places together, in place of jumping. */
@@ -278,31 +272,22 @@ export class Board implements LiveStore<BoardState> {
     return result;
   }
 
-  /** One change on its own, as one undo, however soon it follows the last one. */
-  private step(change: () => void): void {
-    const within = this.stepping;
-    if (!within) this.beginStep();
-    change();
-    if (!within) this.endStep();
-  }
-
-  /** Goes a step back or forward. If Yjs can't finish one, what went back stays back and the board carries on. A step that came to nothing tells no one, so the buttons are always brought up to date here. */
-  private travel(step: (undo: Y.UndoManager) => StepResult): void {
-    const undo = this.undoManager;
-    if (!undo || this.stepping || !this.canEdit) return;
-    const result = this.settle(() => step(undo));
+  /** Goes a step back or forward. If one can't finish, what went back stays back and the board carries on. */
+  private travel(step: (history: BoardHistory) => StepResult): void {
+    const { history } = this;
+    if (!history || this.stepping || !this.canEdit) return;
+    const result = this.settle(() => step(history));
     if (!result.ok) log.error('undo failed', { err: result.error });
-    this.stacks();
     this.set({ sel: [] });
   }
 
   /** Takes back this person's last change, and only theirs, whatever anyone else has done since. */
   undo(): void {
-    this.travel(undoStep);
+    this.travel((history) => history.undo());
   }
 
   redo(): void {
-    this.travel(redoStep);
+    this.travel((history) => history.redo());
   }
 
   /* ---------- selection and tools ---------- */
@@ -333,7 +318,8 @@ export class Board implements LiveStore<BoardState> {
   removeSelected(): boolean {
     const { sel } = this.state;
     if (!sel.length) return false;
-    this.step(() => removeObjects(this.doc, sel, this.origin));
+    this.untouched = false;
+    removeObjects(this.doc, sel, this.origin);
     this.read();
     this.set({ sel: [] });
     return true;
@@ -342,8 +328,8 @@ export class Board implements LiveStore<BoardState> {
   duplicateSelected(): void {
     const { sel } = this.state;
     if (!sel.length) return;
-    let copies: string[] = [];
-    this.step(() => { copies = duplicateObjects(this.doc, sel, COPY_OFFSET, this.origin); });
+    this.untouched = false;
+    const copies = duplicateObjects(this.doc, sel, COPY_OFFSET, this.origin);
     if (!copies.length) { this.refuse(); return; }
     this.read();
     this.set({ sel: copies });
@@ -392,11 +378,13 @@ export class Board implements LiveStore<BoardState> {
     this.fresh = null;
     if (blank) removeObjects(this.doc, [edit], this.origin);
     this.set({ edit: null });
-    this.endStep();
-    if (!blank) return;
-    // Adding it and taking it away are one step that came to nothing, so it isn't left to undo.
-    this.undoManager?.undoStack.pop();
-    this.stacks();
+    if (!blank) {
+      this.endStep();
+      return;
+    }
+    // Adding it and taking it away came to nothing, so it isn't left to undo.
+    this.stepping = false;
+    this.history?.drop();
     this.read();
   }
 
