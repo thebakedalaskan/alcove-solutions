@@ -3,6 +3,7 @@ import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
+import type { DocSession, DocSessionOptions, DocVersion, DocVersionSummary, SearchDoc } from './workspaceDocuments';
 import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
@@ -272,6 +273,23 @@ export interface AlcoveApi {
     };
     /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
     live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
+    /**
+     * One document or board, worked on together until `close()`, or until you lose it (`closed` in its status). It starts at
+     * once, and stays up through dropped connections and restarts: what's typed meanwhile sends when it can, and with `keep`
+     * survives a reload.
+     */
+    document(id: ID, documentId: ID, opts?: DocSessionOptions): DocSession;
+    /** What a document looked like: the versions kept of it, the newest first. For anyone who can open it. */
+    versions(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocVersionSummary[]>;
+    /** One version with its whole state, for showing it. */
+    version(id: ID, documentId: ID, versionId: ID, opts?: WorkspaceReadOptions): Promise<DocVersion>;
+    /**
+     * Makes a document as it was in a version, for everyone, as an edit like any other. What it says now is kept as a
+     * version first, so nothing is lost. Anyone who can edit it.
+     */
+    restoreVersion(id: ID, documentId: ID, versionId: ID, opts?: WorkspaceReadOptions): Promise<void>;
+    /** Every document you can open here as blocks of words, for searching in this browser: nothing you type in a search reaches Alcove. */
+    searchText(id: ID, opts?: WorkspaceReadOptions): AsyncIterable<SearchDoc>;
   };
   credits: {
     balance(): Promise<CreditBalance>;
