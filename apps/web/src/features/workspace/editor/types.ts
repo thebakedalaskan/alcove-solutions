@@ -129,6 +129,8 @@ export interface EditorProps {
   /** Each state may hold `user: { id, name }`; `id` is looked up in `people` for the face. */
   awareness: Awareness;
   readOnly?: boolean | undefined;
+  /** What the title says while nobody has written one: a document can be made with a name and an empty title. */
+  titleHint?: string | undefined;
   /** Everyone who may show up in this document, for faces on carets, tags, quotes and live lines. */
   people?: readonly Person[] | undefined;
   /** What `@` offers for what's been typed after it. With `docsOnly`, just documents, for Link to a document. */
