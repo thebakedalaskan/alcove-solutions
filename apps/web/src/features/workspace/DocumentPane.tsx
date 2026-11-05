@@ -168,11 +168,14 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     });
   };
 
-  /* Tab belongs to the page, so Esc in the text is how the keyboard leaves it: for its row, where the list's keys work again. */
+  /*
+   * Tab belongs to the page, so Esc is how the keyboard leaves it. The editor's own Esc goes from the text to the block's
+   * handles. From there, or with no handles to go to, it goes to the document's row, where the list's keys work again.
+   */
   const leave = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || !(e.target instanceof HTMLElement) || !e.target.isContentEditable) return;
-    e.target.blur();
-    focusRow(item.id);
+    if (e.key !== 'Escape' || !(e.target instanceof HTMLElement)) return;
+    if (!e.target.isContentEditable) focusRow(item.id);
+    else requestAnimationFrame(() => { if (document.activeElement === document.body) focusRow(item.id); });
   };
 
   return (
