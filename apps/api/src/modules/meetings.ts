@@ -6,7 +6,7 @@
  * (./access.ts). A call can offer times instead of settling on one, until someone with its link picks, and calls can
  * repeat, as one series with one link (./repeats.ts).
  */
-import { DEFAULT_NOTES_CHOICES, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, random } from '../crypto';
@@ -53,7 +53,7 @@ export const MeetingManifest = z.object({
   choices: NotesChoicesSchema.default(DEFAULT_NOTES_CHOICES),
   /** Everyone joins with their microphone and camera off. */
   joinMuted: z.boolean().default(false),
-  /** The documents brought to the call, by ID. */
+  /** The documents brought to the call, by the IDs modules/documents.ts gives them. Nothing about them is kept here. */
   documents: z.array(z.string()).default([]),
   /** The workspace the call uses (modules/callWorkspace.ts). Null until one's chosen, or someone opens Workspace. It carries to the next call in a series. */
   workspaceId: z.string().nullable().default(null),
@@ -92,17 +92,23 @@ function cleanGuests(emails: string[], organizerEmail: string): string[] {
 }
 
 /** What showing calls to someone takes, read once for a whole list. */
-interface Reading { organizer: Person; viewer: Profile; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat> }
+interface Reading { organizer: Person; viewer: Profile; documents: ReadonlyMap<string, CallDocument>; access: ReadonlyMap<string, Access>; repeats: ReadonlyMap<string, Repeat> }
+/** Everything brought to these calls, by ID, as `viewer` may know it: a workspace is read once, however many calls it's on. */
+async function broughtTo(viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<ReadonlyMap<string, CallDocument>> {
+  const ids = [...new Set(meetings.flatMap((m) => m.manifest.documents))];
+  if (!ids.length) return new Map();
+  return new Map((await documentsFor(viewer, ids, await accountReader(viewer))).map((d) => [d.id, d]));
+}
 /** `viewer` reading these calls of `owner`, who can be the same account. */
 const reading = async (owner: Owner, viewer: Owner, meetings: Loaded<MeetingManifest>[]): Promise<Reading> =>
-  ({ organizer: await me(owner), viewer: await profile(viewer), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings) });
+  ({ organizer: await me(owner), viewer: await profile(viewer), documents: await broughtTo(viewer, meetings), access: await accessOf(owner, meetings.map((m) => m.itemId)), repeats: await repeatsOf(owner, meetings) });
 
 /** A call as anyone on it sees it. What's only for its organizer, and who's on it, go on top of this. */
 function onCall(m: Loaded<MeetingManifest>, r: Reading) {
   const { guests, duration, noteId: _note, calendarEvent: _event, seriesId, seriesCode, offer, documents, recurringEventId: _recurring, addedFromLink: _added, placing: _placing, workspaceId: _workspace, agenda: _agenda, ...rest } = m.manifest;
   const repeat = seriesId && seriesCode ? r.repeats.get(seriesId) : undefined;
   return {
-    id: m.itemId, ...rest, organizer: r.organizer, guestCount: guests.length, documents: documentsFor(documents, r.viewer), workspaceId: null, rsvps: countsOf(r.access.get(m.itemId), guests.length),
+    id: m.itemId, ...rest, organizer: r.organizer, guestCount: guests.length, documents: documents.flatMap((id) => r.documents.get(id) ?? []), workspaceId: null, rsvps: countsOf(r.access.get(m.itemId), guests.length),
     ...(duration !== undefined ? { duration } : {}), ...(seriesId ? { seriesId } : {}), ...(offer ? { offer } : {}), ...(repeat ? { repeat } : {})
   };
 }
@@ -159,7 +165,7 @@ export async function upcoming(o: Owner): Promise<Meeting[]> {
   // A call nobody held has no end to take its invite with it, and everyone on it may have no account to read it.
   await dropInvites(o, o.pool, mine.filter((m) => finished(m.manifest)).map((m) => m.itemId));
   const ms = mine.filter(listed);
-  const r: Reading = { organizer: await me(o), viewer: await profile(o), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms) };
+  const r: Reading = { organizer: await me(o), viewer: await profile(o), documents: await broughtTo(o, ms), access: await reconcileAccess(o, ms), repeats: await repeatsOf(o, ms) };
   return [...ms.map((m) => asOrganizer(m, r)), ...await invitedTo(o)].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 export async function past(o: Owner): Promise<Meeting[]> {
@@ -247,7 +253,7 @@ async function requireWorkspace(o: Owner, workspaceId: string | null | undefined
 export async function create(o: Owner, input: MeetingInput): Promise<Meeting> {
   if (input.offer && input.repeat) throw new ValidationError('A call that repeats can’t offer times.', { context: { times: input.offer.length } });
   const organizer = await me(o);
-  validDocuments(input.documents ?? [], await profile(o));
+  await validDocuments(o, input.documents ?? []);
   await requireWorkspace(o, input.workspaceId);
   const offered = input.offer ? offeredTimes(input.offer) : undefined;
   const manifest: MeetingManifest = {
@@ -355,9 +361,9 @@ export async function changeCall(o: Owner, id: string, patch: Patch<MeetingInput
  */
 export async function update(o: Owner, id: string, patch: Patch<MeetingInput>, scope?: ChangeScope | undefined): Promise<Meeting> {
   if (patch.offer !== undefined) throw new ValidationError('The times a call offers can’t be changed. Cancel it and offer others.', { context: { meetingId: id } });
-  validDocuments(patch.documents ?? [], await profile(o));
   await requireWorkspace(o, patch.workspaceId);
   const { manifest } = await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting');
+  await validDocuments(o, patch.documents ?? [], manifest.documents);
   if (manifest.seriesCode || patch.repeat || scope === 'following') {
     await changeInSeries(o, id, manifest, patch, scope);
     return own(o, id);

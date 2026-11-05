@@ -378,6 +378,28 @@ export function requireSharing(who: Who, w: WorkspaceAs, documentId: string): Op
   return found;
 }
 
+/* ---------- brought to a call ---------- */
+
+/** Something brought to a call, and what this reader can do with it. `role` is undefined when that's nothing: it stays shut. */
+export interface Brought { id: string; item: StoredItem; role: DocumentRole | undefined }
+/**
+ * Which of these items are still in the tree, and what `who` can do with each. Its answer covers what they can't open,
+ * because a call's organizer brought it and says so to everyone on the call, and that's the one reason a workspace's keys
+ * open for someone with no place in it. So these IDs come from a call, where only what the organizer could reach gets in.
+ * One from a request would ask about anything: modules/documents.ts checks those against what its reader can open instead.
+ */
+export async function broughtFrom(d: Deps, who: Who, workspaceId: string, ids: readonly string[]): Promise<Brought[]> {
+  const row = await maybeOne(d.pool, WorkspaceRow, 'SELECT owner_id, version, state_ciphertext FROM workspaces WHERE workspace_id = $1', [workspaceId]);
+  const owner = row && await findOwner(d, row.owner_id, undefined);
+  if (!row || !owner) return [];
+  const state = openState(owner, workspaceId, row.state_ciphertext);
+  const standing = standingIn(await holdersOf(d.pool, row.owner_id, who.principals), who);
+  return ids.flatMap((id) => {
+    const item = state.items[id];
+    return item && !trashOf(state, id) ? [{ id, item, role: roleOf(who, standing, id, item) }] : [];
+  });
+}
+
 /* ---------- sharing ---------- */
 
 /** How many people one document can be given to. */

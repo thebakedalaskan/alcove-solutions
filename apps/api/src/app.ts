@@ -1,7 +1,7 @@
 import {
   ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
-  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
+  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
@@ -44,7 +44,7 @@ import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
 
-type Env = { Variables: { owner: Owner; viewer: calls.Viewer; requestId: string } };
+type Env = { Variables: { owner: Owner; viewer: calls.Viewer; requestId: string; receipt: string | undefined } };
 const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
 /**
@@ -208,7 +208,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const liveLimiter = rateLimit(120, 60_000);
   /** Making workspaces, per account: each is an owner with keys of its own. */
   const workspaceLimiter = rateLimit(20, 60_000);
-  /** Reading your list of workspaces, per account: it opens every one you're in. */
+  /** Reading your list of workspaces or your documents, per account: each opens every one you're in. */
   const workspaceListLimiter = rateLimit(120, 60_000);
   /** Opening a document's stream, per person: clicking through a list opens one each. */
   const documentLiveLimiter = rateLimit(240, 60_000);
@@ -832,7 +832,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     }
     await next();
     if (c.res.ok && (c.res.headers.get('content-type') ?? '').includes('application/json')) {
-      const text = await c.res.clone().text();
+      const text = c.get('receipt') ?? await c.res.clone().text();
       await exec(d.pool, `INSERT INTO operations (owner_id, operation_id, method, request_commitment, result_ciphertext, completed_at) VALUES ($1,$2,$3,$4,$5,now()) ON CONFLICT DO NOTHING`,
         [o.ownerId, opId, `${c.req.method} ${c.req.routePath}`, commitment, sealJson(operationResultKey(o.root, o.ownerId), hdr, { status: c.res.status, body: text })]);
     }
@@ -867,11 +867,16 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/team/invites', async (c) => c.json(await people.inviteToTeam(c.get('owner'), (await body(c, TeamInviteBodySchema)).emails)));
 
   /* meetings */
+  /**
+   * A call as the answer to a change. Its receipt keeps it without its documents: a retry can come after one has been
+   * deleted or the account has lost it, and a receipt filed under someone in a workspace can't hold a name.
+   */
+  const changedCall = (c: Context<Env>, m: Meeting) => { c.set('receipt', JSON.stringify({ ...m, documents: [] })); return c.json(m); };
   app.get('/v1/meetings', async (c) => c.json(c.req.query('range') === 'past' ? await meetings.past(c.get('owner')) : await meetings.upcoming(c.get('owner'))));
   app.get('/v1/meetings/:id', async (c) => c.json(await meetings.get(c.get('owner'), c.req.param('id'))));
   app.post('/v1/meetings', async (c) => {
     makeLimiter(c.get('owner').ownerId, 'calls');
-    return c.json(await meetings.create(c.get('owner'), await body(c, MeetingInputSchema)));
+    return changedCall(c, await meetings.create(c.get('owner'), await body(c, MeetingInputSchema)));
   });
   /* How far a change to a call in a series reaches. */
   const scopeOf = (c: Context) => {
@@ -883,12 +888,14 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const patch = await body(c, MeetingInputSchema.partial());
     // Making a call repeat, or how it repeats, makes calls.
     if (patch.repeat) makeLimiter(c.get('owner').ownerId, 'calls');
-    return c.json(await meetings.update(c.get('owner'), c.req.param('id'), patch, scopeOf(c)));
+    // Checking what's brought reads the library.
+    if (patch.documents?.length) workspaceListLimiter(c.get('owner').ownerId, 'documents');
+    return changedCall(c, await meetings.update(c.get('owner'), c.req.param('id'), patch, scopeOf(c)));
   });
   app.delete('/v1/meetings/:id', async (c) => { await meetings.cancel(c.get('owner'), c.req.param('id'), scopeOf(c)); return c.json({ cancelled: true }); });
   app.post('/v1/meetings/:id/next', async (c) => {
     makeLimiter(c.get('owner').ownerId, 'calls');
-    return c.json(await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt));
+    return changedCall(c, await meetings.scheduleNext(c.get('owner'), c.req.param('id'), (await body(c, NextCallBodySchema)).startsAt));
   });
   app.post('/v1/meetings/:id/answer', async (c) => c.json(await meetings.answer(c.get('owner'), c.req.param('id'), (await body(c, RsvpBodySchema)).answer)));
 
@@ -902,12 +909,15 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   });
   app.post('/v1/calendar/events/:id/adopt', async (c) => {
     const { notes } = await body(c, z.object({ notes: NotesSettingSchema.optional() }));
-    return c.json(await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
+    return changedCall(c, await meetings.adopt(c.get('owner'), c.req.param('id'), notes));
   });
   app.get('/v1/calls/:code/meeting', async (c) => c.json(await meetings.byCode(c.get('owner'), c.req.param('code'))));
 
   /* documents people can bring to calls */
-  app.get('/v1/documents', async (c) => c.json(await documents.library(c.get('owner'))));
+  app.get('/v1/documents', async (c) => {
+    workspaceListLimiter(c.get('owner').ownerId, 'documents');
+    return c.json(await documents.library(c.get('owner')));
+  });
 
   /* calls */
   app.post('/v1/calls', async (c) => {

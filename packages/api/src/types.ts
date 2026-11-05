@@ -201,28 +201,36 @@ export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
 
 /* ---------- documents ---------- */
 
-export const DocumentKindSchema = z.enum(['doc', 'sheet', 'board']);
+export const DocumentKindSchema = z.enum(['doc', 'board']);
 export type DocumentKind = z.infer<typeof DocumentKindSchema>;
-/** A document someone can bring to a call. */
+/** A document or board someone can bring to a call. `id` is what a call keeps: an ID of its own, not the item's in its workspace. */
 export const DocumentSchema = z.object({
   id: IDSchema,
+  /** Empty until it's named: the app shows its own word for that. */
   name: z.string(),
   kind: DocumentKindSchema,
-  /** Who it belongs to, by first name. */
-  by: z.string(),
+  /** Who it belongs to, by first name. Null when nobody in particular made it. */
+  by: z.string().nullable(),
   updatedAt: ISODateSchema
 });
 export type Document = z.infer<typeof DocumentSchema>;
-/** The documents someone can bring: a team's workspaces, or one person's own. `sample` is a demo account's made-up set; `none` is nothing yet. */
+/** What someone can bring: everything they can open, by workspace, with a workspace that has nothing to bring left out. */
 export const DocumentLibrarySchema = z.object({
-  source: z.enum(['sample', 'none']),
-  workspaces: z.array(z.object({ id: IDSchema, name: z.string(), documents: z.array(DocumentSchema) }))
+  workspaces: z.array(z.object({
+    id: IDSchema,
+    /** Null for someone outside the workspace who has documents in it. */
+    name: z.string().nullable(),
+    documents: z.array(DocumentSchema)
+  }))
 });
 export type DocumentLibrary = z.infer<typeof DocumentLibrarySchema>;
 /** The most documents a call can bring. */
 export const MAX_CALL_DOCUMENTS = 12;
-/** A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it. */
-export const CallDocumentSchema = z.object({ id: IDSchema, kind: DocumentKindSchema, by: z.string(), name: z.string().nullable() });
+/**
+ * A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it.
+ * `by` is null when nobody in particular made it. One that's gone, or in Trash, isn't listed.
+ */
+export const CallDocumentSchema = z.object({ id: IDSchema, kind: DocumentKindSchema, by: z.string().nullable(), name: z.string().nullable() });
 export type CallDocument = z.infer<typeof CallDocumentSchema>;
 
 export const MeetingSchema = z.object({
@@ -338,7 +346,7 @@ export const MeetingInputSchema = z.object({
   choices: NotesChoicesSchema.optional(),
   /** Everyone joins with their microphone and camera off. */
   joinMuted: z.boolean().optional(),
-  /** Documents brought to the call, by ID. */
+  /** Documents brought to the call, by the IDs the library gives them. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
   /** The workspace the call uses, one the organizer can edit in. Null: the organizer's most recently used, when someone first opens it. */
   workspaceId: IDSchema.nullable().optional(),
