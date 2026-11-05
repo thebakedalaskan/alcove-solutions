@@ -206,8 +206,8 @@ export function Carets({ rt, root }: { rt: EditorRuntime; root: HTMLElement | nu
   );
 }
 
-/** A line showing where files from the desktop will land. */
+/** A line showing where files from the desktop will land. Over an empty Photos block, that block lights up instead. */
 export function FileLine({ rt }: { rt: EditorRuntime }) {
   const drag = useStore(rt.fileDrag);
-  return drag && <span className="wb-line is-file" style={{ top: drag.line }}><em>Drop to add here</em></span>;
+  return drag && 'line' in drag && <span className="wb-line is-file" style={{ top: drag.line }}><em>Drop to add here</em></span>;
 }

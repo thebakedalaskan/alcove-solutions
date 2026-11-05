@@ -33,7 +33,7 @@ import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
-import { EditorRuntime, type ThreadView } from './runtime';
+import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
 import { safeHref, schema, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
@@ -246,6 +246,9 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
   };
 }
 
+/** The empty Photos block files are over, if they're over one. */
+const intoOf = (drag: FileDragState | null): string | null => (drag && 'into' in drag ? drag.into : null);
+
 /** The empty space under the last block: a press there is a press on a new last line. */
 function goToEnd(rt: EditorRuntime): void {
   const view = rt.view;
@@ -319,10 +322,19 @@ export default function Editor(props: EditorProps) {
     const area = view ? scrollerOf(view.dom) ?? root : root;
     if (!area) return;
     const wanted = (e: DragEvent) => !rt.readOnly && rt.props.onUpload !== undefined && (e.dataTransfer?.types ?? []).includes('Files');
+    /* An empty Photos block under the pointer is where they go: it says "Drop photos here". */
+    const emptyUnder = (e: DragEvent): string | null => {
+      const block = e.target instanceof Element ? e.target.closest('.wb.is-upload[data-b]') : null;
+      return block && area.contains(block) ? block.getAttribute('data-b') : null;
+    };
     const over = (e: DragEvent) => {
       if (!wanted(e)) return;
       e.preventDefault();
+      /* Files have their own line: ProseMirror's caret for dropped text would stay behind, since it never hears of the drop. */
+      e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      const into = emptyUnder(e);
+      if (into) { rt.fileDrag.set(into === intoOf(rt.fileDrag.get()) ? rt.fileDrag.get() : { into }); return; }
       const spot = landing(rt, e.clientY);
       rt.fileDrag.set(spot ? { line: spot.line, after: spot.id } : null);
     };
@@ -331,9 +343,12 @@ export default function Editor(props: EditorProps) {
       if (!wanted(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const spot = landing(rt, e.clientY);
+      const into = emptyUnder(e);
+      const spot = into ? null : landing(rt, e.clientY);
       rt.fileDrag.set(null);
-      rt.props.onUpload?.([...(e.dataTransfer?.files ?? [])], spot ? (spot.side === 'after' ? { after: spot.id } : { before: spot.id }) : 'end');
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (into) rt.props.onUpload?.(files, { replace: into });
+      else rt.props.onUpload?.(files, spot ? (spot.side === 'after' ? { after: spot.id } : { before: spot.id }) : 'end');
     };
     area.addEventListener('dragover', over, true);
     area.addEventListener('dragleave', leave, true);

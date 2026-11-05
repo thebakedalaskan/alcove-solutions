@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import { FRAGMENT } from './names';
 import { blockFromJSON, inDocument, schema } from './schema';
 import type { BlockJSON } from './types';
-import { writeDocument, type ProsemirrorMapping } from './write';
+import { setAttr, writeDocument, type ProsemirrorMapping } from './write';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 
@@ -62,6 +62,32 @@ export function removeBlockFrom(doc: Y.Doc, id: string): void {
   const found = elementOf(contentOf(doc), id);
   if (found) doc.transact(() => { retire(found.element, newBlockId(), ''); });
 }
+
+/**
+ * Sets a block's attributes from outside the page, by its stable ID, open or not: what an upload says as it goes. Null
+ * takes one away. False if no block on the page has that ID any more. `own` are attributes only this writer puts on this
+ * block: one of them on a copy someone retired as they moved the block was written after they took it, so it comes off
+ * again, or the old copy would come back holding just that.
+ */
+export function setBlockAttrsIn(doc: Y.Doc, id: string, attrs: Readonly<Record<string, unknown>>, own: readonly string[], origin: unknown): boolean {
+  const fragment = contentOf(doc);
+  const found = elementOf(fragment, id);
+  if (!found) return false;
+  doc.transact(() => {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value === null || value === undefined) { if (found.element.getAttribute(key) !== undefined) found.element.removeAttribute(key); }
+      else setAttr(found.element, key, value);
+    }
+    for (const child of fragment.toArray()) {
+      if (!(child instanceof Y.XmlElement) || child === found.element || child.getAttribute('gone') !== id) continue;
+      for (const key of own) if (child.getAttribute(key) !== undefined) child.removeAttribute(key);
+    }
+  }, origin);
+  return true;
+}
+
+/** Whether a document has a block with this ID on its page. */
+export const hasBlock = (doc: Y.Doc, id: string): boolean => elementOf(contentOf(doc), id) !== null;
 
 /** The element a block is, by its stable ID. */
 export function elementOf(fragment: Y.XmlFragment, id: string): { element: Y.XmlElement; index: number } | null {

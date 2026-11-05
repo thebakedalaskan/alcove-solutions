@@ -103,19 +103,51 @@ export interface EditorCall {
 /** A video playing for everyone, for the block it's in. */
 export interface VideoPlay { block: string; seconds: number; total: number }
 
-/** What photos, videos and files need from outside. */
+/**
+ * A stored file as this browser has it. `ready` holds a picture to show, which the handlers own and let go of themselves;
+ * `gone` is a file someone deleted for good, which shows as deleted, in older versions too.
+ */
+export type MediaState = { kind: 'loading' } | { kind: 'ready'; url: string } | { kind: 'gone' } | { kind: 'failed' };
+
+/** Stored files, as blocks show them: everything here is read while drawing, and `changes` says when to draw again. */
 export interface MediaHandlers {
-  /** Where a stored file can be read, or a local preview while it uploads. Undefined until there's something to show. */
+  /** A picture that's here: what `state` says when it's ready, for what only wants a picture. */
   url: (media: string) => string | undefined;
-  /** Try again, on a block that couldn't upload. */
+  /** A stored picture as it stands. A block asks for it with `hold` while it's on the page. */
+  state?: ((media: string) => MediaState) | undefined;
+  /** Reads a stored picture for as long as a block shows it; what it returns lets go. */
+  hold?: ((media: string) => () => void) | undefined;
+  /** Whether a stored file that isn't a picture has been deleted for good: a file block's or a video's. */
+  gone?: ((media: string) => boolean) | undefined;
+  /** Keeps an eye on whether a stored file that isn't a picture is still there, while a block shows it; what it returns stops. */
+  watch?: ((media: string) => () => void) | undefined;
+  /** Counts every change to what the handlers say. Read it with `useSyncExternalStore`. */
+  changes?: { subscribe: (listener: () => void) => () => void; getSnapshot: () => number } | undefined;
+  /** The file this browser is sending into a block, at its place in the block, to show while it goes. */
+  preview?: ((block: string, index: number) => string | undefined) | undefined;
+  /** A block says it's uploading, and nobody is any more: it shows as failed, with only Delete. */
+  stalled?: ((block: string) => boolean) | undefined;
+  /** Try again, on a block that couldn't upload: only where this browser still has what it was sending. */
   onRetry?: ((block: string) => void) | undefined;
+  canRetry?: ((block: string) => boolean) | undefined;
+  /** Where a player reads a video from, asked for afresh. Rejects for one that's gone. */
+  stream?: ((media: string) => Promise<string>) | undefined;
+  /** A video found out how long it is: for a block that didn't say. */
+  onDuration?: ((block: string, seconds: number) => void) | undefined;
   /** The download on a file block. */
   onOpenFile?: ((file: { media: string; name: string }) => void) | undefined;
+  /** A press on an empty Photos block: offer the picker again, against it. */
+  onChoose?: ((block: string, rect: Rect) => void) | undefined;
+  /** Delete for good, from a block's menu: the files in the block, for everyone, and everywhere they are. */
+  onDeleteFiles?: ((files: MediaDeletion) => void) | undefined;
   /** Play for everyone. Without it, a video shows no button. */
   onPlay?: ((block: string) => void) | undefined;
   /** The video playing for everyone now, if it's in this document. */
   playing?: VideoPlay | null | undefined;
 }
+
+/** A block's files, on their way to being deleted for good. `what` names them: a file's name, or how many photos. */
+export interface MediaDeletion { block: string; media: string[]; what: 'photo' | 'photos' | 'video' | 'file'; name: string; rect: Rect }
 
 /** A word on the page, for the caller to show as a toast. */
 export interface EditorToast { icon: IconName; text: string; label?: string | undefined; run?: (() => void) | undefined }
@@ -143,7 +175,7 @@ export interface EditorProps {
   onOpenPerson?: ((id: string, rect: Rect) => void) | undefined;
   /** Someone was just tagged: tell them, or ask before sharing. */
   onTagged?: ((person: Person, block: string, rect: Rect | null) => void) | undefined;
-  /** Files were dropped on the page or pasted. `at` is where the line showed. */
+  /** Files were dropped on the page or pasted. `at` is where the line showed, or the empty Photos block they landed on. */
   onUpload?: ((files: File[], at: InsertAt) => void) | undefined;
   /** Photos, Video or File was picked from `/`. */
   onPick?: ((pick: MediaPick) => void) | undefined;
