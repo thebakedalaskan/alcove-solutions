@@ -184,6 +184,7 @@ function mentionRows(rt: EditorRuntime, query: string, docsOnly: boolean, pick: 
 
 function momentRows(rt: EditorRuntime, block: string): Row[] {
   const lines = rt.props.call?.recent().slice(0, 4) ?? [];
+  if (lines.length === 0) return [{ kind: 'text', label: 'Nothing said yet.' }];
   return [
     { kind: 'head', label: 'Just said' },
     ...lines.map((l): Row => ({ kind: 'item', key: l.id, label: l.text, face: l.person ?? { name: l.name }, sub: `${l.person?.name.split(' ')[0] ?? l.name} · ${l.at}`, className: 'is-line', run: () => pickMoment(rt, block, l) }))

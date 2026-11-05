@@ -244,7 +244,7 @@ function Live({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const decided = textAttr(node, 'what') !== 'followups';
   const lines = liveLines(node);
-  const inCall = rt.props.call !== undefined;
+  const inCall = rt.props.call !== undefined && textAttr(node, 'call') === rt.props.call.id;
   return (
     <div className="wb-live">
       <div className="wb-lh">
@@ -268,7 +268,8 @@ function Moment({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const name = textAttr(node, 'name') ?? '';
   const at = textAttr(node, 'at') ?? '';
-  const hear = rt.props.call?.onHear;
+  const note = textAttr(node, 'note');
+  const line = textAttr(node, 'line');
   return (
     <div className="wb-mom">
       <PersonFace id={textAttr(node, 'person') ?? ''} name={name} size={26} />
@@ -276,7 +277,7 @@ function Moment({ node }: { node: PMNode }) {
         <p>“{textAttr(node, 'text')}”</p>
         <span className="m">
           <span>{firstName(name)} · {at}</span>
-          {hear && <button type="button" className="pl" onClick={() => hear({ line: textAttr(node, 'line'), at })}><Icon name="play" size={11} />Hear it</button>}
+          {note && line && rt.props.hear?.({ note, line })}
         </span>
       </div>
     </div>

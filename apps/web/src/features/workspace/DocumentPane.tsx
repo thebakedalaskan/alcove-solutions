@@ -15,6 +15,8 @@ import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
+import { HearIt } from './live/HearIt';
+import { useEditorCall } from './live/useEditorCall';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
@@ -69,11 +71,15 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
-  /* Naming it in the list reaches the title on this page. */
+  /* Naming it in the list reaches the title on this page, and what's sent from a call lands on it. */
   useEffect(() => {
-    ws.openDoc.current = { id: item.id, doc: session.doc };
+    ws.openDoc.current = { id: item.id, doc: session.doc, editor };
     return () => { if (ws.openDoc.current?.doc === session.doc) ws.openDoc.current = null; };
-  }, [ws.openDoc, item.id, session.doc]);
+  }, [ws.openDoc, item.id, session.doc, editor]);
+  const fromCall = useEditorCall(ws, editor, session.doc, readOnly);
+  /* Hearing a quote takes the notes, which take an account. */
+  const signedIn = ws.owner !== null;
+  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} />, []);
 
   /* What the title says is what the list says: a name that didn't get through, offline say, goes when it can. */
   const reachable = status.status !== 'offline';
@@ -183,7 +189,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     <WsFade id={item.id}>
       <WsPage onKeyDown={leave}>
         <Suspense>
-          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
+          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces} call={fromCall} hear={signedIn ? hear : undefined}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}

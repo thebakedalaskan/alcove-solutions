@@ -18,6 +18,8 @@ import { DocumentPane } from './DocumentPane';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { List } from './List';
+import { LivePage } from './live/LivePage';
+import { useSending } from './live/useSending';
 import { placesOf, rememberPlaces } from './places';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, treeOf, type Tree } from './tree';
@@ -112,6 +114,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Going anywhere puts a phone's list away, even to what's already open behind it. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo]);
   const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
+  const { put, lastDocument } = useSending({
+    live: call?.live, workspaceId, pass, owner, tree, at, member: view.tree?.role != null, here: view.here, closed: call?.closed ?? false, go, say, openDoc,
+    remembered: placesOf(owner).documents[workspaceId] ?? null
+  });
   const role = view.tree?.role ?? null;
   const canChange = role === 'admin' || role === 'edit';
   const documentId = at.kind === 'document' ? at.id : null;
@@ -187,13 +193,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, items, tree, at, go, switchTo: onSwitch, owner, me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, put, lastDocument
   };
   return (
     <WsContext value={ws}>
       <WsPane page={page} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on}>
         <List drags={{ drag, arm, ended }} />
-        {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             <WsCantOpen what="document" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />

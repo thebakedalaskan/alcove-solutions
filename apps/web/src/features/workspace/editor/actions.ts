@@ -91,7 +91,7 @@ export function pickSlash(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'sl
     case 'decided':
     case 'followups': {
       const block = empty && ref.id ? ref.id : newBlockId();
-      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id }), n.line.create({ id: newBlockId() })]);
+      const at = placeFor(tr, ref, () => [n.live.create({ id: block, what: id, call: rt.props.call?.id ?? null }), n.line.create({ id: newBlockId() })]);
       view.dispatch(caretInto(tr, at + 2).scrollIntoView());
       view.focus();
       rt.props.call?.onLive?.(id, block);
@@ -163,7 +163,7 @@ export function pickMoment(rt: EditorRuntime, block: string, line: MomentLine): 
   const id = isBlank(ref.node) && ref.id ? ref.id : newBlockId();
   const tr = view.state.tr;
   const at = placeFor(tr, ref, () => [
-    n.moment.create({ id, person: line.person?.id ?? null, name: line.person?.name ?? line.name, at: line.at, text: line.text, line: line.id }),
+    n.moment.create({ id, person: line.person?.id ?? null, name: line.person?.name ?? line.name, at: line.at, text: line.text, line: line.id, note: line.note }),
     n.line.create({ id: newBlockId() })
   ]);
   view.dispatch(caretInto(tr, at + 2).scrollIntoView());
@@ -344,17 +344,21 @@ export function setCaption(rt: EditorRuntime, block: string, media: string, cap:
   view.dispatch(view.state.tr.setNodeAttribute(ref.pos, key, cap === '' ? null : cap));
 }
 
-/** What every `live` block of a kind shows. Any browser in the call can write this: it only changes what's different. */
+/** A `live` block of the call this document is open in. One from an earlier call stays as it was when that ended. */
+const ofThisCall = (rt: EditorRuntime, node: PMNode) => node.type === n.live && rt.props.call !== undefined && node.attrs['call'] === rt.props.call.id;
+/** What every `live` block of a kind in this call shows. Any browser in the call can write this: it only changes what's different. */
 export function setLiveLines(rt: EditorRuntime, what: LiveWhat, lines: LiveLine[]): void {
   const view = editing(rt);
   if (!view) return;
   const tr = view.state.tr;
   const next = JSON.stringify(lines);
   for (const b of allBlocks(view.state.doc)) {
-    if (b.node.type === n.live && b.node.attrs['what'] === what && JSON.stringify(b.node.attrs['lines']) !== next) tr.setNodeAttribute(b.pos, 'lines', lines);
+    if (ofThisCall(rt, b.node) && b.node.attrs['what'] === what && JSON.stringify(b.node.attrs['lines']) !== next) tr.setNodeAttribute(b.pos, 'lines', lines);
   }
   if (tr.docChanged) view.dispatch(tr.setMeta('addToHistory', false));
 }
+/** Whether the document holds a `live` block of this call, which is what keeps the notes being written while nothing else shows them. */
+export const hasLive = (rt: EditorRuntime): boolean => (rt.view ? allBlocks(rt.view.state.doc).some((b) => ofThisCall(rt, b.node)) : false);
 
 /* -------- adding blocks from outside */
 const withFreshId = (node: PMNode): PMNode => (hasBlockId(node) ? node.type.create({ ...node.attrs, id: newBlockId(), gone: null }, node.content, node.marks) : node);
@@ -365,6 +369,10 @@ function insertSpan(state: EditorState, at: InsertAt): { from: number; to: numbe
   const start = doc.child(0).nodeSize;
   if (at === 'start') return { from: start, to: start };
   if (at === 'end') return { from: end, to: end };
+  if (at === 'tail') {
+    const last = allBlocks(doc).at(-1);
+    return last && isBlank(last.node) ? { from: last.pos, to: last.pos + last.node.nodeSize } : { from: end, to: end };
+  }
   if (at === 'all') return { from: start, to: end };
   if (at === 'caret') {
     const ref = selectedBlock(state);

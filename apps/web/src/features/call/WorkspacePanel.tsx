@@ -8,8 +8,10 @@
  */
 import { errorMessage, firstName, type CallSession, type CallWorkspace } from '@alcove/api';
 import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
+import { LiveRows } from '~/features/workspace/live/LiveRows';
+import type { LiveCall } from '~/features/workspace/live/types';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
@@ -45,7 +47,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const reveal = () => { setMounted(true); setOpen(true); };
     const hide = () => { setOpen(false); setZen(false); setPeek(false); };
     return {
-      say, failed, hide,
+      say, failed, hide, reveal,
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
       announce: show,
       toggle: () => { if (openNow.current) hide(); else reveal(); },
@@ -114,8 +116,10 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
+const LIVE_ROWS = <LiveRows />;
+
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, zen, listOff, listPeek, live, act, onToggleList, onToggleZen }: {
   workspace: CallWorkspace;
   /** You're the call's organizer. */
   organizer: boolean;
@@ -127,8 +131,8 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   zen: boolean | null;
   listOff: boolean;
   listPeek: boolean;
-  /** The first rows under This call. */
-  top?: ReactNode;
+  /** The call's notes, follow-ups and transcript. */
+  live: LiveCall;
   act: WorkspacePanelState['act'];
   onToggleList: () => void;
   onToggleZen: () => void;
@@ -136,10 +140,10 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
   const call = useMemo((): WorkspaceCall => ({
-    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open,
+    top: LIVE_ROWS, live, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [top, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  }), [live, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
   const switchNowhere = useCallback(() => undefined, []);
   /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;

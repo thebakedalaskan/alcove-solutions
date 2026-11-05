@@ -3,15 +3,17 @@ import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } f
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
+import type { EditorHandle } from './editor/types';
+import type { LiveCall, LivePageId, LivePut } from './live/types';
 import type { Tree } from './tree';
 
 /** Where in the list something was opened from, in a call: a document brought to it is in both. */
 export type WorkspaceArea = 'pins' | 'tree';
 /**
  * What's on the page beside the list. `home`: nothing chosen, so the workspace picks. `block` lands on a line, and comes
- * from the link's hash.
+ * from the link's hash. `live` is one of a call's own pages, and `line` a moment of its transcript.
  */
-export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' };
+export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' } | { kind: 'live'; page: LivePageId; line?: string | undefined };
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
@@ -33,6 +35,8 @@ export interface WorkspaceCall {
   say: (toast: WsToastData) => void;
   /** Closed, and kept as it was for next time: its keys sleep. */
   closed: boolean;
+  /** The call's notes, follow-ups and transcript, for its pages and for what a document takes from them. */
+  live: LiveCall;
 }
 
 export interface WorkspaceProps {
@@ -110,8 +114,12 @@ export interface Ws {
   toggleList: () => void;
   /** The document just made here, whose page opens with the caret in its title. */
   justMade: RefObject<string | null>;
-  /** The document open on the page, so naming it in the list reaches its title. */
-  openDoc: RefObject<{ id: string; doc: Doc } | null>;
+  /** The document open on the page, so naming it in the list reaches its title, and what's sent from a call lands where it can be seen. */
+  openDoc: RefObject<{ id: string; doc: Doc; editor: EditorHandle | null } | null>;
+  /** Where what's sent from the call goes, while there's somewhere you can edit. */
+  put: LivePut | null;
+  /** The document you were last in, while a live page has its place. */
+  lastDocument: string | null;
 }
 
 export const WsContext = createContext<Ws | null>(null);

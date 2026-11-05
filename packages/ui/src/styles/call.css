@@ -511,6 +511,8 @@
 .ic-nh .ac-notes-sign { height: 24px; padding: 0 10px 0 8px; font-size: 12px; }
 .ic-nh .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
 .ic-nh .ac-icon-btn { margin-left: auto; width: 32px; height: 32px; }
+.ic-nh .ic-page { color: var(--ink-3); }
+.ic-nh .ic-page + * .ac-icon-btn, .ic-nh .ic-page + .ac-icon-btn { margin-left: 0; }
 .ic-nb { display: grid; gap: 20px; padding: 16px 16px 20px; }
 .ic-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ic-sh .ac-eyebrow { color: var(--ink-2); }
@@ -522,6 +524,9 @@
 .ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-nr .ac-time-chip { margin-top: 1px; }
 .ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ic-nr:has(> .ws-put) { grid-template-columns: 18px minmax(0, 1fr) auto 26px; column-gap: 6px; }
+.ic-nr:has(> .ac-check):has(> .ws-put) { grid-template-columns: 20px minmax(0, 1fr) auto 26px; }
+.ic-nr > .mk, .ic-nr > .ac-check { margin-right: 4px; }
 .ic-nr .nr-text { overflow-wrap: anywhere; }
 .ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 /* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */

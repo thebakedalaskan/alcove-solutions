@@ -17,8 +17,11 @@ export interface BlockJSON {
   text?: string | undefined;
 }
 
-/** Where blocks go. `replace` takes the place of that block; `all` takes the place of every block, leaving the title. */
-export type InsertAt = { after: string } | { before: string } | { replace: string } | 'start' | 'end' | 'caret' | 'all';
+/**
+ * Where blocks go. `replace` takes the place of that block; `all` takes the place of every block, leaving the title;
+ * `tail` goes at the end, in place of an empty last line.
+ */
+export type InsertAt = { after: string } | { before: string } | { replace: string } | 'start' | 'end' | 'tail' | 'caret' | 'all';
 
 /** A point in the window, from a pointer. */
 export interface Point { x: number; y: number }
@@ -80,8 +83,8 @@ export interface MediaPick {
   rect: Rect | null;
 }
 
-/** A line of the transcript, for Quote what was said. */
-export interface MomentLine { id: string; person: Person | null; name: string; at: string; text: string }
+/** A line of the transcript, for Quote what was said. `note`: the notes it'll be in, by ID, so whoever has them can hear it. */
+export interface MomentLine { id: string; person: Person | null; name: string; at: string; text: string; note: string | null }
 
 /** One line a `live` block shows. */
 export interface LiveLine { text: string; at: string; person?: string | null | undefined; name?: string | undefined; due?: string | undefined }
@@ -90,14 +93,14 @@ export type LiveWhat = 'decided' | 'followups';
 
 /** What a document knows about the call it's open in. Without it, From the call isn't offered. */
 export interface EditorCall {
+  /** Which call. A `live` block belongs to the call it was added in, and stays as it was once that's over. */
+  id: string;
   /** Notes are on for this call. */
   notes: boolean;
   /** The last few lines of the transcript, newest first. */
   recent: () => MomentLine[];
   /** A `live` block was just added: fill it with `setLiveLines`. */
   onLive?: ((what: LiveWhat, block: string) => void) | undefined;
-  /** Hear it, on a quote. */
-  onHear?: ((moment: { line: string | null; at: string }) => void) | undefined;
 }
 
 /** A video playing for everyone, for the block it's in. */
@@ -154,6 +157,8 @@ export interface EditorProps {
   onAttachMedia?: ((mediaId: string) => void) | undefined;
   media?: MediaHandlers | undefined;
   call?: EditorCall | undefined;
+  /** Hear it, on a quote, in a call or not: what plays that moment, for someone who has the notes it's in. It draws nothing for anyone else. */
+  hear?: ((moment: { note: string; line: string }) => ReactNode) | undefined;
   /** Comment was pressed, or ⌘⇧M, with words selected. Without it, there's no Comment button. */
   onComment?: ((draft: CommentDraft) => void) | undefined;
   /** Words with a comment on them, or the count in the margin, were pressed. */
@@ -201,8 +206,10 @@ export interface EditorHandle {
   blockJSON: (id: string) => BlockJSON | null;
   /** Where a block is now, to put it back there: after the block before it, or at the start. */
   placeOf: (id: string) => InsertAt;
-  /** Writes what every `live` block of this kind shows. Only writes if it changed, so any browser in the call can do this. */
+  /** Writes what every `live` block of this kind in this call shows. Only writes if it changed, so any browser in the call can do this. */
   setLiveLines: (what: LiveWhat, lines: LiveLine[]) => void;
+  /** Whether this document has a `live` block of this call. */
+  hasLive: () => boolean;
   /** Opens `/` or `@` at the caret, for a phone's keyboard bar. */
   openSlash: () => void;
   openMention: () => void;

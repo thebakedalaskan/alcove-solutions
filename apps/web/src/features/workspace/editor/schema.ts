@@ -148,11 +148,11 @@ const nodes: Record<NodeName, NodeSpec> = {
   },
   doclink: { group: 'block', atom: true, attrs: { ...block, doc: { default: '' } }, parseDOM: wholeBlock('doclink'), toDOM: (node) => copied(node, 'p', '') },
   live: {
-    group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] } },
+    group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] }, call: { default: null } },
     parseDOM: wholeBlock('live'), toDOM: (node) => copied(node, 'p', listOf(node, 'lines', 'text').join(' · '))
   },
   moment: {
-    group: 'block', atom: true, attrs: { ...block, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null } },
+    group: 'block', atom: true, attrs: { ...block, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null }, note: { default: null } },
     parseDOM: wholeBlock('moment'), toDOM: (node) => copied(node, 'blockquote', `${textAttr(node, 'text') ?? ''} (${textAttr(node, 'name') ?? ''}, ${textAttr(node, 'at') ?? ''})`)
   },
   /* A block from a newer Alcove. Kept as it is, because a browser that can't read a block must never delete it. */
