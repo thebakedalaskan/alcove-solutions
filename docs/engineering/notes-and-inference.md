@@ -940,8 +940,8 @@ the notes worker: live notes only hand on what was ticked.
   `CallSession.tickFollowUp(id, done)` ticks one.
 - **Where they're kept.** In `call_notes`, a row for each view of each part of the call (`main`, or a breakout room's
   random ID), sealed as a `call-notes` record under the state key `call-notes:<callId>`, whose header binds the owner, the
-  call, the part and the view. Beside it, as a `call-notes-lines` record, when each line it read was said and the lines it
-  left out. Not in the call's sealed state: notes run to tens of kilobytes, which every request about the call would
+  call, the part and the view. Beside it, as a `call-notes-lines` record, the lines it read, by ID and when each was said,
+  and the lines it left out. Not in the call's sealed state: notes run to tens of kilobytes, which every request about the call would
   open, the state is written again for every chat message and raised hand, and a refresh would hold the call's row
   through the notes model's answer. A breakout room's rows stay until the call ends, for what was ticked there.
 - **Views.** Everyone who may read all a part of the call's notes read shares one view, `all`: one row, one run, and the
@@ -952,22 +952,27 @@ the notes worker: live notes only hand on what was ticked.
   read the same lines shares one row and one run, whenever each of them came in, and it stays the same as lines they may
   read are added. Someone has one view at a time, so a part of the call never has more views in use than people, and only
   a view someone is watching is refreshed: the cost grows with the views being watched, and never past the one run per
-  browser it replaced. Coming back from time away with lines said meanwhile makes a new view; the old row stays until the
-  call ends. Notes for a narrower view are read-only: they can't be ticked, and a follow-up in them shows done when the
-  same follow-up, from a line in common and in most of the same words, is ticked in the notes everyone shares.
-- **Who reads which.** `find` gives someone everyone's notes if they may read every line those read. That's known at once
-  from who may read all of them and when the first and newest were said; for a guest with a hole in their time in the
-  call, from when each line was said, so a reload with nothing said meanwhile costs nothing. Otherwise it's the row that
-  read what they may read and left out what they may not. So nobody is shown a row that read a line they can't read,
-  whatever has happened since it was written (their page went away, and the people they shared it with read on), and
-  someone who may read more than a row did isn't given it. Until their next look writes theirs, `notes` is null for them.
-  It's the part of the call you're in now that counts, so what's said in a room stays with that room. Someone waiting to
-  be let in gets nothing; someone removed can't read the call at all.
+  browser it replaced. Coming back from time away with lines said meanwhile makes a new view, and the row from before goes
+  when the new one is written, so a person keeps one row of their own however often they come and go. Anyone else still
+  reading that row writes it again at their next look, which is one run and a moment with nothing shown. Notes for a
+  narrower view are read-only: they can't be ticked, and nothing in them says what's ticked in everyone's, as the only way
+  to tie the two together would be to tell the model, for those readers, words that may come from what they can't read.
+- **Who reads which.** A row is someone's if they may read every line it read and none it left out. That's known at once
+  from who may read all of it and when the first and newest were said; for a guest with a hole in their time in the call,
+  from when each line was said, so a reload with nothing said meanwhile costs nothing. So nobody is shown a row that read
+  a line they can't read, whatever has happened since it was written (their page went away, and the people they shared it
+  with read on), and someone who may read more than a row did isn't given it. Of the rows that are someone's, `find` gives
+  them the one that read what was said most recently, and everyone's when that's as new, as only that can be ticked. So
+  someone with a newer hole in their time reads their own row once it's written, though they may still be able to read
+  everyone's older one. With no notes of theirs yet, `notes` is null for them, and they're told if their first are being
+  written or couldn't be. It's the part of the call you're in now that counts, so what's said in a room stays with that
+  room. Someone waiting to be let in gets nothing; someone removed can't read the call at all.
 - **Watching.** A browser showing the notes says so every 5 seconds (`POST /v1/live/calls/:id/notes/watch`, 120 a
   minute per connection, no operation receipt), which is the only thing that refreshes them: nobody watching, nothing
   runs. A guest watching counts as much as anyone, for their own view. A look answers `{refreshed}`, and once it has
-  answered true the browser reads the call straight away. A look that finds its row up to date stops there, without
-  opening anything; someone with nothing they may read yet isn't looked for again for 30 seconds.
+  answered true the browser reads the call straight away. A look opens the rows of that part of the call to see whose
+  they are, and if the person's own row, or else the one they're reading, is up to date it stops there, without reading
+  the transcript. That's nearly every look. Someone with nothing they may read yet isn't looked for again for 30 seconds.
 - **When a refresh runs.** Only while the part of the call the watcher is in has notes on (`mayCapture`, path
   `live-notes`, as of the call's row held in share mode, so a pause either stops it or comes after it), with clips that
   row's last refresh didn't count, at least 30 seconds after the last one began, and with none under way. Turning notes
@@ -979,49 +984,50 @@ the notes worker: live notes only hand on what was ticked.
   model reads, and saves what came back under the lock again, merged with the follow-ups as they are then. The lease lasts
   150 seconds, so a worker that dies only delays the next refresh, and it names the claim: a refresh that outran its
   lease keeps nothing. If the lines turn out to be the ones it read last time (a digest of their IDs), because the new
-  clips were said elsewhere in the call, the claim is given up and the model isn't asked.
+  clips were said elsewhere in the call, or the ones the notes this person is reading already read, the claim is given up
+  and the model isn't asked: a run would write what they have.
 - **What a refresh reads.** Everything said in that part of the call that the view may read, up to the 120,000 characters
-  a transcript may have, as `catchUp` over `all`, keeping up to 20 follow-ups and 8 of each other list, the newest.
+  a transcript may have, as `catchUp` over `all`, keeping up to 20 follow-ups and 8 of each other list, the newest. It's
+  told the follow-ups so far too ([Follow-ups keep their IDs](#follow-ups-keep-their-ids)).
 - **After breakout rooms.** What the main room said while rooms were open is for the people who stayed. It's read while
   those rooms are open, and left out once they've closed, so that everyone back in the main room shares one view and can
   tick: otherwise everyone who'd been in a room would be on a narrower view for the rest of the call. The people who
   stayed read a little less than they may, and it stays in their transcript and catching up, and goes into the note. The
   first look from someone back writes the notes again without that talk, even with nothing new said, once it's been half a
-  minute since the last refresh; until then they have none. A follow-up someone ticked from that talk isn't shown once it
-  rests on lines the notes no longer read, by every line it cites, and still goes to the note.
+  minute since the last refresh; until then they have none. A refresh that reads less than the last one did isn't told the
+  follow-ups so far, and what's ticked stops showing for good, whichever lines it cites: a model can let anything it read
+  into its words, so what a run wrote may say what only that run's readers may read. Its tick still goes to the note. The
+  model lists what it still hears as something new, unticked, so it can be ticked again; the note then has both.
 - **While paused or off.** What was written stays readable, nothing is refreshed, and nothing reaches NEAR AI. In a
   breakout room the organizer has paused, the same, for that room alone. Ticking still works: it reaches no AI.
 - **When it fails.** The notes stay as they were, `error` says so (one line whatever went wrong, at the top of the panel, to
   whoever reads those notes, only while notes are on: the causes are worded for someone who can press something, and here
-  nobody has to, so why is in the log line) and the next look at least 30 seconds later tries again. A reply that isn't what was asked for
-  counts: without words in its summary and all four lists, it's a failed refresh, never blank notes.
+  nobody has to, so why is in the log line) and the next look at least 30 seconds later tries again. A reply that isn't what
+  was asked for counts: without words in its summary and all four lists, each item as asked down to the lines it cites,
+  it's a failed refresh, never blank notes.
 - **What it costs.** Nothing. As for catching up and asking, nobody's credits pay for a refresh, whoever is watching and
   whoever's call it is: only the notes written at the end charge the organizer ([The notes worker](#the-notes-worker)).
 
 ### Follow-ups keep their IDs
 
-A follow-up's ID is random, made the first time it's listed, and stays with it from one refresh to the next while it's
-plainly the same item (`likeness` in `apps/api/src/modules/likeness.ts`). A follow-up taken for another hands it someone's
-tick, so when in doubt two are two. Two follow-ups are the same item when they don't name two different people (compared
-by first name, without accents or case; one naming nobody is fine) and either:
+A follow-up's ID is random, made the first time it's listed, and stays with it because the notes model says so. Telling
+one item from another by its words failed on paraphrase, on "both of those", on short items and in most scripts, so the
+server doesn't try. Each refresh is told the follow-ups so far, one to a line, by a short label as lines are (`F3 (Kofi)
+Send the deck`; the ID itself never goes to the model, as a long one copied wrong would read as something new). Each item
+in `next` says which one it is in `id`, or null for something new, however it's worded now and in whatever language. The
+first refresh has nothing to tell it, and a catch-up for someone asking is never told.
 
-1. they come from a line in common, share at least a third of what the shorter one says, and don't each say something
-   from their own lines that the other doesn't. That's how two things to do in one sentence read ("send the report",
-   "send the invoice"), and not how a rewording reads, as its new words aren't in the line; or
-2. they have no line in common, everything the shorter one says, at least two things, is in the other, and they came up
-   within a minute. So "Call the bank" and "Call the client" are two, and so are "Send the report to legal" and "Send the
-   invoice to legal".
+The server takes its word, within limits:
 
-What's compared (`termsOf`) is the words that say what it's about (three letters or more, without the commonest words or
-endings), every number, so job 7 isn't job 8, and for text written without spaces (Japanese, Chinese, Thai and the like),
-pairs of characters.
+- A label it wasn't given is something new, and so is a label it already used: that stays with the first.
+- What's ticked stays whatever the reply says. One it doesn't list is kept in its words from before, and one it lists as
+  something new shows beside what it wrote, still ticked.
+- One nobody ticked that it no longer lists goes. If it comes back it's something new.
+- An `id` that isn't a string is a reply in the wrong shape, and the refresh failed.
 
-The plainest pairs are made first: a line in common before anything else, then the larger share. Each is used once. A
-match takes the new words, owner and due date and keeps the ID and the tick. A follow-up the refresh didn't list stays in
-the record, so it keeps its ID if it comes back: unseen unless it's ticked, and a ticked one stays listed, with the
-exception in [After breakout rooms](#live-notes). The record forgets the oldest unticked such after 60 follow-ups. They're
-listed in the order they were said. A rewording that fits neither rule is a new follow-up: if the one before was ticked,
-both show, that one still ticked.
+Follow-ups are listed in the order they were said. How often the model gets this wrong is logged with each refresh, as
+`known`, `same` and `strays`: how many it was told, how many it recognised, and how many labels it gave that weren't its to
+give.
 
 ### Ticking a follow-up
 
@@ -1038,23 +1044,17 @@ with who made it and when, and a refresh saves around it, so one made while the 
 ### Into the note
 
 When the call ends, in the transaction that ends it, every ticked follow-up goes into the note's sealed manifest
-(`ticked`: its words, owner and due date, the IDs of every line it cites, the breakout room it was in, who ticked it and
-when), and the `call_notes` rows go. When the notes are written (`doneInNotes`), each tick is matched within its own part
-of the notes, the call's or its room's, against the follow-ups just written, which have new IDs and the notes model's own
-words. The transcript lines keep their IDs from the call into the note, which is what ties them together:
+(`ticked`: its ID, words, owner and due date, the lines behind it, the breakout room it was in, who ticked it and when),
+and the `call_notes` rows go. Writing the notes then works as a refresh does. The notes model is told what was ticked in
+the part it's writing, the call's or a room's, by label (`T1 (Kofi) Send the deck`), and each action it writes says which
+it is in `ticked`, or null, however it's worded and in whatever language the notes are in. A label it wasn't given is
+nothing, and one it already used stays with the first.
 
-- A written follow-up's lines are the lines of that part of the transcript within two seconds of its moment (`at`): the
-  model reads whole seconds off a line's mark.
-- The tick and the written follow-up are compared by `likeness`, as above, the plainest pairs first, and each written
-  follow-up takes one tick.
-- When a tick has no match and the words can't be compared, the place decides. That's when the written follow-up isn't in
-  the words of the lines at its moment, so most of what it says isn't there: the notes are in another language
-  (`notesLanguage`), where only names and numbers cross over. Then it's the written follow-up whose nearest line is behind
-  the tick, if it's the only one there and names nobody else. Two at that moment, and neither is marked.
-- A match is marked done, with a `done` change saying who ticked it and when, as if they'd ticked it in the note.
-- A tick nothing matches is added to that part's follow-ups as it was said, done, at its first line's moment, since
-  someone said it was done and the notes shouldn't lose that. So a follow-up the notes left out is there anyway, and one
-  they reworded past recognising shows twice, their wording open and the tick's done: marking the wrong one done would
+- A written follow-up that's a tick is marked done (`doneInNotes`), with a `done` change saying who ticked it and when, as
+  if they'd ticked it in the note.
+- A tick nothing was said to be is added to that part's follow-ups as it was said, done, at the moment of the lines behind
+  it, since someone said it was done and the notes shouldn't lose that. So a follow-up the notes left out is there anyway,
+  and one the model didn't recognise shows twice, its wording open and the tick's done: marking the wrong one done would
   be worse.
 
 A part of the notes that couldn't be written keeps its ticks waiting in `ticked`, and they're done when the organizer has
@@ -1599,24 +1599,30 @@ asked with nothing new or nobody watching, and what was said meanwhile taken up 
 when they're being written, a refresh that failed saying so and being tried again with the notes as they were, and replies
 that aren't what was asked for counting as failed; nobody charged, and the notes at the end charged as ever; Catch up and
 Ask unchanged; a guest's notes written from what they may read alone, in what reaches the notes model too, read-only, and
-showing what's ticked in everyone's; guests who can't read the same lines shared one run, and one who can't read other
-lines another; someone back from time away not reading notes that read what was said meanwhile, and a guest who missed
-nothing reading everyone's through a reload; someone added to the invite reading all of it from then on; someone asking to
+not showing what's ticked in everyone's; guests who can't read the same lines shared one run, and one who can't read
+other lines another; someone back from time away not reading notes that read what was said meanwhile, reading their own
+once they're newer than everyone's, with the transcript read once for it, and no run at all when it would say what they
+already read; one row for each person however often they come and go; someone with notes of their own told their first
+couldn't be written; a guest who missed nothing reading everyone's through a reload; someone added to the invite reading all of it from then on; someone asking to
 join and someone removed getting nothing; each breakout room's notes kept to the room, in what's read and in the prompts,
 the organizer visiting getting notes of its own, the main room's talk during rooms for the people who stayed and left out
-once rooms have closed, even with nothing new said, every line a follow-up cites counting for that, and a room paused on
-its own; a tick shared and nudging the room, kept through a refresh that rewords it, taken back, and made while the notes
-were being written; a ticked item the model stops listing kept, one nobody ticked hidden and given back its ID when it
-returns; a tick never moving to another follow-up with most of its words, another thing from the same sentence, another
-number or another person's; IDs kept in text without spaces; the newest 20 of a long call kept, and a ticked older one;
+once rooms have closed, even with nothing new said, a ticked follow-up worded from that talk no longer shown or told to
+the model, there or when a long call pushed it off the list, and still reaching the note, a room paused on its own, and a
+record bound to its part of the call; a tick shared and nudging the room, kept through a refresh that rewords it, taken back, and made while the notes
+were being written; a ticked item the model stops listing kept, with its ID if it returns, and one nobody ticked let go of;
+the notes model's word taken for which follow-up is which, in short items and other languages, with the labels in the
+prompt and never the IDs; an ID it wasn't told being something new, one it used twice staying with the first, and what's
+ticked staying when it says otherwise; the newest 20 of a long call kept, and a ticked older one;
 refusals (made-up IDs, another call's, the same organizer's other call, someone asking to join, an ended call, and someone
 invited who came in with rooms open, to notes that read what was said before they came); what was ticked done in the note, reworded or not, and added when the notes don't list it, with who ticked it, through writing the
 notes again, in notes that keep no transcript, from the lines the same save takes away, and waiting for notes that couldn't be written; nothing else marked done when the notes leave out what was
-ticked; the moment deciding for notes in French, and only when it's the one candidate; text without spaces in the note;
+ticked, whatever else the notes say; the model's word for which tick a written follow-up is, as far as it goes, in French
+and in text without spaces;
 notes off and paused sending nothing to the notes model with what was written readable and ticks still counting; a note
 stored before ticks were kept, and a call with no row yet; a note that can't be deleted while its call is live; the rows
 going when the call ends, with a refresh on its way finding nothing to save into, with the account, and by upkeep; and
-nothing readable in the row, receipts, objects, logs or on the wire, with a record copied to another call not opening.
+nothing readable in the row, receipts, objects, logs or on the wire, with a record copied to another view or another call
+not opening.
 
 `apps/api/src/catchup.integration.test.ts` covers catching up during a call: before you joined, since you
 joined and while you were away (a page that goes away and comes back), the last few minutes leaving out what was
@@ -1828,10 +1834,10 @@ What goes with each choice:
   a call of many guests all watching costs a run each every half a minute, as it did when every browser asked for itself.
 - **Live notes aren't refreshed for the last words.** Once notes are off or paused nothing more is read, so what was said
   in the last half minute before stays out of the live notes until they're back on. It's in the transcript and the note.
-- **Live follow-ups don't reach the note by ID.** The notes at the end are written afresh, so a tick finds its follow-up
-  by lines, moment and words ([Into the note](#into-the-note)), and can miss a thoroughly reworded one, which then shows
-  twice. In another language it goes by the moment alone, so a follow-up the notes left out could be taken for the one
-  other follow-up said at that very second.
+- **A follow-up's identity is the notes model's word.** Live, and into the note, it says which is which, and the server
+  can only check that the label is one it was given ([Follow-ups keep their IDs](#follow-ups-keep-their-ids)). A model that
+  doesn't recognise something shows it twice, the tick safe beside it; one that says the wrong label moves the tick to the
+  wrong item, which nothing here can tell. How often it strays is logged, and hasn't been measured against the real model.
 - **Catching up on what was shown.** Screen moments in catch-up need frames read during the call; shared
   screens are read for the notes after it, so a catch-up's evidence is transcript moments only. `Evidence` is the
   hook: screen moments join it as a kind of their own.

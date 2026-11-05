@@ -72,7 +72,7 @@ record recomputes the expected header, so a record copied to another row, owner 
 | `call-mls` | state key `call-mls:<id>` | call, place in the call's log, entry kind, and the part of the call's group it belongs to |
 | `call-move` | state key `call-move:<id>` | call, move |
 | `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
-| `call-notes-lines` | state key `call-notes:<id>` | the same (when each line that row read was said, and the lines it left out) |
+| `call-notes-lines` | state key `call-notes:<id>` | the same (the lines that row read, and the lines it left out) |
 | `meeting-answer` | state key `meeting-answers:<meetingId>` | meeting, and the hash of the address of whoever answered |
 | `call-ring` | state key `ring:<meetingId>` | meeting, ring (whom it's for and what they said) |
 | `transcript-clip` | state key `transcript:<noteId>` | note, clip tag |
@@ -316,8 +316,10 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   the note is finished and given to them.
 - **Live notes** follow the reading rule the live transcript follows, in what the notes model reads and not only in what's
   shown: everyone who may read the same lines shares notes written from those lines and no others, so a guest with the
-  link, or someone who came late into a breakout room, gets notes written only from what they were there for. Only people
-  who get the notes can tick a follow-up, in the notes everyone shares
+  link, or someone who came late into a breakout room, gets notes written only from what they were there for. What's
+  written can say anything that run read, whichever lines it cites, so nothing written from a line stays in front of, or
+  goes back to the model for, anyone who can't read it. Only people who get the notes can tick a follow-up, in the notes
+  everyone shares
   ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Breakout rooms' sections** are part of the note: everyone who can read it reads every room's, whichever room
   they were in, while during the call a room's talk is read only there
