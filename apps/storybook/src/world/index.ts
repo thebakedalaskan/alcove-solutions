@@ -4,25 +4,17 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, Team, WorkspaceTree
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
 } from '@alcove/api';
-import type { Troubles } from '../api/trouble';
+import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { BrowserSetup } from '../browser';
 import { ART, ME_ID } from './people';
 import { iso } from './clock';
 
-/** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
-export interface MoveSpec {
-  /** 22 letters, digits, `-` or `_`, as a claim is. */
-  claim: string;
-  title: string;
-  organizerName: string;
-  you: MoveIn['you'];
-  /** The microphone and camera as they were on the other device. */
-  media: MoveMedia;
-  /** How long it has left before it runs out, in seconds: none, and it ran out already. */
-  seconds?: number | undefined;
-}
+/** Words this browser wrote in a document that Alcove wouldn't take, as the story opens: on its page, and nowhere else. */
+export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
+/** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
+export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
 
 export interface World {
   /** Who's signed in, or nobody. */
@@ -41,6 +33,10 @@ export interface World {
   documents: DocumentLibrary;
   /** The workspaces you're in, each with everything in it you can open. */
   workspaces: WorkspaceTree[];
+  /** What each document says, by its ID. One without a page here is new: a title, and an empty line under it. */
+  pages: Record<string, Page>;
+  /** Who each document is shared with besides its workspace's own people, by its ID. */
+  shares: Record<string, ShareEntry[]>;
   /** Who's ringing you as the story opens. */
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */
