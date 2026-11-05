@@ -671,9 +671,12 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   kept of it is deleted at once; a copy on Alcove it couldn't reach is deleted once there's a connection.
 - **Signing out, or deleting the account, in a browser** deletes everything that browser [kept](#on-this-device)
   for the account, recordings waiting to upload among it, and the device key if no other account has any there. It
-  also forgets which notifications have shown there, and closes the ones still showing.
-  Settings' **Sign out** says first how many of the account's recordings here haven't uploaded, and signs out only
-  once that's chosen.
+  also forgets which notifications have shown there, and closes the ones still showing. Every other tab open there hears
+  it at once (`BroadcastChannel` `alcove-account`, carrying the account's ID and whether it was deleted), keeps nothing
+  more for the account until it signs in there again, and goes to the welcome page.
+  Settings' **Sign out** says first how many of the account's recordings here haven't uploaded, and whether anything
+  written here hasn't reached Alcove, which it can copy (only that account's own words, as plain text), and signs out
+  only once that's chosen.
 - **Deleting your account** (`DELETE /v1/account`) removes, in one transaction: its meetings, with their calls
   (chat, call links, MLS logs, live notes, moves to another device and rings included), live ones too; every note it organized, each the way deleting your
   own note does (shared-screen frames included), so everyone loses it; its `note_access` rows as a reader (found by its profile address's email index), so it's off every
