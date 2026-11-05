@@ -538,6 +538,10 @@ describe('who reads what of them', () => {
     const failed = await settle(back, (s) => s.liveNotes.error !== null, 3000);
     expect(failed.liveNotes.error).toBe(NOT_UPDATED);
     expect(texts(failed.liveNotes.notes?.decided ?? [])).toEqual([FIRST]);
+    // It's tried again after the half minute, and meanwhile looks don't read the transcript for it.
+    const tried = readsSoFar();
+    await sleep(700);
+    expect(readsSoFar()).toBe(tried);
     await later(back);
     // Nobody who may read it all is watching, so everyone's notes stay behind. Sam's run reads what Sam may read, and that's what Sam reads.
     const own = await notesOf(back, (n) => n.read.lines === 2);
