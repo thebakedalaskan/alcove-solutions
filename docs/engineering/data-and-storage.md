@@ -214,7 +214,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
   stream says `closed`, `unavailable`, as its only line. Its versions still read, and restoring one replaces what won't open
   and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
-  document that may only be slow.
+  document that may only be slow. What the server does to it for itself, reading, writing, compacting and searching it, costs
+  no worker while it's closed, and a job of those that runs out of time or memory closes it too. One that fails closes
+  nothing: a fold won't go past a row it can't read, and the document still opens without that row.
 
 ### What gets into a document
 

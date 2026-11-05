@@ -181,7 +181,7 @@ const byLimits = (p: Place, bytes: number, items: number, times = 1): boolean =>
 const tooLong = (p: Place, documentId: string, bytes: number, items: number) => new TooLargeError('This document is too long to add to. Delete something from it first.', { context: { workspaceId: p.workspaceId, documentId, bytes, items } });
 /** How far past its limit what's on a document's page can go on what isn't new content. Only what's deleted outright goes further. */
 const CEILING = 2;
-/** How much it can hold in all, as a multiple of that limit, whatever's on its page: what's been overwritten or deleted stays in memory too, at about a third of the cost. A worker opens this much of the worst shape measured, and runs out at about half as much again. */
+/** How much it can hold in all, as a multiple of that limit, whatever's on its page: what's been overwritten or deleted stays in memory too, at about a third of the cost. A worker opened 1.09 million structs of the worst shape measured, and ran out at 1.49 million. */
 const HOLDS = 6;
 /** The most new content one update's deletes can excuse: enough to join two lines, and little enough that deletes can't bring a paste in with them. */
 const EXCUSED_CONTENT = 4096;
@@ -1138,15 +1138,17 @@ async function syncFrom(d: Deps, p: Place, documentId: string, row: DocRow, afte
 }
 
 /**
- * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much closes,
- * so a poll asking again can't keep a worker on it, however many people are polling.
+ * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much, in time
+ * or memory, closes, so a poll asking again can't keep a worker on it, however many people are polling. One that failed has
+ * said something only about itself, and cost no time: a fold won't go past a row it can't read, and the document still opens
+ * without that row.
  */
 async function working<T>(p: Place, documentId: string, row: DocRow, job: () => Promise<T>): Promise<T> {
   if (row.closed) throw new UnavailableError('This document can’t be opened right now.', { context: { workspaceId: p.workspaceId, documentId } });
   try {
     return await job();
   } catch (e) {
-    if (e instanceof DocFailure) await closeFor(p, documentId, e);
+    if (e instanceof DocFailure && e.reason !== 'failed') await closeFor(p, documentId, e);
     throw e;
   }
 }
