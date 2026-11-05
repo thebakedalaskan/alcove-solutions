@@ -153,18 +153,23 @@ export function WsUnsavedBar({ why, saveable = false, children }: { why: WsUnsav
   );
 }
 
-/** What someone can do with words that didn't reach Alcove. Leave `onSaveAsNew` out for someone who can't make a document here. */
+/**
+ * What someone can do with words that didn't reach Alcove. Leave `onSaveAsNew` out for someone who can't make a document here,
+ * and both it and `discard` out while letting them go wouldn't work.
+ */
 export function WsRescue({ onCopy, onSaveAsNew, saving = false, discard }: {
   onCopy: () => void; onSaveAsNew?: (() => void) | undefined; saving?: boolean | undefined;
   /** The ask before they go: `WsDiscardAsk`. */
-  discard: WsPop;
+  discard?: WsPop | undefined;
 }) {
   return (
     <span className="wd-acts">
       <Button size="xs" icon="copy" onClick={onCopy}>Copy text</Button>
       {onSaveAsNew && <Button size="xs" icon="filePlus" loading={saving} onClick={onSaveAsNew}>Save as new document</Button>}
-      <WsPopover open={discard.open} onOpenChange={discard.onOpenChange} label="Discard what didn’t save" align="end"
-        anchor={<Button size="xs" variant="quiet">Discard</Button>}>{discard.content}</WsPopover>
+      {discard && (
+        <WsPopover open={discard.open} onOpenChange={discard.onOpenChange} label="Discard what didn’t save" align="end"
+          anchor={<Button size="xs" variant="quiet">Discard</Button>}>{discard.content}</WsPopover>
+      )}
     </span>
   );
 }
