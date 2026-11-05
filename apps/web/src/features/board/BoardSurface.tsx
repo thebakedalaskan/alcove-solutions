@@ -54,6 +54,8 @@ export interface BoardHandlers {
   onCall?: (() => void) | undefined;
   /** Following stopped from this side: a scroll, a zoom or Esc. */
   onFollow?: ((id: string | null) => void) | undefined;
+  /** Something to tell this person, such as what they were typing in being deleted. */
+  onSay?: ((text: string) => void) | undefined;
 }
 
 export interface BoardSurfaceProps extends BoardHandlers {
@@ -202,7 +204,7 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, mode, people = NO_PEOPLE, fresh = false, night = false, name, onCall, onFollow, className } = props;
+  const { doc, mode, people = NO_PEOPLE, fresh = false, night = false, name, onCall, onFollow, onSay, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -218,7 +220,8 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
   useLayoutEffect(() => {
     board.tell = (text) => { toast(text); };
     board.onFollow = onFollow;
-  }, [board, toast, onFollow]);
+    board.onSay = onSay;
+  }, [board, toast, onFollow, onSay]);
   useLayoutEffect(() => {
     const s = sheet.current, w = world.current;
     if (!s || !w) return undefined;

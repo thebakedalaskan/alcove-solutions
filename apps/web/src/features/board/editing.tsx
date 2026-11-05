@@ -16,6 +16,8 @@ export const STICKY = 150;
 const NEXT_GAP = 20;
 /** How long after the last key someone has stopped typing into nothing. */
 const KEYS_STOP_MS = 1200;
+/** How soon after a press losing focus is that press's doing. A tap moves focus only after the finger has lifted. */
+const PRESS_MS = 500;
 
 interface TextChange {
   start: number;
@@ -61,9 +63,9 @@ function carriedBy(place: number, delta: TextDelta): number {
 }
 
 /**
- * Keeps a textarea and a Y.Text the same until the returned function is called. While a word is being composed, as an IME
- * or a dead key does, the browser owns the field: writing to it would break the word. So what others type meanwhile
- * waits, and the finished word goes in where it now belongs.
+ * Keeps a textarea and a Y.Text the same until `stop`. While a word is being composed, as an IME or a dead key does, the
+ * browser owns the field: writing to it would break the word. So what others type meanwhile waits, and the finished word
+ * goes in where it now belongs, or sooner with `flush`.
  */
 export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown): { flush: () => void; stop: () => void } {
   const doc = text.doc;
@@ -162,7 +164,8 @@ export function holdKeys(then: () => void): void {
   };
   el.className = 'sr-only';
   el.tabIndex = -1;
-  el.setAttribute('aria-label', 'The sticky you were typing in has closed');
+  el.readOnly = true;
+  el.setAttribute('aria-label', 'What you were typing in has closed.');
   el.addEventListener('keydown', (e) => {
     if (e.metaKey || e.ctrlKey) return;
     e.preventDefault();
@@ -199,8 +202,19 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
         board.nextSticky();
       }
     };
-    // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
-    const blur = (): void => { if (document.activeElement !== el) board.finishEdit(); };
+    let pressed = -PRESS_MS;
+    const press = (e: PointerEvent): void => { pressed = e.timeStamp; };
+    const blur = (e: FocusEvent): void => {
+      // React puts focus back after moving a node, as a change of order does, so nothing's lost until that's over.
+      queueMicrotask(() => {
+        // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
+        const to = document.activeElement;
+        if (to === el || board.getSnapshot().edit !== id) return;
+        if ((!to || to === document.body) && e.timeStamp - pressed >= PRESS_MS) board.fieldLost();
+        else board.finishEdit();
+      });
+    };
+    addEventListener('pointerdown', press, true);
     el.addEventListener('keydown', key);
     el.addEventListener('blur', blur);
     el.focus({ preventScroll: true });
@@ -209,6 +223,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
     return () => {
       board.flushTyping = null;
       stop();
+      removeEventListener('pointerdown', press, true);
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };

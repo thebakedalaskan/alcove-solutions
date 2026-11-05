@@ -9,7 +9,7 @@
 import type { LiveStore } from '@alcove/api';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
-  type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
+  type BoardObject, type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
@@ -97,6 +97,8 @@ const POP_AT_ONCE = 24;
 const NEAR_EVERY_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
+/** What's said when what someone is typing in is deleted under them. */
+const DELETED: Partial<Record<BoardObject['k'], string>> = { note: 'This sticky was deleted.', text: 'This text was deleted.', shape: 'This shape was deleted.' };
 
 export class Board implements LiveStore<BoardState> {
   readonly doc: Y.Doc;
@@ -108,6 +110,8 @@ export class Board implements LiveStore<BoardState> {
   tell: (text: string) => void = () => undefined;
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
+  /** Told what to say to this person about what just happened to them. */
+  onSay: ((text: string) => void) | undefined;
   /** Ends whatever gesture is under way. The sheet's listeners fill this in. */
   endGesture: () => void = () => undefined;
   /** Writes in a word still being composed. The field being typed in fills this in. */
@@ -233,7 +237,12 @@ export class Board implements LiveStore<BoardState> {
     if (arrived.length && arrived.length <= POP_AT_ONCE) patch.landed = new Set([...landed, ...arrived.map((o) => o.id)]);
     this.set(patch);
     if (patch.landed && this.sheet) this.later('landed', tokenMs(this.sheet, '--duration-2') * 2, () => this.set({ landed: NOTHING }));
-    if (edit && !view.byId.has(edit)) this.editTaken();
+    if (edit && !view.byId.has(edit)) {
+      this.editTaken();
+      const kind = was.byId.get(edit)?.k;
+      const said = kind && DELETED[kind];
+      if (said) this.onSay?.(said);
+    }
     if (this.look.mini || (!was.objects.length && this.untouched)) this.fitAll(false);
     this.settleNear();
   };
@@ -403,6 +412,13 @@ export class Board implements LiveStore<BoardState> {
   /** Typing ended without this person asking. They may not know yet, so what they type next waits, or it would go to the call. */
   private editTaken(): void {
     if (this.state.edit && typing(document.activeElement) && this.sheet?.contains(document.activeElement)) holdKeys(() => this.focusSheet());
+    this.finishEdit();
+  }
+
+  /** The field lost focus with nothing pressed and nothing taking it, because something moved or hid it. Focus has already gone to the page, so what comes next has to wait all the same. */
+  fieldLost(): void {
+    if (!this.state.edit) return;
+    holdKeys(() => this.focusSheet());
     this.finishEdit();
   }
 
