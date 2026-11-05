@@ -382,7 +382,7 @@ and this way it runs through the same auth, origin check and tests as everything
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
-  seat, and the seats each has been worked out for, and nothing about what's on it. It goes when the call ends. A call stored
+  seat, and the seats and addresses each has been worked out for, and nothing about what's on it. It goes when the call ends. A call stored
   before this was kept reads as having none
   ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
