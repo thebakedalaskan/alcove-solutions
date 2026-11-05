@@ -81,7 +81,8 @@ export function Documents({ picked, brought = [], back, foot }: {
   const full = ids.length >= MAX_CALL_DOCUMENTS;
   const toggle = (id: string) => setIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : full ? list : [...list, id]));
   const docs = all.filter((d) => ids.includes(d.id));
-  const anything = all.length > 0 || lost.length > 0;
+  /* Until the library is read everything on the call looks lost, so nothing here counts until it is. */
+  const anything = library.isSuccess && (all.length > 0 || lost.length > 0);
   const options = places.map((p) => ({ value: p.id, label: p.label }));
 
   return (

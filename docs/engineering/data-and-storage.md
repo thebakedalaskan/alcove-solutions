@@ -447,7 +447,7 @@ and this way it runs through the same auth, origin check and tests as everything
   it's still there and who can open it are read from its workspace each time the call is
   ([Privacy › Brought to a call](privacy-keys-and-sessions.md#brought-to-a-call)). An item's own ID doesn't say which
   workspace it's in, so the ID a call keeps names both, `<workspace_id>.<item ID>`, 45 characters; to the wire it's one
-  opaque ID, which is why `IDSchema` needed no change. A call stored with the demo catalog's IDs (`vandelay.…`, `own.…`)
+  opaque ID (`IDSchema` puts no limit on an ID). A call stored with the old demo catalog's IDs (`vandelay.…`, `own.…`)
   still opens, with those not listed: they look like nothing else, so they find nothing, and they stay in the manifest
   until the organizer next changes what's brought.
 - **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it

@@ -215,6 +215,8 @@ describe('a call’s documents', () => {
     // Home reads them the same way, one workspace at a time however many calls it lists.
     expect(await upcomingOn(ann, m.id)).toEqual(opened);
     expect(await upcomingOn(dee, m.id)).toEqual(closed);
+    // What someone outside the workspace was given is theirs to bring too, and the same ID.
+    expect((await cas.api.meetings.create({ ...soon(), documents: [flow] })).documents).toEqual([opened[1]]);
 
     // A call keeps the ID and nothing else, so a new name reaches it at once, and who can open it is decided each time.
     await ann.api.workspaces.items.rename(id, board, 'Onboarding, redrawn');
