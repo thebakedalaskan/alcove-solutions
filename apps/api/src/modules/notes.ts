@@ -6,9 +6,11 @@
  * only after that check.
  */
 import {
-  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema, minutesLabel,
-  type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type GroupShare, type Inbox, type LinePatch, type Note, type NoteKind, type NoteProgress,
-  type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RoomNote, type ScreenMoment, type Speaker, type TranscriptLine
+  ActionItemSchema, CaptureGapSchema, ChapterSchema, DecisionSchema, InferenceEvidenceSchema, NoteKindSchema, NoteStatusSchema, QuestionSchema, RoomNoteSchema, ScreenMomentSchema, TranscriptLineSchema,
+  isAssignee, isBy, isProposer, mayAssign, mayChangeAction, mayDecide, mayDispute, mayRewordDecision, minutesLabel,
+  type ActionItem, type ActionPatch, type ActionProposal, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type DecisionProposal, type GroupShare, type Inbox, type LinePatch,
+  type Note, type NoteKind, type NoteProgress, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision, type Person, type Question, type QuestionPatch, type Received, type Recipient, type RecipientRole,
+  type RoomNote, type ScreenMoment, type Speaker, type TranscriptLine
 } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
@@ -22,6 +24,7 @@ import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type 
 import { me, profile, unpin } from './account';
 import * as additions from './additions';
 import { noteObjects, queueDelete, segments } from './audio';
+import { entriesOf } from './backing';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
 import { MeetingManifest } from './meetings';
 import * as personal from './personal';
@@ -351,9 +354,10 @@ export async function get(o: Owner, id: string): Promise<Note> {
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
   const seriesId = await seriesOf(l);
+  const { decisions, questions, actions, rooms } = entriesOf(m);
   return {
-    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms: m.rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, chapters: m.chapters,
+    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
     suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
@@ -458,57 +462,116 @@ export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> 
   return parts;
 }
 /**
- * What waits on this person across every note they have, their own and ones shared with them, newest
- * note first: follow-ups that are theirs and not done, and decisions in written notes nobody has
- * confirmed or rejected. Notes they removed aren't theirs any more, so nothing from them is listed.
+ * What waits on this person across every note they have, their own and ones shared with them, newest note first:
+ * follow-ups that are theirs and not done; decisions in written notes nobody has confirmed or rejected and that they can
+ * confirm, unless they proposed one or said it wasn't decided, which is already their answer; and, in notes they
+ * organized, confirmed decisions someone disputes, which are theirs to settle. Notes they removed aren't theirs any more,
+ * so nothing from them is listed, and each entry comes with what backs it as the note stands now.
  */
 export async function inbox(o: Owner): Promise<Inbox> {
   const email = await myEmail(o);
   const all = await everyNote(o, email);
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
-  const from = (l: Located) => ({ noteId: l.note.itemId, noteTitle: l.note.manifest.title, noteStartedAt: l.note.manifest.startedAt });
+  const readerIn = (l: Located): NoteReader => ({ id: o.ownerId, email, role: roleIn(l) });
+  const from = (l: Located) => ({ noteId: l.note.itemId, noteTitle: l.note.manifest.title, noteStartedAt: l.note.manifest.startedAt, role: roleIn(l) });
+  const waiting = (d: Decision, r: NoteReader) => (d.state === 'confirmed' ? r.role === 'organizer' && d.disputes.length > 0
+    : d.state === 'proposed' && mayDecide(d, 'confirmed', r) && !isProposer(d, r) && !d.disputes.some((x) => isBy(x.by, r)));
+  const read = all.map((l) => ({ l, ...entriesOf(l.note.manifest) }));
   return {
-    followUps: all.flatMap((l) => actionsOf(l.note.manifest)
-      .filter((a) => !a.done && a.owner?.person && same(a.owner.person.email, email)).map((a): OpenAction => ({ ...a, ...from(l) }))),
-    decisions: all.filter((l) => l.note.manifest.status === 'ready')
-      .flatMap((l) => decisionsOf(l.note.manifest).filter((d) => d.state === 'proposed').map((d): PendingDecision => ({ ...d, ...from(l) })))
+    followUps: read.flatMap(({ l, actions, rooms }) => [...actions, ...rooms.flatMap((r) => r.actions)]
+      .filter((a) => !a.done && isAssignee(a, { email })).map((a): OpenAction => ({ ...a, ...from(l) }))),
+    decisions: read.filter(({ l }) => l.note.manifest.status === 'ready')
+      .flatMap(({ l, decisions, rooms }) => [...decisions, ...rooms.flatMap((r) => r.decisions)].filter((d) => waiting(d, readerIn(l))).map((d): PendingDecision => ({ ...d, ...from(l) })))
   };
 }
 
 /* ---------- confirming what the notes say ---------- */
 
-/** A note that's written, located for someone who has it, and who they are for its history. */
+/** How someone has a note, as a change to it records. */
+const roleIn = (l: Located): RecipientRole => (l.mine ? 'organizer' : l.note.manifest.shared.some((x) => same(x.email, l.as)) ? 'shared' : 'invited');
+
+/** A note that's written, located for someone who has it, and who they are for its history and its grants. */
 async function writtenNote(o: Owner, noteId: string) {
   const l = await locate(o, noteId);
   if (l.note.manifest.status !== 'ready') throw new ConflictError('These notes are still being written.', { context: { noteId, status: l.note.manifest.status } });
   const p = await profile(o);
-  const by: Change['by'] = { name: p.name, email: p.email };
-  return { ...l, by, at: new Date().toISOString() };
+  const role = roleIn(l);
+  const by: Change['by'] = { id: o.ownerId, name: p.name, email: p.email, as: role };
+  const reader: NoteReader = { id: o.ownerId, email: p.email, role };
+  return { ...l, by, reader, at: new Date().toISOString() };
 }
 
+/** The most changes a decision, open question or follow-up keeps in the note (`kept`). Nothing reads the note's earlier revisions, so past this they're out of the history. */
+const ENTRY_HISTORY = 40;
+/** The most decisions or follow-ups one part of a note can hold: the notes write 12 and 20, and every change copies the note. */
+const MAX_ENTRIES = 60;
+
+/** Entries in the order of their moments, as the notes write them; ones without a moment last. */
+const inOrder = <T extends { at?: number | undefined }>(xs: T[]): T[] => [...xs].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY));
+
+/** Why someone can't move a decision where they asked to. Refusals name nobody, so no name reaches a log line. */
+function decisionRefusal(d: Decision, to: Decision['state'], r: NoteReader): string {
+  if (to === 'rejected') return 'Only the organizer can say a decision wasn’t decided. You can say you don’t think it was.';
+  if (to === 'confirmed' && r.role === 'shared') return 'Only the organizer and people invited to the call can confirm a decision. You can say you don’t think it was decided.';
+  if (to === 'confirmed' && d.state === 'proposed') return 'Someone else has to confirm words you wrote.';
+  if (to === 'confirmed' && d.state === 'rejected') return 'Only the organizer can confirm what they said wasn’t decided.';
+  return 'Only the organizer, or whoever confirmed this decision, can change where it stands.';
+}
+/** Refused when it isn't what they read: someone may have changed it since, and that isn't what they'd be agreeing to. */
+const CHANGED = 'This changed after you opened it, so nothing was saved. Read it again.';
 
 /**
- * Confirms a decision, says it wasn't decided, puts it back to proposed, rewords it, or says a
- * confirmed one no longer holds: the call's, or a breakout room's. Anyone who has the notes can, and everyone sees who did.
+ * Moves a decision, the call's or a breakout room's, along (`grants.ts` says who may), rewords it, or says it wasn't
+ * decided as someone who can't reject it. New words on a confirmed decision put it back to proposed, since what people
+ * confirmed was the words before, and only the organizer can confirm new words of their own in the same change: anyone
+ * else's words take someone else. Confirming says what was read, and is refused if it says something else by now. A
+ * dispute stands until whoever raised it takes it back, or the organizer settles the decision; their confirming again is
+ * how a confirmed one is settled.
  */
 export async function updateDecision(o: Owner, noteId: string, decisionId: string, patch: DecisionPatch): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
   let made: Change['what'][] = [];
   await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
     const d = decisionsOf(n).find((x) => x.id === decisionId);
     if (!d) throw new NotFoundError('That decision doesn’t exist.', { context: { noteId, decisionId } });
+    const context = { noteId, decisionId, state: d.state };
+    if (patch.seen && patch.seen.text !== d.text) throw new ConflictError(CHANGED, { context });
     const changes = [...d.changes];
     let next: Decision = d;
-    if (patch.text !== undefined && patch.text !== d.text) { changes.push({ by, at, what: 'reworded', before: d.text, after: patch.text }); next = { ...next, text: patch.text }; }
-    if (patch.state !== undefined && patch.state !== d.state) {
+    const text = patch.text;
+    const reworded = text !== undefined && text !== d.text;
+    if (reworded) {
+      if (!mayRewordDecision(d, reader)) throw new ForbiddenError('Only the organizer, or whoever wrote or confirmed this decision, can reword it now.', { context });
+      changes.push({ by, at, what: 'reworded', before: d.text, after: text });
+      next = { ...next, text };
+    }
+    const to = patch.state ?? (reworded && d.state === 'confirmed' ? 'proposed' : d.state);
+    // Confirming what's confirmed means something only when it stands behind new words, or settles a dispute: the organizer's, either way.
+    const settling = patch.state === 'confirmed' && d.state === 'confirmed' && reader.role === 'organizer' && (reworded || d.disputes.length > 0);
+    if (reworded && to === 'confirmed' && d.state === 'confirmed' && !settling) throw new ForbiddenError('Someone else has to confirm words you wrote.', { context });
+    if (to !== d.state || settling) {
       // Only something that was decided can stop holding; what nobody confirmed is reopened or said not to be decided.
-      if (patch.state === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context: { noteId, decisionId, state: d.state } });
-      changes.push({ by, at, what: patch.state === 'proposed' ? 'reopened' : patch.state });
-      next = { ...next, state: patch.state };
+      if (to === 'superseded' && d.state !== 'confirmed') throw new ConflictError('Only a confirmed decision can stop holding.', { context });
+      // Asked with the words as they are after this change, so writing them and confirming them is one person doing both.
+      if (to !== d.state && !mayDecide({ state: d.state, changes }, to, reader)) throw new ForbiddenError(decisionRefusal(d, to, reader), { context });
+      changes.push({ by, at, what: to === 'proposed' ? 'reopened' : to });
+      const settled = reader.role === 'organizer' && (to === 'confirmed' || to === 'rejected');
+      next = { ...next, state: to, disputes: settled ? [] : to === 'confirmed' ? next.disputes.filter((x) => !isBy(x.by, reader)) : next.disputes };
+    }
+    if (patch.dispute !== undefined) {
+      const had = next.disputes.some((x) => isBy(x.by, reader));
+      if (patch.dispute && !had) {
+        if (!mayDispute({ state: next.state, changes }, reader)) throw new ForbiddenError('You can’t dispute this decision: it’s yours to change, or it’s settled.', { context });
+        changes.push({ by, at, what: 'disputed' });
+        next = { ...next, disputes: [...next.disputes, { by, at }] };
+      } else if (!patch.dispute && had) {
+        changes.push({ by, at, what: 'undisputed' });
+        next = { ...next, disputes: next.disputes.filter((x) => !isBy(x.by, reader)) };
+      }
     }
     made = changes.slice(d.changes.length).map((x) => x.what);
     // Item IDs are the note's own, so the one list that has it changes, the call's or a room's.
-    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, changes } : x));
+    const swap = (xs: Decision[]) => xs.map((x) => (x.id === decisionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, decisions: swap(n.decisions), rooms: n.rooms.map((r) => ({ ...r, decisions: swap(r.decisions) })) } : n;
   }));
   nlog.info('decision changed', { noteId, decisionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
@@ -527,19 +590,29 @@ export async function updateQuestion(o: Owner, noteId: string, questionId: strin
     if (patch.text !== undefined && patch.text !== q.text) { changes.push({ by, at, what: 'reworded', before: q.text, after: patch.text }); next = { ...next, text: patch.text }; }
     if (patch.state !== undefined && patch.state !== q.state) { changes.push({ by, at, what: patch.state === 'answered' ? 'answered' : 'reopened' }); next = { ...next, state: patch.state }; }
     made = changes.slice(q.changes.length).map((x) => x.what);
-    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, changes } : x));
+    const swap = (xs: Question[]) => xs.map((x) => (x.id === questionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
     return made.length ? { ...n, questions: swap(n.questions), rooms: n.rooms.map((r) => ({ ...r, questions: swap(r.questions) })) } : n;
   }));
   nlog.info('question changed', { noteId, questionId, changes: made.join(',') || 'none', mine: owner.ownerId === o.ownerId });
   return get(o, noteId);
 }
 
+/** Who a follow-up can go to, by address: the organizer, or someone who has the notes now, so whoever it's for can see it. */
+function assignable(email: string, organizer: Person, holding: Set<string>, owner: Owner, context: Record<string, string>): Speaker {
+  if (!same(email, organizer.email) && !holding.has(b64u(emailIndex(owner, email)))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context });
+  const person = same(email, organizer.email) ? organizer : personOf(email);
+  return { name: nameOf(person), person };
+}
+
 /**
- * Changes a follow-up, the call's or a breakout room's. Anyone who has the notes can give it to someone who has them
- * too, reword it, date it or tick it. Only the person it's for can take it on: the notes only ever suggest.
+ * Changes a follow-up, the call's or a breakout room's, as far as `grants.ts` lets this person: `takeOn` is the person
+ * it's for saying they'll do it, and nobody else can, since the notes only ever suggest. Taking it on, or giving it to
+ * yourself, says what was read, and is refused if it says something else by now. Taking the owner off is that person
+ * saying it isn't theirs, or the organizer deciding it isn't. Whatever someone took on stays as they agreed to it: the
+ * organizer changing its words or its date asks them again.
  */
 export async function updateAction(o: Owner, noteId: string, actionId: string, patch: ActionPatch): Promise<Note> {
-  const { owner, by, at } = await writtenNote(o, noteId);
+  const { owner, by, at, reader } = await writtenNote(o, noteId);
   const organizer = await me(owner);
   let made: Change['what'][] = [];
   await tx(owner.pool, async (c) => {
@@ -549,41 +622,63 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
     await updateNote(owner, c, noteId, (n) => {
       const a = actionsOf(n).find((x) => x.id === actionId);
       if (!a) throw new NotFoundError('That follow-up doesn’t exist.', { context: { noteId, actionId } });
+      const context = { noteId, actionId };
+      const taking = patch.takeOn === true || (typeof patch.owner === 'string' && same(patch.owner, by.email) && !isAssignee(a, reader));
+      if (taking && !patch.seen) throw new ValidationError('Say what you read.', { context });
+      if (patch.seen && (patch.seen.text !== a.text || patch.seen.due !== (a.due ?? null))) throw new ConflictError(CHANGED, { context });
+      const changing = () => { if (!mayChangeAction(a, reader)) throw new ForbiddenError('Only the organizer, or whoever took this on, can change it now.', { context }); };
+      const assigning = () => { if (!mayAssign(a, reader)) throw new ForbiddenError('Only the organizer, or the person it’s for, can say who this is for.', { context }); };
       const changes = [...a.changes];
       let next: ActionItem = a;
-      if (patch.text !== undefined && patch.text !== a.text) { changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text }); next = { ...next, text: patch.text }; }
+      let agreedTo = false;
+      if (patch.text !== undefined && patch.text !== a.text) {
+        changing();
+        changes.push({ by, at, what: 'reworded', before: a.text, after: patch.text });
+        next = { ...next, text: patch.text };
+        agreedTo = true;
+      }
       if (patch.owner === null && next.owner) {
-        changes.push({ by, at, what: 'reassigned', before: next.owner.name });
+        assigning();
+        // From the person it's for, that's their answer: not mine. From the organizer, it's taking it away.
+        changes.push({ by, at, what: isAssignee(a, reader) ? 'declined' : 'reassigned', before: next.owner.name });
         const { owner: _gone, ...rest } = next;
         void _gone;
         next = { ...rest, takenOn: false };
       } else if (typeof patch.owner === 'string' && !(next.owner?.person && same(next.owner.person.email, patch.owner))) {
-        const email = patch.owner;
-        // Follow-ups go to people who have the notes now, so whoever it's for can see it.
-        if (!same(email, organizer.email) && !holding.has(b64u(emailIndex(owner, email)))) throw new ValidationError('Share the notes with them first: follow-ups go to people who have the notes.', { context: { noteId, actionId } });
-        const person = same(email, organizer.email) ? organizer : personOf(email);
-        const name = nameOf(person);
+        assigning();
+        const to = assignable(patch.owner, organizer, holding, owner, context);
         // Giving it to yourself is taking it on; anyone else has to say yes themselves.
-        const self = same(email, by.email);
-        changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: name });
-        next = { ...next, owner: { name, person }, takenOn: self };
+        const self = same(patch.owner, by.email);
+        changes.push({ by, at, what: self ? 'took-on' : 'reassigned', ...(next.owner ? { before: next.owner.name } : {}), after: to.name });
+        next = { ...next, owner: to, takenOn: self };
       }
       if (patch.takeOn) {
-        if (!next.owner?.person || !same(next.owner.person.email, by.email)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context: { noteId, actionId } });
+        if (!isAssignee(next, reader)) throw new ForbiddenError('Only the person a follow-up is for can take it on. You can give it to yourself.', { context });
         if (!next.takenOn) { changes.push({ by, at, what: 'took-on' }); next = { ...next, takenOn: true }; }
       }
       if (patch.due !== undefined) {
         const due = patch.due || undefined;
         if (due !== next.due) {
+          changing();
           changes.push({ by, at, what: 'due', ...(next.due ? { before: next.due } : {}), ...(due ? { after: due } : {}) });
           const { due: _old, ...rest } = next;
           void _old;
           next = due ? { ...rest, due } : rest;
+          agreedTo = true;
         }
       }
-      if (patch.done !== undefined && patch.done !== next.done) { changes.push({ by, at, what: patch.done ? 'done' : 'undone' }); next = { ...next, done: patch.done }; }
+      // What someone took on, changed by someone else: it's not what they said they'd do any more, so they say again.
+      if (agreedTo && a.takenOn && next.takenOn && !isAssignee(a, reader) && !isAssignee(next, reader)) {
+        changes.push({ by, at, what: 'reopened' });
+        next = { ...next, takenOn: false };
+      }
+      if (patch.done !== undefined && patch.done !== next.done) {
+        changing();
+        changes.push({ by, at, what: patch.done ? 'done' : 'undone' });
+        next = { ...next, done: patch.done };
+      }
       made = changes.slice(a.changes.length).map((x) => x.what);
-      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, changes } : x));
+      const swap = (xs: ActionItem[]) => xs.map((x) => (x.id === actionId ? { ...next, changes: kept(changes, ENTRY_HISTORY) } : x));
       return made.length ? { ...n, actions: swap(n.actions), rooms: n.rooms.map((r) => ({ ...r, actions: swap(r.actions) })) } : n;
     });
   });
@@ -591,15 +686,89 @@ export async function updateAction(o: Owner, noteId: string, actionId: string, p
   return get(o, noteId);
 }
 
+/* ---------- adding to what the notes say ---------- */
+
+/** The part of a note a proposal goes in: the call's, or a breakout room's section. A room that isn't in the note is refused. */
+function partOf(n: NoteManifest, noteId: string, room: string | undefined) {
+  if (room === undefined) return { lines: n.transcript ?? [], decisions: n.decisions, actions: n.actions, put: (x: Partial<Pick<NoteManifest, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, ...x }) };
+  const r = n.rooms.find((x) => x.id === room);
+  if (!r) throw new NotFoundError('That breakout room isn’t in these notes.', { context: { noteId, room } });
+  return { lines: r.transcript, decisions: r.decisions, actions: r.actions, put: (x: Partial<Pick<RoomNote, 'decisions' | 'actions'>>): NoteManifest => ({ ...n, rooms: n.rooms.map((y) => (y.id === room ? { ...y, ...x } : y)) }) };
+}
+
+/** The lines someone says a proposal rests on, and the moment of the first, from that part of the note alone. */
+function linesOf(part: TranscriptLine[], ids: string[] | undefined, noteId: string): { lines: string[]; at?: number } {
+  const lines = [...new Set(ids ?? [])];
+  const found = lines.map((id) => part.find((l) => l.id === id));
+  if (found.some((l) => !l)) throw new ValidationError('That line isn’t in this part of the notes.', { context: { noteId } });
+  const first = found[0];
+  return { lines, ...(first ? { at: Math.round(first.at) } : {}) };
+}
+
+/**
+ * Adds a decision the notes didn't hear, in the words of someone who has them, the call's or a breakout room's. It
+ * starts proposed, with who proposed it as its first change, and takes someone else confirming it. Nothing else adds to
+ * the shared notes: whatever someone keeps for themselves stays theirs unless they send it here. The same words again
+ * add nothing, so a retry can't add it twice.
+ */
+export async function proposeDecision(o: Owner, noteId: string, p: DecisionProposal): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  let added = false;
+  await tx(owner.pool, (c) => updateNote(owner, c, noteId, (n) => {
+    const part = partOf(n, noteId, p.room);
+    if (part.decisions.some((x) => x.text === p.text)) return n;
+    if (part.decisions.length >= MAX_ENTRIES) throw new ConflictError('There are too many decisions here to add another.', { context: { noteId } });
+    const d: Decision = { id: id128(), text: p.text, ...linesOf(part.lines, p.lines, noteId), state: 'proposed', against: [], disputes: [], changes: [{ by, at, what: 'proposed' }] };
+    added = true;
+    return part.put({ decisions: inOrder([...part.decisions, d]) });
+  }));
+  nlog.info('decision proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
+/**
+ * Adds a follow-up the notes didn't hear, as `proposeDecision` does. Who it's for and when it's due are only suggestions
+ * until that person takes it on, unless it's for whoever proposed it.
+ */
+export async function proposeAction(o: Owner, noteId: string, p: ActionProposal): Promise<Note> {
+  const { owner, by, at } = await writtenNote(o, noteId);
+  const organizer = await me(owner);
+  let added = false;
+  await tx(owner.pool, async (c) => {
+    await lockItem(owner, c, noteId);
+    const holding = await holders(owner, c, noteId);
+    await updateNote(owner, c, noteId, (n) => {
+      const part = partOf(n, noteId, p.room);
+      if (part.actions.some((x) => x.text === p.text)) return n;
+      if (part.actions.length >= MAX_ENTRIES) throw new ConflictError('There are too many follow-ups here to add another.', { context: { noteId } });
+      const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
+      const a: ActionItem = {
+        id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: !!p.owner && same(p.owner, by.email), ...(p.due ? { due: p.due } : {}), done: false,
+        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }]
+      };
+      added = true;
+      return part.put({ actions: inOrder([...part.actions, a]) });
+    });
+  });
+  nlog.info('follow-up proposed', { noteId, added, lines: p.lines?.length ?? 0, inRoom: p.room !== undefined, assigned: p.owner !== undefined, mine: owner.ownerId === o.ownerId });
+  return get(o, noteId);
+}
+
 /* ---------- correcting the transcript ---------- */
 
 /** The most corrections a line keeps: who changed it and when. The first (what was heard) always stays, then the latest. */
 const LINE_HISTORY = 20;
-/** A line's corrections, kept within LINE_HISTORY: the first, which says what was heard, and the latest after it. */
-const kept = (changes: Change[]): Change[] => {
-  const [first, ...rest] = changes;
-  return first && changes.length > LINE_HISTORY ? [first, ...rest.slice(-(LINE_HISTORY - 1))] : changes;
-};
+/**
+ * Changes kept within a limit: the first, which says what something was to begin with; the latest of every kind, since
+ * who may do what and what the note says are read from them (who proposed it, who confirmed it, who said it wasn't
+ * theirs); and then as many of the latest as fit. Saying something and taking it back can't push those out.
+ */
+function kept(changes: Change[], limit: number): Change[] {
+  if (changes.length <= limit) return changes;
+  const keep = new Set<number>([0, ...new Map(changes.map((c, i) => [c.what, i])).values()]);
+  for (let i = changes.length - 1; i >= 0 && keep.size < limit; i--) keep.add(i);
+  return changes.filter((_, i) => keep.has(i));
+}
 
 /**
  * Who a line can be said by: anyone the transcript already names (guests by the name they joined with), the organizer,
@@ -671,7 +840,7 @@ export async function correctLine(o: Owner, noteId: string, lineId: string, patc
     }
     made = changes.map((x) => x.what);
     if (!changes.length) return n;
-    const corrected: TranscriptLine = { ...next, changes: kept([...(line.changes ?? []), ...changes]) };
+    const corrected: TranscriptLine = { ...next, changes: kept([...(line.changes ?? []), ...changes], LINE_HISTORY) };
     const swap = (ls: TranscriptLine[]) => ls.map((x) => (x.id === lineId ? corrected : x));
     return inRoom ? { ...n, rooms: n.rooms.map((r) => (r.id === inRoom.id ? { ...r, transcript: swap(r.transcript) } : r)) } : { ...n, transcript: swap(n.transcript ?? []) };
   }));
