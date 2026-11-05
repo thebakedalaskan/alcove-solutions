@@ -1258,7 +1258,12 @@ function InCall({ session }: { session: CallSession }) {
   const [resizing, setResizing] = useState(false);
   const [front, setFront] = useState<Leaf | null>(null);
   const setApart = panels.apart || panels.people !== 'tiles';
-  const surfaces = { ws: work.open, board: false };
+  /*
+   * Once the call is over for this tab (it ended, or you're leaving), the workspace goes at once: its streams close and it stops
+   * saying where you are, while the sheet says what happened.
+   */
+  const callOver = ended !== null || leaving;
+  const surfaces = { ws: work.open && !callOver, board: false };
   const zenBox = zenOn ? zenRoom(size, horizon) : null;
   const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: zenBox, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
@@ -1294,9 +1299,9 @@ function InCall({ session }: { session: CallSession }) {
     const shown = new Map([...seats].flatMap(([id, s]) => { const r = rects[s]; return r ? [[id, r] as const] : []; }));
     return {
       box: A.apart ? zenBox ?? { x: 0, y: 0, w: size.w, h: size.h } : rects.stage ?? solved.box, top, bottom, ratio: layout.prefs.ratio, split: layout.layout.split,
-      panels: A.apart ? { shares: shown, people: rects.people ?? null, mode: A.people, horizon, loud: new Set(loudKey.split(' ')), small: A.phone } : null
+      panels: A.apart ? { shares: shown, people: rects.people ?? null, mode: A.people, horizon, loud: new Set(loudKey.split(' ')), small: A.phone, sharesLast: surfaces.ws } : null
     };
-  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey, zenKey]);
+  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey, zenKey, surfaces.ws]);
   const clear = mainRoom(solved);
   /** What a panel is called, on its handle and for the keyboard. */
   const panelName = (leaf: Leaf): string => {
@@ -1399,7 +1404,7 @@ function InCall({ session }: { session: CallSession }) {
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
-          ws={work.mounted ? () => (
+          ws={work.mounted && !callOver ? () => (
             <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} zen={zenOffered ? zenOn : null}
               listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}

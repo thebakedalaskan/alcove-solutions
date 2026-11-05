@@ -1229,8 +1229,12 @@ share picker, the leave sheet and the device pickers.
   nobody: nothing ever stands on it. Those there's no room for stay mounted, out of sight. Someone rung waits in a tile
   among the tiles; among arches or on the horizon they're in People. A panel of people has no stage to have a corner
   of, so your own picture is one of them; hidden, its chip waits under the tiles. Nothing here changes while nothing
-  else is on the stage: hiding people then says it applies once the workspace is open or something is shared. With people on
-  the horizon toasts sit to the right of the dock, so they never cover the foot of the list.
+  else is on the stage: hiding people then says it applies once the workspace is open or something is shared. Beside the
+  workspace, a share waiting among the people comes after them, as the canvas has it; in an ordinary call it leads. A
+  share tile's name keeps room for its Show it only when it has one.
+- **Toasts in a call** sit left of the dock from 1280 px, spaced as the canvas spaces them so that someone's share is offered
+  on one line, and right of it when people are on the horizon, so they never cover the foot of the list. Narrower, there's
+  no room for one line beside the dock, so they go above it, in the middle.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: where the
   panels sit; Auto, Speaker or Grid; up to six pins, which share the main stage (in Grid they come first and bigger);
   the order you put people in; who you made bigger; how much room shared screens get beside the people; and where you
