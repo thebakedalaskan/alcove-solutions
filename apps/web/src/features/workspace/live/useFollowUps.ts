@@ -7,10 +7,9 @@ import { errorMessage, type CallState, type DocFollowUp, type Person } from '@al
 import { wsToast, type WsFollowUp } from '@alcove/ui';
 import { useCallback, useMemo, useState } from 'react';
 import { useLive } from '~/lib/live';
-import type { Ws } from '../context';
 import { dayWords, dueWords } from './dates';
+import type { LiveHost } from './host';
 import { clockAt, personNamed, sameName } from './lines';
-import type { LiveCall } from './types';
 
 /** A row, what it takes to tick it, and whether it's yours. */
 export interface FollowUpRow extends WsFollowUp { mine: boolean; ticks: ((done: boolean) => Promise<void>)[]; said: { text: string; owner?: string | undefined; due?: string | undefined } }
@@ -24,13 +23,12 @@ function isYours(d: DocFollowUp, me: Person | undefined, myId: string | undefine
   return d.mentions.some((m) => m.id === myId || m.id === me?.id || (me !== undefined && m.name === me.name));
 }
 
-export function useFollowUps(live: LiveCall, ws: Pick<Ws, 'here' | 'workspaceId' | 'go' | 'say'>) {
+export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost, 'live' | 'here' | 'workspaceId' | 'go' | 'say'>) {
   const { session } = live;
   const state = useLive(session);
   const written = useLive(session.followUps);
   /* A tick shows as it's pressed, until the call says so too. */
   const [ticking, setTicking] = useState<ReadonlyMap<string, boolean>>(new Map());
-  const { here, workspaceId, go } = ws;
   const notes = state.liveNotes;
   const me = state.participants.find((p) => p.isMe)?.person;
   const myId = here.find((h) => h.isMe)?.person.id;
@@ -71,7 +69,6 @@ export function useFollowUps(live: LiveCall, ws: Pick<Ws, 'here' | 'workspaceId'
     return out.map((r) => { const done = ticking.get(r.id); return done === undefined ? r : { ...r, done }; });
   }, [notes, written, state.participants, state.startedAt, mayTick, me, myId, session, workspaceId, go, ticking]);
 
-  const say = ws.say;
   const tick = useCallback((id: string) => {
     const row = rows.find((r) => r.id === id);
     if (!row || row.ticks.length === 0) return;

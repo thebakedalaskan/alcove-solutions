@@ -12,6 +12,7 @@ import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
 import { captionsOf, numberAttr, textAttr } from '../schema';
+import { clockOf, liveWhen } from '../../live/dates';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
 
 export const RuntimeContext = createContext<EditorRuntime | null>(null);
@@ -257,7 +258,7 @@ function Live({ node }: { node: PMNode }) {
         <div key={`${l.at}-${i}`} className="wb-lr">
           {(l.person || l.name) && <PersonFace id={l.person ?? ''} name={l.name ?? ''} size={18} />}
           <span className="tx">{l.text}</span>
-          <span className="ac-time">{l.due || l.at}</span>
+          <span className="ac-time">{liveWhen(l)}</span>
         </div>
       ))}
     </div>
@@ -276,7 +277,7 @@ function Moment({ node }: { node: PMNode }) {
       <div>
         <p>“{textAttr(node, 'text')}”</p>
         <span className="m">
-          <span>{firstName(name)} · {at}</span>
+          <span>{firstName(name)} · {clockOf(at)}</span>
           {note && line && rt.props.hear?.({ note, line })}
         </span>
       </div>

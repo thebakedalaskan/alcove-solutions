@@ -6,11 +6,12 @@
  * call's shared live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone
  * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import { rungWords } from '~/features/calls/RingWords';
+import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
@@ -137,7 +138,7 @@ function FollowUpRows({ items, times, onSeek, onTick, put }: { items: LiveFollow
           <div>
             <span className="nr-text">{it.text}</span>
             {(it.owner || it.due) && (
-              <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
+              <div className="meta">{it.owner && firstName(it.owner)}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
           </div>
           {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
@@ -308,7 +309,7 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
         )}
         {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} quote={put ? { target: put.target, onQuote: put.line } : null} /> : on && (
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'
               : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`

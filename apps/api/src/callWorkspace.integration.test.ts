@@ -111,15 +111,18 @@ async function open(who: Browser, id: string, document: string, opts: DocSession
 const saved = (s: DocSession) => until(() => s.getSnapshot().status === 'saved', 'everything to reach Alcove');
 const inlineNode = (type: string, attrs: Record<string, string>) => { const el = new Y.XmlElement(type); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
 const textNode = (s: string) => { const t = new Y.XmlText(); t.insert(0, s); return t; };
-/** Adds a to-do at the end, as the editor writes one: `who` and `when` give it a mention and a date, which is what joins it to the call's follow-ups. */
-function addTodo(s: { doc: Y.Doc }, block: string, words: string, o: { who?: { id: string; name: string }; when?: string; done?: boolean } = {}): Y.XmlElement {
+/**
+ * Adds a to-do at the end, as the editor writes one: `who` and `when` give it a mention and a date, which is what joins it to the
+ * call's follow-ups. `tags`: they're side by side at the end of the line, as what's sent from the notes lands, not in a sentence.
+ */
+function addTodo(s: { doc: Y.Doc }, block: string, words: string, o: { who?: { id: string; name: string }; when?: string; done?: boolean; tags?: boolean } = {}): Y.XmlElement {
   const el = new Y.XmlElement('line');
   setAttr(el, 'id', block);
   setAttr(el, 'kind', 'todo');
   if (o.done !== undefined) setAttr(el, 'done', o.done);
   const fragment = s.doc.getXmlFragment('content');
   fragment.insert(fragment.length, [el]);
-  el.insert(0, [textNode(words), ...(o.who ? [inlineNode('mention', o.who)] : []), ...(o.when ? [textNode(' by '), inlineNode('dateChip', { date: o.when })] : [])]);
+  el.insert(0, [textNode(words), ...(o.who ? [inlineNode('mention', o.who)] : []), ...(o.when ? [textNode(o.tags ? ' ' : ' by '), inlineNode('dateChip', { date: o.when })] : [])]);
   return el;
 }
 function addVideo(s: { doc: Y.Doc }, block: string, media: string): void {
@@ -807,22 +810,25 @@ describe('the call’s follow-ups', () => {
     addTodo(a, 't1', 'Send the brief to ', { who: { id: 'priya', name: priya.name }, when: '2026-11-06' });
     addTodo(a, 't2', 'Nobody’s yet');
     addTodo(a, 't3', 'No date', { who: { id: 'priya', name: priya.name } });
+    addTodo(a, 't4', 'Book the room ', { who: { id: 'priya', name: priya.name }, when: '2026-11-09', tags: true });
     await saved(a);
     const b = await open(art, id, hidden, { pass: host.ticket.pass });
     addTodo(b, 'h1', 'CANARY-HIDDEN-TODO ', { who: { id: 'art', name: art.name }, when: '2026-11-07' });
     await saved(b);
 
-    const mine = await read2(host, (f) => inDocuments(f).length === 2);
+    const mine = await read2(host, (f) => inDocuments(f).length === 3);
     expect(mine.notes).toBe('on');
     expect(mine.items.filter((x) => x.from === 'notes').map((x) => x.text)).toEqual(['Kofi will book the press briefing by Friday.']);
     expect(mine.items.find((x) => x.from === 'document' && x.block === 't1')).toEqual({
-      from: 'document', workspaceId: id, documentId: plan, document: 'Launch plan', block: 't1', text: `Send the brief to ${priya.name} by 2026-11-06`,
+      from: 'document', workspaceId: id, documentId: plan, document: 'Launch plan', block: 't1', text: `Send the brief to ${priya.name} by 6 Nov`,
       mentions: [{ id: 'priya', name: priya.name }], dates: ['2026-11-06'], done: false, canTick: true
     });
+    // Tags side by side at the end are only labels, shown beside it: what it says is the words.
+    expect(mine.items.find((x) => x.from === 'document' && x.block === 't4')).toMatchObject({ text: 'Book the room', mentions: [{ name: priya.name }], dates: ['2026-11-09'] });
     // Priya can't open the restricted one, and isn't told it's there; Theo can read and not tick; Jamie can open nothing.
-    const hers = await read2(p, (f) => inDocuments(f).length === 1);
+    const hers = await read2(p, (f) => inDocuments(f).length === 2);
     expect(JSON.stringify(hers)).not.toContain('CANARY-HIDDEN-TODO');
-    expect(inDocuments(await read2(t, (f) => inDocuments(f).length === 1))[0]).toMatchObject({ block: 't1', canTick: false });
+    expect(inDocuments(await read2(t, (f) => inDocuments(f).length === 2))[0]).toMatchObject({ block: 't1', canTick: false });
     const guestSees = await read2(jamie.call, () => true);
     expect(inDocuments(guestSees)).toEqual([]);
     expect(JSON.stringify(guestSees)).not.toContain('Send the brief');
@@ -850,7 +856,7 @@ describe('the call’s follow-ups', () => {
     expect(await code(jamie.call.tickDocumentFollowUp({ ...tick, done: true }))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ ...tick, block: 't2', done: true }))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ ...tick, block: 'nothing', done: true }))).toBe('not-found');
-    expect(documentTodos(a.doc, 'document').map((x) => x.done)).toEqual([false, false, false]);
+    expect(documentTodos(a.doc, 'document').map((x) => x.done)).toEqual([false, false, false, false]);
     // A tick is someone working on it.
     const stored = await storedCall(art.ownerId, host.ticket.callId);
     expect(JSON.stringify(stored.state['workspace'])).toContain(priya.name);
@@ -872,7 +878,7 @@ describe('the call’s follow-ups', () => {
     // The same person in the same document, without the call's pass, wasn't working in the call.
     const f = await read2(host, (x) => inDocuments(x).length === 1);
     expect(f.notes).toBe('off');
-    expect(f.items.map((x) => x.text)).toEqual([`Written in the call ${art.name} by 2026-11-06`]);
+    expect(f.items.map((x) => x.text)).toEqual([`Written in the call ${art.name} by 6 Nov`]);
     // Nothing in a document nobody worked on in this call can be ticked from it, nor a document elsewhere.
     expect(await code(host.tickDocumentFollowUp({ workspaceId: id, documentId: other, block: 'b1', done: true }))).toBe('not-found');
     const elsewhere = await callBy(art);

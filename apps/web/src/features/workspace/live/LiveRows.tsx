@@ -2,29 +2,27 @@
 import { WsRow } from '@alcove/ui';
 import { useEffect } from 'react';
 import { useLive } from '~/lib/live';
-import { useWs } from '../context';
+import { useLiveHost, type LiveHost } from './host';
 import { modeHere } from './lines';
-import type { LiveBeside, LiveCall, LivePageId } from './types';
+import type { LiveBeside, LivePageId } from './types';
 import { useFollowUps } from './useFollowUps';
 
-function Rows({ live }: { live: LiveCall }) {
-  const ws = useWs();
+function Rows({ host }: { host: LiveHost }) {
+  const { live, at, closed } = host;
   const state = useLive(live.session);
-  const { open } = useFollowUps(live, ws);
-  const closed = ws.call?.closed ?? false;
+  const { open } = useFollowUps(host);
   /* The count beside Follow-ups takes in what's written in documents, read every few seconds while the workspace is open. */
   useEffect(() => (closed ? undefined : live.session.watchFollowUps()), [closed, live.session]);
 
   const quiet = modeHere(state) === 'off';
-  const at = ws.at;
   const current = (page: LivePageId) => at.kind === 'live' && at.page === page;
   const beside = (page: LivePageId, view: LiveBeside) => () => {
     live.beside(view);
     /* It can't be in two places: the page goes back to the document it was covering. */
-    if (current(page)) ws.go(ws.lastDocument ? { kind: 'document', id: ws.lastDocument } : { kind: 'home' });
+    if (current(page)) host.go(host.lastDocument ? { kind: 'document', id: host.lastDocument } : { kind: 'home' });
   };
   const row = (page: LivePageId, name: string, icon: 'notes' | 'todos' | 'transcript', more: { count?: number; onBeside?: () => void }) => (
-    <WsRow key={page} id={`$${page}`} name={name} kind="live" icon={icon} area="pins" quiet={quiet} current={current(page)} onOpen={() => ws.go({ kind: 'live', page })} {...more} />
+    <WsRow key={page} id={`$${page}`} name={name} kind="live" icon={icon} area="pins" quiet={quiet} current={current(page)} onOpen={() => host.go({ kind: 'live', page })} {...more} />
   );
   return (
     <>
@@ -36,6 +34,6 @@ function Rows({ live }: { live: LiveCall }) {
 }
 
 export function LiveRows() {
-  const live = useWs().call?.live;
-  return live ? <Rows live={live} /> : null;
+  const host = useLiveHost();
+  return host ? <Rows host={host} /> : null;
 }

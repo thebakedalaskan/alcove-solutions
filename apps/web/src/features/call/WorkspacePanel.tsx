@@ -7,10 +7,11 @@
  * this call (view.ts), so a reload finds that too. Only your screen changes, whatever you do here.
  */
 import { errorMessage, firstName, type CallSession, type CallWorkspace } from '@alcove/api';
-import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
+import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
 import type { LiveCall } from '~/features/workspace/live/types';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
@@ -156,5 +157,9 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
   if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
   if (!settled) return <WsPane />;
-  return <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}</WsDoc></WsPane>;
+  return (
+    <OutsideSpace live={live} at={at} go={act.go} say={act.say} closed={!open} zen={call.zen} list={call.list}>
+      {organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}
+    </OutsideSpace>
+  );
 });

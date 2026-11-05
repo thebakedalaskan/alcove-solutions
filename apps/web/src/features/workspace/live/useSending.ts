@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { q } from '~/lib/queries';
 import type { Ws, WorkspacePlace } from '../context';
 import type { BlockJSON } from '../editor/types';
+import { placesOf } from '../places';
 import { withDocument } from '../session';
 import { nameOf, type Tree } from '../tree';
 import { decidedBlock, followUpBlock, quoteBlocks } from './blocks';
@@ -31,13 +32,12 @@ interface Sending {
   go: Ws['go'];
   say: (toast: WsToastData) => void;
   openDoc: Ws['openDoc'];
-  /** Where you'd been before this call, for a live page opened first. */
-  remembered: string | null;
 }
 
 /** The document you were last in, and how to send things to it while you can edit it. */
-export function useSending({ live, workspaceId, pass, owner, tree, at, member, here, closed, go, say, openDoc, remembered }: Sending): { put: LivePut | null; lastDocument: string | null } {
-  const [last, setLast] = useState<string | null>(remembered);
+export function useSending({ live, workspaceId, pass, owner, tree, at, member, here, closed, go, say, openDoc }: Sending): { put: LivePut | null; lastDocument: string | null } {
+  /* With a live page open first, it's the document you had open last in this workspace. */
+  const [last, setLast] = useState<string | null>(() => placesOf(owner).documents[workspaceId] ?? null);
   const documentId = at.kind === 'document' ? at.id : null;
   useEffect(() => { if (documentId) setLast(documentId); }, [documentId]);
   const item = last === null ? undefined : tree.all.get(last);

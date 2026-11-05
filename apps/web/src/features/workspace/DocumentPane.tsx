@@ -65,8 +65,6 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const inWorkspace = ws.sent.role !== null;
   const people = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: inWorkspace }).data;
   const persons = useMemo(() => (people ?? []).map((p) => p.person), [people]);
-  /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
-  const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
@@ -76,7 +74,9 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     ws.openDoc.current = { id: item.id, doc: session.doc, editor };
     return () => { if (ws.openDoc.current?.doc === session.doc) ws.openDoc.current = null; };
   }, [ws.openDoc, item.id, session.doc, editor]);
-  const fromCall = useEditorCall(ws, editor, session.doc, readOnly);
+  const { call: fromCall, people: inCall } = useEditorCall(ws, editor, session.doc, readOnly);
+  /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
+  const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person), ...inCall], [persons, ws.here, inCall]);
   /* Hearing a quote takes the notes, which take an account. */
   const signedIn = ws.owner !== null;
   const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} />, []);

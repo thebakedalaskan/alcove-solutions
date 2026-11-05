@@ -1265,7 +1265,9 @@ function InCall({ session }: { session: CallSession }) {
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
   const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
-  const { live: liveCall, put } = useLiveCall(session, onStage.find((p) => p.id === staged.speaker)?.person ?? null, {
+  // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
+  const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
+  const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
     notes: controls.notes, ask: controls.ask, reveal: work.act.reveal, beside: (v) => { setPop(null); layout.arrange((p) => showView(p, v)); }
   });
   const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
@@ -1326,7 +1328,7 @@ function InCall({ session }: { session: CallSession }) {
   const panelBody = (v: PanelView) => {
     switch (v) {
       case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)} put={put}
-        onPage={work.mounted || space.canOpen ? () => { work.act.reveal(); work.act.go({ kind: 'live', page: 'notes' }); } : undefined}
+        onPage={() => { work.act.reveal(); work.act.go({ kind: 'live', page: 'notes' }); }}
         controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { session.tickFollowUp(id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
       case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'transcript': return cu.moment

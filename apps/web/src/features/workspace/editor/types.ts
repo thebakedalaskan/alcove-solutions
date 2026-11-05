@@ -83,10 +83,10 @@ export interface MediaPick {
   rect: Rect | null;
 }
 
-/** A line of the transcript, for Quote what was said. `note`: the notes it'll be in, by ID, so whoever has them can hear it. */
+/** A line of the transcript, for Quote what was said. `at`: when, as an ISO time. `note`: the notes it'll be in, by ID, so whoever has them can hear it. */
 export interface MomentLine { id: string; person: Person | null; name: string; at: string; text: string; note: string | null }
 
-/** One line a `live` block shows. */
+/** One line a `live` block shows. `at` is when, as an ISO time, and `due` the words it was said in: each reader reads them their way. */
 export interface LiveLine { text: string; at: string; person?: string | null | undefined; name?: string | undefined; due?: string | undefined }
 
 export type LiveWhat = 'decided' | 'followups';

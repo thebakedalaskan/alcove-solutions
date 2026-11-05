@@ -2,7 +2,7 @@
  * When a follow-up is due, as people say it. The notes keep the words ("Friday", "end of March"), and a document's date tag
  * is a day on the calendar, so a date that can be read as one goes in as a tag, and anything vaguer stays in words.
  */
-import { shortDay } from '~/lib/time';
+import { hm, shortDay } from '~/lib/time';
 
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
@@ -68,4 +68,19 @@ export function dueWords(due: string | undefined, now: Date): string {
   if (!due) return 'No date';
   const date = dateOf(due, now);
   return date ? dayWords(date, now) : due;
+}
+
+/** A moment a block keeps, as the time of day where you are. */
+export const clockOf = (at: string): string => (Number.isNaN(Date.parse(at)) ? at : hm(at));
+
+/**
+ * What a line of a `live` block says on its right: when it's due, or else when it was said. Blocks keep the moment and the
+ * words as they were said, the same in every browser, so a day is worked out from when it was said. It never says Today,
+ * which wouldn't be true for long.
+ */
+export function liveWhen(l: { at: string; due?: string | undefined }): string {
+  if (!l.due) return clockOf(l.at);
+  const said = Date.parse(l.at);
+  const date = Number.isNaN(said) ? null : dateOf(l.due, new Date(said));
+  return date ? shortDay(new Date(`${date}T12:00:00`)) : l.due;
 }

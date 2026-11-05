@@ -6,7 +6,7 @@
  * and by the time the next one's turn comes the block says it already. Each browser only writes when its own notes change,
  * never because the block did, so one that's a moment behind can't undo one that's ahead.
  */
-import type { CallSession } from '@alcove/api';
+import type { CallSession, Person } from '@alcove/api';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Doc } from 'yjs';
 import type { Ws } from '../context';
@@ -28,8 +28,8 @@ function turnOf(session: CallSession): number {
   return Math.min(Math.max(0, ids.indexOf(session.ticket.identity)), MOST_TURNS);
 }
 
-/** What a document's `Editor` takes from the call, and the work of keeping its `live` blocks filled in. Undefined outside a call. */
-export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, readOnly: boolean): EditorCall | undefined {
+/** What a document's `Editor` takes from the call, and the work of keeping its `live` blocks filled in. `call` is undefined outside a call. */
+export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, readOnly: boolean): { call: EditorCall | undefined; people: readonly Person[] } {
   const live = ws.call?.live;
   const session = live?.session;
   const closed = ws.call?.closed ?? false;
@@ -39,6 +39,9 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
     const s = session?.getSnapshot();
     return s && writesLiveBlocks(s) ? JSON.stringify(liveLinesOf(s)) : '';
   });
+  /* Faces on quotes and live lines: whoever said them may be in the call and not in the workspace. */
+  const here = useSyncExternalStore(session?.subscribe ?? nothing, () => session?.getSnapshot().participants.map((p) => p.person.id).join(' ') ?? '');
+  const people = useMemo(() => (session?.getSnapshot().participants ?? []).map((p) => p.person), [session, here]);
   const held = useRef(editor);
   held.current = editor;
 
@@ -70,7 +73,7 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
     return () => clearTimeout(wait);
   }, [editor, session, readOnly, holdsLive, lines]);
 
-  return useMemo((): EditorCall | undefined => {
+  const call = useMemo((): EditorCall | undefined => {
     if (!session) return undefined;
     return {
       id: session.getSnapshot().callId, notes,
@@ -85,4 +88,5 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
       }
     };
   }, [session, notes]);
+  return { call, people };
 }

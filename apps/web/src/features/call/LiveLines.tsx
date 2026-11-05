@@ -83,11 +83,13 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
  * in marked where they fall, and what it isn't sure of dotted (words hard to hear, a line heard on two microphones),
- * explained once at the top. `onMark` bookmarks a line for the reader alone, and `quote` sends one into a document.
+ * explained once at the top. `onMark` bookmarks a line for the reader alone, and `quote` sends one into a document. `when`
+ * says when a line was said, which is how far in unless it says otherwise.
  */
-export function CallLines({ lines, gaps = [], me, onMark, quote }: {
+export function CallLines({ lines, gaps = [], me, onMark, quote, when = position }: {
   lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined;
   quote?: { target: string; onQuote: (line: TranscriptLine) => void } | null | undefined;
+  when?: ((at: number) => string) | undefined;
 }) {
   const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}:${gaps.length}`);
   const arrived = useArrivals(lines);
@@ -109,7 +111,7 @@ export function CallLines({ lines, gaps = [], me, onMark, quote }: {
                   {start && (
                     <div className="tx-h">
                       {l.speaker && <b>{l.unsure?.speaker ? <Unsure of="speaker">{spokenName(l.speaker, me)}</Unsure> : spokenName(l.speaker, me)}</b>}
-                      <span className="ac-mono">{position(l.at)}</span>
+                      <span className="ac-mono">{when(l.at)}</span>
                     </div>
                   )}
                   <p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p>
