@@ -736,14 +736,6 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
     return c.json(await workspaceDocuments.appendUpdate(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
   });
-  /* Words that couldn't reach the document they were written in, as a new one's first state. */
-  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
-    const r = await readerOf(c);
-    treeLimiter(access.limitKey(r), 'workspace change');
-    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
-    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
-    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
-  });
   app.post('/v1/workspaces/:id/documents/:doc/awareness', async (c) => {
     const r = await readerOf(c);
     awarenessLimiter(access.limitKey(r), 'document awareness');
@@ -1093,6 +1085,16 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   });
   app.patch('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.setRole(d, await member(c), ws(c), c.req.param('person'), (await body(c, WorkspaceRolePatchSchema)).role); return c.json({ changed: true }); });
   app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person')); return c.json({ removed: true }); });
+  /*
+   * Words that couldn't reach the document they were written in, as a new one's first state: the other half of making that new
+   * document, so it takes an account as making it does. A call's pass doesn't reach it.
+   */
+  app.post('/v1/workspaces/:id/documents/:doc/adopt', async (c) => {
+    const r = await member(c);
+    const length = Number(c.req.header('content-length') ?? MAX_DOC_BYTES);
+    updateBytesLimiter(access.limitKey(r), 'document update bytes', Math.ceil(length / 1024) || 1);
+    return c.json(await workspaceDocuments.adoptState(d, r, c.req.param('id'), c.req.param('doc'), length, () => c.req.arrayBuffer()));
+  });
   app.post('/v1/workspaces/:id/items', async (c) => c.json(await workspaces.createItem(d, await member(c), ws(c), await body(c, ItemInputSchema))));
   app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
   app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c), ws(c), itemOf(c))));
