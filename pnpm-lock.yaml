@@ -230,6 +230,9 @@ importers:
       '@alcove/api':
         specifier: workspace:*
         version: link:../api
+      lib0:
+        specifier: ^0.2.119
+        version: 0.2.119
       ts-mls:
         specifier: 1.6.4
         version: 1.6.4(@noble/ciphers@2.1.1)
