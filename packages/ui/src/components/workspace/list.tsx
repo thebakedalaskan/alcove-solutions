@@ -29,7 +29,7 @@ export function WsPane({ children, label = 'Workspace', listOff = false, listPee
 /** One row in the tab order, with its faces and actions: the row you're on, the open document, or the first row. */
 function keepOneTabStop(list: HTMLElement) {
   const rows = Array.from(list.querySelectorAll<HTMLElement>('.wt-open'));
-  const keep = rows.find((el) => el === document.activeElement) ?? rows.find((el) => el.getAttribute('aria-current') === 'page') ?? rows[0];
+  const keep = rows.find((el) => el.parentElement?.contains(document.activeElement)) ?? rows.find((el) => el.getAttribute('aria-current') === 'page') ?? rows[0];
   for (const row of rows) {
     row.tabIndex = row === keep ? 0 : -1;
     for (const extra of row.parentElement?.querySelectorAll<HTMLElement>('.wt-f, .wt-a') ?? []) extra.tabIndex = row === keep ? 0 : -1;
