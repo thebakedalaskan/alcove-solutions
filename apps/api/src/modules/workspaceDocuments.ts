@@ -376,33 +376,53 @@ export async function readDocument<N extends keyof Reads>(w: Held, documentId: s
   return reads[op].result.parse(done.value);
 }
 
+/** How often a change from the server is worked out again because someone wrote as its clients first. */
+const WRITE_TRIES = 3;
+/** Takes back the transaction writing a change from the server, `holding`'s part too, when someone wrote as its client first. It never leaves `writeDocument`. */
+class ClientTaken extends Error {}
+
 /**
  * Changes a document on the server, for code that has decided it may be: what can be done is in documentOps.ts, and it's done
  * to the document as it stands, as a browser would, and the update is appended and reaches everyone like any other. Anyone
  * typing meanwhile merges with it. A change that changes nothing writes nothing. `by` is who it's for, if anyone. `holding`
  * runs in the transaction that writes it, for what must still hold by then. Refused in Trash, like an edit.
+ *
+ * It's written only as clients the log doesn't have yet, checked under the row's lock: two updates under one client and
+ * clock that say different things would leave browsers disagreeing for good. A change made as a fixed client (a board's
+ * template) that finds someone got there first is worked out again on what's there now, which is how it happens once.
  */
 export async function writeDocument<N extends keyof Edits>(
   w: Held, documentId: string, op: N, args: ArgsOf<Edits[N]>, opts: { by?: Editor | null | undefined; callId?: string | null | undefined; holding?: ((c: Db) => Promise<void>) | undefined } = {}
 ): Promise<{ seq: number; result: ResultOf<Edits[N]> }> {
   requireContent(w, documentId);
   if (trashOf(w.state, documentId)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, documentId } });
-  const row = await documentRow(w, documentId);
-  const done = await w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
-  report(w, documentId, done.found);
-  const result = edits[op].result.parse(done.value);
-  const { update, seen } = done;
-  if (!update || !seen) return { seq: row.next_seq - 1, result };
-  const { seq, tending } = await tx(w.owner.pool, async (c) => {
-    await opts.holding?.(c);
-    const locked = await lockDocument(c, w, documentId);
-    if (locked.held) throw restoring(w, documentId);
-    requireRoom(w, documentId, locked, update.length, seen);
-    const landed = await append(c, w, documentId, locked, update, opts.by ?? null, seen, nobody);
-    return { seq: landed, tending: tendingAfter(w, locked, landed, update.length, opts.callId ?? null) };
-  });
-  if (tending) await tend(w, documentId, tending);
-  return { seq, result };
+  for (let tries = 1; ; tries++) {
+    const row = await documentRow(w, documentId);
+    const done = await w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
+    report(w, documentId, done.found);
+    const result = edits[op].result.parse(done.value);
+    const { update, seen } = done;
+    if (!update || !seen) return { seq: row.next_seq - 1, result };
+    const landed = await tx(w.owner.pool, async (c) => {
+      await opts.holding?.(c);
+      const locked = await lockDocument(c, w, documentId);
+      if (locked.held) throw restoring(w, documentId);
+      const known = await knownClients(c, w, documentId, seen);
+      if (seen.blocks.some((b) => known.has(b.client))) throw new ClientTaken();
+      requireRoom(w, documentId, locked, update.length, seen);
+      const seq = await append(c, w, documentId, locked, update, opts.by ?? null, seen, nobody);
+      return { seq, tending: tendingAfter(w, locked, seq, update.length, opts.callId ?? null) };
+    }).catch((e: unknown) => {
+      if (e instanceof ClientTaken) return null;
+      throw e;
+    });
+    if (landed) {
+      if (landed.tending) await tend(w, documentId, landed.tending);
+      return { seq: landed.seq, result };
+    }
+    dlog.debug('server change worked out again: its client has written here already', { workspaceId: w.workspaceId, documentId, op, tries });
+    if (tries >= WRITE_TRIES) throw new ConflictError('This is changing too fast to change from here. Try again.', { context: { workspaceId: w.workspaceId, documentId, op } });
+  }
 }
 
 const SEED = inspect(DOC_SEED, SERVER_CAPS).seen;

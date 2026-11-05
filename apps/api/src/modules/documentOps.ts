@@ -9,6 +9,7 @@
  * plain data: bytes are fine, a `Y.Doc` isn't. To work with another document, pass its `state`.
  */
 import { DOC_FRAGMENT, DocTextBlockSchema } from '@alcove/api';
+import { TEMPLATES, fillTemplate, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { documentText, documentTodos, type ContentKind } from './documentText';
@@ -54,7 +55,27 @@ function retitle(doc: Y.Doc, name: string): void {
   }
 }
 
+/**
+ * The Yjs client a board's template is written as: the same on every board, and never a browser's, whose are random 32-bit
+ * numbers (a document's seed has 1). So a board says itself whether it has had its template, and so does a copy of one.
+ */
+const TEMPLATE_CLIENT = 2;
+/**
+ * Puts a template on a board, clear of anything already there, once. Asking again finds the template's client in the board
+ * and changes nothing, and so does the second of two asks at the same moment, because `writeDocument` won't write as a client
+ * the log already has: it works that one out again, and it finds the first. A document isn't a board, and gets nothing.
+ * Whether this put the template there: blank puts nothing.
+ */
+function boardTemplate(doc: Y.Doc, template: TemplateName): boolean {
+  if (doc.share.has(DOC_FRAGMENT) || Y.getState(doc.store, TEMPLATE_CLIENT) > 0) return false;
+  doc.clientID = TEMPLATE_CLIENT;
+  fillTemplate(doc, template, null);
+  return Y.getState(doc.store, TEMPLATE_CLIENT) > 0;
+}
+
 /** What the server can write to a document. */
 export const docEdits = {
-  retitle: docOp(z.object({ name: z.string() }), z.void(), (doc, a) => { retitle(doc, a.name); })
+  retitle: docOp(z.object({ name: z.string() }), z.void(), (doc, a) => { retitle(doc, a.name); }),
+  /** A board's template, from the server, so everyone gets the same frames and nobody's undo can take them away. */
+  boardTemplate: docOp(z.object({ template: z.enum(TEMPLATES) }), z.boolean(), (doc, a) => boardTemplate(doc, a.template))
 };
