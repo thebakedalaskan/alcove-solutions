@@ -479,7 +479,8 @@ async function agendaOf(o: Owner, documents: string[], worked: WorkedDocument[])
     const item = w?.state.items[x.documentId];
     if (!w || !item || item.kind !== 'document' || trashOf(w.state, x.documentId)) continue;
     if (looksLikeAgenda(item.name)) return x;
-    if (await readDocument(w, x.documentId, 'readsAsAgenda', { kind: kindOf(item) })) return x;
+    // One that won't open isn't the agenda as far as anyone can tell, and says nothing about the rest.
+    if (await readDocument(w, x.documentId, 'readsAsAgenda', { kind: kindOf(item) }).catch(() => false)) return x;
   }
   return undefined;
 }
