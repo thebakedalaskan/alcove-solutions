@@ -1,15 +1,15 @@
 /*
  * Files on their way into documents from this browser (docs: Data and storage › Media). A block holds their space straight
  * away, for everyone, and says how far they've got as they go. Sending them is this browser's alone: it writes to the block
- * by its stable ID, through the page's own session while the document is open here and through a session of its own once
- * it isn't, so leaving the document, or the workspace, doesn't stop it. Everyone else hears that it's going on through the
- * document's awareness, so a block that says it's uploading with nobody sending it shows as failed.
+ * by its stable ID, always through one session of its own for the document, so its writes arrive in the order they were made
+ * (two sessions writing the same attribute without hearing each other could leave the older one standing), and leaving the
+ * document, or the workspace, doesn't stop it. Everyone else hears that it's going on through that session's awareness, so a
+ * block that says it's uploading with nobody sending it shows as failed.
  *
  * Nothing about a file is logged but its IDs, sizes and how it went: never its name.
  */
 import { errorCode, errorMessage, servedType, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
-import type { Awareness } from 'y-protocols/awareness';
 import type { Doc } from 'yjs';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
@@ -28,6 +28,8 @@ const PROGRESS_MS = 250;
 const ARRIVE_MS = 60_000;
 /** A finished upload's own picture stays here this long, so the stored one can come without the picture blinking. */
 const AFTER_MS = 60_000;
+/** A failed upload can be tried again for this long; then its file is let go of here, and the block offers only Delete. */
+const FAILED_MS = 10 * 60_000;
 /** A session opened for uploads closes this long after its last one, once what it wrote has gone. */
 const CLOSE_MS = 3_000;
 /** What an upload writes on its block, which nobody else does: a stray one on a retired copy of the block comes off again. */
@@ -57,6 +59,8 @@ interface Job extends Destination {
   pending: ReturnType<typeof setTimeout> | null;
   /** Its writes, one after another, so progress never lands after what came next. */
   queue: Promise<unknown>;
+  /** When it failed, for how long it can be tried again. */
+  failedAt: number;
 }
 
 /** A photo this browser can't read: the block says so, and nothing is sent. */
@@ -214,41 +218,31 @@ export const previewOf = (block: string, index: number): string | undefined => j
 
 /* ---------- where writes go ---------- */
 
-interface Writer { doc: Doc; awareness: Awareness }
 interface Keeper { session: DocSession; ready: Promise<boolean>; arrived: Set<string>; closing: ReturnType<typeof setTimeout> | null }
 const docKey = (workspaceId: string, documentId: string) => `${workspaceId}:${documentId}`;
 
-/** Documents open on a page in this tab: an upload writes through the page's own session while it's there. */
-const pages = new Map<string, Writer>();
-/** Sessions opened to finish uploads into documents nobody here has open, until their last upload is done. */
+/**
+ * Each document's own session for uploads, while anything's going into it. It's one of the few document streams a person can
+ * have open, so a failed upload doesn't keep it: Try again opens it again.
+ */
 const keepers = new Map<string, Promise<Keeper>>();
 const keepersOpen = new Map<string, Keeper>();
 
-/** The document a page has open here, for uploads into it. What this returns is called when it closes. */
-export function showing(workspaceId: string, documentId: string, writer: Writer): () => void {
-  const key = docKey(workspaceId, documentId);
-  pages.set(key, writer);
-  claim(workspaceId, documentId);
-  return () => { if (pages.get(key) === writer) pages.delete(key); };
-}
-
-/** Says in the document's awareness which of its blocks this browser is sending, on every session it writes through. */
+/** Says in the document's awareness which of its blocks this browser is sending. */
 function claim(workspaceId: string, documentId: string): void {
-  const key = docKey(workspaceId, documentId);
+  const session = keepersOpen.get(docKey(workspaceId, documentId))?.session;
+  if (!session || session.doc.isDestroyed) return;
   const ids = jobsIn(workspaceId, documentId).filter(sending).map((j) => j.id);
-  for (const w of [pages.get(key), keepersOpen.get(key)?.session]) {
-    if (!w || w.doc.isDestroyed) continue;
-    const was: unknown = w.awareness.getLocalState()?.['uploading'];
-    if (Array.isArray(was) ? was.join() !== ids.join() : ids.length > 0) w.awareness.setLocalStateField('uploading', ids);
-  }
+  const was: unknown = session.awareness.getLocalState()?.['uploading'];
+  if (Array.isArray(was) ? was.join() !== ids.join() : ids.length > 0) session.awareness.setLocalStateField('uploading', ids);
 }
 
-/** A session of its own for a document, to finish uploads into it once nobody here has it open. */
+/** The document's own session for uploads, opened by the first and closed a moment after the last. */
 function keeperFor(j: Destination): Promise<Keeper> {
   const key = docKey(j.workspaceId, j.documentId);
   const had = keepers.get(key);
   if (had) return had;
-  const opening = openDocument(j.workspaceId, j.documentId, j.owner, j.pass).then((session) => {
+  const opening = openDocument(j.workspaceId, j.documentId, j.owner, j.pass, false).then((session) => {
     const keeper: Keeper = { session, ready: session.ready.then(() => true, () => false), arrived: new Set(), closing: null };
     keepersOpen.set(key, keeper);
     claim(j.workspaceId, j.documentId);
@@ -263,10 +257,11 @@ function keeperFor(j: Destination): Promise<Keeper> {
 function idle(workspaceId: string, documentId: string): void {
   const key = docKey(workspaceId, documentId);
   const keeper = keepersOpen.get(key);
-  if (!keeper || jobsIn(workspaceId, documentId).some(sending)) return;
+  const busy = () => jobsIn(workspaceId, documentId).some(sending);
+  if (!keeper || busy()) return;
   if (keeper.closing) clearTimeout(keeper.closing);
   keeper.closing = setTimeout(() => {
-    if (jobsIn(workspaceId, documentId).some(sending)) return;
+    if (busy()) return;
     keepersOpen.delete(key);
     keepers.delete(key);
     keeper.session.close();
@@ -283,24 +278,25 @@ function write(job: Job, attrs: Readonly<Record<string, unknown>>): Promise<bool
   return next;
 }
 
-/** Writes to a block, through the page if the document's open here and through a session of its own if not. */
+/**
+ * Writes to a block through the document's own session. The block was put on the page through the page's session, so it has
+ * to have reached this one first; once it has, not finding it means it's gone.
+ */
 async function writeNow(job: Job, attrs: Readonly<Record<string, unknown>>): Promise<boolean> {
   const { setBlockAttrsIn, hasBlock } = await ydoc();
-  const key = docKey(job.workspaceId, job.documentId);
-  const onPage = () => { const p = pages.get(key); return p && !p.doc.isDestroyed ? p : null; };
-  const page = onPage();
-  if (page) return setBlockAttrsIn(page.doc, job.id, attrs, OWN, ORIGIN);
-  const keeper = await keeperFor(job);
+  let keeper = await keeperFor(job);
+  /* It closed just as this came to it: another opens. */
+  if (keepersOpen.get(docKey(job.workspaceId, job.documentId)) !== keeper) keeper = await keeperFor(job);
   if (keeper.closing) { clearTimeout(keeper.closing); keeper.closing = null; }
   if (!(await keeper.ready)) throw new Error('The document didn’t open to finish the upload.');
-  /* The block was put on the page through another session: it has to have reached this one first. */
+  const doc: Doc = keeper.session.doc;
   if (!keeper.arrived.has(job.id)) {
     const until = Date.now() + ARRIVE_MS;
-    while (!hasBlock(keeper.session.doc, job.id) && Date.now() < until && !onPage()) await sleep(500);
-    if (!onPage() && !hasBlock(keeper.session.doc, job.id)) return false;
+    while (!hasBlock(doc, job.id) && Date.now() < until && !job.stop.signal.aborted) await sleep(250);
+    if (!hasBlock(doc, job.id)) return false;
     keeper.arrived.add(job.id);
   }
-  return setBlockAttrsIn(onPage()?.doc ?? keeper.session.doc, job.id, attrs, OWN, ORIGIN);
+  return setBlockAttrsIn(doc, job.id, attrs, OWN, ORIGIN);
 }
 
 /* ---------- sending ---------- */
@@ -409,6 +405,7 @@ async function run(job: Job): Promise<void> {
   } catch (e) {
     if (job.stop.signal.aborted) { drop(job); return; }
     job.status = 'failed';
+    job.failedAt = Date.now();
     const name = (failing ?? job.parts.find((p) => !p.stored) ?? job.parts[0])?.file.name ?? '';
     const unreadable = e instanceof Unreadable;
     ulog.warn('upload failed', { workspaceId: job.workspaceId, documentId: job.documentId, block: job.id, code: unreadable ? 'unreadable' : errorCode(e), err: unreadable ? undefined : e });
@@ -424,7 +421,10 @@ async function run(job: Job): Promise<void> {
   }
 }
 
-/* A block whose upload failed can be deleted, or its document left: once it's gone from a page here, so is its upload. */
+/*
+ * A failed upload waits to be tried again until its block is gone, seen while the document's session is open for another
+ * upload, or for FAILED_MS: then it's let go of, and Try again with it.
+ */
 const SWEEP_MS = 15_000;
 let sweeping: ReturnType<typeof setInterval> | null = null;
 function sweep(): void {
@@ -432,8 +432,14 @@ function sweep(): void {
   if (waiting.length === 0) { if (sweeping) clearInterval(sweeping); sweeping = null; return; }
   void ydoc().then(({ hasBlock }) => {
     for (const job of waiting) {
-      const page = pages.get(docKey(job.workspaceId, job.documentId));
-      if (page && !page.doc.isDestroyed && !hasBlock(page.doc, job.id)) drop(job);
+      const keeper = keepersOpen.get(docKey(job.workspaceId, job.documentId));
+      let gone = false;
+      if (keeper && !keeper.session.doc.isDestroyed) {
+        /* A block that failed before anything was written, a photo this browser can't read, is seen here first. */
+        if (hasBlock(keeper.session.doc, job.id)) keeper.arrived.add(job.id);
+        else gone = keeper.arrived.has(job.id);
+      }
+      if (gone || Date.now() - job.failedAt > FAILED_MS) drop(job);
     }
   });
 }
@@ -467,10 +473,16 @@ export function start(to: Destination, drafts: readonly Draft[], ids: readonly s
     if (!id) { discard([d]); return; }
     jobs.set(id, {
       ...to, id, kind: d.kind, parts: d.parts, poster: d.poster, previews: d.previews,
-      status: d.failed ? 'failed' : 'waiting', stop: new AbortController(), written: d.failed ? null : 0, wroteAt: 0, pending: null, queue: Promise.resolve()
+      status: d.failed ? 'failed' : 'waiting', stop: new AbortController(), written: d.failed ? null : 0, wroteAt: 0, pending: null, queue: Promise.resolve(), failedAt: Date.now()
     });
   });
+  /* Its own session opens now, so it's there by the time there's something to say. A photo this browser can't read says so
+     in the block it came in, and sends nothing: that needs no session, and one opened for Upload files closes again. */
+  if (ids.some((id) => jobs.get(id)?.status === 'waiting')) {
+    keeperFor(to).catch((err: unknown) => { ulog.warn('a document didn’t open for an upload', { workspaceId: to.workspaceId, documentId: to.documentId, err }); });
+  }
   claim(to.workspaceId, to.documentId);
+  idle(to.workspaceId, to.documentId);
   changed();
   guard();
   if (drafts.some((d) => d.failed)) sweepSoon();
@@ -486,10 +498,11 @@ export async function uploadInto(to: Destination, files: readonly File[], title:
   try {
     const keeper = await keeperFor(to);
     if (!(await keeper.ready)) throw new Error('The new document didn’t open, so nothing was added to it.');
-    const [{ appendBlocks }, { setTitle, titleOf }] = await Promise.all([ydoc(), import('./editor/title')]);
+    const [{ appendBlocks, retireBlankStart }, { setTitle, titleOf }] = await Promise.all([ydoc(), import('./editor/title')]);
     const doc = keeper.session.doc;
     if (title && !titleOf(doc)) setTitle(doc, title);
     const ids = appendBlocks(doc, drafts.map((d) => d.block));
+    retireBlankStart(doc);
     for (const id of ids) keeper.arrived.add(id);
     start(to, drafts, ids);
   } catch (e) {

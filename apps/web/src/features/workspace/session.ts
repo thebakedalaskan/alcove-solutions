@@ -8,8 +8,9 @@ import type { Doc } from 'yjs';
 import { api } from '~/lib/api';
 import { canKeepEdits, keptUpdates } from './keep';
 
-export async function openDocument(workspaceId: string, documentId: string, owner: string | null, pass: string | undefined): Promise<DocSession> {
-  return api.workspaces.document(workspaceId, documentId, { pass, keep: owner && canKeepEdits() ? keptUpdates(owner, workspaceId, documentId) : undefined });
+/** `keep` false: nothing it writes is kept on this device, for a session that only says how an upload's going. */
+export async function openDocument(workspaceId: string, documentId: string, owner: string | null, pass: string | undefined, keep = true): Promise<DocSession> {
+  return api.workspaces.document(workspaceId, documentId, { pass, keep: keep && owner && canKeepEdits() ? keptUpdates(owner, workspaceId, documentId) : undefined });
 }
 
 /** Opens a document, makes a change, and lets it go: closing sends what's waiting, and what can't go yet stays kept. */

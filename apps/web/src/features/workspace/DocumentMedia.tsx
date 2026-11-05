@@ -13,7 +13,7 @@ import { q, qk, useMediaChanges } from '~/lib/queries';
 import type { Ws } from './context';
 import type { BlockJSON, EditorHandle, EditorProps, InsertAt, MediaDeletion, MediaHandlers, MediaPick, Rect } from './editor/types';
 import { fileUrl, type Pictures } from './pictures';
-import { canRetry, discard, isSending, prepare, previewOf, retry, showing, start, stemOf, uploadsStore } from './uploads';
+import { canRetry, discard, isSending, prepare, previewOf, retry, start, stemOf, uploadsStore } from './uploads';
 
 const mlog = log.child({ component: 'workspace-media' });
 
@@ -115,8 +115,6 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const now = useRef({ editor, readOnly, list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say, owner: ws.owner });
   now.current = { editor, readOnly, list: listed.data, listedAt: listed.dataUpdatedAt, say: ws.say, owner: ws.owner };
 
-  /* The page has this document open here: uploads into it write through its session, and say so in its awareness. */
-  useEffect(() => showing(workspaceId, documentId, { doc: session.doc, awareness: session.awareness }), [workspaceId, documentId, session]);
   useEffect(() => pictures.subscribe(bumps.bump), [pictures, bumps]);
   useEffect(() => uploadsStore.subscribe(bumps.bump), [bumps]);
   useEffect(() => {

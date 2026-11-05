@@ -4,7 +4,7 @@
  * the list writes straight to that document. A document's first title and line come from the server, which makes every
  * document from the same fixed bytes (`DOC_SEED` in `@alcove/api`), so nothing here or in the editor ever makes them.
  */
-import { newBlockId, retire } from '@alcove/api/retire';
+import { holdsNothing, newBlockId, retire } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import { initProseMirrorDoc, ySyncPluginKey, type ProsemirrorBinding } from 'y-prosemirror';
@@ -84,6 +84,14 @@ export function setBlockAttrsIn(doc: Y.Doc, id: string, attrs: Readonly<Record<s
     }
   }, origin);
   return true;
+}
+
+/** A document's first line, while nobody has written in it, leaves the page: what's put in a new document takes its place. */
+export function retireBlankStart(doc: Y.Doc): void {
+  const first = contentOf(doc).get(1);
+  if (first instanceof Y.XmlElement && first.nodeName === 'line' && first.getAttribute('gone') === undefined && holdsNothing(first)) {
+    doc.transact(() => { retire(first, newBlockId(), ''); });
+  }
 }
 
 /** Whether a document has a block with this ID on its page. */
