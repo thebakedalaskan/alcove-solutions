@@ -197,7 +197,8 @@
 
 .ws-float .ws-pop { position: fixed; left: 0; top: 0; }
 .ws-float .ws-ghost { pointer-events: none; }
-.wd-title.is-empty::before { content: attr(data-ph); float: left; height: 0; color: var(--ink-3); opacity: .7; pointer-events: none; }
+.wd-title.is-empty { position: relative; }
+.wd-title.is-empty::before { content: attr(data-ph); position: absolute; inset: 0 0 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); opacity: .7; pointer-events: none; }
 .wd-title { margin: 0; }
 .wd-tail { padding: 0; border: 0; background: none; }
 .ws-pane.is-reading .wb-rc { display: none; }

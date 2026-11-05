@@ -54,8 +54,19 @@ function moveInList(e: KeyboardEvent<HTMLDivElement>) {
  * cross-fades, 240 ms. Rows that leave close up, and ones that arrive open in place, so give each a key. The list is one
  * tab stop: arrow keys move through it, Left and Right close and open a folder.
  */
+/**
+ * What an empty list says, for who's looking: `yours`, someone who can make things here; `others`, someone who can only read
+ * what others make; `shared`, someone who's only been given documents.
+ */
+export type WsListEmpty = 'yours' | 'others' | 'shared';
+const EMPTY_WORDS: Record<WsListEmpty, string> = {
+  yours: 'Documents and folders you make show up here.',
+  others: 'Documents and folders show up here once someone makes them.',
+  shared: 'Documents shared with you show up here.'
+};
+
 export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, onKeyDown }: {
-  head?: ReactNode; children?: ReactNode; empty?: boolean | undefined; listKey?: string | undefined; label?: string | undefined;
+  head?: ReactNode; children?: ReactNode; empty?: WsListEmpty | false | undefined; listKey?: string | undefined; label?: string | undefined;
   /** What stays at the foot, above the sealed line, however long the list is: `WsTrashRow`. */
   foot?: ReactNode;
   /** Keys pressed on a row, before the list's own: stop one to keep it from moving through the rows. */
@@ -69,7 +80,7 @@ export function WsList({ head, children, empty = false, listKey, label = 'Docume
       {head}
       <motion.div key={listKey} ref={scroll} className="wt-scroll" role="tree" aria-label={label} onKeyDown={(e) => { onKeyDown?.(e); if (!e.isPropagationStopped()) moveInList(e); }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>
         <AnimatePresence initial={false}>{Children.toArray(children)}</AnimatePresence>
-        {empty && <p className="wt-empty">Documents and folders you make show up here.</p>}
+        {empty && <p className="wt-empty">{EMPTY_WORDS[empty]}</p>}
       </motion.div>
       {foot}
       <div className="wt-foot"><Icon name="sealed" size={14} /><span>Sealed. Alcove can’t read this.</span></div>
@@ -189,7 +200,7 @@ export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tr
   return (
     <motion.div role="treeitem" aria-level={depth + 1} aria-selected={current} aria-expanded={folder ? open : undefined} data-row={id} data-kind={kind} data-area={area}
       className={cn('wt-r', kind === 'live' && 'is-live', quiet && 'is-quiet', current && 'is-cur', flash && 'is-flash', into && 'is-into', ghosted && 'is-ghosted', (menu?.open || add?.open) && 'is-menu')}
-      style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1, transition: move(1) }} exit={{ height: 0, opacity: 0, transition: move(2) }}
+      style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: ghosted ? 0.4 : 1, transition: move(1) }} exit={{ height: 0, opacity: 0, transition: move(2) }}
       onDoubleClick={onRename ? (e) => { if (e.target instanceof Element && !e.target.closest('.wt-acts')) onRename(); } : undefined} onContextMenu={onContextMenu} onPointerDown={onPointerDown}>
       {folder && <button type="button" tabIndex={-1} className={cn('wt-tw', open && 'is-open')} aria-label={`Open or close ${name}`} onClick={onTwist}><Icon name="chevron" size={13} /></button>}
       <button type="button" className="wt-open" aria-current={current ? 'page' : undefined} onClick={onOpen} onKeyDown={keys}>

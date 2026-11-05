@@ -300,8 +300,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
         zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
       <WsOfflineBar show={offline && ready && status.closed === null} />
-      <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
-      <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
+      <WsUnsavedBar why={unsaved} saveable={copyTo !== undefined}>{rescue}</WsUnsavedBar>
+      <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
       {ready
         ? <WsScroll><Page key={opened.round} ws={ws} item={item} session={session} status={status} /></WsScroll>
