@@ -60,6 +60,9 @@ export async function repeatsOf(o: Owner, calls: Call[]): Promise<ReadonlyMap<st
 /** How a series repeats, if it was scheduled to. */
 export const repeatOf = async (o: Owner, seriesId: string): Promise<Repeat | undefined> => (await findItem(o, o.pool, 'series', seriesId, SeriesManifest))?.manifest.repeat;
 
+/** Where a series' organizer is, if it was scheduled to repeat: what day one of its calls falls on goes by that. */
+export const zoneOf = async (o: Owner, seriesId: string): Promise<string | undefined> => (await findItem(o, o.pool, 'series', seriesId, SeriesManifest))?.manifest.repeat.timeZone;
+
 /* ---------- the link: one code for all the calls ---------- */
 
 /**
@@ -163,7 +166,7 @@ const ruleOf = ({ occurrences: _times, ...repeat }: RepeatInput): Repeat => repe
 /** Another call in a series, starting at `startsAt`: `like` in everything a series shares. */
 const anotherCall = (like: MeetingManifest, seriesId: string, seriesCode: string, startsAt: string, minutes: number): MeetingManifest => ({
   title: like.title, ...validTimes(startsAt, minutes), guests: like.guests, notes: like.notes, code: makeCode(), status: 'scheduled', seriesId, seriesCode,
-  instant: false, choices: like.choices, joinMuted: like.joinMuted, documents: like.documents
+  instant: false, choices: like.choices, joinMuted: like.joinMuted, documents: like.documents, workspaceId: like.workspaceId, agenda: null
 });
 
 /** New calls with the same guests, in the caller's transaction: their items, where their codes lead, and who's invited. */

@@ -14,7 +14,7 @@
  * writes goes through the same log and reaches every browser as any other update.
  */
 import {
-  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary
+  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
 import * as decoding from 'lib0/decoding';
@@ -34,6 +34,8 @@ import { findOwner } from '../owners';
 import {
   change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Credentials, type Reader, type StoredItem, type Who, type Workspace
 } from './workspaceAccess';
+import { workedOn as workedOnInCall, mayAskInCall } from './calls';
+import { editSelection } from './drafting';
 import { MAX_NESTING, SERVER_CAPS, bringsNew, clientsOf, inspect, refusalGiven, type Block, type Inspected, type KnownClient } from './documentFirewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './documentOps';
 import type { ContentKind } from './documentText';
@@ -220,15 +222,16 @@ async function writeVersion(c: Db, p: Place, documentId: string, versionId: stri
  * before anything is deleted. The row's lock is taken only to swap it in, and only if the snapshot is still the one this
  * started from: otherwise someone else folded it first, on this instance or another, and nothing is written. That's `raced`.
  */
-async function fold(p: Place, documentId: string, through: number, keep?: Keep): Promise<{ raced: boolean; versionId: string | null }> {
+async function fold(p: Place, documentId: string, through: number, keep?: Keep): Promise<{ raced: boolean; wrote: boolean; versionId: string | null }> {
   const row = await documentRow(p, documentId);
+  if (row.closed) return { raced: false, wrote: false, versionId: null };
   const l = await sealedLog(p, documentId, through);
   const from = l.base?.throughSeq ?? null;
   const reach = Math.max(through, from ?? 0);
-  if (!keep && from !== null && reach === from) return { raced: false, versionId: null };
+  if (!keep && from !== null && reach === from) return { raced: false, wrote: false, versionId: null };
   const versionId = keep ? id128() : null;
   const covered = l.rows.filter((r) => r.seq > (from ?? 0));
-  const made = await p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row));
+  const made = await working(p, documentId, row, () => p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row)));
   report(p, documentId, made.found);
   const wrote = await tx(p.owner.pool, async (c) => {
     await lockDocument(c, p, documentId);
@@ -241,7 +244,7 @@ async function fold(p: Place, documentId: string, through: number, keep?: Keep):
     return true;
   });
   if (wrote) dlog.debug('document folded', { workspaceId: p.workspaceId, documentId, through: reach, updates: covered.length, bytes: made.shape.bytes, items: made.shape.items, version: versionId });
-  return { raced: !wrote, versionId: wrote ? versionId : null };
+  return { raced: !wrote, wrote, versionId: wrote ? versionId : null };
 }
 /** What a document comes to now a snapshot says it exactly, and what's left in the log on top. */
 async function settleFigures(c: Db, p: Place, documentId: string, shape: { bytes: number; items: number; nesting: number }, versionSeq: number | null): Promise<void> {
@@ -346,6 +349,7 @@ export async function appendUpdate(d: Deps, reader: Reader, workspaceId: string,
   });
   if (landed.tending) await tend(landed.w, documentId, landed.tending);
   if (landed.stale) await touch(d, reader, workspaceId, documentId);
+  if (reader.seat) await workedOnInCall(reader.seat.viewer, { workspaceId, documentId }, editorOf(landed.w.owner, reader));
   return { seq: landed.seq };
 }
 /** The tree follows what's written, about a minute behind. The update is safe by now, so this can't fail it. */
@@ -367,11 +371,20 @@ type Edits = typeof docEdits;
 const reads: OpTable<Reads> = docReads;
 const edits: OpTable<Edits> = docEdits;
 
+/**
+ * How far each of these documents has got, in one small query, for knowing whether what was read of one still holds: `at`
+ * moves on with every update, and when one's put back to a version. `closed` as `working` reads it.
+ */
+export async function documentsAt(db: Db, ownerId: string, documentIds: string[]): Promise<Map<string, { at: string; closed: boolean }>> {
+  const found = await rows(db, z.object({ document_id: z.string(), next_seq: bigintText, version_at: timestamp.nullable(), closed: z.boolean() }),
+    'SELECT document_id, next_seq, version_at, coalesce(closed_until > now(), false) AS closed FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [ownerId, documentIds]);
+  return new Map(found.map((r) => [r.document_id, { at: `${r.next_seq}:${r.version_at?.getTime() ?? 0}`, closed: r.closed }]));
+}
 /** Asks a document something, for code that has decided the reader may have it (`requireDocument`). What can be asked is in documentOps.ts. */
 export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);
   const row = await documentRow(w, documentId);
-  const done = await w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
   report(w, documentId, done.found);
   return reads[op].result.parse(done.value);
 }
@@ -388,7 +401,7 @@ export async function writeDocument<N extends keyof Edits>(
   requireContent(w, documentId);
   if (trashOf(w.state, documentId)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, documentId } });
   const row = await documentRow(w, documentId);
-  const done = await w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row));
+  const done = await working(w, documentId, row, async () => w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(row)));
   report(w, documentId, done.found);
   const result = edits[op].result.parse(done.value);
   const { update, seen } = done;
@@ -659,6 +672,21 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string): 
       await out.write(line);
     }
   };
+}
+
+/**
+ * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the notes model and nowhere
+ * else, like catching up: nothing is kept, and nobody's credits pay for it. In a call it waits while notes are paused, as
+ * everything that reaches the AI does. Whoever lost the document while the model wrote isn't sent what came back.
+ */
+export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: DocAskBody): Promise<DocAskPart[]> {
+  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  if (reader.seat) await mayAskInCall(reader.seat.viewer);
+  const t0 = performance.now();
+  const parts = await editSelection(d.cfg, body.action, body.text);
+  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  dlog.info('selection edited', { workspaceId, documentId, action: body.action, chars: body.text.length, parts: parts.length, ms: Math.round(performance.now() - t0) });
+  return parts;
 }
 
 /* ---------- awareness: where everyone's caret is, never stored ---------- */
@@ -1004,6 +1032,21 @@ async function syncFrom(p: Place, documentId: string, row: DocRow, after: number
   return { seq: made.seq, ascii: made.ascii };
 }
 
+/**
+ * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much, out of
+ * a worker's time or memory, closes, so a poll asking again can't keep a worker on it, however many people are polling. A
+ * worker that only says the job failed closes nothing: a compaction that won't pass a row it can't read is one, and the
+ * document opens fine without that row.
+ */
+async function working<T>(p: Place, documentId: string, row: DocRow, job: () => Promise<T>): Promise<T> {
+  if (row.closed) throw new UnavailableError('This document can’t be opened right now.', { context: { workspaceId: p.workspaceId, documentId } });
+  try {
+    return await job();
+  } catch (e) {
+    if (e instanceof DocFailure && e.reason !== 'failed') await closeFor(p, documentId, e);
+    throw e;
+  }
+}
 /** A document that took more than a worker has stays closed for a while, on every instance and after a restart, so nobody's tab trying again costs anyone anything. */
 async function closeFor(p: Place, documentId: string, e: DocFailure): Promise<void> {
   dlog.warn('document unavailable', { workspaceId: p.workspaceId, documentId, reason: e.reason, err: e });
