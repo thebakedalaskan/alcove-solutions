@@ -207,7 +207,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
             <WsCantOpen what="document" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
-          <WsDoc className="is-bare">
+          /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
+          <WsDoc className={listOff ? undefined : 'is-bare'}>
             <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
             {empty
               ? <WsEmpty space={spaceName} page={page} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />

@@ -59,7 +59,8 @@ export function useSending({ live, workspaceId, pass, owner, tree, at, member, h
       if (open?.id === targetId && open.editor) {
         const [first] = open.editor.insertBlocks(blocks, 'tail');
         if (first === undefined) return;
-        if (latest.current.closed) latest.current.say(wsToast.addedTo(targetName, () => goTo(first)));
+        /* Closed, or with a phone's panel over it, the page can't be seen: it's said, as for a document that isn't open. */
+        if (latest.current.closed || live.covered()) latest.current.say(wsToast.addedTo(targetName, () => goTo(first)));
         else open.editor.scrollToBlock(first, { smooth: true, flash: true });
         return;
       }

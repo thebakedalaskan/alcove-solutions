@@ -1270,7 +1270,9 @@ function InCall({ session }: { session: CallSession }) {
   // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
   const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
   const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
-    notes: controls.notes, ask: controls.ask, reveal: work.act.reveal, beside: (v) => { setPop(null); layout.arrange((p) => showView(p, v)); }
+    // A list over the page goes, or it would cover what the panel opens beside.
+    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); layout.arrange((p) => showView(p, v)); },
+    reveal: () => { work.act.reveal(); if (phone) layout.arrange(closeAll); }, covered: () => phone && showing.length > 0
   });
   const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const wasBig = useRef(new Set(seats.keys()));

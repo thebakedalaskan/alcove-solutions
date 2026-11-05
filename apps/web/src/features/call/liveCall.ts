@@ -20,7 +20,7 @@ class Speaking implements LiveStore<Person | null> {
   }
 }
 
-export interface LiveCallActions { notes: (on: boolean) => void; ask: (up: boolean) => void; beside: (view: LiveBeside) => void; reveal: () => void }
+export interface LiveCallActions { notes: (on: boolean) => void; ask: (up: boolean) => void; beside: (view: LiveBeside) => void; reveal: () => void; covered: () => boolean }
 
 export function useLiveCall(session: CallSession, talking: Person | null, actions: LiveCallActions): { live: LiveCall; put: LivePut | null } {
   const [put, setPut] = useState<LivePut | null>(null);
@@ -33,7 +33,8 @@ export function useLiveCall(session: CallSession, talking: Person | null, action
     notes: (on) => latest.current.notes(on),
     ask: (up) => latest.current.ask(up),
     beside: (view) => latest.current.beside(view),
-    reveal: () => latest.current.reveal()
+    reveal: () => latest.current.reveal(),
+    covered: () => latest.current.covered()
   }), [session, speaking]);
   return { live, put };
 }

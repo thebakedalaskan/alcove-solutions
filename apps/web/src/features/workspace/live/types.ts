@@ -34,8 +34,10 @@ export interface LiveCall {
   ask: (up: boolean) => void;
   /** Shows Notes or the transcript as a panel beside the document. */
   beside: (view: LiveBeside) => void;
-  /** Brings the workspace back, for what a toast offers while it's closed. */
+  /** Brings the workspace back, for what a toast offers while it's closed or behind a panel. */
   reveal: () => void;
+  /** A panel is over the page, as it is on a phone, so nothing on it can be seen landing. */
+  covered: () => boolean;
   /** Says where the side panels' arrows send things. */
   onPut: (put: LivePut | null) => void;
 }
