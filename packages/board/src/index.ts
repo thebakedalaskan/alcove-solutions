@@ -4,7 +4,7 @@
  * from the workspace, so it can run in a browser and on the server alike.
  */
 export {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardIdSchema, BoardObjectSchema, INK_COLOURS, LINE_SIDES, LINE_STYLES, LineEndSchema, SHAPE_KINDS, STICKY_COLOURS, TABLE_MAX,
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardIdSchema, BoardObjectSchema, INK_COLOURS, LINE_SIDES, LINE_STYLES, LineEndSchema, SHAPE_KINDS, STICKY_COLOURS, TABLE_MAX,
   cellKey, hasBox, isAttached, layerOf, newId
 } from './shape';
 export type {

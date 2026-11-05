@@ -4,12 +4,14 @@
  * comes back holds together for the code that draws it: `f` names a frame on the board or nothing, frames
  * nest without going round in circles, and every line's attached ends are there to attach to.
  *
- * Two limits are exceptions to leaving out, because two people can pass them together and no write can stop that:
+ * Each object is joined to its place, from the list `places.ts` keeps, and one with no place that parses is left out like any
+ * other that doesn't. Two limits are exceptions to leaving out, because two people can pass them together and no write can stop that:
  * a sticky mustn't vanish over its text, nor a table over its rows. So a read keeps the object and cuts what's past
  * the limit, and the doc stays whole: nothing is lost, and editing a merged sticky still shows all of it.
  */
 import * as Y from 'yjs';
-import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BoardObjectSchema, TABLE_MAX, TableLinesSchema, cut, hasBox, isAttached, layerOf, type BoardObject, type BoardView, type FrameObject, type LineEnd, type TableLine } from './shape';
+import { placesIn, rootList } from './places';
+import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BoardObjectSchema, PLACE_FIELDS, TABLE_MAX, TableLinesSchema, cut, hasBox, isAttached, layerOf, type BoardObject, type BoardView, type FrameObject, type LineEnd, type Place, type TableLine } from './shape';
 
 /** A root as a map, or null if this browser already opened it as something else, where `getMap` would throw. */
 export function rootMap(doc: Y.Doc, name: string): Y.Map<unknown> | null {
@@ -77,29 +79,36 @@ function tableFields(m: Y.Map<unknown>): { rows?: unknown; cols?: unknown; cells
   return cells ? { rows: rows.data, cols: cols.data, cells } : {};
 }
 
-/** Everything an object holds as plain values, its text cut to fit. A `t` that isn't a Y.Text reads as missing, so it won't parse. */
-function plainOf(id: string, m: Y.Map<unknown>): Record<string, unknown> {
-  const fields = { ...Object.fromEntries(m.entries()), id, t: textOf(m.get('t')), title: textOf(m.get('title')) };
+/** Where something with a box is, as the fields it reads with. A box in its Y.Map is no box: that isn't where it's kept. */
+const boxOf = (m: Y.Map<unknown>, place: Place | undefined): Record<string, unknown> =>
+  m.get('k') !== 'line' && place ? { x: place.x, y: place.y, w: place.w, h: place.h } : { x: undefined, y: undefined, w: undefined, h: undefined };
+
+/** Everything an object holds as plain values, its place joined in and its text cut to fit. A `t` that isn't a Y.Text reads as missing, so it won't parse. */
+function plainOf(id: string, m: Y.Map<unknown>, place: Place | undefined): Record<string, unknown> {
+  const fields = { ...Object.fromEntries(m.entries()), ...boxOf(m, place), id, t: textOf(m.get('t')), title: textOf(m.get('title')) };
   return m.get('k') === 'table' ? { ...fields, rows: undefined, cols: undefined, cells: undefined, ...tableFields(m) } : fields;
 }
 
-function parseObject(id: string, m: Y.Map<unknown>): BoardObject | null {
-  const parsed = BoardObjectSchema.safeParse(plainOf(id, m));
+function parseObject(id: string, m: Y.Map<unknown>, place: Place | undefined): BoardObject | null {
+  const parsed = BoardObjectSchema.safeParse(plainOf(id, m, place));
   return parsed.success ? parsed.data : null;
 }
+
+const PLACED = new Set<string>(PLACE_FIELDS);
 
 /**
  * Whether an object still holds what `was` was read from, which it nearly always does. A person dragging
  * re-reads the board every frame, so this keeps zod for what changed: the check has to be exact, though, so a
  * peer swapping a Y.Text for a string of the same words doesn't pass as unchanged.
  */
-function unchanged(m: Y.Map<unknown>, was: BoardObject): boolean {
+function unchanged(m: Y.Map<unknown>, was: BoardObject, place: Place | undefined): boolean {
+  if (hasBox(was) && !(place && PLACE_FIELDS.every((key) => place[key] === was[key]))) return false;
   if (was.k === 'table') {
     const stored = mapOf(m.get('cells'));
     if (!stored || !same(linesOf(m.get('rows')), was.rows) || !same(linesOf(m.get('cols')), was.cols) || !same(cellsOf(stored, was.rows, was.cols), was.cells)) return false;
   }
   for (const [key, value] of Object.entries<unknown>(was)) {
-    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells') continue;
+    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || PLACED.has(key)) continue;
     if (key === 't' || key === 'title' ? textOf(m.get(key)) !== value : !same(m.get(key), value)) return false;
   }
   return true;
@@ -138,11 +147,12 @@ function framesInCircles(frames: readonly FrameObject[]): Set<string> {
  */
 export function readBoard(doc: Y.Doc, prev?: BoardView): BoardView {
   const read: BoardObject[] = [];
+  const list = rootList(doc, BOARD_PLACES), places = list ? placesIn(list) : new Map<string, Place>();
   rootMap(doc, BOARD_OBJECTS)?.forEach((value, id) => {
     const m = mapOf(value);
     if (!m) return;
-    const was = prev?.byId.get(id);
-    const object = was && unchanged(m, was) ? was : parseObject(id, m);
+    const was = prev?.byId.get(id), place = places.get(id);
+    const object = was && unchanged(m, was, place) ? was : parseObject(id, m, place);
     if (object) read.push(object);
   });
   const kept = read.sort(byOrder).slice(0, BOARD_LIMITS.objects);
@@ -163,9 +173,9 @@ export function readBoard(doc: Y.Doc, prev?: BoardView): BoardView {
   return { objects, byId: new Map(objects.map((o) => [o.id, o])), frames: objects.filter((o) => o.k === 'frame') };
 }
 
-/** Calls `onChange` after any change to what's on the board or its comments. Returns how to stop. */
+/** Calls `onChange` after any change to what's on the board, where it is, or its comments. Returns how to stop. */
 export function observeBoard(doc: Y.Doc, onChange: () => void): () => void {
-  const roots = [rootMap(doc, BOARD_OBJECTS), rootMap(doc, BOARD_COMMENTS)].flatMap((root) => (root ? [root] : []));
+  const roots = [rootMap(doc, BOARD_OBJECTS), rootList(doc, BOARD_PLACES), rootMap(doc, BOARD_COMMENTS)].flatMap((root) => (root ? [root] : []));
   const changed = (): void => onChange();
   for (const root of roots) root.observeDeep(changed);
   return () => {

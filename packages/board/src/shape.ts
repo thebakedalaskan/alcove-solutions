@@ -1,14 +1,17 @@
 /*
- * The shape of a board's Y.Doc, the one thing the app and the API have to agree on. Two roots: `objects`
- * holds a Y.Map per object and `comments` a Y.Map per thread. What people type together is Y.Text and
- * everything else is last-write-wins per key. The schemas describe an object as it reads out, text as plain
- * strings, and both directions use them: `readBoard` leaves out what doesn't parse and a write refuses what
- * wouldn't, so one browser can't write what the others would throw away.
+ * The shape of a board's Y.Doc, the one thing the app and the API have to agree on. Three roots: `objects`
+ * holds a Y.Map per object, `places` one shared list of where each object is, and `comments` a Y.Map per thread.
+ * What people type together is Y.Text and everything else is last-write-wins: per key, or per entry in `places`.
+ * The schemas describe an object as it reads out, its place joined in and text as plain strings, and both
+ * directions use them: `readBoard` leaves out what doesn't parse and a write refuses what wouldn't, so one
+ * browser can't write what the others would throw away.
  */
 import { z } from './zod';
 
 /** The root map of objects: id to Y.Map. */
 export const BOARD_OBJECTS = 'objects';
+/** The root list of where things are: a `{ k, x, y, w, h }` for each object with a box, `k` being its id. See `places.ts`. */
+export const BOARD_PLACES = 'places';
 /** The root map of comment threads: id to Y.Map, each with a Y.Array of replies. */
 export const BOARD_COMMENTS = 'comments';
 
@@ -43,7 +46,14 @@ const StickyColourSchema = z.enum(STICKY_COLOURS);
 const ColourOrNoneSchema = z.enum(['', ...STICKY_COLOURS]);
 
 const Layered = { id: BoardIdSchema, at: z.number(), f: IdOrNoneSchema };
-const Placed = { ...Layered, x: ReachSchema, y: ReachSchema, w: SideSchema, h: SideSchema };
+const Boxed = { x: ReachSchema, y: ReachSchema, w: SideSchema, h: SideSchema };
+const Placed = { ...Layered, ...Boxed };
+
+/** An entry in `places`: where the object `k` is. Everything a drag changes is here, and nothing else is. */
+export const PlaceSchema = z.object({ k: BoardIdSchema, ...Boxed });
+export type Place = z.output<typeof PlaceSchema>;
+/** The fields of an object that live in its place rather than its Y.Map. */
+export const PLACE_FIELDS = ['x', 'y', 'w', 'h'] as const;
 
 /** One end of a line: attached to something, or free on the board. */
 export const LineEndSchema = z.union([z.object({ on: BoardIdSchema, side: z.enum(LINE_SIDES) }), z.object({ x: ReachSchema, y: ReachSchema })]);
@@ -134,3 +144,4 @@ export function newId(): string {
   for (const byte of crypto.getRandomValues(new Uint8Array(12))) id += ID_CHARACTERS.charAt(byte & 63);
   return id;
 }
+

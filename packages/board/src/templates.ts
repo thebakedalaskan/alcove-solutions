@@ -63,18 +63,18 @@ const BOARDS: Record<TemplateName, Template> = {
 
 /** Puts a template on a board, clear of anything already there. */
 export function fillTemplate(doc: Y.Doc, name: TemplateName, origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, (board) => {
     const { objects: pieces, links } = BOARDS[name];
-    if (objects.size + pieces.length + links.length > BOARD_LIMITS.objects) return;
+    if (board.objects.size + pieces.length + links.length > BOARD_LIMITS.objects) return;
     const view = viewOf(doc);
     const { x, y } = clearSpot(view);
     const at = stack(view);
-    const made = pieces.map((piece) => insert(objects, { ...piece, x: piece.x + x, y: piece.y + y, id: newId(), at: at(piece.k), f: '' }));
+    const made = pieces.map((piece) => insert(board, { ...piece, x: piece.x + x, y: piece.y + y, id: newId(), at: at(piece.k), f: '' }));
     for (const [from, to] of links) {
       const a = made[from], b = made[to];
       if (!a || !b || !hasBox(a) || !hasBox(b)) continue;
       const [start, end] = sides(a, b);
-      insert(objects, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: newId(), at: at('line'), f: '' });
+      insert(board, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: newId(), at: at('line'), f: '' });
     }
   });
 }
