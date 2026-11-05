@@ -30,11 +30,15 @@ export function useCounts(): Record<Counter, number | undefined> {
   return { home: (inbox && openCount(inbox, notes ?? [], Date.now())) || undefined, notes: notes?.length, record: waiting || undefined, team: others ? others + 1 : undefined };
 }
 
+/** The workspace's pages fill the frame, keep one screen as you move around them, and take N for themselves. */
+export const inWorkspace = (path: string): boolean => path === '/workspace' || path.startsWith('/workspace/');
+
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
 /** The side panel's places, under Start a call. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home', count: 'home' },
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes', tour: 'notes' },
+  { to: '/workspace', icon: 'folderOpen', label: 'Workspace' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' },
   { to: '/team', icon: 'people', label: 'Team', count: 'team' }
 ];
@@ -43,11 +47,14 @@ export const NAV: readonly NavPlace[] = [
 export const places = <P extends { to: Place }>(all: readonly P[], team: Team | null | undefined): readonly P[] => (team === null ? all.filter((p) => p.to !== '/team') : all);
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
-/** The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. */
+/**
+ * The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. Settings is
+ * behind your face in the top bar.
+ */
 export const TABS: readonly Tab[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes', tour: 'notes' },
   { to: '/record', icon: 'recordDot', label: 'Record', raised: true, tour: 'room' },
-  { to: '/team', icon: 'people', label: 'Team' },
-  { to: '/settings', icon: 'settings', label: 'Settings' }
+  { to: '/workspace', icon: 'folderOpen', label: 'Workspace' },
+  { to: '/team', icon: 'people', label: 'Team' }
 ];
