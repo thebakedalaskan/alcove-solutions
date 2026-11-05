@@ -289,6 +289,11 @@ export interface AlcoveApi {
      * survives a reload.
      */
     document(id: ID, documentId: ID, opts?: DocSessionOptions): Promise<DocSession>;
+    /**
+     * Makes a new document or board of what `DocSession.localCopy` gave, for words that couldn't reach the one they were
+     * written in. Made like any other, by anyone who can make one, and nothing's left behind if it can't be.
+     */
+    saveCopy(id: ID, input: ItemInput & { state: Uint8Array }): Promise<{ id: ID }>;
     /** What a document looked like: the versions kept of it, the newest first. For anyone who can open it. */
     versions(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocVersionSummary[]>;
     /** One version with its whole state, for showing it. */

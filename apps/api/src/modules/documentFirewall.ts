@@ -15,19 +15,26 @@ import * as decoding from 'lib0/decoding';
 
 /** Why an update isn't something an honest client sends. It goes in logs, so it says what was wrong and nothing of what was in it. */
 export type Refusal =
-  | 'unreadable' | 'too-many-clients' | 'too-many-items' | 'too-many-deletes' | 'client-out-of-range' | 'client-repeated' | 'client-empty' | 'zero-length' | 'skip' | 'content'
+  | 'unreadable' | 'too-many-items' | 'too-many-deletes' | 'client-out-of-range' | 'client-repeated' | 'client-empty' | 'zero-length' | 'skip' | 'content'
   | 'clock-out-of-range' | 'shared-origin' | 'too-deep' | 'waiting-for-ever' | 'trailing-bytes' | 'not-theirs' | 'gap' | 'unknown-reference' | 'unknown-delete';
+/**
+ * What's too much, as opposed to what no honest client could send. A browser can't do anything about the second. Taking
+ * something out makes the first go through, so it hears the difference.
+ */
+const TOO_MUCH: ReadonlySet<string> = new Set<Refusal>(['too-many-items', 'too-many-deletes', 'shared-origin', 'too-deep']);
+export const isTooMuch = (why: string): boolean => TOO_MUCH.has(why);
 
 /** What one update may hold, so what's read never costs more than this. */
-export interface Caps { clients: number; items: number; sharedOrigin: number; nesting: number }
+export interface Caps { items: number; sharedOrigin: number; nesting: number }
 /**
- * What a browser's update may hold. A browser writes as one client, plus one for each earlier session still waiting to go.
- * A long paste is a few items a line. Items with the same left neighbour make Yjs's conflict scan quadratic, and a browser
- * only writes them by inserting again and again without the caret moving, so a thousand is far past anything typed.
+ * What a browser's update may hold: as much as a document may, in `items`, so nothing fits in a document and not in an
+ * update. Any number of clients, as what's waiting in a browser can have been written by any number of sessions, and each
+ * of them brings an item. Items with the same left neighbour make Yjs's conflict scan quadratic, and a browser only writes
+ * them by inserting again and again without the caret moving, so a thousand is far past anything typed.
  */
-export const BROWSER_CAPS: Caps = { clients: 256, items: 200_000, sharedOrigin: 1024, nesting: 1024 };
+export const browserCaps = (items: number): Caps => ({ items, sharedOrigin: 1024, nesting: 1024 });
 /** For what the server made or already holds: it's read to know its shape, not to judge it. */
-export const SERVER_CAPS: Caps = { clients: Infinity, items: Infinity, sharedOrigin: Infinity, nesting: Infinity };
+export const SERVER_CAPS: Caps = { items: Infinity, sharedOrigin: Infinity, nesting: Infinity };
 /**
  * How deep types may nest, whatever's in them. Deleting a type recurses into what's in it, in every browser, so this stays
  * well inside anyone's stack. Nothing written by hand comes within a hundredth of it.
@@ -66,9 +73,11 @@ export type Inspection = { seen: Inspected; why?: undefined } | { seen?: undefin
 
 type Id = readonly [number, number];
 interface Struct { clock: number; length: number; origin: Id | null; right: Id | null; parent: Id | null; type: boolean; depth: number }
-interface Reading { client: number; from: number; reached: number; at: number; content: number; structs: Struct[] }
+interface Reading { client: number; from: number; end: number; reached: number; at: number; content: number; structs: Struct[] }
 
 const refused = (why: Refusal): Inspection => ({ why });
+/** What's left to read. Everything an update counts takes at least a byte of it, so a count past this isn't one: it's not an update at all, rather than too much of one. */
+const left = (d: decoding.Decoder): number => d.arr.length - d.pos;
 const readId = (d: decoding.Decoder): Id => [decoding.readVarUint(d), decoding.readVarUint(d)];
 
 /** Whether text is JSON Yjs can write back: `JSON.stringify` recurses, so a value it can't get through would stop every read of the document. */
@@ -157,10 +166,15 @@ function structAt(r: Reading, clock: number): Struct | undefined {
   return undefined;
 }
 
+/** Whether a clock is in what this update brings of its client. */
+const arrives = (r: Reading | undefined, clock: number): r is Reading => r !== undefined && clock >= r.from && clock < r.end;
+
 /**
  * Works through what's in the update as Yjs would: nothing can be placed before what it refers to. Anything that can never
  * be placed is refused, because Yjs would hold it pending for ever, in every browser and every snapshot. On the way it finds
- * out how deep this goes below what's already there, and what it needs from the log.
+ * out how deep this goes below what's already there, and what it needs from the log. That's anything that doesn't arrive
+ * here, before a client's part of the update or after it: two tabs share a store, so what's going can be an old part of a
+ * client with something built on a later part, which the log has by now. If it hasn't, it's refused under its lock.
  */
 function settle(readings: Reading[], caps: Caps): { nesting: number; needs: Map<number, number> } | Refusal {
   const byClient = new Map(readings.map((r) => [r.client, r]));
@@ -168,12 +182,12 @@ function settle(readings: Reading[], caps: Caps): { nesting: number; needs: Map<
   const placed = (id: Id | null): boolean => {
     if (!id) return true;
     const r = byClient.get(id[0]);
-    return !r || id[1] < r.from || id[1] < r.reached;
+    return !arrives(r, id[1]) || id[1] < r.reached;
   };
   /** How many levels below what's known something is: zero for anything that isn't in this update. */
   const depthOf = (id: Id): number | undefined => {
     const r = byClient.get(id[0]);
-    if (r && id[1] >= r.from) return structAt(r, id[1])?.depth;
+    if (arrives(r, id[1])) return structAt(r, id[1])?.depth;
     needs.set(id[0], Math.max(needs.get(id[0]) ?? 0, id[1] + 1));
     return undefined;
   };
@@ -206,7 +220,7 @@ function settle(readings: Reading[], caps: Caps): { nesting: number; needs: Map<
 /** Reads one client's part of an update. */
 function readBlock(d: decoding.Decoder, caps: Caps, count: number, client: number, origins: Map<string, number>): Reading | Refusal {
   const from = decoding.readVarUint(d);
-  const r: Reading = { client, from, reached: from, at: 0, content: 0, structs: [] };
+  const r: Reading = { client, from, end: from, reached: from, at: 0, content: 0, structs: [] };
   let clock = from;
   for (let i = 0; i < count; i++) {
     const info: number | undefined = decoding.readUint8(d);
@@ -246,6 +260,7 @@ function readBlock(d: decoding.Decoder, caps: Caps, count: number, client: numbe
     clock += length;
     if (clock > MAX_CLOCK) return 'clock-out-of-range';
   }
+  r.end = clock;
   return r;
 }
 
@@ -253,7 +268,7 @@ function readBlock(d: decoding.Decoder, caps: Caps, count: number, client: numbe
 function read(update: Uint8Array, caps: Caps): Inspection {
   const d = decoding.createDecoder(update);
   const clients = decoding.readVarUint(d);
-  if (clients > caps.clients) return refused('too-many-clients');
+  if (clients > left(d)) return refused('unreadable');
   const readings: Reading[] = [];
   const seenClients = new Set<number>();
   const origins = new Map<string, number>();
@@ -261,6 +276,7 @@ function read(update: Uint8Array, caps: Caps): Inspection {
   for (let i = 0; i < clients; i++) {
     const count = decoding.readVarUint(d);
     if (!count) return refused('client-empty');
+    if (count > left(d)) return refused('unreadable');
     items += count;
     if (items > caps.items) return refused('too-many-items');
     const client = decoding.readVarUint(d);
@@ -278,9 +294,11 @@ function read(update: Uint8Array, caps: Caps): Inspection {
   let ranges = 0;
   let deletedLength = 0;
   const deleted = decoding.readVarUint(d);
+  if (deleted > left(d)) return refused('unreadable');
   for (let i = 0; i < deleted; i++) {
     const client = decoding.readVarUint(d);
     const n = decoding.readVarUint(d);
+    if (n > left(d)) return refused('unreadable');
     ranges += n;
     if (ranges > caps.items) return refused('too-many-deletes');
     for (let j = 0; j < n; j++) {
@@ -301,7 +319,7 @@ function read(update: Uint8Array, caps: Caps): Inspection {
   };
 }
 /** The shape of an update, or why it's refused. It never throws: nothing in the update gets to decide that. */
-export function inspect(update: Uint8Array, caps: Caps = BROWSER_CAPS): Inspection {
+export function inspect(update: Uint8Array, caps: Caps): Inspection {
   try {
     return read(update, caps);
   } catch {

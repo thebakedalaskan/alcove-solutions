@@ -372,6 +372,17 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
           awareness: (update, keepalive) => req(z.unknown(), 'POST', `${at}/awareness`, { update }, headers, keepalive)
         }, opts?.keep, o.liveQuietMs ?? QUIET_MS);
       },
+      // Nothing's left of it if its words don't go in: a blank document would look like the copy someone asked for.
+      saveCopy: async (id, { state, ...input }) => {
+        const made = await req(CreatedSchema, 'POST', `${space(id)}/items`, input);
+        try {
+          await send('POST', `${space(id)}/documents/${encodeURIComponent(made.id)}/adopt`, new Uint8Array(state), { 'content-type': DOC_UPDATE_TYPE });
+        } catch (e) {
+          await req(z.unknown(), 'POST', `${itemIn(id, made.id)}/trash`, {}).then(() => req(z.unknown(), 'DELETE', itemIn(id, made.id))).catch(() => undefined);
+          throw e;
+        }
+        return made;
+      },
       versions: (id, documentId, w) => req(z.array(DocVersionSummarySchema), 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions`, undefined, withPass(w)),
       version: async (id, documentId, versionId, w) => {
         const parts: Uint8Array[] = [];
