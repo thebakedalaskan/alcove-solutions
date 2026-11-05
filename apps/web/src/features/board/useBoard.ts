@@ -435,13 +435,15 @@ export class Board implements LiveStore<BoardState> {
       this.camera.set(cam);
       return;
     }
+    // Read first: reading a style settles the page, and the move has to settle together with the glide or there's nothing to ease.
+    const ms = tokenMs(sheet, '--duration-3') + SETTLE_MS;
     this.set({ glide: true });
     this.camera.set(cam);
     const { near } = this.state;
     if (near) this.set({ near: bounds([near, reachOf(this.camera.visible())]) });
     // Not put off by the next glide: following calls this all the time, and what's mounted still has to catch up.
     if (this.waits.has('glide')) return;
-    this.later('glide', tokenMs(sheet, '--duration-3') + SETTLE_MS, () => {
+    this.later('glide', ms, () => {
       this.set({ glide: false });
       this.settleNear();
     });
