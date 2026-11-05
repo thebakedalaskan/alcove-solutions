@@ -457,6 +457,15 @@ type Edits = typeof docEdits;
 const reads: OpTable<Reads> = docReads;
 const edits: OpTable<Edits> = docEdits;
 
+/**
+ * How far each of these documents has got, in one small query, for knowing whether what was read of one still holds: `at`
+ * moves on with every update, and when one's put back to a version. `closed` as `working` reads it.
+ */
+export async function documentsAt(db: Db, ownerId: string, documentIds: string[]): Promise<Map<string, { at: string; closed: boolean }>> {
+  const found = await rows(db, z.object({ document_id: z.string(), next_seq: bigintText, version_at: timestamp.nullable(), closed: z.boolean() }),
+    'SELECT document_id, next_seq, version_at, coalesce(closed_until > now(), false) AS closed FROM documents WHERE owner_id = $1 AND document_id = ANY($2::text[])', [ownerId, documentIds]);
+  return new Map(found.map((r) => [r.document_id, { at: `${r.next_seq}:${r.version_at?.getTime() ?? 0}`, closed: r.closed }]));
+}
 /** Asks a document something, for code that has decided the reader may have it (`requireDocument`). What can be asked is in documentOps.ts. */
 export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);

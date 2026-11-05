@@ -1094,15 +1094,19 @@ them written after all. Writing the notes again keeps them done, as anything wit
 A call's follow-ups are also the to-dos with a mention and a date in the documents worked on in it, for whoever can open
 each ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). They're the document's
 own: ticking one writes to the document, they aren't kept anywhere else, and they don't go into the note, whose
-follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them.
+follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them, and
+by whom, with the reader told which of them is them (`isMe`).
 
 ## Asking about a selection
 
 The format bar's Make this shorter and Turn this into a checklist: `POST /v1/workspaces/:id/documents/:doc/ask` with what's
 selected in the body, at most 8,000 characters. It needs `edit`, so it's also for a guest who's been given that, and it's
 the only thing in a document that reaches a model. `drafting.editSelection` sends the selection and nothing else about
-the document, fenced so it's read as words to edit, to the notes model, checked and sealed like every request
-([Verified private inference](#verified-private-inference)). What comes back is for the person asking to put in the
+the document, as it was written, to the notes model, checked and sealed like every request
+([Verified private inference](#verified-private-inference)). It's fenced so it's read as words to edit: between
+`<selection-…>` and `</selection-…>`, with a random mark drawn for each ask, after the selection was written, so nothing
+in it can end the passage early, whether it's built out of pieces of a tag or only looks like one to the model. Taking
+tags out of the selection couldn't promise that. What comes back is for the person asking to put in the
 document: nothing is written to it from here, nothing is kept, and it has no receipt.
 
 It works as catching up does. It's one answer in one response, which `@alcove/api-http` hands over as parts (an

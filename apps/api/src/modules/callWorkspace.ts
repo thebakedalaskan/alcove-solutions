@@ -7,7 +7,9 @@
  * about it at once, and what they were presenting or playing stops. What's in a workspace is read with the server's keys
  * here only to work out what each person may be told, and someone who can open nothing is told nothing that names it.
  *
- * `calls.ts` holds the call's row and says when to do what; this is what's done.
+ * `calls.ts` holds the call's row and says when to do what; this is what's done. A live call comes first, so nothing done here
+ * under the call's row waits on a workspace's lock, opens a workspace or works through its documents: that's done before the
+ * row is taken (`prepare`, `makeAgenda`), and reading a call opens a workspace once a version for everyone (`seenAt`).
  */
 import { firstName, type CallAction, type CallBrought, type CallFollowUp, type CallFollowUps, type CallPlay, type CallPresent, type CallWorkspace, type CallWorkspaceAsk, type CallWorkspaceSwitch, type DocFollowUp, type DocFollowUpTick, type LiveNotes, type Person } from '@alcove/api';
 import type { Deps, Owner } from '../context';
@@ -16,16 +18,16 @@ import { tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import type { Hub } from '../live/hub';
 import { log } from '../log';
-import { findItem, getItem, type Loaded } from '../vault';
+import { findItem, type Loaded } from '../vault';
 import { profile, updateProfile } from './account';
 import { seatOfViewer, type Viewer } from './calls';
-import { stopped, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
-import { isFollowUp, type Run } from './documentText';
+import { stopped, type AgendaDraft, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
+import type { DocTodo, FollowUpLimits, Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
-import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Who } from './workspaceAccess';
-import { editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
+import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
+import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
 import { addBeside, createIn } from './workspaces';
 
 const wlog = log.child({ component: 'call-workspace' });
@@ -120,9 +122,61 @@ export const withoutLost = (w: CallSpace, lost: Lost): CallSpace => ({
   ...w, present: w.present.filter((p) => !lost.present.some((x) => sameStart(x, p) && x.id === p.id)), play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId))
 });
 
+/* ---------- what calls read of a tree: once for each version, for everyone ---------- */
+
+/** What reading a call needs of one item in a tree: what it is, what it's called, and enough to say who can open it. */
+interface Facts { item: Pick<StoredItem, 'kind' | 'name' | 'by' | 'restricted' | 'restrictedBy'>; trashed: boolean }
+/** A tree as calls have read it at one version: its name, and each item they've asked after (null when it isn't there). */
+interface Seen { version: number; name: string; items: Map<string, Facts | null> }
+const MAX_SEEN = 1024;
+const seenByHub = new WeakMap<Hub, Map<string, Seen>>();
+const openingByHub = new WeakMap<Hub, Map<string, Promise<HeldWorkspace | undefined>>>();
+/**
+ * These items as a workspace's tree has them at `version`, for everyone reading a call that uses it. Opening a tree costs in
+ * proportion to its size, and everyone in a call reads it every few seconds while something shows, so, as for each update
+ * typed (`editableBy`), what's read holds for as long as the version does, and costs one small query; a tree is opened once
+ * for each version, however many ask at once. All that's kept between reads is what calls asked after, by ID: names and who
+ * can open them, never keys and never the tree. Whatever changes the tree moves its version on (`saveState`), and who holds
+ * what is read afresh every time, so nobody's told anything that no longer holds. Undefined once it's gone.
+ */
+async function seenAt(d: Deps, workspaceId: string, version: number, ids: string[]): Promise<Seen | undefined> {
+  const seen = seenByHub.get(d.hub) ?? new Map<string, Seen>();
+  seenByHub.set(d.hub, seen);
+  const known = seen.get(workspaceId);
+  if (known?.version === version && ids.every((id) => known.items.has(id))) return known;
+  const opening = openingByHub.get(d.hub) ?? new Map<string, Promise<HeldWorkspace | undefined>>();
+  openingByHub.set(d.hub, opening);
+  const key = `${workspaceId}:${version}`;
+  let read = opening.get(key);
+  if (!read) {
+    read = serverWorkspace(d, workspaceId).finally(() => opening.delete(key));
+    opening.set(key, read);
+  }
+  const w = await read;
+  if (!w) return undefined;
+  const was = seen.get(workspaceId);
+  const items = new Map(was?.version === w.version ? was.items : []);
+  for (const id of ids) {
+    const item = w.state.items[id];
+    items.set(id, item ? { item: { kind: item.kind, name: item.name, by: item.by, restricted: item.restricted, restrictedBy: item.restrictedBy }, trashed: trashOf(w.state, id) !== null } : null);
+  }
+  const now: Seen = { version: w.version, name: w.state.name, items };
+  seen.delete(workspaceId);
+  seen.set(workspaceId, now);
+  for (const oldest of seen.keys()) {
+    if (seen.size <= MAX_SEEN) break;
+    seen.delete(oldest);
+  }
+  return now;
+}
+
 /**
  * The call's workspace as this person may know it, and what's been lost. One that can't be read says it's private: a call
  * doesn't depend on what's in a workspace, so nothing here can stop anyone reading the call.
+ *
+ * Someone with nothing in a workspace has nothing of it read for them, whatever's going on there: they're told only that
+ * something's being presented, and by whom, so what they're told, and what a read costs them, is the same either way.
+ * Whether what's going on there still stands is found by whoever can open something in it, or started it.
  */
 export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: Lost }> {
   const { v, s, place, meeting } = x;
@@ -140,40 +194,49 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     const reader = await readerInCall(v);
     const out = { ...shut };
     const documents = new Map<string, CallBrought>();
+    const startedHere = (p: { by: Controller } | undefined) => p !== undefined && p.by.person === v.pass.person;
     for (const workspaceId of workspaces) {
-      const ownerId = await workspaceOwner(d.pool, workspaceId);
-      if (!ownerId) continue;
+      const at = await workspaceAt(d.pool, workspaceId);
+      if (!at) continue;
       const inCall = workspaceId === inUse;
       const present = inCall ? s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
       const play = inCall ? s.workspace.play.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
-      const others = [present, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
-      const holders = await holdersOf(d.pool, ownerId, [...reader.principals, ...others.flatMap((o) => o.principals)]);
-      const standing = standingIn(holders, reader);
-      // Its keys are opened only for someone with something in it, or to see whether what's going on there still stands.
-      if (!canOpen(standing) && !present && !play) continue;
-      const w = await serverWorkspace(d, workspaceId);
-      if (!w) continue;
-      for (const b of brought.filter((y) => y.workspaceId === workspaceId)) {
-        const item = w.state.items[b.documentId];
-        const role = item && !trashOf(w.state, b.documentId) ? roleOf(reader, standing, b.documentId, item) : undefined;
-        if (item && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: item.kind, name: item.name, role });
+      const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+      const opensSomething = canOpen(standing);
+      if (!opensSomething && !startedHere(present) && !startedHere(play)) {
+        if (present) out.present = presentAs(v, present, '', false);
+        continue;
+      }
+      const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : [])];
+      const seen = await seenAt(d, workspaceId, at.version, ids);
+      if (!seen) continue;
+      /** What `who`, standing as they do, can do with something that's still in the tree. */
+      const roleIn = (who: Who, as: Standing, id: string) => { const f = seen.items.get(id); return f && !f.trashed ? roleOf(who, as, id, f.item) : undefined; };
+      if (opensSomething) {
+        for (const b of brought.filter((y) => y.workspaceId === workspaceId)) {
+          const f = seen.items.get(b.documentId);
+          const role = roleIn(reader, standing, b.documentId);
+          if (f && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: f.item.kind, name: f.item.name, role });
+        }
       }
       if (!inCall) continue;
-      if (canOpen(standing)) {
+      if (opensSomething) {
         out.id = workspaceId;
-        out.name = standing.role === null ? null : w.state.name;
+        out.name = standing.role === null ? null : seen.name;
         out.canOpen = true;
         out.role = standing.role;
       }
-      /** What `who` can do with something that's still in the tree. */
-      const roleIn = (who: Who, id: string) => { const item = w.state.items[id]; return item && !trashOf(w.state, id) ? roleOf(who, standingIn(holders, who), id, item) : undefined; };
+      // Whatever's going on there goes on while whoever started it can still open it.
+      const starters = [present, play].flatMap((p) => (p ? [whoStarted(d, x.callId, p.by)] : []));
+      const theirs = starters.length ? await holdersOf(d.pool, at.ownerId, starters.flatMap((who) => who.principals)) : { members: [], shares: [] };
+      const stands = (by: Controller, id: string) => { const who = whoStarted(d, x.callId, by); return roleIn(who, standingIn(theirs, who), id) !== undefined; };
       if (present) {
-        if (!roleIn(whoStarted(d, x.callId, present.by), present.id)) lost.present.push(present);
-        else out.present = presentAs(v, present, w.state.items[present.id]?.name ?? '', roleIn(reader, present.id) !== undefined);
+        if (!stands(present.by, present.id)) lost.present.push(present);
+        else out.present = presentAs(v, present, seen.items.get(present.id)?.item.name ?? '', roleIn(reader, standing, present.id) !== undefined);
       }
       if (play) {
-        if (!roleIn(whoStarted(d, x.callId, play.by), play.documentId)) lost.play.push(play);
-        else if (roleIn(reader, play.documentId)) out.play = playAs(v, play);
+        if (!stands(play.by, play.documentId)) lost.play.push(play);
+        else if (roleIn(reader, standing, play.documentId)) out.play = playAs(v, play);
       }
     }
     const inOrder = meeting.documents.flatMap((id) => documents.get(id) ?? []);
@@ -190,19 +253,20 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
 /** Who an account is to a workspace, without a call. */
 const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)] });
 
-/** The workspace a call settles on when nobody has chosen: its organizer's most recently used, if they can still edit in it, else a new one in their name. */
-export async function chooseFor(o: Owner, c: Db): Promise<string> {
-  const me = await profile(o, c);
-  if (me.recentWorkspace) {
-    try {
-      const w = await workspaceFor(o, accountWho(o, me.email), me.recentWorkspace, c);
-      if (w.role === 'admin' || w.role === 'edit') return me.recentWorkspace;
-    } catch (e) {
-      if (!(e instanceof NotFoundError)) throw e;
-    }
-  }
-  return (await createIn(o, c, `${firstName(me.name)}’s workspace`)).id;
+/**
+ * The workspace a call settles on when nobody has chosen, if it's one there already: its organizer's most recently used, if
+ * they can still edit in it. Asked with nothing held, from who's in it, without opening it.
+ */
+export async function recentFor(o: Owner): Promise<string | undefined> {
+  const me = await profile(o);
+  const ownerId = me.recentWorkspace ? await workspaceOwner(o.pool, me.recentWorkspace) : undefined;
+  if (!me.recentWorkspace || !ownerId) return undefined;
+  const who = accountWho(o, me.email);
+  const { role } = standingIn(await holdersOf(o.pool, ownerId, who.principals), who);
+  return role === 'admin' || role === 'edit' ? me.recentWorkspace : undefined;
 }
+/** Otherwise a new one in the organizer's name, in the caller's transaction: nobody else can reach it yet, so nothing waits on it. */
+export const newFor = async (o: Owner, c: Db): Promise<string> => (await createIn(o, c, `${firstName((await profile(o, c)).name)}’s workspace`)).id;
 /** Remembers the workspace someone used last, when that's changed. */
 export async function noteUsed(o: Owner, workspaceId: string): Promise<void> {
   try {
@@ -263,18 +327,30 @@ export const isSpaceAction = (a: CallAction): a is SpaceAction => SPACE_ACTIONS.
 const ANYONES: ReadonlySet<CallAction['type']> = new Set(['workspace-open', 'workspace-bring', 'workspace-ask', 'present-start', 'present-move', 'present-stop', 'play-start', 'play-pause', 'play-resume', 'play-seek', 'play-stop']);
 export const anyonesAction = (a: CallAction): boolean => ANYONES.has(a.type);
 
-/** A video to play has to be in its document, in the call's workspace, for someone who can open it. Reads the document, so it's asked with nothing held. */
-export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | null, documentId: string, mediaId: string): Promise<void> {
-  const shut = notFound('That document', { documentId });
-  if (!workspaceId) throw shut;
-  const w = await workspaceFor(o, reader, workspaceId);
-  const { item } = requireDocument(reader, w, documentId, 'read');
-  if (!await readDocument(w, documentId, 'holdsVideo', { kind: kindOf(item), media: mediaId })) throw shut;
+const noDocument = (documentId: string) => notFound('That document', { documentId });
+/** What someone can't reach reads as what was never there: one refusal for both, in the same words, whatever made it so. */
+async function reached<T>(documentId: string, f: () => Promise<T>): Promise<T> {
+  try {
+    return await f();
+  } catch (e) {
+    if (e instanceof NotFoundError) throw noDocument(documentId);
+    throw e;
+  }
 }
 
-/** What's needed to change what a call keeps, in its transaction, which holds its row. */
+/** A video to play has to be in its document, in the call's workspace, for someone who can open it. Reads the document, so it's asked with nothing held. */
+export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | null, documentId: string, mediaId: string): Promise<void> {
+  if (!workspaceId) throw noDocument(documentId);
+  await reached(documentId, async () => {
+    const w = await workspaceFor(o, reader, workspaceId);
+    const { item } = requireDocument(reader, w, documentId, 'read');
+    if (!await readDocument(w, documentId, 'holdsVideo', { kind: kindOf(item), media: mediaId })) throw noDocument(documentId);
+  });
+}
+
+/** What a call is when someone does something about its workspace: read with nothing held, and read again under its row. */
 export interface Changing<S extends Spaced> {
-  v: Viewer; reader: Reader; c: Db; callId: string;
+  v: Viewer; reader: Reader; callId: string;
   meeting: Loaded<MeetingManifest>;
   s: S;
   /** Where whoever's asking is in the call. */
@@ -282,24 +358,37 @@ export interface Changing<S extends Spaced> {
   now: number;
   seatOf: (j: Joined) => string;
 }
-/** What came of it: the call as it is now, and the workspace it left and moved to, if it moved. */
-export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined }
+/**
+ * What came of it: the call as it is now; the workspace it left and moved to, if it moved; and the seat a grant gave someone
+ * who was removed meanwhile, for the caller to take back once the call's row is let go, as their removal does.
+ */
+export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined; ended?: string | undefined }
+/**
+ * The change to what the call keeps, in the transaction that holds its row (`c`). What it went by is checked again there, from
+ * the call's own state alone; `again` when that's moved on, for it all to be asked afresh with nothing held.
+ */
+export type Apply<S extends Spaced> = (x: Changing<S> & { c: Db }) => Promise<Changed<S> | 'again'>;
 
 const withSpace = <S extends Spaced>(s: S, workspace: CallSpace): S => ({ ...s, workspace });
-const noDocument = (documentId: string) => notFound('That document', { documentId });
 const notYours = (callId: string, what: string) => new ForbiddenError('Only whoever started this, or the organizer, can do that.', { context: { callId, what } });
-/** Whether someone can open a document in a workspace. */
-async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string, db: Db): Promise<boolean> {
+/** Whether someone can open a document in a workspace, read with nothing held. */
+async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string): Promise<boolean> {
   try {
-    requireDocument(reader, await workspaceFor(d, reader, workspaceId, db), documentId, 'read');
+    requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'read');
     return true;
   } catch (e) {
     if (e instanceof NotFoundError) return false;
     throw e;
   }
 }
+/** What's presented or playing in one part of the call, as a start over it goes by: who, what, and whether it shows. */
+const presentSlot = (s: Placing, p: Presenting | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.id}:${String(showing(s, p))}` : '');
+const playSlot = (s: Placing, p: Playing | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.documentId}:${p.mediaId}:${String(showing(s, p))}` : '');
+/** Where a document brought or taken off is from: what's brought, from the workspace in use; what's taken off can have come from one the call used before. */
+const broughtFrom = (m: Pick<MeetingManifest, 'workspaceId' | 'documents'>, a: { documentId: string; brought: boolean }): string | null =>
+  a.brought ? m.workspaceId : m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? m.workspaceId;
 
-async function moveTo<S extends Spaced>(x: Changing<S>, workspaceId: string): Promise<Changed<S>> {
+async function moveTo<S extends Spaced>(x: Changing<S> & { c: Db }, workspaceId: string): Promise<Changed<S>> {
   const from = x.meeting.manifest.workspaceId;
   if (from === workspaceId) return { s: x.s };
   await updateManifest(x.v.organizer, x.c, x.meeting.itemId, (m) => ({ ...m, workspaceId }));
@@ -307,81 +396,112 @@ async function moveTo<S extends Spaced>(x: Changing<S>, workspaceId: string): Pr
   return { s: withSpace(x.s, stopped(x.s.workspace)), moved: { from, to: workspaceId } };
 }
 
-/** Whatever someone does about the call's workspace. Who may is checked here, under the call's row, and again by access. */
-export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): Promise<Changed<S>> {
-  const { v, reader, c, s, callId, place, now } = x;
+/**
+ * Whatever someone does about the call's workspace, in two steps, because a live call comes first: nothing under the call's
+ * row waits on a workspace's lock, opens a workspace or works through its documents. This is the first, with nothing of the
+ * call held: who may, whether what's asked for opens, and a grant, which changes the workspace under that row in a
+ * transaction of its own. What it returns is the second (`Apply`). Access is asked on every read of the call, so whatever
+ * changes in between is found there.
+ */
+export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction): Promise<Apply<S>> {
+  const { v, reader, s, callId, place } = x;
   const o = v.organizer;
   const w = s.workspace;
   const inUse = x.meeting.manifest.workspaceId;
   const control = (p: { by: Controller }) => p.by.person === v.pass.person || v.isOrganizer;
   switch (a.type) {
     case 'workspace-set': {
-      const target = await workspaceFor(o, reader, a.workspaceId, c, 'hold');
-      requireRole(target, 'edit');
-      return moveTo(x, a.workspaceId);
+      requireRole(await workspaceFor(o, reader, a.workspaceId), 'edit');
+      return (y) => moveTo(y, a.workspaceId);
     }
-    case 'workspace-new': return moveTo(x, (await createIn(o, c, a.name ?? (x.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
+    // A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody.
+    case 'workspace-new': return async (y) => moveTo(y, (await createIn(o, y.c, a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
     case 'workspace-bring': {
-      // What's brought comes from the workspace in use; what's taken off can have been brought from one the call used before.
-      const from = a.brought ? inUse : x.meeting.manifest.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? inUse;
+      const from = broughtFrom(x.meeting.manifest, a);
       if (!from) throw noDocument(a.documentId);
-      requireDocument(reader, await workspaceFor(o, reader, from, c), a.documentId, 'read');
-      const id = broughtId(from, a.documentId);
-      await updateManifest(o, c, x.meeting.itemId, (m) => {
-        if (a.brought === m.documents.includes(id)) return m;
-        if (!a.brought) return { ...m, documents: m.documents.filter((d) => d !== id) };
-        if (m.documents.length >= MAX_BROUGHT) throw new ConflictError('This call has as many documents as it can bring. Take one off first.', { context: { callId, documents: m.documents.length } });
-        return { ...m, documents: [...m.documents, id] };
-      });
-      return { s };
+      await reached(a.documentId, async () => requireDocument(reader, await workspaceFor(o, reader, from), a.documentId, 'read'));
+      return async (y) => {
+        if (broughtFrom(y.meeting.manifest, a) !== from) return 'again';
+        const id = broughtId(from, a.documentId);
+        await updateManifest(o, y.c, y.meeting.itemId, (m) => {
+          if (a.brought === m.documents.includes(id)) return m;
+          if (!a.brought) return { ...m, documents: m.documents.filter((d) => d !== id) };
+          if (m.documents.length >= MAX_BROUGHT) throw new ConflictError('This call has as many documents as it can bring. Take one off first.', { context: { callId, documents: m.documents.length } });
+          return { ...m, documents: [...m.documents, id] };
+        });
+        return { s: y.s };
+      };
     }
     case 'workspace-ask': {
       if (v.isOrganizer) throw new ValidationError('You choose the workspace for this call.', { context: { callId } });
-      const others = w.asks.filter((q) => q.person !== v.pass.person);
-      if (!a.up) return { s: withSpace(s, { ...w, asks: others }) };
-      if (w.asks.some((q) => q.person === v.pass.person && q.state === 'asking')) return { s };
-      return { s: withSpace(s, { ...w, asks: [...others, { id: id128(), person: v.pass.person, at: now, state: 'asking' }] }) };
+      return async (y) => {
+        const now = y.s.workspace;
+        const others = now.asks.filter((q) => q.person !== v.pass.person);
+        if (!a.up) return { s: withSpace(y.s, { ...now, asks: others }) };
+        if (now.asks.some((q) => q.person === v.pass.person && q.state === 'asking')) return { s: y.s };
+        return { s: withSpace(y.s, { ...now, asks: [...others, { id: id128(), person: v.pass.person, at: y.now, state: 'asking' }] }) };
+      };
     }
     case 'workspace-grant': {
       const ask = w.asks.find((q) => q.id === a.askId && q.state === 'asking');
       const j = ask && here(s, ask.person);
       if (!ask || !j) throw new ValidationError('That ask isn’t open.', { context: { callId } });
       if (!inUse) throw noDocument(a.documentId);
-      const held = await workspaceFor(o, reader, inUse, c, 'change');
-      requireSharing(reader, held, a.documentId);
-      await grant(held, c, a.documentId, [{ kind: 'seat', callId, seat: x.seatOf(j), name: j.name, role: a.role }]);
+      const seat = x.seatOf(j);
+      await tx(o.pool, async (c) => {
+        const held = await workspaceFor(o, reader, inUse, c, 'change');
+        requireSharing(reader, held, a.documentId);
+        await grant(held, c, a.documentId, [{ kind: 'seat', callId, seat, name: j.name, role: a.role }]);
+      });
       wlog.info('document opened to someone in a call', { callId, workspaceId: inUse, documentId: a.documentId, role: a.role });
-      return { s: withSpace(s, { ...w, asks: w.asks.filter((q) => q.id !== ask.id) }) };
+      return async (y) => ({ s: withSpace(y.s, { ...y.s.workspace, asks: y.s.workspace.asks.filter((q) => q.id !== ask.id) }), ended: y.s.removed.includes(ask.person) ? seat : undefined });
     }
-    case 'workspace-decline': {
-      if (!w.asks.some((q) => q.id === a.askId && q.state === 'asking')) throw new ValidationError('That ask isn’t open.', { context: { callId } });
-      return { s: withSpace(s, { ...w, asks: w.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
-    }
+    case 'workspace-decline': return async (y) => {
+      const now = y.s.workspace;
+      if (!now.asks.some((q) => q.id === a.askId && q.state === 'asking')) throw new ValidationError('That ask isn’t open.', { context: { callId } });
+      return { s: withSpace(y.s, { ...now, asks: now.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
+    };
     case 'present-start': {
       if (!inUse) throw noDocument(a.id);
-      const held = await workspaceFor(o, reader, inUse, c);
+      const held = await workspaceFor(o, reader, inUse);
       const { item } = requireDocument(reader, held, a.id, 'read');
       if (item.kind !== a.kind) throw noDocument(a.id);
       if (trashOf(held.state, a.id)) throw new ConflictError('This is in Trash. Restore it to present it.', { context: { callId, documentId: a.id } });
       const there = w.present.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id, c)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
-      const next: Presenting = { place, workspaceId: inUse, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
-      return { s: withSpace(s, { ...w, present: [...w.present.filter((p) => p.place !== place), next] }) };
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
+      const slot = presentSlot(s, there);
+      return async (y) => {
+        const now = y.s.workspace;
+        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || presentSlot(y.s, now.present.find((p) => p.place === place)) !== slot) return 'again';
+        const next: Presenting = { place, workspaceId: inUse, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
+        return { s: withSpace(y.s, { ...now, present: [...now.present.filter((p) => p.place !== place), next] }) };
+      };
     }
     case 'present-move':
-    case 'present-stop': {
-      const p = w.present.find((q) => q.place === place && showing(s, q));
+    case 'present-stop': return async (y) => {
+      const now = y.s.workspace;
+      const p = now.present.find((q) => q.place === y.place && showing(y.s, q));
       if (!p) throw new ConflictError('Nothing is being presented here.', { context: { callId, what: a.type } });
       if (!control(p)) throw notYours(callId, a.type);
-      const rest = w.present.filter((q) => q !== p);
-      return { s: withSpace(s, { ...w, present: a.type === 'present-stop' ? rest : [...rest, { ...p, section: a.section }] }) };
-    }
+      const rest = now.present.filter((q) => q !== p);
+      return { s: withSpace(y.s, { ...now, present: a.type === 'present-stop' ? rest : [...rest, { ...p, section: a.section }] }) };
+    };
     case 'play-start': {
       if (!inUse) throw noDocument(a.documentId);
+      await mayPlay(o, reader, inUse, a.documentId, a.mediaId);
       const there = w.play.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId, c)) throw new ConflictError('Someone else is playing something here.', { context: { callId } });
-      const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: now };
-      return { s: withSpace(s, { ...w, play: [...w.play.filter((p) => p.place !== place), next] }) };
+      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.documentId)) {
+        // Someone who can't open what's playing isn't told it is: what they try reads as their own video not being there.
+        if (!await opens(o, reader, there.workspaceId, there.documentId)) throw noDocument(a.documentId);
+        throw new ConflictError('Someone else is playing something here.', { context: { callId } });
+      }
+      const slot = playSlot(s, there);
+      return async (y) => {
+        const now = y.s.workspace;
+        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || playSlot(y.s, now.play.find((p) => p.place === place)) !== slot) return 'again';
+        const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: y.now };
+        return { s: withSpace(y.s, { ...now, play: [...now.play.filter((p) => p.place !== place), next] }) };
+      };
     }
     case 'play-pause':
     case 'play-resume':
@@ -389,12 +509,18 @@ export async function change<S extends Spaced>(x: Changing<S>, a: SpaceAction): 
     case 'play-stop': {
       const p = w.play.find((q) => q.place === place && showing(s, q));
       // What someone can't open is never said to be playing, so it reads the same as nothing playing.
-      if (!p || !(await opens(o, reader, p.workspaceId, p.documentId, c))) throw new ConflictError('Nothing is playing here.', { context: { callId, what: a.type } });
+      if (!p || !(await opens(o, reader, p.workspaceId, p.documentId))) throw new ConflictError('Nothing is playing here.', { context: { callId, what: a.type } });
       if (!control(p)) throw notYours(callId, a.type);
-      const rest = w.play.filter((q) => q !== p);
-      if (a.type === 'play-stop') return { s: withSpace(s, { ...w, play: rest }) };
-      const at = a.type === 'play-pause' ? { playing: false, positionMs: a.positionMs } : a.type === 'play-seek' ? { positionMs: a.positionMs } : { playing: true };
-      return { s: withSpace(s, { ...w, play: [...rest, { ...p, ...at, atMs: now }] }) };
+      const slot = playSlot(s, p);
+      return async (y) => {
+        const now = y.s.workspace;
+        const q = now.play.find((x2) => x2.place === place && showing(y.s, x2));
+        if (y.place !== place || playSlot(y.s, q) !== slot || !q) return 'again';
+        const rest = now.play.filter((x2) => x2 !== q);
+        if (a.type === 'play-stop') return { s: withSpace(y.s, { ...now, play: rest }) };
+        const at = a.type === 'play-pause' ? { playing: false, positionMs: a.positionMs } : a.type === 'play-seek' ? { positionMs: a.positionMs } : { playing: true };
+        return { s: withSpace(y.s, { ...now, play: [...rest, { ...q, ...at, atMs: y.now }] }) };
+      };
     }
   }
 }
@@ -412,32 +538,94 @@ const byWorkspace = (worked: WorkedDocument[]): Map<string, WorkedDocument[]> =>
   for (const x of worked) out.set(x.workspaceId, [...(out.get(x.workspaceId) ?? []), x]);
   return out;
 };
-/** A workspace as this reader has it, or nothing when they have nothing in it. */
-async function maybeWorkspace(d: Deps, reader: Who, workspaceId: string) {
-  try {
-    return await workspaceFor(d, reader, workspaceId);
-  } catch (e) {
-    if (e instanceof NotFoundError) return undefined;
-    throw e;
+/** How many documents worked on in a call its follow-ups are read from: the ones most recently worked on. */
+const FOLLOW_UP_DOCUMENTS = 20;
+/** What a call is given of each one's follow-ups, worked out where it's read (`followUpsIn`): a document can hold thousands. */
+const FOLLOW_UP_LIMITS: FollowUpLimits = { max: 25, chars: 300, tags: 5 };
+/** How many come from documents in all. */
+const MAX_DOCUMENT_FOLLOW_UPS = 100;
+/** How long what was read of a document's follow-ups stands for it once someone's typed: nobody's poll reads it again for anyone sooner. */
+const FOLLOW_UPS_FRESH_MS = 3_000;
+const MAX_READ = 512;
+/** A document's follow-ups as last read: as of where it had got to (`at`), and when. */
+interface Read { at: string; when: number; items: DocTodo[] }
+const readByHub = new WeakMap<Hub, Map<string, Read>>();
+const readingByHub = new WeakMap<Hub, Map<string, Promise<DocTodo[]>>>();
+const readsOn = (d: Deps) => {
+  const read = readByHub.get(d.hub) ?? new Map<string, Read>();
+  readByHub.set(d.hub, read);
+  const reading = readingByHub.get(d.hub) ?? new Map<string, Promise<DocTodo[]>>();
+  readingByHub.set(d.hub, reading);
+  return { read, reading };
+};
+/**
+ * One document's follow-ups where it's got to, for everyone in the call: read once for each place it gets to, by whoever asks
+ * first, however many ask at once, and that stands for a moment more while people type, so a poll every few seconds by
+ * everyone in the call reads each document at most every few seconds between them. What's kept is what a call is shown of it,
+ * by ID, and only for someone who can open it now. `tree` opens the workspace, if it comes to reading.
+ */
+async function followUpsAt(d: Deps, workspaceId: string, documentId: string, at: string, tree: () => Promise<HeldWorkspace | undefined>): Promise<DocTodo[]> {
+  const { read, reading } = readsOn(d);
+  const key = `${workspaceId}:${documentId}`;
+  const known = read.get(key);
+  if (known && (known.at === at || Date.now() - known.when < FOLLOW_UPS_FRESH_MS)) return known.items;
+  const once = `${key}:${at}`;
+  let p = reading.get(once);
+  if (!p) {
+    p = (async () => {
+      const w = await tree();
+      const item = w?.state.items[documentId];
+      return w && item ? readDocument(w, documentId, 'followUps', { kind: kindOf(item), ...FOLLOW_UP_LIMITS }) : [];
+    })().finally(() => reading.delete(once));
+    reading.set(once, p);
   }
+  const items = await p;
+  read.delete(key);
+  read.set(key, { at, when: Date.now(), items });
+  for (const oldest of read.keys()) {
+    if (read.size <= MAX_READ) break;
+    read.delete(oldest);
+  }
+  return items;
 }
+/** What was read of a document's follow-ups no longer stands: it was just ticked from the call, and whoever ticked it sees the tick. */
+const forgetFollowUps = (d: Deps, workspaceId: string, documentId: string): void => { readsOn(d).read.delete(`${workspaceId}:${documentId}`); };
 
-/** To-dos with a person and a date in the documents worked on in this call, for someone who can open each. One that won't open is left out, and the rest still come. */
+/**
+ * To-dos with a person and a date in the documents most recently worked on in this call, for someone who can open each, so
+ * many from each and so many in all. Who can open what is asked on every read, from the tree as it is at its version
+ * (`seenAt`), and what's in each document is read once for everyone (`followUpsAt`). One that won't open, or is closed, is
+ * left out, and the rest still come.
+ */
 async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]): Promise<DocFollowUp[]> {
   const out: DocFollowUp[] = [];
-  for (const [workspaceId, documents] of byWorkspace(worked)) {
-    const w = await maybeWorkspace(d, reader, workspaceId);
-    if (!w) continue;
-    for (const { documentId } of documents) {
-      const item = w.state.items[documentId];
-      const role = item && !trashOf(w.state, documentId) ? roleOf(reader, w, documentId, item) : undefined;
-      if (!item || !role) continue;
+  for (const [workspaceId, documents] of byWorkspace(worked.slice(-FOLLOW_UP_DOCUMENTS))) {
+    const at = await workspaceAt(d.pool, workspaceId);
+    if (!at) continue;
+    const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
+    if (!canOpen(standing)) continue;
+    const seen = await seenAt(d, workspaceId, at.version, documents.map((x) => x.documentId));
+    if (!seen) continue;
+    const opened = documents.flatMap(({ documentId }) => {
+      const f = seen.items.get(documentId);
+      const role = f && !f.trashed ? roleOf(reader, standing, documentId, f.item) : undefined;
+      return f && role ? [{ documentId, name: f.item.name, role }] : [];
+    });
+    if (!opened.length) continue;
+    const marks = await documentsAt(d.pool, at.ownerId, opened.map((x) => x.documentId));
+    let held: Promise<HeldWorkspace | undefined> | undefined;
+    const tree = () => { held ??= serverWorkspace(d, workspaceId); return held; };
+    for (const { documentId, name, role } of opened) {
+      const mark = marks.get(documentId);
+      if (!mark || mark.closed) continue;
       try {
-        const todos = await readDocument(w, documentId, 'todos', { kind: kindOf(item) });
-        for (const t of todos.filter(isFollowUp)) out.push({ from: 'document', workspaceId, documentId, document: item.name, block: t.block, text: t.text, mentions: t.mentions, dates: t.dates, done: t.done, canTick: role === 'edit' });
+        for (const t of await followUpsAt(d, workspaceId, documentId, mark.at, tree)) {
+          out.push({ from: 'document', workspaceId, documentId, document: name, block: t.block, text: t.text, mentions: t.mentions, dates: t.dates, done: t.done, canTick: role === 'edit' });
+        }
       } catch (e) {
         wlog.warn('document not read for the call’s follow-ups', { workspaceId, documentId, err: e });
       }
+      if (out.length >= MAX_DOCUMENT_FOLLOW_UPS) return out.slice(0, MAX_DOCUMENT_FOLLOW_UPS);
     }
   }
   return out;
@@ -451,20 +639,27 @@ export async function followUps(d: Deps, reader: Reader, notes: LiveNotes, statu
 /**
  * A follow-up ticked from the call, or the tick taken back: the to-do's own `done`, as the editor sets it, so a tick here and
  * a tick in the document are the same. Only in a document worked on in this call. Whoever can't open it, or has lost it by
- * the time it's written, finds nothing there.
+ * the time it's written, finds nothing there: the same refusal as for a follow-up that never was, so it says nothing of what
+ * was worked on in this call.
  */
 export async function tick(d: Deps, reader: Reader, callId: string, worked: WorkedDocument[], t: DocFollowUpTick): Promise<{ entry: Omit<WorkedDocument, 'by'>; by: WorkedBy }> {
   const shut = () => notFound('That follow-up', { callId });
   const found = worked.find((x) => x.workspaceId === t.workspaceId && x.documentId === t.documentId);
   if (!found) throw shut();
-  const w = await workspaceFor(d, reader, t.workspaceId);
-  const { item } = requireDocument(reader, w, t.documentId, 'edit');
-  const by = editorOf(w.owner, reader);
-  const { result: ticked } = await writeDocument(w, t.documentId, 'tickFollowUp', { kind: kindOf(item), block: t.block, done: t.done }, {
-    by, callId, holding: async (c) => { requireDocument(reader, await workspaceFor(d, reader, t.workspaceId, c, 'hold'), t.documentId, 'edit'); }
-  });
-  if (!ticked) throw shut();
-  return { entry: found, by };
+  try {
+    const w = await workspaceFor(d, reader, t.workspaceId);
+    const { item } = requireDocument(reader, w, t.documentId, 'edit');
+    const by = editorOf(w.owner, reader);
+    const { result: ticked } = await writeDocument(w, t.documentId, 'tickFollowUp', { kind: kindOf(item), block: t.block, done: t.done }, {
+      by, callId, holding: async (c) => { requireDocument(reader, await workspaceFor(d, reader, t.workspaceId, c, 'hold'), t.documentId, 'edit'); }
+    });
+    if (!ticked) throw shut();
+    forgetFollowUps(d, t.workspaceId, t.documentId);
+    return { entry: found, by };
+  } catch (e) {
+    if (e instanceof NotFoundError) throw shut();
+    throw e;
+  }
 }
 
 /* ---------- when a call ends ---------- */
@@ -531,8 +726,26 @@ function dayOf(iso: string, timeZone: string): string {
   return `${parts.find((p) => p.type === 'day')?.value ?? ''} ${parts.find((p) => p.type === 'month')?.value ?? ''}`;
 }
 /**
+ * The workspace as the organizer has it, if they may make the next agenda in it from the last one: an agenda is made in
+ * their name, so it takes what making a document there takes, `edit` in the workspace, and `edit` on the last one, whose
+ * open to-dos it carries. Reading either isn't enough. Undefined otherwise, including once they've been taken out of it.
+ */
+async function organizerCarries(o: Owner, workspaceId: string, last: string, c?: Db | undefined, lock?: 'change' | undefined): Promise<Workspace | undefined> {
+  const who = accountWho(o, (await profile(o, c)).email);
+  try {
+    const w = await workspaceFor(o, who, workspaceId, c, lock);
+    requireRole(w, 'edit');
+    requireDocument(who, w, last, 'edit');
+    return w;
+  } catch (e) {
+    if (e instanceof NotFoundError || e instanceof ForbiddenError || e instanceof ConflictError) return undefined;
+    throw e;
+  }
+}
+/**
  * The agenda to make for a call in a series, if one's due: it has none, the call before it had one, and that's in the
- * workspace this call uses and still in its tree. An agenda stays in its workspace: nothing in one is copied to another.
+ * workspace this call uses and still in its tree, and its organizer may carry it on (`organizerCarries`). An agenda stays in
+ * its workspace: nothing in one is copied to another.
  */
 export async function planAgenda(o: Owner, meeting: Loaded<MeetingManifest>): Promise<AgendaPlan | undefined> {
   const { seriesId, startsAt, agenda, workspaceId } = meeting.manifest;
@@ -540,29 +753,47 @@ export async function planAgenda(o: Owner, meeting: Loaded<MeetingManifest>): Pr
   const earlier = (await allMeetings(o)).filter((m) => m.manifest.seriesId === seriesId && m.itemId !== meeting.itemId && m.manifest.agenda && m.manifest.startsAt < startsAt).sort((a, b) => b.manifest.startsAt.localeCompare(a.manifest.startsAt));
   const last = earlier[0]?.manifest.agenda;
   if (!last || last.workspaceId !== workspaceId) return undefined;
-  const w = await serverWorkspace(o, workspaceId);
+  const w = await organizerCarries(o, workspaceId, last.documentId);
   const item = w?.state.items[last.documentId];
-  if (!w || !item || trashOf(w.state, last.documentId)) return undefined;
+  if (!w || !item) return undefined;
   const open = await readDocument(w, last.documentId, 'openTodos', { kind: kindOf(item) });
   return { workspaceId, last: last.documentId, title: `Agenda · ${dayOf(startsAt, await zoneOf(o, seriesId) ?? 'UTC')}`, open };
 }
+/** How long whoever's making the next agenda has it, before someone else opening Workspace takes it on. */
+const AGENDA_CLAIM_MS = 2 * 60_000;
+/** Someone's making the next agenda now, so nobody else starts. */
+export const makingAgenda = (w: CallSpace, now: number): boolean => w.agendaDraft !== null && w.agendaDraft.until > now;
 /**
- * Makes it, in the caller's transaction, which holds the call's row, so however many people open Workspace at once there's
- * one. Undefined when it isn't to be made after all. It's filled in once this commits (`fillAgenda`).
+ * The call's state once someone opening Workspace takes on making the next agenda, under the call's row, so however many open
+ * it at once one of them makes it. A draft from a try that didn't work is the one made again, so there's never a second.
+ * With none to make, it's looked for: nobody looks again.
  */
-export async function claimAgenda(o: Owner, c: Db, meetingId: string, plan: AgendaPlan): Promise<HeldWorkspace & { documentId: string } | undefined> {
-  const m = await getItem(o, c, 'meeting', meetingId, MeetingManifest, 'That meeting');
-  if (m.manifest.agenda) return undefined;
-  const w = await serverWorkspace(o, plan.workspaceId, c, 'change');
-  if (!w || !w.state.items[plan.last] || trashOf(w.state, plan.last)) return undefined;
-  const documentId = await addBeside(w, c, plan.last, plan.title);
-  const brought = broughtId(plan.workspaceId, documentId);
-  await updateManifest(o, c, meetingId, (x) => ({
-    ...x, agenda: { workspaceId: plan.workspaceId, documentId }, documents: [brought, ...x.documents.filter((d) => d !== broughtId(plan.workspaceId, plan.last))].slice(0, MAX_BROUGHT)
-  }));
-  return { ...w, documentId };
+export function claimAgenda(w: CallSpace, plan: AgendaPlan | undefined, now: number): { space: CallSpace; draft: AgendaDraft | undefined } {
+  if (!plan) return { space: { ...w, agendaLooked: true, agendaDraft: null }, draft: undefined };
+  const documentId = w.agendaDraft?.workspaceId === plan.workspaceId ? w.agendaDraft.documentId : id128();
+  const draft = { workspaceId: plan.workspaceId, documentId, until: now + AGENDA_CLAIM_MS };
+  return { space: { ...w, agendaDraft: draft }, draft };
 }
+/** The next agenda, made and opened for the server to fill in. */
+export type MadeAgenda = HeldWorkspace & { documentId: string };
+/**
+ * Makes the next agenda as the draft says, unless it's there already, in a transaction of its own under the workspace's row,
+ * with the organizer's access asked again there. Nothing of the call is held. Undefined when it isn't to be made after all.
+ */
+export async function makeAgenda(o: Owner, plan: AgendaPlan, draft: AgendaDraft): Promise<MadeAgenda | undefined> {
+  return tx(o.pool, async (c) => {
+    const w = await organizerCarries(o, plan.workspaceId, plan.last, c, 'change');
+    if (!w) return undefined;
+    if (w.state.items[draft.documentId]) return trashOf(w.state, draft.documentId) ? undefined : { ...w, documentId: draft.documentId };
+    await addBeside(w, c, plan.last, plan.title, draft.documentId);
+    return { ...w, documentId: draft.documentId };
+  });
+}
+/** The meeting once its agenda is filled in: it names it, and it takes the last one's place among what's brought. */
+export const withAgenda = (m: MeetingManifest, plan: AgendaPlan, documentId: string): MeetingManifest => (m.agenda ? m : {
+  ...m, agenda: { workspaceId: plan.workspaceId, documentId }, documents: [broughtId(plan.workspaceId, documentId), ...m.documents.filter((d) => d !== broughtId(plan.workspaceId, plan.last))].slice(0, MAX_BROUGHT)
+});
 /** Fills in an agenda once it's there, through the log like anything else: whoever has it open sees it arrive. */
-export async function fillAgenda(made: HeldWorkspace & { documentId: string }, plan: AgendaPlan, callId: string): Promise<void> {
+export async function fillAgenda(made: MadeAgenda, plan: AgendaPlan, callId: string): Promise<void> {
   await writeDocument(made, made.documentId, 'writeAgenda', { title: plan.title, open: plan.open }, { callId });
 }

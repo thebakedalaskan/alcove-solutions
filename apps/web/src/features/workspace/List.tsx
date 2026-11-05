@@ -15,8 +15,10 @@ import { facesIn } from './presence';
 import { PeopleSheet } from './Sheets';
 import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
 
-const peopleWords = (n: number | null) => (n === null ? 'Only what’s shared with you' : n === 1 ? 'Just you' : `${n} people`);
-const spaceChoice = (w: WorkspaceSummary): WsSpaceChoice => ({ id: w.id, name: w.name ?? 'Shared with you', sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
+/** Who's in a workspace, in the words under its name. */
+export const peopleWords = (n: number | null) => (n === null ? 'Only what’s shared with you' : n === 1 ? 'Just you' : `${n} people`);
+/** A workspace as a row of the menu under the name at the top of the list. */
+export const spaceChoice = (w: WorkspaceSummary): WsSpaceChoice => ({ id: w.id, name: w.name ?? 'Shared with you', sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
 
 /** A row's menu: which row, in which part of the list, where it opened if someone right-clicked, and whether Move to… has taken its place. */
 interface RowMenu { id: string; area: WorkspaceArea; at?: WsPoint | undefined; moving: boolean }
@@ -53,14 +55,16 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   if (ws.sent.role === 'admin') about.push({ icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
   const list = (spaces.data ?? []).map(spaceChoice);
   const choices = list.some((s) => s.id === ws.workspaceId) ? list : [{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, ...list];
+  /* In a call whoever chooses the workspace has the call's own picker, and everyone else is told who chooses. */
+  const call = ws.call;
   return {
     open, onOpenChange: (to: boolean) => { if (to) { setOpen(true); void spaces.refetch(); } else close(); },
-    content: ws.call?.picker ?? (people ? <PeopleSheet /> : ws.call ? (
-      <WsSpacePicker spaces={[{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }]} current={ws.workspaceId} canChoose={false} organizer={ws.call.chooser} about={about} onPick={close} onNew={close} />
+    content: people ? <PeopleSheet /> : call?.picker ? call.picker({ workspaceId: ws.workspaceId, name: ws.spaceName, people: ws.sent.people, about, close }) : call ? (
+      <WsSpacePicker spaces={[{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }]} current={ws.workspaceId} canChoose={false} organizer={call.chooser} about={about} onPick={close} onNew={close} />
     ) : (
       <WsSpacePicker spaces={choices} current={ws.workspaceId} canChoose heading="Workspaces" about={about}
         onPick={(id) => { close(); if (id !== ws.workspaceId) ws.switchTo(id); }} onNew={() => { close(); onNaming('new'); }} />
-    ))
+    )
   } satisfies WsPop;
 }
 

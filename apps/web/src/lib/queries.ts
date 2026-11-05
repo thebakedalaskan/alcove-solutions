@@ -44,7 +44,8 @@ export const qk = {
   documentVersions: (id: string, documentId: string) => ['workspaces', id, 'versions', documentId] as const,
   documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
   /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
-  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const
+  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const,
+  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -138,7 +139,9 @@ export const q = {
   /** A version never changes, so what's read stays good for as long as it's being looked at, and goes soon after. */
   documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
   /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
-  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity })
+  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity }),
+  /** One document or folder as you see it: what it's called now, and what you can do with it. */
+  workspaceItem: (id: string, itemId: string) => queryOptions({ queryKey: qk.workspaceItem(id, itemId), queryFn: () => api.workspaces.items.get(id, itemId), retry: false })
 };
 
 /**
@@ -570,6 +573,10 @@ export function useCreateWorkspace() {
 export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
+export function useFirstDocument() {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
 }
 /**
  * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought

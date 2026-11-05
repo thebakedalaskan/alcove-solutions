@@ -56,7 +56,7 @@ and optional `context` (logged, never sent) and `cause` (logged with its stack).
 | `NotFoundError` | `not-found` | 404 | info |
 | `ConflictError` | `conflict` | 409 | info |
 | `TooLargeError` | `too-large` | 413 | info |
-| `UnavailableError` | `unavailable` | 503 | warn |
+| `UnavailableError` (`LostConnectionError`, `DatabaseBusyError`) | `unavailable` | 503 | warn |
 | `InternalError` (`DatabaseError`, `ObjectStoreError`) | `unknown` | 500 | error |
 
 ```ts
@@ -65,7 +65,13 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 ```
 
 - The database layer wraps every failed query in `DatabaseError` with the statement's first words and
-  the Postgres error code; the object store wraps failures in `ObjectStoreError` with the operation and
+  the Postgres error code. A connection that goes while it's in use (Postgres ended it, or it dropped on the way) is a
+  `LostConnectionError` instead: logged at warn in the request or job that was using it, which fails and can be tried
+  again, while everything else carries on. The pool listens to a client while it's lent out as well as while it holds
+  it, because pg reports a lost connection as an error event, and one nobody listens for would stop the server. A
+  transaction whose connection went isn't rolled back (Postgres did that) and its connection never goes back to the
+  pool. A request that waits the whole 10 seconds for a free connection gets `DatabaseBusyError` ("Alcove is busy right
+  now. Try again in a moment."), logged at warn in that request: busy, not broken, and nothing of it was done. The object store wraps failures in `ObjectStoreError` with the operation and
   object ID. Anything else thrown becomes an `InternalError` whose cause is the original.
 - `app.onError` is the only place errors become responses: one log line at the error's level, and the
   client gets the code, the safe message and the request ID. Unexpected failures never leak their

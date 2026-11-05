@@ -243,8 +243,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
   stream says `closed`, `unavailable`, as its only line. The same goes for what the server does itself: `readDocument`,
-  `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much closes it, so a
-  poll can't keep a worker on one however many people are polling. Its versions still read, and restoring one replaces what won't open
+  `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much, out of a worker's
+  time or memory, closes it, so a poll can't keep a worker on one however many people are polling. A worker that only says a
+  job failed closes nothing: a compaction that won't pass a row it can't read is one, and the document opens without that row. Its versions still read, and restoring one replaces what won't open
   and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
   document that may only be slow. What the server does to it for itself, reading, writing, compacting and searching it, costs
   no worker while it's closed, and a job of those that runs out of time or memory closes it too. One that fails closes
@@ -479,8 +480,8 @@ and this way it runs through the same auth, origin check and tests as everything
   scheduled, or against what the person bringing one can open in the call. A demo account's library is a catalog in
   `apps/api/src/demo.ts`, and anyone else's is empty until the library reads workspaces.
 - **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
-  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, and what's been
-  worked on and by whom), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
+  worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call

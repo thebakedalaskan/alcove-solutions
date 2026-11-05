@@ -182,20 +182,22 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /*
    * A phone shows the list until something's open. A screen with room opens what you had open last, once, on arriving:
-   * what someone else makes in the meantime doesn't take you anywhere.
+   * what someone else makes in the meantime doesn't take you anywhere. Someone in a call who was given what they can open
+   * here, and is outside the workspace, lands on it on a phone too: it opens by itself, as they were told it would.
    */
   const empty = view.tree !== null && tree.kids.size === 0;
   useEffect(() => { setPhoneList(at.kind === 'home' && !empty); }, [at.kind, documentId, empty]);
   const arrived = useRef(false);
+  const given = call !== undefined && view.tree?.role === null;
   useEffect(() => {
     if (at.kind !== 'home') { arrived.current = false; return; }
-    if (!view.tree || arrived.current || phone) return;
+    if (!view.tree || arrived.current || (phone && !given)) return;
     arrived.current = true;
     const was = placesOf(owner).documents[workspaceId];
     const docs = documentsIn(tree);
     const next = docs.find((d) => d.id === was) ?? docs[0];
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
-  }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
+  }, [view.tree, at.kind, phone, given, owner, workspaceId, tree, onGo]);
 
   /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
   const closed = call?.closed ?? false;

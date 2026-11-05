@@ -6,7 +6,7 @@
  * sheets and the list goes full width, by themselves: nothing has to say so.
  */
 .wd-stop kbd { font-family: var(--font-sans); }
-:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar, .ws-ncard) .ac-i { flex: none; display: block; }
+:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar) .ac-i { flex: none; display: block; }
 .wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wp-notes:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
 
 @keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -215,6 +215,8 @@
 .wv-switch p { font-size: 13.5px; line-height: 1.42; color: var(--ink-2); }
 .wv-switch .warn { display: flex; gap: 7px; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--caution-soft); color: var(--caution); }
 .wv-switch .warn .ac-i { margin-top: 2px; }
+/* The question takes the menu's place in the popover that's already open, so it pops in itself, 140 ms. */
+.ws-pop > .wv-switch { animation: ws-pop var(--duration-1) var(--ease-out); }
 .wv-pres { width: 320px; padding: 12px; display: grid; gap: 8px; }
 .wv-pres .wv-pv { position: relative; height: 120px; padding: 14px 16px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
 .wv-pres .wv-pv b { display: block; font: 450 20px/1.1 var(--font-display); }
@@ -246,6 +248,7 @@
 .ky-r kbd { flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 500 12px/1 var(--font-mono); box-shadow: inset 0 0 0 1px var(--line), inset 0 -1px 0 var(--line); }
 .ky-note { grid-column: 1 / -1; font-size: 14px; line-height: 1.4; color: var(--ink-3); }
 .wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 400px; margin-left: -200px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 440px; margin-left: -220px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .wv-knock .ac-avatar { align-self: end; }
 .wv-knock b { overflow-wrap: anywhere; font: 600 14.5px/1.25 var(--font-sans); }
 .wv-knock p { font-size: 13.5px; line-height: 1.3; color: var(--ink-2); }
@@ -349,14 +352,17 @@
 
 /* ------------------------------------------------------------ outside the call: the same workspace in the app */
 .ws-pane.in-app { background: var(--surface); }
-.ws-ncard { display: grid; gap: 6px; align-content: start; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
-.ws-ncard .ac-eyebrow { margin-bottom: 4px; font-size: 11.5px; color: var(--ink-3); }
-.ws-ndocs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ws-ndoc { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--ink-3); }
-.ws-ndoc:hover { background: var(--sunk); }
-.ws-ndoc span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ws-ndoc b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
-.ws-ndoc small { display: block; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+/* What was worked on in a call, on its note: a row for each document, between hairlines like the note's own lists. */
+.ws-ndocs { display: grid; border-bottom: 1px solid var(--line); }
+.ws-ndoc { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 56px; padding: 9px 2px 9px 0; border-top: 1px solid var(--line); text-align: left; color: var(--ink-3); transition: color var(--duration-1) var(--ease-out); }
+.ws-ndoc > .ac-i { flex: none; display: block; }
+.ws-ndoc > .ac-i:first-child { justify-self: center; }
+.ws-ndoc > .ac-i:last-child { transition: transform var(--duration-1) var(--ease-out); }
+.ws-ndoc:hover { color: var(--ink-2); }
+.ws-ndoc:hover > .ac-i:last-child { transform: translateX(2px); }
+.ws-ndoc span { min-width: 0; overflow-wrap: anywhere; }
+.ws-ndoc b { display: block; font: 500 15px/1.4 var(--font-sans); color: var(--ink); }
+.ws-ndoc small { display: block; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
 
 /* ------------------------------------------------------------ Trash */
 .wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
@@ -499,15 +505,19 @@
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
   [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
   body:has([data-radix-popper-content-wrapper] > .ws-pop) .tab-rec { visibility: hidden; }
+  /* So does a toast, which would sit on the sheet's rows: what it says has been said by the time someone's choosing here. */
+  body:has([data-radix-popper-content-wrapper] > .ws-pop) .ac-toasts { visibility: hidden; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
   .wv-find .ac-kbd { display: none; }
   .wv-knock { left: 8px; right: 8px; width: auto; margin-left: 0; }
+  /* Too narrow for its answers side by side: what's shared takes the row, and the other two share the next. */
+  .wv-knock .ac { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wv-knock .ac .ac-btn.is-primary { grid-column: 1 / -1; }
   .ws-toasts { left: 12px; right: 12px; bottom: 82px; max-width: none; }
   .ws-play { left: 12px; right: 12px; width: auto; margin-left: 0; gap: 10px; }
   .ws-play .m { flex: 1; min-width: 0; }
   .ws-play .m b, .ws-play .m small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
-  .ws-ndocs { grid-template-columns: minmax(0, 1fr); }
 }

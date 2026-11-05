@@ -512,6 +512,11 @@
 /* Behind something else, or closed: out of sight and out of reach, with whatever's in it kept as it was. */
 .ic-surface.is-off, .ic-surface.is-closed { visibility: hidden; pointer-events: none; }
 .ic-surface.is-closed { transition: visibility 0s linear var(--duration-2); }
+/* The workspace, and while the call moves to another one, what was there: over what's coming until that's drawn, then gone, 240 ms. */
+.ic-wsx { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.ic-wsx-slot { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.ic-wsx-slot.is-leaving { position: absolute; inset: 0; z-index: 1; transition: opacity var(--duration-2) var(--ease-out); }
+.ic-wsx-slot.is-leaving.is-gone { opacity: 0; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 /* All six tabs fit a side panel at the width it starts at. */
 .ic-side-head .ac-tabs { gap: 0; border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }

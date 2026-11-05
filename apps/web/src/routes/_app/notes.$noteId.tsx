@@ -19,6 +19,7 @@ import { AskBar, ChapterList, Recipients, Section, Transcript, roomAnchor, type 
 import { RoomSections } from '~/features/notes/rooms';
 import { Decisions, FollowUps, Questions } from '~/features/notes/rows';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~/features/notes/screens';
+import { WorkedOn } from '~/features/notes/WorkedOn';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
 import { Additions, OwnNotesCard, useOwn } from '~/features/personal/OwnNotes';
@@ -354,6 +355,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 {!live && progress && <Steps steps={progress.steps} />}
               </section>
             )}
+            {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
+            {!going && <WorkedOn worked={note.workedOn} />}
           </div>
           <div className="nd-said">
             {lines.length > 0 && transcript(ready && written ? again : undefined)}

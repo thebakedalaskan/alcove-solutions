@@ -42,6 +42,9 @@ export const wsToast = {
   presentingPrivate: (first: string) => say('lock', `${first} is presenting something you can’t open`),
   switched: (name: string, onBack: () => void) => say('swap', `This call now uses ${name}. Nobody was disconnected.`, { label: 'Back', onClick: onBack }),
   newSpace: (name: string) => say('folders', `New workspace, ${name}. This call uses it now.`),
+  /** For whoever asked to see the workspace, when the organizer says not now; and for the organizer who said it. */
+  saidNotNow: (organizer: string) => say('lock', `${organizer} said not now`),
+  toldNotNow: (first: string) => say('check', `${first} was told not now`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
   backOnline: () => say('check', 'Back online. Your edits are saved.'),

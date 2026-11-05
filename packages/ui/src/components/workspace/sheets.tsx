@@ -359,18 +359,26 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
 
 /**
  * Someone in the call asked to see the workspace, on the organizer's screen. Pass the person to show it: it drops in 8 px,
- * 420 ms, waits, and lifts away, 240 ms, when you pass null. `document`: what they can be let into.
+ * 420 ms, waits, and lifts away, 240 ms, when you pass null. `document`: what they can be let into, read only (`onLet`) or
+ * to edit (`onEdit`), the one open in front of you. With none open, `onChoose` opens the workspace to pick one.
  */
-export function WsKnock({ person, document, onLet, onNotNow }: { person: AvatarPerson | null; document: string; onLet: () => void; onNotNow: () => void }) {
+export function WsKnock({ person, document, onLet, onEdit, onChoose, onNotNow }: {
+  person: AvatarPerson | null; document: string | null; onLet: () => void; onEdit: () => void; onChoose: () => void; onNotNow: () => void;
+}) {
   const move = useMove();
   return (
     <AnimatePresence initial={false}>
       {person && (
         <motion.div className="wv-knock" role="status" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, y: -8, transition: move(2) }}>
           <Avatar person={person} size={34} />
-          <div><b>{firstName(person)} asked to see the workspace</b><p>Share just this document, or nothing.</p></div>
+          <div><b>{firstName(person)} asked to see the workspace</b><p>{document === null ? 'Open a document to share just that, or nothing.' : 'Share just this document, or nothing.'}</p></div>
           <div className="ac">
-            <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
+            {document === null ? <Button variant="primary" size="sm" onClick={onChoose}>Open the workspace</Button> : (
+              <>
+                <Button variant="primary" size="sm" onClick={onLet}><span className="ac-clamp-1">Let {firstName(person)} read {document}</span></Button>
+                <Button size="sm" onClick={onEdit}><span className="ac-clamp-1">Let {firstName(person)} edit</span></Button>
+              </>
+            )}
             <Button variant="quiet" size="sm" onClick={onNotNow}>Not now</Button>
           </div>
         </motion.div>

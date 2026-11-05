@@ -11,7 +11,7 @@
 import { DOC_FRAGMENT, DocTextBlockSchema } from '@alcove/api';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { documentText, documentTodos, holdsVideo, openTodos, readsAsAgenda, tickFollowUp, writeAgenda, type ContentKind, type Run } from './documentText';
+import { documentText, documentTodos, followUpsIn, holdsVideo, openTodos, readsAsAgenda, tickFollowUp, writeAgenda, type ContentKind, type Run } from './documentText';
 
 /** Something a worker can do to a document. `call` is `run` for arguments that came through a message. */
 export interface DocOp<A, R> { args: z.ZodType<A>; result: z.ZodType<R>; call(doc: Y.Doc, args: unknown): unknown }
@@ -33,6 +33,8 @@ export const docReads = {
   text: docOp(OfKind, z.object({ title: z.string(), blocks: z.array(DocTextBlockSchema) }), (doc, a) => documentText(doc, a.kind)),
   /** Every todo in it, in order. */
   todos: docOp(OfKind, z.array(Todo), (doc, a) => documentTodos(doc, a.kind)),
+  /** Its follow-ups as a call shows them, worked out here so nothing past the limits comes back. */
+  followUps: docOp(z.object({ kind: Kind, max: z.number().int().min(0), chars: z.number().int().min(1), tags: z.number().int().min(0) }), z.array(Todo), (doc, a) => followUpsIn(doc, a.kind, a)),
   /** Whether it holds this video. */
   holdsVideo: docOp(z.object({ kind: Kind, media: z.string() }), z.boolean(), (doc, a) => holdsVideo(doc, a.kind, a.media)),
   /** What's left to do in it, for the next agenda to carry. */

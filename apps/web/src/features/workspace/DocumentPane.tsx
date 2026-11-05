@@ -369,6 +369,8 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   const stayHere = () => ws.stopFollowing();
   const presentPop: WsPop | undefined = preview ? { open: previewing, onOpenChange: setPreviewing, content: preview(() => setPreviewing(false)) } : undefined;
   const save: WsSave = status.closed === 'unavailable' || offline ? 'offline' : status.closed === 'session' ? (status.unsent ? 'failed' : 'quiet') : ready ? status.status : 'quiet';
+  /* Who to ask to edit: in a call, someone outside the workspace was let in by the organizer, so it's them. */
+  const askToEdit = ws.call?.chooser && !member ? ws.call.chooser : item.by ? firstName(item.by.name) : 'whoever shared it';
   return (
     <>
     <WsDoc>
@@ -381,7 +383,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
       <WsOfflineBar show={offline && ready && status.closed === null} />
       <WsUnsavedBar why={unsaved}>{rescue}</WsUnsavedBar>
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
-      <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
+      <WsReadOnlyBar show={!trashed && unsaved !== 'read-only' && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
       <WsVersionBar when={history.reading} />
       {/* The page stays open behind a version: nothing's typed into it, and it's as it was on coming back. */}
       {ready

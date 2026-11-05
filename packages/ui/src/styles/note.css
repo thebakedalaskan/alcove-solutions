@@ -182,6 +182,8 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-s > h2 .n { font-weight: 500; color: var(--ink-3); }
 .nd-s.is-decide > h2 { color: var(--rose); }
 .nd-s.is-follow > h2 { color: var(--horizon); }
+/* What was worked on in the call (WsWorkedOn): its rows between the note's own hairlines. */
+.nd-worked .ws-ndocs, .nd-worked .ws-ndoc { border-color: var(--nd-hair); }
 .nd-none { padding: 12px 0 2px; border-top: 1px solid var(--nd-hair); font: 400 15px/22px var(--font-sans); color: var(--ink-3); }
 
 /* A row. Text on the left, then the same columns in every list: the moment, what to do, and the menu. */
