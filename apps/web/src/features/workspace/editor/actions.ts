@@ -2,6 +2,7 @@
  * What pressing something does: a `/` item, a tag, a row of a block's menu, a button on the format bar. These are the
  * same calls the EditorHandle makes, so a screen outside the editor gets exactly what the menus get.
  */
+import { newBlockId, retire, seenIn } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
@@ -13,8 +14,6 @@ import type { SlashId } from './menus/rows';
 import { appear, decorChange, flash, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
-import { newBlockId } from './names';
-import { retire, seenIn } from './retire';
 import { blockFromJSON, captionKey, hasBlockId, learnAttrs, lineKind, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';

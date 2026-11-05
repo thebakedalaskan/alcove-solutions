@@ -3,6 +3,7 @@
  * shortcuts, so a list stays a list wherever it lands. In: what comes from Word, Google Docs, Notion and the web is
  * turned into plain HTML first (nested lists flattened, paragraphs in a cell joined), and the schema's rules read that.
  */
+import { newBlockId } from '@alcove/api/retire';
 import { DOMSerializer, Fragment, Slice, type DOMOutputSpec, type Node as PMNode, type ResolvedPos } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
@@ -10,7 +11,6 @@ import { galleryItems, liveLines, mediaIn } from './blocks/attrs';
 import { dateLabel } from './blocks/dates';
 import { allBlocks, countLine, isBlank, selectedBlock } from './commands';
 import type { EditorRuntime } from './runtime';
-import { newBlockId } from './names';
 import { headingLevel, indentAttr, isGone, lineKind, MAX_INDENT, safeHref, schema, textAttr } from './schema';
 import type { InsertAt } from './types';
 
