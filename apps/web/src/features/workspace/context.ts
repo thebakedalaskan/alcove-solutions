@@ -3,6 +3,7 @@ import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } f
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
+import type { Pictures } from './pictures';
 import type { Tree } from './tree';
 
 /** Where in the list something was opened from, in a call: a document brought to it is in both. */
@@ -57,6 +58,8 @@ export interface WorkspaceProps {
 /** Everything someone can do to the tree. Each shows at once, says how it went in a toast, and offers Undo where the canvas does. */
 export interface TreeActions {
   newDocument: (parent: string | null) => void;
+  /** Upload files: a new document in this folder holding them, named after the file when there's one. */
+  uploadFiles: (parent: string | null, files: readonly File[]) => void;
   newFolder: (parent: string | null, name: string) => void;
   /** Naming something in the list: a document's title follows. */
   rename: (id: string, name: string) => void;
@@ -115,6 +118,8 @@ export interface Ws {
   justMade: RefObject<string | null>;
   /** The document open on the page, so naming it in the list reaches its title. */
   openDoc: RefObject<{ id: string; doc: Doc } | null>;
+  /** The workspace's stored pictures, read for whatever shows them. */
+  pictures: Pictures;
 }
 
 export const WsContext = createContext<Ws | null>(null);

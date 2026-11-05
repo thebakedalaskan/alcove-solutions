@@ -38,6 +38,7 @@ export const qk = {
   balance: ['credits'] as const,
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  workspaceMedia: (id: string) => ['workspaces', id, 'media'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
 
@@ -124,7 +125,12 @@ export const q = {
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
+  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 }),
+  /**
+   * Every file you can reach in a workspace, the newest first, with the documents you reach each through: what the picker
+   * offers to reuse, and how a file block knows its file was deleted for good. A guest reads it with their pass.
+   */
+  workspaceMedia: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceMedia(id), queryFn: () => api.workspaces.media.list(id, { pass }), staleTime: 30_000 })
 };
 
 /**
@@ -583,6 +589,20 @@ export function useSaveCopy() {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
   });
 }
+/**
+ * A workspace's files: reusing one in another document, and deleting one for good, everywhere. Each reads the list of files
+ * again after, as uploads do.
+ */
+export function useMediaChanges(workspaceId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.workspaceMedia(workspaceId) });
+  const m = api.workspaces.media;
+  return {
+    attach: useMutation({ mutationFn: (v: { documentId: string; media: string }) => m.attach(workspaceId, v.documentId, v.media, { pass }), onSettled: reread }),
+    remove: useMutation({ mutationFn: (v: { documentId: string; media: string }) => m.remove(workspaceId, v.documentId, v.media, { pass }), onSettled: reread })
+  };
+}
+
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string) {
   const qc = useQueryClient();

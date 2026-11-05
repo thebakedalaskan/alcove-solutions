@@ -88,8 +88,12 @@ export function List({ drags }: { drags: ListDrag }) {
   };
   /** The row that's open is the one it was opened from: a document in This call is in Documents too. */
   const currentIn = (area: WorkspaceArea, id: string) => ws.at.kind === 'document' && ws.at.id === id && (ws.at.area ?? (inCall.some((i) => i.id === id) ? 'pins' : 'tree')) === area;
+  /* Upload files: chosen here, they go into a new document in the folder the menu was for. */
+  const field = useRef<HTMLInputElement>(null);
+  const uploadTo = useRef<string | null>(null);
   const newIn = (parent: string | null) => (
-    <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }} />
+    <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }}
+      onUpload={() => { setAdding(undefined); uploadTo.current = parent; if (field.current) { field.current.value = ''; field.current.click(); } }} />
   );
   const menuFor = (item: WorkspaceItem, area: WorkspaceArea): WsPop | undefined => {
     const folder = item.kind === 'folder';
@@ -187,6 +191,7 @@ export function List({ drags }: { drags: ListDrag }) {
   const trash = trashIn(ws.items);
 
   return (
+    <>
     <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} empty={rows.length === 0} foot={member ? <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} /> : undefined}
       head={member || ws.mode === 'page' ? (
         <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField}
@@ -200,5 +205,8 @@ export function List({ drags }: { drags: ListDrag }) {
       {rows}
       {drag?.spot?.kind === 'place' && drag.spot.line && <WsDropLine key="line" top={drag.spot.line.top} left={drag.spot.line.left} />}
     </WsList>
+    <input ref={field} type="file" multiple hidden aria-label="Choose files to upload"
+      onChange={(e) => { const files = [...(e.currentTarget.files ?? [])]; if (files.length) actions.uploadFiles(uploadTo.current, files); }} />
+    </>
   );
 }

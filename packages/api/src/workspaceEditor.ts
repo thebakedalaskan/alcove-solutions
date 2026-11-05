@@ -22,5 +22,11 @@ export const DocCaretStateSchema = z.object({
 });
 export type DocCaretState = z.infer<typeof DocCaretStateSchema>;
 
+/**
+ * What another browser's awareness says it's sending into a document: the blocks its uploads are going into. A block that
+ * says it's uploading with nobody saying this of it any more was left when its browser went.
+ */
+export const DocUploadsStateSchema = z.object({ uploading: z.array(z.string().max(64)).max(500).nullish() });
+
 /** A block's attributes, as a copy of it carries them in `data-attrs`. */
 export const BlockAttrsSchema = z.record(z.string(), z.unknown());

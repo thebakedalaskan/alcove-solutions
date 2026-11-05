@@ -10,6 +10,7 @@ import { useItemChanges } from '~/lib/queries';
 import type { TreeChange } from './changes';
 import type { TreeActions, WorkspacePlace } from './context';
 import { withDocument } from './session';
+import { stemOf, uploadInto } from './uploads';
 import { foldersAbove, isWithin, nameFrom, nameOf, nextDocument, placeOf, samePlace, type Tree } from './tree';
 
 /** Everything `useTreeActions` works with. It reads the latest of these whenever something's pressed. */
@@ -71,6 +72,20 @@ export function useTreeActions(input: ActionsInput): TreeActions {
           if (parent) s().openFolders([parent]);
           s().go({ kind: 'document', id });
         }, failed).finally(() => { making = false; });
+      },
+      uploadFiles: (parent, files) => {
+        if (making || files.length === 0) return;
+        making = true;
+        const one = files.length === 1 ? files[0] : undefined;
+        const name = one ? nameFrom(stemOf(one.name)) : '';
+        s().changes.create.mutateAsync({ kind: 'document', name, parent }).then(({ id }) => {
+          arrived(made(id, 'document', name, parent), { parent });
+          /* Several files make a document with no name: the caret's in its title, as for a new document. */
+          if (!name) s().justMade.current = id;
+          if (parent) s().openFolders([parent]);
+          s().go({ kind: 'document', id });
+          return uploadInto({ workspaceId: s().workspaceId, documentId: id, owner: s().owner, pass: s().pass }, files, name || null);
+        }).catch(failed).finally(() => { making = false; });
       },
       newFolder: (parent, name) => {
         s().changes.create.mutateAsync({ kind: 'folder', name, parent }).then(({ id }) => {

@@ -5,12 +5,12 @@
  */
 import { type WorkspaceLive, type WorkspaceTree } from '@alcove/api';
 import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, type WsToastData } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type Ws, type WorkspaceProps } from './context';
@@ -19,9 +19,11 @@ import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { List } from './List';
+import { Pictures } from './pictures';
 import { placesOf, rememberPlaces } from './places';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
+import { onStored, talkThrough } from './uploads';
 
 const GLOW_MS = 1400;
 
@@ -112,6 +114,12 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* What the list last called each document, for a copy of someone's words in one that's gone. */
   const known = useRef(new Map<string, string>());
   useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
+  /* Its pictures, read for whatever shows them and let go of with it; an upload that outlives the page says how it went here. */
+  const pictures = useMemo(() => new Pictures(workspaceId, pass), [workspaceId, pass]);
+  useEffect(() => () => pictures.close(), [pictures]);
+  useEffect(() => talkThrough(workspaceId, say), [workspaceId, say]);
+  const qc = useQueryClient();
+  useEffect(() => onStored((id) => { if (id === workspaceId) void qc.invalidateQueries({ queryKey: qk.workspaceMedia(id) }); }), [qc, workspaceId]);
   const spaceName = view.tree?.name ?? 'Shared with you';
   /* Going anywhere puts a phone's list away, even to what's already open behind it. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo]);
@@ -206,7 +214,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, items, tree, at, go, switchTo: onSwitch, owner, me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, pictures
   };
   return (
     <WsContext value={ws}>

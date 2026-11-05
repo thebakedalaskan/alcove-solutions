@@ -13,6 +13,7 @@ import { q } from '~/lib/queries';
 import { agoLabel, shortDay } from '~/lib/time';
 import { focusRow } from './actions';
 import { useWs, type Ws } from './context';
+import { useDocumentMedia } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
@@ -75,6 +76,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
   // A session that's ended takes nothing more: anything typed there would have nowhere to go.
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed' || status.closed !== null;
+  const media = useDocumentMedia(ws, item.id, { session, editor, readOnly });
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -135,10 +137,12 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     /* Another document only opens with a connection, and the block can't wait on this page for that. */
     if (status.status === 'offline' || !navigator.onLine) { ws.say(wsToast.failed('You’re offline, so this can’t go to another document yet.')); return false; }
     const was = editor.placeOf(block.id);
-    const { appendBlocks, removeBlockFrom } = await import('./editor/ydoc');
+    const [{ appendBlocks, removeBlockFrom }, { mediaOfBlock }] = await Promise.all([import('./editor/ydoc'), import('./editor/blocks/attrs')]);
     /* It gets a new ID where it lands, and that's what Undo takes out of there. */
     let landed: string[] = [];
     try {
+      /* Its photos, video or file go with it: whoever can open that document can see them once it's there. */
+      await media.attachTo(to, mediaOfBlock(block.block));
       await withDocument(ws.workspaceId, to, ws.owner, ws.pass, (doc) => { landed = appendBlocks(doc, [block.block]); });
     } catch (e) {
       ws.say(wsToast.failed(errorMessage(e)));
@@ -195,12 +199,14 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
           <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
+            media={media.media} onUpload={media.onUpload} onPick={media.onPick} onAttachMedia={media.onAttachMedia}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
+        {media.popovers}
       </WsPage>
     </WsFade>
   );
