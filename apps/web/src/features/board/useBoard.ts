@@ -99,28 +99,6 @@ const SETTLE_MS = 20;
 
 type UndoStep = Y.UndoManager['undoStack'][number];
 
-/** Whether anything in this object was written by someone else: a value, or words in its text. */
-function othersIn(type: Y.AbstractType<unknown>, me: number): boolean {
-  for (const item of type._map.values()) {
-    if (item.deleted) continue;
-    if (item.id.client !== me) return true;
-    if (item.content instanceof Y.ContentType && othersIn(item.content.type, me)) return true;
-  }
-  for (let item = type._start; item; item = item.right) if (!item.deleted && item.id.client !== me) return true;
-  return false;
-}
-
-/**
- * Whether undo has to leave `item`: `step`, the one being taken back, added the object it's in, and someone else has changed
- * that object since. Taking back the add would take their words with it, so the object stays. Anything this person did to it
- * in a later step isn't the add, and goes back as usual.
- */
-function sharedSince(item: Y.Item, step: UndoStep | undefined, me: number): boolean {
-  let object = item;
-  while (object.parent instanceof Y.AbstractType && object.parent._item) object = object.parent._item;
-  return !!step && Y.isDeleted(step.insertions, object.id) && object.content instanceof Y.ContentType && othersIn(object.content.type, me);
-}
-
 /** Whether a step would bring back something that was deleted. */
 function restores(doc: Y.Doc, step: UndoStep): boolean {
   for (const item of doc.getMap<unknown>(BOARD_OBJECTS)._map.values()) if (Y.isDeleted(step.deletions, item.id)) return true;
@@ -178,12 +156,11 @@ export class Board implements LiveStore<BoardState> {
   attach(sheet: HTMLElement, world: HTMLElement): () => void {
     this.sheet = sheet;
     const undo = makeUndo(this.doc, this.origin);
-    const stacks = (): void => this.set({ canUndo: undo.canUndo(), canRedo: undo.canRedo() });
-    undo.on('stack-item-added', stacks);
-    undo.on('stack-item-popped', stacks);
-    undo.on('stack-cleared', stacks);
     this.undoManager = undo;
     this.capture = undo.captureTimeout;
+    undo.on('stack-item-added', this.stacks);
+    undo.on('stack-item-popped', this.stacks);
+    undo.on('stack-cleared', this.stacks);
 
     const stopCamera = this.camera.attach(sheet, world);
     const stopDoc = observeBoard(this.doc, this.changed);
@@ -257,6 +234,11 @@ export class Board implements LiveStore<BoardState> {
 
   /* ---------- undo ---------- */
 
+  private stacks = (): void => {
+    const undo = this.undoManager;
+    if (undo) this.set({ canUndo: undo.canUndo(), canRedo: undo.canRedo() });
+  };
+
   /** Everything until `endStep` is one undo, however long it takes: a drag with a pause in it, or all that's typed in one go. */
   beginStep(): void {
     const undo = this.undoManager;
@@ -304,27 +286,22 @@ export class Board implements LiveStore<BoardState> {
    */
   private travel(undo: Y.UndoManager, stack: readonly UndoStep[], go: () => void): void {
     const step = stack.at(-1);
-    undo.ignoreRemoteMapChanges = !!step && restores(this.doc, step);
+    const was = undo.ignoreRemoteMapChanges;
+    undo.ignoreRemoteMapChanges = was || (!!step && restores(this.doc, step));
     this.settle(go);
-    undo.ignoreRemoteMapChanges = false;
+    undo.ignoreRemoteMapChanges = was;
     this.set({ sel: [] });
   }
 
   /** Takes back this person's last change, and only theirs, whatever anyone else has done since. */
   undo(): void {
     const undo = this.undoManager;
-    if (!undo || this.stepping) return;
-    // Steps come off the top as they're taken back, so what's left says which one is going now.
-    const steps = [...undo.undoStack];
-    undo.deleteFilter = (item) => !sharedSince(item, steps[undo.undoStack.length], this.doc.clientID);
-    this.travel(undo, steps, () => undo.undo());
-    undo.deleteFilter = () => true;
+    if (undo && !this.stepping) this.travel(undo, undo.undoStack, () => undo.undo());
   }
 
   redo(): void {
     const undo = this.undoManager;
-    if (!undo || this.stepping) return;
-    this.travel(undo, undo.redoStack, () => undo.redo());
+    if (undo && !this.stepping) this.travel(undo, undo.redoStack, () => undo.redo());
   }
 
   /* ---------- selection and tools ---------- */
@@ -411,11 +388,13 @@ export class Board implements LiveStore<BoardState> {
     const text = objectText(this.doc, edit);
     const blank = this.fresh === edit && text !== null && !text.toString().trim();
     this.fresh = null;
+    if (blank) removeObjects(this.doc, [edit], this.origin);
     this.set({ edit: null });
     this.endStep();
     if (!blank) return;
-    this.undoManager?.undo();
-    this.undoManager?.clear(false, true);
+    // Adding it and taking it away are one step that came to nothing, so it isn't left to undo.
+    this.undoManager?.undoStack.pop();
+    this.stacks();
     this.read();
   }
 

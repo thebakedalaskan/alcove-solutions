@@ -108,11 +108,11 @@ function heldCounts(view: BoardView): Map<string, number> {
 
 function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boolean, glide: boolean, editing: boolean): ReactNode {
   const base = { id: o.id, x: o.x, y: o.y, w: o.w, h: o.h, selected, pop, glide };
-  const editor = editing ? <BoardTyping board={board} id={o.id} label={o.k === 'note' ? undefined : 'Edit this text'} /> : undefined;
+  const typing = (label: string): ReactNode => (editing ? <BoardTyping board={board} id={o.id} label={label} /> : undefined);
   switch (o.k) {
-    case 'note': return <BoardSticky key={o.id} {...base} colour={o.c} size={o.size} text={o.t} editor={editor} />;
-    case 'text': return <BoardText key={o.id} {...base} size={o.size} text={o.t} editor={editor} />;
-    case 'shape': return <BoardShape key={o.id} {...base} path={shapePath(o.s, o.w, o.h)} colour={o.c || undefined} text={o.t} editor={editor} />;
+    case 'note': return <BoardSticky key={o.id} {...base} colour={o.c} size={o.size} text={o.t} editor={typing('Edit this sticky')} />;
+    case 'text': return <BoardText key={o.id} {...base} size={o.size} text={o.t} editor={typing('Edit this text')} />;
+    case 'shape': return <BoardShape key={o.id} {...base} path={shapePath(o.s, o.w, o.h)} colour={o.c || undefined} text={o.t} editor={typing('Edit this shape')} />;
     case 'image': return <BoardPicture key={o.id} {...base} />;
     case 'shot': return <BoardPicture key={o.id} {...base} shot caption={o.caption} />;
     default: return null;
@@ -188,7 +188,8 @@ function Blank({ board }: { board: Board }) {
 }
 
 function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
-  const zoom = useSyncExternalStore(board.camera.subscribe, () => board.camera.getSnapshot().z);
+  // To the percent the bar shows, so a pinch draws it only when the number changes.
+  const zoom = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
   const canUndo = useBoardState(board, (s) => s.canUndo);
   const canRedo = useBoardState(board, (s) => s.canRedo);
   const { name = '', seal, sealIcon, mode, acts = mode === 'call', onName, onSeal, onTimer, onVote, onPresent, onMore } = surface;

@@ -93,10 +93,10 @@ export function reachOf(seen: Box): Box {
   return { x: seen.x - m, y: seen.y - m, w: seen.w + 2 * m, h: seen.h + 2 * m };
 }
 
-/** Whether what's mounted still does for this view, or the view has got near its edge, or zoomed in so far that most of it can go. */
+/** Whether what's mounted still does for this view: the view hasn't got near its edge, or zoomed in so far that much of it could go. */
 export function reachHolds(near: Box, seen: Box): boolean {
   const m = Math.max(seen.w, seen.h) / 4;
-  return contains(near, seen.x - m, seen.y - m) && contains(near, seen.x + seen.w + m, seen.y + seen.h + m) && near.w < seen.w * 6;
+  return contains(near, seen.x - m, seen.y - m) && contains(near, seen.x + seen.w + m, seen.y + seen.h + m) && near.w < reachOf(seen).w * 1.5;
 }
 
 /** Where a line's end is, or nothing if what it's attached to isn't on the board. */

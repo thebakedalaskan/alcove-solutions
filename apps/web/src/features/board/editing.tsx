@@ -122,7 +122,7 @@ export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown)
 }
 
 /** The textarea for one object, focused with the caret at the end, as it opens. */
-export function BoardTyping({ board, id, label }: { board: Board; id: string; label?: string | undefined }) {
+export function BoardTyping({ board, id, label }: { board: Board; id: string; label: string }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const el = ref.current, text = objectText(board.doc, id);
