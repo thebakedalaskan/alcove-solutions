@@ -4,7 +4,7 @@
  * NVIDIA services that vouch for it, under test roots), and gives tests "browsers":
  * each with its own cookie jar, sending the web app's Origin, talking through @alcove/api-http.
  */
-import type { AlcoveApi, CallSession, WorkspaceLive } from '@alcove/api';
+import type { AlcoveApi, CallSession } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { serve, type ServerType } from '@hono/node-server';
 import { Server } from 'node:http';
@@ -65,7 +65,7 @@ export interface Harness {
   near: FakeNear;
   /** A fresh browser with its own cookie jar, or one around a fetch the test supplies. */
   browser(o?: { fetch?: typeof fetch | undefined; onEvent?: ((e: ClientEvent) => void) | undefined; callPollMs?: number | undefined; callRekeyMs?: number | undefined; ringSilenceMs?: number | undefined }): Browser;
-  /** Stops every call session and workspace stream this harness's browsers opened from keeping up (nobody leaves). */
+  /** Stops every call session, workspace stream and document this harness's browsers opened from keeping up (nobody leaves). */
   closeCalls(): void;
   /**
    * Another API process on the same database and bucket, with its own hub, as after a restart, on a second instance, or
@@ -122,14 +122,14 @@ export async function startHarness(): Promise<Harness> {
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
   await migrate(pool);
   const objects = await createObjectStore(cfg);
-  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS }) };
+  const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX }) };
   const { server, baseUrl } = await listen(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
   // Every call session a browser joins, so a test's sessions can be stopped once it's done instead of polling on.
   const calls: CallSession[] = [];
-  const streams: WorkspaceLive[] = [];
+  const streams: { close(): void }[] = [];
   const closeCalls = () => { for (const s of [...calls.splice(0), ...streams.splice(0)]) s.close(); };
   return {
     baseUrl, pool, objects, deps, logs, google, near,
@@ -139,12 +139,13 @@ export async function startHarness(): Promise<Harness> {
       const api = createHttpApi({ baseUrl, fetch: f, callPollMs: o.callPollMs ?? 50, ...(o.callRekeyMs ? { callRekeyMs: o.callRekeyMs } : {}), ...(o.ringSilenceMs ? { ringSilenceMs: o.ringSilenceMs } : {}), ...(o.onEvent ? { onEvent: o.onEvent } : {}) });
       const join: AlcoveApi['calls']['join'] = async (code, opts) => { const s = await api.calls.join(code, opts); calls.push(s); return s; };
       const live: AlcoveApi['workspaces']['live'] = (id, opts) => { const s = api.workspaces.live(id, opts); streams.push(s); return s; };
-      return { api: { ...api, calls: { ...api.calls, join }, workspaces: { ...api.workspaces, live } }, fetch: f };
+      const document: AlcoveApi['workspaces']['document'] = (id, documentId, opts) => { const s = api.workspaces.document(id, documentId, opts); streams.push(s); return s; };
+      return { api: { ...api, calls: { ...api.calls, join }, workspaces: { ...api.workspaces, live, document } }, fetch: f };
     },
     closeCalls,
     async secondServer(more = {}, stopping = undefined, own = undefined, hubUrl = undefined) {
       const settings = { ...deps.cfg, ...more };
-      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS });
+      const hub = createHub(hubUrl ?? url, { checkMs: settings.HUB_CHECK_MS, timeoutMs: settings.HUB_TIMEOUT_MS, maxStreams: settings.LIVE_STREAMS_MAX });
       const second = await listen({ ...deps, hub, cfg: settings, ...(own ? { pool: own } : {}) }, stopping);
       return { baseUrl: second.baseUrl, close: async () => { await hub.close(); await stop(second.server); } };
     },
