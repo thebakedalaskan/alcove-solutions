@@ -140,14 +140,17 @@ The call itself stays in the API: who's let in, notes and the transcript.
   from `KMASTER`, per request. A removed person's pass stops working, and once the call has ended only the
   organizer can read it.
 - **What each role can do.** Everyone let in: read the call, chat, catch up and ask, for themselves alone
-  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), raise a hand, ask for notes,
+  ([Catching up during a call](notes-and-inference.md#catching-up-during-a-call)), read the live notes of the part of
+  the call they're in, written only from what they may read ([Live notes](notes-and-inference.md#live-notes)), and keep
+  them up to date by watching them, raise a hand, ask for notes,
   point at and mark shared screens and say whether others may point at what they share
   ([Pointing at shared screens](#pointing-at-shared-screens)), and, while screen notes are on, send frames of their own
   shared screen ([Shared screens](#shared-screens)).
   Everyone reads the live transcript of the part of the call they're in, as said while they were there; a guest
   with the link, who doesn't get the notes, reads only what was said while they were in the call as well (the
   live transcript, captions, catching up, asking and moments), while the organizer and everyone on the invite
-  (people signed in whom the organizer let in included) read all of it. Whoever hosts (the organizer, or someone
+  (people signed in whom the organizer let in included) read all of it, and can tick follow-ups in the live notes.
+  Whoever hosts (the organizer, or someone
   standing in while the organizer is away: [Host hand-off](#host-hand-off)), with their current connection and
   their own session: let people in or turn them away, mute someone's microphone, remove someone (never the
   organizer), lock the call, spotlight someone, bring everyone back from breakout rooms, say what their browser
@@ -413,7 +416,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 - **Its parts.** `recording` (what the host's browser hears in the main room, mixed: its own
   microphone and everyone else's, encrypted; silent while the host is in a breakout room), `transcript`
   (everyone the host's browser plays in the main room, or a breakout room's scribe's browser in the room, turned into text by the private speech model, each line under whoever
-  said it), `ai` (the private notes model reading the transcript: the notes at the end, catch-up, questions and
+  said it), `ai` (the private notes model reading the transcript: the notes at the end, live notes, catch-up, questions and
   captions during the call) and `screen` (shared screens read for the notes). Each is `on`, `paused`, `off` or
   `unavailable`, with when it last changed (`since`) and who changed it (`by`: the call's schedule, or the
   organizer by name). Recording and the transcript follow notes. The notes model reads what was transcribed for
@@ -444,7 +447,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
   capturing path goes through, `mayCapture` in `apps/api/src/modules/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
-  them, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
+  them, and refreshes no live notes, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
   organizer's browser holds everything as it sends the pause: the recorder and every voice stop, and nothing they
   have is sent. Once the server has paused, what they held is dropped rather than flushed, and a `409` from a
   later upload is dropped too; a presenter's browser stops looking at its share and drops its unsent frames as
@@ -453,7 +456,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   its way, the organizer's sign says **Pausing…**; that's the only in-between state, since the server changes the
   call's state in one step and everyone else sees it change at once. What the server took before the pause
   stays: a piece or clip that got through the gate before the pause was saved is kept (a clip still being
-  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, but
+  transcribed lands in the transcript, before the pause). Notes off is the same for audio and speech, and live notes stop refreshing, but
   catch-up, questions and captions still read what was transcribed before. Turning notes off sends the last
   audio and speech first; if it fails, the same recorder carries on.
 - **Resume** (`{type: "resume"}`) is the organizer's choice and nothing else's: not a reconnect, not a reload,
@@ -472,7 +475,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   goes at the segment's end, so nothing said before a pause comes after it.
 - **In breakout rooms.** Each open room has its own capture state, for the people in it and for the organizer
   while it's visiting (`capture.room`, beside the call's). A room is never recorded. It captures (what's said there
-  transcribed by the room's scribe, read for catching up, questions and captions in the room, and given to the
+  transcribed by the room's scribe, read for the room's live notes, catching up, questions and captions in the room, and given to the
   call's notes as the room's section) only while the call's notes are on and the organizer hasn't paused the room.
   Its `transcript` part is unavailable while the room has no scribe, and `capture.room.scribe` says whose browser
   it is (null while there's none). The
@@ -1017,10 +1020,10 @@ link: the organizer's lobby (`features/calls/Lobby.tsx`) by their account, and a
 pass is what lets a guest in. It's built from `apps/web/src/features/call/`: the panels (`panels.ts`, drawn by
 `PanelHost.tsx`), the stage (`Stage.tsx`, laid out by `stageLayout.ts` from your view in `view.ts`, with who's
 talking settled in `speakers.ts`), each tile's menu (`TileMenu.tsx`), the top bar and its view menu (`ViewMenu.tsx`),
-the side panels (`Panel.tsx`: Notes, Yours, Transcript, Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, live
-notes, the share picker, the leave sheet and the device pickers.
+the side panels (`Panel.tsx`: Notes, Yours, Transcript, Ask, Chat, People), breakout rooms (`Rooms.tsx`), captions, the
+share picker, the leave sheet and the device pickers.
 
-- **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript), its
+- **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript, the live notes), its
   `crypto` store (MLS status and members, media keys, chat) and the LiveKit room (`livekit.ts`: mic, camera,
   screen, who's speaking, and their tracks), each with `useLive()`, copying none of their state. Only the
   organizer also reads the meeting, to know who's invited.
@@ -1195,6 +1198,13 @@ notes, the share picker, the leave sheet and the device pickers.
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
   breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
   off, or while the host's browser can't listen.
+- **Live notes** (the Notes tab in `Panel.tsx`) are the call's, not this browser's: `CallState.liveNotes`, one set for
+  everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
+  the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
+  in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
+  follow-up (`tickFollowUp`), and it's done for everyone. A guest sees no box, and someone with notes of their own, written
+  from what they may read, sees no box and is told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up** in the top bar and
   the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5

@@ -2486,6 +2486,10 @@ describe('deleting an account', () => {
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
     await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
     expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
+    // Its shared live notes, which she was reading.
+    const reading = live.watchNotes();
+    await until(async () => { await live.refresh(); return live.getSnapshot().liveNotes.notes !== null; }, 'the call’s live notes');
+    reading();
     // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
@@ -2506,7 +2510,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_rings', 'calls', 'content_jobs', 'document_access', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'documents', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_members', 'workspaces'
     ]);
@@ -2794,6 +2798,16 @@ describe('privacy at rest', () => {
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
+    // The call's shared live notes are sealed rows too, and so is who ticked what.
+    await call.transcribe(speech('CANARY-LIVENOTE Kofi will sign the merger by Friday.', 0, 4000), call.ticket.identity);
+    const watching = call.watchNotes();
+    await settle(call, (x) => x.liveNotes.notes !== null && !x.liveNotes.writing);
+    watching();
+    const liveFollowUp = call.getSnapshot().liveNotes.notes?.next[0];
+    expect(liveFollowUp?.text).toContain('CANARY-LIVENOTE');
+    await call.tickFollowUp(liveFollowUp?.id ?? '', true);
+    const liveNoteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_notes x`)).rows[0]?.all ?? '');
+    expect(liveNoteRows).not.toBe('');
     // While the call is on, the live transcript is sealed rows too.
     const liveClips = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_clips x`)).rows[0]?.all ?? '');
     expect(liveClips).not.toBe('');
@@ -2814,7 +2828,7 @@ describe('privacy at rest', () => {
     call.messageRooms('CANARY-BROADCAST to every room');
     await settle(call, (x) => x.breakouts.open?.message !== null);
     const caught = await call.catchUp({ kind: 'all' });
-    expect(caught.read.lines).toBe(1);
+    expect(caught.read.lines).toBe(2);
     await call.askSoFar('What closes on Friday? CANARY-ASKED', { kind: 'all' });
     await call.catchUpWindow();
     await call.moment(call.getSnapshot().transcript[0]?.id ?? '');
@@ -2833,7 +2847,7 @@ describe('privacy at rest', () => {
     await call.ring(['canary-rung@canary.example']);
     const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
     expect(ringRows).not.toBe('');
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows}`;
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -2931,7 +2945,7 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',

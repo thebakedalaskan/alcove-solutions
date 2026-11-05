@@ -1,7 +1,7 @@
 import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
   type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
-  type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Person,
+  type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person,
   type RingReply, type ScreenFrameReceipt, type SeriesAnswerPart, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
@@ -15,6 +15,7 @@ import { openOwner } from '../owners';
 import { me, profile } from './account';
 import * as catchup from './catchup';
 import * as drafting from './drafting';
+import * as liveNotes from './liveNotes';
 import * as personal from './personal';
 import { personOf, portraitFor } from './portraits';
 import { appendPiece, createRecording, queueDelete, segments, setRecordingState, type Piece } from './audio';
@@ -29,7 +30,7 @@ import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } fr
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
 import { mayStandIn, noticesFor, standIns, type HostChange } from './hosting';
 import {
-  BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
+  BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readerOf, readersAt, relocate,
   type Room
 } from './places';
 import * as rings from './rings';
@@ -362,14 +363,15 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   if (!v.inCall) {
     return {
       ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], notices: []
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, notices: []
     };
   }
   const rooms = settle(s, row, end.getTime());
   const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
   // What was said where the viewer is now, while they were there: one room's lines never show in another, or in the main room.
   const viewing = rooms.people.find((j) => j.identity === v.pass.identity);
-  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, LIVE_TRANSCRIPT_LINES, mayRead(v, rooms, viewing, row.started_at, invitedIn(meeting))) : [];
+  const invited = invitedIn(meeting);
+  const heard = s.notes.noteId && row.state === 'live' ? await transcripts.latest(o, db, s.notes.noteId, LIVE_TRANSCRIPT_LINES, mayRead(v, rooms, viewing, row.started_at, invited)) : [];
   const where = viewing ? placeOf(rooms, viewing) : MAIN_PLACE;
   const open = rooms.breakouts.open;
   const roomHere = open?.rooms.find((r) => r.id === where);
@@ -413,6 +415,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
     // Lines stay inside their segment once it's over, so what was said before a pause is shown before it.
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
+    liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),
     // Each notice to the people it's for: everyone, only those in the room it's about, one connection, or everyone but one.
     notices: s.notices.filter((n) => (n.place === undefined || n.place === where) && (n.to === undefined || n.to === v.pass.identity) && n.not !== v.pass.identity)
       .map((n) => ({ id: n.id, text: n.text, kind: n.kind }))
@@ -823,8 +826,8 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
 
-/** Everything in `act` but a raised hand, an ask for notes and your own share's pointing is whoever hosts' (the organizer's own besides, checked by the API). */
-const anyone = (a: CallAction) => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point';
+/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing and ticking a follow-up is whoever hosts' (the organizer's own besides, checked by the API). */
+const anyone = (a: CallAction) => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up';
 /**
  * Refused for a connection that doesn't host now (`who`: the connection that does, by default whoever hosts): checked
  * again where it counts, as the host may have changed since the request came in. The same 409 as the API's for a
@@ -868,6 +871,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
       const off = s.othersPointOff.filter((p) => p !== v.pass.person);
       s = { ...s, othersPointOff: a.on ? off : [...off, v.pass.person] };
+    } else if (a.type === 'follow-up') {
+      await tickFollowUp(v, c, row, s, a);
     } else if (a.type === 'pointing') {
       if (a.on !== s.pointing) {
         s = notice({ ...s, pointing: a.on }, a.on ? 'The organizer turned on pointing at shared screens.' : 'The organizer turned off pointing at shared screens.', 'info');
@@ -1582,6 +1587,24 @@ function missedIn(row: Row, s: Stored, w: catchup.Window, place: string): catchu
 }
 
 /**
+ * What the notes model reads of a part of the call so far: the lines `keep` takes, the window they're read through, what
+ * can't be in them, and the brief it's told.
+ */
+async function soFarIn(o: Owner, row: Row, s: Stored, into: { noteId: string; recordingId: string }, meeting: Loaded<MeetingManifest>, place: string, keep: (l: transcripts.Line) => boolean, windowFrom: (gaps: CaptureGap[]) => catchup.Window) {
+  const person = await me(o);
+  const segs = await segments(o, into.recordingId);
+  const window = windowFrom(gapsFor(row, s, place, segs));
+  const said = saidIn(row.started_at);
+  // Lines stay inside their segment once it's over, so what was said before a pause is read before it.
+  const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId, keep), segs, s.notes.status === 'on' ? s.notes.segment : undefined)
+    .map((l) => ({ ...l, said: said(l) }));
+  const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
+    title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
+    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
+  });
+  return { all, window, missed: missedIn(row, s, window, place), person, brief };
+}
+/**
  * A live call and its transcript so far, for the person asking: what was said in the part of the call they're in now,
  * while they were there (and for a guest with the link, while they were in the call), with the stretches nothing was
  * captured in. Like everything that reaches the AI, it waits while notes, or their breakout room, are paused.
@@ -1595,18 +1618,7 @@ async function sofar(v: Viewer, callId: string, what: 'catch-up' | 'ask') {
   const into = capture.mayCapture(capturing(row, s, place), what, { callId, part: place !== MAIN_PLACE ? 'room' : 'main' });
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const invited = invitedIn(meeting);
-  const person = await me(o);
-  const segs = await segments(o, into.recordingId);
-  const window = windowFor(v, row, s, mine, invited, gapsFor(row, s, place, segs));
-  const said = saidIn(row.started_at);
-  // Lines stay inside their segment once it's over, so what was said before a pause is read before it.
-  const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId, mayRead(v, s, mine, row.started_at, invited)), segs, s.notes.status === 'on' ? s.notes.segment : undefined)
-    .map((l) => ({ ...l, said: said(l) }));
-  const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
-    title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
-    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
-  });
-  return { all, window, missed: missedIn(row, s, window, place), person, brief };
+  return soFarIn(o, row, s, into, meeting, place, mayRead(v, s, mine, row.started_at, invited), (gaps) => windowFor(v, row, s, mine, invited, gaps));
 }
 
 /**
@@ -1669,6 +1681,137 @@ export async function askEarlier(v: Viewer, callId: string, asker: Owner, questi
   const { seriesId } = (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest;
   if (!seriesId) throw notFound('That series', { callId });
   return series.ask(asker, seriesId, question, timeZone);
+}
+
+
+/* ---------- the call's shared live notes: kept in modules/liveNotes.ts; who reads what, and when they're refreshed, is here ---------- */
+
+/** Nothing to read: until notes are written, for someone waiting to be let in, and once the call has ended and they're in the note. */
+const NO_NOTES: LiveNotes = { notes: null, writing: false, error: null };
+/** As much of a whole call's follow-ups as its live notes keep from one refresh, as many as the notes at the end may have. */
+const FOLLOW_UPS_READ = 20;
+
+/** Who's reading the live notes of the part of the call someone is in: as lines list their readers, and for a guest, their time in the call. */
+const readerFor = (v: Viewer, s: Stored, mine: Joined, startedAt: Date, invited: Set<string>): liveNotes.Reader => ({ me: readerOf(mine), here: onlyHere(v, s, mine, startedAt, invited) });
+
+/** The live notes of the part of the call someone is in now: everyone's, or notes of their own from what they may read. */
+async function notesFor(v: Viewer, db: Db, row: Row, s: Stored, mine: Joined | undefined, place: string, invited: Set<string>): Promise<LiveNotes> {
+  if (!mine || row.state !== 'live' || !s.notes.noteId) return NO_NOTES;
+  return liveNotes.shownTo(await liveNotes.find(v.organizer, db, row.call_id, place, readerFor(v, s, mine, row.started_at, invited)), capturing(row, s, place).status === 'on');
+}
+
+/**
+ * What a part of the call's notes read: everything said there. Except that what the main room said while rooms were open
+ * is for the people who stayed: it's read while those rooms are open, and left out once they've closed, so that everyone
+ * back in the main room can read one set of notes, and tick them. It stays in the transcript of whoever may read it, in
+ * their catching up, and the note.
+ */
+function sharedIn(row: Pick<Row, 'started_at'>, s: Stored, place: string): (l: transcripts.Line) => boolean {
+  const open = s.breakouts.open;
+  const said = saidIn(row.started_at);
+  return (l) => (l.room ?? MAIN_PLACE) === place && (place !== MAIN_PLACE || l.readers === undefined || (open !== null && (said(l) ?? 0) >= open.from));
+}
+
+/** Connections that looked and found nothing that could be written for them, until when they don't need to look again. They have no row to say so. */
+const resting = new Map<string, number>();
+const REST_MS = 30_000;
+
+/**
+ * Someone in the call is looking at the live notes. What the notes read of this part of the call is split by what this
+ * person may read of it: all of it is everyone's view, and anything less is a view of its own, named by what they can't
+ * read, which the notes model never sees for them. If that view has something new, it's been at least half a minute and
+ * nobody else is at it, it's refreshed now, for everyone in it. Nobody's credits pay for it, as for catching up. True when
+ * this look refreshed them; any other look at the same time answers false at once. Nothing is held while the model reads.
+ */
+export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have everything.', { context: { callId, what: 'live-notes' } });
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  if (!mine) return false;
+  const place = placeOf(s, mine);
+  const { status, noteId, recordingId } = capturing(row, s, place);
+  if (status !== 'on' || !noteId || !recordingId) return false;
+  const restKey = `${callId}|${v.pass.identity}`;
+  if ((resting.get(restKey) ?? 0) > Date.now()) return false;
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const invited = invitedIn(meeting);
+  const reader = readerFor(v, s, mine, row.started_at, invited);
+  const found = await liveNotes.find(o, o.pool, callId, place, reader);
+  // Their notes are up to date, or it isn't time: said without reading the transcript, which is nearly every look.
+  const theirs = found.own ?? found.view;
+  if (theirs !== null && !(await liveNotes.due(o, o.pool, callId, place, theirs, noteId))) return false;
+  clog.debug('reading the transcript for the live notes', { callId, part: place !== MAIN_PLACE ? 'room' : 'main' });
+  const clips = await liveNotes.clipsOf(o, o.pool, noteId);
+  const part = await soFarIn(o, row, s, { noteId, recordingId }, meeting, place, sharedIn(row, s, place), (gaps) => catchup.windowOf(tenthsIn(row.started_at), row.started_at.getTime(), [], true, gaps));
+  const may = mayRead(v, s, mine, row.started_at, invited);
+  const barred = part.all.flatMap((l) => (!may(l) && l.said !== undefined ? [{ ...l, said: l.said }] : []));
+  const view = barred.length ? liveNotes.digestOf(barred) : liveNotes.ALL;
+  const ctx = { callId, part: place !== MAIN_PLACE ? 'room' : 'main', view: barred.length ? 'narrowed' : 'all' };
+  const whole: CatchUpRange = { kind: 'all' };
+  const { lines, read } = catchup.readOf(barred.length ? part.all.filter(may) : part.all, whole, part.window, part.missed, ctx);
+  const heard = liveNotes.digestOf(lines);
+  // Nothing they may read, or a view of their own that would read what they're reading already: a run would write it again.
+  if (!lines.length || (view !== found.view && heard === found.stored?.notes?.heard)) {
+    if (resting.size > 10_000) resting.clear();
+    resting.set(restKey, Date.now() + REST_MS);
+    return false;
+  }
+  // Under the call's row, shared: a pause is either here to see, and nothing is claimed, or comes after what got through.
+  const claim = await tx(o.pool, async (c) => {
+    const now = await load(o, c, callId, 'share');
+    const at = settle(now.state, now.row);
+    if (!placesOf(at).includes(place)) return null;
+    capture.mayCapture(capturing(now.row, at, place), 'live-notes', ctx);
+    return liveNotes.claim(o, c, callId, place, view, clips, lines, barred);
+  });
+  if (!claim) return false;
+  if (heard === claim.heard) {
+    await liveNotes.release(o, callId, place, view, claim);
+    clog.debug('nothing new for the live notes', { ...ctx, lines: lines.length });
+    return false;
+  }
+  try {
+    // Everyone reading them sees they're being written.
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    const t0 = performance.now();
+    const known = liveNotes.knownTo(claim, lines);
+    const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
+    const done = {
+      lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
+      cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
+    };
+    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 });
+    if (!await liveNotes.keep(o, callId, place, view, claim, run, reader)) {
+      clog.info('live notes written too late to keep', { ...ctx, ...done });
+      return false;
+    }
+    clog.info('live notes written', { ...ctx, ...done, points: sorted.decided.length + sorted.proposed.length + sorted.open.length + sorted.next.length });
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    return true;
+  } catch (e) {
+    clog.warn('live notes not refreshed', { ...ctx, err: e });
+    if (await liveNotes.failed(o, callId, place, view, claim)) await nudge(o, row.room_name, callId, { call: true, log: false });
+    return false;
+  }
+}
+
+/**
+ * A follow-up of the live notes of the part of the call someone is in, ticked or not, for everyone there, in the
+ * caller's transaction, which holds the call's row, so the call can't end halfway through. It's for anyone in the call
+ * who gets the notes, as `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is until the notes
+ * are written. A guest with the link doesn't get them.
+ */
+async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up' }>): Promise<void> {
+  const o = v.organizer;
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const invited = invitedIn(meeting);
+  if (!mine || onlyHere(v, s, mine, row.started_at, invited) !== null) throw new ForbiddenError('The notes go to the people invited, so only they can tick follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what: a.type } });
+  const organizer = mine.role === 'host' ? await me(o) : undefined;
+  const by: Changer = { id: organizer ? o.ownerId : null, name: organizer?.name ?? mine.name, email: organizer?.email ?? mine.email ?? '', as: organizer ? 'organizer' : 'invited' };
+  await liveNotes.tick(o, c, row.call_id, placeOf(s, mine), a.id, a.done, by, readerFor(v, s, mine, row.started_at, invited));
 }
 
 /** What this person can catch up on, for choosing what to read. */
@@ -1786,6 +1929,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       // Who's invited lasts as long as the call does. Its note has its own list.
       await dropInvites(o, c, [row.meeting_item_id]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
+      // The live notes end with the call: what was ticked goes into the note, and the notes at the end take over.
+      const ticked = await liveNotes.finish(o, c, callId);
       if (s.notes.noteId) {
         // Ending while the host's browser is out of the call (it never came back): nothing was captured since it left.
         const gone = row.host_left_at && s.notes.status === 'on' ? tenthsIn(row.started_at, row.host_left_at.getTime()) : null;
@@ -1811,7 +1956,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
           gaps: capture.roomGaps(s.notes.history, offline, r.pauses, h.from, row.started_at, h.to, h.to)
         })));
-        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms);
+        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }

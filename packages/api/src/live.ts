@@ -1,6 +1,6 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
-import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
+import { LiveNotesSchema, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
 import { CallCodeSchema, IDSchema, ISODateSchema, NotesChoicesSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage, type SeriesAnswerPart } from './types';
 import { RungSchema } from './rings';
 import type { CallMoveOut, MoveMedia } from './moves';
@@ -308,6 +308,8 @@ export const CallStateSchema = z.object({
    * of the call you're in now only. What's said in one breakout room never shows in another, or in the main room.
    */
   transcript: z.array(TranscriptLineSchema),
+  /** The shared live notes of the part of the call you're in, written only from what you may read. Nothing for someone waiting to be let in. */
+  liveNotes: LiveNotesSchema,
   notices: z.array(CallNoticeSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
@@ -544,6 +546,19 @@ export interface CallSession extends LiveStore<CallState> {
    * browser's own for its microphone). Only while notes are on.
    */
   transcribe(clip: TranscriptClip, speaker: string): Promise<void>;
+  /**
+   * Says this browser is showing the live notes, until the function it returns is called. While anything here is, the
+   * notes of the part of the call it's in are kept up to date: at most every 30 seconds while there's something new,
+   * in one run however many browsers are watching. The notes themselves arrive with the call (`CallState.liveNotes`).
+   */
+  watchNotes(): () => void;
+  /**
+   * Anyone in the call who gets the notes: ticks a follow-up of the live notes, or takes the tick back, for everyone in
+   * that part of the call. It stays ticked through every refresh, and is done in the note when the call ends. A guest
+   * with the link is refused, and notes written for a narrower view (`read.whileHere`) can't be ticked. Resolves once the
+   * server has it.
+   */
+  tickFollowUp(id: string, done: boolean): Promise<void>;
   /** What was said in `range`, for you alone: decided, proposed, still open and next, each with the moments it comes from. */
   catchUp(range: CatchUpRange): Promise<CatchUp>;
   /** Asks about what was said in `range`, for you alone, with the moments the answer comes from. */

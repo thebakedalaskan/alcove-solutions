@@ -500,6 +500,11 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-nr .meta { display: flex; align-items: center; gap: 6px; margin-top: 3px; font: 400 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-nr .ac-time-chip { margin-top: 1px; }
+.ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ic-nr .nr-text { overflow-wrap: anywhere; }
+.ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+/* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */
+@media (hover: none), (max-width: 600px) { .ic-nr .ac-check::after { content: ""; position: absolute; inset: -6px -12px; } }
 .ic-sum { font: 400 14px/1.6 var(--font-sans); color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .ic-sum.is-open { display: block; }
 .ic-more-text { margin-top: 4px; padding: 2px 0; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }
@@ -508,6 +513,7 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-rgrp + .ic-rgrp { margin-top: 10px; }
 .ic-rgrp .rn { display: flex; align-items: center; gap: 8px; font: 600 12.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-rgrp .rn span { font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.ic-about { display: grid; gap: 6px; }
 .ic-writing { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
 .ic-problems { display: grid; gap: 8px; padding: 0 16px 16px; }
 .ic-nf { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-top: 1px solid var(--line); flex: none; font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; }
