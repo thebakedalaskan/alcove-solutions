@@ -86,7 +86,7 @@ function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: Ca
       {items.map((it) => (
         <motion.div key={`${it.evidence[0]?.lineId ?? 'x'}-${it.text}`} className="ic-nr" layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
           <span className="mk"><Icon name="check" size={12} /></span>
-          <div>{it.text}</div>
+          <div className="nr-text">{it.text}</div>
           {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
         </motion.div>
       ))}
