@@ -447,7 +447,7 @@
   .ws-pop > * { width: auto; }
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
   [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
-  body:has([data-radix-popper-content-wrapper] > .ws-pop) .tab-rec { visibility: hidden; }
+  body:has([data-radix-popper-content-wrapper] > .ws-pop, .ws-float .ws-pop) .tab-rec { visibility: hidden; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
   .wv-knock { left: 8px; right: 8px; width: auto; margin-left: 0; }
