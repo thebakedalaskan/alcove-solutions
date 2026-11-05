@@ -191,7 +191,7 @@ and this way it runs through the same auth, origin check and tests as everything
   Postgres: `LISTEN` doesn't work through a transaction-mode pooler.
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
   of a workspace and 16 of documents. Everyone's together stop at 300 an instance (`LIVE_STREAMS_MAX`), because each holds one
-  of the requests an instance can take at once, and calls need the rest. The next is refused with `503 unavailable` rather
+  of the requests an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
