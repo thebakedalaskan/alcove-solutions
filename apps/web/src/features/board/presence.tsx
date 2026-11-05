@@ -9,7 +9,7 @@
  * anything, and the objects hear only about who started or stopped editing them.
  */
 import { BOARD_REACH, BoardPresenceSchema, NO_PRESENCE, type BoardPresence } from '@alcove/board';
-import { BoardPill, BoardPointer, moveBoardPointer, useToast } from '@alcove/ui';
+import { BoardPointer, moveBoardPointer, useToast } from '@alcove/ui';
 import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type RefObject } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import { log as rootLog } from '~/lib/log';
@@ -17,7 +17,7 @@ import type { BoardPerson } from './BoardSurface';
 import type { SheetPoint } from './camera';
 import { BoardFollowing, publishedView, sharedView, type SharedView } from './follow';
 import { sameIds } from './selection';
-import { useBoardState, type Board } from './useBoard';
+import type { Board } from './useBoard';
 
 const log = rootLog.child({ component: 'board-presence' });
 
@@ -326,15 +326,4 @@ function Pointer({ presence, peer, talking }: { presence: BoardPresenceStore; pe
 export function BoardPointers({ presence, talking }: { presence: BoardPresenceStore; talking: ReadonlySet<string> | undefined }) {
   const pointers = useSyncExternalStore(presence.subscribe, presence.getPointers);
   return pointers.map((peer) => <Pointer key={peer.client} presence={presence} peer={peer} talking={talking?.has(peer.person.id) ?? false} />);
-}
-
-/** Says whose view this is, with the way out of it. */
-export function FollowingPill({ board, people }: { board: Board; people: readonly BoardPerson[] }) {
-  const following = useBoardState(board, (s) => s.following);
-  const person = people.find((p) => p.id === following);
-  if (!person) return null;
-  return <BoardPill icon="eye" title={`Following ${person.name}`} action="Stop" onAction={() => {
-    board.stopFollow();
-    board.focusSheet();
-  }} />;
 }
