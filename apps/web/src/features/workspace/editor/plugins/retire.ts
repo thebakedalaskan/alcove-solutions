@@ -9,7 +9,8 @@
  * - A caret doesn't stay in a block that isn't on the page: it goes where the words went, or to the next block.
  * - Words someone was typing as the block left stay safe where they are. Only their author folds them into the block they
  *   were meant for, so it happens once, and that's only tidying: nothing is lost if it never happens.
- * - If two people move one block, two elements end up with one ID. Every browser retires the same one.
+ * - If two people move one block, two elements end up with one ID. Every browser retires the same one, unless someone has
+ *   typed in it since: then it stays too.
  */
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
@@ -18,7 +19,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { allBlocks, blockAt, findBlock } from '../commands';
 import { newBlockId } from '../names';
-import { followUndo, gatherWords, holdsNothing, KEPT_ATTRS, retire, strayWords, type StrayWords } from '../retire';
+import { followUndo, gatherWords, holdsNothing, KEPT_ATTRS, retire, settleCopies, strayWords, type StrayWords } from '../retire';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, isGone, schema, textAttr } from '../schema';
 import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
@@ -178,10 +179,10 @@ function keepCaretOnPage(tr: Transaction, before: EditorState): void {
   tr.setSelection(TextSelection.create(tr.doc, to.pos + (line === to.node ? 1 : 2) + Math.max(0, line.content.size - fromEnd)));
 }
 
-/** Which elements are `id`-for-`id` copies: every browser drops the same ones. */
-function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; id: string }[] {
+/** Which elements are `id`-for-`id` copies, and of what: every browser picks the same ones. */
+function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; keeper: Y.XmlElement; id: string }[] {
   const first = new Map<string, Y.XmlElement>();
-  const out: { element: Y.XmlElement; id: string }[] = [];
+  const out: { element: Y.XmlElement; keeper: Y.XmlElement; id: string }[] = [];
   const older = (a: Y.XmlElement, b: Y.XmlElement) => {
     const x = a._item?.id, y = b._item?.id;
     return !x || !y ? false : x.client !== y.client ? x.client < y.client : x.clock < y.clock;
@@ -192,7 +193,7 @@ function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; id: string }
     if (typeof id !== 'string') continue;
     const seen = first.get(id);
     if (!seen) first.set(id, child);
-    else if (older(child, seen)) { first.set(id, child); out.push({ element: seen, id }); } else out.push({ element: child, id });
+    else if (older(child, seen)) { first.set(id, child); out.push({ element: seen, keeper: child, id }); } else out.push({ element: child, keeper: seen, id });
   }
   return out;
 }
@@ -276,12 +277,13 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
           const unnamed = undone ? nameless(fragment) : [];
           if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0) {
             doc.transact(() => {
+              /* First, so words gathered below go into the copy that stays. */
+              for (const copy of copies) settleCopies(copy.element, copy.keeper, copy.id, newBlockId());
               for (const stray of strays) {
                 const into = elementOf(fragment, stray.target);
                 const offset = into ? gatherWords(stray, into.element) : null;
                 if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
-              for (const copy of copies) retire(copy.element, newBlockId(), copy.id);
               /* What an undo took out left its element behind: on the page only if someone's words are in it. */
               for (const element of unnamed) {
                 element.setAttribute('id', newBlockId());

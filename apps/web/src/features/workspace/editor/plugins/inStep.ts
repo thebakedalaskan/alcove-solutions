@@ -20,13 +20,14 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   const write = binding._prosemirrorChanged.bind(binding);
 
   const redraw = () => {
+    const stopped = rt.halted;
+    /* Nothing in the document yet means nothing has been synced: writing would make a second title. */
+    rt.halted = fragment.length === 0;
     try {
       binding._forceRerender();
-      /* Nothing in the document yet means nothing has been synced: writing would make a second title. */
-      rt.halted = fragment.length === 0;
     } catch (err) {
       elog.error('the page can’t be drawn from its document, so it stops writing', { err, blocks: fragment.length });
-      if (!rt.halted) rt.props.onToast?.({ icon: 'alert', text: 'This page stopped following changes. Reload to keep editing.' });
+      if (!stopped) rt.props.onToast?.({ icon: 'alert', text: 'This page stopped following changes. Reload to keep editing.' });
       rt.halted = true;
     }
   };

@@ -74,7 +74,7 @@ export function retire(element: Y.XmlElement, id: string, target: string, seen?:
 }
 
 /** The words in a retired block that its author typed where the block used to be, and where they stood among the words that left. */
-export interface StrayWords { element: Y.XmlElement; target: string; words: string; before: string; after: string }
+export interface StrayWords { element: Y.XmlElement; target: string; words: string; before: string; after: string; seen: Seen }
 
 /**
  * What this browser typed into a block in the moment it was retired, read from the change that retired it (`tr`): what that
@@ -98,7 +98,7 @@ export function strayWords(element: Y.XmlElement, tr: Y.Transaction, client: num
       }
     }
   }
-  return words ? { element, target, words, before, after } : null;
+  return words ? { element, target, words, before, after, seen: seenIn(tr.doc) } : null;
 }
 
 /** Stands for anything in a line that isn't text, so offsets count the way ProseMirror's do. */
@@ -111,6 +111,21 @@ function textHolder(element: Y.XmlElement): Y.XmlElement | null {
   if (element.nodeName === 'line' || element.nodeName === 'code') return element;
   const first = element.nodeName === 'toggle' ? element.get(0) : null;
   return first instanceof Y.XmlElement ? first : null;
+}
+
+/** What a block says, to tell two copies of it apart. */
+const saying = (element: Y.XmlElement): string => {
+  const captions = Object.entries(element.getAttributes()).filter(([key]) => key.startsWith('cap:')).sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([element.toArray().map(String), captions]);
+};
+
+/**
+ * Two people moved one block, so two elements have its ID. Every browser settles on the same one. The other goes only if
+ * it says the same: someone may have typed in it since, and then it stays too, as a block of its own.
+ */
+export function settleCopies(copy: Y.XmlElement, keeper: Y.XmlElement, id: string, fresh: string): void {
+  if (saying(copy) === saying(keeper)) retire(copy, fresh, id);
+  else copy.setAttribute('id', fresh);
 }
 
 /** Nothing in it that anyone said. */
@@ -202,6 +217,6 @@ export function gatherWords(stray: StrayWords, into: Y.XmlElement): number | nul
     left -= child instanceof Y.XmlText ? child.length : 1;
   }
   if (!placed) holder.insert(holder.length, [new Y.XmlText(stray.words)]);
-  empty(stray.element, undefined);
+  empty(stray.element, stray.seen);
   return at + stray.words.length;
 }
