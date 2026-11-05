@@ -9,7 +9,7 @@
 import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import { rungWords } from '~/features/calls/RingWords';
 import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
@@ -43,6 +43,37 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
+/**
+ * A panel's tabs. In a panel too narrow for all of them they scroll, the one you're on stays in view, and whichever edge has
+ * more behind it fades out, so a tab out of sight doesn't read as no tab at all.
+ */
+function PanelTabs({ tabs, view, onView }: { tabs: CallPanelTab[]; view: PanelView; onView: (v: PanelView) => void }) {
+  const strip = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ before: false, after: false });
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const read = () => {
+      const before = el.scrollLeft > 1;
+      const after = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setMore((was) => (was.before === before && was.after === after ? was : { before, after }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    el.addEventListener('scroll', read, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', read); };
+  }, [tabs.length]);
+  useEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [view]);
+  /* A mouse's wheel only turns one way. */
+  const wheel = (e: ReactWheelEvent<HTMLDivElement>) => { if (e.deltaY !== 0 && e.deltaX === 0) e.currentTarget.scrollLeft += e.deltaY; };
+  return (
+    <div ref={strip} className={cn('ac-tabs', more.before && 'more-before', more.after && 'more-after')} role="tablist" aria-label="Call panel" onWheel={wheel}>
+      {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
+    </div>
+  );
+}
+
 export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }: {
   view: PanelView;
   /** The tabs in this panel: dragging one out makes it a panel of its own, and one on its own has its name instead. */
@@ -58,9 +89,7 @@ export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }:
         <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={view === 'rooms' ? 'Close the panel' : `Close ${name}`} onClick={onClose} /></div>
       ) : (
         <div className="ic-side-head">
-          <div className="ac-tabs" role="tablist" aria-label="Call panel">
-            {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
-          </div>
+          <PanelTabs tabs={tabs} view={view} onView={onView} />
           <IconButton icon="x" label={`Close ${tabName(view)}`} onClick={onClose} />
         </div>
       )}

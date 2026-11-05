@@ -465,11 +465,33 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Everything here comes from the server today; the screens for it are being built.
+Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
+the server today, and its screens are being built.
 
-1. **Opening Workspace** settles which one the call uses, the first time anyone does: the one the call was scheduled with,
-   else the organizer's most recently used, else a new one in their name. Everyone sees the same one, late or back from a
-   reload.
+1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
+   column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
+   opens it, the call settles which one it uses: the one the call was scheduled with, else the organizer's most recently
+   used, else a new one in their name. Everyone sees the same one, late or back from a reload. It opens on this call's
+   agenda, or the first thing brought to it, and **This call** at the top of the list holds what's been brought. Anyone who
+   can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping
+   its row on This call. Pressing Workspace or **W** again gives the stage back and keeps your place: the document, where
+   you'd scrolled to, your caret and your undo, for the rest of the call and across a reload. The call's letters (**M**,
+   **V**, **C**, **B**, **W**) sleep while the caret is in a document.
+   - **Someone shares while you're writing:** nothing you're looking at moves. It lands as a tile among the people and glows
+     for 3 seconds, and a toast offers **Show it**, as does the tile. It takes its place beside the document, and the
+     people and the list give way if they must. Drag the line between them (it snaps at half, and a double-click evens it);
+     **×** on the screen sends it back to a tile for you only. On a window with no room for both, they take turns, and
+     the one you just showed is in front.
+   - **Arranging it:** the workspace is a panel like any other: its handle moves it, View has the four layouts, and **Document
+     list** hides the list. A list that gave way for want of room comes over the page from the button at the top left of the page,
+     until you open something or press **Esc**. **Reset my view** puts everything back and leaves the workspace open.
+   - **Just the document** (**⌘⇧F**, the arrows at the top right of the page, or View): the bars slide off, everyone drops to
+     arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
+     who has a hand up. **Show everything** or **Esc** brings it all back as it was, with the caret where you left it.
+   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
+     document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
+   - **An organizer taken out of the workspace** the call uses is told so, and **New workspace** moves the call to one of
+     their own. Everyone else carries on.
 2. **Only the organizer changes it**, to a workspace they can edit in. One question says who can't open it, and
    nobody is interrupted: they stay in the call and see that it's private. **New workspace** makes one with just them in it.
 3. **Someone who can't open it** is told it's private, and nothing else: no names, no folders, nobody's whereabouts. They can

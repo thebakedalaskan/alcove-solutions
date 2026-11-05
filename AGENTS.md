@@ -164,7 +164,7 @@ Read `docs/engineering/logging-and-errors.md`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
   `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsFullBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`,
-  `WsTemplates`, `WsTail`, `WsTrash`, `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsOfflineEmpty`, `WsNoAccess`), with
+  `WsTemplates`, `WsTail`, `WsTrash`, `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
   `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` above the head.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`; `WsPersonCard`, `WsMentionPrompt`,

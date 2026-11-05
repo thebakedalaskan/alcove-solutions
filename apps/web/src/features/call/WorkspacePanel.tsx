@@ -48,6 +48,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const hide = () => { setOpen(false); setZen(false); setPeek(false); };
     return {
       say, failed, hide, reveal,
+      /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
+      leave: () => { hide(); session.openWorkspace().catch(failed); },
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
       announce: show,
       toggle: () => { if (openNow.current) hide(); else reveal(); },
@@ -61,7 +63,11 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       },
       /** A workspace of their own, for an organizer who's lost the one the call uses. */
       newWorkspace: () => {
-        session.newWorkspace().then(() => { say(wsToast.newSpace(session.getSnapshot().workspace.name ?? 'Untitled')); }, failed);
+        session.newWorkspace().then(() => {
+          const w = session.getSnapshot().workspace;
+          setAt(firstPlace(w));
+          say(wsToast.newSpace(w.name ?? 'Untitled'));
+        }, failed);
       }
     };
   }, [push, session]);
@@ -87,29 +93,29 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   /* The call moved to another workspace: what was open here isn't in that one. */
   const was = useRef(workspace.id);
   useEffect(() => {
-    if (was.current !== null && workspace.id !== null && was.current !== workspace.id) setAt(firstPlace(session.getSnapshot().workspace));
+    if (workspace.id === null) return;
+    if (was.current !== null && was.current !== workspace.id) setAt(firstPlace(session.getSnapshot().workspace));
     was.current = workspace.id;
   }, [workspace.id, session]);
 
   /* Where you are, for a reload. */
-  const document_ = at.kind === 'document' ? at.id : null;
-  const keep = view.keepWorkspace;
-  const keepNow = useRef(keep);
-  keepNow.current = keep;
-  useEffect(() => { keepNow.current({ open, document: document_ }); }, [open, document_]);
+  const openId = at.kind === 'document' ? at.id : null;
+  const keep = useRef(view.keepWorkspace);
+  keep.current = view.keepWorkspace;
+  useEffect(() => { keep.current({ open, document: openId }); }, [open, openId]);
 
   /* Esc puts away what's over the page, then gives everything back. A menu or a sheet goes first, and so does anything that took the key before it got this far. */
   useEffect(() => {
     if (!zen && !peek) return;
     const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || overlayOpen() || globalThis.document.querySelector('.ws-pop')) return;
+      if (e.key !== 'Escape' || overlayOpen() || document.querySelector('.ws-pop')) return;
       e.preventDefault();
       e.stopPropagation();
       if (peek) setPeek(false);
       else setZen(false);
     };
-    globalThis.document.addEventListener('keydown', esc, true);
-    return () => globalThis.document.removeEventListener('keydown', esc, true);
+    document.addEventListener('keydown', esc, true);
+    return () => document.removeEventListener('keydown', esc, true);
   }, [zen, peek]);
 
   return { open, mounted, at, zen, peek, settled, act };
@@ -144,10 +150,11 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
   }), [live, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
-  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.hide} pass={pass} call={call} />;
+  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
   if (!settled) return <WsPane />;
   return <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}</WsDoc></WsPane>;
 });
