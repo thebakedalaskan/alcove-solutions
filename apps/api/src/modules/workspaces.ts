@@ -766,12 +766,12 @@ async function trashStranded(w: HeldWorkspace, db: Db): Promise<number> {
 
 const Due = z.object({ owner_id: z.string(), workspace_id: z.string(), trash_since: timestamp });
 /**
- * Deletes for good what's been in Trash for `ageMs`, with what's in it, and returns how many things went. Each workspace
- * goes in a transaction of its own, and one that fails is logged and left for next time: nothing in one workspace can stop
- * the others.
+ * Deletes for good what's been in Trash for `ageMs` as of `now`, with what's in it, and returns how many things went. Each
+ * workspace goes in a transaction of its own, and one that fails is logged and left for next time: nothing in one workspace
+ * can stop the others.
  */
-export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS): Promise<number> {
-  const cutoff = new Date(Date.now() - ageMs);
+export async function sweepTrash(d: Deps, ageMs: number = TRASH_MS, now: number = Date.now()): Promise<number> {
+  const cutoff = new Date(now - ageMs);
   let deleted = 0;
   let after: z.infer<typeof Due> | undefined;
   for (;;) {
