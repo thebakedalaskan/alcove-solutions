@@ -198,6 +198,10 @@ what's stored, because open browsers follow an element going away, and that took
 answer for edits older than whatever it keeps: `KeptUpdate` records when each was made, so a limit of 30 days offline is
 possible then.
 
+A paste or a drop goes up as one change, so what can't fit never reaches the document: more than 20,000 lines or cells, a
+million characters, 3.5 MiB, or more than the document has room for gets a toast instead, and stays on the clipboard. A
+file dropped on the page is an attachment, so it doesn't count.
+
 ProseMirror and Yjs have to hold the same document, because what's written is ProseMirror's document, on every view
 update. Whatever goes wrong on the way to the page, `keepInStep` draws it again from Yjs, with a log line, and if that fails
 too nothing is written until it works. Whoever is typing doesn't lose their place: the selection stays where it was by

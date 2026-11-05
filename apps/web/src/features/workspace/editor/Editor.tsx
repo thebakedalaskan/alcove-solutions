@@ -22,7 +22,7 @@ import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tu
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
-import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
+import { cleanPastedHTML, cleanSerializer, handlePaste, refuseSlice, refuseText, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
 import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
@@ -131,7 +131,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     clipboardTextParser: (text, $context, plain) => textToSlice(text, $context, plain),
     transformPastedHTML: (html) => cleanPastedHTML(html),
     transformPasted: (slice, view) => transformPasted(rt, slice, view),
-    handlePaste: (view, event) => handlePaste(rt, view, event),
+    handlePaste: (view, event, slice) => handlePaste(rt, view, event, slice),
+    handleDrop: (_, __, slice) => refuseSlice(rt, slice),
     handleClickOn(_, __, node, ___, event, direct) {
       if (!direct || !(event.target instanceof Element)) return false;
       const rect = event.target.getBoundingClientRect();
@@ -146,6 +147,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     handleDOMEvents: {
       /* A link opens from `handleClick`, once. Left alone, the browser would open it as well for someone who can only read. */
       click: (_, event) => { if (event.target instanceof Element && event.target.closest('a[href]')) event.preventDefault(); return false; },
+      paste: (_, event) => refuseText(rt, event, event.clipboardData),
+      drop: (_, event) => refuseText(rt, event, event.dataTransfer),
       /* Blocks move by their handles, through `moveBlock`. Text dragged across blocks would be a rewrite of everything it passes, and whatever anyone was typing there would land in the wrong place. */
       dragstart: (_, event) => { event.preventDefault(); return true; }
     },
