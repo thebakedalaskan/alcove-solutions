@@ -125,6 +125,8 @@ const COPY_OFFSET = { x: 24, y: 24 };
 const POP_AT_ONCE = 24;
 /** How often a moving camera checks what's mounted. Well inside the time a fast pan takes to cross the margin. */
 const NEAR_EVERY_MS = 100;
+/** How long a camera has to be still to count as at rest. */
+const REST_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
 
@@ -149,6 +151,8 @@ export class Board implements LiveStore<BoardState> {
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
   moreItems: BoardMoreItems = {};
+  /** Lets go of whatever the pointer is holding, as if it had been taken away. Says whether it was holding anything. */
+  letGo: () => boolean = () => false;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -404,10 +408,11 @@ export class Board implements LiveStore<BoardState> {
     if (id !== this.state.hover) this.set({ hover: id });
   }
 
-  /** Back to Select. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
+  /** Back to Select, dropping anything held. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
-    const { tool, sel, following, fly, draft } = this.state;
-    if (tool === 'select' && !sel.length && !following && !fly && !draft) return false;
+    const held = this.letGo();
+    const { tool, sel, following, fly } = this.state;
+    if (!held && tool === 'select' && !sel.length && !following && !fly) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
@@ -574,6 +579,7 @@ export class Board implements LiveStore<BoardState> {
   }
 
   private cameraMoved = (): void => {
+    this.later('rest', REST_MS, () => this.camera.rest());
     if (this.state.view.objects.length > MOUNT_ALL && !this.waits.has('near')) this.later('near', NEAR_EVERY_MS, this.settleNear);
   };
 

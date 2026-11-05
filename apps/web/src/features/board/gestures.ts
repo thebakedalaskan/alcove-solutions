@@ -14,7 +14,7 @@ import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
 import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, boxBetween, carried, drawn, movable, picks, pressed, snapTargets, snapTo } from './selection';
-import { framePress, settleFrame } from './tools/frame';
+import { framePress, raiseHeld, settleFrame } from './tools/frame';
 import { dotPress, hoverAt, linePress } from './tools/line';
 import { penPress } from './tools/pen';
 import { shapePress } from './tools/shape';
@@ -28,7 +28,7 @@ export interface Gesture {
   /** Every move as it arrives, for what can't afford to miss one: a pen. */
   trace?(e: PointerEvent): void;
   up(at: SheetPoint, e: PointerEvent): void;
-  /** The pointer was taken away: a second finger arrived, or the browser took over. What's done stays done. */
+  /** The pointer was taken away: a second finger arrived, the browser took over, or Esc let go. What's done stays done, and what isn't done is dropped. */
   cancel(): void;
 }
 
@@ -107,7 +107,9 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
   let moved = false;
   const stop = (): void => {
     board.set({ guides: NO_GUIDES });
-    if (moved) board.endStep();
+    if (!moved) return;
+    raiseHeld(board, sel);
+    board.endStep();
   };
   return {
     move(at) {
@@ -240,6 +242,17 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     return ending;
   };
 
+  board.letGo = () => {
+    const letting = gesture;
+    if (!letting) return false;
+    if (held !== null && sheet.hasPointerCapture(held)) sheet.releasePointerCapture(held);
+    gesture = null;
+    held = null;
+    board.set({ pressing: false, hover: null });
+    letting.cancel();
+    return true;
+  };
+
   sheet.addEventListener('pointerdown', (e) => {
     const { target } = e;
     if (e.button > 1 || !(target instanceof Element) || target.closest(OVER_THE_SHEET)) return;
@@ -329,6 +342,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
 
   return () => {
     listening.abort();
+    board.letGo = () => false;
     if (frame) cancelAnimationFrame(frame);
   };
 }

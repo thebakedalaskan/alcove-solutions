@@ -50,7 +50,7 @@ export function dotsOn(b: Box, { x, y, z }: Camera): BoardDot[] {
   ];
 }
 
-/** What a line can join, and so what shows dots: a frame is space to work in, a stroke is a mark, and a heading is a label. */
+/** What a line can end on, and what shows dots as the pointer nears it: a frame is space to work in, a stroke is a mark, and a heading is a label. A line can still start from any of them that's been picked, from its dots. */
 const joinable = (o: BoardObject): o is PlacedObject => hasBox(o) && o.k !== 'frame' && o.k !== 'ink' && !(o.k === 'text' && o.size === 'heading');
 
 /** How far a point is from a box, and nothing if it's inside. */
@@ -139,15 +139,10 @@ function finishLine(board: Board, from: LineEnd, start: SheetPoint, at: SheetPoi
 function lineGesture(board: Board, from: LineEnd, start: SheetPoint, fromDot: boolean): Gesture {
   const show = ({ x, y }: SheetPoint): void => board.set({ draft: { kind: 'line', from, to: [x, y] } });
   const stop = (): void => board.set({ draft: null });
-  // Esc takes the draft away, and that's the end of the line, whenever the pointer lets go.
-  const dropped = (): boolean => board.getSnapshot().draft === null;
   show(start);
   return {
-    move(at) {
-      if (!dropped()) show(at);
-    },
+    move: show,
     up(at) {
-      if (dropped()) return;
       stop();
       finishLine(board, from, start, at, fromDot);
     },

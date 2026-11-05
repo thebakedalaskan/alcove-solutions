@@ -13,8 +13,10 @@ export interface Drawn {
   /** What a click makes. */
   standard: { w: number; h: number };
   add(box: Box): string | null;
-  /** It's been let go. Its undo step is still open: this says when that ends. */
-  done(id: string): void;
+  /** It's reached its size, however that came about, with its undo step still open. */
+  settle?(id: string): void;
+  /** It opens for typing when it's let go, and its undo step stays open through what's typed. */
+  typed?: boolean;
 }
 
 export function drawGesture(board: Board, start: SheetPoint, thing: Drawn): Gesture {
@@ -37,6 +39,12 @@ export function drawGesture(board: Board, start: SheetPoint, thing: Drawn): Gest
     resizeObject(board.doc, made, box, board.origin);
     board.read();
   };
+  // It was added at the first sign of a drag, so what frame it's in is settled now that it has its size.
+  const finish = (made: string): void => {
+    moveObjects(board.doc, movable(board.getSnapshot().view, [made]), board.origin);
+    thing.settle?.(made);
+    board.set({ tool: 'select' });
+  };
 
   return {
     move(at) {
@@ -49,15 +57,15 @@ export function drawGesture(board: Board, start: SheetPoint, thing: Drawn): Gest
       if (!id && !refused) begin(standard);
       else if (id && w <= BOARD_LIMITS.minSide && h <= BOARD_LIMITS.minSide) size(id, standard);
       if (!id) return;
-      // It was added at the first sign of a drag, so what frame it's in is settled now that it has its size.
-      moveObjects(board.doc, movable(board.getSnapshot().view, [id]), board.origin);
-      board.set({ tool: 'select' });
-      thing.done(id);
+      finish(id);
+      if (thing.typed) board.startEdit(id);
+      // If it's just gone, there's nothing to type on.
+      if (!board.getSnapshot().edit) board.endStep();
     },
     cancel() {
       if (!id) return;
+      finish(id);
       board.endStep();
-      board.set({ tool: 'select' });
     }
   };
 }

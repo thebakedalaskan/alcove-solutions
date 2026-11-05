@@ -73,8 +73,8 @@
 .bd-svg path.ink.c-horizon { stroke: var(--horizon); }
 .bd-svg path.ink.is-sel { stroke: var(--horizon); }
 .bd-svg path.ink.is-marker { stroke-width: 12; opacity: .28; }
-/* What takes a press on a line or a stroke: as wide as the highlighter and a little more, so a thin line is easy to hit. */
-.bd-svg path.bd-hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+/* What takes a press on a line or a stroke: a band one width on screen at any zoom, so a thin line is easy to hit and doesn't reach for what's near it. */
+.bd-svg path.bd-hit { stroke: transparent; stroke-width: calc(16px * var(--iz, 1)); pointer-events: stroke; }
 .bd.is-mini .bd-svg path.bd-hit { pointer-events: none; }
 
 /* ---------------------------------------------------------------- frames */
@@ -260,6 +260,10 @@
 .bd-sep { flex: none; align-self: stretch; width: 1px; margin: 8px 3px; background: rgb(255 255 255 / .14); }
 .bx-sw { position: absolute; z-index: 14; display: flex; gap: 2px; padding: 5px; border-radius: 12px; animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bx-sw button { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; }
+
+/* They're drawn where a glide will end, so they take the glide's own way there and stay with what's picked. */
+.bd.is-glide :is(.bx, .bx-sw, .bp) { transition: left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out), translate var(--duration-3) var(--ease-in-out); }
+.bd.is-glide .bs-p { transition: transform var(--duration-1) var(--ease-out), left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out); }
 
 /* A tool's options, beside the rail, each level with its tool */
 .bfly { position: absolute; z-index: 13; left: 10px; display: grid; gap: 6px; padding: 8px; border-radius: 14px; animation: bd-pop var(--duration-1) var(--ease-out) both; }

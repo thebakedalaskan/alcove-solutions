@@ -102,9 +102,17 @@ function positions(board: Board, e: PointerEvent): SheetPoint[] {
 function strokeGesture(board: Board, start: SheetPoint, tool: InkObject['tool']): Gesture {
   const { z } = board.camera.getSnapshot();
   let points: Point[] = [[start.x, start.y]];
+  let left = start.x, right = start.x, top = start.y, bottom = start.y, ended = false;
   const add = ({ x, y }: SheetPoint): void => {
     const last = points.at(-1);
-    if (last && Math.hypot(x - last[0], y - last[1]) < FINEST / z) return;
+    if (ended || (last && Math.hypot(x - last[0], y - last[1]) < FINEST / z)) return;
+    // Nothing on a board is bigger than this, so a stroke that gets there ends there.
+    ended = Math.max(right, x) - Math.min(left, x) > BOARD_LIMITS.maxSide || Math.max(bottom, y) - Math.min(top, y) > BOARD_LIMITS.maxSide;
+    if (ended) return;
+    left = Math.min(left, x);
+    right = Math.max(right, x);
+    top = Math.min(top, y);
+    bottom = Math.max(bottom, y);
     points.push([x, y]);
     // Half, so a stroke that never ends isn't simplified on every point from here on.
     if (points.length >= BOARD_LIMITS.points) points = within(points, BOARD_LIMITS.points / 2, z);

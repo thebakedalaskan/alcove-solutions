@@ -1,5 +1,5 @@
 /* What the selection bar does to what's picked. Each is one undo, and only what can take a change is changed by it. */
-import { setObjects, tidyObjects, type BoardObject, type NoteObject, type StickyColour, type TextObject } from '@alcove/board';
+import { setObjects, stackObjects, tidyObjects, type BoardObject, type NoteObject, type StickyColour, type TextObject } from '@alcove/board';
 import type { Board } from '../useBoard';
 
 const STICKY_SIZES: readonly NoteObject['size'][] = ['m', 'l', 's'];
@@ -41,10 +41,15 @@ export function tidySelected(board: Board): void {
   board.settle(() => board.write(() => tidyObjects(board.doc, sel, board.origin)));
 }
 
-/** Brings what's picked in front of everything else, or sends it behind. `at` orders objects within their layer. */
+/** What can go in front of something or behind it. A frame's order is its order as a slide, and lines and strokes all draw in one layer under everything else. */
+export const stacks = (o: BoardObject): boolean => o.k !== 'frame' && o.k !== 'line' && o.k !== 'ink';
+
+/** Brings what's picked in front of everything else, or sends it behind, a pile keeping its order. */
 export function stackSelected(board: Board, edge: 'front' | 'back'): void {
   const { sel, view } = board.getSnapshot();
-  const ats = view.objects.map((o) => o.at);
-  const at = edge === 'front' ? Math.max(...ats) + 1 : Math.min(...ats) - 1;
-  board.write(() => setObjects(board.doc, sel, { at }, board.origin));
+  const ids = sel.filter((id) => {
+    const o = view.byId.get(id);
+    return o !== undefined && stacks(o);
+  });
+  board.write(() => stackObjects(board.doc, ids, edge, board.origin));
 }

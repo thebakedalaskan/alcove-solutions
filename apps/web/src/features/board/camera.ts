@@ -6,7 +6,7 @@
  */
 import type { LiveStore } from '@alcove/api';
 import { fit, type Box, type Camera, type Pad } from '@alcove/board';
-import { moveBoardCamera } from '@alcove/ui';
+import { moveBoardCamera, restBoardCamera } from '@alcove/ui';
 
 /** How far a person zooms by hand. `fit` can go further out, to show a very big board. */
 const LEAST_ZOOM = 0.2;
@@ -63,6 +63,11 @@ export class BoardCameraStore implements LiveStore<Camera> {
     this.cam = cam;
     if (this.sheet && this.world) moveBoardCamera(this.sheet, this.world, cam);
     for (const listener of this.listeners) listener();
+  }
+
+  /** The camera has stopped moving. */
+  rest(): void {
+    if (this.world) restBoardCamera(this.world, this.cam);
   }
 
   panBy(dx: number, dy: number): void {

@@ -3,11 +3,11 @@
  * offers depends on what's picked, and nothing is offered that can't be done to it.
  */
 import { isAttached, setObjects, type BoardObject, type BoardView, type Camera } from '@alcove/board';
-import { BoardPop, BoardSelectionBar } from '@alcove/ui';
+import { BoardSelectionBar } from '@alcove/ui';
 import { endBox, placed, selectionRing } from '../selection';
 import { useBoardState, type Board } from '../useBoard';
 import { lineFromHere } from './line';
-import { colourOf, colourSelected, hasSizes, sizeSelected, stackSelected, tidySelected } from './selected';
+import { colourOf, colourSelected, hasSizes, sizeSelected, stackSelected, stacks, tidySelected } from './selected';
 
 /** Keeps the bar clear of the board's own bar. */
 const TOP = 66;
@@ -17,10 +17,6 @@ const ABOVE = 52;
 const TITLE_ROOM = 36;
 /** How far inside a frame the bar sits when there's no room above its title. */
 const INSIDE = 10;
-/** The row of colours and the menu sit this far under where the bar starts. */
-const BELOW = 48;
-const POP_WIDTH = 264;
-const POP_GAP = 12;
 
 /** Where the bar goes, in screen pixels: over the middle of what's picked, and a line has its middle between its ends. */
 function barSpot(view: BoardView, picked: readonly BoardObject[], cam: Camera): { x: number; y: number } | null {
@@ -63,25 +59,20 @@ export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera;
     run();
     board.focusSheet();
   };
-  const pop = { left: Math.max(POP_GAP, Math.min(board.camera.width - POP_WIDTH - POP_GAP, spot.x - POP_WIDTH / 2)), top: spot.y + BELOW };
   return (
-    <>
-      <BoardSelectionBar x={spot.x} y={spot.y} room={board.camera.width} count={picked.length} things={stickies.length === picked.length ? 'stickies' : 'selected'}
-        colour={colours[0] ?? null} textSize={solo !== undefined && hasSizes(solo)} picking={picking} lineStyle={line?.style}
-        onColour={() => board.set({ picking: !picking, menu: false })} onPick={(c) => { colourSelected(board, c); board.focusSheet(); }}
-        onTextSize={act(() => sizeSelected(board))}
-        onLineStyle={(style) => { if (line) board.write(() => setObjects(board.doc, [line.id], { style }, board.origin)); }}
-        onLine={solo && !line && solo.k !== 'ink' ? act(() => lineFromHere(board, solo.id)) : undefined}
-        onDuplicate={copyable ? act(() => board.duplicateSelected()) : undefined} onDelete={act(() => board.removeSelected())}
-        onMore={() => board.set({ menu: !menu, picking: false })}
-        onSort={onSort && stickies.length > 1 ? () => onSort(stickies) : undefined}
-        onTidy={arrangeable.length > 1 ? act(() => tidySelected(board)) : undefined} />
-      {menu && (
-        <BoardPop {...pop} label="More" items={[
-          { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
-          { icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
-        ]} />
-      )}
-    </>
+    <BoardSelectionBar x={spot.x} y={spot.y} room={board.camera.width} count={picked.length} things={stickies.length === picked.length ? 'stickies' : 'selected'}
+      colour={colours[0] ?? null} textSize={solo !== undefined && hasSizes(solo)} picking={picking} lineStyle={line?.style}
+      onColour={() => board.set({ picking: !picking, menu: false })} onPick={(c) => { colourSelected(board, c); board.focusSheet(); }}
+      onTextSize={act(() => sizeSelected(board))}
+      onLineStyle={(style) => { if (line) board.write(() => setObjects(board.doc, [line.id], { style }, board.origin)); }}
+      onLine={solo && !line && solo.k !== 'ink' ? act(() => lineFromHere(board, solo.id)) : undefined}
+      onDuplicate={copyable ? act(() => board.duplicateSelected()) : undefined} onDelete={act(() => board.removeSelected())}
+      onMore={picked.some(stacks) ? () => board.set({ menu: !menu, picking: false }) : undefined}
+      moreItems={menu ? [
+        { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
+        { icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
+      ] : undefined}
+      onSort={onSort && stickies.length > 1 ? () => onSort(stickies) : undefined}
+      onTidy={arrangeable.length > 1 ? act(() => tidySelected(board)) : undefined} />
   );
 }
