@@ -39,3 +39,21 @@ CREATE TABLE workspace_media_uses (
   FOREIGN KEY (owner_id, document_id) REFERENCES documents(owner_id, document_id) ON DELETE CASCADE
 );
 CREATE INDEX workspace_media_uses_document ON workspace_media_uses(owner_id, document_id);
+
+-- Limits that can change while the service runs, without a deploy (docs: Deployment and acceptance › Changing a limit):
+-- a number for a name, and when it was set. What each name means, its default and the bounds it's held to are in
+-- apps/api/src/limits.ts; a row only overrides a default. Numbers only, never anything of anyone's.
+CREATE TABLE service_limits (
+  name text PRIMARY KEY,
+  value bigint NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- What each account uploaded to workspaces each day (UTC), in bytes, for the limit on a day. It goes with the account, and
+-- maintenance keeps today and yesterday. A guest has no account, so theirs is in the API's memory.
+CREATE TABLE media_upload_days (
+  owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
+  day date NOT NULL,
+  bytes bigint NOT NULL CHECK (bytes >= 0),
+  PRIMARY KEY (owner_id, day)
+);

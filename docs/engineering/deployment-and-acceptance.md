@@ -163,6 +163,47 @@ call codes or OAuth callback queries. Application structured logs remain. The ex
 outside bootstrap and needs separate verification; additional log sinks must also avoid retaining
 those raw entries.
 
+## Changing a limit
+
+Some limits can change while the service runs, with no release and no restart: so far, what files can take up. Each has a
+name, a default that holds while nothing's set, and a floor and a ceiling in code (`apps/api/src/limits.ts`) that hold
+whatever's set, so a typo can't make anything unsafe. A value is a row in `service_limits`, and each instance reads them
+again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force everywhere within a minute.
+
+| Limit | Default | Ceiling | Measures |
+| --- | --- | --- | --- |
+| `media.file_bytes` | 512 MiB | 4 GiB | One file. |
+| `media.workspace_bytes` | 100 GiB | 1 TiB | What a workspace stores, sealed: its `stored_bytes`. |
+| `media.account_day_bytes` | 20 GiB | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
+
+Every floor is 0, and 0 means none: any of them at 0 stops every upload, with "Files can’t be uploaded right now." A ceiling is
+ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds and, past 16 MiB,
+can't pick up where it stopped, so a file needs about 15 Mbit/s to download whole at 512 MiB, and about 120 Mbit/s at 4 GiB.
+The limits are the same for everyone, guests in a call included. Lowering one deletes nothing: it refuses the next upload, and
+the next piece of one already going ([Data and storage › Media](data-and-storage.md#media)).
+
+From a checkout, against whichever database `DATABASE_URL` names, `.env` locally or Cloud SQL through its proxy, as `migrate` is:
+
+```
+pnpm --filter @alcove/server limits list
+pnpm --filter @alcove/server limits set media.workspace_bytes 200GiB
+```
+
+`set` takes a whole number of bytes, or one with a unit (`KiB`, `MiB`, `GiB`, `TiB`), as `512MiB` or as `list` writes it,
+`512 MiB`. It refuses a name that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the
+old value and the new. The image has it as `dist/limits-cli.js`,
+beside `dist/migrate-cli.js`. Or from Cloud SQL's console, in bytes:
+
+```sql
+INSERT INTO service_limits (name, value) VALUES ('media.workspace_bytes', 214748364800) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now();
+```
+
+`DELETE FROM service_limits WHERE name = 'media.workspace_bytes';` puts a limit back to its default. Each instance logs `service
+limit changed`, with the old value and the new, when it sees a change, however it was made, and the first time it reads the
+limits, for every one that isn't its default. If it can't read them, it keeps what was in force, says so at warn, and tries
+again next time. A row it can't use, a name that isn't a limit or a value below zero, is ignored with `service limit
+ignored` at warn, and its limit keeps its default. A value past its bounds is held to them, with `service limit clamped`.
+
 ## Acceptance
 
 These journeys describe existing coverage and release checks still required. Passing local integration
@@ -187,7 +228,7 @@ live transcript and written notes.
 | Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
 | Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
-| Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, and a room opening one board all seeing it | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
+| Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, a room opening one board all seeing it, and storage limits, the same for guests as for anyone, changed in the database and in force within the cache window, and refusing without deleting | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
 | More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |

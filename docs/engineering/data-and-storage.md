@@ -48,6 +48,8 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
 | `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
+| `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
+| `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -273,7 +275,7 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
 - **What's kept.** A `workspace-media` record: its name, type, size, and its width and height where the browser knew them.
   And its bytes, in pieces of exactly 4 MiB but the last, each a `media-piece` binary record in an object under a random name,
   a couple of hundred bytes over its own size ([Privacy › Records](privacy-keys-and-sessions.md#records-and-envelopes)). All of
-  it is sealed under the file's own state key, `media:<id>`. At most 512 MiB a file.
+  it is sealed under the file's own state key, `media:<id>`. At most 512 MiB a file, unless that's changed (below).
 - **Its type.** What a browser calls a file is kept only if it can be shown in place: JPEG, PNG, WebP, GIF and AVIF
   pictures, MP4 and WebM video, and MP3, M4A, WebM and Ogg audio, by any of the names browsers use for them. Anything else is
   kept as `application/octet-stream`, and only ever downloads, under the name it came with. SVG and HTML are in that group:
@@ -289,6 +291,17 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   pass by themselves, picking up as soon as the browser says it's back online, so a Wi-Fi handover doesn't start 500 MiB
   over; and 3 times more after a failure on the server. Past that, or if the browser gives up, it takes back what got there
   (`DELETE …/media/:media`). An upload whose browser went stays `uploading` until maintenance takes it, a day on.
+- **What can be kept.** Three limits, which change without a deploy and are in force everywhere within
+  30 seconds ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)): a file, 512 MiB; what a workspace
+  stores, its `stored_bytes`, 100 GiB; and what one person uploads in a day (UTC), in every workspace together, 20 GiB. They're the
+  same for everyone, guests in a call included. Each is checked when an upload starts, with the whole file, and again on every
+  piece, so uploads going at once pass one by the pieces on their way and no more. A file over the limit is refused as `400
+  invalid`, with how big one can be, "This file is bigger than 512 MiB, the most a file can be.", because only the server
+  knows; a full workspace with `409 conflict`, "This workspace is full, so it can’t take more files."; and a day used up with
+  `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A limit of zero refuses everything with
+  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, so
+  it survives a restart; a guest's is in the API's memory, by the person their pass names, because they have no account. A piece
+  that takes a workspace or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
 - **Reuse.** `attach` puts a file in another document of the workspace, for someone who can edit that document and can
   already reach the file, and a copy of a document has what the original has, in the transaction that makes it. It's still one
   file: nothing more is stored.
@@ -508,7 +521,10 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
   and in the API process's memory.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
-  included, and an upload nobody finished for a day.
+  included, and an upload nobody finished for a day. A limit going down never deletes one.
+- **`media_upload_days`** keeps today and yesterday: upkeep deletes anything older, and it goes with its account. A guest's count
+  is in the API's memory, for the day.
+- **`service_limits`** keeps a value until someone changes or deletes it.
 - **Seats** in `document_access` last while their call does.
 
 ## Operations

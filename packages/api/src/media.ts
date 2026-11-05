@@ -9,7 +9,12 @@ import type { WorkspaceReadOptions } from './workspaces';
 
 /** A file travels and is kept in pieces of this size: every piece but the last is exactly this long. */
 export const MEDIA_PIECE_BYTES = 4 * 1024 * 1024;
-export const MAX_MEDIA_BYTES = 512 * 1024 * 1024;
+/**
+ * The most a file can ever be. The limit in force is lower, 512 MiB unless it's been changed, and can change at any time
+ * without a release, so a file over it is refused when its upload starts, with `invalid` and words that say how big a file
+ * can be.
+ */
+export const MAX_MEDIA_BYTES = 4 * 1024 * 1024 * 1024;
 /** What anything off the list below is served as, and only ever as a download. */
 export const FILE_TYPE = 'application/octet-stream';
 /** What can be shown in place: pictures, video and audio a browser plays. Nothing here can run. */
@@ -30,7 +35,8 @@ const Pixels = z.number().int().min(1).max(100_000);
 export const MediaInputSchema = z.object({
   name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(MAX_NAME)),
   type: z.string().max(255).transform(servedType),
-  size: z.number().int().min(1).max(MAX_MEDIA_BYTES),
+  /** At most the limit in force, which the API checks, so it can say how big a file can be: never more than MAX_MEDIA_BYTES. */
+  size: z.number().int().min(1),
   width: Pixels.nullable().default(null),
   height: Pixels.nullable().default(null)
 });

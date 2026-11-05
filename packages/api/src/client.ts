@@ -291,8 +291,12 @@ export interface AlcoveApi {
       /**
        * Keeps a file in a document, for anyone who can edit it, a piece at a time. A piece that fails is tried again, and
        * through a lost connection or a busy server it keeps trying for minutes, so what's stored isn't lost to a Wi-Fi
-       * handover. Pictures, video and audio are shown in place; anything else is served as a download. At most 512 MiB. If
-       * it fails for good it rejects and leaves nothing behind.
+       * handover. Pictures, video and audio are shown in place; anything else is served as a download. If it fails for good
+       * it rejects and leaves nothing behind. What's allowed changes without a release, so the refusal says what it is: a file
+       * over the limit in force, 512 MiB unless it's changed and never more than `MAX_MEDIA_BYTES`, is `invalid` at the start,
+       * "This file is bigger than 512 MiB, the most a file can be.", and a full workspace or a day's uploads used up is
+       * `conflict`, with a message that says which. With a limit at zero, it's "Files can’t be uploaded right now." Show the
+       * message: it's written for the person uploading.
        */
       upload(id: ID, documentId: ID, file: File, opts?: MediaUploadOptions): Promise<WorkspaceMedia>;
       /**
