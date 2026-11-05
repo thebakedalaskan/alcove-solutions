@@ -6,11 +6,11 @@
 import type { AudioSegment, RecordingProgress } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
-import { equalBytes, id128, openKey, openRecord, random, sealKey, sealRecord, sha, type RecordHeader } from '../crypto';
+import { equalBytes, id128, openKey, openRecord, random, recordPlainBytes, sealKey, sealRecord, sha, type RecordHeader } from '../crypto';
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { errorMessage } from '@alcove/api';
 import { InternalError, IntegrityError, NotFoundError, conflict } from '../errors';
-import { log } from '../log';
+import { currentLogContext, log } from '../log';
 
 const alog = log.child({ component: 'audio' });
 
@@ -143,21 +143,121 @@ export async function progress(o: Owner, recordingId: string | null, segment: nu
   return { segment, pieces: segs.reduce((n, s) => n + s.pieces, 0), seconds: segs.reduce((n, s) => n + s.seconds, 0) };
 }
 
-/** Decrypts one segment's pieces in order. MediaRecorder pieces concatenate into one playable file. */
-export async function* stream(o: Owner, recordingId: string, segment: number): AsyncGenerator<Uint8Array> {
-  const pieces = await rows(o.pool, z.object({ seq: z.number(), object_id: z.string(), cipher_sha256: bytea }),
-    'SELECT seq, object_id, cipher_sha256 FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 ORDER BY seq', [o.ownerId, recordingId, segment]);
-  if (!pieces.length) throw new NotFoundError('No audio in that part of the recording.');
-  const { krec } = await krecOf(o, recordingId);
+/**
+ * Pieces read ahead of the one being sent. A recording is hundreds of small objects, so what a long one costs is the
+ * store's round trip for each. Eight keeps that out of the way and keeps what a listener who stops has cost small; the
+ * bytes keep a recording of the largest pieces the API takes from holding much more than it would otherwise.
+ */
+const READ_AHEAD = 8;
+const READ_AHEAD_BYTES = 2 * 1024 * 1024;
+
+/** Opens `pieces` in order, as far ahead as is allowed and always the next one. Stopping waits for what's under way. */
+async function* ahead<P extends { size: number }>(pieces: P[], open: (p: P) => Promise<Uint8Array>): AsyncGenerator<Uint8Array> {
+  const reading: { size: number; opened: Promise<Uint8Array> }[] = [];
+  let next = 0;
+  let held = 0;
   try {
-    for (const p of pieces) {
-      const ct = await o.objects.get(p.object_id);
-      if (!equalBytes(sha(ct), p.cipher_sha256)) throw new IntegrityError('A piece of this recording failed its integrity check.', { context: { recordingId, segment, seq: p.seq, objectId: p.object_id } });
-      yield openRecord(krec, header(o, recordingId, segment, p.seq, p.object_id), ct);
+    for (;;) {
+      for (let p = pieces[next]; p && reading.length < READ_AHEAD && (!reading.length || held + p.size <= READ_AHEAD_BYTES); p = pieces[next]) {
+        const opened = open(p);
+        // Failing is for whoever reaches it: someone who stopped reading before it never will.
+        opened.catch(() => undefined);
+        reading.push({ size: p.size, opened });
+        held += p.size;
+        next++;
+      }
+      const first = reading.shift();
+      if (!first) return;
+      const plain = await first.opened;
+      held -= first.size;
+      yield plain;
     }
   } finally {
-    krec.fill(0);
+    await Promise.allSettled(reading.map((r) => r.opened));
   }
+}
+
+/** One segment, as far as it's asked for, as a file: how long it is, and any stretch of it. */
+export interface AudioFile {
+  bytes: number;
+  /** Decrypts from byte `from` to byte `to`, both included, in order. */
+  read(from: number, to: number): AsyncGenerator<Uint8Array>;
+}
+
+const SegmentPiece = z.object({ seq: z.number(), object_id: z.string(), cipher_sha256: bytea, cipher_bytes: z.coerce.number() });
+/**
+ * The first `count` pieces of a segment as a file. MediaRecorder pieces concatenate into one playable file, and how long
+ * each is follows from how long it's stored. A recording still going keeps growing, so what's asked for by a number of
+ * pieces stays the same file, however often it's asked for again.
+ */
+export async function file(o: Owner, recordingId: string, segment: number, count: number): Promise<AudioFile> {
+  const stored = await rows(o.pool, SegmentPiece,
+    'SELECT seq, object_id, cipher_sha256, cipher_bytes FROM recording_pieces WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 ORDER BY seq LIMIT $4', [o.ownerId, recordingId, segment, count]);
+  if (!stored.length) throw new NotFoundError('No audio in that part of the recording.');
+  let bytes = 0;
+  const pieces = stored.map((p) => {
+    const start = bytes;
+    const location = header(o, recordingId, segment, p.seq, p.object_id);
+    const size = recordPlainBytes(location, p.cipher_bytes);
+    bytes += size;
+    return { ...p, location, start, size };
+  });
+  return {
+    bytes,
+    async *read(from, to) {
+      const { krec } = await krecOf(o, recordingId);
+      try {
+        yield* ahead(pieces.filter((p) => p.start + p.size > from && p.start <= to), async (p) => {
+          const ct = await o.objects.get(p.object_id);
+          if (!equalBytes(sha(ct), p.cipher_sha256)) throw new IntegrityError('A piece of this recording failed its integrity check.', { context: { recordingId, segment, seq: p.seq, objectId: p.object_id } });
+          const plain = openRecord(krec, p.location, ct);
+          if (plain.length !== p.size) throw new IntegrityError('A piece of this recording isn’t the length it was stored at.', { context: { recordingId, segment, seq: p.seq, objectId: p.object_id } });
+          return plain.subarray(Math.max(0, from - p.start), to + 1 - p.start);
+        });
+      } finally {
+        krec.fill(0);
+      }
+    }
+  };
+}
+
+/** Longer than node-server spends on a reply's first chunks, which it reads before writing anything. */
+const AFTER_THE_FIRST_READS_MS = 5;
+
+/**
+ * A response body from what `chunks` gives, read only as fast as it's taken. The first chunk comes before anything is
+ * sent, so a stretch that can't be read is an ordinary error. A failure after that breaks the connection, so nothing can
+ * take a short file for a whole one: it waits for the reply to have started, because node-server takes a failure in its
+ * first reads for the end of the reply. `gone` says the listener left, which is what wipes the key if they left before
+ * the reply began, and is no failure of ours.
+ */
+export async function body(chunks: AsyncGenerator<Uint8Array>, gone: AbortSignal): Promise<ReadableStream<Uint8Array>> {
+  const first = await chunks.next();
+  // What's read later isn't read inside the request, so its failure has to bring the request's ID along.
+  const blog = alog.child(currentLogContext());
+  const stop = () => void chunks.return(undefined);
+  if (gone.aborted) stop(); else gone.addEventListener('abort', stop, { once: true });
+  let cancelled = false;
+  return new ReadableStream<Uint8Array>({
+    start(out) { if (first.done) out.close(); else out.enqueue(first.value); },
+    async pull(out) {
+      try {
+        const next = await chunks.next();
+        if (cancelled) return;
+        if (next.done) out.close(); else out.enqueue(next.value);
+      } catch (e) {
+        if (cancelled || gone.aborted) {
+          blog.debug('a read failed after the listener left', { err: e });
+          if (!cancelled) out.close();
+          return;
+        }
+        blog.error('audio stopped partway through', { err: e });
+        await new Promise((r) => setTimeout(r, AFTER_THE_FIRST_READS_MS));
+        out.error(e);
+      }
+    },
+    cancel() { cancelled = true; stop(); }
+  }, { highWaterMark: 0 });
 }
 
 /** Objects and stored bytes of a note's recording, for deleting the note. */

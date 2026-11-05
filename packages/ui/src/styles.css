@@ -10,7 +10,7 @@
  * with it the same way, with search and the phone's bars, which sit outside the page. Components are styled in
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
  * styles/shell.css; the evening behind each page in styles/horizon.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes in
- * styles/notes.css (`nt-`); a note in styles/library.css; Settings in styles/settings.css (`set-`); Record in styles/record.css
+ * styles/notes.css (`nt-`); a note and a series in styles/note.css (`nd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
  * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the other screens in styles/{app,call,welcome}.css.
@@ -32,6 +32,7 @@
 @import "./styles/screens.css";
 @import "./styles/catchup.css";
 @import "./styles/personal.css";
+@import "./styles/note.css";
 @import "./styles/onboarding.css";
 @import "./styles/settings.css";
 @import "./styles/flow.css";

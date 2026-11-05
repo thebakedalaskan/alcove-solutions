@@ -5,9 +5,9 @@
  */
 import { firstName, type Change, type LinePatch, type Note, type Person, type Speaker, type TranscriptLine } from '@alcove/api';
 import { Avatar, Button, Icon, IconButton, Popover, TranscriptLine as SpokenLine, Tooltip, Unsure, cn } from '@alcove/ui';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sameEmail, spokenName } from '~/lib/people';
-import { hm, shortDay } from '~/lib/time';
+import { hm, position, shortDay } from '~/lib/time';
 import { capital } from '~/lib/words';
 
 /** Who may correct what in a note's transcript, and how: the same rule the server keeps. */
@@ -61,12 +61,22 @@ function changeLine(c: Change, me: string | undefined): string {
   }
 }
 
+/** When a line was said, which goes there, with a mark when something in the notes came from it. */
+function LineTime({ line, kind, onSeek }: { line: TranscriptLine; kind: 'decide' | 'follow' | undefined; onSeek: ((s: number) => void) | undefined }) {
+  const mark = kind && <i className={cn('nd-lk', `is-${kind}`)} aria-hidden="true" />;
+  return onSeek
+    ? <button type="button" className="nd-lt" aria-label={`Go to ${position(line.at)}`} onClick={() => onSeek(line.at)}>{position(line.at)}{mark}</button>
+    : <span className="nd-lt">{position(line.at)}{mark}</span>;
+}
+
 /**
- * One line of a written transcript. `more`: the same speaker as the line before, so their name isn't said again (a
- * speaker in doubt always is). `mark`: where a link to a moment lands.
+ * One line of a transcript. `more`: the same speaker as the line before, so their name isn't said again (a speaker in
+ * doubt always is). `id` is where a link to a moment lands, and `on` marks the line being said. `kind`: what in the notes
+ * came from it.
  */
-export function LineRow({ line, more, mark, time, me, correct, fromLine, marks }: {
-  line: TranscriptLine; more: boolean; mark: { id?: string; className?: string }; time: ReactNode; me: string | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined;
+export function LineRow({ line, more, id, on, kind, onSeek, me, correct, fromLine, marks }: {
+  line: TranscriptLine; more: boolean; id: string | undefined; on: boolean; kind: 'decide' | 'follow' | undefined; onSeek: ((s: number) => void) | undefined; me: string | undefined;
+  correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined;
 }) {
   const [editing, setEditing] = useState(false);
   const pen = useRef<HTMLButtonElement>(null);
@@ -76,27 +86,29 @@ export function LineRow({ line, more, mark, time, me, correct, fromLine, marks }
   const close = () => { back.current = true; setEditing(false); };
   const named = !more || !!line.unsure?.speaker;
   const person = line.speaker ? line.speaker.person ?? { name: line.speaker.name } : undefined;
-  if (editing && correct) return <LineEditor line={line} me={me} people={correct.people} organizer={correct.organizer} mark={mark} onDone={close} onSave={(patch) => { correct.onCorrect(line, patch); close(); }} />;
+  if (editing && correct) return <LineEditor line={line} me={me} people={correct.people} organizer={correct.organizer} id={id} onDone={close} onSave={(patch) => { correct.onCorrect(line, patch); close(); }} />;
   const name = line.speaker && named ? spokenName(line.speaker, me) : undefined;
   const history = (line.changes ?? []).map((c) => changeLine(c, me));
   // The first correction says what was heard, so it stays in view with the latest.
   const recent = history.length > 4 ? [history[0] ?? '', '…', ...history.slice(-3)] : history;
+  const marked = marks?.has(line.id) ?? false;
   return (
-    <SpokenLine id={mark.id} className={cn(!named && 'more', mark.className, 'ln')} person={named ? person : undefined}
-      name={name && (line.unsure?.speaker ? <Unsure of="speaker">{name}</Unsure> : name)}
-      time={(
+    <SpokenLine id={id} className={cn(!named && 'is-more', on && 'is-on')} person={named ? person : undefined} time={<LineTime line={line} kind={kind} onSeek={onSeek} />}
+      name={(name || history.length > 0) && (
         <>
-          {time}
+          {name && (line.unsure?.speaker ? <Unsure of="speaker">{name}</Unsure> : <span>{name}</span>)}
           {history.length > 0 && (
             <Tooltip label={<span className="ln-hist">{recent.map((h, i) => <span key={i}>{h}</span>)}</span>}>
-              <span tabIndex={0} className="ln-fixed"><Icon name="history" size={12} />Corrected<span className="sr-only">: {history.at(-1)}</span></span>
+              <span tabIndex={0} className="nd-fixed"><Icon name="history" size={12} />Corrected<span className="sr-only">: {history.at(-1)}</span></span>
             </Tooltip>
           )}
-          <span className="ln-tools">
-            {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="ln-pen" onClick={() => setEditing(true)} />}
-            {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
-            {marks && <IconButton icon={marks.has(line.id) ? 'bookmarked' : 'bookmark'} label={marks.has(line.id) ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className={cn('ln-pen ln-mark', marks.has(line.id) && 'is-on')} onClick={() => marks.toggle(line)} />}
-          </span>
+        </>
+      )}
+      tools={(
+        <>
+          {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="nd-tool" onClick={() => setEditing(true)} />}
+          {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
+          {marks && <IconButton icon={marked ? 'bookmarked' : 'bookmark'} label={marked ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className="nd-tool" on={marked} onClick={() => marks.toggle(line)} />}
         </>
       )}>
       {line.unsure?.words ? <Unsure of="words">{line.text}</Unsure> : line.text}
@@ -110,7 +122,7 @@ function FromThisLine({ line, fromLine }: { line: TranscriptLine; fromLine: From
   const go = (kind: 'decision' | 'follow-up') => { setOpen(false); fromLine(kind, line); };
   return (
     <Popover open={open} onOpenChange={setOpen} align="start" label="Add to the notes from this line" className="ln-add-pop"
-      anchor={<IconButton icon="plus" label="Add to the notes from this line" size={15} className="ln-pen" />}>
+      anchor={<IconButton icon="plus" label="Add to the notes from this line" size={15} className="nd-tool" />}>
       <button type="button" className="ac-pop-item" onClick={() => go('decision')}><Icon name="badgeCheck" size={18} /><span><b>Propose a decision</b></span></button>
       <button type="button" className="ac-pop-item" onClick={() => go('follow-up')}><Icon name="userCheck" size={18} /><span><b>Add a follow-up</b></span></button>
     </Popover>
@@ -118,8 +130,8 @@ function FromThisLine({ line, fromLine }: { line: TranscriptLine; fromLine: From
 }
 
 /** The line as its own editor: its words, who said it (for the organizer), or that it was heard right. */
-function LineEditor({ line, me, people, organizer, mark, onSave, onDone }: {
-  line: TranscriptLine; me: string | undefined; people: Speaker[] | null; organizer: boolean; mark: { id?: string; className?: string }; onSave: (patch: LinePatch) => void; onDone: () => void;
+function LineEditor({ line, me, people, organizer, id, onSave, onDone }: {
+  line: TranscriptLine; me: string | undefined; people: Speaker[] | null; organizer: boolean; id: string | undefined; onSave: (patch: LinePatch) => void; onDone: () => void;
 }) {
   const [text, setText] = useState(line.text);
   /** Who said it: a person's ID, null for nobody can tell, or undefined while it's unchanged. */
@@ -143,37 +155,39 @@ function LineEditor({ line, me, people, organizer, mark, onSave, onDone }: {
   };
   const shown = speaker ? spokenName(speaker, me) : 'Not sure who';
   return (
-    <div id={mark.id} className={cn('ac-line ln ln-edit', mark.className)}>
-      {speaker ? <Avatar person={speaker.person ?? { name: speaker.name }} size={26} /> : <span className="ln-nobody"><Icon name="ask" size={15} /></span>}
-      <form className="min-w-0" onSubmit={(e) => { e.preventDefault(); save(); }}>
+    <div id={id} className="nd-l is-edit">
+      <span className="nd-lt">{position(line.at)}</span>
+      <span className="nd-la">{speaker ? <Avatar person={speaker.person ?? { name: speaker.name }} size={24} /> : <span className="nd-nobody"><Icon name="ask" size={14} /></span>}</span>
+      <form className="nd-edit" onSubmit={(e) => { e.preventDefault(); save(); }}>
         {people ? (
-          <Popover open={picking} onOpenChange={setPicking} align="start" label="Who said this" className="ln-pop"
-            anchor={<button type="button" className="ln-who" aria-label={`Said by ${shown}. Change who said this`}><b>{shown}</b><Icon name="down" size={14} /></button>}>
+          <Popover open={picking} onOpenChange={setPicking} align="start" label="Who said this" className="nd-whopop"
+            anchor={<button type="button" className="nd-whopick" aria-label={`Said by ${shown}. Change who said this`}>Said by {shown}<Icon name="down" size={14} /></button>}>
             <div className="ac-pop-h">Who said this</div>
             {people.map((p) => {
               const on = speaker?.person?.id === p.person?.id;
               return (
-                <button key={p.person?.id ?? p.name} type="button" className={cn('ac-pop-item', on && 'sel')} onClick={() => { setWho(p.person?.id ?? null); setPicking(false); }}>
+                <button key={p.person?.id ?? p.name} type="button" className={cn('ac-pop-item', 'nd-mp', on && 'sel')} onClick={() => { setWho(p.person?.id ?? null); setPicking(false); }}>
                   <Avatar person={p.person ?? { name: p.name }} size={22} />
                   <span><b>{p.name}{me && p.person && sameEmail(p.person, { email: me }) ? ' (you)' : ''}</b>{p.person && !p.person.email && <small>Joined by link</small>}</span>
+                  {on && <Icon name="check" size={16} className="nd-tick" />}
                 </button>
               );
             })}
-            <button type="button" className={cn('ac-pop-item', !speaker && 'sel')} onClick={() => { setWho(null); setPicking(false); }}>
-              <Icon name="ask" size={18} /><span><b>Not sure who</b></span>
+            <button type="button" className={cn('ac-pop-item', 'nd-mp', !speaker && 'sel')} onClick={() => { setWho(null); setPicking(false); }}>
+              <Icon name="ask" size={18} /><span><b>Not sure who</b></span>{!speaker && <Icon name="check" size={16} className="nd-tick" />}
             </button>
           </Popover>
-        ) : line.speaker && <b>{spokenName(line.speaker, me)}</b>}
-        <textarea ref={box} className="ln-input" value={text} maxLength={1000} rows={Math.min(6, Math.max(2, Math.ceil(text.length / 64)))} aria-label="What was said"
+        ) : line.speaker && <b className="nd-ln">{spokenName(line.speaker, me)}</b>}
+        <textarea ref={box} className="nd-area" value={text} maxLength={1000} rows={Math.min(6, Math.max(2, Math.ceil(text.length / 64)))} aria-label="What was said"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') { e.preventDefault(); save(); }
             if (e.key === 'Escape') { e.preventDefault(); onDone(); }
           }} />
-        <div className="ln-acts">
+        <div className="nd-edit-f">
           <Button type="submit" variant="secondary" size="sm" disabled={!text.trim()}>Save</Button>
-          {vouch && <button type="button" className="lk" onClick={() => onSave({ confirm: true })}>{organizer || !line.unsure?.speaker ? 'It was heard right' : 'The words were heard right'}</button>}
-          <button type="button" className="lk quiet" onClick={onDone}>Cancel</button>
+          {vouch && <button type="button" className="nd-act" onClick={() => onSave({ confirm: true })}>{organizer || !line.unsure?.speaker ? 'It was heard right' : 'The words were heard right'}</button>}
+          <button type="button" className="nd-act" onClick={onDone}>Cancel</button>
         </div>
       </form>
     </div>

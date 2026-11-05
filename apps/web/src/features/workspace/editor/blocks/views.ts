@@ -441,12 +441,14 @@ function commentMark(rt: EditorRuntime): MarkViewConstructor {
 /**
  * A block that has left the page: as little as ProseMirror will take, since a document can gather a lot of these. It's
  * flat rather than `display: none`, which browsers walk through one by one every time a selection is placed beside a run of
- * them. A caret that gets into one doesn't stay (`keepCaretOnPage`).
+ * them. A caret that gets into one doesn't stay (`keepCaretOnPage`). What a table or a toggle is made of isn't drawn at all:
+ * it stays editable all the same, because a selection jumps away from a run of blocks that aren't.
  */
 function goneBlock(node: PMNode): NodeView {
   const dom = el('div', 'wb is-gone');
   dom.setAttribute('aria-hidden', 'true');
-  return { dom, contentDOM: node.isLeaf ? null : dom, update: (next) => next.type === node.type && isGone(next), ignoreMutation: () => true };
+  if (!node.isLeaf && !node.isTextblock) dom.setAttribute('contenteditable', 'true');
+  return { dom, contentDOM: node.isTextblock ? dom : null, update: (next) => next.type === node.type && isGone(next), ignoreMutation: () => true };
 }
 
 const onPage = (view: NodeViewConstructor): NodeViewConstructor => (node, editor, getPos, decorations, inner) => (isGone(node) ? goneBlock(node) : view(node, editor, getPos, decorations, inner));

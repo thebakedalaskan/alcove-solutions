@@ -138,33 +138,84 @@ doesn't carry. So nothing read from a document is refused, and a tab left open a
 `unsupported` stands in for an unknown block or one that doesn't fit where it is, `unsupportedInline` for an unknown tag,
 and unknown marks and attributes are learned as they're met and written back as they came.
 
-The server makes every document with its title and first line: one fixed Yjs update under a fixed client ID, `DOC_SEED` in
-`@alcove/api`, so a document's first `sync` always has them and the editor never seeds. Mount the editor after that.
+The server makes every document with its title and first line, each with an empty text in it: one fixed Yjs update under a
+fixed client ID, `DOC_SEED` in `@alcove/api`, so a document's first `sync` always has them and the editor never seeds. Mount
+the editor after that.
 
 A block's element is never deleted. Yjs has no move, and what lands in a deleted element is lost on every replica, so a
 move, a join, a delete and a turn into something structural retire the element instead: what the browser can see is
 deleted, attributes that say anything go with it, `gone` says which block took the words ('' if none did), and it gets a
-new `id`. A retired element with nothing in it isn't on the page, and readers skip it. An edit that reaches it later, from
-someone who hadn't heard, however long they were offline and whether or not they reloaded, is in a live element, so Yjs
-keeps it on every browser and on the server, and the block is back on the page holding just those words, where it was.
-Nothing has to notice for that to be true. Anything that takes a block off the page puts an empty stand-in back in
-ProseMirror, so it stays one node per element, y-prosemirror never deletes an element, and `retire` runs just before it
-writes the rest. A move edits the Yjs elements directly, because y-prosemirror compares by position and would rewrite the
-text of every block the move passes. Only tidying is left on top: the author's own browser folds words typed as a block
-left into the block they were meant for, text into text, in one step, and if two people moved one block every browser
-retires the same copy. Undo leaves elements in place too. What can't be kept this way: a row or a column someone removes
-takes what was typed in it offline with it, and so does a tag someone deletes, for words typed offline straight after it,
-because y-prosemirror joins the texts around it. A tick or a change of kind made offline on a block someone moved stays
-on the retired element, so the moved block keeps what it had. A retired element stays in the document for good: nothing
-can say nobody is still offline with an edit for it.
+new `id`. A retired element that holds nothing isn't on the page, and readers skip it: no words, no tags, dates or line
+breaks, and no attribute written since it left, for toggles and tables as for lines. That rule and `retire` work on Yjs
+alone, in `@alcove/api/retire`, so the editor and the server read one rule, and the server can retire a block too. That's
+a separate entry of the package, because importing the contract doesn't load Yjs. An edit that reaches a retired element
+later, from someone who hadn't heard, however long they were offline and whether or not they reloaded, is in a live
+element, so Yjs keeps it on every browser and on the server, and the block is back on the page holding just those words,
+where it was. Nothing has to notice for that to be true.
 
-ProseMirror and Yjs have to hold the same document, because y-prosemirror writes ProseMirror's document on every view
+A text is never deleted either, for the same reason: only the words in it. y-prosemirror spares a text only when it's alone
+in its line, so `write.ts` is its `updateYFragment` with that one rule added. A line's two sides are read as one run of
+letters, with anything that isn't text as one letter, and only the stretch that differs is written. Where the change started
+comes from where the caret was: comparing can't tell which of two same letters is new, and a letter typed in front of the
+same letter would otherwise be recorded after it, which comes apart when a move copies only the old letters. Taking out a tag touches
+no words, and leaves the texts either side next to each other. A line can hold any number of texts, side by side
+or empty, and all of that reads the same to ProseMirror. A new line starts with an empty text in it, and whatever isn't
+text has one either side, so nobody has to make a text while someone else may be making the same one: y-prosemirror's
+reader merges two made side by side by deleting one.
+
+Anything that takes a block off the page puts an empty stand-in back in ProseMirror, so it stays one node per element, and
+the element is retired first in the same Yjs change as whatever else is being written, so nobody hears of a block leaving
+without the words that went with it. What that writes is two small attributes on an element that's already there, `id` and
+`gone`, and deletes: never new text and never a new element, so the size limit lets it through. A move edits the Yjs elements
+directly, because writing back compares by position and would rewrite the text of every block the move passes. A copy is
+new content, so a move is refused on a full document, and a join isn't, because it writes no more than it deletes. Only
+tidying is left on top. The author's own browser folds words typed as a block left into the block they were meant for,
+exactly where they stood and with their marks, in one step. If two people moved one block, every browser retires the same
+copy, as soon as it hears or opens the document. And a browser that deleted something while someone else, who hadn't
+heard, copied it as they moved the block, deletes it again from the copy: words, a tag, a caption, or the whole block. That's only
+done when every letter of the copy can be accounted for, and where the same letters could be either, they're kept.
+
+What can't be kept this way:
+
+- A row or a column someone removes takes what was typed in it offline with it.
+- A tick or a change of kind made offline on a block someone moved stays on the retired element, so the moved block keeps
+  what it had.
+- A deletion only crosses to a copy from the browser that made it, while it still has what it deleted: undo keeps that,
+  until a reload. So words deleted offline can come back through a move if that person reloads before they reconnect, or
+  closes the tab before they hear of the move. Live, that's the width of one batch.
+- A tag dropped into the middle of a text divides it: what's after the tag is written again as a new text. Words being typed
+  in that stretch at the time stay before the tag, and if two people do this to one text at once, what's after their tags
+  is there twice. Nothing is lost.
+
+A retired element stays in the document. Nothing can say nobody is still offline with an edit for it, so nothing prunes one
+in this release. What each costs, after compaction: 85 bytes for Enter then Backspace, 108 for moving a line, 193 for a
+toggle, and across 200 clients about 100 per retirement. A table costs every cell it has, because a retired table keeps
+them for anyone offline typing in one, and they can't go without losing that: 5 KiB for 10×6 and 21 KiB for 30×8. So a table
+moves by moving what it goes past, when that costs less, which makes ⌘⇧↑↓ cost what a line costs, and only a long drag
+copies it. A retired table's cells aren't drawn. Every action on a page gets slower with what's retired in it, about
+linearly: at 10,000 retired, a keystroke and Enter each take about 12 ms, and at 30,000 about 40 ms. Pruning can be added later without changing
+what's stored, because open browsers follow an element going away, and that took 79% of the bytes in a test. It needs an
+answer for edits older than whatever it keeps: `KeptUpdate` records when each was made, so a limit of 30 days offline is
+possible then.
+
+A paste or a drop goes up as one change, so what can't fit never reaches the document: more than 20,000 lines or cells, a
+million characters, 3.5 MiB, or more than the document has room for gets a toast instead, and stays on the clipboard. A
+file dropped on the page is an attachment, so it doesn't count.
+
+ProseMirror and Yjs have to hold the same document, because what's written is ProseMirror's document, on every view
 update. Whatever goes wrong on the way to the page, `keepInStep` draws it again from Yjs, with a log line, and if that fails
-too nothing is written until it works. Someone who can only read never writes, from any path.
+too nothing is written until it works. Whoever is typing doesn't lose their place: the selection stays where it was by
+block, or goes to the nearest place there is, and a key that couldn't be written is written again, with a toast if that
+fails too. y-prosemirror can't put back a selected tag that's gone, or a selection of every block, so `keepInStep` does.
+Someone who can only read never writes, from any path. Text can't be dragged, only blocks: a drag across blocks would be a
+rewrite of everything it passes. A table two people left uneven stays as it is while people type in it, because two
+browsers each evening it out would go on for ever, and it's evened out by whoever next adds or removes a row or column.
 
-y-prosemirror gives sync, per-user undo (⌘Z undoes only your own changes, and follows them into a block someone else moved)
-and carets, drawn as the canvas draws them: one horizon colour, told apart by face and name. A `live` block is written by
-whichever editing browser in the call sees new notes, so it fills in for everyone and stays as it was when the call ends.
+y-prosemirror gives sync, per-user undo and carets, drawn as the canvas draws them: one horizon colour, told apart by face
+and name. ⌘Z undoes only your own changes, and follows them into a block someone else moved or joined, or into the block
+your words were folded into. If someone else has already taken away what you did last, ⌘Z does nothing, rather than
+something older somewhere else. A `live` block is written by whichever editing browser in the call sees new notes, so it
+fills in for everyone and stays as it was when the call ends.
 
 ## The call
 
