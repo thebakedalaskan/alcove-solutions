@@ -145,10 +145,13 @@ class Uploads implements LiveStore<KeptView> {
     return { waiting: r.kind === 'account' ? r.why : 'connection' };
   }
 
-  /** Deletes one from this device without uploading it; whatever reached Alcove of it is deleted there too, when it can be. */
-  async discard(id: string): Promise<void> {
+  /**
+   * Deletes one from this device without uploading it; whatever reached Alcove of it is deleted there too, when it can be.
+   * Whether it did: not while another tab has it.
+   */
+  async discard(id: string): Promise<boolean> {
     const release = await takeLock(id, false);
-    if (!release) return;
+    if (!release) return false;
     try {
       const k = await keptRecording(id);
       // Started on Alcove, or asked to (the answer may have been lost): a note saying so stays until it's deleted there.
@@ -156,6 +159,7 @@ class Uploads implements LiveStore<KeptView> {
       else await forgetKept(id);
     } finally { release(); }
     this.kick();
+    return true;
   }
 
   private tell(n: UploadNews) {

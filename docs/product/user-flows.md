@@ -601,44 +601,53 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ## 9. Record in the room
 
-**Record** in the side panel or the phone's tab bar (raised) opens the Record page:
+**Record** in the side panel or the phone's tab bar (raised) opens the Record page. It's the night in both themes, the
+last moment of the evening, and the recorder stands on the horizon where the sun would: dark until something is recorded.
 
-- **The recorder**: a name for the recording (left empty, it's "Notes from the room") and the microphone it will
-  use, from this browser's microphones (the same choice calls use). Choosing one doesn't open it. **Check the
-  level** opens the microphone and shows how loud it is, recording nothing; **Stop** lets go of it. While it's
-  open, a microphone that doesn't start, or one unplugged, is said under it, and the one still in use stays
-  shown. The page never opens the microphone by itself, and the camera plays no part.
-- **Start recording** (or **R**, or **Enter** in the name) opens the stage recorder, which starts recording the
-  microphone straight away, in 5-second encrypted pieces with a live waveform, and transcribes what's said as
-  it goes, without naming who spoke. Rename by editing the title, pause and resume, then **Finish and write
-  notes** (opens the note) or **Home › Discard recording** (nothing is kept).
-- **Without a connection** it keeps recording: **Offline** shows at the top, and "Saved on this device. It
-  uploads when you're back online." under the waveform. What's said is transcribed once the connection is back;
-  if it comes back while recording, the rest goes up as it's recorded. With a connection that isn't getting
-  through, it says Alcove isn't answering and that it's sent when it does. **Finish and save** keeps it on this
-  device and goes to Record; with a connection, a recording with a short gap still ends on its note. Started
-  offline, it works the same way. A full device pauses it and says so; signed out meanwhile, or with someone
-  else signed in, it keeps it here and says so; signed out on this browser, it pauses and says nothing more can
-  be kept.
-- **On this device**: recordings kept here until they upload, encrypted, each with its name, length and start,
-  and how it stands: **Waiting for a connection**, **Waiting to upload**, **Uploading**, **Recording now** (in
-  another tab), **Can't upload yet** with Alcove's reason, or, for good, **Can't upload** (more than 14 days old)
-  or **Can't be read here** (this device can't open it any more). They upload by themselves when the connection
-  is back, the oldest first, and their notes are written; a toast says when each one has, or that one's note was
-  deleted on Alcove so it's gone from here too. Its menu has **Upload now** and **Delete from this device**, which
-  asks first. A tab closed mid-recording leaves what it recorded here, and it's finished and uploaded as it was.
-  Only the account that recorded them sees or uploads them: if someone else signs in on the browser, they stay
-  here until their own account signs in again. That account signing out deletes them, and Settings' **Sign out**
-  says so first; anyone else's stay.
-- **Record without a connection** (on by default) off: nothing is kept on this device, starting needs a
-  connection, and losing it pauses the recording. The page says so instead of saying it works without one.
-- **Recorded before**: your four newest recordings as tiles (when, how long, the start of the summary, who has
-  it, follow-ups still open), with **In Notes** for the rest. Room notes others shared with you aren't listed.
-  Before the first recording (and with none waiting on this device), **Your recordings** says they'll show up
-  here with their notes.
-- **How it works** says the audio is encrypted as it's recorded, recording needs no connection (or, with **Record
-  without a connection** off, that a dropped connection pauses it), and room notes go to nobody unless you share
-  them.
+- **The recorder**, in the middle of the sky: a name for the recording (left empty, it's "Notes from the room"),
+  **Start recording**, the microphone it will use, from this browser's microphones (the same choice calls use), and
+  under them the reminder to let everyone here know before you start.
+  Choosing one doesn't open it. Until the browser has named them it says **Default microphone**. **Check the level**
+  opens the microphone: the orb's rim lights up and its reflection on the water moves with your voice, recording nothing;
+  **Stop** lets go of it. While it's open, a microphone that doesn't start, or one unplugged, is said under it, and the one
+  still in use stays shown; one that can't be used says what to do, with **Try again** where that can help. The page
+  never opens the microphone by itself, and the camera plays no part.
+- **Start recording** (or **R**, or **Enter** in the name) opens the stage recorder, the same night over the whole window.
+  It starts recording the microphone straight away, in 5-second encrypted pieces: the orb fills with colour, your voice
+  runs across the water, and what's said comes up under it a few seconds later, without naming who spoke. The last three
+  lines show, fading as they get older; scrolling up reads back the rest, with **Latest** to return. Words it couldn't
+  hear well are dotted. For the first moments, and until the first words, the reminder to let everyone here know stays
+  under the voice, connection or not. Rename by editing the title, pause and resume, then **Finish and write notes** (the
+  orb sets, and the note opens) or **Home › Discard recording** (nothing is kept, and you're back on Record). A finish that
+  fails says so, and **Finish** can be pressed again; it never records again after that.
+- **Without a connection** it keeps recording: **Offline** shows at the top, and "Saved on this device. It uploads when
+  you're back online." under the voice. What's said is transcribed once the connection is back; if it comes back while
+  recording, the rest goes up as it's recorded. With a connection that isn't getting through, it says Alcove isn't
+  answering and that it's sent when it does. **Finish and save** keeps it on this device and goes to Record; with a
+  connection, a recording with a short gap still ends on its note. Started offline, it works the same way. A full device
+  pauses it and says so; signed out meanwhile, or with someone else signed in, it keeps it here and says so; signed out on
+  this browser, it pauses and says nothing more can be kept. If it can't start at all, the stage says why, with the way
+  back to Record.
+- **On this device**: recordings kept here until they upload, encrypted, each with its name, length and start, and how it
+  stands, in its own mark and colour: **Waiting for a connection**, **Waiting to upload**, **Uploading**, **Recording now**
+  (in another tab), **Can't upload yet** with Alcove's reason, or, for good, **Can't upload** (more than 14 days old) or
+  **Can't be read here** (this device can't open it any more). They upload by themselves when the connection is back, the
+  oldest first, and their notes are written; a toast says when each one has, or that one's note was deleted on Alcove so
+  it's gone from here too. Its menu has **Upload now** and **Delete from this device**, which asks first, in the same menu,
+  and says so if another tab has it and it wasn't deleted.
+  A tab closed mid-recording leaves what it recorded here, and it's finished and uploaded as it was. Only the account that
+  recorded them sees or uploads them: if someone else signs in on the browser, they stay here until their own account
+  signs in again. That account signing out deletes them, and Settings' **Sign out** says so first; anyone else's stay.
+- **Offline**, the page says **Offline. Recording still works.** at the top of the sky.
+- **Record without a connection** (on by default) off: nothing is kept on this device, and losing the connection pauses
+  the recording. **Resume** waits for the connection, then it's yours to press. Offline, **Start recording** waits, and the
+  page says **Offline. Recording needs a connection.**
+- **Recorded before**: your four newest recordings as rows (the recording's own print, the start of the summary, how many
+  follow-ups are still open, when, how long, and who has it), with **In Notes** for the rest. Room notes others shared with
+  you aren't listed. Offline, a row says notes open when you're back online. Before the first recording (and with none
+  waiting on this device), the water says what will show up there, and the sky takes more of the page.
+- One line at the foot says the audio is encrypted as it's recorded, that it works without a connection (or, with **Record
+  without a connection** off, that a dropped connection pauses it), and that room notes go to nobody until you share them.
 
 Room notes are yours alone until you share them.
 

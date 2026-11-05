@@ -1633,7 +1633,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't
   come (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
-  in its menu), the speaking ring and the recorder waveform. On Record the page has its own `LocalMedia`, which
+  in its menu), the speaking ring and the recorder's voice on the water (`useVoice`, which changes CSS variables
+  and never renders). On Record the page has its own `LocalMedia`, which
   opens the microphone only when **Check the level** is pressed and lets it go on **Stop** or when the page is
   left; choosing a microphone while it's closed only remembers it, and one that doesn't start while it's open
   says so and isn't shown as chosen.

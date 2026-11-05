@@ -121,7 +121,7 @@ export function ArtRoom() {
       <div className="ta-room">
         <div className="ta-phone">
           <div className="scr">
-            <span className="rec"><i />Rec 04:12</span>
+            <span className="ta-rec"><i />Rec 04:12</span>
             <div className="ta-wave">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ scale: `1 ${0.25 + 0.75 * Math.abs(Math.sin(t * (2.4 + (i % 5) * 0.55) + i * 1.7))}` }} />)}</div>
           </div>
         </div>
