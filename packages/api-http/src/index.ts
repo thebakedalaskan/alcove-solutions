@@ -4,7 +4,7 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, BoardCheckSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, BoardCheckSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, MediaTokenAnswerSchema, WorkspaceMediaSchema,
   NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
@@ -12,6 +12,7 @@ import {
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
 import type { DocVersionSummary } from '@alcove/api';
+import { pictureReader, sendFile } from './media';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
@@ -41,6 +42,8 @@ export interface HttpOptions {
    * every 20). A laptop waking up can hold a connection that's dead without knowing it. Tests go faster.
    */
   ringSilenceMs?: number | undefined;
+  /** How long an upload keeps trying through a lost connection or a busy server, in ms (default 5 minutes). */
+  mediaPatienceMs?: number | undefined;
   /** How long a live stream can say nothing before it's taken for gone and opened again, in ms (default a minute). */
   liveQuietMs?: number | undefined;
   /** How often an open workspace says this browser is still there, in ms (default 10 seconds). */
@@ -54,7 +57,7 @@ export interface ClientEvent {
 
 const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional(), requestId: z.string().optional() }).catch({});
 /** IDs in paths are random; call codes are join tokens and a Google event's ID names its recurring series, so both are masked in diagnostics. */
-const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code').replace(/^\/calendar\/events\/(?!$)[^/]+/, '/calendar/events/:id');
+const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code').replace(/^\/calendar\/events\/(?!$)[^/]+/, '/calendar/events/:id').replace(/^\/media\/(?!$)[^/]+/, '/media/:token');
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
@@ -132,6 +135,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const withPass = (w?: WorkspaceReadOptions | undefined): Record<string, string> => (w?.pass ? { [CALL_PASS_HEADER]: w.pass } : {});
   const space = (id: string) => `/workspaces/${encodeURIComponent(id)}`;
   const itemIn = (id: string, itemId: string) => `${space(id)}/items/${encodeURIComponent(itemId)}`;
+  const mediaToken = async (id: string, documentId: string, mediaId: string, w: WorkspaceReadOptions | undefined) => (await req(MediaTokenAnswerSchema, 'GET', `${mediaIn(id, documentId, mediaId)}/token`, undefined, withPass(w))).token;
+  const pictures = pictureReader((level, msg, context) => emit(level, msg, context), o.mediaPatienceMs);
+  /** Where a document's files are; with `mediaId`, one of them. */
+  const mediaIn = (id: string, documentId: string, mediaId?: string | undefined) => `${space(id)}/documents/${encodeURIComponent(documentId)}/media${mediaId === undefined ? '' : `/${encodeURIComponent(mediaId)}`}`;
   /** Where a piece or clip starts in its segment, in the milliseconds the headers carry. */
   const atMs = (at: number) => String(Math.round(at * 1000));
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
@@ -413,6 +420,20 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       // What's selected goes in the body, so it's never in a URL or an access log.
       ask: async function* (id, documentId, body, w) {
         yield* await req(z.array(DocAskPartSchema), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/ask`, body, withPass(w));
+      },
+      media: {
+        upload: (id, documentId, file, w) => sendFile({
+          begin: (input) => req(CreatedSchema, 'POST', mediaIn(id, documentId), input, withPass(w)),
+          piece: async (mediaId, seq, bytes) => { parse(z.object({ stored: z.literal(true) }), await (await send('POST', `${mediaIn(id, documentId, mediaId)}/pieces/${seq}`, bytes, { ...withPass(w), 'content-type': 'application/octet-stream' }, false, w?.signal)).json(), 'piece receipt'); },
+          finish: (mediaId) => req(WorkspaceMediaSchema, 'POST', `${mediaIn(id, documentId, mediaId)}/finish`, {}, withPass(w)),
+          abandon: async (mediaId) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
+        }, file, w, (level, msg, context) => emit(level, msg, context), o.mediaPatienceMs),
+        // The token comes in an answer and goes in a URL: this is the only place the two meet, and neither is logged.
+        url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}`,
+        picture: (id, documentId, mediaId, w) => pictures({ token: () => mediaToken(id, documentId, mediaId, w), read: (token) => send('GET', `/media/${token}`, null, {}, false, w?.signal) }, w?.signal),
+        attach: async (id, documentId, mediaId, w) => { await req(z.object({ attached: z.literal(true) }), 'POST', `${mediaIn(id, documentId, mediaId)}/attach`, {}, withPass(w)); },
+        list: (id, w) => req(z.array(WorkspaceMediaSchema), 'GET', `${space(id)}/media`, undefined, withPass(w)),
+        remove: async (id, documentId, mediaId, w) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
       }
     },
     credits: {

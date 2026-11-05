@@ -13,7 +13,8 @@ import {
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
-  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
+  type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn,
+  type WorkspaceMedia
 } from '@alcove/api';
 import { isOnline } from '../browser';
 import { changer, foundOf } from '../world/build';
@@ -33,6 +34,7 @@ import * as spaces from './workspaces';
 
 const refused = (code: 'not-found' | 'forbidden' | 'conflict' | 'invalid', message: string) => new AlcoveApiError(code, message, { requestId: nextId('sb-req') });
 const offline = () => new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.');
+const noFile = () => refused('not-found', 'That file doesn’t exist, or you don’t have access to it.');
 
 /** Answers after a moment, from the world as it is then, as a copy: what the app holds never changes under it. */
 async function answer<T>(read: (w: World) => T, who: 'anyone' | 'signed-in' = 'signed-in'): Promise<T> {
@@ -568,6 +570,15 @@ export const standIn: AlcoveApi = {
     presenterNotes: {
       get: () => answer(() => ({ text: '' })),
       set: () => answer(() => undefined)
+    },
+    // The story's world has no files: none are listed, an upload is refused as when uploads are off, and one asked for isn't there.
+    media: {
+      upload: () => answer((): WorkspaceMedia => { throw refused('invalid', 'Files can’t be uploaded right now.'); }),
+      url: () => answer((): string => { throw noFile(); }),
+      picture: () => answer((): string => { throw noFile(); }),
+      attach: () => answer((): void => { throw noFile(); }),
+      list: () => answer((): WorkspaceMedia[] => []),
+      remove: () => answer((): void => { throw noFile(); })
     },
     ask: (_id: ID, _documentId: ID, body: DocAskBody) => (async function* (): AsyncIterable<DocAskPart> {
       if (body.action === 'checklist') { for (const line of body.text.split(/[.\n]+/).map((x) => x.trim()).filter(Boolean)) yield { type: 'todo', text: line }; return; }
