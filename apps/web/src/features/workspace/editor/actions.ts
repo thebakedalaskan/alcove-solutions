@@ -8,12 +8,13 @@ import { TextSelection, type EditorState, type Transaction } from 'prosemirror-s
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
-import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
+import { blockAt, blockLabel, caretInto, findBlock, isBlank, leafWords, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
 import type { SlashId } from './menus/rows';
-import { appear, decorChange, flash, holdRange, rangeOf } from './plugins/decor';
+import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
+import type { HeldRange } from './plugins/decor';
 import { blockFromJSON, captionKey, hasBlockId, learnAttrs, lineKind, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
@@ -484,6 +485,14 @@ export function commentOnBlock(rt: EditorRuntime, id: string): void {
   startComment(rt);
 }
 
+const lineOf = (text: string, kind?: 'todo' | undefined): BlockJSON => ({ type: 'line', attrs: kind ? { kind } : {}, content: [{ type: 'text', text }] });
+
+/** Held words, if they still say what they said. What someone changed in them isn't to be written over. */
+function sameWords(state: EditorState, words: HeldWords): { from: number; to: number } | null {
+  const range = wordsNow(state, words);
+  return range && state.doc.textBetween(range.from, range.to, ' ', ' ') === words.quote ? range : null;
+}
+
 export function askAboutSelection(rt: EditorRuntime): void {
   const view = rt.view;
   const onAsk = rt.props.onAsk;
@@ -492,18 +501,61 @@ export function askAboutSelection(rt: EditorRuntime): void {
   const block = selectedBlock(state)?.id;
   const words = holdWords(state);
   if (!block || state.selection.empty || !words) return;
+  const { from, to } = state.selection;
+  const text = state.doc.textBetween(from, to, '\n', leafWords);
+  const rect = selectionRect(view);
   rt.bar.set(null);
+  view.dispatch(decorChange(state.tr, { held: words.held }));
+
+  /** What's been written so far: the words, or the line the next one follows. */
+  let written: HeldRange | null = null;
+  let last: string | null = null;
+  const letGo = () => {
+    const live = rt.view;
+    if (live && holding(live.state, words.held)) live.dispatch(decorChange(live.state.tr, { held: null, asking: false }));
+  };
+  /** A line goes after the last one written, or under the block the words were in, or in that block's place if it's empty now. */
+  const addLine = (live: EditorView, line: BlockJSON) => {
+    const ref = findBlock(live.state.doc, block);
+    const at: InsertAt = last ? { after: last } : !ref ? 'end' : isBlank(ref.node) ? { replace: block } : { after: block };
+    last = insertBlocks(rt, [line], at, { appear: true }).at(-1) ?? last;
+  };
+  const writeWords = (live: EditorView, words2: string) => {
+    const so = written && rangeOf(live.state, written);
+    if (so) {
+      live.dispatch(live.state.tr.insertText(words2, so.to));
+      written = holdRange(live.state, so.from, so.to + words2.length);
+      return;
+    }
+    const range = sameWords(live.state, words);
+    if (!range) { addLine(live, lineOf(words2)); return; }
+    live.dispatch(live.state.tr.insertText(words2, range.from, range.to));
+    written = holdRange(live.state, range.from, range.from + words2.length);
+    flash(live, block);
+  };
+  const writeTodo = (live: EditorView, line: string) => {
+    const range = last ? null : sameWords(live.state, words);
+    if (range) live.dispatch(live.state.tr.delete(range.from, range.to));
+    addLine(live, lineOf(line, 'todo'));
+  };
+
   onAsk({
-    text: words.quote, block, rect: selectionRect(view),
-    replace: (blocks) => {
+    text, block, rect,
+    wait: () => {
       const live = editing(rt);
       if (!live) return;
-      const nodes = blocks.map((b) => withFreshId(blockFromJSON(b)));
-      const range = wordsNow(live.state, words);
-      /* The words have gone, so there's nothing to replace: the answer goes under the block they were in. */
-      if (range) live.dispatch(live.state.tr.replaceWith(range.from, range.to, nodes));
-      else insertBlocks(rt, blocks, findBlock(live.state.doc, block) ? { after: block } : 'end');
-    }
+      const range = rangeOf(live.state, words.held);
+      const tr = decorChange(live.state.tr, { asking: true });
+      live.dispatch(range ? tr.setSelection(TextSelection.create(tr.doc, range.to)) : tr);
+    },
+    write: (part) => {
+      const live = editing(rt);
+      if (!live) return;
+      letGo();
+      if (part.type === 'todo') writeTodo(live, part.text);
+      else writeWords(live, part.text);
+    },
+    done: letGo
   });
 }
 

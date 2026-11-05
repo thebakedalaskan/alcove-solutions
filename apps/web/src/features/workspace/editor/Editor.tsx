@@ -22,7 +22,7 @@ import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
 import { cleanPastedHTML, cleanSerializer, handlePaste, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
-import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
+import { allBlocks, blockWords, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
@@ -205,6 +205,7 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       const before = blocks[blocks.findIndex((b) => b.id === id) - 1]?.id;
       return before ? { after: before } : 'start';
     },
+    blockWords: () => (rt.view ? blockWords(rt.view.state.doc) : []),
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
     openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
     openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),

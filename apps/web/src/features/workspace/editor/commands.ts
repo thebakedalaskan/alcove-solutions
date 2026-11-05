@@ -21,6 +21,19 @@ export function allBlocks(doc: PMNode): BlockRef[] {
   return out;
 }
 
+/** A tag's words as a reader sees them, for reading a block as text: a link to a document says nothing, as its name isn't for everyone. */
+export const leafWords = (node: PMNode): string => {
+  if (node.type === schema.nodes.mention) return textAttr(node, 'name') ?? '';
+  if (node.type === schema.nodes.dateChip) return textAttr(node, 'date') ?? '';
+  return node.type === schema.nodes.hardBreak ? '\n' : '';
+};
+
+/** What each block with text in it says. */
+export const blockWords = (doc: PMNode): { id: string; text: string }[] => allBlocks(doc).flatMap((b) => {
+  const text = b.node.textBetween(0, b.node.content.size, '\n', leafWords);
+  return text && b.id ? [{ id: b.id, text }] : [];
+});
+
 /** The block on the page before or after the one at `index`. */
 const blockBefore = (doc: PMNode, index: number): BlockRef | null => allBlocks(doc).filter((b) => b.index < index).at(-1) ?? null;
 const blockAfter = (doc: PMNode, index: number): BlockRef | null => allBlocks(doc).find((b) => b.index > index) ?? null;
