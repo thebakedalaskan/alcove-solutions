@@ -5,14 +5,14 @@
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
-import { absolutePositionToRelativePosition, ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
 import { galleryItems } from './blocks/attrs';
 import type { SlashId } from './menus/rows';
-import { appear, decorChange, flash, heldRange, type HeldRange } from './plugins/decor';
+import { appear, decorChange, flash, holdRange, rangeOf } from './plugins/decor';
 import { moveBlock } from './plugins/retire';
-import type { EditorRuntime, OpenMenu } from './runtime';
+import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import { newBlockId } from './names';
 import { retire, seenIn } from './retire';
 import { hasBlockId, safeHref, schema } from './schema';
@@ -344,6 +344,37 @@ export function insertBlocks(rt: EditorRuntime, blocks: BlockJSON[], at: InsertA
 /* -------- the selection */
 const textOfSelection = (state: EditorState): string => state.doc.textBetween(state.selection.from, state.selection.to, ' ', ' ');
 
+/** Stands for a tag in a line's text, so an offset into the text is an offset into the line. */
+const TAG = '￼';
+
+/** Holds the selection across a wait. */
+function holdWords(state: EditorState): HeldWords | null {
+  const { from, to } = state.selection;
+  const held = holdRange(state, from, to);
+  return held ? { held, quote: textOfSelection(state), block: selectedBlock(state)?.id ?? null } : null;
+}
+
+/** Words in a block, wherever it is now. */
+function findWords(state: EditorState, block: string | null, quote: string): { from: number; to: number } | null {
+  const ref = block ? findBlock(state.doc, block) : null;
+  if (!ref || !quote) return null;
+  let found: { from: number; to: number } | null = null;
+  const look = (line: PMNode, pos: number) => {
+    const at = line.textBetween(0, line.content.size, undefined, TAG).indexOf(quote);
+    if (at >= 0) found ??= { from: pos + 1 + at, to: pos + 1 + at + quote.length };
+  };
+  if (ref.node.isTextblock) look(ref.node, ref.pos);
+  else ref.node.descendants((node, pos) => { if (node.isTextblock) look(node, ref.pos + 1 + pos); return !node.isTextblock; });
+  return found;
+}
+
+/** Where held words are now. If the block moved, their place went with it, so they're found in the block by what they say. */
+function wordsNow(state: EditorState, words: HeldWords): { from: number; to: number } | null {
+  const range = rangeOf(state, words.held);
+  if (range && state.doc.textBetween(range.from, range.to, ' ', ' ') === words.quote) return range;
+  return findWords(state, words.block, words.quote) ?? range;
+}
+
 const selectionRect = (view: EditorView): Rect => {
   const range = view.dom.ownerDocument.getSelection();
   return range && range.rangeCount > 0 ? range.getRangeAt(0).getBoundingClientRect() : view.dom.getBoundingClientRect();
@@ -356,24 +387,21 @@ export function startComment(rt: EditorRuntime): boolean {
   if (!view || !onComment) return false;
   const { state } = view;
   const sync = syncOf(state);
-  const { from, to, empty } = state.selection;
   const block = selectedBlock(state)?.id;
-  if (!sync || empty || !block) return false;
-  const held: HeldRange = {
-    anchor: absolutePositionToRelativePosition(from, sync.type, sync.binding.mapping),
-    head: absolutePositionToRelativePosition(to, sync.type, sync.binding.mapping)
-  };
+  const words = holdWords(state);
+  if (!sync || state.selection.empty || !block || !words) return false;
+  const { quote, held } = words;
   const rect = selectionRect(view);
-  const quote = textOfSelection(state);
   view.dispatch(decorChange(state.tr, { held }));
   const letGo = () => { if (!view.isDestroyed) view.dispatch(decorChange(view.state.tr, { held: null })); };
   onComment({
     quote, block, rect,
     send: (message) => {
       const id = newBlockId();
-      const range = heldRange(view.state);
+      const range = wordsNow(view.state, words);
       startThread(sync.doc, id, { quote, block }, message);
-      if (range) view.dispatch(decorChange(view.state.tr.addMark(range.from, range.to, m.comment.create({ id })), { held: null }));
+      /* A thread isn't undone with ⌘Z, so what it hangs on isn't either. */
+      if (range) view.dispatch(decorChange(view.state.tr.addMark(range.from, range.to, m.comment.create({ id })).setMeta('addToHistory', false), { held: null }));
       else letGo();
       return id;
     },
@@ -391,11 +419,10 @@ export function commentOnBlock(rt: EditorRuntime, id: string): void {
   const line = ref.node.isTextblock ? ref.node : ref.node.firstChild?.isTextblock ? ref.node.firstChild : null;
   if (!line || line.content.size === 0) return;
   const start = ref.pos + (line === ref.node ? 1 : 2);
-  const words = line.textContent.trim().split(/\s+/).slice(0, 5).join(' ');
-  const offset = Math.max(0, line.textContent.indexOf(words));
-  const to = Math.min(start + offset + words.length, start + line.content.size);
+  const words = /\S+(?:\s+\S+){0,4}/.exec(line.textBetween(0, line.content.size, undefined, TAG));
+  if (!words) return;
   view.focus();
-  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + offset, to)));
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + words.index, start + words.index + words[0].length)));
   startComment(rt);
 }
 
@@ -405,16 +432,19 @@ export function askAboutSelection(rt: EditorRuntime): void {
   if (!view || !onAsk) return;
   const { state } = view;
   const block = selectedBlock(state)?.id;
-  if (!block || state.selection.empty) return;
-  const { from, to } = state.selection;
+  const words = holdWords(state);
+  if (!block || state.selection.empty || !words) return;
   rt.bar.set(null);
   onAsk({
-    text: textOfSelection(state), block, rect: selectionRect(view),
+    text: words.quote, block, rect: selectionRect(view),
     replace: (blocks) => {
       const live = editing(rt);
       if (!live) return;
       const nodes = blocks.map((b) => withFreshId(schema.nodeFromJSON(b)));
-      live.dispatch(live.state.tr.replaceWith(Math.min(from, live.state.doc.content.size), Math.min(to, live.state.doc.content.size), nodes));
+      const range = wordsNow(live.state, words);
+      /* The words have gone, so there's nothing to replace: the answer goes under the block they were in. */
+      if (range) live.dispatch(live.state.tr.replaceWith(range.from, range.to, nodes));
+      else insertBlocks(rt, blocks, findBlock(live.state.doc, block) ? { after: block } : 'end');
     }
   });
 }
@@ -425,25 +455,28 @@ export function openLinkField(rt: EditorRuntime): boolean {
   if (!view) return false;
   const { state } = view;
   const { from, to, empty } = state.selection;
-  if (empty) return false;
+  const words = holdWords(state);
+  if (empty || !words) return false;
   let href = '';
   state.doc.nodesBetween(from, to, (node) => {
     const link = node.marks.find((x) => x.type === m.link);
     if (link && typeof link.attrs['href'] === 'string') href = link.attrs['href'];
   });
   rt.bar.set(null);
-  rt.menu.set({ kind: 'link', from, to, href, rect: selectionRect(view) });
+  rt.menu.set({ kind: 'link', words, href, rect: selectionRect(view) });
   return true;
 }
 
-/** Sets the link on the range, or takes it off with nothing typed. */
-export function applyLink(rt: EditorRuntime, from: number, to: number, value: string): void {
+/** Sets the link on the words, or takes it off with nothing typed. If the words have gone, there's nothing to do it to. */
+export function applyLink(rt: EditorRuntime, words: HeldWords, value: string): void {
   const view = editing(rt);
   rt.menu.set(null);
   if (!view) return;
-  const href = safeHref(value);
-  const tr = view.state.tr.removeMark(from, to, m.link);
-  if (href) tr.addMark(from, to, m.link.create({ href }));
   view.focus();
+  const range = wordsNow(view.state, words);
+  if (!range) { rt.props.onToast?.({ icon: 'alert', text: 'Those words have gone, so the link wasn’t added.' }); return; }
+  const href = safeHref(value);
+  const tr = view.state.tr.removeMark(range.from, range.to, m.link);
+  if (href) tr.addMark(range.from, range.to, m.link.create({ href }));
   view.dispatch(tr);
 }

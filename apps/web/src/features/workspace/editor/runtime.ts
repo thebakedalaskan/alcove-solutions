@@ -5,6 +5,7 @@
 import type { EditorView } from 'prosemirror-view';
 import type { ReactNode } from 'react';
 import type { Person } from '@alcove/api';
+import type { HeldRange } from './plugins/decor';
 import type { EditorProps, MovingBlock, Point, Rect } from './types';
 
 /** A value React can subscribe to. */
@@ -49,6 +50,9 @@ export class Portals extends Store<readonly PortalEntry[]> {
   private publish(): void { this.set([...this.entries.values()]); }
 }
 
+/** Words something is waiting to act on: where they are, what they say, and the block they were in. */
+export interface HeldWords { held: HeldRange; quote: string; block: string | null }
+
 /** A menu that's open. Slash and mention follow the text before the caret; the rest are opened by something. */
 export type OpenMenu =
   | { kind: 'slash'; block: string; from: number; to: number; query: string }
@@ -58,7 +62,8 @@ export type OpenMenu =
   | { kind: 'moment'; block: string }
   | { kind: 'block'; block: string; rect: Rect }
   | { kind: 'move'; block: string; rect: Rect }
-  | { kind: 'link'; from: number; to: number; href: string; rect: Rect };
+  /** Link: the words are held, so the link lands on them whatever happens around them while the field is open. */
+  | { kind: 'link'; words: HeldWords; href: string; rect: Rect };
 
 /** The format bar: over the selection, with what's on there. */
 export interface FormatBarState { rect: Rect; bold: boolean; italic: boolean; strike: boolean; link: boolean; highlight: boolean }

@@ -252,12 +252,12 @@ function LinkField({ rt, menu }: { rt: EditorRuntime; menu: Extract<OpenMenu, { 
           onChange={(e) => setValue(e.target.value)}
           onMouseDown={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') { e.preventDefault(); applyLink(rt, menu.from, menu.to, value); }
+            if (e.key === 'Enter') { e.preventDefault(); applyLink(rt, menu.words, value); }
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
           }}
           onBlur={close}
         />
-        <button type="button" className="ws-send" aria-label="Add the link" onClick={() => applyLink(rt, menu.from, menu.to, value)}><Icon name="check" size={15} /></button>
+        <button type="button" className="ws-send" aria-label="Add the link" onClick={() => applyLink(rt, menu.words, value)}><Icon name="check" size={15} /></button>
       </div>
     </Popover>
   );

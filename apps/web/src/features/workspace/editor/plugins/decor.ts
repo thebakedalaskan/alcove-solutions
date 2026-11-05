@@ -8,7 +8,7 @@
 import type { Node as PMNode } from 'prosemirror-model';
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
-import { relativePositionToAbsolutePosition } from 'y-prosemirror';
+import { absolutePositionToRelativePosition, relativePositionToAbsolutePosition } from 'y-prosemirror';
 import * as Y from 'yjs';
 import type { EditorRuntime } from '../runtime';
 import { schema, textOf } from '../schema';
@@ -26,14 +26,26 @@ const key = new PluginKey<DecorState>('block-decor');
 
 export const decorChange = (tr: Transaction, change: DecorChange): Transaction => tr.setMeta(key, change);
 
-/** The range a comment is being written about, in positions. */
-export function heldRange(state: EditorState): { from: number; to: number } | null {
-  const held = key.getState(state)?.held;
+/** Holds a range across a wait: whatever is typed around it, the range stays on the same words. */
+export function holdRange(state: EditorState, from: number, to: number): HeldRange | null {
   const sync = syncOf(state);
-  if (!held || !sync) return null;
+  if (!sync) return null;
+  return { anchor: absolutePositionToRelativePosition(from, sync.type, sync.binding.mapping), head: absolutePositionToRelativePosition(to, sync.type, sync.binding.mapping) };
+}
+
+/** Where a held range is now, in positions. Null once nothing is left in it. */
+export function rangeOf(state: EditorState, held: HeldRange): { from: number; to: number } | null {
+  const sync = syncOf(state);
+  if (!sync) return null;
   const from = relativePositionToAbsolutePosition(sync.doc, sync.type, held.anchor, sync.binding.mapping);
   const to = relativePositionToAbsolutePosition(sync.doc, sync.type, held.head, sync.binding.mapping);
   return from === null || to === null || from === to ? null : { from: Math.min(from, to), to: Math.max(from, to) };
+}
+
+/** The range a comment is being written about, in positions. */
+function heldRange(state: EditorState): { from: number; to: number } | null {
+  const held = key.getState(state)?.held;
+  return held ? rangeOf(state, held) : null;
 }
 
 /** Comments in a block, open ones only: the first thread's ID, and how many messages there are in all. */
