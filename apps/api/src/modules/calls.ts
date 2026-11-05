@@ -1712,7 +1712,7 @@ function sharedIn(row: Pick<Row, 'started_at'>, s: Stored, place: string): (l: t
   return (l) => (l.room ?? MAIN_PLACE) === place && (place !== MAIN_PLACE || l.readers === undefined || (open !== null && (said(l) ?? 0) >= open.from));
 }
 
-/** Connections that looked and found nothing they could have written, until when they don't need to look again. They have no row to say so. */
+/** Connections that looked and found nothing that could be written for them, until when they don't need to look again. They have no row to say so. */
 const resting = new Map<string, number>();
 const REST_MS = 30_000;
 
@@ -1751,7 +1751,9 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   const ctx = { callId, part: place !== MAIN_PLACE ? 'room' : 'main', view: barred.length ? 'narrowed' : 'all' };
   const whole: CatchUpRange = { kind: 'all' };
   const { lines, read } = catchup.readOf(barred.length ? part.all.filter(may) : part.all, whole, part.window, part.missed, ctx);
-  if (!lines.length) {
+  const heard = liveNotes.digestOf(lines);
+  // Nothing they may read, or a view of their own that would read what they're reading already: a run would write it again.
+  if (!lines.length || (view !== found.view && heard === found.stored?.notes?.heard)) {
     if (resting.size > 10_000) resting.clear();
     resting.set(restKey, Date.now() + REST_MS);
     return false;
@@ -1765,9 +1767,7 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     return liveNotes.claim(o, c, callId, place, view, clips, lines, barred);
   });
   if (!claim) return false;
-  // Nothing new, in the notes this would refresh or the ones they're reading: a run would write what they already have.
-  const heard = liveNotes.digestOf(lines);
-  if (heard === claim.heard || heard === found.stored?.notes?.heard) {
+  if (heard === claim.heard) {
     await liveNotes.release(o, callId, place, view, claim);
     clog.debug('nothing new for the live notes', { ...ctx, lines: lines.length });
     return false;

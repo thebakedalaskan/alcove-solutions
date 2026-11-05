@@ -964,8 +964,8 @@ the notes worker: live notes only hand on what was ticked.
   with read on), and someone who may read more than a row did isn't given it. Of the rows that are someone's, `find` gives
   them the one that read what was said most recently, and everyone's when that's as new, as only that can be ticked. So
   someone with a newer hole in their time reads their own row once it's written, though they may still be able to read
-  everyone's older one. With no notes of theirs yet, `notes` is null for them, and they're told if their first are being
-  written or couldn't be. It's the part of the call you're in now that counts, so what's said in a room stays with that
+  everyone's older one. With no notes of theirs yet, `notes` is null for them. Either way they're told when theirs are
+  being written or couldn't be. It's the part of the call you're in now that counts, so what's said in a room stays with that
   room. Someone waiting to be let in gets nothing; someone removed can't read the call at all.
 - **Watching.** A browser showing the notes says so every 5 seconds (`POST /v1/live/calls/:id/notes/watch`, 120 a
   minute per connection, no operation receipt), which is the only thing that refreshes them: nobody watching, nothing
@@ -984,8 +984,8 @@ the notes worker: live notes only hand on what was ticked.
   model reads, and saves what came back under the lock again, merged with the follow-ups as they are then. The lease lasts
   150 seconds, so a worker that dies only delays the next refresh, and it names the claim: a refresh that outran its
   lease keeps nothing. If the lines turn out to be the ones it read last time (a digest of their IDs), because the new
-  clips were said elsewhere in the call, or the ones the notes this person is reading already read, the claim is given up
-  and the model isn't asked: a run would write what they have.
+  clips were said elsewhere in the call, the claim is given up and the model isn't asked. Someone whose own view would read
+  just what the notes they're reading read gets no run and no row, and isn't looked for again for 30 seconds.
 - **What a refresh reads.** Everything said in that part of the call that the view may read, up to the 120,000 characters
   a transcript may have, as `catchUp` over `all`, keeping up to 20 follow-ups and 8 of each other list, the newest. It's
   told the follow-ups so far too ([Follow-ups keep their IDs](#follow-ups-keep-their-ids)).
@@ -1460,8 +1460,9 @@ taken; a stretch with nothing said in it, `caught up on a stretch
 with nothing said` (or `question about a stretch with nothing said`); and `transcript moment opened` at debug, with
 how many lines came with it. Live notes log `live notes written` at info with the call ID, whether it was a room
 (`part`), how many lines were read, the gaps and missed stretches in them, how many points came back, how many the model
-couldn't tie to a line (`uncited`), how many lines were left out (`cut`) and the time taken; `nothing new for the live
-notes` at debug; `live notes written too late to keep` at info when the call ended or the claim ran out meanwhile; and
+couldn't tie to a line (`uncited`), how many follow-ups it was told, recognised and gave a label it shouldn't have
+(`known`, `same`, `strays`), how many lines were left out (`cut`) and the time taken; `reading the transcript for the live
+notes` and `nothing new for the live notes` at debug; `live notes written too late to keep` at info when the call ended or the claim ran out meanwhile; and
 `live notes not refreshed` at warn, with the error. A tick is a `call action` like any other, by its type alone: no point,
 follow-up or summary is ever logged. A refusal (removed, left, ended while it was written) is a refused request with the
 call ID, the role and what it was. Speech, transcript lines, prompts, replies and questions are never logged, and neither are the

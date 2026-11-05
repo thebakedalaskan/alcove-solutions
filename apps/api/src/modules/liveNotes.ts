@@ -113,9 +113,10 @@ const WHERE = 'owner_id = $1 AND call_id = $2 AND place = $3';
 
 /**
  * What's kept for someone in a part of the call. `view` is what they read, null when there's nothing of theirs yet, and
- * `own` their own row, if they have one, whether or not it's what they read: it's what a look at the notes refreshes.
+ * `own` their own row, if they have one, whether or not it's what they read: it's what a look at the notes refreshes, so
+ * `writing` and `failed` go by it too.
  */
-export interface Found { view: string | null; own: string | null; stored: Stored | null; writing: boolean }
+export interface Found { view: string | null; own: string | null; stored: Stored | null; writing: boolean; failed: boolean }
 
 /**
  * The row someone reads in a part of the call: of the rows that are theirs, the one that read what was said most
@@ -136,9 +137,9 @@ export async function find(o: Owner, db: Db, callId: string, place: string, r: R
   const written = mine.filter((x) => x.stored?.notes);
   const newest = written.reduce<(typeof mine)[number] | undefined>((best, x) => ((x.stored?.notes?.last ?? 0) > (best?.stored?.notes?.last ?? -1) ? x : best), undefined);
   const shown = newest ?? ownRow ?? mine[0];
-  if (shown) return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, writing: shown.writing };
+  if (shown) return { view: shown.view, own: ownRow?.view ?? null, stored: shown.stored, writing: shown.writing || ownRow?.writing === true, failed: shown.stored?.failed === true || ownRow?.stored?.failed === true };
   // Notes they can't read, and none of their own yet: nothing to show, and nothing here says when there's more for them.
-  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, writing: false };
+  return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, writing: false, failed: false };
 }
 
 const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
@@ -146,7 +147,7 @@ const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === 
 /** The notes as they're shown. `capturing`: refreshes can run here now, so that the last one failed is worth saying. */
 export function shownTo(found: Found, capturing: boolean): LiveNotes {
   const n = found.stored?.notes ?? null;
-  const out = { writing: found.writing, error: capturing && found.stored?.failed ? NOT_UPDATED : null };
+  const out = { writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
   if (!n) return { ...out, notes: null };
   const next = n.next.filter((f) => f.shown).map((f): LiveFollowUp => ({ ...plain(f), id: f.id, done: f.tick !== null }));
   return { ...out, notes: { summary: n.summary, decided: n.decided.map(plain), proposed: n.proposed.map(plain), open: n.open.map(plain), next, read: n.read } };

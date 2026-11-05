@@ -493,6 +493,8 @@ describe('who reads what of them', () => {
   });
 
   const FIRST = 'We agreed on the first plan.';
+  /** How many looks have read the transcript. */
+  const readsSoFar = () => h.logs.filter((l) => l.includes('reading the transcript for the live notes')).length;
   /** An organizer and a guest here from the start, with everyone's notes written from the first thing said. */
   async function guestFromTheStart() {
     const org = await account();
@@ -529,20 +531,27 @@ describe('who reads what of them', () => {
     await sayNow(g.host, NOW, 6000);
     await later(back);
 
-    // Nobody who may read it all is watching, so everyone's notes stay behind. Sam's run reads what Sam may read, and that's what Sam reads.
+    // Their first run fails: they go on reading what they can, and they're told.
     const before = runs();
+    h.near.failNext(1, 'prose');
     const stop = back.watchNotes();
+    const failed = await settle(back, (s) => s.liveNotes.error !== null, 3000);
+    expect(failed.liveNotes.error).toBe(NOT_UPDATED);
+    expect(texts(failed.liveNotes.notes?.decided ?? [])).toEqual([FIRST]);
+    await later(back);
+    // Nobody who may read it all is watching, so everyone's notes stay behind. Sam's run reads what Sam may read, and that's what Sam reads.
     const own = await notesOf(back, (n) => n.read.lines === 2);
     expect(texts(own.decided)).toEqual([FIRST, NOW]);
     expect(own.read.whileHere).toBe(true);
-    expect(sentSince(before)[0]).not.toContain('second plan');
+    expect(sentSince(before)[1]).not.toContain('second plan');
+    await settle(back, (s) => s.liveNotes.error === null);
+    expect(back.getSnapshot().liveNotes.error).toBeNull();
     // Inside the half minute it stays at that one run, however often they look, and the transcript isn't read again.
-    const reads = () => h.logs.filter((l) => l.includes('reading the transcript for the live notes')).length;
-    const read = reads();
+    const read = readsSoFar();
     await sleep(700);
     stop();
-    expect(runs()).toBe(before + 1);
-    expect(reads()).toBe(read);
+    expect(runs()).toBe(before + 2);
+    expect(readsSoFar()).toBe(read);
     expect(await notesRows(g.host.ticket.callId)).toBe(2);
     await g.host.leave();
   });
@@ -551,12 +560,16 @@ describe('who reads what of them', () => {
     const g = await guestFromTheStart();
     const back = await backAfter(g, g.sam, 'We agreed on the second plan while Sam was away.', 3000);
     await later(back);
-    // Sam may read just what everyone's notes read, so a run for Sam would write them again, and Sam would be shown them either way.
+    // Sam may read just what everyone's notes read, so a run for Sam would write them again, and Sam would be shown them
+    // either way: however often they look, that's found out once, and no row is made for it.
     const before = runs();
+    const read = readsSoFar();
     const stop = back.watchNotes();
     await sleep(700);
     stop();
     expect(runs()).toBe(before);
+    expect(readsSoFar()).toBe(read + 1);
+    expect(await notesRows(g.host.ticket.callId)).toBe(1);
     expect(texts((await notesOf(back)).decided)).toEqual([FIRST]);
     await g.host.leave();
   });
@@ -765,6 +778,15 @@ describe('breakout rooms', () => {
     expect(sentSince(before)[0]).not.toContain('surprise');
     // The model lists it again from what it read, as something new: it wasn't told the one that's ticked.
     expect(after.next.map((x) => [x.text, x.done])).toEqual([[TASK, false]]);
+    // Nor is it told later, when a refresh reads all the last one did.
+    await sayNow(host, C, 6000);
+    await later(kofi);
+    const next = runs();
+    const again = kofi.watchNotes();
+    const more = await notesOf(kofi, (n) => n.read.lines === 2);
+    again();
+    expect(JSON.stringify(more)).not.toContain('surprise');
+    expect(sentSince(next)[0]).not.toContain('surprise');
     // The tick still goes to the note, where everyone reads what it rests on.
     const ended = await host.leave();
     expect((await written(org.api, ended?.pendingNoteId)).actions).toEqual([expect.objectContaining({ text: 'Book the hall by Friday', done: true })]);
