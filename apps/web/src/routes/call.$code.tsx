@@ -1373,7 +1373,7 @@ function InCall({ session }: { session: CallSession }) {
   /* Presenting: what's presented where you are, drawn over your own page or worked on beside it (presenting.ts). */
   const presenting = usePresenting({
     session, present: space.present, participants: state.participants, open: work.open, inSight: work.open && !!solved.rects.ws,
-    show: work.act.show, hide: work.act.hide, say: work.act.say, failed: work.act.failed
+    show: work.act.show, hide: work.act.hide, go: work.act.go, say: work.act.say, failed: work.act.failed
   });
   /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
   const player = useSharedVideo(session, !ended, work.act.failed);

@@ -254,7 +254,7 @@ const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [
 function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { session: DocSession; ready: boolean; refused: boolean } }) {
   const { session, ready, refused } = opened;
   const status = useLive(session);
-  const [more, setMore] = useState<'menu' | 'move' | null>(null);
+  const [more, setMore] = useState<'menu' | 'move' | 'present' | null>(null);
   const [share, setShare] = useState(false);
   /** Whose face on the head was pressed. */
   const [card, setCard] = useState<string | null>(null);
@@ -286,14 +286,19 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
     );
   }
 
+  /* Present is at the top of every document in a call, once the page knows its sections; on a phone it's in ⋯. Something in Trash can't be presented. */
+  const present = ws.call?.presenting;
+  const preview = present && sections && ready && !trashed ? (onStart: () => void) => (
+    <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { onStart(); present.start(item.id); }} />
+  ) : null;
   const close = () => setMore(null);
   const morePop: WsPop = {
     open: more !== null, onOpenChange: (to) => setMore(to ? 'menu' : null),
     content: more === 'move' ? (
       <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(ws.tree, item.id)}
         onRoot={() => { close(); ws.actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); ws.actions.move(item.id, { parent: id }); }} />
-    ) : (
-      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined}
+    ) : more === 'present' && preview ? preview(close) : (
+      <WsDocMenu onShare={canShare ? () => { close(); setShare(true); } : undefined} onPresent={preview ? () => setMore('present') : undefined}
         onDuplicate={changing ? () => { close(); ws.actions.duplicate(item.id); } : undefined}
         onMove={changing ? () => setMore('move') : undefined}
         onCopyLink={() => { close(); ws.actions.copyLink(item.id); }}
@@ -306,12 +311,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   }));
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
-  /* Present is at the top of every document in a call, once the page knows its sections. Something in Trash can't be presented. */
-  const present = ws.call?.presenting;
-  const presentPop: WsPop | undefined = present && sections && ready && !trashed ? {
-    open: previewing, onOpenChange: setPreviewing,
-    content: <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { setPreviewing(false); present.start(item.id); }} />
-  } : undefined;
+  const presentPop: WsPop | undefined = preview ? { open: previewing, onOpenChange: setPreviewing, content: preview(() => setPreviewing(false)) } : undefined;
   return (
     <WsDoc>
       {presentingStrip(ws.call?.presenting) ?? (

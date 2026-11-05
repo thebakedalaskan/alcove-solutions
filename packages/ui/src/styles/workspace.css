@@ -294,7 +294,7 @@
 .wp-notes:focus { box-shadow: inset 0 0 0 2px var(--focus); }
 /* What everyone watches sits over your own pane, which waits underneath just as you left it: caret, scroll and all. */
 .ws-over { position: absolute; inset: 0; z-index: 4; display: flex; }
-.ws-pane.is-under { visibility: hidden; }
+.ws-pane.is-under { visibility: hidden; isolation: isolate; }
 .ws-pane.is-reading .wb.is-out, .ws-pane.is-reading .wd-title.is-out { display: none; }
 .ws-pane.is-reading .wp { animation: ws-side var(--duration-2) var(--ease-out); }
 
@@ -404,6 +404,13 @@
   .wl-due { display: none; }
 }
 @container (max-width: 470px) { .wd-faces { display: none; } }
+
+/* A pane with little room to spare: a presentation gives up its wide margins before its words get cramped. */
+@container ws-pane (max-width: 900px) {
+  .ws-pane.is-reading .wd-page { padding: 28px 32px 24px; }
+  .ws-pane.is-reading .wd-title { font-size: 38px; }
+  .wp { width: 256px; }
+}
 
 /* A narrow pane: what sits beside the page floats over it instead of squeezing it. */
 @container ws-pane (max-width: 640px) {

@@ -214,15 +214,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /*
    * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
-   * counts as out of sight meanwhile (`closed`): you're following nobody, and the keyboard can't reach what's under it.
+   * counts as out of sight meanwhile (`closed`): you're following nobody, and nothing under it can be reached.
    */
   const watching = call?.presenting.watching ?? false;
   const reduce = useReducedMotion();
-  useEffect(() => {
-    if (!watching) return;
-    const el = document.activeElement;
-    if (el instanceof HTMLElement && el.closest('.ws-pane.is-under')) el.blur();
-  }, [watching]);
 
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
@@ -280,7 +275,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   };
   return (
     <WsContext value={ws}>
-      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} className={watching ? 'is-under' : undefined}>
+      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>

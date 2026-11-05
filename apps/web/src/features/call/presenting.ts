@@ -10,7 +10,7 @@
 import { errorCode, firstName, type CallParticipant, type CallPresent, type CallSession, type Person } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { WorkspacePresenting } from '~/features/workspace/context';
+import type { WorkspacePlace, WorkspacePresenting } from '~/features/workspace/context';
 import { log } from '~/lib/log';
 
 const plog = log.child({ component: 'presenting' });
@@ -18,7 +18,7 @@ const plog = log.child({ component: 'presenting' });
 /** Who started what's presented, and what it is: a new presentation is a new key, even of the same document. */
 const keyOf = (p: CallPresent | null): string | null => (p ? `${p.by.seat} ${p.kind ?? ''} ${p.id ?? ''}` : null);
 
-export function usePresenting({ session, present, participants, open, inSight, show, hide, say, failed }: {
+export function usePresenting({ session, present, participants, open, inSight, show, hide, go, say, failed }: {
   session: CallSession;
   present: CallPresent | null;
   participants: readonly CallParticipant[];
@@ -27,6 +27,8 @@ export function usePresenting({ session, present, participants, open, inSight, s
   inSight: boolean;
   show: () => void;
   hide: () => void;
+  /** Takes your own page somewhere in the workspace. */
+  go: (to: WorkspacePlace) => void;
   say: (toast: WsToastData) => void;
   failed: (e: unknown) => void;
 }): WorkspacePresenting {
@@ -99,7 +101,15 @@ export function usePresenting({ session, present, participants, open, inSight, s
       failed(e);
     });
   }, [session, say, failed]);
-  const setAway = useCallback((on: boolean) => { setOwnWay(on ? keyOf(presentNow.current) : null); }, []);
+  /*
+   * Work on my own puts your own page back: where you were, or, with the workspace opened for the presentation, the
+   * document itself, as everyone else edits it.
+   */
+  const setAway = useCallback((on: boolean) => {
+    const p = presentNow.current;
+    setOwnWay(on ? keyOf(p) : null);
+    if (on && opened.current && p?.id) go({ kind: 'document', id: p.id });
+  }, [go]);
 
   return useMemo(() => ({ present, presenter, watching, away, section, inSight, start, move, stop, setAway }), [present, presenter, watching, away, section, inSight, start, move, stop, setAway]);
 }
