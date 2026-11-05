@@ -147,7 +147,7 @@ function framesInCircles(frames: readonly FrameObject[]): Set<string> {
  */
 export function readBoard(doc: Y.Doc, prev?: BoardView): BoardView {
   const read: BoardObject[] = [];
-  const list = rootList(doc, BOARD_PLACES), places = list ? placesIn(list) : new Map<string, Place>();
+  const list = rootList(doc, BOARD_PLACES), places: ReadonlyMap<string, Place> = list ? placesIn(list) : new Map();
   rootMap(doc, BOARD_OBJECTS)?.forEach((value, id) => {
     const m = mapOf(value);
     if (!m) return;
