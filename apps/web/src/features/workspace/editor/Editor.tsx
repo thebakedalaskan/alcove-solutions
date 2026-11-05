@@ -178,7 +178,11 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
         if (block) focusAt(view, where === 'start' ? Selection.near(doc.resolve(block.pos), 1) : Selection.near(doc.resolve(block.pos + block.node.nodeSize), -1));
       }
     }),
-    resume: () => put((view) => view.focus()),
+    resume: () => put((view) => {
+      view.focus();
+      const { selection } = view.state;
+      if (!selection.empty) view.dispatch(view.state.tr.setSelection(Selection.near(selection.$to, -1)));
+    }),
     focusBlock: (id, at = 'start') => put((view) => {
       const ref = findBlock(view.state.doc, id);
       if (ref) focusAt(view, Selection.near(view.state.doc.resolve(at === 'end' ? ref.pos + ref.node.nodeSize - 1 : ref.pos + 1), at === 'end' ? -1 : 1));
