@@ -4,8 +4,9 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
 } from '@alcove/api';
+import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
@@ -16,6 +17,17 @@ import { iso } from './clock';
 export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
 /** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
 export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
+
+/**
+ * A board as the story opens: what's on it (drawn with @alcove/board's own writers), who else has it open and where their
+ * pointer is, and how it stands for this browser: no connection (`offline`), Alcove refusing what was added here (`failed`),
+ * or taken from under you while it's open (`gone`).
+ */
+export interface BoardSpec {
+  draw?: ((doc: Y.Doc) => void) | undefined;
+  here?: { who: Person; x: number; y: number }[] | undefined;
+  standing?: 'offline' | 'failed' | 'gone' | undefined;
+}
 
 /** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
 export interface MoveSpec {
@@ -51,6 +63,8 @@ export interface World {
   pages: Record<string, Page>;
   /** Who each document is shared with besides its workspace's own people, by its ID. */
   shares: Record<string, ShareEntry[]>;
+  /** What each board holds and who's on it, by its ID. One without one here is blank. */
+  boards: Record<string, BoardSpec>;
   /** Who's ringing you as the story opens. */
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */

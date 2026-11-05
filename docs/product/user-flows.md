@@ -877,8 +877,8 @@ the title and a few ways to start under it: **Agenda**, **Decision log**, **Retr
 blocks: picking one fills the page, names an untitled document after it, and anything in it can change or go. Two
 people can have the same new document open: they get one title and one first line.
 
-**Making things.** **+** at the top of the list, or hovering a folder and pressing its **+**, offers **New document**
-and **New folder**; **N** and **⇧N** skip the menu when you aren't typing. A folder is named in its row: type, then
+**Making things.** **+** at the top of the list, or hovering a folder and pressing its **+**, offers **New document**,
+**New folder** and **New board** (flow 13); **N** and **⇧N** skip the menu when you aren't typing. A folder is named in its row: type, then
 **Enter**. **Esc**, or leaving it empty, makes nothing. A document's title is its name: the list and the path above the
 page follow as you type, for everyone.
 
@@ -948,3 +948,46 @@ your workspaces; Sign out asks first if anything hasn't reached Alcove.
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
 touch screen: **Move to…** does that. A bar's buttons go under its words.
+
+## 13. Boards
+
+A board is a page of stickies, shapes, lines and pictures that people add to together. It lives in a workspace with the
+documents: in the list with a board's icon, in links, and in Trash when it's moved there. In a call it opens on the stage;
+here it's on its own page, the same board, with no call around it.
+
+**Making one.** **New board** in the list's **+** makes **Untitled board** there and opens it. In a document, **/** then
+**Board** makes one beside the document and puts it in the page: a small picture of a board with its name on it, which
+opens it. Someone who can't open that board sees **A board you can’t open** there, and nothing of what's on it.
+
+**The page.** The board fills the page under the workspace's head, with its tools down the side and its bar along the
+top: its name, its seal, Undo and Redo, how near you are, the map, the faces of whoever else is on it, and **Start a call
+here**, which opens Start a call named after the board. Everyone on it has a pointer with their face and name, in a
+colour of their own. A blank board says **Double-click anywhere to add a sticky**, or press **N**. What's added reaches
+everyone on it as it happens.
+
+**Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
+keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
+workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
+**Copy link**. Pressing the seal says where it's saved and that Alcove can't read it.
+
+**Comments.** Pick a sticky and press **K**, or **Comment** in the **+** under the tools, and a field opens beside it.
+With nothing picked, **K** comments on what the pointer is on, or on the next thing pressed (**Esc** stops). A comment
+pins its writer's face to the corner of what it's on, with how many have replied since; pressing the pin opens the thread,
+with **Reply** and **Resolve**, which a toast can take back. Comments aren't on the board: nobody's Undo takes one back,
+and a sticky that's deleted takes its comments with it, and brings them back with it.
+
+**When things go wrong.** The seal says how the board stands, and the pill at the top of the sheet says the rest.
+
+- The connection drops: the seal says **Reconnecting**, and the pill **Keep going. Your changes are safe here.** What's
+  added is kept in this browser, sealed, through a reload, and goes when the connection's back, once, with nothing lost
+  or doubled. A toast says so.
+- Alcove won't take what was added: the seal says **Not saved**, and the pill says how many changes are only on this
+  screen, with **Try again**. It tries again by itself as well.
+- Someone given view only: the tools go and the seal says **View only**. They can still look round, follow people and
+  read the comments.
+- Someone moves it to Trash: a bar says who, the board stops taking anything, and **Restore it** brings it back.
+- It stops being yours, or it's deleted: the page says you can't open it, the same as for a board that never existed,
+  with the way back.
+
+On a phone the list and the board take turns, as a document does, and the bar keeps the name, the seal, Undo, Redo, how
+near you are and Start a call here.

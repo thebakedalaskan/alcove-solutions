@@ -55,9 +55,12 @@ aren't.
 **The demo world** is the design canvas's (`docs/design/canvas/appdata.js` and `data-*.js`): Vandelay Industries, you are
 Art Vandelay, and everyone is made up. Never write a real person's name. It's written the way the canvas writes it, with
 the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its workspaces
-are Product (Art runs it: a folder, a document closed to the workspace, two things in Trash), Design (he edits) and the
-company handbook (he can only read). What each document says is in `src/world/documents.ts`, in the editor's own blocks,
-and who it's shared with in the world's `shares`; a page can say what Alcove refused of it, which opens it couldn't-save.
+are Product (Art runs it: a folder, a document closed to the workspace, the launch retro board, two things in Trash),
+Design (he edits; the onboarding flow board) and the company handbook (he can only read). What each document says is in
+`src/world/documents.ts`, in the editor's own blocks, and who it's shared with in the world's `shares`; a page can say what
+Alcove refused of it, which opens it couldn't-save. What each board holds is in `src/world/boards.ts`, drawn with
+`@alcove/board`'s own writers, with who else is on it (their pointers, and their faces in the workspace) and how it stands
+for this browser (`standing`: Reconnecting, Couldn't save, or taken away while it's open).
 
 ## Scenarios
 
