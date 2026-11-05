@@ -463,9 +463,14 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   made-up one, a real one they can't open, a folder and something in Trash are all refused alike (`400 invalid`), in the
   same time, and nothing anyone guessed gets onto a call, where it would say whose it is.
 - **Losing something.** A document the organizer loses after bringing it stays on the call, with no name for them either,
-  until they take it off: it doesn't stop them changing the call, and they can't bring it back once it's off, or to another
-  call. Something in Trash or gone isn't listed for anyone, and restored, it's back. A workspace that can't be read leaves
-  its documents off the call and is logged by its ID, and the call opens as usual.
+  until they take it off, and it doesn't stop them changing the call. No request can add it again: not to this call once
+  it's off, and not to any other. But what a call keeps is carried on as it stands, without being checked again: the next
+  call in a series, the calls a repeat adds, and a change to this and later calls all take the list as it is, so a document
+  the organizer has lost can reach later calls in that series. Nobody learns more from that. It's an ID they could reach
+  when they brought it, and on every call each person is told only what this section says, read from the workspace at that
+  moment, so a name still goes only to someone who can open it. Something in Trash or gone isn't listed for anyone, and
+  restored, it's back. A workspace that can't be read leaves its documents off the call and is logged by its ID, and the
+  call opens as usual.
 - **Guests** see none of it: a call pass reaches no library and no meeting, and neither a call's state nor its card says
   what was brought. What a guest can read of a workspace is what's shared with their seat.
 

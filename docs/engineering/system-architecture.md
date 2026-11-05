@@ -89,8 +89,10 @@ which browsers edit together through the API ([Data and storage › Documents](d
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
-   commitment of method, path and body plus the encrypted response; a retry returns the same response,
-   and a different request under the same ID is `409 conflict`. Note search, asking, reading who's busy, catching up, caption
+   commitment of method, path and body plus the encrypted response; a retry returns the same response, except
+   that a call comes back with `documents` empty, because a receipt can't hold a document's name
+   ([Requests](privacy-keys-and-sessions.md#requests)), and a different request under the same ID is
+   `409 conflict`. Note search, asking, reading who's busy, catching up, caption
    translations, audio pieces, transcript clips, proposals and changes to a note's decisions, open questions,
    follow-ups and transcript lines, having its notes written again, sharing a note, answering an invitation and
    answering a ring keep no receipt.
