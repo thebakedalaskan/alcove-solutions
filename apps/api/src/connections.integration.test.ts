@@ -169,7 +169,7 @@ describe('every connection taken', () => {
     expect(ended.filter((e) => e?.pendingNoteId)).toHaveLength(12);
   });
 
-  it('turns a request away in seconds rather than keep it waiting', async () => {
+  it('turns a request away in seconds, as busy, rather than keep it waiting', async () => {
     const pool = createPool(h.deps.cfg.DATABASE_URL);
     const server = await h.secondServer({}, undefined, pool);
     let target = h.baseUrl;
@@ -178,9 +178,15 @@ describe('every connection taken', () => {
     try {
       target = server.baseUrl;
       const t0 = Date.now();
+      const mark = h.logs.length;
       const refused = await org.fetch(`${target}/v1/meetings?range=upcoming`);
-      expect(refused.status).toBe(500);
-      expect(z.object({ code: z.string() }).parse(await refused.json()).code).toBe('unknown');
+      // Busy, not broken: the same answer as any other moment Alcove can't take a request, which the app tries again.
+      expect(refused.status).toBe(503);
+      const body = z.object({ code: z.string(), message: z.string(), requestId: z.string() }).parse(await refused.json());
+      expect(body.code).toBe('unavailable');
+      expect(body.message).toBe('Alcove is busy right now. Try again in a moment.');
+      const said = h.logs.slice(mark).flatMap((l) => { const r = z.object({ msg: z.string(), requestId: z.string().optional() }).safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
+      expect(said.some((l) => l.msg === 'no database connection came free' && l.requestId === body.requestId)).toBe(true);
       const waited = Date.now() - t0;
       expect(waited).toBeGreaterThanOrEqual(9000);
       expect(waited).toBeLessThan(20_000);
