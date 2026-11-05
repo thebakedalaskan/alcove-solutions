@@ -1767,7 +1767,7 @@ describe('the next call’s agenda', () => {
     await h.pool.query('UPDATE documents SET closed_until = NULL WHERE owner_id = $1', [await ownerOf(id)]);
     await host.openWorkspace();
     const made = await agendaIn(art, id, host);
-    expect(documentTodos(made.page.doc, 'document').map((t) => t.text)).toEqual([`CANARY-AGENDA book the briefing ${priya.name} by 2026-11-06`, `Who signs off the pricing? ${art.name}`]);
+    expect(documentTodos(made.page.doc, 'document').map((t) => t.text)).toEqual([`CANARY-AGENDA book the briefing ${priya.name} by 6 Nov`, `Who signs off the pricing? ${art.name}`]);
     expect(documentText(made.page.doc, 'document').title).toMatch(/^Agenda · /);
     expect((await space(host)).documents.map((x) => x.id)).toEqual([made.id]);
     expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
