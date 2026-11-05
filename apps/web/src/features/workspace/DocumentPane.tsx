@@ -257,6 +257,8 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
     )
   };
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  /* Who to ask to edit: in a call, someone outside the workspace was let in by the organizer, so it's them. */
+  const askToEdit = ws.call?.chooser && !member ? ws.call.chooser : item.by ? firstName(item.by.name) : 'whoever shared it';
   return (
     <WsDoc>
       <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList}
@@ -265,7 +267,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
       <WsOfflineBar show={offline && ready} />
       <WsFullBar show={status.refused === 'too-large'} />
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
-      <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
+      <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={askToEdit} />
       {ready ? <WsScroll><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
     </WsDoc>
   );

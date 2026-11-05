@@ -205,6 +205,8 @@
 .wv-switch p { font-size: 13.5px; line-height: 1.42; color: var(--ink-2); }
 .wv-switch .warn { display: flex; gap: 7px; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--caution-soft); color: var(--caution); }
 .wv-switch .warn .ac-i { margin-top: 2px; }
+/* The question takes the menu's place in the popover that's already open, so it pops in itself, 140 ms. */
+.ws-pop > .wv-switch { animation: ws-pop var(--duration-1) var(--ease-out); }
 .wv-pres { width: 320px; padding: 12px; display: grid; gap: 8px; }
 .wv-pres .wv-pv { position: relative; height: 120px; padding: 14px 16px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
 .wv-pres .wv-pv b { display: block; font: 450 20px/1.1 var(--font-display); }
@@ -220,7 +222,7 @@
 .wv-find .f { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--ink-3); }
 .wv-fi { flex: 1; min-width: 0; height: 30px; padding: 1px 2px; border: 0; background: none; color: var(--ink); font: 400 15.5px/1 var(--font-sans); outline: none; }
 .wv-fi::placeholder { color: var(--ink-3); }
-.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 400px; margin-left: -200px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 440px; margin-left: -220px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .wv-knock .ac-avatar { align-self: end; }
 .wv-knock b { overflow-wrap: anywhere; font: 600 14.5px/1.25 var(--font-sans); }
 .wv-knock p { font-size: 13.5px; line-height: 1.3; color: var(--ink-2); }

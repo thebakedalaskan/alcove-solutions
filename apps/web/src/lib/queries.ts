@@ -38,7 +38,8 @@ export const qk = {
   balance: ['credits'] as const,
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
-  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
+  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -124,7 +125,9 @@ export const q = {
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
+  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 }),
+  /** One document or folder as you see it: what it's called now, and what you can do with it. */
+  workspaceItem: (id: string, itemId: string) => queryOptions({ queryKey: qk.workspaceItem(id, itemId), queryFn: () => api.workspaces.items.get(id, itemId), retry: false })
 };
 
 /**
@@ -554,6 +557,10 @@ export function useCreateWorkspace() {
 export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
+export function useFirstDocument() {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
 }
 /** Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. `pass`: a guest's. */
 export function useItemChanges(workspaceId: string, pass?: string | undefined) {

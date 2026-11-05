@@ -7,19 +7,27 @@
  * this call (view.ts), so a reload finds that too. Only your screen changes, whatever you do here.
  */
 import { errorMessage, firstName, type CallSession, type CallWorkspace } from '@alcove/api';
-import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { DURATION, WsDoc, WsLostSpace, WsNoAccess, WsPane, cn, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { useReducedMotion } from 'motion/react';
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
+import type { SpaceHead, WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
 import { Workspace } from '~/features/workspace/Workspace';
 import { overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
+import { useFirstDocument } from '~/lib/queries';
+import { SpacePicker } from './SpacePicker';
 import type { CallView } from './view';
+import { useAskAnswered } from './WorkspaceAsks';
 
 const wlog = log.child({ component: 'call-workspace' });
 
-/** Where a workspace opens: this call's agenda, or the first thing brought to it. With neither, it opens what you had open last. */
+/**
+ * Where a workspace opens: this call's agenda, or the first thing brought to it, in the workspace the call uses now. With
+ * neither, it opens what you had open last.
+ */
 function firstPlace(w: CallWorkspace): WorkspacePlace {
-  const id = w.agenda ?? w.documents.find((d) => d.workspaceId === w.id)?.id;
+  const here = w.documents.filter((d) => d.workspaceId === w.id);
+  const id = here.find((d) => d.id === w.agenda)?.id ?? here[0]?.id;
   return id ? { kind: 'document', id, area: 'pins' } : { kind: 'home' };
 }
 
@@ -38,14 +46,28 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
 
   /** What the workspace said last: it says one thing at a time, so a second toast never climbs over the foot of the list. */
   const said = useRef<(() => void) | null>(null);
+  const firstDocument = useFirstDocument().mutateAsync;
+  const makeFirst = useRef(firstDocument);
+  makeFirst.current = firstDocument;
   const act = useMemo(() => {
     const show = (t: WsToastData) => push(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms });
     const say = (t: WsToastData) => { said.current?.(); said.current = show(t); };
     const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
     const reveal = () => { setMounted(true); setOpen(true); };
     const hide = () => { setOpen(false); setZen(false); setPeek(false); };
+    /** Organizer only: the call moves to another workspace, for everyone at once, and Back moves it back. */
+    const switchTo = (to: string) => {
+      const from = session.getSnapshot().workspace.id;
+      session.setWorkspace(to).then(() => {
+        say(wsToast.switched(session.getSnapshot().workspace.name ?? 'Untitled', () => { if (from) switchTo(from); }));
+      }, failed);
+    };
     return {
-      say, failed, hide,
+      say, failed, hide, reveal, switchTo,
+      /** Organizer only: what moving the call to another workspace would mean, for the question the picker asks. Changes nothing. */
+      preview: (id: string) => session.previewWorkspace(id),
+      /** Anyone who can't open the call's workspace: asks the organizer, who can open one document to them. */
+      ask: () => { session.askForWorkspace(true).catch(failed); },
       /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
       leave: () => { hide(); session.openWorkspace().catch(failed); },
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
@@ -59,18 +81,24 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
         const name = () => session.getSnapshot().workspace.documents.find((d) => d.id === id)?.name || 'Untitled';
         session.bringDocument(id, brought).then(() => { if (brought) say(wsToast.broughtToCall(name())); }, failed);
       },
-      /** A workspace of their own, for an organizer who's lost the one the call uses. */
+      /**
+       * Organizer only: a workspace with just them in it, made right here, and the call moves to it. It starts with one blank
+       * document, open, ready to write in: from the picker, or for an organizer who's lost the one the call uses.
+       */
       newWorkspace: () => {
-        session.newWorkspace().then(() => {
+        session.newWorkspace().then(async () => {
           const w = session.getSnapshot().workspace;
-          setAt(firstPlace(w));
           say(wsToast.newSpace(w.name ?? 'Untitled'));
-        }, failed);
+          if (w.id === null) return;
+          const { id } = await makeFirst.current(w.id);
+          setAt({ kind: 'document', id });
+        }).catch(failed);
       }
     };
   }, [push, session]);
   const openNow = useRef(open);
   openNow.current = open;
+  useAskAnswered(workspace, act);
 
   /* The first time it opens here, the call settles which workspace it uses, and finds its agenda. */
   useEffect(() => {
@@ -142,17 +170,78 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
 }) {
   const chooser = firstName(workspace.chosenBy.name);
   const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
+  /* The organizer chooses the call's workspace from the name at the top of the list; everyone else is told who chooses. */
+  const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} act={act} /> : undefined), [organizer, act]);
   const call = useMemo((): WorkspaceCall => ({
-    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing,
+    top, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList }
-  }), [top, documents, act, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  }), [top, documents, act, picker, organizer, chooser, showing, zen, onToggleZen, listOff, listPeek, onToggleList]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
+  /*
+   * The workspace the call uses, for anyone who can open something in it. What was brought from one it used before stays
+   * with that one, as it does in the list: whoever can't open this one is told it's private, and nothing about another.
+   */
+  const now: Shown = { key: workspace.id ?? 'outside', id: workspace.id, at, call };
+  const { leaving, gone, box } = useLeaving(now, settled);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */
   if (!settled) return <WsPane />;
-  /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
-  const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
-  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
-  return <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}</WsDoc></WsPane>;
+  const draw = (s: Shown) => (s.id !== null
+    ? <Workspace mode="call" workspaceId={s.id} at={s.at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={s.call} />
+    /* Being in the call opens nothing: someone who can't open the workspace is told it's private, and can ask the organizer. */
+    : <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={workspace.asked === 'asking'} onAsk={act.ask} />}</WsDoc></WsPane>);
+  return (
+    <div className="ic-wsx">
+      {leaving && <div key={leaving.key} className={cn('ic-wsx-slot is-leaving', gone && 'is-gone')} inert aria-hidden>{draw(leaving)}</div>}
+      <div key={now.key} ref={box} className="ic-wsx-slot">{draw(now)}</div>
+    </div>
+  );
 });
+
+/** What the panel shows: the call's workspace as you have it, or that it's private (`outside`). */
+interface Shown { key: string; id: string | null; at: WorkspacePlace; call: WorkspaceCall }
+
+/**
+ * The call moving to another workspace, or what you can open in it changing, cross-fades the list, 240 ms. What was there stays
+ * over what's coming, as it was and out of reach, until what's coming has drawn itself (its list and its page, or that it's
+ * private) and stayed that way a moment, and then fades away. Without that, the list would be blank for as long as the other
+ * workspace takes to answer.
+ */
+function useLeaving(now: Shown, settled: boolean) {
+  const [shown, setShown] = useState(now);
+  const [leaving, setLeaving] = useState<Shown | null>(null);
+  const [gone, setGone] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  /* Worked out as it's drawn, so there's never a frame with neither. What's leaving keeps the place and the call it had. */
+  if (shown.key !== now.key) {
+    setShown(now);
+    setLeaving(settled ? { ...shown, call: { ...shown.call, closed: true } } : null);
+    setGone(false);
+  } else if (shown.at !== now.at || shown.call !== now.call) setShown(now);
+  useEffect(() => {
+    if (!leaving) return;
+    let frame = 0;
+    let done: ReturnType<typeof setTimeout> | undefined;
+    const started = Date.now();
+    let since = 0;
+    /* A page on its way to a document can say "pick one" for a frame, so what's drawn has to hold for 100 ms. */
+    const drawn = () => {
+      const b = box.current;
+      if (!b) return false;
+      const page = b.querySelector('.ProseMirror, .wd-none') !== null;
+      return b.querySelector('.wt') === null ? page : page && b.querySelector('.wt-scroll') !== null;
+    };
+    const look = () => {
+      const now = Date.now();
+      since = drawn() ? since || now : 0;
+      if ((since === 0 || now - since < 100) && now - started < 1500) { frame = requestAnimationFrame(look); return; }
+      setGone(true);
+      done = setTimeout(() => setLeaving(null), reduce ? 0 : DURATION[2] * 1000 + 40);
+    };
+    look();
+    return () => { cancelAnimationFrame(frame); clearTimeout(done); };
+  }, [leaving, reduce]);
+  return { leaving, gone, box };
+}

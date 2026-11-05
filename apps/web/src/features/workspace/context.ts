@@ -1,6 +1,6 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
 import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } from '@alcove/api';
-import type { WsToastData } from '@alcove/ui';
+import type { WsMenuRow, WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
 import type { Tree } from './tree';
@@ -13,6 +13,12 @@ export type WorkspaceArea = 'pins' | 'tree';
  */
 export type WorkspacePlace = { kind: 'home' } | { kind: 'document'; id: string; block?: string | undefined; area?: WorkspaceArea | undefined } | { kind: 'trash' };
 
+/**
+ * What the name at the top of the list knows when someone opens it: the workspace it names, and what's there about it
+ * (`about`: its people, renaming it). `close` puts the menu away.
+ */
+export interface SpaceHead { workspaceId: string; name: string; people: number | null; about: WsMenuRow[]; close: () => void }
+
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
   /** The first rows under This call: the live pages. */
@@ -21,8 +27,11 @@ export interface WorkspaceCall {
   documents: readonly string[];
   /** Brings a document to the call, or takes it off. It's in every document's menu. */
   onBring: (id: string, brought: boolean) => void;
-  /** What the name at the top of the list opens. Left out, it says which workspace this is, and who chooses it (`chooser`). */
-  picker?: ReactNode;
+  /**
+   * What the name at the top of the list opens, for whoever chooses the call's workspace: their workspaces, and a new one.
+   * Left out, it says which workspace this is, and who chooses it (`chooser`).
+   */
+  picker?: ((head: SpaceHead) => ReactNode) | undefined;
   /** The first name of who chooses the workspace, for anyone else. */
   chooser?: string | undefined;
   /** Just the document, at the far right of a document's head. */

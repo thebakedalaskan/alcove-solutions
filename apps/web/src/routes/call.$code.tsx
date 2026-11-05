@@ -48,6 +48,7 @@ import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
 import { volumeTag } from '~/features/call/VolumeControl';
+import { WorkspaceKnock } from '~/features/call/WorkspaceAsks';
 import { WorkspacePanel, useWorkspacePanel } from '~/features/call/WorkspacePanel';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
@@ -181,8 +182,8 @@ function InCall({ session }: { session: CallSession }) {
   const spaceKey = JSON.stringify(told.workspace);
   const space = useMemo(() => told.workspace, [spaceKey]);
   const work = useWorkspacePanel(session, space, layout);
-  // What's been brought to this call, as the list will show it.
-  const broughtHere = space.documents.filter((d) => space.id === null || d.workspaceId === space.id).length;
+  // What's been brought to this call, as the list will show it: what's in the workspace the call uses now.
+  const broughtHere = space.documents.filter((d) => d.workspaceId === space.id).length;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -1475,6 +1476,7 @@ function InCall({ session }: { session: CallSession }) {
           </CallDock>
         </footer>
       </div>
+      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act} />
       <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
         others={sharing.map((s) => s.presenter)} trouble={shareTrouble} read={sharingInRoom ? undefined : screenRead(state.capture.screen.mode)} onShare={share} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
