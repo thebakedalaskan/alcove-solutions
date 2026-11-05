@@ -1470,7 +1470,7 @@ function InCall({ session }: { session: CallSession }) {
               </motion.div>
             </>
           )} />
-        {player && <PlayTogetherBar player={player} />}
+        <PlayTogetherBar player={player} />
         <footer ref={dockBar} className="ic-dockbar">
           <CallDock tucked={zenOn}>
             <DockSplit className="keep">

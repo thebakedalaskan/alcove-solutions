@@ -13,41 +13,32 @@ import { position } from '~/lib/time';
 import { SharedVideo, type PlayHere, type PlayView } from './sharedVideo';
 import { videoSourceFor } from './videoSource';
 
-/**
- * The call's player, from when the call's screen opens until `on` is false: the call has ended, or you've left it. Null when
- * there's nowhere to read a video from (videoSource.ts), and then nothing is offered to play.
- */
-export function useSharedVideo(session: CallSession, on: boolean, failed: (e: unknown) => void): SharedVideo | null {
+/** The call's player, from when the call's screen opens until `on` is false: the call has ended, or you've left it. */
+export function useSharedVideo(session: CallSession, on: boolean, failed: (e: unknown) => void): SharedVideo {
   const said = useRef(failed);
   said.current = failed;
   const [player] = useState(() => {
     const pass = session.ticket.pass;
-    const source = videoSourceFor?.(pass);
-    if (!source) return null;
     const about = (v: { workspaceId: string; documentId: string; mediaId: string }) =>
       import('~/features/workspace/videoAbout').then(({ videoAbout }) => videoAbout(v.workspaceId, v.documentId, v.mediaId, pass));
-    return new SharedVideo(session, source, about, (e) => said.current(e));
+    return new SharedVideo(session, videoSourceFor(pass), about, (e) => said.current(e));
   });
-  useEffect(() => (player && on ? player.start() : undefined), [player, on]);
+  useEffect(() => (on ? player.start() : undefined), [player, on]);
   return player;
 }
-
-const NO_STORE = { subscribe: () => () => undefined, getSnapshot: () => '' };
 
 /**
  * What the workspace needs to know about what's playing: which document and file, and whether you may start another. It
  * changes only when one of those does, not every second.
  */
-export function useWorkspacePlaying(player: SharedVideo | null, start: (documentId: string, mediaId: string) => void): WorkspacePlaying | undefined {
-  const store = player ?? NO_STORE;
-  const key = useSyncExternalStore(store.subscribe, () => {
-    const p = player?.getSnapshot().play;
+export function useWorkspacePlaying(player: SharedVideo, start: (documentId: string, mediaId: string) => void): WorkspacePlaying {
+  const key = useSyncExternalStore(player.subscribe, () => {
+    const p = player.getSnapshot().play;
     return p ? `${p.documentId} ${p.mediaId} ${p.mine ? 'mine' : 'theirs'}` : '';
   });
   const begin = useRef(start);
   begin.current = start;
-  return useMemo((): WorkspacePlaying | undefined => {
-    if (!player) return undefined;
+  return useMemo((): WorkspacePlaying => {
     const [documentId, media, whose] = key.split(' ');
     const now = documentId && media ? { documentId, video: { media, clock: player.clock, show: player.show } } : null;
     /* Nobody starts a video over someone else's: the call would refuse it. Your own gives way to the next you start. */

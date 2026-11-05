@@ -466,8 +466,6 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-All of this works on screen except **Play for everyone**, which isn't offered until videos can go in documents.
-
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
    opens it, the call settles which one it uses: the one the call was scheduled with, else the organizer's most recently

@@ -1091,10 +1091,11 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   - *Here alone*: a browser that refuses to play (autoplay) shows Play here, and anything pressed tries again; the system's
     pause key holds it for you with Back to everyone; loading, a file this browser can't play and one that didn't arrive each
     say so. Your volume is the player's own. None of it reaches anyone else.
-  - *What it plays* comes from `videoSource.ts`: the workspace's media, read by range. Media isn't in this build yet, so the
-    source is empty, nothing is offered to play, and Play for everyone doesn't show. When it lands, the source is
-    `api.workspaces.media.url`, asked again once if the file stops arriving after it had played (a URL is good for 12 hours);
-    a URL is never logged. The bar's title is the video block's, read from its document (`videoAbout.ts`).
+  - *What it plays* comes from `videoSource.ts`: the workspace's media, read by range through the document the video is in,
+    with the call's pass (`api.workspaces.media.url`), asked again once if the file stops arriving after it had played (a URL
+    is good for 12 hours); a URL is never logged. The bar's title is the video block's, read from its document
+    (`videoAbout.ts`). Play for everyone is on every video block in a call, beside a smaller Play here that plays it in this
+    browser alone, which stops when it plays for everyone (`editor/blocks/Media.tsx`).
 - **The next agenda.** When a call in a series opens Workspace, it looks for an agenda to make, until it has one or finds
   there's none to make: the call before
   it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,

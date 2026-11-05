@@ -220,8 +220,8 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   workspace: CallWorkspace;
   /** What's presented where you are, and what you're doing about it (presenting.ts). */
   presenting: WorkspacePresenting;
-  /** What's playing for everyone, when there's somewhere to read a video from (PlayTogether.tsx). */
-  playing: WorkspacePlaying | undefined;
+  /** What's playing for everyone (PlayTogether.tsx). */
+  playing: WorkspacePlaying;
   /** Who's in the call, and who's invited if you can know, for `@`. */
   people: readonly CallPerson[];
   invited: readonly Person[];

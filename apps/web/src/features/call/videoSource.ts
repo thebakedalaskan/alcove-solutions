@@ -1,9 +1,9 @@
 /*
  * Where a video in the call's workspace is read from, for the one player everyone in the call hears (sharedVideo.ts): the
- * workspace's media, which a player reads by range. Media isn't in this build yet, so there's nothing to read a video from,
- * and Play for everyone isn't offered. When it lands, this is
- * `(pass) => (video) => api.workspaces.media.url(video.workspaceId, video.documentId, video.mediaId, { pass })`.
+ * workspace's media, through the document the video is in, which a player reads by range. The URL is asked for with the
+ * call's pass, which reaches what the seat was given and nothing more, and afresh each time the player needs one.
  */
+import { api } from '~/lib/api';
 import type { VideoSource } from './sharedVideo';
 
-export const videoSourceFor: ((pass: string) => VideoSource) | null = null;
+export const videoSourceFor = (pass: string): VideoSource => (video) => api.workspaces.media.url(video.workspaceId, video.documentId, video.mediaId, { pass });

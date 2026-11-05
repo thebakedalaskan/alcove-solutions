@@ -110,8 +110,8 @@ export interface WorkspaceCall {
   onFinding: () => void;
   /** Presenting in this call. */
   presenting: WorkspacePresenting;
-  /** Playing a video for everyone. Left out when there's nowhere to read a video from, and then Play for everyone isn't offered. */
-  playing?: WorkspacePlaying | undefined;
+  /** Playing a video for everyone. */
+  playing: WorkspacePlaying;
 }
 
 export interface WorkspaceProps {
