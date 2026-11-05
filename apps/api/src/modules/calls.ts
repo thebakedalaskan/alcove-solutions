@@ -37,6 +37,7 @@ import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
+import { endSeat, endSeats } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
 
@@ -335,7 +336,16 @@ function roomsIn(s: Stored): (id: string) => { id: string; name: string } | unde
  * in every call. Never stored. Anyone but the organizer joining from a second browser is a new person, with a new seat.
  */
 const seatKey = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call-seat:${callId}`);
-const seatOf = (key: Uint8Array, j: Joined) => b64u(mac(key, utf8(j.role === 'host' ? 'organizer' : j.person))).slice(0, 22);
+const seatFor = (key: Uint8Array, role: Joined['role'], person: string) => b64u(mac(key, utf8(role === 'host' ? 'organizer' : person))).slice(0, 22);
+const seatOf = (key: Uint8Array, j: Joined) => seatFor(key, j.role, j.person);
+/** The seat of whoever a pass belongs to. */
+export const seatOfViewer = (v: Viewer): string => seatFor(seatKey(v.organizer, v.pass.callId), v.pass.role, v.pass.person);
+/** Everyone in the call now, by seat, with the name they're in it under. */
+export async function seated(v: Viewer): Promise<Map<string, string>> {
+  const { state: s } = await load(v.organizer, v.organizer.pool, v.pass.callId);
+  const key = seatKey(v.organizer, v.pass.callId);
+  return new Map(s.people.filter((j) => j.status === 'in').map((j) => [seatOf(key, j), j.name]));
+}
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
@@ -847,6 +857,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     let s = settled;
     let locked = row.locked;
     let gone: string[] = [];
+    /** The seat of whoever this takes out of the call. */
+    let removed: string | null = null;
     const ctx = { callId, action: a.type };
     // Under the call's row lock: a stand-in's last click as the organizer takes the call back is refused, not carried out.
     if (!anyone(a)) stillHosting(v, state, ctx);
@@ -923,6 +935,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (a.identity === s.host) throw new ValidationError('You can’t remove yourself. Leave the call instead.', { context: { callId } });
       if (!target) throw new ValidationError('That person isn’t in this call.', { context: { callId } });
       gone = s.people.filter((j) => j.person === target.person && j.status === 'in').map((j) => j.identity);
+      removed = seatOf(seatKey(o, callId), target);
       s = sharesEnd({
         ...s, removed: [...s.removed, target.person],
         people: s.people.map((j) => (j.person === target.person ? { ...j, status: j.status === 'in' ? 'left' : j.status === 'waiting' ? 'denied' : j.status, left: j.status === 'in' ? Date.now() : j.left } : j))
@@ -961,9 +974,11 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved,
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
-    return { room: row.room_name, gone, moved };
-  }).then(async ({ room, gone, moved }) => {
+    return { room: row.room_name, gone, moved, removed };
+  }).then(async ({ room, gone, moved, removed }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
+    // What the call gave them in a workspace goes with them.
+    if (removed) await endSeat(o, callId, removed);
     await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
   });
   return view(v, o.pool, callId);
@@ -1374,7 +1389,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
   if (b.added.length && room) {
     // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
-    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit };
+    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub };
     const ownerId = o.ownerId;
     setTimeout(() => { arrivals(d, ownerId, callId, room, Date.now()).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId, err })); }, ARRIVAL_MS + 1_000).unref();
   }
@@ -1807,6 +1822,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   await queueDelete(o, audio);
   // Nor do moves to other devices. Deleted once the call has ended, so a move coming in at that moment never waits on it.
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
+  // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
+  await endSeats(o, [callId]);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));

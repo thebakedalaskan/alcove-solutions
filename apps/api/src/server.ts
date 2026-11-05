@@ -3,6 +3,7 @@ import { createApp } from './app';
 import { loadConfig } from './config';
 import { createPool } from './db';
 import { inference } from './inference';
+import { createHub } from './live/hub';
 import { configureLogging, flushLogs, log } from './log';
 import { maintain } from './maintenance';
 import { createLiveKit } from './livekit';
@@ -21,7 +22,7 @@ const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
+const deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS }) };
 const stopping = new AbortController();
 const app = createApp(deps, stopping.signal);
 
@@ -41,7 +42,8 @@ function shutdown(signal: string) {
   slog.info('shutting down', { signal });
   clearInterval(timer);
   stopping.abort();
-  server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); });
+  // Live streams go first: they'd hold the server open, and their browsers open them again on another instance.
+  void deps.hub.close().finally(() => server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); }));
   setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

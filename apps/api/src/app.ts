@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -20,6 +20,7 @@ import { CALL_PASS_HEADER, readPass } from './callPass';
 import { attest } from './tee';
 import { openOwner } from './owners';
 import { ABSOLUTE_MS, cookieName, findSession } from './sessions';
+import * as access from './modules/workspaceAccess';
 import * as account from './modules/account';
 import * as additions from './modules/additions';
 import * as audioMod from './modules/audio';
@@ -37,6 +38,7 @@ import * as recordings from './modules/recordings';
 import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
+import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
 
@@ -62,7 +64,8 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  * notes, and what they add to the shared notes, keep none either: deleting them must leave no copy of
  * what they said for a day. Deleting the account deletes its receipts, so there is no account left to
  * keep one under. Answering a ring sets an explicit state too, and a receipt's clear method and time
- * would say an account was rung for a day after the ring had gone.
+ * would say an account was rung for a day after the ring had gone. What a guest can reach of a workspace
+ * comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
@@ -181,6 +184,14 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
    * of them are in it is sealed in them), and a pre-join or a call's panel reads it about once a minute.
    */
   const carryLimiter = rateLimit(60, 60_000);
+  /** Changes to a workspace's tree and people, per person: a title follows what's typed, about three times a second at most. */
+  const treeLimiter = rateLimit(600, 60_000);
+  /** Opening a workspace's stream, per person. Browsers open it again by themselves, every few minutes when all's well. */
+  const liveLimiter = rateLimit(120, 60_000);
+  /** Making workspaces, per account: each is an owner with keys of its own. */
+  const workspaceLimiter = rateLimit(20, 60_000);
+  /** Reading your list of workspaces, per account: it opens every one you're in. */
+  const workspaceListLimiter = rateLimit(120, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -582,6 +593,44 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json({ left: true });
   });
 
+  /*
+   * A workspace, by session or call pass: a guest in a call has only their pass, so what they may reach comes before the
+   * sign-in below. All of it reads, or sets something a retry can't do twice, so none of it keeps a receipt: a title
+   * changes as it's typed, and a guest has no account to keep one under. modules/workspaceAccess.ts decides everything from here on.
+   */
+  const credentials = (c: Context): access.Credentials => ({ session: getCookie(c, COOKIE), pass: c.req.header(CALL_PASS_HEADER) });
+  const readerOf = async (c: Context): Promise<access.Reader> => {
+    const r = await access.readerOf(d, credentials(c));
+    addLogContext({ ...(r.account ? { ownerId: r.account.owner.ownerId } : {}), ...(r.seat ? { callId: r.seat.callId } : {}) });
+    return r;
+  };
+  app.use('/v1/workspaces', capped(32 * 1024));
+  app.use('/v1/workspaces/:id/items/*', capped(32 * 1024));
+  app.use('/v1/workspaces/:id/people/*', capped(32 * 1024));
+  app.get('/v1/workspaces/:id', async (c) => c.json(await workspaces.tree(d, await readerOf(c), c.req.param('id'))));
+  /* Down: every line a reader may see of the tree, until they can't open it any more. Nothing is written before that's known. */
+  app.get('/v1/workspaces/:id/live', async (c) => {
+    const r = await readerOf(c);
+    liveLimiter(access.limitKey(r), 'workspace stream');
+    const run = await workspaces.open(d, credentials(c), r, c.req.param('id'));
+    c.header('content-type', 'application/x-ndjson');
+    c.header('cache-control', 'no-store');
+    return stream(c, run);
+  });
+  app.get('/v1/workspaces/:id/items/:item', async (c) => c.json(await workspaces.item(d, await readerOf(c), c.req.param('id'), c.req.param('item'))));
+  app.patch('/v1/workspaces/:id/items/:item', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await workspaces.renameItem(d, r, c.req.param('id'), c.req.param('item'), (await body(c, ItemRenameSchema)).name);
+    return c.json({ renamed: true });
+  });
+  app.post('/v1/workspaces/:id/items/:item/restore', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await workspaces.restoreItem(d, r, c.req.param('id'), c.req.param('item'));
+    return c.json({ restored: true });
+  });
+
   /* ---------- everything below needs a signed-in owner ---------- */
   app.use('/v1/*', async (c, next) => {
     const cookie = getCookie(c, COOKIE);
@@ -825,6 +874,49 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const { question, timeZone } = await body(c, SeriesAskBodySchema);
     return c.json(await series.ask(c.get('owner'), c.req.param('id'), question, timeZone));
   });
+
+  /*
+   * workspaces: what's for people in one. Every answer here is an ID or a yes, so the receipts they keep (a retry mustn't
+   * make a second workspace, item or copy) hold nothing readable, however long they outlive what they were about.
+   */
+  const member = async (c: Context<Env>, pass?: string | undefined): Promise<access.Reader> => {
+    const o = c.get('owner');
+    treeLimiter(o.ownerId, 'workspace change');
+    return access.accountReader(o, pass);
+  };
+  const ws = (c: Context<Env>) => c.req.param('id') ?? '';
+  const itemOf = (c: Context<Env>) => c.req.param('item') ?? '';
+  app.get('/v1/workspaces', async (c) => {
+    workspaceListLimiter(c.get('owner').ownerId, 'workspace list');
+    return c.json(await workspaces.list(await access.accountReader(c.get('owner'))));
+  });
+  app.post('/v1/workspaces', async (c) => {
+    workspaceLimiter(c.get('owner').ownerId, 'workspace');
+    return c.json(await workspaces.create(c.get('owner'), (await body(c, WorkspaceInputSchema)).name));
+  });
+  app.patch('/v1/workspaces/:id', async (c) => { await workspaces.rename(d, await member(c), ws(c), (await body(c, WorkspaceInputSchema)).name); return c.json({ renamed: true }); });
+  app.delete('/v1/workspaces/:id', async (c) => { await workspaces.remove(d, await member(c), ws(c)); return c.json({ deleted: true }); });
+  app.get('/v1/workspaces/:id/people', async (c) => c.json(await workspaces.people(d, await access.accountReader(c.get('owner')), ws(c))));
+  app.post('/v1/workspaces/:id/people', async (c) => {
+    const { email, role } = await body(c, WorkspacePersonInputSchema);
+    return c.json(await workspaces.addPerson(d, await member(c), ws(c), email, role));
+  });
+  app.patch('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.setRole(d, await member(c), ws(c), c.req.param('person'), (await body(c, WorkspaceRolePatchSchema)).role); return c.json({ changed: true }); });
+  app.delete('/v1/workspaces/:id/people/:person', async (c) => { await workspaces.removePerson(d, await member(c), ws(c), c.req.param('person')); return c.json({ removed: true }); });
+  app.post('/v1/workspaces/:id/items', async (c) => c.json(await workspaces.createItem(d, await member(c), ws(c), await body(c, ItemInputSchema))));
+  app.post('/v1/workspaces/:id/items/:item/move', async (c) => { await workspaces.moveItem(d, await member(c), ws(c), itemOf(c), await body(c, ItemPlaceSchema)); return c.json({ moved: true }); });
+  app.post('/v1/workspaces/:id/items/:item/duplicate', async (c) => c.json(await workspaces.duplicateItem(d, await member(c), ws(c), itemOf(c))));
+  app.post('/v1/workspaces/:id/items/:item/trash', async (c) => { await workspaces.trashItem(d, await member(c), ws(c), itemOf(c)); return c.json({ trashed: true }); });
+  app.delete('/v1/workspaces/:id/items/:item', async (c) => { await workspaces.deleteItem(d, await member(c), ws(c), itemOf(c)); return c.json({ deleted: true }); });
+  app.get('/v1/workspaces/:id/items/:item/share', async (c) => c.json(await workspaces.shareList(d, await access.accountReader(c.get('owner')), ws(c), itemOf(c))));
+  app.post('/v1/workspaces/:id/items/:item/share', async (c) => {
+    const { to, role } = await body(c, ShareBodySchema);
+    // A seat is someone in the sharer's own call, so sharing with one comes with their pass.
+    await workspaces.share(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), to, role);
+    return c.json({ shared: true });
+  });
+  app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c), ws(c), itemOf(c), c.req.param('entry')); return c.json({ removed: true }); });
+  app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted); return c.json({ changed: true }); });
 
   /* credits */
   app.get('/v1/credits', async (c) => c.json(await billing.balance(d, c.get('owner').ownerId)));
