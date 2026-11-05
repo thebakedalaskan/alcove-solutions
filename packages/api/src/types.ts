@@ -246,6 +246,8 @@ export const MeetingSchema = z.object({
   joinMuted: z.boolean(),
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
+  /** The workspace the call uses, for its organizer: null until there is one, and for everyone else, who find out in the call what they can open. */
+  workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
   rsvps: RsvpCountsSchema,
   /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
@@ -336,6 +338,8 @@ export const MeetingInputSchema = z.object({
   joinMuted: z.boolean().optional(),
   /** Documents brought to the call, by ID. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
+  /** The workspace the call uses, one the organizer can edit in. Null: the organizer's most recently used, when someone first opens it. */
+  workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
   repeat: RepeatInputSchema.optional(),
   /**
@@ -732,6 +736,15 @@ export const NoteAdditionSchema = z.object({
 });
 export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
+/**
+ * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
+ * from a note what they couldn't open. `by`: who changed it during the call.
+ */
+export const NoteWorkedOnSchema = z.object({
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema }))
+});
+export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
+
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
@@ -771,7 +784,9 @@ export const NoteSchema = NoteSummarySchema.extend({
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
   /** The series its call is in, when it's in one: see series.get. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** What was worked on in the call that you can open now. */
+  workedOn: z.array(NoteWorkedOnSchema).default([])
 });
 export type Note = z.infer<typeof NoteSchema>;
 
