@@ -1125,9 +1125,10 @@ opened it, and which boards it lets everyone into. What's done is `apps/api/src/
 - **Filling one from its template** is `fillBoard`, which does nothing yet: it waits for `@alcove/board`. A new board starts
   empty whichever template is asked for, and the template is stored nowhere.
 - **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing
-  one needs `edit` on it, and it opens from where it is, whichever workspace the call has moved to since. Anything else is the
-  same `404` in the same words, whatever it was: someone else's board, a document, or nothing at all. A workspace named
-  in the request isn't read. `GET /v1/live/calls/:id/boards/:document` (`boardCheck`) says what opening it would mean, for
+  one needs `edit` on it, and it opens from where it is, whichever workspace the call has moved to since. Someone who can only
+  read it gets `403`, and one in Trash is `409`. Anything else is the same `404` in the same words, whatever it was: someone else's
+  board, a document, or nothing at all. A workspace named in the request isn't read.
+  `GET /v1/live/calls/:id/boards/:document` (`boardCheck`) says what opening it would mean, for
   the menu to ask first: the first names of everyone in the call who can't open it, and whether the asker may let them in.
 - **Letting people in.** `letIn: true` needs the right to share that board, the workspace's rule, so nobody gets past it through
   a call. It's a policy on the call, not a list. Everyone here who can't open it gets a seat at `edit`, and whoever can keeps
