@@ -857,7 +857,7 @@ account from a demo one, whose name and address could be anyone's, nor a demo ac
 notes. It's filtered at delivery and on answering, never when ringing: the organizer sees only that nobody answered.
 
 **How many.** Streams are counted as they stand, not as they open, since each holds a request for minutes: an account
-holds at most 8 at once and a process 300, which leaves the rest of its 500 requests for calls. Past either limit,
+holds at most 8 at once and a process 300, out of the 1,000 requests an instance serves. Past either limit,
 someone with a stream gives up their oldest, likeliest a tab that went without the server hearing, so a tab coming back
 always gets in, and a tab still there opens another. Someone with none, on a full process, gets `503 unavailable`, and
 their browser tries again, more slowly each time.
