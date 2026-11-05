@@ -444,6 +444,38 @@ describe('host hand-off', () => {
     expect(note.rooms.map((r) => [r.name, r.transcript.map((l) => l.text)])).toEqual([['Design', ['Kofi hosts, and we carry on.']], ['Support', []]]);
   });
 
+  it('gives a stand-in nothing of a series’ earlier calls for hosting: what carries over goes by the notes they have', async () => {
+    const org = await account(unique('organizer'));
+    const { code: first } = await org.api.calls.startNow({ title: 'Board', notes: 'on' });
+    const earlier = await org.api.calls.join(first, { mic: true, cam: false });
+    await inGroup(earlier);
+    await earlier.transcribe(speech('We agreed to CANARY-STANDIN sell the barn.', 0, 0), earlier.ticket.identity);
+    await settle(earlier, (x) => x.transcript.length > 0, 'the line');
+    const noteId = (await earlier.leave())?.pendingNoteId ?? '';
+    await written(org.api, noteId);
+    const meeting = await org.api.meetings.get((await org.api.notes.get(noteId)).meetingId ?? '');
+    const priyaEmail = unique('priya');
+    const next = await org.api.meetings.scheduleNext(meeting.id, new Date(Date.parse(meeting.startsAt) + 7 * 86_400_000).toISOString());
+    await org.api.meetings.update(next.id, { guests: [priyaEmail] });
+
+    const host = await org.api.calls.join(next.code, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const priya = await account(priyaEmail);
+    const inPriya = await priya.api.calls.join(next.code, { mic: true, cam: false });
+    await joinRoom(inPriya);
+    expect((await org.api.calls.series(next.code))?.decisions.map((d) => d.text)).toEqual(['We agreed to CANARY-STANDIN sell the barn.']);
+    await drop(host, hostRoom);
+    await goneFor(host.ticket.callId, 2.1);
+    await upkeepAfter(HANDOFF_MS);
+    await settle(inPriya, (x) => x.isHost, 'Priya hosting');
+
+    const sent = h.near.prompts.length;
+    expect(await priya.api.calls.series(next.code)).toBeNull();
+    expect(code(await inPriya.askEarlier('What did we decide?', 'Europe/London').catch((e: unknown) => e))).toBe('not-found');
+    expect(h.near.prompts.length).toBe(sent);
+    await inPriya.leave();
+  });
+
   it('counts a stand-in whose connection dropped as gone from then when the organizer comes back', async () => {
     const { org, host, hostRoom, code: c, people: [priya, kofi] } = await hostedCall(['Priya', 'Kofi']);
     if (!priya || !kofi) throw new Error('Priya and Kofi expected');
