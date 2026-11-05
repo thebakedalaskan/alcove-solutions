@@ -261,12 +261,16 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
     return () => clearTimeout(timer);
   }, [status.closed, reopen]);
 
-  /* Back from being offline, and everything's in. */
-  const wasOffline = useRef(false);
+  /*
+   * Back from being offline, and everything's in: in the session that was offline. Not once what was written was refused or
+   * the session ended, so a document opened again after Discard doesn't say its edits saved.
+   */
+  const wasOffline = useRef<DocSession | null>(null);
   useEffect(() => {
-    if (offline) wasOffline.current = true;
-    else if (wasOffline.current && status.status === 'saved') { wasOffline.current = false; ws.say(wsToast.backOnline()); }
-  }, [offline, status.status, ws.say]);
+    if (offline) wasOffline.current = session;
+    else if (wasOffline.current !== session || status.status === 'failed' || status.closed !== null) wasOffline.current = null;
+    else if (status.status === 'saved') { wasOffline.current = null; ws.say(wsToast.backOnline()); }
+  }, [offline, session, status.status, status.closed, ws.say]);
 
   if (gone) {
     return (
