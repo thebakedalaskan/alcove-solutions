@@ -41,6 +41,7 @@ export interface ObjectPatch {
 }
 
 export type TableAxis = 'rows' | 'cols';
+type UndoStep = Y.UndoManager['undoStack'][number];
 
 const PATCHABLE = new Set(['at', 'c', 'size', 's', 'role', 'hint', 'sub', 'style', 'from', 'to', 'tool', 'media', 'item', 'caption', 'parent']);
 const WORDS = new Set(['t', 'title', 'hint', 'sub', 'caption']);
@@ -534,12 +535,76 @@ export function tableCell(doc: Y.Doc, id: string, row: string, col: string, orig
   });
 }
 
+const holderOf = (item: Y.Item): Y.Item | null => (item.parent instanceof Y.AbstractType ? item.parent._item : null);
+const typeIn = (item: Y.Item): unknown => (item.content instanceof Y.ContentType ? item.content.type : null);
+
+/** The object or thread an item belongs to, then the way down to the item. */
+function pathTo(item: Y.Item): Y.Item[] {
+  const path = [item];
+  for (let up = holderOf(item); up; up = holderOf(up)) path.unshift(up);
+  return path;
+}
+
+/** Whether anything live in an item, however deep, was written by another browser. A loop: a peer can nest as deep as it likes. */
+function othersIn(item: Y.Item, me: number): boolean {
+  const waiting = [item];
+  for (let next = waiting.pop(); next; next = waiting.pop()) {
+    if (next.deleted) continue;
+    if (next.id.client !== me) return true;
+    if (next.content instanceof Y.ContentType) {
+      const { type } = next.content;
+      waiting.push(...type._map.values());
+      for (let child = type._start; child; child = child.right) waiting.push(child);
+    }
+  }
+  return false;
+}
+
+/** Whether a row or column about to go has someone else's words in its cells. Undoing a resize leaves the line, so that's fine. */
+function lineHoldsOthers(entry: Y.Item, lines: Y.Array<unknown>, axis: TableAxis, cells: Y.Map<unknown>, me: number): boolean {
+  const ids = lineIds(lines);
+  return entry.content.getContent().some((value: unknown) => {
+    const line = TableLineSchema.safeParse(value);
+    if (!line.success || ids.filter((id) => id === line.data.id).length > 1) return false;
+    return [...cells.keys()].some((key) => {
+      const cell = cells.get(key);
+      return inLine(key, axis, line.data.id) && cell instanceof Y.Text && cell._item !== null && othersIn(cell._item, me);
+    });
+  });
+}
+
+/**
+ * Whether undoing would take someone else's work with it, which it never should. Yjs asks about an item after it has
+ * popped the step, so the step isn't there to look at. But an object is only going if this undo added it, in one of
+ * `steps`, and that step has left the stack. Your own edits inside something shared still undo: only its removal is
+ * refused, and whole, because Yjs deletes children first and half a sticky wouldn't parse. A copy someone else's undo
+ * restored is theirs, so it's refused too.
+ */
+function takesOthersWork(undo: Y.UndoManager, steps: readonly UndoStep[], item: Y.Item): boolean {
+  const me = undo.doc.clientID;
+  if (item.id.client !== me) return true;
+  const [top = item, field, entry] = pathTo(item);
+  const addedIn = (list: readonly UndoStep[]): boolean => list.some((step) => Y.isDeleted(step.insertions, top.id));
+  if (addedIn(steps) && !addedIn(undo.undoing ? undo.undoStack : undo.redoStack) && othersIn(top, me)) return true;
+  const table = mapOf(typeIn(top));
+  if (!field || item !== entry || table?.get('k') !== 'table') return false;
+  if (field.parentSub === 'cells') return othersIn(item, me);
+  const lines = typeIn(field), cells = mapOf(table.get('cells')), axis = field.parentSub;
+  return (axis === 'rows' || axis === 'cols') && lines instanceof Y.Array && cells !== null && lineHoldsOthers(item, lines, axis, cells, me);
+}
+
 /**
  * Undo for one browser: both roots, with only its origin tracked, which is exactly "undo only ever takes back your
- * own changes". Changes within half a second of each other are one step, so a drag or a burst of typing undoes
- * together. Call `stopCapturing` between gestures that shouldn't.
+ * own changes", and a filter so that taking back an add can't take what someone else put inside it. Changes within half
+ * a second of each other are one step, so a drag or a burst of typing undoes together. Call `stopCapturing` between
+ * gestures that shouldn't.
  */
 export function makeUndo(doc: Y.Doc, origin: unknown): Y.UndoManager {
   const roots = [rootMap(doc, BOARD_OBJECTS), rootMap(doc, BOARD_COMMENTS)].flatMap((root) => (root ? [root] : []));
-  return new Y.UndoManager(roots, { doc, trackedOrigins: new Set([origin]) });
+  const steps: UndoStep[] = [];
+  const undo: Y.UndoManager = new Y.UndoManager(roots, { doc, trackedOrigins: new Set([origin]), deleteFilter: (item) => !takesOthersWork(undo, steps, item) });
+  undo.on('stack-item-added', ({ stackItem }) => {
+    steps.push(stackItem);
+  });
+  return undo;
 }
