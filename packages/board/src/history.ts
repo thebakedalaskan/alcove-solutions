@@ -69,6 +69,9 @@ interface Entry {
   others: number;
 }
 
+/** How many steps each stack keeps. A step holds whole copies, so this is what bounds a long session. The oldest goes. */
+const LIMIT = 100;
+
 const wordsOf = (value: unknown): string => (typeof value === 'string' ? value : '');
 const idOf = (value: unknown): unknown => recordOf(value)['id'];
 
@@ -208,6 +211,11 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   let pending: Entry[] = [];
   const latest = new Map<string, Entry>();
   let open = false;
+  /** The transaction walking a step, until it has finished: it can be someone else's, and then nothing shows until theirs ends. */
+  let walking: Y.Transaction | null = null;
+  /** Where what a press does lands, and whether it has. */
+  let landing = redos;
+  let landed = false;
 
   const tell = (): void => {
     for (const listener of listeners) listener();
@@ -236,16 +244,21 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     return step;
   };
 
+  const keep = (stack: Entry[][], step: Entry[]): void => {
+    stack.push(step);
+    if (stack.length > LIMIT) stack.shift();
+  };
+
   const close = (): void => {
     const step = take();
     if (!step.length) return;
-    undos.push(step);
+    keep(undos, step);
     redos.length = 0;
   };
 
   const stops = roots.map((at) => {
     const seen = (events: Y.YEvent<Y.AbstractType<unknown>>[], transaction: Y.Transaction): void => {
-      const mine = transaction.origin === origin || transaction.origin === applying;
+      const mine = transaction.origin === origin || transaction === walking;
       for (const id of touched(events)) {
         const before = at.copies.get(id) ?? null, after = copyOf(at.map.get(id));
         if (after) at.copies.set(id, after);
@@ -269,8 +282,13 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   });
 
   const finished = (transaction: Y.Transaction): void => {
-    if (transaction.origin !== origin) return;
-    if (!open) close();
+    if (transaction === walking) {
+      walking = null;
+      const step = take();
+      if (step.length) keep(landing, step);
+      landed = step.length > 0;
+    } else if (transaction.origin !== origin) return;
+    else if (!open) close();
     tell();
   };
   doc.on('afterTransaction', finished);
@@ -300,7 +318,8 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   /** Walks a step back, last to first. What was added waits for the end, when what it depends on has settled. Returns the changes to something that has gone, which can't apply until it's back. */
   const walk = (step: readonly Entry[]): Entry[] => {
     const waiting: Entry[] = [];
-    doc.transact(() => {
+    doc.transact((transaction) => {
+      walking = transaction;
       const added: Entry[] = [];
       for (const entry of [...step].reverse()) {
         const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyOf(m);
@@ -322,24 +341,20 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   /**
    * Walks back steps until one changes something. What that did goes on the other stack, and what it didn't do is forgotten,
    * except a change to something that has gone: that stays where it is, and a press moves past it, as it can apply when it's back.
+   * Inside someone else's transaction nothing shows until theirs ends, so one step is all a press can take.
    */
   const travel = (from: Entry[][], to: Entry[][]): StepResult => {
-    if (open) return { ok: true, changed: false };
-    const landed = (): boolean => {
-      const step = take();
-      if (step.length) to.push(step);
-      return step.length > 0;
-    };
+    if (open || walking) return { ok: true, changed: false };
+    landing = to;
+    landed = false;
     try {
-      for (let at = from.length - 1; at >= 0; at -= 1) {
+      for (let at = from.length - 1; at >= 0 && !landed && !walking; at -= 1) {
         const [step] = from.splice(at, 1);
         const waiting = step ? walk(step) : [];
         if (waiting.length) from.splice(at, 0, waiting);
-        if (landed()) return { ok: true, changed: true };
       }
-      return { ok: true, changed: false };
+      return { ok: true, changed: landed || walking !== null };
     } catch (error) {
-      landed();
       return { ok: false, error };
     } finally {
       tell();
@@ -372,6 +387,9 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
       doc.off('afterTransaction', finished);
       for (const stop of stops) stop();
       listeners.clear();
+      undos.length = 0;
+      redos.length = 0;
+      take();
     }
   };
 }
