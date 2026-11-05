@@ -224,9 +224,12 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
   };
   doc.on('afterTransaction', finished);
 
+  /** Whether anyone else has written to this since. Once they have, what this browser added isn't only its own, and what it removed has been brought back, even if it has gone again. */
+  const untouched = ({ root: at, id, others }: Entry): boolean => (at.others.get(id) ?? 0) === others;
+
   /** Something this browser added goes only if it's exactly as left, nobody else has written to it, and nothing staying behind names it. */
   const takeAway = (added: readonly Entry[]): void => {
-    const asLeft = added.filter(({ root: at, id, after, others }) => (at.others.get(id) ?? 0) === others && same(copyOf(at.map.get(id)), after));
+    const asLeft = added.filter((entry) => untouched(entry) && same(copyOf(entry.root.map.get(entry.id)), entry.after));
     const going = new Set(asLeft.map(({ id }) => id));
     for (let settled = !going.size; !settled;) {
       settled = true;
@@ -250,7 +253,7 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
       for (const entry of [...step].reverse()) {
         const { root: at, id, before, after } = entry, m = mapOf(at.map.get(id)), now = copyOf(m);
         if (!before) added.push(entry);
-        else if (!after && !now) at.make(at.map, id, before);
+        else if (!after && !now && untouched(entry)) at.make(at.map, id, before);
         else if (after && m && now) fieldsBack(m, before, after, now);
       }
       takeAway(added);
