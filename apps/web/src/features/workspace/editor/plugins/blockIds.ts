@@ -2,9 +2,9 @@
  * Every block has a stable ID, because links, follow, comments and "you land on the line" all point at one. A split,
  * a paste or a duplicate can leave two blocks with one ID: the block that was there keeps it, the new one gets its own.
  */
+import { newBlockId } from '@alcove/api/retire';
 import { Plugin, PluginKey, type Transaction } from 'prosemirror-state';
 import { ySyncPluginKey } from 'y-prosemirror';
-import { newBlockId } from '../names';
 import { blockIdOf, hasBlockId } from '../schema';
 
 /** A change that came from the shared document, which this browser doesn't get to correct. */

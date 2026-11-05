@@ -50,6 +50,9 @@ importers:
       jose:
         specifier: ^6.2.15
         version: 6.2.15
+      lib0:
+        specifier: ^0.2.119
+        version: 0.2.119
       livekit-server-sdk:
         specifier: ^2.19.2
         version: 2.19.2
@@ -62,6 +65,9 @@ importers:
       pino-pretty:
         specifier: ^13.2.0
         version: 13.2.0
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -102,6 +108,9 @@ importers:
       vitest:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+      y-protocols:
+        specifier: ^1.0.7
+        version: 1.0.7(yjs@13.6.33)
 
   apps/web:
     dependencies:
@@ -205,6 +214,12 @@ importers:
 
   packages/api:
     dependencies:
+      y-protocols:
+        specifier: ^1.0.7
+        version: 1.0.7(yjs@13.6.33)
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -221,6 +236,12 @@ importers:
       ts-mls:
         specifier: 1.6.4
         version: 1.6.4(@noble/ciphers@2.1.1)
+      y-protocols:
+        specifier: ^1.0.7
+        version: 1.0.7(yjs@13.6.33)
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
       zod:
         specifier: ^4.6.7
         version: 4.6.7

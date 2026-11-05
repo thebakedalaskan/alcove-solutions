@@ -104,19 +104,35 @@ export const CreatedSchema = z.object({ id: IDSchema });
 
 /* ---------- live ---------- */
 
-/** Someone in the workspace now. The document and block are null, with `elsewhere`, when you can't open what they have open. */
+/**
+ * Someone in the workspace now, on one connection. The document and block are null, with `elsewhere`, when you can't open
+ * what they have open. `person.id` is what they're known by in this workspace, the same on every connection and in
+ * `user.id` on their caret; `person.email` is empty unless you're both in the workspace. `callIdentity` is their connection
+ * to a call you're both in, so a tile can show where they are.
+ */
 export const WorkspaceHereSchema = z.object({
-  person: PersonSchema, connection: z.string(), callIdentity: z.string().nullable(), document: IDSchema.nullable(), block: z.string().nullable(), typing: z.boolean(), elsewhere: z.boolean()
+  person: PersonSchema, connection: z.string(), callIdentity: z.string().nullable(), document: IDSchema.nullable(), block: z.string().nullable(), typing: z.boolean(), elsewhere: z.boolean(),
+  /** It's you, here or in another tab or on another device. */
+  isMe: z.boolean()
 });
 export type WorkspaceHere = z.infer<typeof WorkspaceHereSchema>;
 
+/** Where a browser says it is: the document open in it and the block its caret is in, or nothing open. */
+export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).nullable(), typing: z.boolean() });
+export type WorkspaceWhere = z.infer<typeof WorkspaceWhereSchema>;
+/** Presence, from a browser: where this connection is now, or that it's gone. It says so again every few seconds, or it's taken for gone. */
+export const PresenceBodySchema = z.union([z.object({ connection: ItemIdSchema, gone: z.literal(true) }), WorkspaceWhereSchema.extend({ connection: ItemIdSchema })]);
+export type PresenceBody = z.infer<typeof PresenceBodySchema>;
+
 /**
- * One line of a workspace's stream. `tree` comes first and then whenever it changes for you, whole. `access`: your role
- * changed, just before the `tree` that shows it. `ping`: it's still there. `closed`: you can't open this workspace any
- * more, so it ends and stays ended. A stream that just ends is to be opened again.
+ * One line of a workspace's stream. `tree` comes first and then whenever it changes for you, whole. `presence`: everyone
+ * here that you can know of, whole, whenever that changes. `access`: your role changed, just before the `tree` that shows
+ * it. `ping`: it's still there. `closed`: you can't open this workspace any more, so it ends and stays ended. A stream that
+ * just ends is to be opened again.
  */
 export const WorkspaceLiveEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tree'), tree: WorkspaceTreeSchema }),
+  z.object({ type: z.literal('presence'), here: z.array(WorkspaceHereSchema) }),
   z.object({ type: z.literal('access'), role: WorkspaceRoleSchema.nullable() }),
   z.object({ type: z.literal('ping') }),
   z.object({ type: z.literal('closed') })
@@ -132,6 +148,8 @@ export interface WorkspaceView {
 }
 /** A workspace, kept up to date. Read it with useLive(). */
 export interface WorkspaceLive extends LiveStore<WorkspaceView> {
+  /** Says where this browser is. It's here with nothing open from the moment the stream opens, and for as long as it stays open. */
+  present(where: WorkspaceWhere): void;
   close(): void;
 }
 /**

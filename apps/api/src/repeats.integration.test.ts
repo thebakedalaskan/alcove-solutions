@@ -219,7 +219,8 @@ describe('scheduling calls that repeat', () => {
       return Date.UTC(n('year'), n('month') - 1, n('day'), n('hour'), n('minute')) - Math.floor(t / 60_000) * 60_000;
     };
     // The next time the clocks change there, at least three weeks off, so there's room for three calls before it.
-    let change = Date.now() + 21 * DAY;
+    // Measured from noon UTC, so what counts as the day the clocks change doesn't depend on when the test runs.
+    let change = Math.floor((Date.now() + 21 * DAY) / DAY) * DAY + 12 * HOUR;
     while (offsetAt(change) === offsetAt(change + DAY)) change += DAY;
     const clockChange = change;
     // 20:30 where the organizer is, every week: in UTC that's the next morning, at a different hour after the change.

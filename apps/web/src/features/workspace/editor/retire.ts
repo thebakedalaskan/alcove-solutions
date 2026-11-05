@@ -1,77 +1,9 @@
 /*
- * How a block leaves the page. Yjs can't move an element, only delete it and insert a copy, and whatever lands in a deleted
- * element is lost: on every browser and on the server, with nothing left to find it by. So a block's element is never
- * deleted. It's retired: everything in it that this browser can see goes, and the element stays where it was, with `gone`
- * saying which block took its words ('' if none did) and a new `id`, because its old one may live on in that block.
- *
- * A retired element with nothing in it isn't on the page. Whatever reaches it afterwards, from someone who hadn't heard
- * yet, however long they were offline and whether or not they reloaded, is in a live element. Yjs keeps it like any other
- * words on every browser, and the block is back on the page holding just those. Nothing has to notice or put anything
- * back for that to be true. The words someone deleted stay deleted, because only what they could see is ever touched.
- *
- * Only Yjs here, so this works on a document that isn't open.
+ * What's left to do around a retired block in a browser that's writing in it (`@alcove/api/retire` says what retiring is):
+ * the words its author was typing as it left, and what ⌘Z remembers of them.
  */
+import { empty, retire, seenIn, type Seen } from '@alcove/api/retire';
 import * as Y from 'yjs';
-
-/** The tags in a line's text, which go with the words. Anything else inside a block is what it's made of, or from a newer Alcove, and stays: someone may be typing in it. */
-const TAGS: ReadonlySet<string> = new Set(['hardBreak', 'mention', 'dateChip', 'docref']);
-/** What a block is made of, whose attributes it needs to stay what it is. */
-const STRUCTURE: ReadonlySet<string> = new Set(['toggleSummary', 'toggleBody', 'table_row', 'table_cell', 'table_header']);
-
-/** What a retired block keeps, so words that reach it later look as they did when they were written. No file names, and nothing else anyone said. */
-export const KEPT_ATTRS: ReadonlySet<string> = new Set(['id', 'gone', 'kind', 'level', 'indent', 'done', 'icon', 'open']);
-
-/** How far this browser had got when it took a copy of a block, by writer: a Yjs state vector. */
-export type Seen = ReadonlyMap<number, number>;
-
-export const seenIn = (doc: Y.Doc): Seen => Y.decodeStateVector(Y.encodeStateVector(doc));
-
-const isSeen = (item: Y.Item, seen: Seen | undefined): boolean => seen === undefined || item.id.clock < (seen.get(item.id.client) ?? 0);
-
-/** Deletes the words in a text that a copy holds. Whatever was typed since is left alone. */
-function emptyText(text: Y.XmlText, seen: Seen | undefined): void {
-  if (seen === undefined) { text.delete(0, text.length); return; }
-  const runs: { at: number; length: number }[] = [];
-  let index = 0;
-  for (let item = text._start; item !== null; item = item.right) {
-    if (item.deleted || !item.countable) continue;
-    const length = Math.min(item.length, Math.max(0, (seen.get(item.id.client) ?? 0) - item.id.clock));
-    if (length > 0) runs.push({ at: index, length });
-    index += item.length;
-  }
-  for (const run of runs.reverse()) text.delete(run.at, run.length);
-}
-
-function emptyAttrs(element: Y.XmlElement, seen: Seen | undefined): void {
-  for (const key of Object.keys(element.getAttributes())) {
-    const item = element._map.get(key);
-    if (!KEPT_ATTRS.has(key) && item && isSeen(item, seen)) element.removeAttribute(key);
-  }
-}
-
-/** Takes out everything in `type` that's been seen. The texts stay: someone may be typing in them. */
-function empty(type: Y.XmlElement, seen: Seen | undefined): void {
-  const children = type.toArray();
-  for (let i = children.length - 1; i >= 0; i -= 1) {
-    const child = children[i];
-    if (child instanceof Y.XmlText) emptyText(child, seen);
-    else if (child instanceof Y.XmlElement && !TAGS.has(child.nodeName)) {
-      empty(child, seen);
-      if (!STRUCTURE.has(child.nodeName)) emptyAttrs(child, seen);
-    } else if (child?._item && isSeen(child._item, seen)) type.delete(i, 1);
-  }
-}
-
-/**
- * Retires a block. `seen` limits it to what a copy of the block holds, for a copy taken a while ago: without it, everything
- * this browser can see goes.
- */
-export function retire(element: Y.XmlElement, id: string, target: string, seen?: Seen): void {
-  empty(element, seen);
-  emptyAttrs(element, seen);
-  element.setAttribute('id', id);
-  element.setAttribute('gone', target);
-}
 
 /** The words in a retired block that its author typed where the block used to be, and where they stood among the words that left. */
 export interface StrayWords { element: Y.XmlElement; target: string; words: string; before: string; after: string; seen: Seen }
@@ -126,30 +58,6 @@ const saying = (element: Y.XmlElement): string => {
 export function settleCopies(copy: Y.XmlElement, keeper: Y.XmlElement, id: string, fresh: string): void {
   if (saying(copy) === saying(keeper)) retire(copy, fresh, id);
   else copy.setAttribute('id', fresh);
-}
-
-/** Nothing in it that anyone said. */
-export function holdsNothing(type: Y.XmlFragment): boolean {
-  if (type instanceof Y.XmlElement && Object.keys(type.getAttributes()).some((key) => key.startsWith('cap:'))) return false;
-  return type.toArray().every((child) => (child instanceof Y.XmlText ? child.length === 0 : !(child instanceof Y.XmlElement) || holdsNothing(child)));
-}
-
-/** What holds text directly. */
-const LINES: ReadonlySet<string> = new Set(['line', 'code', 'toggleSummary', 'toggleBody']);
-
-/**
- * What undo may delete. Undoing a block's arrival takes out what's in it and leaves the element, for the same reason nothing
- * else deletes one: someone may be writing in it. It goes the way of any retired block (`retirePlugin`). Only the parts
- * of a table can go, because undoing an added row has to take the row away, and only if nobody's words are in them.
- */
-export function undoMayDelete(item: Y.Item, fragment: Y.XmlFragment): boolean {
-  if (!(item.content instanceof Y.ContentType)) return true;
-  const type: unknown = item.content.type;
-  const parent: unknown = item.parent;
-  if (type instanceof Y.XmlText) return !(parent instanceof Y.XmlElement && LINES.has(parent.nodeName)) && type.length === 0;
-  if (!(type instanceof Y.XmlElement) || TAGS.has(type.nodeName)) return true;
-  if (parent === fragment || LINES.has(type.nodeName)) return false;
-  return holdsNothing(type);
 }
 
 /** A stretch of text, by who wrote it, and how far into its block it starts. */

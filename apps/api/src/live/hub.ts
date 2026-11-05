@@ -24,8 +24,8 @@ const FIRST_WAIT_MS = 250;
 const LONGEST_WAIT_MS = 5_000;
 /** How long letting go of a connection can take: one that's gone quiet never says goodbye. */
 const LET_GO_MS = 1_000;
-/** How often the hub checks its connection is alive, and how long that connection has to answer. */
-export interface HubTiming { checkMs: number; timeoutMs: number }
+/** How often the hub checks its connection is alive, how long that connection has to answer, and how many streams this instance holds at most, in all and from one address. */
+export interface HubSettings { checkMs: number; timeoutMs: number; maxStreams: number; maxPerAddress: number }
 const after = <T>(ms: number, value: T): { done: Promise<T>; cancel: () => void } => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return { done: new Promise<T>((resolve) => { timer = setTimeout(() => resolve(value), ms); }), cancel: () => clearTimeout(timer) };
@@ -46,7 +46,7 @@ export async function publish(db: Db, workspaceId: string, notice: string): Prom
 export type HubEvent = { kind: 'notice'; notice: string } | { kind: 'missed' } | { kind: 'closing' };
 export type HubListener = (e: HubEvent) => void;
 
-/** What a live stream is of. Each kind has its own limit, and one person's streams of each are counted here on each instance. */
+/** What a live stream is of. Each kind has its own limit for one person, counted here on each instance. All of them together have one for everyone. */
 export type StreamKind = 'workspace' | 'document';
 const STREAM_LIMITS: Record<StreamKind, number> = { workspace: 8, document: 8 };
 
@@ -59,10 +59,12 @@ export interface Hub {
   /**
    * Takes one of `who`'s places for a stream of this kind, or refuses with `unavailable`. Refused rather than closing their
    * oldest: a stream at work is never taken from them, and refusing costs nothing, which matters to anyone opening streams to
-   * run an instance out of memory. A browser refused like this tries again on its own, and gets in when one closes. The
-   * function it returns gives the place back, once, however often it's called.
+   * run an instance out of memory. Everyone's streams count towards one limit as well, because each holds a request for as
+   * long as it's open, and calls need the requests left over, and so do all those from one `address`, because accounts are
+   * free, and a few of them mustn't take the lot. A browser refused like this tries again on its own, and gets in when one
+   * closes. The function it returns gives the place back, once, however often it's called.
    */
-  admit(kind: StreamKind, who: string): () => void;
+  admit(kind: StreamKind, who: string, address: string): () => void;
   /** Tells every subscriber it's `closing`, then lets go of the connection. Nobody can subscribe after. */
   close(): Promise<void>;
 }
@@ -70,6 +72,8 @@ export interface Hub {
 class ListeningHub implements Hub {
   private readonly listeners = new Map<string, Set<HubListener>>();
   private readonly streams = new Map<string, number>();
+  private readonly addresses = new Map<string, number>();
+  private streaming = 0;
   private client: pg.Client | null = null;
   /** The connection being made, which everyone subscribing meanwhile waits for. */
   private connecting: Promise<void> | null = null;
@@ -78,7 +82,7 @@ class ListeningHub implements Hub {
   private wait = FIRST_WAIT_MS;
   private closed = false;
 
-  constructor(private readonly databaseUrl: string, private readonly timing: HubTiming) {}
+  constructor(private readonly databaseUrl: string, private readonly settings: HubSettings) {}
 
   async subscribe(workspaceId: string, listener: HubListener): Promise<() => void> {
     await this.listening();
@@ -92,18 +96,27 @@ class ListeningHub implements Hub {
     };
   }
 
-  admit(kind: StreamKind, who: string): () => void {
+  admit(kind: StreamKind, who: string, address: string): () => void {
     const key = `${kind}:${who}`;
     const open = this.streams.get(key) ?? 0;
+    const fromThere = this.addresses.get(address) ?? 0;
     if (open >= STREAM_LIMITS[kind]) throw new UnavailableError('You have this open in too many windows. Close one and it will carry on here.', { context: { kind, open } });
+    if (fromThere >= this.settings.maxPerAddress) throw new UnavailableError('Too much is open from this network. Close something and it will carry on here.', { context: { kind, fromThere } });
+    if (this.streaming >= this.settings.maxStreams) throw new UnavailableError('Alcove is very busy right now. This will carry on by itself in a moment.', { context: { kind, streaming: this.streaming } });
     this.streams.set(key, open + 1);
+    this.addresses.set(address, fromThere + 1);
+    this.streaming++;
     let holding = true;
     return () => {
       if (!holding) return;
       holding = false;
+      this.streaming--;
       const left = (this.streams.get(key) ?? 1) - 1;
       if (left) this.streams.set(key, left);
       else this.streams.delete(key);
+      const there = (this.addresses.get(address) ?? 1) - 1;
+      if (there) this.addresses.set(address, there);
+      else this.addresses.delete(address);
     };
   }
 
@@ -160,11 +173,11 @@ class ListeningHub implements Hub {
       if (checking) return;
       checking = true;
       void this.check(client).finally(() => { checking = false; });
-    }, this.timing.checkMs);
+    }, this.settings.checkMs);
     this.health.unref();
   }
   private async check(client: pg.Client): Promise<void> {
-    const limit = after(this.timing.timeoutMs, 'quiet');
+    const limit = after(this.settings.timeoutMs, 'quiet');
     const answer = await Promise.race([client.query('SELECT 1').then(() => 'alive', () => 'failed'), limit.done]);
     limit.cancel();
     if (answer !== 'alive') this.lost(client, new UnavailableError('The hub’s connection stopped answering.', { context: { answer } }));
@@ -217,4 +230,4 @@ class ListeningHub implements Hub {
 }
 
 /** This instance's hub. It connects when someone first subscribes, so an instance nobody streams from holds no connection. */
-export const createHub = (databaseUrl: string, timing: HubTiming): Hub => new ListeningHub(databaseUrl, timing);
+export const createHub = (databaseUrl: string, settings: HubSettings): Hub => new ListeningHub(databaseUrl, settings);

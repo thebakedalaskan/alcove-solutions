@@ -372,7 +372,7 @@ const busy = new Map<string, boolean>();
  * only the services from `from`: a request's keys are never kept for later work.
  */
 export function kick(from: Deps, ownerId: string): void {
-  const d: Deps = { cfg: from.cfg, pool: from.pool, objects: from.objects, livekit: from.livekit, hub: from.hub };
+  const d: Deps = { cfg: from.cfg, pool: from.pool, objects: from.objects, livekit: from.livekit, hub: from.hub, docs: from.docs };
   if (busy.has(ownerId)) { busy.set(ownerId, true); return; }
   busy.set(ownerId, false);
   void (async () => {

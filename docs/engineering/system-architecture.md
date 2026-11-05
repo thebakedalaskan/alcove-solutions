@@ -46,13 +46,13 @@ flowchart TB
 | `apps/web` | The app: welcome and sign-in, a new account's creation screen and the tour of Home (`src/features/onboarding`; whether the tour was seen is kept in this browser per account, `alcove.tour.<ownerId>`, parsed with `HomeTourSchema`); the frame around its pages (`src/features/shell`: the side panel, the palette that finds notes and asks them, and on phones a top bar and a tab bar); browser notifications while a tab is open (`src/features/shell/notify.ts`, mounted at the root for whoever is signed in, so they carry on in a call: made from the calls, notes and inbox the app loads, nothing pushed or sent; one tab per browser reads and shows them, the holder of the Web Lock `alcove.notify`, through the service worker, which handles a click and hands the window where to go; what's been shown is kept for a day in localStorage per account by kind, IDs and time, `alcove.notified.<ownerId>`, parsed with `NotifiedStoredSchema`); Home (Alcove's calls beside Google Calendar events), starting and scheduling calls and a call's card (`src/features/calls`), pre-join, the full-screen call with its live transcript (your view of it is kept in this browser: preferences per account, `alcove.callView.<ownerId>` with `CallViewPrefsSchema`, and the arrangement of the call you're in per tab until you leave, `alcove.callLayout.<callId>` with `CallLayoutSchema`), notes, the room recorder, Team (who at your company uses Alcove, with invitations that open in your own email, and your groups, kept in your preferences: `src/features/team`), and Settings (`src/features/settings`; device choices are this browser's, as pre-join's are). Talks only to `@alcove/api` through `src/lib/api.ts`. |
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
-| `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions. |
-| `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape, reading and writing it, connector routes, templates, its text, and landing rooms' boards. Pure TypeScript on plain `Y.Doc`s. Nothing imports it yet. |
+| `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions, documents being worked on. |
+| `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape, reading and writing it, connector routes, templates, its text, and landing rooms' boards. Pure TypeScript on plain `Y.Doc`s. So far only `apps/web/src/features/board` imports it, and no route shows that yet. |
 | `packages/ui` | The design system. |
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
 The API is one application with modules (account, people, meetings, calendar, calls, moves, rings, recordings, audio,
-transcripts, notes, drafting, writer, series, repeats, billing, workspaces, workspaceAccess), not separate services. Modules share one database pool and
+transcripts, notes, drafting, writer, series, repeats, billing, workspaces, workspaceAccess, workspaceDocuments, documentFirewall, documentWork, documentOps, documentText), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly. A transaction
 reads on its own connection, never through the pool: ten at once each waiting for a second one would wait for ever. Nothing
 waits for a connection longer than 10 seconds, and comes back as an error if it would.
@@ -66,9 +66,13 @@ Four things run outside requests, in the same process: maintenance, at start and
 notes worker, which starts when a recording stops ([Notes and inference](notes-and-inference.md)); while anyone
 has a stream of rings open, a ticker that reads what's ringing once a second ([Calls and recordings › Ringing](calls-and-recordings.md#ringing)); and the hub
 (`apps/api/src/live/hub.ts`), one `LISTEN` connection through which API instances tell each other what changed in a
-workspace ([Data and storage › Live traffic](data-and-storage.md#live-traffic)). A workspace is an owner of its own, and
+workspace ([Data and storage › Live traffic](data-and-storage.md#live-traffic)). What hears it on each instance is a room,
+one for each workspace and one for each document people have open (`live/room.ts`, `modules/workspaceDocuments.ts`), which
+reads each change once for its streams (`live/stream.ts`). Documents are opened in worker threads (`live/docPool.ts`), the only
+place that runs Yjs on the server, so what's in one can't stop the event loop. A workspace is an owner of its own, and
 `modules/workspaceAccess.ts` alone decides who can open what in one
-([Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)).
+([Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)). What a document holds is a Yjs document,
+which browsers edit together through the API ([Data and storage › Documents](data-and-storage.md#documents)).
 
 ## Request lifecycle
 
@@ -117,7 +121,12 @@ workspace ([Data and storage › Live traffic](data-and-storage.md#live-traffic)
 | Rings | A ring lasts 45 seconds, and 20 people can be rung at once. Each browser tab holds one stream, which delivers within about a second, repeats itself every 20 seconds and ends after 210 to 240 seconds. An account holds at most 8, a process 300. |
 | Workspace | A name of up to 120 characters; at most 5,000 items in its tree, each named in up to 200, and folders 32 deep; 1,000 people; 30 days in Trash; 100 made per account, 20 a minute; the list read 120 times a minute |
 | Sharing a document | Up to 500 people in all, 100 at a time |
+| Workspace and document streams | 500 open together on each instance, for everyone, and 64 from one client address |
 | Workspace stream | 8 open per person on each instance; a ping every 25 seconds; opened again after 280 seconds; 120 opened a minute per person; 600 changes a minute per person |
+| Document stream | 8 open per person on each instance; opened again after 280 seconds; 240 opened a minute per person; let go of when more than 256 updates or 1 MiB behind |
+| Document | An update of at most 4 MiB and 200,000 structs, 1,200 a minute and 64 MiB a minute per person; new content stops at 16 MiB or 500,000 items, anything but deletes at twice that; types nest at most 1,024 deep; compacts past 200 updates or 1 MiB; a version at most every 10 minutes of editing, the newest 200 and at most 64 MiB of them, 60 reads a minute per person and 8 at once on an instance |
+| Document workers | 2 on an instance, 20 seconds a job; 320 MiB for the one that takes big documents, 96 MiB for the others; a document that won't open in that stays closed for 5 minutes |
+| Carets and presence | A caret of at most 4 KiB, 1,800 a minute per person; presence 600 a minute per person, said every 10 seconds and forgotten after 30 |
 | API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. Rings go through Postgres, read by each instance's own ticker, and workspace streams hear of changes from other instances the same way. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one, taking 500 requests at once: an open tab holds one for its stream of rings, and a process holds at most 300 of those, 8 for any one account. |
 
 ## Local versus production

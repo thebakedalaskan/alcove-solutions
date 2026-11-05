@@ -5,26 +5,27 @@
  * this module does what access allows. What a document or board holds isn't here: to the tree they're rows of a kind.
  */
 import {
-  type DocumentRole, type DocumentShare, type ItemKind, type ItemPlace, type Person, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
+  type DocumentRole, type DocumentShare, type ItemKind, type ItemPlace, type Person, type PresenceBody, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLiveEvent, type WorkspacePerson,
   type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
-import type pg from 'pg';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, blindIndex, id128, openJson, sealJson, sha, toJson, utf8, type RecordHeader } from '../crypto';
-import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
-import { AuthError, ConflictError, invalid, notFound } from '../errors';
-import { publish, type Hub, type HubEvent } from '../live/hub';
+import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
+import { ConflictError, invalid, notFound } from '../errors';
+import { publish } from '../live/hub';
+import { announce, roomFor, type Room, type Snapshot } from '../live/room';
+import { LiveStream, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
-import { findSession } from '../sessions';
 import {
-  TREE_NOTICE, canOpen, grant, grantsFor, holdersOf, limitKey, openSharedPerson, openState, peopleIn, readerOf, requireEditable, requireItem, requireRole, requireSharing, roleOf, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
-  workspaceFor, workspaceKey, type Credentials, type Holders, type Maker, type Reader, type Standing, type StoredItem, type Who, type Workspace, type WorkspaceState
+  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
+  workspaceFor, workspaceKey, type Credentials, type Maker, type Reader, type Standing, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
 import { personOf, portraitFor } from './portraits';
+import { copyContent, kindOf, startContent } from './workspaceDocuments';
 
 const wlog = log.child({ component: 'workspaces' });
 
@@ -202,28 +203,6 @@ export async function list(reader: Reader): Promise<WorkspaceSummary[]> {
 
 /* ---------- changing ---------- */
 
-/** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
-async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {
-  const since = Object.values(w.state.items).flatMap((i) => (i.trashedAt ? [i.trashedAt] : [])).sort()[0] ?? null;
-  await exec(db, 'UPDATE workspaces SET state_ciphertext = $2, trash_since = $3, version = version + 1 WHERE owner_id = $1', [w.owner.ownerId, sealState(w.owner, w.workspaceId, w.state), since]);
-}
-/**
- * One change to a workspace: under its row lock, with this reader's access as it stands under that lock. `fn` puts what
- * it changes in `w.state`. Every stream looks again once the transaction commits.
- */
-function change<T>(d: Deps, reader: Reader, workspaceId: string, fn: (w: Workspace, c: pg.PoolClient) => T | Promise<T>): Promise<T> {
-  return tx(d.pool, async (c) => {
-    const w = await workspaceFor(d, reader, workspaceId, c, 'change');
-    const before = w.state;
-    const out = await fn(w, c);
-    // A change to who has what moves the version on as a change to the tree does: it's how a stream knows it's behind.
-    if (w.state !== before) await saveState(w, c);
-    else await exec(c, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [w.owner.ownerId]);
-    await publish(c, workspaceId, TREE_NOTICE);
-    return out;
-  });
-}
-
 const addDocuments = async (w: Workspace, db: Db, ids: string[]): Promise<void> => {
   if (ids.length) await exec(db, 'INSERT INTO documents (owner_id, document_id) SELECT $1, unnest($2::text[])', [w.owner.ownerId, ids]);
 };
@@ -365,6 +344,7 @@ export async function createItem(d: Deps, reader: Reader, workspaceId: string, i
       kind: input.kind, name: input.name, parent, pos: positionIn(w.state, parent, input.after), by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null
     });
     if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
+    if (input.kind === 'document') await startContent(w, c, [id]);
     await noteAuthor(w, c, makerOf(reader).email);
     wlog.info('item created', { workspaceId, itemId: id, kind: input.kind });
     return { id };
@@ -390,16 +370,17 @@ export async function moveItem(d: Deps, reader: Reader, workspaceId: string, ite
     w.state = withItem(w.state, itemId, { ...it, parent, pos: positionIn(w.state, parent, to.after, itemId) });
   });
 }
+interface Copied { from: string; id: string; item: StoredItem }
 /** A copy of `id`, and of everything `reader` can open in it, by a new person and shared with nobody. The copy of `id` comes first. */
-function copied(reader: Reader, w: Workspace, id: string, parent: string | null, pos: string, name: string): [string, StoredItem][] {
+function copied(reader: Reader, w: Workspace, id: string, parent: string | null, pos: string, name: string): Copied[] {
   const kids = childrenIn(w.state);
   const at = new Date().toISOString();
-  const out: [string, StoredItem][] = [];
+  const out: Copied[] = [];
   const stack = [{ from: id, copy: id128(), parent, pos, name }];
   for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
     const source = w.state.items[x.from];
     if (!source) continue;
-    out.push([x.copy, { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null }]);
+    out.push({ from: x.from, id: x.copy, item: { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null } });
     for (const child of kids.get(x.from) ?? []) {
       if (!child.item.trashedAt && roleOf(reader, w, child.id, child.item)) stack.push({ from: child.id, copy: id128(), parent: x.copy, pos: child.item.pos, name: child.item.name });
     }
@@ -407,20 +388,25 @@ function copied(reader: Reader, w: Workspace, id: string, parent: string | null,
   return out;
 }
 export async function duplicateItem(d: Deps, reader: Reader, workspaceId: string, itemId: string): Promise<{ id: string }> {
-  return change(d, reader, workspaceId, async (w, c) => {
+  const { place, id, content } = await change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'edit');
     const { item: it } = requireEditable(reader, w, itemId);
     requireDepth(w, it.parent, heightOf(w.state, itemId));
     const name = it.name ? `${it.name.slice(0, MAX_NAME - ' copy'.length)} copy` : '';
     const out = copied(reader, w, itemId, it.parent, positionIn(w.state, it.parent, itemId), name);
-    const id = out[0]?.[0] ?? '';
+    const id = out[0]?.id ?? '';
     requireRoom(w, out.length);
-    w.state = { ...w.state, items: { ...w.state.items, ...Object.fromEntries(out) } };
-    await addDocuments(w, c, out.filter(([, x]) => holdsContent(x.kind)).map(([x]) => x));
+    w.state = { ...w.state, items: { ...w.state.items, ...Object.fromEntries(out.map((x) => [x.id, x.item])) } };
+    const content = out.filter((x) => holdsContent(x.item.kind));
+    await addDocuments(w, c, content.map((x) => x.id));
+    await startContent(w, c, content.filter((x) => x.item.kind === 'document').map((x) => x.id));
     await noteAuthor(w, c, makerOf(reader).email);
     wlog.info('item duplicated', { workspaceId, itemId, copy: id, items: out.length });
-    return { id };
+    return { place: w, id, content };
   });
+  // What they hold comes after the lock, so nobody's typing waits on it. They start from the seed, like anything new.
+  for (const x of content) await copyContent(place, x.from, x.id, kindOf(x.item), x.item.name);
+  return { id };
 }
 /**
  * What's inside `id` that `reader` couldn't send to Trash or delete by itself comes out to `to` before anything happens to
@@ -762,70 +748,39 @@ export async function moveAddress(d: Deps, db: Db, ownerId: string, from: Uint8A
 
 /* ---------- live ---------- */
 
-/** What one change comes to, read once for the streams that are behind it: null once the workspace is gone. */
-type Snapshot = (Holders & { workspaceId: string; version: number; state: WorkspaceState; people: number }) | null;
 const shortHash = (text: string): string => b64u(sha(utf8(text)));
-const sameness = (who: Who): string => who.principals.map(b64u).join();
+const digestOf = (here: WorkspaceHere[]): string => shortHash(JSON.stringify(here));
+const NOBODY_HERE = digestOf([]);
 
 /**
  * One browser's stream of a workspace. It holds no keys and no tree: what it last sent is a hash, because a copy for every
  * stream, at a few thousand items, is what ran an instance out of memory. Only who it's for, what to show them next, and
  * its place among this person's streams.
  */
-class TreeStream {
-  private next: Snapshot | undefined;
-  private wake: (() => void) | undefined;
-  private over = false;
+class TreeStream extends LiveStream<WorkspaceLiveEvent> {
   private first: WorkspaceTree | undefined;
   private shown: string;
   private role: WorkspaceRole | null;
-  /** How far this stream has been shown. -1: it's behind whatever there is. */
-  version: number;
+  private standing: Standing;
+  /** Who's here changed since it was last worked out for this reader, and a hash of what they were last told of it. */
+  private moved = true;
+  private shownHere = NOBODY_HERE;
 
-  constructor(private readonly d: Deps, private readonly room: Room, private readonly credentials: Credentials, private who: Who, first: WorkspaceTree, version: number, private readonly release: () => void) {
+  constructor(d: Deps, room: Room, credentials: Credentials, who: Who, first: WorkspaceTree, standing: Standing, version: number, release: () => void, private readonly callId: string | null) {
+    super(d, room, credentials, who, version, release, { workspaceId: room.workspaceId });
     this.first = first;
     this.shown = shortHash(JSON.stringify(first));
     this.role = first.role;
-    this.version = version;
+    this.standing = standing;
   }
-  get principals(): Uint8Array[] { return this.who.principals; }
-  /** Something changed: only the latest matters, so a slow browser skips to it. */
-  offer(s: Snapshot): void {
-    this.next = s;
-    this.version = s?.version ?? -1;
-    this.wake?.();
-  }
-  end(): void { this.over = true; this.wake?.(); }
+  override heard(): void { this.moved = true; this.poke(); }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      const done = () => { clearTimeout(timer); this.wake = undefined; resolve(); };
-      const timer = setTimeout(done, ms);
-      this.wake = done;
-    });
-  }
-  /**
-   * Writes one line. A browser that can't take it within a ping has gone, whatever its connection says: one that went
-   * just as its stream opened is never read from at all, and would otherwise hold this stream for good.
-   */
-  private async write(out: StreamingApi, e: WorkspaceLiveEvent): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), this.d.cfg.LIVE_PING_MS); });
-    const wrote = await Promise.race([out.write(`${JSON.stringify(e)}\n`), late]);
-    clearTimeout(timer);
-    if (wrote !== 'late') return;
-    this.end();
-    out.abort();
-  }
   /** What this reader sees of a snapshot. False once they can't open the workspace any more. */
-  private async show(s: Snapshot, line: (e: WorkspaceLiveEvent) => Promise<unknown>): Promise<boolean> {
+  private async show(s: Snapshot, line: Line<WorkspaceLiveEvent>): Promise<boolean> {
     if (!s) return false;
     const standing = standingIn(s, this.who);
-    // They may only look gone: a provider's new address moves what they have to another hash, which needs reading again.
-    if (!canOpen(standing)) {
-      const before = sameness(this.who);
-      return (await this.lookAgain()) && sameness(this.who) !== before;
-    }
+    if (!canOpen(standing)) return this.someoneNew();
+    this.standing = standing;
     if (standing.role !== this.role) {
       this.role = standing.role;
       await line({ type: 'access', role: standing.role });
@@ -839,142 +794,25 @@ class TreeStream {
     }
     return true;
   }
-  /** Who this is now, in full. If it's someone new, the stream is behind. False when nobody's there any more. */
-  private async lookAgain(): Promise<boolean> {
-    try {
-      const reader = await readerOf(this.d, this.credentials);
-      const before = sameness(this.who);
-      this.who = { email: reader.email, principals: reader.principals };
-      if (sameness(this.who) !== before) {
-        this.version = -1;
-        void this.room.read();
-      }
-      return true;
-    } catch (e) {
-      if (e instanceof AuthError) return false;
-      throw e;
-    }
+  protected async begin(line: Line<WorkspaceLiveEvent>): Promise<void> {
+    const first = this.first;
+    this.first = undefined;
+    if (first) await line({ type: 'tree', tree: first });
   }
-  /**
-   * Each ping, on the clock: is this still someone? Sessions end, passes run out, calls finish, and none of that is a
-   * workspace's notice to give. A session is one indexed read. A pass takes the call's state, and only people in a call have one.
-   */
-  private async stillThere(): Promise<boolean> {
-    try {
-      return this.credentials.pass === undefined ? (await findSession(this.d, this.credentials.session)) !== undefined : await this.lookAgain();
-    } catch (e) {
-      wlog.warn('stream’s reader not checked', { workspaceId: this.room.workspaceId, err: e });
-      return true;
-    }
+  protected async step(line: Line<WorkspaceLiveEvent>): Promise<Step> {
+    const s = this.nextSnapshot();
+    if (s !== undefined) return (await this.show(s, line)) ? 'wrote' : 'lost';
+    if (!this.moved) return 'idle';
+    this.moved = false;
+    const here = this.room.seenBy({ who: this.who, callId: this.callId, standing: this.standing });
+    const digest = digestOf(here);
+    if (digest === this.shownHere) return 'idle';
+    this.shownHere = digest;
+    await line({ type: 'presence', here });
+    return 'wrote';
   }
-
-  async run(out: StreamingApi): Promise<void> {
-    const t0 = Date.now();
-    const line = (e: WorkspaceLiveEvent) => this.write(out, e);
-    const { LIVE_PING_MS: pingMs, LIVE_STREAM_MS: streamMs } = this.d.cfg;
-    const letGo = t0 + streamMs;
-    let why: 'closed' | 'ended' | 'time' = 'ended';
-    out.onAbort(() => this.end());
-    wlog.debug('stream opened', { workspaceId: this.room.workspaceId });
-    try {
-      const first = this.first;
-      this.first = undefined;
-      if (first) await line({ type: 'tree', tree: first });
-      let ping = t0 + pingMs;
-      // The clock comes first, so a busy workspace can't keep a stream from noticing its session ended or its time is up.
-      while (!this.over) {
-        const now = Date.now();
-        if (now >= letGo) { why = 'time'; break; }
-        if (now >= ping) {
-          ping = now + pingMs;
-          if (!(await this.stillThere())) { why = 'closed'; break; }
-          await line({ type: 'ping' });
-          continue;
-        }
-        const s = this.next;
-        if (s === undefined) { await this.sleep(Math.min(ping, letGo) - now); continue; }
-        this.next = undefined;
-        if (!(await this.show(s, line))) { why = 'closed'; break; }
-      }
-      if (why === 'closed') await line({ type: 'closed' });
-    } catch (e) {
-      wlog.warn('stream failed', { workspaceId: this.room.workspaceId, err: e });
-    } finally {
-      this.next = undefined;
-      this.room.leave(this);
-      this.release();
-      wlog.debug('stream ended', { workspaceId: this.room.workspaceId, why, ms: Date.now() - t0 });
-    }
-  }
-}
-
-/** Every stream of one workspace on this instance: one subscription, and one read of each change for the streams behind it. */
-class Room {
-  private readonly streams = new Set<TreeStream>();
-  private reading = false;
-  private again = false;
-  private off: (() => void) | undefined;
-  /** Done once the hub is listening for this workspace. */
-  readonly ready: Promise<void>;
-
-  constructor(private readonly d: Deps, readonly workspaceId: string, private readonly rooms: Map<string, Room>) {
-    this.ready = d.hub.subscribe(workspaceId, (e) => this.heard(e)).then((off) => {
-      if (this.streams.size) this.off = off;
-      else off();
-    });
-  }
-  private heard(e: HubEvent): void {
-    if (e.kind === 'closing') for (const s of this.streams) s.end();
-    else if (e.kind === 'missed' || e.notice === TREE_NOTICE) void this.read();
-  }
-  join(s: TreeStream): void { this.streams.add(s); }
-  leave(s: TreeStream): void {
-    this.streams.delete(s);
-    if (this.streams.size) return;
-    this.off?.();
-    if (this.rooms.get(this.workspaceId) === this) this.rooms.delete(this.workspaceId);
-  }
-  /**
-   * Reads what changed for the streams behind it, one read at a time, and one more if something changed meanwhile. Nothing
-   * behind: it stops at the version, so a stream joining, or a notice nobody missed, costs one small query.
-   */
-  async read(): Promise<void> {
-    if (this.reading) { this.again = true; return; }
-    this.reading = true;
-    try {
-      do {
-        this.again = false;
-        const version = (await maybeOne(this.d.pool, z.object({ version: bigintText }), 'SELECT version FROM workspaces WHERE workspace_id = $1', [this.workspaceId]))?.version ?? null;
-        const behind = [...this.streams].filter((s) => s.version !== version);
-        if (!behind.length) continue;
-        const s = await readSnapshot(this.d, this.workspaceId, behind.flatMap((x) => x.principals));
-        for (const stream of behind) stream.offer(s);
-      } while (this.again);
-    } catch (e) {
-      wlog.warn('workspace not read for its streams', { workspaceId: this.workspaceId, err: e });
-    } finally {
-      this.reading = false;
-    }
-  }
-}
-const WorkspaceRow = z.object({ owner_id: z.string(), version: bigintText, state_ciphertext: bytea });
-async function readSnapshot(d: Deps, workspaceId: string, principals: Uint8Array[]): Promise<Snapshot> {
-  const row = await maybeOne(d.pool, WorkspaceRow, 'SELECT state_ciphertext, owner_id, version FROM workspaces WHERE workspace_id = $1', [workspaceId]);
-  const owner = row && await findOwner(d, row.owner_id, undefined);
-  if (!row || !owner) return null;
-  return { ...await holdersOf(d.pool, row.owner_id, principals), workspaceId, version: row.version, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(d.pool, row.owner_id) };
-}
-
-/** Rooms are per hub, so two API instances in one process (as in tests) keep to their own. */
-const roomsByHub = new WeakMap<Hub, Map<string, Room>>();
-function roomFor(d: Deps, workspaceId: string): Room {
-  const rooms = roomsByHub.get(d.hub) ?? new Map<string, Room>();
-  roomsByHub.set(d.hub, rooms);
-  const here = rooms.get(workspaceId);
-  if (here) return here;
-  const room = new Room(d, workspaceId, rooms);
-  rooms.set(workspaceId, room);
-  return room;
+  protected ping(): WorkspaceLiveEvent { return { type: 'ping' }; }
+  protected closed(): WorkspaceLiveEvent { return { type: 'closed' }; }
 }
 
 /**
@@ -983,12 +821,12 @@ function roomFor(d: Deps, workspaceId: string): Room {
  * is refused here, before a line is written, as they would be for anything else. Runs until the reader loses it, the
  * browser goes, this instance shuts down, or it's time to let go.
  */
-export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string): Promise<(out: StreamingApi) => Promise<void>> {
-  const release = d.hub.admit('workspace', limitKey(reader));
+export async function open(d: Deps, credentials: Credentials, reader: Reader, workspaceId: string, address: string): Promise<(out: StreamingApi) => Promise<void>> {
+  const release = d.hub.admit('workspace', limitKey(reader), address);
   try {
     const known = await workspaceFor(d, reader, workspaceId);
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), known.version, release);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants }, known.version, release, reader.seat?.callId ?? null);
     room.join(stream);
     try {
       await room.ready;
@@ -1003,4 +841,10 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     release();
     throw e;
   }
+}
+
+/** Says where a browser is, for everyone who may know. Nobody can be placed in something they can't open. */
+export async function present(d: Deps, reader: Reader, workspaceId: string, body: PresenceBody): Promise<void> {
+  const w = await placeableIn(d, reader, workspaceId, 'gone' in body ? null : body.document);
+  await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing });
 }
