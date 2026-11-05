@@ -37,12 +37,11 @@
 /*
  * Search and you, at the top right of every page, outside the page itself so that going from page to page leaves
  * them and their focus alone. A page's title keeps clear of them (--top-room), and what a page's header offers sits
- * at the page's right edge beneath them, or beside them on a note's top line.
+ * at the page's right edge beneath them, or beside them on a note's top line (note.css).
  */
 .main-top { position: relative; z-index: 2; height: 0; max-width: 1480px; margin: 0 auto; }
 .top-acts { position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 12px; }
 .head > :first-child, .rec-head > :first-child { align-self: flex-start; max-width: calc(100% - var(--top-room)); }
-.note-top { padding-right: var(--top-room); }
 @media (min-width: 861px) {
   .head:has(> :nth-child(2)), .rec-head:has(> :nth-child(2)) { min-height: 92px; }
 }

@@ -95,17 +95,19 @@ export function NoteRow({ owner, isNew = false, children }: { owner?: AvatarPers
 }
 
 /**
- * One spoken line: the speaker's arch, their name, what they said and when. Without a person (the
- * same speaker again, or a room recording) the avatar column stays empty. `id` makes it a place a
- * link can go to.
+ * One spoken line of a note's transcript: when, the speaker's arch, their name, what they said, and `tools` for what can
+ * be done with it, which wait under the pointer. Without a person (the same speaker again, or a room recording) the arch's
+ * place stays empty. `id` makes it a place a link can go to.
  */
-export function TranscriptLine({ person, name, time, children, className, id }: {
-  person?: AvatarPerson | undefined; name?: ReactNode; time?: ReactNode; children: ReactNode; className?: string | undefined; id?: string | undefined;
+export function TranscriptLine({ time, person, name, tools, children, className, id }: {
+  time: ReactNode; person?: AvatarPerson | undefined; name?: ReactNode; tools?: ReactNode; children: ReactNode; className?: string | undefined; id?: string | undefined;
 }) {
   return (
-    <div id={id} className={cn('ac-line', className)}>
-      {person ? <Avatar person={person} size={26} /> : <span />}
-      <div className="min-w-0">{name && <b>{name}</b>}{children}{time}</div>
+    <div id={id} className={cn('nd-l', className)}>
+      {time}
+      <span className="nd-la">{person && <Avatar person={person} size={24} />}</span>
+      <div className="nd-lb">{name && <p className="nd-ln">{name}</p>}<p className="nd-lp">{children}</p></div>
+      <div className="nd-lx">{tools}</div>
     </div>
   );
 }

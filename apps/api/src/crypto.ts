@@ -147,6 +147,14 @@ export function openRecord(key: Uint8Array, expected: RecordHeader, record: Uint
     throw new IntegrityError('A record failed its integrity check.', { cause: err, context: { kind: expected.kind } });
   }
 }
+/**
+ * How many bytes a record opens to, from how long it is: everything around its ciphertext follows from the header, the
+ * nonce is always the same length and base64url isn't padded. So a recording's length is known without reading it.
+ */
+export function recordPlainBytes(header: RecordHeader, recordBytes: number): number {
+  const encoded = recordBytes - utf8(jcs({ header, nonce: b64u(new Uint8Array(24)), ciphertext: '' })).length;
+  return Math.floor(encoded / 4) * 3 + Math.max(0, (encoded % 4) - 1) - 16;
+}
 export const sealJson = (key: Uint8Array, header: RecordHeader, value: Json): Uint8Array => sealRecord(key, header, utf8(jcs(value)));
 export function openJson<S extends z.ZodType>(key: Uint8Array, header: RecordHeader, record: Uint8Array, schema: S): z.infer<S> {
   return schema.parse(JSON.parse(fromUtf8(openRecord(key, header, record))));

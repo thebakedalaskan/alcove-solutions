@@ -104,7 +104,7 @@ const retryNow = async (ownerId: string) => {
   await maintain(h.deps);
 };
 /** The note's audio, as a browser asks for it. */
-const audioStatus = async (who: Account, noteId: string, segment: number) => (await who.fetch(who.api.notes.audioUrl(noteId, segment))).status;
+const audioStatus = async (who: Account, noteId: string, segment: number) => (await who.fetch(who.api.notes.audioUrl(noteId, segment, 1))).status;
 /** A server with no notes service: on it, a stopped recording's job waits, as in any deployment before NEAR AI is connected. */
 async function leaveOn(baseUrl: string, org: Account, call: CallSession): Promise<string> {
   const res = await org.fetch(`${baseUrl}/v1/live/calls/${call.ticket.callId}/leave`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify({ end: true }) });

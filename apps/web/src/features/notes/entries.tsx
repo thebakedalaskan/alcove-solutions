@@ -4,7 +4,7 @@
  * each time they read the note. Anything that goes into the shared notes goes because someone typed it here and sent it.
  */
 import { firstName, type Change, type Dispute, type NoteEvidence, type NoteEvidenceFlag, type NoteEvidenceMoment, type NoteReader, type RecipientRole, type ScreenRef, type TranscriptLine } from '@alcove/api';
-import { Button, Icon, IconButton, Popover, cn } from '@alcove/ui';
+import { Button, Icon, Popover, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -66,19 +66,6 @@ export function ChangeList({ changes, me }: { changes: Change[]; me: string | un
   );
 }
 
-/** Who changed something and when, for anyone who wants the whole story. Nothing to show until someone has. */
-export function History({ changes, me, what }: { changes: Change[]; me: string | undefined; what: string }) {
-  const [open, setOpen] = useState(false);
-  if (!changes.length) return null;
-  return (
-    <Popover open={open} onOpenChange={setOpen} align="start" label={`History of this ${what}`} className="ent-pop"
-      anchor={<IconButton icon="history" label={`History of this ${what}`} size={15} className="ent-icon" />}>
-      <div className="ac-pop-h">History</div>
-      <ChangeList changes={changes} me={me} />
-    </Popover>
-  );
-}
-
 const FLAGS: Record<NoteEvidenceFlag, string> = {
   missing: 'Nothing said backs this',
   conflict: 'Someone said otherwise',
@@ -130,17 +117,19 @@ function Moment({ m, me, moment, shown }: { m: NoteEvidenceMoment; me: string | 
   );
 }
 
-/**
- * What was said or shown that an entry rests on, one press away, for checking before you agree. `moment` draws the time
- * of a moment: playing it where the note is open, or a link into the note from anywhere else.
- */
+/** What was said or shown that an entry rests on. `moment` draws the time of a moment: going to it where the note is open, or a link into the note from anywhere else. */
+export function Moments({ evidence, me, moment, shown }: { evidence: NoteEvidence; me: string | undefined; moment: (at: number) => ReactNode; shown?: ((s: ScreenRef) => ReactNode) | undefined }) {
+  return <ol className="ent-ms">{evidence.moments.map((m) => <Moment key={`${m.kind}-${m.id}`} m={m} me={me} moment={moment} shown={shown} />)}</ol>;
+}
+
+/** The same, one press away, for checking before you agree. */
 export function Backing({ evidence, me, moment, shown }: { evidence: NoteEvidence; me: string | undefined; moment: (at: number) => ReactNode; shown?: ((s: ScreenRef) => ReactNode) | undefined }) {
   const [open, setOpen] = useState(false);
   if (!evidence.moments.length) return null;
   return (
     <Popover open={open} onOpenChange={setOpen} align="start" label="What was said" className="ent-pop"
       anchor={<button type="button" className="ent-said"><Icon name="transcript" size={13} />What was said</button>}>
-      <ol className="ent-ms">{evidence.moments.map((m) => <Moment key={`${m.kind}-${m.id}`} m={m} me={me} moment={moment} shown={shown} />)}</ol>
+      <Moments evidence={evidence} me={me} moment={moment} shown={shown} />
     </Popover>
   );
 }

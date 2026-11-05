@@ -78,6 +78,8 @@ const NO_RECEIPT = [
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
 const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
+/** The most audio one range carries, under Cloud Run's 32 MiB for a reply of a known length. A browser asks again for the rest. */
+const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 /** The one route that takes an image: a frame of someone's own shared screen. */
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
 const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/updates$/;
@@ -937,18 +939,29 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       }
     });
   });
+  /*
+   * The first `pieces` of a segment, which stay the same file however much more is recorded. A range is for the
+   * browser's own player; all of it, chunked, is for one that can't seek by range and fetches it whole.
+   */
   app.get('/v1/notes/:id/audio/:segment', async (c) => {
+    const gone = c.req.raw.signal;
     const o = c.get('owner');
     const segment = z.coerce.number().int().min(0).parse(c.req.param('segment'));
+    const pieces = z.coerce.number().int().min(1).parse(c.req.query('pieces'));
     const n = await notes.get(o, c.req.param('id'));
     const seg = n.audio.find((a) => a.index === segment);
     if (!seg) throw new NotFoundError('No audio in that part of the recording.');
     const source = await notes.audioSource(o, n.id);
+    const file = await audioMod.file(source.owner, source.recordingId, segment, pieces);
     const mime = seg.mimeType.split(';')[0] ?? '';
-    c.header('content-type', AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream');
-    c.header('x-content-type-options', 'nosniff');
-    c.header('cache-control', 'no-store');
-    return stream(c, async (s) => { for await (const chunk of audioMod.stream(source.owner, source.recordingId, segment)) await s.write(chunk); });
+    const headers = { 'content-type': AUDIO_TYPES.has(mime) ? mime : 'application/octet-stream', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' };
+    if (c.req.method === 'HEAD') return c.body(null, 200, { ...headers, 'content-length': String(file.bytes) });
+    const range = byteRange(c.req.header('range'), file.bytes);
+    if (range === null) return c.body(null, 416, { ...headers, 'content-range': `bytes */${file.bytes}` });
+    if (!range) return c.body(await audioMod.body(file.read(0, file.bytes - 1), gone), 200, headers);
+    const { from } = range;
+    const to = Math.min(range.to, from + MOST_AUDIO_PER_REPLY - 1);
+    return c.body(await audioMod.body(file.read(from, to), gone), 206, { ...headers, 'content-length': String(to - from + 1), 'content-range': `bytes ${from}-${to}/${file.bytes}` });
   });
   /* A note's shared-screen frame, for anyone who has the note: decrypted here, never cached by the browser. */
   app.get('/v1/notes/:id/screens/:frameId', async (c) => {
@@ -1075,6 +1088,22 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
 /** A position header: a whole number that fits the integer columns it's stored in. */
 const position = (c: Context, name: string) => z.coerce.number().int().min(0).max(2_147_483_647).parse(c.req.header(name));
+
+/**
+ * What a Range header asks for in `size` bytes: one stretch, `null` if it starts past the end, or `undefined` for the
+ * whole file, which is the answer to no header and to one this doesn't take, such as several ranges.
+ */
+function byteRange(header: string | undefined, size: number): { from: number; to: number } | null | undefined {
+  const asked = /^bytes=(\d*)-(\d*)$/.exec(header?.trim() ?? '');
+  if (!asked) return undefined;
+  const [, first = '', last = ''] = asked;
+  if (!first && !last) return undefined;
+  if (!first) return Number(last) > 0 && size > 0 ? { from: Math.max(0, size - Number(last)), to: size - 1 } : null;
+  const from = Number(first);
+  if (from >= size) return null;
+  const to = last ? Math.min(Number(last), size - 1) : size - 1;
+  return to >= from ? { from, to } : undefined;
+}
 
 /** Reads a raw audio piece and its position headers. */
 async function piece(c: Context): Promise<audioMod.Piece> {
