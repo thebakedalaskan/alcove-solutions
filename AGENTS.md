@@ -9,7 +9,7 @@ packages/ui         The design system: tokens, components, illustrations. Everyt
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
 infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
-docs/               Product, engineering and design docs. Keep them true to the code.
+docs/               Product, engineering and design docs. Keep them true to the code. docs/design/ also holds the design canvas.
 ```
 
 ## Commands
@@ -147,6 +147,9 @@ Read `docs/engineering/logging-and-errors.md`.
 
 ## Design system
 
+Before you design or restyle anything, read [docs/design/](docs/design/README.md): the principles behind the look, how each
+page is designed, how to make a design canvas from the kit in `docs/design/canvas/`, and how to build one into the app.
+
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
@@ -212,3 +215,5 @@ Read `docs/engineering/logging-and-errors.md`.
 
 - UI copy is plain and specific: say what happens, not slogans. No marketing taglines.
 - People and pronouns: use names or "they".
+- Demo data, examples and designs use made-up people only (the demo company is Vandelay Industries). Never write a real
+  person's name.

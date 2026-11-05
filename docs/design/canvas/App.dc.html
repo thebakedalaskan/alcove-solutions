@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walk the app</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-notes.css">
+<link rel="stylesheet" href="page-note.css">
+<link rel="stylesheet" href="page-team.css">
+<link rel="stylesheet" href="page-record.css">
+<link rel="stylesheet" href="page-settings.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-notes.js"></script>
+<script src="data-note.js"></script>
+<script src="data-team.js"></script>
+<script src="data-record.js"></script>
+<script src="data-settings.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="try" data-mode="{{mode}}" style="{{rootStyle}}">
+<div class="try-bar">
+<div class="try-g" role="group" aria-label="Page">
+<span class="try-l">Go to</span>
+<sc-for list="{{routes}}" as="r" hint-placeholder-count="6"><button type="button" class="try-b" aria-pressed="{{r.on}}" onClick="{{r.pick}}">{{r.name}}</button></sc-for>
+</div>
+<div class="try-g" role="group" aria-label="Theme">
+<sc-for list="{{modes}}" as="m" hint-placeholder-count="2"><button type="button" class="try-b" aria-pressed="{{m.on}}" onClick="{{m.pick}}">{{m.name}}</button></sc-for>
+</div>
+</div>
+<div class="try-stage">
+<sc-if value="{{isHome}}" hint-placeholder-val="{{true}}"><dc-import name="Home" pal="blue-hour" mode="{{mode}}" scene="today" take="page" art="sea" fy="tiles" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{isNotes}}" hint-placeholder-val="{{false}}"><dc-import name="Notes" mode="{{mode}}" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{isNote}}" hint-placeholder-val="{{false}}"><dc-import name="Note" mode="{{mode}}" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{isTeam}}" hint-placeholder-val="{{false}}"><dc-import name="Team" mode="{{mode}}" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{isRecord}}" hint-placeholder-val="{{false}}"><dc-import name="Record" mode="{{mode}}" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+<sc-if value="{{isSettings}}" hint-placeholder-val="{{false}}"><dc-import name="Settings" mode="{{mode}}" go="{{go}}" hint-size="100%,860px"></dc-import></sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+var ROUTES = [{ id: 'home', name: 'Home' }, { id: 'notes', name: 'Notes' }, { id: 'note', name: 'A note' }, { id: 'team', name: 'Team' }, { id: 'record', name: 'Record' }, { id: 'settings', name: 'Settings' }];
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, self = this, st = this.state || {}, hs = AH.hash();
+    var route = st.route || hs.route || 'home', mode = st.mode || hs.mode || 'dark';
+    var to = function (r) { self.setState({ route: r }); };
+    return {
+      rootStyle: AH.rootStyle('blue-hour', mode, 17), mode: mode, go: to,
+      isHome: route === 'home', isNotes: route === 'notes', isNote: route === 'note', isTeam: route === 'team', isRecord: route === 'record', isSettings: route === 'settings',
+      routes: ROUTES.map(function (r) { return { name: r.name, on: r.id === route ? 'true' : 'false', pick: function () { to(r.id); } }; }),
+      modes: [{ id: 'dark', name: 'Dark' }, { id: 'light', name: 'Light' }].map(function (m) { return { name: m.name, on: m.id === mode ? 'true' : 'false', pick: function () { self.setState({ mode: m.id }); } }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

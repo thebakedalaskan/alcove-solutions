@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One evening</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="sc" aria-hidden="true" style="{{a.vars}}">
+<div class="sc-sky"></div>
+<div class="sc-sea"></div>
+<sc-for list="{{a.stars}}" as="s" hint-placeholder-count="4"><i class="sc-star" style="{{s.style}}"></i></sc-for>
+<div class="sc-up"><div class="sc-at"><i class="sc-glow" style="{{a.glowStyle}}"></i><sc-if value="{{a.hasSun}}" hint-placeholder-val="{{true}}"><i class="sc-sun{{a.sunCls}}" style="{{a.sunStyle}}"></i></sc-if></div></div>
+<div class="sc-at">
+<sc-for list="{{a.clouds}}" as="c" hint-placeholder-count="3"><i class="sc-cloud" style="{{c.style}}"></i></sc-for>
+<i class="sc-rim"></i>
+<sc-for list="{{a.chop}}" as="l" hint-placeholder-count="3"><div class="sc-chop" style="{{l.style}}"><sc-for list="{{l.strokes}}" as="k" hint-placeholder-count="8"><i style="{{k.style}}"></i></sc-for></div></sc-for>
+<sc-for list="{{a.glints}}" as="g" hint-placeholder-count="12"><i class="sc-glint" style="{{g.style}}"></i></sc-for>
+</div>
+<sc-if value="{{a.page}}" hint-placeholder-val="{{false}}"><dc-import name="Visitors" moment="{{a.moment}}" mode="{{a.mode}}" only="{{a.only}}" pace="{{a.pace}}" hint-size="100%,100%"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"a":{"editor":null,"default":null},"$preview":{"width":1200,"height":420}}'>
+class Component extends DCLogic {
+  renderVals() { return { a: this.props.a || window.AH.scene('notes', 'blue-hour', 'dark') }; }
+}
+</script>
+</body>
+</html>

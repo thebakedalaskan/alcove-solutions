@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Record</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-record.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-record.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh rc" data-mode="{{mode}}" data-first="{{firstFlag}}" style="{{shellStyle}}" ref="{{rootRef}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage{{stageCls}}">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<sc-if value="{{inPage}}" hint-placeholder-val="{{true}}">
+<div class="rc-up"><div class="rc-at"><div class="rc-orb" data-on="{{orbPage}}"><i class="o-glow"></i><i class="o-lit"></i><i class="o-body"></i><i class="o-fill"><b></b></i><i class="o-rim"></i><i class="o-rim o-hot"></i></div></div></div>
+<div class="rc-at rc-voice" data-kind="{{voicePage}}"><sc-for list="{{rowsPage}}" as="w" hint-placeholder-count="12"><div class="rc-v" style="{{w.style}}"><sc-for list="{{w.bits}}" as="b" hint-placeholder-count="2"><i style="{{b.style}}"></i></sc-for></div></sc-for></div>
+</sc-if>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="rca"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="rcs" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#rca)"><rect width="22" height="26" fill="url(#rcs)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><button type="button" class="find" aria-label="Start a call"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="pg-in">
+<header class="pg-top">
+<sc-if value="{{inWriting}}" hint-placeholder-val="{{false}}"><p class="rc-crumb"><button type="button" onClick="{{goNotes}}">Notes</button><span>/</span><span class="clamp1">{{shownName}}</span></p></sc-if>
+<sc-if value="{{notWriting}}" hint-placeholder-val="{{true}}"><h1 class="pg-title">Record</h1></sc-if>
+<div class="top-end">
+<button type="button" class="find" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings" onClick="{{goSettings}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<sc-if value="{{inPage}}" hint-placeholder-val="{{true}}">
+<section class="rc-go" aria-label="Recorder">
+<sc-if value="{{hasBanner}}" hint-placeholder-val="{{false}}"><p class="rc-off" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wifiOff}}"></path></svg>{{banner}}</p></sc-if>
+<input class="rc-name" type="text" value="{{name}}" placeholder="{{unnamed}}" aria-label="Name this recording" title="Name this recording" maxLength="160" autoComplete="off" spellCheck="false" enterKeyHint="go" onChange="{{typed}}" onKeyDown="{{nameKey}}">
+<div class="rc-a">
+<button type="button" class="b b-press b-lg rc-start{{startCls}}{{hotStart}}" aria-disabled="{{startOff}}" aria-keyshortcuts="R" onClick="{{start}}"><i class="rc-dot"></i>Start recording<span class="k">R</span></button>
+</div>
+<div class="rc-chips">
+<div class="rc-anchor">
+<button type="button" class="rc-chip{{micCls}}{{hotMic}}" aria-haspopup="listbox" aria-expanded="{{micOpenStr}}" onClick="{{toggleMic}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{micIcon}}"></path></svg><span class="clamp1">{{micName}}</span><sc-if value="{{micDown}}" hint-placeholder-val="{{true}}"><svg class="i dn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg></sc-if></button>
+<sc-if value="{{micOpen}}" hint-placeholder-val="{{false}}">
+<button type="button" class="rc-catch" aria-label="Close" tabIndex="-1" onClick="{{closeMic}}"></button>
+<div class="rc-pop is-mid" role="listbox" aria-label="Microphone">
+<sc-for list="{{mics}}" as="m" hint-placeholder-count="3"><button type="button" class="rc-pick{{m.hotCls}}" role="option" aria-selected="{{m.on}}" onClick="{{m.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mic}}"></path></svg><span class="clamp1">{{m.name}}</span><sc-if value="{{m.isOn}}" hint-placeholder-val="{{false}}"><svg class="i tick" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if></button></sc-for>
+</div>
+</sc-if>
+</div>
+<button type="button" class="rc-chip rc-lv{{levelCls}}{{hotCheck}}" aria-pressed="{{checkStr}}" title="{{levelTip}}" onClick="{{toggleCheck}}"><span class="rc-meter" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>{{levelLabel}}</span></button>
+</div>
+<p class="rc-say{{sayCls}}" role="status">{{say}}<sc-if value="{{canRetry}}" hint-placeholder-val="{{false}}"><button type="button" class="rc-retry{{hotRetry}}" onClick="{{retry}}">Try again</button></sc-if></p>
+</section>
+
+<sc-if value="{{firstDay}}" hint-placeholder-val="{{false}}">
+<p class="rc-first">Interviews, site visits, meetings around a table: what you record shows up here, with its notes.</p>
+</sc-if>
+
+<sc-if value="{{hasLists}}" hint-placeholder-val="{{true}}">
+<div class="rc-water{{waterCls}}">
+<sc-if value="{{hasDevice}}" hint-placeholder-val="{{true}}">
+<section class="rc-list" aria-labelledby="rc-dev">
+<div class="rc-h"><h2 id="rc-dev">On this device<sc-if value="{{waitingN}}" hint-placeholder-val="{{true}}"><span class="n">{{waitingN}}</span></sc-if></h2></div>
+<sc-for list="{{device}}" as="k" hint-placeholder-count="3">
+<div class="rc-r{{k.cls}}">
+<span class="rc-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{k.icon}}"></path></svg></span>
+<span class="rc-t"><b class="clamp1">{{k.title}}</b><small class="clamp1">{{k.meta}}</small></span>
+<span class="rc-s"><span class="clamp1">{{k.status}}</span><sc-if value="{{k.isUp}}" hint-placeholder-val="{{false}}"><span class="rc-bar"><i></i></span></sc-if></span>
+<span class="rc-more">
+<sc-if value="{{k.hasMenu}}" hint-placeholder-val="{{true}}">
+<button type="button" class="rc-dots{{k.hotRow}}" aria-label="More for {{k.title}}" title="More" aria-expanded="{{k.menuStr}}" onClick="{{k.toggle}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<sc-if value="{{k.menuOpen}}" hint-placeholder-val="{{false}}">
+<button type="button" class="rc-catch" aria-label="Close" tabIndex="-1" onClick="{{k.close}}"></button>
+<div class="rc-pop is-end" role="menu" aria-label="{{k.title}}">
+<sc-if value="{{k.notSure}}" hint-placeholder-val="{{true}}">
+<sc-if value="{{k.canUpload}}" hint-placeholder-val="{{true}}"><button type="button" class="rc-item{{k.hotUpload}}" role="menuitem" onClick="{{k.upload}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.upload}}"></path></svg><span><b>Upload now</b><small>Then its notes are written.</small></span></button></sc-if>
+<button type="button" class="rc-item is-warn{{k.hotDelete}}" role="menuitem" onClick="{{k.ask}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span><b>Delete from this device</b></span></button>
+</sc-if>
+<sc-if value="{{k.sure}}" hint-placeholder-val="{{false}}">
+<p class="rc-pop-h">Delete “{{k.title}}”?</p>
+<button type="button" class="rc-item is-warn{{k.hotSure}}" role="menuitem" onClick="{{k.remove}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span><b>Delete it</b><small>It never uploads, and nothing of it is kept.</small></span></button>
+<button type="button" class="rc-item" role="menuitem" onClick="{{k.keep}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg><span><b>Keep it</b></span></button>
+</sc-if>
+</div>
+</sc-if>
+</sc-if>
+</span>
+<sc-if value="{{k.hasWhy}}" hint-placeholder-val="{{false}}"><span class="rc-why">{{k.why}}</span></sc-if>
+</div>
+</sc-for>
+</section>
+</sc-if>
+<sc-if value="{{hasBefore}}" hint-placeholder-val="{{true}}">
+<section class="rc-list" aria-labelledby="rc-before">
+<div class="rc-h"><h2 id="rc-before">Recorded before</h2><button type="button" class="pn-link{{hotInNotes}}" onClick="{{goNotes}}">In Notes<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></div>
+<div class="rc-before">
+<sc-for list="{{before}}" as="n" hint-placeholder-count="4">
+<button type="button" class="rc-n{{n.cls}}{{n.hotCls}}" onClick="{{n.go}}">
+<span class="rc-print" aria-hidden="true"><sc-for list="{{n.print}}" as="p" hint-placeholder-count="7"><i style="{{p.style}}"></i></sc-for></span>
+<span class="rc-t"><b class="clamp1">{{n.title}}</b><small class="clamp1">{{n.gist}}</small></span>
+<span class="rc-f"><sc-if value="{{n.hasLeft}}" hint-placeholder-val="{{false}}"><span class="rc-todo" title="{{n.leftTip}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.own}}"></path></svg>{{n.left}}</span></sc-if></span>
+<span class="rc-w"><span class="tn">{{n.when}}</span><small><sc-if value="{{n.hasFaces}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{n.who}}" size="18" max="3" ring="var(--ground)" hint-size="30px,20px"></dc-import></sc-if><sc-if value="{{n.alone}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg></sc-if>{{n.whoText}}</small></span>
+</button>
+</sc-for>
+</div>
+</section>
+</sc-if>
+</div>
+</sc-if>
+
+<p class="rc-foot"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg><span>{{foot}}<sc-if value="{{footLink}}" hint-placeholder-val="{{false}}"><button type="button" class="rc-link" onClick="{{goSettings}}">Settings</button></sc-if></span></p>
+</sc-if>
+
+<sc-if value="{{inWriting}}" hint-placeholder-val="{{false}}">
+<article class="rc-note-pg">
+<span class="rc-tag"><svg class="i rc-turn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.spin}}"></path></svg>Being written</span>
+<h2 class="rc-note-t">{{shownName}}</h2>
+<p class="rc-note-m"><span>Today at 16:12</span><span>{{lengthText}}</span><span class="rc-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span></p>
+<ol class="rc-ticks">
+<sc-for list="{{ticks}}" as="t" hint-placeholder-count="4"><li class="{{t.cls}}"><span class="rc-tk"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{t.icon}}"></path></svg></span>{{t.t}}</li></sc-for>
+</ol>
+</article>
+</sc-if>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="4"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+
+<sc-if value="{{inStage}}" hint-placeholder-val="{{false}}">
+<div class="rc-stage" role="region" aria-label="Recording">
+<dc-import name="Scene" a="{{stageScene}}" hint-size="100%,100%"></dc-import>
+<sc-if value="{{hasOrb}}" hint-placeholder-val="{{true}}">
+<div class="rc-up"><div class="rc-at"><div class="rc-orb" data-on="{{orbStage}}"><i class="o-glow"></i><i class="o-lit"></i><i class="o-body"></i><i class="o-fill"><b></b></i><i class="o-rim"></i><i class="o-rim o-hot"></i></div></div></div>
+<div class="rc-at rc-voice" data-kind="{{voiceStage}}"><i class="rc-edge"></i><sc-for list="{{rowsStage}}" as="w" hint-placeholder-count="12"><div class="rc-v" style="{{w.style}}"><sc-for list="{{w.bits}}" as="b" hint-placeholder-count="2"><i style="{{b.style}}"></i></sc-for></div></sc-for></div>
+</sc-if>
+<header class="rc-top">
+<div class="rc-anchor">
+<button type="button" class="b b-quiet b-sm rc-back{{hotLeave}}" aria-expanded="{{leaveStr}}" onClick="{{backOut}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.left}}"></path></svg>Home</button>
+<sc-if value="{{leaveOpen}}" hint-placeholder-val="{{false}}">
+<button type="button" class="rc-catch" aria-label="Close" tabIndex="-1" onClick="{{closeLeave}}"></button>
+<div class="rc-pop is-start" role="menu" aria-label="Leave the room">
+<button type="button" class="rc-item" role="menuitem" onClick="{{finish}}"><svg class="i rc-sq" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.stop}}"></path></svg><span><b>{{finishLabel}}</b><small>{{finishSub}}</small></span></button>
+<button type="button" class="rc-item is-warn{{hotDiscard}}" role="menuitem" onClick="{{discard}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg><span><b>Discard recording</b><small>Nothing is kept.</small></span></button>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{hasPill}}" hint-placeholder-val="{{false}}"><span class="rc-pill" role="status"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wifiOff}}"></path></svg>{{pill}}</span></sc-if>
+</header>
+<div class="rc-hold">
+<sc-if value="{{inStarting}}" hint-placeholder-val="{{false}}">
+<p class="rc-name is-live">{{shownName}}</p>
+<p class="rc-time tn">00:00</p>
+<div class="rc-ctl"><svg class="i rc-turn" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.spin}}"></path></svg></div>
+</sc-if>
+<sc-if value="{{inFailed}}" hint-placeholder-val="{{false}}">
+<h2 class="rc-name is-live">Couldn’t start recording</h2>
+<p class="rc-say2 is-warn">{{failed}}</p>
+<div class="rc-ctl"><button type="button" class="b b-press b-lg" onClick="{{backToRecord}}">Back to Record</button></div>
+</sc-if>
+<sc-if value="{{inRecorder}}" hint-placeholder-val="{{true}}">
+<input class="rc-name is-live{{editCls}}{{hotRename}}" type="text" value="{{name}}" placeholder="{{unnamed}}" aria-label="Name these notes" title="Rename" maxLength="160" autoComplete="off" spellCheck="false" onChange="{{typed}}" onBlur="{{nameDone}}" onKeyDown="{{renameKey}}">
+<p class="rc-time tn" role="timer" aria-label="Time recorded">{{time}}</p>
+<div class="rc-ctl">
+<button type="button" class="b b-tint b-lg rc-pause{{hotPause}}" aria-disabled="{{pauseOff}}" onClick="{{togglePause}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pauseIcon}}"></path></svg>{{pauseLabel}}</button>
+<button type="button" class="b b-press b-lg rc-finish{{hotFinish}}" onClick="{{finish}}"><svg class="i{{finishCls}}" viewBox="0 0 24 24" aria-hidden="true"><path d="{{finishIcon}}"></path></svg>{{finishNow}}</button>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{inRecorder}}" hint-placeholder-val="{{true}}">
+<section class="rc-heard" aria-label="What’s said">
+<sc-if value="{{isBack}}" hint-placeholder-val="{{false}}"><button type="button" class="rc-latest"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.down}}"></path></svg>Latest</button></sc-if>
+<div class="rc-lines{{backCls}}" aria-live="polite"><sc-if value="{{isBack}}" hint-placeholder-val="{{false}}"><p class="rc-key"><span class="rc-dotted">Dotted</span> words were hard to hear and may not be exact.</p></sc-if><sc-for list="{{lines}}" as="l" hint-placeholder-count="4"><p class="rc-l{{l.cls}}"><span class="{{l.mark}}">{{l.t}}</span></p></sc-for></div>
+<sc-if value="{{hasNote}}" hint-placeholder-val="{{true}}">
+<div class="rc-say2{{noteCls}}" role="status"><sc-if value="{{hasNoteIcon}}" hint-placeholder-val="{{false}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{noteIcon}}"></path></svg></sc-if><p>{{note}}<sc-if value="{{noteSub}}" hint-placeholder-val="{{false}}"><small>{{noteSub}}</small></sc-if><sc-if value="{{noteRetry}}" hint-placeholder-val="{{false}}"><button type="button" class="rc-retry{{hotRetry}}" onClick="{{retry}}">Try again</button></sc-if></p></div>
+</sc-if>
+</section>
+</sc-if>
+</div>
+</sc-if>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","first"],"default":"today"},"step":{"editor":null,"default":"record"},"frame":{"editor":null,"default":""},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  /* What's true now: where the journey frame starts, then whatever has happened since. */
+  now() {
+    var RC = window.AH.RC, hs = window.AH.hash();
+    return window.AH.assign({ view: 'page', net: 'online', keep: true, mic: 'mbp', name: '', elapsed: 0, lines: 0 }, RC.STEPS[hs.step || this.props.step || 'record'] || {}, this.state || {});
+  }
+  componentDidMount() {
+    if (this.props.frame) return;
+    var self = this;
+    this.__still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.__amps = [];
+    this.__t = 0;
+    this.__key = function (e) {
+      var st = self.now();
+      if (e.key === 'Escape') { if (st.micOpen || st.menu || st.leave) self.setState({ micOpen: false, menu: '', sure: false, leave: false }); return; }
+      if (e.key.toLowerCase() !== 'r' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      if (st.view !== 'page' || st.modal || st.ask || (e.target && /INPUT|TEXTAREA/.test(e.target.tagName))) return;
+      e.preventDefault();
+      if (self.__start) self.__start();
+    };
+    addEventListener('keydown', this.__key);
+    this.__level = setInterval(function () { self.level(); }, 130);
+    this.__clock = setInterval(function () { self.second(); }, 1000);
+    this.__later = [];
+    if (this.now().toast) this.__toast = setTimeout(function () { self.setState({ toast: '' }); }, 3600);
+  }
+  componentWillUnmount() {
+    removeEventListener('keydown', this.__key);
+    clearInterval(this.__level);
+    clearInterval(this.__clock);
+    clearTimeout(this.__toast);
+    (this.__later || []).forEach(clearTimeout);
+  }
+  after(ms, fn) { var t = setTimeout(fn, ms); if (this.__later) this.__later.push(t); }
+
+  /* The voice: a made-up level, the newest at the horizon, moving out across the water. Only transforms change. */
+  level() {
+    var st = this.now(), stage = st.view === 'stage', root = this.__root;
+    var hears = stage ? !st.paused && !st.ending && !st.held && !st.trouble : st.view === 'page' && !!st.check && !st.trouble;
+    var box = root && root.querySelector(stage ? '.rc-stage' : '.pg-stage');
+    if (!box) return;
+    if (!hears || this.__still) {
+      if (this.__heard) {
+        this.__heard = false;
+        box.querySelectorAll('.rc-meter i').forEach(function (b) { b.style.removeProperty('--m'); });
+        box.querySelectorAll('.rc-orb').forEach(function (o) { o.style.removeProperty('--lv'); });
+      }
+      return;
+    }
+    this.__heard = true;
+    var t = (this.__t += 0.13), talk = Math.sin(t * 0.9) + Math.sin(t * 0.37 + 1);
+    var lv = talk < -0.75 ? 0.05 : 0.24 + 0.76 * Math.abs(Math.sin(t * 5.3)) * Math.abs(Math.sin(t * 1.9 + 0.4));
+    var gain = stage ? 1 : 0.8, rows = box.querySelectorAll('.rc-v'), amps = this.__amps;
+    amps.unshift(lv);
+    if (amps.length > rows.length) amps.length = rows.length;
+    for (var i = 0; i < amps.length; i++) rows[i].style.setProperty('--a', (amps[i] * gain).toFixed(3));
+    var orb = box.querySelector('.rc-orb');
+    if (orb) orb.style.setProperty('--lv', lv.toFixed(3));
+    box.querySelectorAll('.rc-meter i').forEach(function (b, k) { b.style.setProperty('--m', lv * 5.4 > k ? 1 : 0.28); });
+  }
+  second() {
+    var st = this.now();
+    if (st.view !== 'stage' || st.paused || st.ending || st.held) return;
+    var e = (st.elapsed || 0) + 1, patch = { elapsed: e };
+    if (st.net === 'online' && !st.account && e % 4 === 0 && st.lines < 60) patch.lines = st.lines + 1;
+    this.setState(patch);
+  }
+
+  renderVals() {
+    var AH = window.AH, RC = AH.RC, I = RC.I, self = this, st = this.now(), hs = AH.hash();
+    var writing = st.view === 'writing', inStage = st.view === 'stage';
+    var v = AH.page(this, writing ? 'note' : 'record');
+    if (!this.__rootRef) this.__rootRef = function (el) { self.__root = el; };
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var set = function (patch) { self.setState(AH.assign({ hot: '' }, patch)); };
+    var online = st.net === 'online';
+    if (st.day1) { v.first = true; v.forCount = 0; }
+
+    /* Night in both themes, like a call: the scene and the shell take the dark tokens whatever the theme. Only the note, once it opens, follows the theme. */
+    var hour = Number(hs.hour || this.props.hour) || v.S.hour;
+    if (!writing) {
+      v.shellStyle = v.shellStyle.replace(v.rootStyle, AH.rootStyle(v.pal, 'dark', hour));
+      v.mode = 'dark';
+    }
+    v.I = I;
+    v.rootRef = this.__rootRef;
+    v.unnamed = RC.UNNAMED;
+    v.name = st.name;
+    v.notWriting = !writing;
+    v.inPage = st.view === 'page';
+    v.inStage = inStage;
+    v.inWriting = writing;
+    v.stageCls = writing ? ' rc-slim' : '';
+    v.goSettings = function () { v.go('settings'); };
+    v.goNotes = function () { v.go('notes'); };
+
+    /* The scene: its sun and glitter give way to the orb and the voice, drawn on this page. */
+    if (!writing) {
+      if (!this.__scene || this.__sceneOf !== v.pal) {
+        var a = AH.assign({ page: true }, AH.scene('record', v.pal, 'dark'), { hasSun: false, glints: [] });
+        a.vars += '; --sc-glow: oklch(.46 .09 320 / .4); --sc-rim: oklch(.72 .06 60)';
+        a.glowStyle = 'left: -640px; top: -150px; width: 1280px; height: 300px';
+        /* No star behind the words. */
+        a.stars = a.stars.filter(function (s) { var m = /left: ([\d.]+)%; top: ([\d.]+)%/.exec(s.style); return !(m && +m[1] > 26 && +m[1] < 74 && +m[2] > 8 && +m[2] < 44); });
+        this.__scene = a;
+        this.__sceneOf = v.pal;
+      }
+      v.scene = this.__scene;
+    }
+    v.stageScene = v.scene;
+    v.ov = AH.assign({}, v.ov, { toast: st.toast || '', hasToast: !!st.toast });
+
+    /* The recorder. */
+    var mic = RC.MICS.filter(function (m) { return m.id === st.mic; })[0] || RC.MICS[0];
+    var checking = !!st.check, broke = !!st.trouble;
+    var TROUBLE = {
+      busy: { t: 'Your microphone didn’t start. Another app may be using it. Close that app, then try again.', retry: true },
+      blocked: { t: 'Your browser is blocking the microphone. Allow it from the address bar, then try again.', retry: true },
+      missing: { t: 'No microphone found. Plug one in and Alcove picks it up.', retry: false }
+    };
+    var trouble = TROUBLE[st.trouble] || null;
+    var noChoice = !!st.unnamed || (broke && st.trouble === 'missing');
+    v.micName = broke && st.trouble === 'missing' ? 'No microphone' : st.unnamed ? 'Default microphone' : mic.name;
+    v.micDown = !noChoice;
+    v.micIcon = broke ? I.micOff : I.mic;
+    v.micCls = broke ? ' is-warn' : '';
+    v.micOpen = !!st.micOpen;
+    v.micOpenStr = v.micOpen ? 'true' : 'false';
+    v.hotMic = hot('mic');
+    v.closeMic = function () { set({ micOpen: false }); };
+    v.toggleMic = function () { if (!noChoice) set({ micOpen: !st.micOpen }); };
+    v.mics = RC.MICS.map(function (m) {
+      var on = m.id === st.mic;
+      return {
+        id: m.id, name: m.name, isOn: on, on: on ? 'true' : 'false', hotCls: hot('mic-' + m.id),
+        go: function () {
+          if (checking && m.id === 'studio') set({ micOpen: false, say: 'didnt' });
+          else set({ mic: m.id, micOpen: false, say: '' });
+        }
+      };
+    });
+    v.levelLabel = checking ? 'Stop' : 'Check the level';
+    v.levelTip = checking ? 'Lets go of the microphone.' : 'Opens the microphone to show how loud it is. Nothing is recorded.';
+    v.levelCls = checking ? (broke ? ' is-on is-dead' : ' is-on') : '';
+    v.checkStr = checking ? 'true' : 'false';
+    v.hotCheck = hot('check');
+    v.toggleCheck = function () { self.__amps = []; set({ check: !checking, say: '', trouble: '' }); };
+    v.say = trouble ? trouble.t
+      : st.say === 'didnt' ? 'That microphone didn’t start. Still using ' + mic.name + '.'
+      : st.say === 'unplugged' ? 'AirPods Pro isn’t connected any more. Now using ' + mic.name + '.'
+      : checking ? 'Nothing is recorded.' : 'Let everyone here know before you start.';
+    v.sayCls = trouble || st.say ? ' is-warn' : '';
+    v.canRetry = !!(trouble && trouble.retry);
+    v.hotRetry = hot('retry');
+    v.retry = function () { set({ trouble: '', say: '' }); };
+
+    var locked = !online && !st.keep;
+    v.startCls = locked ? ' is-off' : '';
+    v.startOff = locked ? 'true' : 'false';
+    v.hotStart = hot('start');
+    v.typed = function (e) { set({ name: e.target.value }); };
+    var start = function () {
+      if (locked) return;
+      self.__amps = [];
+      set({ view: 'stage', check: false, micOpen: false, say: '', trouble: '', elapsed: 0, lines: 0, paused: false, ending: false, menu: '', sure: false });
+    };
+    this.__start = start;
+    v.start = start;
+    v.nameKey = function (e) { if (e.key === 'Enter') { e.preventDefault(); start(); } };
+    v.hasBanner = !online;
+    v.banner = st.keep ? 'Offline. Recording still works.' : 'Offline. Recording needs a connection.';
+
+    /* The orb is dark until something is recorded: a lit rim while you check, full of colour only while it records. */
+    v.orbPage = checking && !broke ? 'check' : 'idle';
+    v.voicePage = checking && !broke ? 'level' : 'idle';
+    v.rowsPage = RC.voice(v.voicePage, 76);
+
+    /* On this device. */
+    var kept = st.device || RC.DEVICE.usual;
+    if (v.first || !st.keep) kept = st.device || [];
+    var STAND = {
+      recording: { t: 'Recording now', icon: I.recordDot, cls: ' is-rec' },
+      uploading: { t: 'Uploading', icon: I.upload, cls: ' is-up' },
+      waiting: { t: online ? 'Waiting to upload' : 'Waiting for a connection', icon: online ? I.clock : I.cloudOff, cls: '' },
+      refused: { t: 'Can’t upload yet', icon: I.alert, cls: ' is-warn' },
+      expired: { t: 'Can’t upload', icon: I.alert, cls: ' is-warn' },
+      unreadable: { t: 'Can’t be read here', icon: I.alert, cls: ' is-warn' }
+    };
+    var waiting = kept.filter(function (k) { return k.status === 'waiting' || k.status === 'uploading' || k.status === 'refused'; }).length;
+    var setKept = function (list) { set({ device: list, menu: '', sure: false }); };
+    v.device = kept.map(function (k) {
+      var s = STAND[k.status], busy = k.status === 'recording' || k.status === 'uploading', open = st.menu === k.id, sure = open && !!st.sure;
+      return {
+        title: k.title, meta: k.long + ' · ' + k.at, status: s.t, icon: s.icon, cls: s.cls,
+        why: k.why || '', hasWhy: !!k.why, isUp: k.status === 'uploading',
+        hasMenu: !busy, menuOpen: open, menuStr: open ? 'true' : 'false', sure: sure, notSure: !sure,
+        canUpload: online && (k.status === 'waiting' || k.status === 'refused'),
+        hotRow: hot('row-' + k.id), hotUpload: hot('upload-' + k.id), hotDelete: hot('delete-' + k.id), hotSure: hot('sure-' + k.id),
+        toggle: function () { set({ menu: open ? '' : k.id, sure: false }); },
+        close: function () { set({ menu: '', sure: false }); },
+        ask: function () { set({ sure: true }); },
+        keep: function () { set({ sure: false }); },
+        remove: function () { setKept(kept.filter(function (x) { return x.id !== k.id; })); v.toast('Deleted from this device.'); },
+        upload: function () {
+          setKept(kept.map(function (x) { return x.id === k.id ? AH.assign({}, x, { status: 'uploading', why: '' }) : x; }));
+          self.after(2600, function () {
+            var now = self.now(), left = (now.device || []).filter(function (x) { return x.id !== k.id; });
+            var fresh = { id: k.id, title: k.title, when: 'Today', long: k.long === 'Under a minute' ? '1 min' : k.long, gist: '', left: 0, who: '', writing: true };
+            self.setState({ device: left, before: [fresh].concat((now.before || RC.BEFORE).slice(0, 3)) });
+            v.toast('“' + k.title + '” uploaded. Its notes are being written.');
+          });
+        }
+      };
+    });
+    v.hasDevice = kept.length > 0;
+    v.waitingN = waiting || '';
+    var tell = waiting;
+    v.side = AH.assign({}, v.side, {
+      nav: v.side.nav.map(function (n) {
+        if (n.label === 'Home') return AH.assign({}, n, { count: v.forCount, hasCount: v.forCount > 0 });
+        if (n.label !== 'Record') return n;
+        return AH.assign({}, n, { count: tell, hasCount: tell > 0, go: function () { set({ view: 'page', name: writing ? '' : st.name }); } });
+      })
+    });
+    v.nav = v.nav.map(function (n) { return n.label === 'Record' ? AH.assign({}, n, { go: function () { set({ view: 'page', name: writing ? '' : st.name }); } }) : n; });
+
+    /* Recorded before. */
+    var made = (st.before || (v.first ? [] : RC.BEFORE)).slice(0, 4);
+    v.before = made.map(function (n) {
+      var alone = !n.who;
+      return {
+        title: n.title, gist: n.going ? 'Recording now' : n.writing ? 'Being written' : n.gist, when: n.going ? n.when : n.when + ' · ' + n.long, left: n.left, hasLeft: n.left > 0, leftTip: n.left + (n.left === 1 ? ' follow-up' : ' follow-ups') + ' still open', print: RC.print(n.id), hotCls: hot('note-' + n.id),
+        cls: n.writing && !n.going ? ' is-writing' : '', who: n.who, hasFaces: !alone, alone: alone, whoText: alone ? 'Only you' : '',
+        go: function () { if (online) v.go('note'); else v.toast('Notes open when you’re back online.'); }
+      };
+    });
+    v.hasBefore = made.length > 0;
+    v.firstDay = v.first && !v.hasDevice && !v.hasBefore;
+    v.firstFlag = v.firstDay ? 'true' : 'false';
+    v.hotInNotes = hot('in-notes');
+    v.hasLists = v.hasDevice || v.hasBefore;
+    v.waterCls = v.hasDevice && v.hasBefore ? '' : ' is-one';
+    v.footLink = !st.keep && online;
+    v.foot = st.keep
+      ? 'Encrypted as it’s recorded, and it works without a connection. Room notes go to nobody until you share them.'
+      : 'Encrypted as it’s recorded. If the connection drops, recording pauses. Room notes go to nobody until you share them.';
+
+    /* The stage. */
+    var held = st.held || '', paused = !!st.paused || !!held || !!st.notFinished, ending = !!st.ending, forgotten = held === 'forgotten';
+    v.inStarting = !!st.starting;
+    v.inFailed = !!st.failed;
+    v.failed = st.failed || '';
+    v.inRecorder = !st.starting && !st.failed;
+    v.hasOrb = !st.starting;
+    v.isBack = !!st.back;
+    v.backCls = st.back ? ' is-back' : '';
+    v.backToRecord = function () { set({ view: 'page', failed: '', name: '' }); };
+    var saving = st.keep && !forgotten && (!online || !!st.account);
+    var stageOn = ending ? 'set' : paused ? 'paused' : 'live';
+    v.orbStage = v.inRecorder ? stageOn : 'idle';
+    v.voiceStage = !v.inRecorder || paused || ending || broke ? 'still' : 'live';
+    v.rowsStage = RC.voice(v.voiceStage, 148);
+    v.time = RC.clock(st.elapsed || 0);
+    v.lengthText = Math.max(1, Math.round((st.elapsed || 0) / 60)) + ' min';
+    v.shownName = st.name || RC.UNNAMED;
+    v.pill = st.account === 'other' ? 'Another account' : st.account === 'signed-out' ? 'Signed out' : st.net === 'unreachable' ? 'Can’t reach Alcove' : !online ? 'Offline' : '';
+    v.hasPill = !!v.pill && !forgotten;
+    v.hotRename = hot('rename');
+    v.editCls = st.focus ? ' is-edit' : '';
+    v.renameKey = function (e) { if (e.key === 'Enter') e.target.blur(); };
+    v.nameDone = function () { var t = (self.now().name || '').trim(); set({ name: t }); };
+
+    v.leaveOpen = !!st.leave;
+    v.leaveStr = v.leaveOpen ? 'true' : 'false';
+    v.hotLeave = hot('leave');
+    v.hotDiscard = hot('discard');
+    v.toggleLeave = function () { set({ leave: !st.leave }); };
+    v.backOut = function () { if (v.inRecorder) v.toggleLeave(); else v.go('home'); };
+    v.closeLeave = function () { set({ leave: false }); };
+    v.discard = function () { set({ view: 'page', leave: false, paused: false, held: '', name: '', elapsed: 0, lines: 0 }); v.toast('Recording discarded. Nothing was kept.'); };
+
+    v.finishLabel = forgotten ? 'End recording' : saving ? 'Finish and save' : 'Finish and write notes';
+    v.finishNow = ending ? 'Finishing' : v.finishLabel;
+    v.finishSub = forgotten ? 'Nothing of it can be kept.' : saving ? 'Saves it here. It uploads by itself.' : 'Keeps what was recorded.';
+    v.finishIcon = ending ? I.spin : I.stop;
+    v.finishCls = ending ? ' rc-turn' : ' rc-sq';
+    v.hotFinish = hot('finish');
+    v.finish = function () {
+      if (ending) return;
+      if (forgotten) { set({ view: 'page', leave: false, held: '', name: '', elapsed: 0, lines: 0 }); v.toast('Recording ended. Nothing was kept: this device was signed out.'); return; }
+      if (saving) {
+        var row = { id: 'now', title: st.name || RC.UNNAMED, long: Math.max(1, Math.round((st.elapsed || 0) / 60)) + ' min', at: 'today at 16:12', status: 'waiting' };
+        set({ view: 'page', leave: false, device: [row].concat(kept), name: '', elapsed: 0, lines: 0, paused: false });
+        v.toast(st.account === 'other' ? 'Saved on this device. It uploads once the account that recorded it signs in here again.'
+          : st.account === 'signed-out' ? 'Saved on this device. It uploads once you sign in again.'
+          : st.net === 'unreachable' ? 'Saved on this device. It keeps trying to upload, and its notes follow.'
+          : 'Saved on this device. It uploads when you’re back online.');
+        return;
+      }
+      var fresh = { id: 'now', title: st.name || RC.UNNAMED, when: 'Today', long: v.lengthText, gist: '', left: 0, who: '', writing: true };
+      set({ ending: true, leave: false });
+      self.after(2000, function () { self.setState({ ending: false, view: 'writing', before: [fresh].concat(made).slice(0, 4) }); });
+    };
+
+    v.pauseLabel = paused && !st.notFinished ? 'Resume' : 'Pause';
+    v.pauseIcon = paused && !st.notFinished ? I.recordDot : I.pause;
+    var stuck = forgotten || ending || !!st.notFinished || (!st.keep && !online);
+    v.pauseOff = stuck ? 'true' : 'false';
+    v.hotPause = hot('pause');
+    v.togglePause = function () { if (stuck) return; self.__amps = []; set({ paused: !paused, held: '' }); };
+
+    var n = st.lines || 0;
+    v.lines = [];
+    for (var li = 0; li < n; li++) v.lines.push({ t: RC.LINES[li % RC.LINES.length], cls: ' a' + Math.min(n - 1 - li, 3), mark: st.back && li === 2 ? 'rc-dotted' : '' });
+
+    /* What's said under the voice, one thing at a time. */
+    var away = st.account === 'other' ? 'Someone else is signed in here now. It stays until this account signs in again.'
+      : st.account === 'signed-out' ? 'You’re signed out. It uploads once you sign in again.'
+      : st.net === 'unreachable' ? 'Alcove isn’t answering right now. It’s sent when it does.'
+      : 'It uploads when you’re back online.';
+    var note = '', sub = '', icon = '', warn = false;
+    if (forgotten) { note = 'You signed out on this device, so this recording can’t be kept. Nothing more is recorded.'; warn = true; icon = I.alert; }
+    else if (st.notFinished) { note = 'It hasn’t finished, and nothing more is recorded. Try Finish again.'; warn = true; icon = I.alert; }
+    else if (trouble) { note = trouble.t; warn = true; icon = I.micOff; }
+    else if (!st.keep && !online && !ending) { note = 'Paused: you’re offline, and recording without a connection is off. Resume once you’re back.'; warn = true; icon = I.wifiOff; }
+    else if (held === 'full') { note = 'Paused: there’s no space left on this device. Free some up, or get back online, then resume.'; warn = true; icon = I.drive; }
+    else if (st.paused) { note = 'Paused. Nothing is heard until you resume.'; }
+    else if (!ending && (st.elapsed || 0) < 20) { note = 'Listening. Let everyone here know it’s recording.'; }
+    else if (saving) { note = 'Saved on this device. ' + away; sub = 'What’s said now is written out then.'; icon = I.drive; }
+    else if (st.behind) { note = 'The live transcript is behind. What’s said is saved on this device and transcribed later.'; icon = I.clock; }
+    else if (!n && !ending) { note = 'Listening. Let everyone here know it’s recording.'; }
+    v.note = note;
+    v.noteSub = sub;
+    v.noteIcon = icon;
+    v.hasNote = !!note;
+    v.hasNoteIcon = !!icon;
+    v.noteCls = warn ? ' is-warn' : '';
+    v.noteRetry = !!(trouble && trouble.retry);
+
+    /* The note, once it opens. */
+    v.ticks = [
+      { t: 'Recording finished', cls: 'is-done', icon: I.check },
+      { t: 'Audio saved and encrypted', cls: 'is-done', icon: I.check },
+      { t: 'Transcript, ' + v.lengthText, cls: 'is-done', icon: I.check },
+      { t: 'Notes being written in confidential compute', cls: 'is-now', icon: I.spin }
+    ];
+    return v;
+  }
+}
+</script>
+</body>
+</html>
