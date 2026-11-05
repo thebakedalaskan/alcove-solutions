@@ -1,0 +1,810 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notes</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<link rel="stylesheet" href="page-notes.css">
+<link rel="stylesheet" href="page-note.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+<script src="data-note.js"></script>
+<script src="data-notes.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<sc-if value="{{hasNote}}" hint-placeholder-val="{{false}}"><div class="nt-note"><dc-import name="Note" mode="{{mode}}" scene="{{noteScene}}" step="{{noteStep}}" go="{{noteGo}}" hint-size="100%,100%"></dc-import></div></sc-if>
+<sc-if value="{{noNote}}" hint-placeholder-val="{{true}}">
+<div class="ah sh nt-page" data-mode="{{mode}}" data-open="{{isOpen}}" data-ask="{{asked}}" data-first="{{firstFlag}}" style="{{shellStyle}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="pg-stage">
+<dc-import name="Scene" a="{{scene}}" hint-size="100%,100%"></dc-import>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="nta"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="nts" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#nta)"><rect width="22" height="26" fill="url(#nts)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="nt-new" aria-label="Start a call" title="Start a call" onClick="{{startCall}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button><button type="button" class="me" aria-label="Art, settings" onClick="{{goMe}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div>
+</div>
+<div class="pg-in">
+<header class="pg-top">
+<sc-if value="{{notOpen}}" hint-placeholder-val="{{true}}"><h1 class="pg-title">Notes</h1></sc-if>
+<sc-if value="{{isOpen}}" hint-placeholder-val="{{false}}"><p class="nt-crumb"><button type="button" class="go-link" onClick="{{closeOpen}}">Notes</button><span>/</span><b class="clamp1">{{pv.title}}</b></p></sc-if>
+<div class="top-end"><button type="button" class="me" aria-label="Art, settings" onClick="{{goMe}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button></div>
+</header>
+
+<sc-if value="{{first}}" hint-placeholder-val="{{false}}">
+<section class="nt-sky is-first" aria-labelledby="nt-first">
+<h2 class="nt-hero" id="nt-first">No notes yet</h2>
+<div class="nt-go">
+<button type="button" class="b b-press b-lg{{hotFirstGo}}" onClick="{{startCall}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start a call</button>
+<button type="button" class="b b-sky b-lg{{hotFirstRec}}" onClick="{{goRecord}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.recordDot}}"></path></svg>Record in the room</button>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{hasSky}}" hint-placeholder-val="{{true}}">
+<section class="nt-sky" aria-label="Find what was said">
+<div class="nt-q{{focusCls}}{{hotLine}}">
+<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg>
+<input type="text" value="{{q}}" placeholder="Search everything said, or ask" aria-label="Search everything said, or ask" autoComplete="off" spellCheck="false" onChange="{{typed}}" onKeyDown="{{qKey}}">
+<sc-if value="{{hasQ}}" hint-placeholder-val="{{false}}">
+<button type="button" class="nt-q-x{{hotQX}}" aria-label="Clear search" title="Clear search" onClick="{{clearQ}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+<button type="button" class="b b-tint b-sm nt-q-ask{{hotAsk}}" disabled="{{askedNow}}" onClick="{{askNow}}">Ask<span class="k">↵</span></button>
+</sc-if>
+<sc-if value="{{noQ}}" hint-placeholder-val="{{true}}"><span class="k nt-q-k">⌘K</span></sc-if>
+</div>
+<div class="st-p nt-people">
+<sc-if value="{{noWho}}" hint-placeholder-val="{{true}}">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="4"><button type="button" class="st-who{{p.hot}}" aria-label="Notes with {{p.name}}" title="Notes with {{p.name}}" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="26" hint-size="26px,29px"></dc-import><span class="clamp1">{{p.first}}</span></button></sc-for>
+</sc-if>
+<sc-if value="{{hasWho}}" hint-placeholder-val="{{false}}">
+<span class="st-who nt-with"><dc-import name="Faces" who="{{who.id}}" size="26" hint-size="26px,29px"></dc-import><span class="clamp1">{{who.first}}</span><button type="button" class="nt-with-x{{hotWithX}}" aria-label="Show notes with anyone" title="Show notes with anyone" onClick="{{clearWho}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></span>
+</sc-if>
+<span class="nt-add">
+<button type="button" class="st-add{{hotAdd}}" aria-label="Notes with someone else" title="Notes with someone else" aria-expanded="{{pickOpen}}" onClick="{{togglePick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button>
+<sc-if value="{{pickOpen}}" hint-placeholder-val="{{false}}">
+<div class="nt-away" onClick="{{closePop}}"></div>
+<div class="nt-pop nt-pick" role="dialog" aria-label="Show notes with someone">
+<label class="nt-pop-find"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><input type="text" value="{{pickQ}}" placeholder="Find someone in your notes" aria-label="Find someone in your notes" autoComplete="off" spellCheck="false" onChange="{{pickTyped}}" onKeyDown="{{pickKey}}"></label>
+<div class="nt-pop-list">
+<sc-if value="{{hasWho}}" hint-placeholder-val="{{false}}"><button type="button" class="nt-pop-row" onClick="{{clearWho}}"><span class="nt-pop-any"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg></span><span class="nt-pop-b"><b>Anyone</b><small>All your notes</small></span></button></sc-if>
+<sc-for list="{{pickRows}}" as="p" hint-placeholder-count="5"><button type="button" class="nt-pop-row{{p.cls}}{{p.hot}}" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="28" hint-size="28px,31px"></dc-import><span class="nt-pop-b"><b class="clamp1">{{p.name}}</b><small>{{p.count}}</small></span></button></sc-for>
+<sc-if value="{{pickNone}}" hint-placeholder-val="{{false}}"><p class="nt-pop-none">Nobody by that name in your notes.</p></sc-if>
+</div>
+</div>
+</sc-if>
+</span>
+</div>
+<div class="nt-tabs" role="tablist" aria-label="Show">
+<sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><button type="button" role="tab" aria-selected="{{t.on}}" class="nt-tab{{t.cls}}{{t.hot}}" onClick="{{t.go}}">{{t.label}}</button></sc-for>
+</div>
+</section>
+</sc-if>
+
+<div class="nt-water">
+<sc-if value="{{hasAsk}}" hint-placeholder-val="{{false}}">
+<section class="nt-ans" aria-live="polite" aria-label="Answer from your notes">
+<sc-if value="{{askReading}}" hint-placeholder-val="{{false}}"><p class="nt-ans-r"><span class="nt-dots" aria-hidden="true"><i></i><i></i><i></i></span>Reading your notes in confidential compute</p></sc-if>
+<sc-if value="{{askAnswer}}" hint-placeholder-val="{{true}}">
+<p class="nt-ans-t">{{ans.text}}</p>
+<div class="nt-cites">
+<sc-for list="{{ans.cites}}" as="c" hint-placeholder-count="2">
+<span class="nt-cite"><button type="button" class="nt-cite-n{{c.hot}}" title="Show {{c.title}} in the list" onClick="{{c.pick}}"><sc-if value="{{c.hasFace}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{c.face}}" size="20" hint-size="20px,22px"></dc-import></sc-if><span class="clamp1">{{c.title}}</span></button><sc-for list="{{c.at}}" as="m" hint-placeholder-count="2"><button type="button" class="ft-m{{m.hot}}" aria-label="Open {{c.title}} at {{m.at}}" title="Open {{c.title}} at {{m.at}}" onClick="{{m.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{m.at}}</button></sc-for></span>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{askNone}}" hint-placeholder-val="{{false}}"><p class="nt-ans-t">Nothing in your notes answers that.</p></sc-if>
+<sc-if value="{{askGone}}" hint-placeholder-val="{{false}}"><div class="nt-ans-g"><p class="nt-ans-t">A note this read was deleted while it was written.</p><button type="button" class="b b-tint b-sm" onClick="{{askAgain}}">Ask again</button></div></sc-if>
+<button type="button" class="fy-x nt-ans-x" aria-label="Close the answer" title="Close the answer" onClick="{{closeAns}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button>
+</section>
+</sc-if>
+
+<sc-if value="{{hasRows}}" hint-placeholder-val="{{true}}">
+<div class="nt-split">
+<div class="nt-list" role="listbox" aria-label="{{listLabel}}" tabIndex="0" onKeyDown="{{listKey}}">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<div class="nt-g">
+<h2 class="nt-gh">{{g.label}}</h2>
+<sc-for list="{{g.rows}}" as="r" hint-placeholder-count="2">
+<div class="nt-row{{r.cls}}{{r.hot}}" role="option" aria-selected="{{r.on}}" data-note="{{r.id}}" onClick="{{r.pick}}" onDoubleClick="{{r.open}}">
+<span class="nt-lead" data-n="{{r.n}}">
+<sc-if value="{{r.hasFaces}}" hint-placeholder-val="{{true}}"><dc-import name="Faces" who="{{r.faces}}" size="{{r.size}}" max="3" ring="{{r.ring}}" hint-size="52px,44px"></dc-import></sc-if>
+<sc-if value="{{r.isRoom}}" hint-placeholder-val="{{false}}"><span class="nt-arch"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.archIcon}}"></path></svg></span></sc-if>
+</span>
+<span class="nt-b">
+<span class="nt-l1"><b class="nt-title clamp1"><sc-for list="{{r.titleParts}}" as="p" hint-placeholder-count="1"><span class="{{p.cls}}">{{p.t}}</span></sc-for></b><sc-if value="{{r.hasHow}}" hint-placeholder-val="{{false}}"><span class="nt-how"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.howIcon}}"></path></svg><span class="clamp1">{{r.how}}</span></span></sc-if></span>
+<span class="nt-sum clamp1"><sc-if value="{{r.hasSaid}}" hint-placeholder-val="{{false}}"><b class="nt-by">{{r.saidBy}}</b></sc-if><sc-for list="{{r.line}}" as="p" hint-placeholder-count="1"><span class="{{p.cls}}">{{p.t}}</span></sc-for></span>
+<sc-if value="{{r.hasChips}}" hint-placeholder-val="{{true}}">
+<span class="nt-chips">
+<sc-for list="{{r.moments}}" as="m" hint-placeholder-count="0"><button type="button" class="ft-m{{m.hot}}" aria-label="Open {{r.title}} at {{m.at}}" title="Open at {{m.at}}" onClick="{{m.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{m.at}}</button></sc-for>
+<sc-for list="{{r.chips}}" as="k" hint-placeholder-count="2"><span class="nt-k{{k.cls}}"><sc-if value="{{k.dots}}" hint-placeholder-val="{{false}}"><span class="nt-dots" aria-hidden="true"><i></i><i></i><i></i></span></sc-if><sc-if value="{{k.rec}}" hint-placeholder-val="{{false}}"><i class="nt-rec" aria-hidden="true"></i></sc-if><sc-if value="{{k.icon}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{k.icon}}"></path></svg></sc-if>{{k.t}}</span></sc-for>
+</span>
+</sc-if>
+</span>
+<span class="nt-when"><sc-if value="{{r.pinned}}" hint-placeholder-val="{{false}}"><svg class="i nt-pinned" viewBox="0 0 24 24" role="img" aria-label="Pinned"><path d="{{I.pin}}"></path></svg></sc-if><span>{{r.when}}</span></span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+
+<sc-if value="{{hasPv}}" hint-placeholder-val="{{true}}">
+<aside class="nt-pv" aria-labelledby="nt-pv-h">
+<div class="nt-pv-top">
+<span class="nt-st{{pv.stCls}}"><sc-if value="{{pv.isReady}}" hint-placeholder-val="{{true}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></sc-if><sc-if value="{{pv.isWriting}}" hint-placeholder-val="{{false}}"><span class="nt-dots" aria-hidden="true"><i></i><i></i><i></i></span></sc-if><sc-if value="{{pv.isRecording}}" hint-placeholder-val="{{false}}"><i class="nt-rec" aria-hidden="true"></i></sc-if>{{pv.stText}}</span>
+<div class="nt-acts">
+<button type="button" class="nt-ib{{pv.pinCls}}{{hotPin}}" aria-pressed="{{pv.pinned}}" aria-label="Pin these notes" title="{{pv.pinTip}}" onClick="{{pv.pin}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pin}}"></path></svg></button>
+<button type="button" class="b b-quiet b-sm nt-share{{hotShare}}" disabled="{{pv.cantShare}}" title="{{pv.shareTip}}" aria-expanded="{{shareOpen}}" onClick="{{pv.toggleShare}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.share}}"></path></svg><span class="nt-share-t">Share</span></button>
+<button type="button" class="nt-ib{{hotMore}}" aria-label="More" title="More" aria-expanded="{{moreOpen}}" onClick="{{pv.toggleMore}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.more}}"></path></svg></button>
+<button type="button" class="b {{openCls}} b-sm nt-go-note{{hotOpen}}" onClick="{{pv.open}}">Open notes<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button>
+</div>
+
+<sc-if value="{{shareOpen}}" hint-placeholder-val="{{false}}">
+<div class="nt-away" onClick="{{closePop}}"></div>
+<div class="nt-pop nt-sharep" role="dialog" aria-label="Share these notes">
+<h3 class="nt-pop-h">Share these notes</h3>
+<div class="nt-field">
+<sc-for list="{{sh.tokens}}" as="t" hint-placeholder-count="0"><span class="nt-tok"><sc-if value="{{t.isGroup}}" hint-placeholder-val="{{true}}"><span class="nt-hash"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hash}}"></path></svg></span></sc-if><sc-if value="{{t.isPerson}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{t.id}}" size="20" hint-size="20px,22px"></dc-import></sc-if>{{t.label}}<button type="button" aria-label="Remove {{t.label}}" onClick="{{t.drop}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></span></sc-for>
+<input type="text" value="{{sh.q}}" placeholder="{{sh.hint}}" aria-label="Name, email or group" autoComplete="off" spellCheck="false" onChange="{{sh.typed}}" onKeyDown="{{sh.key}}">
+</div>
+<div class="nt-pop-list">
+<sc-for list="{{sh.groups}}" as="g" hint-placeholder-count="2"><button type="button" class="nt-pop-row{{g.hot}}" onClick="{{g.go}}"><span class="nt-hash is-lg"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.hash}}"></path></svg></span><span class="nt-pop-b"><b>{{g.name}}</b><small>{{g.line}}</small></span></button></sc-for>
+<sc-for list="{{sh.people}}" as="p" hint-placeholder-count="3"><button type="button" class="nt-pop-row{{p.hot}}" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="28" hint-size="28px,31px"></dc-import><span class="nt-pop-b"><b class="clamp1">{{p.name}}</b><small>{{p.title}}</small></span></button></sc-for>
+<sc-if value="{{sh.hasNew}}" hint-placeholder-val="{{false}}"><button type="button" class="nt-pop-row" onClick="{{sh.addNew}}"><span class="nt-hash is-lg"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.mail}}"></path></svg></span><span class="nt-pop-b"><b class="clamp1">{{sh.q}}</b><small>They find them in Alcove when they sign in with that email.</small></span></button></sc-if>
+</div>
+<div class="nt-pop-f"><span>{{sh.have}}</span><button type="button" class="b b-press b-sm{{hotShareGo}}" disabled="{{sh.none}}" onClick="{{sh.send}}">Share</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{moreOpen}}" hint-placeholder-val="{{false}}">
+<div class="nt-away" onClick="{{closePop}}"></div>
+<div class="nt-pop nt-morep" role="dialog" aria-label="More">
+<sc-if value="{{notSure}}" hint-placeholder-val="{{true}}">
+<button type="button" class="nt-pop-row" disabled="{{pv.noCopy}}" onClick="{{pv.copy}}"><span class="nt-pop-ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.copy}}"></path></svg></span><span class="nt-pop-b"><b>Copy as text</b><sc-if value="{{pv.noCopy}}" hint-placeholder-val="{{false}}"><small>Once the notes are written.</small></sc-if></span></button>
+<button type="button" class="nt-pop-row{{hotMoreDelete}}" disabled="{{pv.inCall}}" onClick="{{pv.askSure}}"><span class="nt-pop-ic"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.trash}}"></path></svg></span><span class="nt-pop-b"><b>{{pv.dropLabel}}</b><small>{{pv.dropLine}}</small></span></button>
+</sc-if>
+<sc-if value="{{sure}}" hint-placeholder-val="{{false}}">
+<div class="nt-sure"><b>{{pv.sureTitle}}</b><p>{{pv.sureLine}}</p><div class="nt-sure-a"><button type="button" class="b b-quiet b-sm" onClick="{{closePop}}">Cancel</button><button type="button" class="b b-press b-sm{{hotMoreSure}}" onClick="{{pv.drop}}">{{pv.sureGo}}</button></div></div>
+</sc-if>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{whoOpen}}" hint-placeholder-val="{{false}}">
+<div class="nt-away" onClick="{{closePop}}"></div>
+<div class="nt-pop nt-whop{{pv.whoCls}}" style="{{whoStyle}}" role="dialog" aria-label="Who has these notes">
+<h3 class="nt-pop-h">Who has these notes</h3>
+<div class="nt-pop-list">
+<sc-for list="{{pv.whoRows}}" as="p" hint-placeholder-count="4"><div class="nt-pop-row is-still"><dc-import name="Faces" who="{{p.face}}" size="24" hint-size="24px,26px"></dc-import><span class="nt-pop-b"><b class="clamp1">{{p.name}}</b><small class="clamp1" title="{{p.role}}">{{p.role}}</small></span></div></sc-for>
+</div>
+<sc-if value="{{pv.whoMore}}" hint-placeholder-val="{{false}}"><div class="nt-pop-f"><button type="button" class="act{{hotWhoAll}}" onClick="{{pv.showAll}}">{{pv.whoAllLabel}}</button></div></sc-if>
+</div>
+</sc-if>
+
+<div class="nt-pv-in">
+<div class="nt-pv-h"><h2 class="nt-pv-t" id="nt-pv-h">{{pv.title}}</h2><sc-if value="{{pv.hasHow}}" hint-placeholder-val="{{false}}"><span class="nt-how"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{pv.howIcon}}"></path></svg><span class="clamp1">{{pv.how}}</span></span></sc-if></div>
+<div class="nt-pv-m"><span>{{pv.at}}</span><sc-if value="{{pv.hasSeries}}" hint-placeholder-val="{{false}}"><span>{{pv.series}}</span></sc-if>
+<sc-if value="{{pv.canWho}}" hint-placeholder-val="{{true}}"><button type="button" class="nt-whob{{hotWho}}" aria-expanded="{{whoOpen}}" title="Who has these notes" onClick="{{pv.toggleWho}}"><dc-import name="Faces" who="{{pv.faces}}" size="22" max="4" ring="var(--surface)" hint-size="66px,24px"></dc-import><span class="clamp1">{{pv.people}}</span></button></sc-if>
+<sc-if value="{{pv.isOnly}}" hint-placeholder-val="{{false}}"><span class="nt-only"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg>Only you</span></sc-if>
+</div>
+
+<sc-if value="{{pv.isWriting}}" hint-placeholder-val="{{false}}"><p class="nt-pv-wait"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg><span>The audio is saved and encrypted. The notes are being written in confidential compute, and everyone invited gets them.</span></p></sc-if>
+<sc-if value="{{pv.isRecording}}" hint-placeholder-val="{{false}}"><p class="nt-pv-wait"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.lock}}"></path></svg><span>Still recording. The notes are written in confidential compute once it stops.</span></p></sc-if>
+
+<sc-if value="{{pv.hasSaid}}" hint-placeholder-val="{{false}}">
+<section class="nt-sec" aria-label="What was said">
+<h3 class="nt-sh">{{pv.saidHead}}</h3>
+<sc-for list="{{pv.said}}" as="s" hint-placeholder-count="2">
+<div class="nt-said"><p class="nt-said-t"><b>{{s.by}}</b><sc-for list="{{s.parts}}" as="p" hint-placeholder-count="1"><span class="{{p.cls}}">{{p.t}}</span></sc-for></p><button type="button" class="ft-m{{s.hot}}" aria-label="Open at {{s.at}}" title="Open at {{s.at}}" onClick="{{s.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{s.at}}</button></div>
+</sc-for>
+</section>
+</sc-if>
+
+<sc-if value="{{pv.isGone}}" hint-placeholder-val="{{false}}"><div class="nt-pv-gone"><span class="nt-ghost"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notes}}"></path></svg></span><b>These notes aren’t here any more</b><p>They were deleted, or taken out of your notes.</p></div></sc-if>
+<sc-if value="{{pv.isNothing}}" hint-placeholder-val="{{false}}"><p class="nt-pv-s nt-quiet">Nothing was said while notes were on.</p></sc-if>
+<sc-if value="{{pv.isUnwritten}}" hint-placeholder-val="{{false}}"><p class="nt-pv-wait is-caution"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.pen}}"></path></svg><span><b>The summary couldn’t be written.</b> The transcript and the audio are kept, and you can still ask about the call.</span></p></sc-if>
+<sc-if value="{{pv.hasLong}}" hint-placeholder-val="{{true}}"><p class="nt-pv-s{{pv.longCls}}">{{pv.long}}</p></sc-if>
+
+<sc-if value="{{pv.hasDecisions}}" hint-placeholder-val="{{true}}">
+<section class="nt-sec" aria-label="Decisions">
+<sc-for list="{{pv.decisions}}" as="d" hint-placeholder-count="1">
+<div class="nt-d{{d.cls}}">
+<span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.decide}}"></path></svg></span>
+<div class="nt-d-b">
+<p class="nt-d-t">{{d.t}}</p>
+<sc-if value="{{d.flag}}" hint-placeholder-val="{{false}}"><p class="nt-d-f"><span class="nt-flag"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.alert}}"></path></svg>{{d.flag}}</span></p></sc-if>
+<sc-if value="{{d.open}}" hint-placeholder-val="{{true}}"><div class="nt-d-a"><button type="button" class="ft-yes{{d.hotYes}}" onClick="{{d.yes}}">{{d.yesLabel}}</button><button type="button" class="act" onClick="{{d.no}}">It wasn’t decided</button></div></sc-if>
+<sc-if value="{{d.settled}}" hint-placeholder-val="{{false}}"><p class="nt-d-s"><span>{{d.line}}</span><sc-if value="{{d.canUndo}}" hint-placeholder-val="{{false}}"><button type="button" class="act" onClick="{{d.undo}}">{{d.undoLabel}}</button></sc-if></p></sc-if>
+</div>
+<button type="button" class="ft-m" aria-label="Open at {{d.at}}" title="Open at {{d.at}}" onClick="{{d.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{d.at}}</button>
+</div>
+</sc-for>
+<sc-if value="{{pv.moreDecisions}}" hint-placeholder-val="{{false}}"><button type="button" class="nt-more" onClick="{{pv.open}}">{{pv.moreDecisions}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{pv.hasFollow}}" hint-placeholder-val="{{true}}">
+<section class="nt-sec" aria-label="Follow-ups">
+<div class="cl nt-cl">
+<sc-for list="{{pv.follow}}" as="m" hint-placeholder-count="2">
+<div class="cl-r{{m.cls}}"><button type="button" class="ck{{m.hotTick}}" role="checkbox" aria-checked="{{m.on}}" aria-label="Done: {{m.t}}" onClick="{{m.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button><span class="cl-t clamp1" title="{{m.t}}">{{m.t}}</span><button type="button" class="ft-m" aria-label="Open at {{m.at}}" title="Open at {{m.at}}" onClick="{{m.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{m.at}}</button><span class="cl-d{{m.dueCls}}">{{m.due}}</span></div>
+</sc-for>
+</div>
+<sc-if value="{{pv.moreFollow}}" hint-placeholder-val="{{false}}"><button type="button" class="nt-more" onClick="{{pv.open}}">{{pv.moreFollow}}<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{pv.hasFoot}}" hint-placeholder-val="{{true}}"><p class="nt-pv-f"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>{{pv.foot}}</p></sc-if>
+</div>
+</aside>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{hasNone}}" hint-placeholder-val="{{false}}">
+<section class="nt-none" aria-live="polite">
+<span class="nt-arts">
+<sc-if value="{{none.hasFace}}" hint-placeholder-val="{{false}}"><dc-import name="Faces" who="{{none.face}}" size="58" hint-size="58px,63px"></dc-import></sc-if>
+<span class="nt-ghost"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{none.icon}}"></path></svg></span>
+</span>
+<h2 class="nt-none-t">{{none.title}}</h2>
+<p class="nt-none-p">{{none.line}}</p>
+<sc-if value="{{none.hasActions}}" hint-placeholder-val="{{true}}"><div class="nt-none-a"><sc-for list="{{none.actions}}" as="a" hint-placeholder-count="1"><button type="button" class="b {{a.cls}}{{a.hot}}" onClick="{{a.go}}">{{a.label}}</button></sc-for></div></sc-if>
+</section>
+</sc-if>
+
+<sc-if value="{{first}}" hint-placeholder-val="{{false}}">
+<section class="nt-ex" aria-label="An example note">
+<div class="nt-ex-card">
+<div class="nt-ex-b">
+<div class="nt-ex-top"><span class="nt-st">Example</span><button type="button" class="b b-quiet b-sm{{hotExOpen}}" onClick="{{ex.open}}">Open the example<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></div>
+<h2 class="nt-pv-t">{{ex.title}}</h2>
+<div class="nt-pv-m"><span>{{ex.length}}</span><span class="nt-whob is-still"><dc-import name="Faces" who="{{ex.faces}}" size="22" max="4" ring="var(--surface)" hint-size="66px,24px"></dc-import><span>{{ex.people}}</span></span></div>
+<p class="nt-pv-s">{{ex.summary}}</p>
+<div class="nt-said"><p class="nt-said-t"><b>{{ex.said.by}}</b>{{ex.said.t}}</p><button type="button" class="ft-m" aria-label="Open the example at {{ex.said.at}}" onClick="{{ex.open}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{ex.said.at}}</button></div>
+</div>
+<div class="fg nt-ex-t">
+<article class="ft is-decide">
+<div class="ft-h"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.decide}}"></path></svg></span><span class="ft-k">Decision</span><button type="button" class="ft-m" aria-label="Open the example at {{ex.decide.at}}" onClick="{{ex.open}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{ex.decide.at}}</button></div>
+<p class="ft-t">{{ex.decide.t}}</p>
+<div class="ft-a ft-done"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span>{{ex.confirmed}}</span></div>
+</article>
+<article class="ft is-own">
+<div class="ft-h"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.own}}"></path></svg></span><span class="ft-k">Follow-up</span><button type="button" class="ft-m" aria-label="Open the example at {{ex.follow.at}}" onClick="{{ex.open}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{ex.follow.at}}</button></div>
+<p class="ft-t">{{ex.follow.t}}</p>
+<div class="ft-a nt-ex-who"><dc-import name="Faces" who="{{ex.follow.owner}}" size="22" hint-size="22px,24px"></dc-import><span>Kofi, {{ex.follow.due}}</span></div>
+</article>
+</div>
+</div>
+<p class="nt-ex-cap"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.sealed}}"></path></svg>Written in confidential compute. Alcove can’t read it.</p>
+</section>
+</sc-if>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="4"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"step":{"editor":null,"default":"list"},"$preview":{"width":1440,"height":900}}'>
+/* Small words a question carries that a search shouldn't look for. */
+var STOP = 'a an and are about all at be been but by can could did do does for from get got had has have how i if in into is it its just like me more my not of on or our out over said say she should so some than that the their them then there these they this those to too up us was we were what when where which who why will with would you your'.split(' ');
+var ASKS = /^(what|who|whom|whose|when|where|why|how|did|do|does|is|are|was|were|can|could|should|which|has|have|catch|draft|summarise|summarize)\b/i;
+function esc(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function parse(q) {
+  var text = (q || '').trim(), question = /\?$/.test(text) || ASKS.test(text);
+  var words = text.toLowerCase().replace(/[?!.,;:"“”()]/g, ' ').split(/\s+/).filter(Boolean);
+  return { text: text, question: question, terms: question ? words.filter(function (w) { return w.length > 2 && STOP.indexOf(w) < 0; }) : words };
+}
+/* Text in pieces, with the words that matched marked whole. */
+function marks(text, terms) {
+  if (!terms.length) return [{ t: text, cls: '' }];
+  return text.split(new RegExp('(' + terms.map(function (w) { return esc(w) + '[\\p{L}\\p{N}]*'; }).join('|') + ')', 'igu'))
+    .map(function (t, i) { return { t: t, cls: i % 2 ? 'nt-mark' : '' }; })
+    .filter(function (p) { return p.t; });
+}
+/* A long line, cut so what matched is near the start. */
+function near(text, terms) {
+  var low = text.toLowerCase(), at = -1;
+  terms.forEach(function (w) { var i = low.indexOf(w.toLowerCase()); if (i >= 0 && (at < 0 || i < at)) at = i; });
+  if (at < 46) return text;
+  var from = text.lastIndexOf(' ', at - 24);
+  return '…' + text.slice(from + 1);
+}
+function hits(text, terms) { var low = text.toLowerCase(); return terms.some(function (w) { return low.indexOf(w.toLowerCase()) >= 0; }); }
+function has(text, w) { return text.toLowerCase().indexOf(w.toLowerCase()) >= 0; }
+/* A moment as the app writes it: 6:12, not 06:12. */
+function pos(at) { return at.replace(/^0(?=\d:)/, ''); }
+function and(list) { return list.length < 2 ? (list[0] || '') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1]; }
+/* A sandboxed frame may refuse to rewrite its address. The page doesn't depend on it, so that's never an error. */
+function address(hash) { try { history.replaceState(null, '', '#' + hash); } catch (e) { return; } }
+
+class Component extends DCLogic {
+  componentDidMount() {
+    if (document.querySelector('.fl')) return;
+    var self = this;
+    this.__keys = function (e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { var i = document.querySelector('.nt-q input'); if (i) { e.preventDefault(); i.focus(); i.select(); } }
+      if (e.key === 'Escape') self.setState({ pop: '', sure: false, whoAll: false, shareSel: [], shareQ: '', pickQ: '' });
+    };
+    window.addEventListener('keydown', this.__keys);
+  }
+  componentWillUnmount() {
+    clearTimeout(this.__toast); clearTimeout(this.__ask);
+    if (this.__keys) window.removeEventListener('keydown', this.__keys);
+  }
+  renderVals() {
+    var AH = window.AH, NT = AH.NT, D = AH.D, hs = AH.hash(), self = this;
+    var v = AH.page(this, 'notes');
+    var I = v.I = AH.assign({}, v.I, NT.icons);
+    if (this.__step === undefined) this.__step = hs.step || this.props.step || 'list';
+    var step = NT.steps[this.__step] || {};
+    var st = AH.assign({ q: '', show: 'all', who: hs['with'] || '', picked: '', pop: '', hot: '', asked: '', askQ: '', done: {}, ticks: {}, pins: null, shares: {}, gone: [], busy: [], shareSel: [], shareQ: '', pickQ: '' }, step, this.state || {});
+    var first = v.first || !!st.first;
+    var hot = function (k) { return st.hot === k ? ' is-hot' : ''; };
+    var set = function (p) { self.setState(AH.assign({ hot: '', toast: st.stay ? '' : st.toast, stay: false }, p)); };
+    var nameOf = function (id) {
+      if (id === 'art') return D.me.name;
+      var p = D.people.filter(function (x) { return x.id === id; })[0];
+      return p ? p.name : (NT.names[id] || id);
+    };
+    var firstOf = function (id) { return nameOf(id).split(' ')[0]; };
+
+    /* Every note, with what happened to it on this page. */
+    var pins = st.pins || NT.notes.filter(function (n) { return n.pinned; }).map(function (n) { return n.id; });
+    var notes = st.busy.map(function (id) { return NT.busy[id]; }).concat(NT.order.map(function (id) { return NT.notes.filter(function (n) { return n.id === id; })[0]; }))
+      .filter(function (n) { return st.gone.indexOf(n.id) < 0 && !(st.noShared && NT.detail[n.id].got && NT.detail[n.id].got.role === 'shared'); });
+    var openOf = function (n) {
+      var d = NT.detail[n.id];
+      return {
+        confirm: d.decisions.filter(function (x) { return x.state === 'proposed' && !st.done[x.id]; }).length,
+        follow: d.follow.filter(function (x) { return !x.owner && !!x.done === !!st.ticks[x.id]; }).length
+      };
+    };
+    var peopleOf = function (n) { return (n.faces ? n.faces.split(',') : []).concat((st.shares[n.id] || { ids: [] }).ids); };
+    var howOf = function (n) {
+      var g = NT.detail[n.id].got;
+      if (!g) return n.kind === 'room' ? (peopleOf(n).length ? 'In the room' : 'In the room, only you') : peopleOf(n).length ? '' : 'Only you';
+      if (g.role === 'invited') return 'From ' + firstOf(g.by) + '’s call';
+      return 'Shared by ' + firstOf(g.by) + (g.group ? ' with ' + g.group : '');
+    };
+    var howIconOf = function (n) {
+      var g = NT.detail[n.id].got;
+      if (!g) return n.kind === 'room' ? I.mic : I.lock;
+      return g.role === 'shared' ? I.share : I.video;
+    };
+
+    /* What the list shows: the kind, the person, then what was searched for. Once a question is answered, the notes it cites. */
+    var parsed = parse(st.q), terms = parsed.terms, term = parsed.text;
+    var found = NT.answers.filter(function (x) { return x.match.test(st.askQ); })[0];
+    var cited = st.asked === 'answer' && found ? found.cites : null;
+    var citeOf = function (id) { return cited ? cited.filter(function (c) { return c.note === id; })[0] : null; };
+    /* What a row and the preview show first: the lines an answer used, in the order it used them, or those with most of the words. */
+    var bestOf = function (lines, c) {
+      var rank = function (l) { return c ? -c.at.indexOf(l.at) : terms.filter(function (w) { return has(l.t, w); }).length; };
+      return lines.slice().sort(function (a, b) { return rank(b) - rank(a) || a.at.localeCompare(b.at); });
+    };
+    var byTime = function (lines) { return lines.slice().sort(function (a, b) { return a.at.localeCompare(b.at); }); };
+    var who = st.who ? { id: st.who, name: nameOf(st.who), first: firstOf(st.who) } : null;
+    var matchOf = function (n) {
+      var d = NT.detail[n.id], res = { lines: [], title: false, summary: false, score: 0 };
+      if (!terms.length) return res;
+      res.title = hits(n.title, terms);
+      res.summary = hits(n.summary, terms);
+      var c = citeOf(n.id);
+      res.lines = d.said.filter(function (l) { return c ? c.at.indexOf(l.at) >= 0 : !cited && hits(l.t, terms); });
+      var hay = [n.title, n.summary, d.long].concat(d.said.map(function (l) { return l.t; })).join(' ');
+      res.score = terms.filter(function (w) { return has(hay, w); }).length;
+      return res;
+    };
+    var narrowed = notes.filter(function (n) {
+      var d = NT.detail[n.id];
+      if (st.show === 'shared' && !(d.got && d.got.role === 'shared')) return false;
+      if (st.show === 'call' && n.kind === 'room') return false;
+      if (st.show === 'room' && n.kind !== 'room') return false;
+      return !who || peopleOf(n).indexOf(who.id) >= 0;
+    });
+    /* A question goes across every note you have, so what it cites shows whatever the filters were. */
+    var list = (cited ? notes : narrowed).filter(function (n) {
+      if (cited) return !!citeOf(n.id);
+      if (!terms.length) return true;
+      var s = matchOf(n).score;
+      return parsed.question ? s > 0 : s === terms.length;
+    });
+    if (parsed.question && !list.length) list = narrowed;
+
+    var open = function (id, at) {
+      if (typeof self.props.go === 'function') self.props.go('note', id, at);
+      else set({ opened: id, openedAt: at || '', pop: '' });
+    };
+    var wide = function (e) { var a = e && e.currentTarget && e.currentTarget.closest ? e.currentTarget.closest('.ah') : null; return !a || a.clientWidth > 1240; };
+
+    /* The rows. */
+    var pickedId = list.some(function (n) { return n.id === st.picked; }) ? st.picked : (list[0] ? list[0].id : '');
+    var ids = list.map(function (n) { return n.id; });
+    var rowOf = function (n) {
+      var d = NT.detail[n.id], m = matchOf(n), o = openOf(n), faces = n.faces ? n.faces.split(',') : [], busy = n.status;
+      var shown = faces.slice(0, 3), when = (n.group === 'Today' || n.group === 'Yesterday') ? n.time : n.day;
+      var how = howOf(n), line = [{ t: n.summary, cls: '' }], saidBy = '', hasSaid = false, moments = [], c0 = citeOf(n.id);
+      if (terms.length) {
+        var best = bestOf(m.lines, c0), quote = best[0];
+        if (!quote || (m.summary && !cited)) line = marks(near(n.summary, terms), terms);
+        else { hasSaid = true; saidBy = quote.who === 'art' ? 'You' : quote.who ? firstOf(quote.who) : quote.name; line = marks(near(quote.t, terms), terms); }
+        moments = byTime(best.slice(0, 3)).map(function (l) { return { at: pos(l.at), hot: hot('row-at-' + l.at), go: function (e) { e.stopPropagation(); open(n.id, l.at); } }; });
+      }
+      var chips = [];
+      if (busy === 'writing') { chips.push({ t: 'Being written', cls: ' is-now', dots: true }); line = [{ t: 'The summary, decisions and follow-ups show here once they’re written.', cls: '' }]; }
+      if (busy === 'recording') { chips.push({ t: 'Still recording', cls: ' is-rec', rec: true }); line = [{ t: 'Recording now.', cls: '' }]; }
+      if (o.confirm) chips.push({ t: o.confirm + ' to confirm', cls: ' is-decide', icon: I.decide });
+      if (o.follow) chips.push({ t: o.follow + (o.follow === 1 ? ' follow-up' : ' follow-ups'), cls: ' is-own', icon: I.own });
+      var on = n.id === pickedId;
+      return {
+        id: n.id, title: n.title, cls: on ? ' is-on' : '', on: on ? 'true' : 'false', hot: hot('row-' + n.id),
+        titleParts: marks(n.title, terms), line: line, hasSaid: hasSaid, saidBy: saidBy,
+        hasHow: !!how, how: how, howIcon: howIconOf(n),
+        hasFaces: faces.length > 0, isRoom: faces.length === 0, archIcon: n.kind === 'room' ? I.mic : I.video, faces: shown.join(','), n: Math.min(shown.length, 3), size: shown.length === 1 ? 40 : shown.length === 2 ? 34 : 28, ring: 'var(--ground)',
+        chips: chips, moments: moments, hasChips: chips.length + moments.length > 0,
+        pinned: pins.indexOf(n.id) >= 0, when: when,
+        pick: function (e) { if (wide(e)) set({ picked: n.id, pop: '' }); else open(n.id); },
+        open: function () { open(n.id); }
+      };
+    };
+    var groups = [];
+    list.forEach(function (n) {
+      var g = groups[groups.length - 1];
+      if (!g || g.label !== n.group) { g = { label: n.group, rows: [] }; groups.push(g); }
+      g.rows.push(rowOf(n));
+    });
+    v.groups = groups;
+    v.listLabel = who ? 'Notes with ' + who.name : 'Notes';
+    v.listKey = function (e) {
+      var i = ids.indexOf(pickedId), to = null;
+      if (e.key === 'ArrowDown') to = i + 1;
+      else if (e.key === 'ArrowUp') to = i - 1;
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = ids.length - 1;
+      else if (e.key === 'Enter') { open(pickedId); return; }
+      if (to === null) return;
+      e.preventDefault();
+      var next = ids[Math.max(0, Math.min(ids.length - 1, to))], box = e.currentTarget;
+      set({ picked: next });
+      var el = box.querySelector('[data-note="' + next + '"]');
+      if (el) el.scrollIntoView({ block: 'nearest' });
+    };
+
+    /* Search and asking. */
+    var ask = function (text) {
+      var t = (text || '').trim();
+      if (!t) return;
+      clearTimeout(self.__ask);
+      set({ asked: 'reading', askQ: t, q: t });
+      self.__ask = setTimeout(function () {
+        var a = NT.answers.filter(function (x) { return x.match.test(t); })[0];
+        self.setState(a ? { asked: 'answer', picked: a.picked } : { asked: 'none' });
+      }, 1300);
+    };
+    v.q = st.q;
+    v.hasQ = !!st.q;
+    v.noQ = !st.q;
+    v.focusCls = st.focus ? ' is-focus' : '';
+    v.typed = function (e) { set({ q: e.target.value, asked: '', focus: false }); };
+    v.qKey = function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); if (!v.askedNow) ask(e.target.value); }
+      if (e.key === 'Escape') { set({ q: '', asked: '' }); e.target.blur(); }
+      if (e.key === 'ArrowDown') { var l = e.target.closest('.ah').querySelector('.nt-list'); if (l) { e.preventDefault(); l.focus(); } }
+    };
+    v.clearQ = function () { clearTimeout(self.__ask); set({ q: '', asked: '', focus: false }); };
+    v.askNow = function () { if (!v.askedNow) ask(st.q); };
+    v.askedNow = !!st.asked && st.asked !== 'gone' && st.askQ === st.q.trim();
+    v.closeAns = function () { clearTimeout(self.__ask); set({ asked: '' }); };
+    v.askAgain = function () { ask(st.askQ); };
+    v.hotLine = hot('line'); v.hotQX = hot('q-x'); v.hotAsk = hot('ask');
+
+    /* The answer. */
+    v.asked = st.asked;
+    v.hasAsk = !!st.asked && !first;
+    v.askReading = st.asked === 'reading';
+    v.askAnswer = st.asked === 'answer' && !!found;
+    v.askNone = st.asked === 'none';
+    v.askGone = st.asked === 'gone';
+    v.ans = found ? {
+      text: found.text,
+      cites: found.cites.map(function (c) {
+        var n = NT.notes.filter(function (x) { return x.id === c.note; })[0], f = n.faces ? n.faces.split(',')[0] : '';
+        return {
+          title: n.title, hasFace: !!f, face: f, hot: hot('cite-' + c.note),
+          pick: function () { set({ picked: c.note, q: st.q }); },
+          at: c.at.map(function (at) { return { at: pos(at), hot: hot('cite-' + c.note + '-' + at), go: function () { open(c.note, at); } }; })
+        };
+      })
+    } : { text: '', cites: [] };
+
+    /* People, most notes together first. */
+    var counts = {};
+    NT.notes.forEach(function (n) { (n.faces ? n.faces.split(',') : []).forEach(function (id) { counts[id] = (counts[id] || 0) + 1; }); });
+    var ranked = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a] || nameOf(a).localeCompare(nameOf(b)); });
+    v.who = who || { id: '', first: '' };
+    v.hasWho = !!who;
+    v.noWho = !who;
+    v.people = ranked.slice(0, 4).map(function (id) {
+      return { id: id, name: nameOf(id), first: firstOf(id), hot: hot('who-' + id), go: function () { set({ who: id, pop: '', picked: '', asked: '' }); } };
+    });
+    v.clearWho = function () { set({ who: '', pop: '', pickQ: '', picked: '', asked: '' }); };
+    v.hotWithX = hot('with-x');
+    v.hotAdd = hot('add');
+    v.closePop = function () { set({ pop: '', sure: false, whoAll: false, shareSel: [], shareQ: '', pickQ: '' }); };
+    v.pickOpen = st.pop === 'pick';
+    v.togglePick = function () { set({ pop: st.pop === 'pick' ? '' : 'pick', pickQ: '' }); };
+    v.pickQ = st.pickQ;
+    v.pickTyped = function (e) { set({ pickQ: e.target.value, pop: 'pick' }); };
+    var pickList = ranked.filter(function (id) { return !st.pickQ || has(nameOf(id), st.pickQ); });
+    v.pickKey = function (e) {
+      if (e.key === 'Enter' && pickList[0]) { e.preventDefault(); set({ who: pickList[0], pop: '', pickQ: '', picked: '', asked: '' }); }
+      if (e.key === 'Escape') set({ pop: '', pickQ: '' });
+    };
+    v.pickRows = pickList.slice(0, 40).map(function (id) {
+      return { id: id, name: nameOf(id), count: counts[id] + (counts[id] === 1 ? ' note' : ' notes'), cls: who && who.id === id ? ' is-on' : '', hot: hot('pick-' + id), go: function () { set({ who: id, pop: '', pickQ: '', picked: '', asked: '' }); } };
+    });
+    v.pickNone = v.pickRows.length === 0;
+
+    /* All, Calls, In the room, Shared with you. */
+    v.tabs = [['all', 'All'], ['call', 'Calls'], ['room', 'In the room'], ['shared', 'Shared with you']].map(function (t) {
+      var on = st.show === t[0];
+      return { label: t[1], on: on ? 'true' : 'false', cls: on ? ' is-on' : '', hot: hot('tab-' + t[0]), go: function () { set({ show: t[0], picked: '', asked: '' }); } };
+    });
+
+    /* The picked note beside the list. */
+    var n = list.filter(function (x) { return x.id === pickedId; })[0];
+    if (st.opened) n = notes.filter(function (x) { return x.id === st.opened; })[0] || n;
+    v.hasRows = (list.length > 0 && !first && !st.failed) || !!st.opened;
+    v.hasPv = !!n && (!first || !!st.opened);
+    v.pv = {};
+    v.shareOpen = st.pop === 'share';
+    v.moreOpen = st.pop === 'more';
+    v.whoOpen = st.pop === 'who';
+    v.whoStyle = 'top: ' + (st.whoTop || 112) + 'px';
+    v.sure = !!st.sure;
+    v.notSure = !st.sure;
+    v.hotPin = hot('pin'); v.hotShare = hot('share'); v.hotMore = hot('more'); v.hotOpen = hot('open'); v.hotWho = hot('who'); v.hotWhoAll = hot('who-all');
+    v.hotMoreDelete = hot('more-delete'); v.hotMoreSure = hot('more-sure'); v.hotShareGo = hot('share-go');
+    /* One filled button per view: while a popover has its own, Open notes steps back. */
+    v.openCls = (v.shareOpen || (v.moreOpen && st.sure)) ? 'b-tint' : 'b-press';
+    if (n) {
+      var d = NT.detail[n.id], mine = d.organizer === 'art', pinned = pins.indexOf(n.id) >= 0, m = matchOf(n), share = st.shares[n.id];
+      var ppl = peopleOf(n), faces = ['art'].concat(ppl), others = ppl.map(firstOf);
+      var peopleLine = others.length > 3 ? 'You, ' + others.slice(0, 2).join(', ') + ' and ' + (others.length - 2) + ' more' : and(['You'].concat(others));
+      var roleOf = function (id) {
+        if (id === d.organizer) return 'Organizer';
+        if (share && share.ids.indexOf(id) >= 0) return share.group ? 'Shared by you with ' + share.group : 'Shared afterwards by you';
+        var g = d.got;
+        if (id === 'art' && g && g.role === 'shared') return g.group ? 'Shared by ' + firstOf(g.by) + ' with ' + g.group : 'Shared afterwards by ' + firstOf(g.by);
+        return 'Invited';
+      };
+      var whoIds = [d.organizer].concat(faces.filter(function (id) { return id !== d.organizer; }));
+      var said = terms.length ? byTime(bestOf(m.lines, citeOf(n.id)).slice(0, 4)) : [];
+      var busy = n.status, again = st.again === n.id;
+      v.pv = {
+        title: n.title, at: d.at + (n.length ? ', ' + n.length : ''), hasSeries: !!n.series, series: n.series || '',
+        isReady: !busy && !again, isWriting: busy === 'writing' || again, isRecording: busy === 'recording', isWaiting: busy === 'writing',
+        stText: again ? 'Being written again' : busy === 'writing' ? 'Being written' : busy === 'recording' ? 'Still recording' : 'Ready', stCls: busy === 'recording' ? ' is-rec' : busy === 'writing' || again ? ' is-now' : '',
+        pinned: pinned ? 'true' : 'false', pinCls: pinned ? ' is-on' : '', pinTip: pinned ? 'Pinned. Unpin these notes' : 'Pin these notes',
+        pin: function () {
+          if (!pinned && pins.length >= 8) { v.toast('8 notes are pinned, the most there can be. Unpin one to pin these.'); return; }
+          set({ pins: pinned ? pins.filter(function (x) { return x !== n.id; }) : pins.concat([n.id]) });
+        },
+        cantShare: busy === 'recording', shareTip: busy === 'recording' ? 'You can share these once the recording stops.' : 'Share these notes',
+        toggleShare: function () { set({ pop: st.pop === 'share' ? '' : 'share', shareSel: [], shareQ: '' }); },
+        toggleMore: function () { set({ pop: st.pop === 'more' ? '' : 'more', sure: false }); },
+        open: function () { open(n.id); },
+        copy: function () { set({ pop: '' }); v.toast('Copied as text'); },
+        noCopy: !!busy,
+        dropLabel: mine ? 'Delete notes' : 'Remove from your notes', dropLine: !mine ? 'Everyone else keeps them.' : busy === 'recording' && n.kind === 'call' ? 'Once the call ends.' : 'For everyone. Can’t be undone.',
+        inCall: busy === 'recording' && n.kind === 'call',
+        askSure: function () { set({ pop: 'more', sure: true }); },
+        sureTitle: mine ? 'Delete these notes for everyone?' : 'Remove these notes from yours?',
+        sureLine: mine ? 'The summary, the transcript, the audio and anyone’s own notes on them go for good.' : 'Everyone else keeps them. Your own notes on them go for good, and anything you added to the shared notes stays there.',
+        sureGo: mine ? 'Delete' : 'Remove',
+        drop: function () {
+          set({ gone: st.gone.concat([n.id]), pop: '', sure: false, picked: '' });
+          v.toast(mine ? n.title + ' is deleted for everyone: the notes, the transcript and the audio.' : n.title + ' is out of your notes. Everyone else keeps it.');
+        },
+        canWho: ppl.length > 0, isOnly: ppl.length === 0, faces: faces.slice(0, 4).join(','), people: peopleLine,
+        hasHow: !!d.got, how: d.got ? howOf(n) : '', howIcon: howIconOf(n),
+        toggleWho: function (e) {
+          var b = e.currentTarget, box = b.closest('.nt-pv'), r = b.getBoundingClientRect(), o = box.getBoundingClientRect(), k = o.width / box.offsetWidth || 1;
+          set({ pop: st.pop === 'who' ? '' : 'who', whoAll: false, whoTop: Math.round((r.bottom - o.top) / k) + 6 });
+        },
+        whoRows: (st.whoAll ? whoIds : whoIds.slice(0, 8)).map(function (id) { return { face: id, name: id === 'art' ? 'You' : nameOf(id), role: roleOf(id) }; }),
+        whoMore: whoIds.length > 8 && !st.whoAll, whoCls: st.whoAll ? ' is-all' : '', whoAllLabel: 'Show all ' + whoIds.length,
+        showAll: function () { set({ whoAll: true, pop: 'who' }); },
+        hasSaid: said.length > 0, saidHead: m.lines.length === 1 ? '1 moment' : m.lines.length + ' moments',
+        said: said.map(function (l) {
+          return { by: l.who ? (l.who === 'art' ? 'You' : firstOf(l.who)) : l.name, parts: marks(l.t, terms), at: pos(l.at), hot: hot('said-' + l.at), go: function () { open(n.id, l.at); } };
+        }),
+        hasLong: !!d.long && !st.gonePv, long: d.long, longCls: said.length ? ' clamp2' : '',
+        isGone: !!st.gonePv, isNothing: d.blank === 'nothing', isUnwritten: d.blank === 'unwritten',
+        hasDecisions: d.decisions.length > 0 && !st.gonePv, hasFollow: d.follow.length > 0 && !st.gonePv, hasFoot: !!d.verified && !st.gonePv, foot: 'Confidential compute, verified ' + (d.verified || ''),
+        moreDecisions: d.decisions.length > 3 ? (d.decisions.length - 3) + ' more ' + (d.decisions.length === 4 ? 'decision' : 'decisions') + ' in the notes' : '',
+        moreFollow: d.follow.length > 4 ? (d.follow.length - 4) + ' more ' + (d.follow.length === 5 ? 'follow-up' : 'follow-ups') + ' in the notes' : '',
+        decisions: d.decisions.slice(0, 3).map(function (x) {
+          var ans = st.done[x.id], mineSaid = st.disputed === x.id, settling = st.settling === x.id;
+          var open_ = (x.state === 'proposed' && !ans && !mineSaid) || settling, undo = !!ans || mineSaid;
+          var line = mineSaid || ans === 'no' ? 'You said this wasn’t decided' : ans === 'yes' ? 'Confirmed by you' : x.state === 'confirmed' ? 'Confirmed by ' + x.by : '';
+          return {
+            t: x.t, at: pos(x.at), open: open_, settled: !open_, line: line, canUndo: undo, undoLabel: mineSaid ? 'Take that back' : 'Undo', cls: open_ && !settling ? '' : ' is-settled', hotYes: hot('yes-' + x.id),
+            yesLabel: settling ? 'Keep it confirmed' : 'Confirm', flag: settling ? 'Priya says this wasn’t decided' : '',
+            yes: function () { var dn = AH.assign({}, st.done); dn[x.id] = 'yes'; set({ done: dn }); },
+            no: function () { var dn = AH.assign({}, st.done); dn[x.id] = 'no'; set({ done: dn }); },
+            undo: function () { var dn = AH.assign({}, st.done); delete dn[x.id]; set({ done: dn }); },
+            go: function () { open(n.id, x.at); }
+          };
+        }),
+        follow: d.follow.slice(0, 4).map(function (x) {
+          var on = !!x.done !== !!st.ticks[x.id];
+          return {
+            t: x.t, at: pos(x.at), due: x.owner ? firstOf(x.owner) : x.due, on: on ? 'true' : 'false', cls: on ? ' is-ticked' : '', dueCls: x.soon ? ' is-soon' : '', hotTick: hot('tick-' + x.id),
+            tick: function () { var t = AH.assign({}, st.ticks); t[x.id] = !st.ticks[x.id]; set({ ticks: t }); },
+            go: function () { open(n.id, x.at); }
+          };
+        })
+      };
+
+      /* Share: your groups by name first, then people, and never anyone who has them. */
+      var haveIds = faces;
+      var sel = st.shareSel;
+      var selGroup = D.groups.filter(function (g) { return sel.indexOf(g.id) >= 0; })[0];
+      var freshOf = function (g) { return g.people.filter(function (id) { return haveIds.indexOf(id) < 0; }); };
+      var typedQ = st.shareQ.trim();
+      var isMail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedQ);
+      var addSel = function (id) { set({ pop: 'share', shareSel: sel.concat([id]), shareQ: '' }); };
+      var mails = sel.filter(function (id) { return id.indexOf('@') > 0; });
+      var send = function () {
+        var picks = sel.filter(function (id) { return id !== (selGroup && selGroup.id) && id.indexOf('@') < 0; });
+        var fresh = (selGroup ? freshOf(selGroup) : []).concat(picks.filter(function (id) { return haveIds.indexOf(id) < 0; }));
+        var sh = AH.assign({}, st.shares);
+        sh[n.id] = { group: selGroup ? selGroup.name : (share ? share.group : ''), ids: (share ? share.ids : []).concat(fresh) };
+        set({ shares: sh, pop: '', shareSel: [], shareQ: '' });
+        v.toast('Shared with ' + and((selGroup ? [selGroup.name] : []).concat(picks.map(firstOf)).concat(mails)) + '.');
+      };
+      v.sh = {
+        q: st.shareQ, hint: sel.length ? 'Add another' : 'Name, email or group',
+        typed: function (e) { set({ shareQ: e.target.value, pop: 'share', shareSel: sel }); },
+        key: function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); if (isMail) addSel(typedQ); else if (sel.length) send(); }
+          if (e.key === 'Backspace' && !st.shareQ && sel.length) set({ pop: 'share', shareSel: sel.slice(0, -1) });
+          if (e.key === 'Escape') set({ pop: '', shareSel: [], shareQ: '' });
+        },
+        hasNew: isMail, addNew: function () { addSel(typedQ); },
+        have: faces.length === 1 ? 'Only you have them' : faces.length + ' people have them',
+        none: sel.length === 0, send: send,
+        tokens: sel.map(function (id) {
+          var g = D.groups.filter(function (x) { return x.id === id; })[0], mail = id.indexOf('@') > 0;
+          return { id: id, isGroup: !!g || mail, isPerson: !g && !mail, label: g ? g.name : mail ? id : firstOf(id), drop: function () { set({ pop: 'share', shareSel: sel.filter(function (x) { return x !== id; }) }); } };
+        }),
+        groups: selGroup ? [] : D.groups.filter(function (g) { return freshOf(g).length > 0 && (!typedQ || has(g.name, typedQ)); }).map(function (g) {
+          var already = g.people.length - freshOf(g).length;
+          return { name: g.name, line: g.people.length + ' people' + (already ? ', ' + already + (already === 1 ? ' already has them' : ' already have them') : ''), hot: hot('share-' + g.id), go: function () { addSel(g.id); } };
+        }),
+        people: D.people.filter(function (p) { return p.on && haveIds.indexOf(p.id) < 0 && sel.indexOf(p.id) < 0 && (!typedQ || has(p.name, typedQ)); }).slice(0, typedQ ? 5 : 3).map(function (p) {
+          return { id: p.id, name: p.name, title: p.title, hot: hot('share-' + p.id), go: function () { addSel(p.id); } };
+        })
+      };
+    } else {
+      v.sh = { tokens: [], groups: [], people: [] };
+    }
+
+    /* Nothing to show, and why. */
+    v.hasNone = (list.length === 0 || !!st.failed) && !first && !st.opened;
+    var onlyHere = st.show !== 'all' || !!who;
+    var quietAll = { label: 'Search all notes', cls: 'b-quiet', hot: '', go: function () { set({ show: 'all', who: '', picked: '' }); } };
+    var none = { title: '', line: '', icon: I.search, hasFace: false, face: '', actions: [] };
+    if (st.failed) {
+      none.title = 'Couldn’t search your notes';
+      none.line = 'Can’t reach Alcove. Check your connection.';
+      none.actions = [{ label: 'Try again', cls: 'b-press', hot: '', go: function () { set({ failed: false }); } }];
+    } else if (term && terms.length) {
+      none.title = 'Nothing matches “' + term + '”';
+      none.line = onlyHere ? 'Only the notes shown here were searched.' : 'That covers titles, summaries and everything said.';
+      none.actions = [{ label: 'Clear search', cls: 'b-press', hot: hot('none-clear'), go: v.clearQ }].concat(onlyHere ? [quietAll] : []);
+    } else if (who) {
+      none.icon = I.notes;
+      none.hasFace = true; none.face = who.id;
+      none.title = st.show === 'shared' ? who.first + ' hasn’t shared any notes with you' : st.show === 'call' ? 'No calls with ' + who.first : st.show === 'room' ? 'No recordings in the room with ' + who.first : 'No notes with ' + who.first + ' yet';
+      none.line = 'Notes from calls and recordings you both have show up here.';
+      none.actions = [{ label: 'Show notes with anyone', cls: 'b-press', hot: hot('none-anyone'), go: v.clearWho }];
+    } else if (st.show === 'shared') {
+      none.icon = I.share;
+      none.title = 'Nothing shared with you yet';
+      none.line = 'When someone shares their notes with you, they land here.';
+    } else if (st.show === 'room') {
+      none.icon = I.recordDot;
+      none.title = 'Nothing recorded in the room yet';
+      none.line = 'Conversations you record in the room land here.';
+      none.actions = [{ label: 'Record in the room', cls: 'b-press', hot: '', go: function () { v.go('record'); } }];
+    } else {
+      none.icon = I.notes;
+      none.title = st.show === 'call' ? 'No calls with notes yet' : 'No notes yet';
+      none.line = 'Calls with notes on land here as soon as they end.';
+      none.actions = [{ label: 'Start a call', cls: 'b-press', hot: '', go: v.startCall }];
+    }
+    none.hasActions = none.actions.length > 0;
+    v.none = none;
+
+    /* The first day: what notes will look like, and how to get some. */
+    v.first = first && !st.opened;
+    v.firstFlag = v.first ? 'true' : 'false';
+    v.hasSky = !first && !st.opened;
+    v.startCall = function () { set({ modal: 'choose', guests: [], slot: 't17', fromCard: false }); };
+    v.goRecord = function () { v.go('record'); };
+    v.hotFirstGo = hot('first-go');
+    v.hotFirstRec = hot('first-rec');
+    v.hotExOpen = hot('ex-open');
+    var ex = NT.example;
+    v.ex = AH.assign({}, ex, { confirmed: 'Confirmed by ' + ex.decide.by, open: function () { open('ex'); }, said: AH.assign({}, ex.said, { at: pos(ex.said.at) }), decide: AH.assign({}, ex.decide, { at: pos(ex.decide.at) }), follow: AH.assign({}, ex.follow, { at: pos(ex.follow.at) }) });
+
+    /* Opening: the sky closes to a note's moment and the preview becomes the page. */
+    v.isOpen = !!st.opened;
+    v.notOpen = !st.opened;
+    v.closeOpen = function () { set({ opened: '', openedAt: '' }); };
+    /* Notes the note page writes out open there, at their moment. The rest show the preview, opened up. */
+    var written = st.opened ? NT.written[st.opened] : null;
+    v.hasNote = !!written;
+    v.noNote = !written;
+    var atMoment = written ? written[st.openedAt || ''] : '';
+    /* A moment that page no longer has still opens the right note, at the top. */
+    v.noteStep = atMoment && (AH.NOTE_STEPS || {})[atMoment] ? atMoment : 'home';
+    v.noteScene = written && written.scene ? written.scene : 'today';
+    /* The note page reads #step= before its prop, so while it's open the address names its step, not this page's. */
+    var wantStep = written ? v.noteStep : this.__step;
+    if (hs.step && hs.step !== wantStep) address(location.hash.slice(1).replace(/(^|&)step=[^&]*/, '$1step=' + wantStep));
+    /* Who the list is narrowed to lives in the address, so the Team page can link here. It never leaves the browser. */
+    if (!document.querySelector('.fl') && (hs['with'] || '') !== st.who) {
+      var kept = location.hash.slice(1).split('&').filter(function (kv) { return kv && kv.indexOf('with=') !== 0; });
+      address(kept.concat(st.who ? ['with=' + st.who] : []).join('&'));
+    }
+    v.noteGo = function (to) { v.closeOpen(); if (to !== 'notes') v.go(to); };
+    if (st.opened) v.scene = AH.assign({ page: true }, AH.scene('note', v.pal, v.mode));
+    /* The scene spreads its stars down the whole stage. Here the stage is tall, so they're kept in the sky, off the water. */
+    v.scene = AH.assign({}, v.scene, {
+      stars: v.scene.stars.map(function (x) {
+        return AH.assign({}, x, { style: x.style.replace(/top: ([\d.]+)%/, function (m, n) { return 'top: calc(var(--hz) * ' + (Number(n) / 100).toFixed(3) + ')'; }) });
+      })
+    });
+
+    v.goMe = function () { v.go('settings'); };
+
+    /* The sidebar: how many notes you have, what's pinned, and what's left on Home after anything settled here. */
+    var settled = ['d1'].filter(function (id) { return st.done[id]; }).length + ['y1', 'y2'].filter(function (id) { return st.ticks[id]; }).length;
+    var waiting = first ? 0 : Math.max(0, v.S.items.length + v.S.mine.length - settled);
+    var pinRows = first ? [] : pins.map(function (id) { return NT.notes.filter(function (x) { return x.id === id; })[0]; }).filter(function (x) { return x && st.gone.indexOf(x.id) < 0; });
+    v.side = AH.assign({}, v.side, {
+      nav: v.side.nav.map(function (x) {
+        if (x.label === 'Home') return AH.assign({}, x, { count: waiting, hasCount: waiting > 0 });
+        if (x.label === 'Notes') return AH.assign({}, x, { count: notes.length, hasCount: !first });
+        return x;
+      }),
+      pinned: pinRows.map(function (x) { return { id: x.id, t: x.title, go: function () { open(x.id); } }; }),
+      hasPinned: pinRows.length > 0
+    });
+
+    v.ov = AH.assign({}, v.ov, { toast: st.toast || '', hasToast: !!st.toast });
+    return v;
+  }
+}
+</script>
+</body>
+</html>

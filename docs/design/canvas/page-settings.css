@@ -1,0 +1,325 @@
+/*
+ * Settings: change one thing and leave. The last of the light, with you in it, then one page.
+ *
+ * The rules this page keeps:
+ *   no cards. Below the horizon the water goes still and becomes the page; hairlines and space do the rest;
+ *   every row is a label, then a control on one axis, so the eye runs straight down the page;
+ *   Saved always appears in the same place, just left of that axis, where you've just pressed;
+ *   nothing is filled at rest. When the page asks you something, the answer that loses nothing is the filled one.
+ */
+@property --hz { syntax: "<length>"; inherits: true; initial-value: 0px; }
+
+.st2 { --caution: oklch(.83 .115 78); }
+.st2[data-mode="light"] { --caution: oklch(.5 .115 68); }
+
+.st2 .pg-stage { --hz: 128px; --ctl: 272px; --idx: 176px; transition: --hz .42s var(--ease); }
+.st2[data-out="true"] .pg-stage { --hz: 300px; }
+.st2 .pg-in { padding-bottom: 96px; }
+
+/* The water goes still and becomes the page. */
+.st2-page { position: absolute; inset: var(--hz) 0 0; z-index: -1; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--ground) 88px); }
+
+/* ------------------------------------------------------------------ the sky: you, standing on the horizon */
+.st2-band { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; height: calc(var(--hz) - 22px); }
+.st2-me { position: relative; align-self: end; display: flex; align-items: flex-end; gap: 14px; min-width: 0; height: 106px; }
+.st2-me .ac-avatar { box-shadow: 0 -10px 44px -14px color-mix(in oklch, var(--sun-edge) 50%, transparent); }
+.st2-who { min-width: 0; padding-bottom: 9px; }
+.st2-name { font: 400 clamp(23px, 2cqw, 28px)/1.15 var(--serif); letter-spacing: -.008em; color: var(--ink); }
+.st2-mail { margin-top: 2px; font: 400 14px/20px var(--sans); color: var(--ink-2); }
+.st2-glow { position: absolute; left: 0; top: 100%; width: 64px; display: grid; justify-items: center; gap: 4px; padding-top: 5px; pointer-events: none; }
+.st2-glow i { display: block; height: 1.5px; border-radius: 2px; background: var(--sun-edge); }
+.st2-glow i:nth-child(1) { width: 40px; opacity: .55; }
+.st2-glow i:nth-child(2) { width: 24px; opacity: .32; }
+.st2-glow i:nth-child(3) { width: 12px; opacity: .18; }
+
+.st2-end { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; height: 106px; }
+.st2-acts { display: flex; align-items: center; gap: 2px; margin-right: -12px; padding-bottom: 8px; }
+.st2-acts .b { height: 34px; }
+
+/* Sign out asks in the sky, which grows to hold it: for a moment the page is one action. */
+.st2-ask { position: absolute; right: 0; top: 118px; width: min(548px, 100%); animation: st2-up .42s var(--ease) both; }
+.st2-ask b { display: block; font: 600 15.5px/22px var(--sans); color: var(--ink); text-wrap: pretty; }
+.st2-ask p { margin-top: 4px; font: 400 14px/20px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.st2-ask-a { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.st2-sky { background: color-mix(in oklch, var(--ground) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
+.st2-sky:hover { background: color-mix(in oklch, var(--ground) 82%, transparent); }
+.st2-ask .st2-sky { color: var(--caution); }
+@keyframes st2-up { from { opacity: 0; transform: translateY(10px); } }
+
+/* ------------------------------------------------------------------ the page: an index, then the parts */
+.st2-body { display: grid; grid-template-columns: var(--idx) minmax(0, 1fr); column-gap: clamp(36px, 5.2cqw, 104px); margin-top: 58px; }
+.st2-idx { position: sticky; top: 24px; align-self: start; min-width: 0; margin-top: -6px; }
+.st2-idx ol { position: relative; display: grid; }
+.st2-idx ol::before { content: ""; position: absolute; left: 4px; top: 12px; bottom: 12px; width: 1px; background: var(--line-strong); opacity: .6; }
+.st2-ix { display: block; width: 100%; height: 34px; padding-left: 22px; border-radius: 8px; font: 400 14px/34px var(--sans); color: var(--ink-3); text-align: left; white-space: nowrap; transition: color .16s; }
+.st2-ix:hover { color: var(--ink); }
+.st2-ix.is-on { color: var(--ink); font-weight: 500; }
+.st2-mark { position: absolute; left: 0; top: 12.5px; width: 9px; height: 9px; border-radius: 50%; background: var(--sun-edge); box-shadow: 0 0 0 3px var(--ground); transform: translateY(calc(var(--i) * 34px)); transition: transform .42s var(--ease); pointer-events: none; }
+
+.st2-strip { display: none; }
+.st2-parts { min-width: 0; }
+.st2-part + .st2-part { margin-top: 48px; }
+.st2-ph { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding-bottom: 12px; }
+.st2-ph h2 { font: 600 15px/22px var(--sans); color: var(--ink); }
+.st2-ph > span { font: 400 13px/18px var(--sans); color: var(--ink-3); }
+
+/* A row: the label, then the control on the axis. Saved sits just left of the axis, so it's always beside what you pressed. */
+.st2-r { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl); column-gap: 28px; align-items: center; min-height: 58px; padding-block: 11px; border-top: 1px solid var(--line); }
+/* The gap between a label and its control is wide, so the row lights a little under the pointer to hold them together. */
+.st2-r::before { content: ""; position: absolute; inset: 1px -12px 0; z-index: -1; border-radius: 9px; transition: background-color .14s; }
+.st2-r:hover::before { background: color-mix(in oklch, var(--ink) 3.5%, transparent); }
+.st2-r.is-lh::before, .st2-r.is-ll::before, .st2-r.is-off::before, .st2-r.is-q:not(.is-say)::before { display: none; }
+.st2-l { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; min-width: 0; }
+.st2-tx { min-width: 0; }
+.st2-t { display: flex; align-items: center; gap: 9px; font: 400 15px/22px var(--sans); color: var(--ink); }
+.st2-t svg { flex: none; }
+.st2-h { max-width: 66ch; margin-top: 1px; font: 400 13px/18px var(--sans); color: var(--ink-3); text-wrap: pretty; }
+.st2-h.is-no { color: var(--caution); }
+.st2-c { display: grid; gap: 8px; justify-items: start; min-width: 0; }
+.st2-line1 { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; }
+.st2-sv { display: inline-flex; align-items: center; gap: 5px; font: 500 13px/1 var(--sans); color: var(--ink-2); white-space: nowrap; animation: st2-saved .24s var(--ease) both; }
+.st2-sv .i { width: 14px; height: 14px; color: var(--now); }
+@keyframes st2-saved { from { opacity: 0; transform: translateX(6px); } }
+
+/* A list with its test under it: the label sits level with the list, not with the pair. */
+.st2-r[data-k="stack"] { align-items: start; }
+.st2-r[data-k="stack"] .st2-l { min-height: 36px; align-items: center; }
+
+/* Rows waiting on the browser keep their choices, greyed out. */
+.st2-swb { display: block; border-radius: 999px; }
+.st2-r[data-k="sw"] .st2-l { cursor: pointer; }
+.st2-r.is-off .st2-t { color: var(--ink-3); }
+.st2-r.is-off .st2-l, .st2-r.is-off .st2-c { pointer-events: none; }
+.st2-r.is-off .st2-c { opacity: .42; }
+
+/* What a control's place holds when there's nothing to change. */
+.st2-f { display: inline-flex; align-items: center; gap: 8px; min-height: 22px; font: 400 14.5px/20px var(--sans); color: var(--ink-2); }
+.st2-f .i { width: 15px; height: 15px; color: var(--ink-3); }
+.st2-f.is-yes .i { color: var(--now); }
+.st2-f.is-no { color: var(--caution); }
+.st2-f.is-no .i { color: var(--caution); }
+.st2-go { display: inline-flex; align-items: center; gap: 7px; min-height: 22px; font: 500 14px/20px var(--sans); color: var(--ink); border-radius: 5px; }
+.st2-go .i { width: 14px; height: 14px; color: var(--ink-3); transition: transform .14s var(--ease), color .14s; }
+.st2-go:hover .i { transform: translateX(2px); color: var(--ink-2); }
+.st2-go.is-ext:hover .i { transform: translate(1.5px, -1.5px); }
+.st2-go .logo { width: 15px; height: 15px; flex: none; }
+
+/* Two or three choices. */
+.st2-seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); width: 100%; height: 36px; padding: 3px; border-radius: 999px; background: color-mix(in oklch, var(--ink) 8%, transparent); }
+.st2-seg button { border-radius: 999px; font: 500 13.5px/1 var(--sans); color: var(--ink-2); text-align: center; transition: background-color .16s, color .16s; }
+.st2-seg button:hover { color: var(--ink); }
+.st2-seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgb(0 0 0 / .14); }
+.st2[data-mode="dark"] .st2-seg button[aria-pressed="true"] { background: color-mix(in oklch, var(--ink) 14%, transparent); box-shadow: none; }
+
+/* A list. */
+.st2-sel { position: relative; width: 100%; min-width: 0; }
+.st2-sel.is-open { z-index: 30; }
+.st2-sb { display: grid; grid-template-columns: minmax(0, 1fr) 16px; column-gap: 8px; align-items: center; width: 100%; height: 36px; padding: 0 12px 0 15px; border-radius: 999px; background: color-mix(in oklch, var(--ink) 8%, transparent); font: 500 14px/1 var(--sans); color: var(--ink); transition: background-color .14s; }
+.st2-sb:hover { background: color-mix(in oklch, var(--ink) 13%, transparent); }
+.st2-sb .clamp1 { line-height: 20px; }
+.st2-sb .i { color: var(--ink-3); transition: transform .16s var(--ease); }
+.st2-sel.is-open .st2-sb .i { transform: rotate(180deg); }
+.st2-pop { position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: 290px; overflow: hidden auto; padding: 6px; border-radius: 16px; background: var(--raised); box-shadow: 0 0 0 1px var(--line), 0 26px 60px -24px rgb(0 0 0 / .6); scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; animation: st2-pop .16s var(--ease) both; }
+.st2-o { display: grid; grid-template-columns: minmax(0, 1fr) 16px; column-gap: 8px; align-items: center; width: 100%; min-height: 36px; padding: 7px 10px; border-radius: 10px; font: 400 14px/20px var(--sans); color: var(--ink); text-align: left; }
+.st2-o:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.st2-o .i { color: var(--now); }
+@keyframes st2-pop { from { opacity: 0; transform: translateY(-4px); } }
+.st2-catch { position: fixed; inset: 0; z-index: 20; width: 100%; height: 100%; cursor: default; }
+
+/* Check the level and Play test sound sit right under what they test. */
+.st2-test { display: inline-flex; align-items: center; gap: 8px; height: 26px; margin-left: 15px; border-radius: 5px; font: 500 13px/1 var(--sans); color: var(--ink-2); transition: color .14s; }
+.st2-test:hover { color: var(--ink); }
+.st2-test .i { width: 15px; height: 15px; }
+.st2-test .bars { display: inline-grid; grid-auto-flow: column; align-items: center; gap: 2px; height: 14px; }
+.st2-test .bars i { display: block; width: 2px; border-radius: 1px; background: currentColor; }
+.st2-test .bars i:nth-child(1) { height: 5px; } .st2-test .bars i:nth-child(2) { height: 10px; } .st2-test .bars i:nth-child(3) { height: 14px; } .st2-test .bars i:nth-child(4) { height: 8px; }
+.st2-test.is-flush { margin-left: 0; }
+.st2-test.is-busy { color: var(--ink); cursor: default; }
+.st2-test.is-busy .i { color: var(--now); }
+.st2-lvl { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; align-items: center; width: 100%; height: 26px; padding-left: 15px; }
+.st2-ticks { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; height: 18px; align-items: center; }
+.st2-ticks i { display: block; height: 100%; border-radius: 2px; background: color-mix(in oklch, var(--ink) 15%, transparent); transition: background-color .08s; }
+.st2-ticks i.is-on { background: var(--now); }
+.st2-stop { font: 500 13px/1 var(--sans); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.st2-stop:hover { color: var(--ink); }
+
+/* Appearance: three small evenings. */
+.st2-eves { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.st2-eve { display: grid; gap: 7px; justify-items: center; min-width: 0; border-radius: 13px; font: 500 13px/1 var(--sans); color: var(--ink-2); }
+.st2-eve:hover { color: var(--ink); }
+.st2-eve.is-on { color: var(--ink); }
+.st2-win { position: relative; display: block; width: 100%; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 13px; box-shadow: 0 0 0 1px var(--line); transition: box-shadow .16s; }
+.st2-eve:hover .st2-win { box-shadow: 0 0 0 1px var(--line-strong); }
+.st2-eve.is-on .st2-win { box-shadow: 0 0 0 2px var(--ground), 0 0 0 3.5px var(--press); }
+.st2-art { position: absolute; inset: 0; display: block; }
+.st2-art i { position: absolute; display: block; }
+.st2-art.is-b { clip-path: polygon(62% 0, 100% 0, 100% 100%, 38% 100%); }
+.st2-art .sky { inset: 0 0 34%; background: var(--sc-sky); }
+.st2-art .sea { inset: 66% 0 0; background: var(--sc-sea); }
+.st2-art .glow { left: 50%; top: 66%; width: 130%; height: 72%; transform: translate(-50%, -50%); background: radial-gradient(closest-side, var(--sc-glow), transparent); }
+.st2-art .st2-up { position: absolute; inset: 0 0 34%; display: block; overflow: hidden; }
+.st2-art .sun { left: 50%; bottom: 0; width: 25%; aspect-ratio: 1; border-radius: 50%; background: var(--sc-sun); transform: translate(-50%, 50%); }
+.st2-art .rim { left: 0; right: 0; top: 66%; height: 1px; background: linear-gradient(to right, transparent, var(--sc-rim), transparent); }
+.st2-art .g { height: 1.5px; border-radius: 1px; background: var(--sc-near); }
+.st2-art .g1 { left: 39%; top: 71%; width: 22%; opacity: .75; }
+.st2-art .g2 { left: 43%; top: 78%; width: 16%; opacity: .5; }
+.st2-art .g3 { left: 37%; top: 85%; width: 18%; opacity: .32; }
+.st2-art .star { width: 1.5px; height: 1.5px; border-radius: 50%; background: var(--sc-star); opacity: .7; }
+.st2-art .s1 { left: 18%; top: 16%; } .st2-art .s2 { left: 72%; top: 11%; } .st2-art .s3 { left: 84%; top: 34%; }
+.st2-art .cloud { height: 1.5px; border-radius: 1px; background: var(--sc-cloud); }
+.st2-art .c1 { left: 12%; top: 42%; width: 40%; opacity: .7; } .st2-art .c2 { left: 56%; top: 30%; width: 30%; opacity: .55; }
+
+/* Plan: the row's own hairline is the horizon, and the sun sits where your time runs to. */
+.st2-r[data-k="left"] { min-height: 72px; }
+.st2-left { font: 600 21px/28px var(--sans); letter-spacing: -.012em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.st2-on { position: absolute; left: 0; right: 0; bottom: -2px; height: 2px; pointer-events: none; }
+/* Its light lies along the row and fades before either end, so the sun can stand at the very start or the very end. */
+.st2-on::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px; background: radial-gradient(110px 34px at var(--at) 100%, color-mix(in oklch, var(--now) 26%, transparent), transparent); -webkit-mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent); }
+.st2[data-mode="light"] .st2-on::before { background-image: radial-gradient(110px 34px at var(--at) 100%, color-mix(in oklch, var(--sun-edge) 30%, transparent), transparent); }
+.st2-on .lit { position: absolute; left: 0; bottom: 0; height: 1.5px; width: var(--at); border-radius: 2px; background: linear-gradient(90deg in oklch, color-mix(in oklch, var(--notes) 60%, transparent), var(--now) 72%, var(--sun-edge)); }
+.st2-on .sun { position: absolute; left: var(--at); bottom: 0; width: 30px; height: 15px; margin-left: -15px; overflow: hidden; }
+.st2-on .sun::before { content: ""; position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: var(--sun-edge); }
+.st2-on .ref { position: absolute; left: var(--at); top: 100%; display: grid; justify-items: center; gap: 3px; width: 30px; margin-left: -15px; padding-top: 3px; }
+.st2-on .ref i { display: block; height: 1.5px; border-radius: 2px; background: var(--sun-edge); }
+.st2-on .ref i:nth-child(1) { width: 20px; opacity: .55; }
+.st2-on .ref i:nth-child(2) { width: 11px; opacity: .3; }
+/* Run out: the sun has set, and only a little of its light is left at the start of the line. */
+.st2-on.is-set .sun, .st2-on.is-set .ref, .st2-on.is-set .lit { display: none; }
+.st2-on.is-set::before { opacity: .55; }
+
+/* Privacy: what Alcove knows beside what it can't read, on the same two columns as everything else. */
+.st2-r.is-lh { min-height: 44px; padding-block: 8px; }
+.st2-lh { display: flex; align-items: center; gap: 8px; font: 600 14px/20px var(--sans); color: var(--ink); }
+.st2-lh .i { color: var(--ink-3); }
+.st2-r.is-ll { min-height: 42px; padding-block: 9px; }
+.st2-ll { font: 400 14.5px/20px var(--sans); color: var(--ink-2); }
+.st2-ll + .st2-ll { color: var(--ink); }
+
+/* Delete account opens where it is. */
+.st2-caution { color: var(--caution); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--caution) 55%, transparent); }
+.st2-caution:hover { background: color-mix(in oklch, var(--caution) 12%, transparent); }
+.st2-r.is-q .st2-t { font: 600 17px/24px var(--sans); }
+.st2-r.is-q.is-say .st2-t { font: 500 15px/22px var(--sans); color: var(--caution); }
+.st2-del { padding: 4px 0 8px; animation: st2-up .24s var(--ease) both; }
+.st2-gs { display: grid; grid-template-columns: minmax(0, 1fr) var(--ctl); column-gap: 28px; }
+.st2-gh { font: 500 13px/18px var(--sans); color: var(--ink-3); padding-bottom: 6px; }
+.st2-gl { display: grid; }
+.st2-gl li { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; padding-block: 7px; border-top: 1px solid var(--line); font: 400 14.5px/20px var(--sans); color: var(--ink); text-wrap: pretty; }
+.st2-gl li .i { width: 15px; height: 15px; margin-top: 2.5px; color: var(--caution); }
+.st2-gp { padding-block: 7px; border-top: 1px solid var(--line); font: 400 14.5px/20px var(--sans); color: var(--ink); text-wrap: pretty; }
+.st2-no { display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; margin-top: 12px; font: 500 14px/20px var(--sans); color: var(--caution); }
+.st2-no .i { width: 16px; height: 16px; margin-top: 2px; }
+.st2-da { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+[data-busy="true"] > .b-press { opacity: .5; cursor: default; }
+.st2-spin { width: 14px; height: 14px; border-radius: 50%; border: 1.8px solid color-mix(in oklch, currentColor 26%, transparent); border-top-color: currentColor; animation: st2-spin .8s linear infinite; }
+@keyframes st2-spin { to { transform: rotate(360deg); } }
+
+/* The browser's own question: its chrome, not ours. */
+.st2-bp { position: absolute; left: 12px; top: 8px; z-index: 55; width: 324px; padding: 14px 16px 12px; border-radius: 12px; background: oklch(.985 0 0); color: oklch(.25 0 0); box-shadow: 0 0 0 1px oklch(0 0 0 / .08), 0 14px 40px -12px oklch(0 0 0 / .5); font: 400 13.5px/18px system-ui, -apple-system, "Segoe UI", sans-serif; animation: st2-pop .16s var(--ease) both; }
+.st2-bp b { display: block; font-weight: 500; }
+.st2-bp p { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.st2-bp .i { width: 16px; height: 16px; }
+.st2-bp-a { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.st2-bp-a button { height: 30px; padding: 0 16px; border-radius: 999px; box-shadow: inset 0 0 0 1px oklch(.82 0 0); font: 500 13px/1 system-ui, -apple-system, "Segoe UI", sans-serif; color: oklch(.3 0 0); }
+.st2-bp-a button:hover { background: oklch(.95 0 0); }
+
+/* The side panel draws one account's minutes whoever is signed in, so this page tells it whose. */
+.st2 .sd-min b { font-size: 0; }
+.st2 .sd-min b::after { content: var(--sd-left); font-size: 13px; }
+.st2 .sd-meter i { width: var(--sd-share); }
+
+/* A refusal's toast, with a cross rather than Overlays' tick. */
+.toast .i.is-x { width: 16px; height: 16px; }
+
+/* Signed out: the welcome page, which is night in both themes. */
+.st2-gone { --ink: oklch(.965 .012 85); --ink-2: oklch(.835 .022 250); --ink-3: oklch(.715 .032 250); --press: oklch(.935 .04 85); --on-press: oklch(.235 .05 258); position: absolute; inset: 0; z-index: 44; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; padding: 20px clamp(20px, 8.9cqw, 128px) 0; background: oklch(.24 .052 258); color: var(--ink); animation: fade .3s var(--ease) both; }
+.st2-wn { display: flex; align-items: center; gap: 28px; min-height: 36px; }
+.st2-wn .brand { font-size: 23px; color: var(--ink); }
+.st2-wl { display: flex; gap: 28px; flex: 1; margin-left: 4px; font: 500 14px/1 var(--sans); color: var(--ink-2); }
+.st2-ws { display: inline-flex; align-items: center; gap: 8px; font: 500 13.5px/1 var(--sans); color: var(--ink-2); }
+.st2-ws:hover { color: var(--ink); }
+.st2-ws .i { width: 16px; height: 16px; }
+.st2-wn .b-press { height: 36px; }
+.st2-wb { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr); align-items: center; column-gap: 40px; min-height: 0; }
+.st2-we { font: 500 13px/18px var(--sans); color: var(--now); }
+.st2-wh { margin-top: 8px; max-width: 8.4em; font: 420 clamp(48px, 6.1cqw, 88px)/.98 var(--serif); letter-spacing: -.025em; color: var(--ink); }
+.st2-wh em { font-style: normal; background: linear-gradient(90deg, oklch(.81 .115 62), oklch(.72 .1 20) 62%, oklch(.68 .1 340)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.st2-wp { max-width: 560px; margin-top: 28px; font: 400 18px/28px var(--sans); color: var(--ink-2); text-wrap: pretty; }
+.st2-wa { display: grid; grid-template-columns: repeat(2, minmax(0, 254px)); gap: 12px; margin-top: 32px; }
+.st2-wy { display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 18px; border-radius: 999px; box-shadow: inset 0 0 0 1px oklch(.56 .05 255); font: 600 15px/1 var(--sans); color: var(--ink); }
+.st2-wy:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.st2-wy .logo { width: 19px; height: 19px; flex: none; }
+.st2-wf { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 30px; margin-top: 20px; font: 400 14px/20px var(--sans); color: var(--ink-3); }
+.st2-arch { position: relative; justify-self: center; display: block; width: 264px; height: 340px; overflow: hidden; border-radius: 132px 132px 0 0; background: linear-gradient(to bottom, #3A3590, #4A3FC0 40%, #B56CB0 62%, #FFA06A 76%); box-shadow: inset 0 0 0 1.5px oklch(1 0 0 / .2), 9px 14px 0 #4A2466, 0 0 120px 40px oklch(.66 .12 40 / .16); }
+.st2-arch i { position: absolute; display: block; }
+.st2-arch .sun { left: 72px; top: 204px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle at 50% 70%, #FFF4D2, #FFD58A 60%, #FFB76A); }
+.st2-arch .sea { left: 0; right: 0; top: 256px; bottom: 0; background: #231C5E; }
+.st2-arch .r { left: 50%; height: 3px; border-radius: 2px; background: #FFB76A; transform: translateX(-50%); }
+.st2-arch .r1 { top: 273px; width: 84px; }
+.st2-arch .r2 { top: 293px; width: 52px; opacity: .6; }
+.st2-arch .r3 { top: 310px; width: 26px; opacity: .3; }
+
+/* ------------------------------------------------------------------ wide: the explanation gets its own column */
+@container page (min-width: 1600px) {
+  .st2 .pg-stage { --ctl: 320px; --idx: 196px; }
+  .st2-tx { display: grid; grid-template-columns: 340px minmax(0, 1fr); column-gap: 24px; align-items: baseline; }
+  .st2-h { margin-top: 0; }
+  .st2-r.is-q .st2-tx { display: block; }
+}
+@container page (max-width: 1240px) {
+  .st2 .pg-stage { --ctl: 248px; --idx: 148px; }
+  /* No room beside you any more, so the sky grows enough to hold the question above you. */
+  .st2[data-out="true"] .pg-stage { --hz: 352px; }
+  .st2-r { column-gap: 20px; }
+  .st2-gs { column-gap: 20px; }
+}
+@container page (max-width: 1040px) {
+  .st2 .find:not(.dk-find) { width: 40px; }
+}
+
+/* ------------------------------------------------------------------ narrow: the index becomes a strip */
+@container page (max-width: 1000px) {
+  .st2 .pg-stage { --idx: 0px; }
+  .st2-body { grid-template-columns: minmax(0, 1fr); margin-top: 34px; }
+  .st2-idx { display: none; }
+  .st2-page { background: linear-gradient(to bottom, transparent, var(--ground) 30px); }
+  .st2-strip { position: sticky; top: 0; z-index: 12; display: flex; gap: 2px; margin-inline: calc(var(--pad) * -1); margin-bottom: 18px; padding: 8px var(--pad); overflow-x: auto; scrollbar-width: none; background: var(--ground); }
+  .st2-sx { flex: none; height: 34px; padding: 0 12px; border-radius: 999px; font: 500 13.5px/1 var(--sans); color: var(--ink-3); white-space: nowrap; }
+  .st2-sx.is-on { background: color-mix(in oklch, var(--ink) 11%, transparent); color: var(--ink); }
+}
+
+/* ------------------------------------------------------------------ a phone */
+@container page (max-width: 860px) {
+  .st2 .sh-frame { padding-bottom: 66px; }
+  .st2 .pg-stage { --hz: 200px; --ctl: 100%; }
+  .st2[data-out="true"] .pg-stage { --hz: 350px; }
+  .st2[data-out="true"][data-long="true"] .pg-stage { --hz: 370px; }
+  .st2 .pg-in { padding-top: 0; padding-bottom: 40px; }
+  .st2 .sh-bar { position: relative; z-index: 1; }
+  .st2-band { display: block; height: calc(var(--hz) - 60px); }
+  .st2-me { position: absolute; left: 0; bottom: 0; height: auto; }
+  .st2-end { position: absolute; right: -12px; top: 0; height: auto; }
+  .st2-end .top-end { display: none; }
+  .st2-acts { margin: 0; padding: 0; }
+  .st2-ask { left: 0; right: 0; top: 44px; width: auto; }
+  .st2-body { margin-top: 32px; }
+  .st2-part + .st2-part { margin-top: 44px; }
+  .st2-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+  .st2-r[data-k="seg"], .st2-r[data-k="sel"], .st2-r[data-k="themes"], .st2-r[data-k="stack"], .st2-r[data-k="link"] { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .st2-line1 { gap: 4px; }
+  .st2-c .b-quiet { padding-inline: 8px; margin-right: -8px; }
+  .st2-r[data-k="stack"] .st2-l { min-height: 0; }
+  .st2-r.is-lh, .st2-r.is-ll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 12px; }
+  .st2-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
+  .st2-eves { gap: 12px; }
+  .st2-bp { width: calc(100% - 24px); }
+  .st2-gone { padding-inline: 20px; }
+  .st2-wl, .st2-wn .st2-ws { display: none; }
+  .st2-wn { justify-content: space-between; }
+  .st2-wb { grid-template-columns: minmax(0, 1fr); align-items: start; padding-top: 56px; }
+  .st2-arch { display: none; }
+  .st2-wh { font-size: 48px; }
+  .st2-wa { grid-template-columns: minmax(0, 1fr); }
+  .st2-wy { justify-content: center; position: relative; }
+  .st2-wy .logo { position: absolute; left: 20px; }
+}
