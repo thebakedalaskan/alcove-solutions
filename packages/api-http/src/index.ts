@@ -55,6 +55,7 @@ export interface ClientEvent {
 const ErrorBodySchema = z.object({ code: z.string().optional(), message: z.string().optional(), requestId: z.string().optional() }).catch({});
 /** IDs in paths are random; call codes are join tokens and a Google event's ID names its recurring series, so both are masked in diagnostics. */
 const safePath = (p: string) => p.replace(/^\/calls\/(?!$)[^/]+/, '/calls/:code').replace(/^\/calendar\/events\/(?!$)[^/]+/, '/calendar/events/:id');
+const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
@@ -287,7 +288,16 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       list: (q) => req(z.array(NoteFoundSchema), 'POST', '/notes/search', { ...(q?.kind ? { kind: q.kind } : {}), ...(q?.text ? { text: q.text } : {}) }),
       get: (id) => req(NoteSchema, 'GET', `/notes/${encodeURIComponent(id)}`),
       progress: (id) => ndjson(NoteProgressSchema, `/notes/${encodeURIComponent(id)}/progress`),
-      audioUrl: (id, segment) => `${base}/notes/${encodeURIComponent(id)}/audio/${segment}`,
+      audioUrl: (id, segment, pieces) => `${base}${audioPath(id, segment, pieces)}`,
+      audio: async (id, segment, pieces, signal) => {
+        const res = await send('GET', audioPath(id, segment, pieces), null, {}, false, signal);
+        try {
+          return await res.blob();
+        } catch (cause) {
+          if (signal?.aborted) throw cause;
+          throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { cause });
+        }
+      },
       screenUrl: (id, frameId) => `${base}/notes/${encodeURIComponent(id)}/screens/${encodeURIComponent(frameId)}`,
       proposeDecision: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/decisions`, proposal),
       proposeAction: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/actions`, proposal),

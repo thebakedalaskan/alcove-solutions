@@ -1,5 +1,5 @@
 import {
-  ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
+  ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
   House, KeyRound, Languages, LayoutGrid, Link, Lock, LogOut, Mail, MessageCircleQuestion, MessageSquare, Mic, MicOff, MonitorUp,
   NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Repeat, Search, Send, Server, Share, ShieldCheck,
   Smartphone, Split, Square, Trash2, UserPlus, Users, Video, VideoOff, Volume2, Wifi, X, type LucideIcon, type LucideProps,
@@ -23,7 +23,7 @@ const ICONS = {
   cal: Calendar, clock: Clock, lock: Lock, key: KeyRound, trash: Trash2, more: Ellipsis, play: Play, speaker: Volume2,
   ask: MessageCircleQuestion, share: Share, send: Send, room: Radio, server: Server, hand: Hand, mail: Mail,
   addUser: UserPlus, signOut: LogOut, door: DoorOpen, rooms: Split, layout: PanelsTopLeft, grid: LayoutGrid, translate: Languages,
-  sealed: ShieldCheck, external: ArrowUpRight, swap: ArrowLeftRight, phone: Smartphone, plane: Plane, wifi: Wifi, pin: Pin, pinOff: PinOff,
+  sealed: ShieldCheck, external: ArrowUpRight, arrowUp: ArrowUp, swap: ArrowLeftRight, phone: Smartphone, plane: Plane, wifi: Wifi, pin: Pin, pinOff: PinOff,
   captions: Captions, up: ChevronUp, viewAuto: LayoutDashboard, viewSpeaker: LayoutPanelLeft, reset: RotateCcw, history: HistoryIcon,
   spotlight: Focus, grow: Maximize2, shrink: Minimize2, notesPen: NotebookPen, globe: Globe, window: AppWindow, monitor: Monitor,
   stopShare: MonitorOff, grip: GripVertical, shuffle: Shuffle, timer: Timer, noise: AudioLines, resize: MoveDiagonal2, transcript: FileText,

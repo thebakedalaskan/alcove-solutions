@@ -5,7 +5,7 @@
  * under the title, with the evidence one click away. Only checks that ran are listed.
  */
 import type { InferenceEvidence, NoteKind } from '@alcove/api';
-import { Checklist, Icon, Popover, SealedButton, type Checked } from '@alcove/ui';
+import { Checklist, Dots, Icon, Popover, SealedButton, type Checked } from '@alcove/ui';
 import { useState } from 'react';
 import { daysFromToday, hm, shortDay } from '~/lib/time';
 
@@ -28,10 +28,14 @@ function checks(e: InferenceEvidence): Checked[] {
   ];
 }
 
-/** "Written in confidential compute", when the hardware was checked, and behind it what was checked about each model the note used. Nothing when no model was. */
-export function Provenance({ evidence, kind }: { evidence: InferenceEvidence[]; kind: NoteKind }) {
+/**
+ * "Written in confidential compute", when the hardware was checked, and behind it what was checked about each model the
+ * note used. `writing`: they're being written, the first time or again, and it says so. Nothing when no model was used.
+ */
+export function Provenance({ evidence, kind, writing }: { evidence: InferenceEvidence[]; kind: NoteKind; writing?: 'first' | 'again' | undefined }) {
   const [open, setOpen] = useState(false);
-  if (!evidence.length) return null;
+  const busy = writing === 'again' ? 'Being written again in confidential compute' : writing ? 'Being written in confidential compute' : undefined;
+  if (!evidence.length) return busy ? <span className="nd-seal is-plain"><Icon name="sealed" size={15} />{busy}<Dots /></span> : null;
   const ordered = [...evidence.filter((e) => e.task === 'notes'), ...evidence.filter((e) => e.task === 'transcript')];
   const wrote = ordered.some((e) => e.task === 'notes');
   const gateways = [...new Map(evidence.map((e) => [e.gateway.compose, e.gateway])).values()];
@@ -39,11 +43,11 @@ export function Provenance({ evidence, kind }: { evidence: InferenceEvidence[]; 
   const at = daysFromToday(checked) === 0 ? hm(checked) : `${shortDay(checked)}, ${hm(checked)}`;
   return (
     <Popover open={open} onOpenChange={setOpen} align="start" label="What Alcove checked" className="proof-pop"
-      anchor={<SealedButton title={wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute'} detail={`hardware verified ${at} · Alcove can’t read it`} />}>
+      anchor={<SealedButton className="nd-seal" title={busy ?? (wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute')} detail={busy ? <Dots /> : `hardware verified ${at}`} />}>
       <div className="proof">
         <div className="proof-h">
           <b>Checked before anything was sent</b>
-          <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for.</p>
+          <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
         </div>
         {ordered.map((e) => (
           <section key={`${e.task}-${e.key}-${e.verifiedAt}`} className="proof-m" aria-label={e.task === 'notes' ? 'The notes model' : 'The speech model'}>

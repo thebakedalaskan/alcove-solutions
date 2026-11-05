@@ -3,13 +3,14 @@
  * way to start one. `CarriedGroups` is what carries over itself, which a call and its pre-join show. Everything
  * comes from the notes the reader has, put together when they look.
  */
-import { firstName, minutesLabel, type CarriedDecision, type Note, type Series, type SeriesNote } from '@alcove/api';
-import { ArchThumb, Button, Card, Chip, Icon, coverFor } from '@alcove/ui';
+import { firstName, type CarriedDecision, type Meeting, type Note, type Series, type SeriesNote } from '@alcove/api';
+import { Button, Icon } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
+import { useCallFlow } from '~/features/shell/context';
 import { q } from '~/lib/queries';
-import { daysFromToday, hm, shortDay, weekday } from '~/lib/time';
+import { dayMonth, daysFromToday, hm, shortDay, weekday } from '~/lib/time';
 import { useNotesApart } from '~/features/notes/parts';
 import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from './carried';
 
@@ -113,12 +114,6 @@ export function weeklyLabel(s: Series): string | undefined {
   return a && b && c && apart(a, b) === 7 && apart(b, c) === 7 ? `Every ${weekday(new Date(a.startedAt))}` : undefined;
 }
 
-/** Beside a note's state: the series its call is in, "Every Tuesday" or "In a series". */
-export function SeriesChip({ seriesId }: { seriesId: string }) {
-  const s = useQuery(q.series(seriesId)).data;
-  return <Chip tone="outline" icon="history">{(s && weeklyLabel(s)) ?? 'In a series'}</Chip>;
-}
-
 /** Beside a call's notes: the series it's in, or for the organizer, a way to meet again. Room recordings have neither. */
 export function SeriesCard({ note }: { note: Note }) {
   if (note.kind !== 'call' || note.status === 'recording') return null;
@@ -126,13 +121,24 @@ export function SeriesCard({ note }: { note: Note }) {
   return !note.received && note.meetingId ? <MeetAgain meetingId={note.meetingId} /> : null;
 }
 
+/** The next call, once it's on the calendar, and the way to move it or call it off. */
+function NextRow({ m }: { m: Meeting }) {
+  const flow = useCallFlow();
+  return (
+    <p className="nd-next">
+      <Icon name="cal" size={15} /><span>Next call</span><b>{shortDay(new Date(m.startsAt))}, {hm(m.startsAt)}</b>
+      {m.status === 'scheduled' && <button type="button" className="nd-act" aria-haspopup="dialog" onClick={() => flow.open(m)}>Change</button>}
+    </p>
+  );
+}
+
 function MeetAgain({ meetingId }: { meetingId: string }) {
   const next = useScheduleNextCall();
   return (
-    <Card title="Meet again">
-      <p className="ser-p">Schedule the next call with the same people, a week on. What’s decided and still open here carries over to it.</p>
-      <Button icon="repeat" className="ser-btn" loading={next.pending} onClick={() => next.run(meetingId)}>Schedule next week’s call</Button>
-    </Card>
+    <section className="nd-b">
+      <h2>Meet again</h2>
+      <Button size="sm" icon="repeat" className="nd-meet" loading={next.pending} onClick={() => next.run(meetingId)}>Schedule next week’s call</Button>
+    </section>
   );
 }
 
@@ -154,27 +160,26 @@ function InSeries({ seriesId, noteId }: { seriesId: string; noteId: string }) {
   const open = [questions ? `${questions} question${questions === 1 ? '' : 's'}` : '', actions ? `${actions} follow-up${actions === 1 ? '' : 's'}` : ''].filter(Boolean);
   const across = s.isOrganizer ? (s.notes.length === 1 ? 'from its first call' : `across its ${calls(s.notes.length)}`) : 'across the calls you have notes from';
   return (
-    <Card title={weeklyLabel(s) ?? 'In a series'} aside={<Link to="/notes/series/$seriesId" params={{ seriesId }} aria-label={`All ${calls(s.notes.length + s.older)} in this series`}>All<Icon name="right" size={14} /></Link>}>
-      {others.length > 0 && (
-        <div className="ser-rows">
-          {others.map((n) => (
-            <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }}>
-              <ArchThumb cover={coverFor(n.id)} width={20} />
-              <span className="min-w-0"><b>{new Date(n.startedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</b><small className="ac-clamp-1">{gist(n)}</small></span>
-              <span className="ac-mono">{minutesLabel(n.duration)}</span>
-            </Link>
-          ))}
-        </div>
-      )}
-      <p className="ser-p">
+    <section className="nd-b">
+      <div className="nd-b-h">
+        <h2>{weeklyLabel(s) ?? 'In a series'}</h2>
+        <Link to="/notes/series/$seriesId" params={{ seriesId }} className="hm-panel-link nd-allcalls" aria-label={`All ${calls(s.notes.length + s.older)} in this series`}>All<Icon name="right" size={14} /></Link>
+      </div>
+      {others.map((n) => (
+        <Link key={n.id} to="/notes/$noteId" params={{ noteId: n.id }} className="nd-c">
+          <span className="nd-c-d">{dayMonth(new Date(n.startedAt))}</span>
+          <span className="nd-c-t ac-clamp-1">{gist(n)}</span>
+        </Link>
+      ))}
+      <p className="nd-c-open">
         {s.isOrganizer ? '' : `From ${firstName(s.organizer.name)}’s calls. `}
         {open.length ? `${open.join(' and ')} ${questions + actions === 1 ? 'is' : 'are'} still open ${across}.` : `Nothing is left open ${across}.`}
       </p>
       {s.isOrganizer && (s.next
-        ? <div className="ser-next"><Icon name="cal" size={15} /><span>Next call <b className="ac-mono">{shortDay(new Date(s.next.startsAt))}, {hm(s.next.startsAt)}</b></span></div>
+        ? <NextRow m={s.next} />
         : s.recurring
-          ? <NextOnCalendar><div className="ser-next"><Icon name="cal" size={15} /><span>The next one is on your Google Calendar.</span></div></NextOnCalendar>
-          : latest && <Button icon="repeat" className="ser-btn" loading={next.pending} onClick={() => next.run(latest)}>Schedule next week’s call</Button>)}
-    </Card>
+          ? <NextOnCalendar><p className="nd-next"><Icon name="cal" size={15} /><span>The next one is on your Google Calendar.</span></p></NextOnCalendar>
+          : latest && <Button size="sm" icon="repeat" className="nd-meet" loading={next.pending} onClick={() => next.run(latest)}>Schedule next week’s call</Button>)}
+    </section>
   );
 }
