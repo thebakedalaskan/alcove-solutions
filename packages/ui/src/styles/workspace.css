@@ -299,7 +299,7 @@
 .ws-pane.is-reading .wp { animation: ws-side var(--duration-2) var(--ease-out); }
 
 /* ------------------------------------------------------------ playing a video for everyone */
-.ws-play { position: fixed; z-index: 50; left: 50%; bottom: 92px; margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
+.ws-play { position: fixed; z-index: 50; left: 50%; bottom: calc(92px + var(--lift, 0px)); transition: bottom var(--duration-2) var(--ease-out); margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
 .ws-pb, .ws-px { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: var(--stage-ink); }
 .ws-pb { background: rgb(255 255 255 / .1); }
 .ws-px:hover, .ws-pb:hover { background: rgb(255 255 255 / .16); }

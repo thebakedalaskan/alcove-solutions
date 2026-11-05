@@ -87,9 +87,10 @@ export interface WsPlaying { title: string; mine: boolean; by: string; canContro
 /**
  * Above the dock while a video plays for everyone. Pass what's playing to show it: it rises 10 px, 420 ms, and drops 10 px
  * and fades, 240 ms, when you pass null. Whoever can control it gets play and pause, the bar to move it along, and stop.
+ * `lift` raises it, in px, over whatever else stands above the dock, such as captions.
  */
-export function WsPlayBar({ playing, onToggle, onSeek, onStop, onVolume }: {
-  playing: WsPlaying | null; onToggle: () => void; onSeek: (progress: number) => void; onStop: () => void; onVolume: (volume: number) => void;
+export function WsPlayBar({ playing, lift = 0, onToggle, onSeek, onStop, onVolume }: {
+  playing: WsPlaying | null; lift?: number | undefined; onToggle: () => void; onSeek: (progress: number) => void; onStop: () => void; onVolume: (volume: number) => void;
 }) {
   const move = useMove();
   const label = playing?.on ? 'Pause for everyone' : 'Play for everyone';
@@ -97,7 +98,7 @@ export function WsPlayBar({ playing, onToggle, onSeek, onStop, onVolume }: {
   return (
     <AnimatePresence initial={false}>
       {playing && (
-        <motion.div className="ws-play" role="group" aria-label={playing.title} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, y: 10, transition: move(2) }}>
+        <motion.div className="ws-play" role="group" aria-label={playing.title} style={{ '--lift': `${lift}px` }} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0, transition: move(3) }} exit={{ opacity: 0, y: 10, transition: move(2) }}>
           {playing.canControl && <button type="button" className="ws-pb" aria-label={label} title={label} onClick={onToggle}>{playing.on ? <Icon name="pause" size={16} /> : <Icon name="play" size={15} />}</button>}
           <span className="m"><b>{playing.title}</b><small role="status">{here ? here.say : playing.mine ? 'Playing for everyone' : `${playing.by} is playing this for everyone`}</small></span>
           {here?.action ? <Button size="xs" className="ws-ph" onClick={here.action.onClick}>{here.action.label}</Button> : (

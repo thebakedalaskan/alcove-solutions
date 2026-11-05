@@ -76,8 +76,35 @@ function barOf(v: PlayView, player: SharedVideo): WsPlaying | null {
   };
 }
 
+/** Room between the bar and captions, which stand above the dock too. */
+const CLEAR = 8;
+
+/**
+ * How far the bar rises so captions stay readable under it. The call draws them where it likes, at whatever height their
+ * lines need, so it looks twice a second while something plays.
+ */
+function useCaptionRoom(on: boolean): number {
+  const [lift, setLift] = useState(0);
+  const now = useRef(0);
+  now.current = lift;
+  useEffect(() => {
+    if (!on) { setLift(0); return; }
+    const look = () => {
+      const bar = document.querySelector('.ws-play');
+      const cap = document.querySelector('.ic-cap');
+      const next = bar && cap ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom + now.current - cap.getBoundingClientRect().top + CLEAR)) : 0;
+      setLift((was) => (Math.abs(was - next) < 2 ? was : next));
+    };
+    look();
+    const t = setInterval(look, 500);
+    return () => clearInterval(t);
+  }, [on]);
+  return lift;
+}
+
 /** The bar above the dock, while a video plays for everyone. */
 export function PlayTogetherBar({ player }: { player: SharedVideo }) {
   const view = useLive(player);
-  return <WsPlayBar playing={barOf(view, player)} onToggle={player.toggle} onSeek={player.seek} onStop={player.stop} onVolume={player.setVolume} />;
+  const lift = useCaptionRoom(view.play !== null);
+  return <WsPlayBar playing={barOf(view, player)} lift={lift} onToggle={player.toggle} onSeek={player.seek} onStop={player.stop} onVolume={player.setVolume} />;
 }
