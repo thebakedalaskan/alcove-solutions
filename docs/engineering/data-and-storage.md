@@ -158,16 +158,21 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   take them: 8 reads at once on an instance (`DOC_VERSION_READS`), 60 a minute per person, and whoever hasn't taken a part
   within a ping is let go of. One is kept when a call ends too (`keepVersion`, labelled with the call, for History to group by), unless nothing
   changed, and before a restore. A document keeps its newest 200, and no more than 64 MiB of them, though always its newest.
-- **Restoring** makes the document what it was, for everyone, as one update like any other. What it says now is kept as a
-  version first. Yjs only moves forward, so going back means writing again what was deleted and deleting what was added:
-  what happened since the version is replayed onto it and undone, which works for anything a Y.Doc holds. Anyone typing at
-  the time merges with it. The tree's name follows the title, because a browser renames only what it types.
+- **Restoring** makes the document what it was, for everyone, as one update like any other. Yjs only moves forward, so going
+  back means writing again what was deleted and taking out what was added: what happened since the version is replayed onto
+  it and undone, which works for anything a Y.Doc holds, roots included. A block added since is emptied and left, not deleted,
+  the way the editor retires one (`@alcove/api/retire`), so words someone typed in it offline bring it back when they arrive.
+  What it says now is kept as a version first, and nothing lands between that and the restore: a mark on the row (`held_until`)
+  turns updates away with `503` until it's done, and browsers try again, so whatever's undone is in a version. It's a mark and
+  not the row's lock because a big document takes a while, and everyone typing would each hold a connection. A restore that
+  would leave the document past its limit is refused. The tree's name follows the title, because a browser renames only what
+  it types.
 - **Size.** A document stops at 16 MiB or 500,000 items (`DOC_ITEMS_MAX`), whichever comes first: a Y.Doc's memory follows how
   many separate pieces it's made of, about 210 bytes each, whatever they come to in bytes. Past either, what's refused is what
   adds to it: new text and new elements, past what the same update takes out (`413 too-large`, and the browser's status says
   `failed`, `too-large`). So a full document can always be made smaller: deleting words, a block leaving the page, which
-  writes attributes, and words moving, as in a join, all go through. It isn't free of limits, because a new attribute is an
-  item too: at twice either figure only deletes are taken, which nothing but someone doing it on purpose comes near. These
+  writes two small attributes, and joining two lines all go through. A move adds an element, so it waits with everything else
+  that adds one. It isn't free of limits, because a new attribute is an item too: at twice either figure only deletes are taken, which nothing but someone doing it on purpose comes near. These
   figures are what could be there, not what is, so a refusal compacts the document, which finds out, and a browser tries
   again by itself. Nobody's words are lost: they stay in the browser that typed them. Deleting always goes through, but only
   frees what Yjs lets go of: words and items go once what holds them does, and a run typed in one go merges, but items
@@ -179,8 +184,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
   plain function of the document and plain data, one line each, which a worker can import. `searchText` streams everything
   someone can open as blocks of words, one document a line, for searching in their browser, and stops as soon as they can't
-  read what's next. Text is one element, `line`, with a `kind`; the editor retires a block instead of deleting it, so an edit
-  landing in one is never lost, and a retired block (`gone` set) with no words isn't on the page.
+  read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
+  is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
+  a retired block still holding something reads like any other.
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
@@ -226,8 +232,8 @@ records are opened and sealed there too.
 
 There are 2 workers (`DOC_WORKERS`), each job has 20 seconds (`DOC_WORK_MS`), and the first worker, which takes documents past
 256 KiB or 50,000 items one at a time, has 320 MiB (`DOC_HEAP_MB`) and the others 96. A worker that runs out of either fails
-that one job. It's replaced when it's next needed, the event loop never noticed, and a worker with nothing to do for 30
-seconds goes, which gives its memory back. At most 256 jobs and 128 MiB can wait, and at most 64 MiB of states can be on their
+that one job. It's replaced when it's next needed, and the event loop never noticed. A worker with nothing to do for 30
+seconds goes, which gives its memory back, and one that's held a big document goes after a second. At most 256 jobs and 128 MiB can wait, and at most 64 MiB of states can be on their
 way to browsers, known from the row before anything's opened: past either, the browser is told to try again.
 
 ### In a browser

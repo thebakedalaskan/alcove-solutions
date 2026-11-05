@@ -15,8 +15,9 @@ import { DOC_TASKS, type DocTasks } from '../modules/documentWork';
 
 const plog = log.child({ component: 'doc-pool' });
 
-/** How long a worker stays around with nothing to do: its memory goes back when it does. */
+/** How long a worker stays around with nothing to do: its memory goes back when it does. One that's held a big document goes at once, because that's most of what an instance has, and a new one takes moments. */
 const IDLE_MS = 30_000;
+const IDLE_AFTER_BIG_MS = 1_000;
 /** How much can wait for a worker: past this, a browser is told to try again. */
 const MAX_WAITING = 256;
 const MAX_WAITING_BYTES = 128 * 1024 * 1024;
@@ -52,7 +53,7 @@ const Reply = z.union([
   z.object({ id: z.number(), ok: z.literal(false), failure: z.string() })
 ]);
 interface Job { id: number; task: TaskName; input: unknown; big: boolean; bytes: number; done(value: unknown): void; failed(e: unknown): void }
-interface Slot { big: boolean; worker: Worker | null; ready: boolean; job: Job | null; limit: ReturnType<typeof setTimeout> | undefined; idle: ReturnType<typeof setTimeout> | undefined }
+interface Slot { big: boolean; worker: Worker | null; ready: boolean; job: Job | null; heavy: boolean; limit: ReturnType<typeof setTimeout> | undefined; idle: ReturnType<typeof setTimeout> | undefined }
 
 /** In the bundle the worker is a file of its own beside `server.js`; from source it's TypeScript, as everything is there. */
 const entry = () => (import.meta.url.endsWith('.js')
@@ -67,7 +68,7 @@ class WorkerPool implements DocPool {
   private closed = false;
 
   constructor(private readonly settings: DocPoolSettings) {
-    this.slots = Array.from({ length: Math.max(settings.workers, 1) }, (_, i) => ({ big: i === 0, worker: null, ready: false, job: null, limit: undefined, idle: undefined }));
+    this.slots = Array.from({ length: Math.max(settings.workers, 1) }, (_, i) => ({ big: i === 0, worker: null, ready: false, job: null, heavy: false, limit: undefined, idle: undefined }));
   }
 
   run<K extends TaskName>(task: K, input: InputOf<K>, o: JobOptions): Promise<OutputOf<K>> {
@@ -102,6 +103,7 @@ class WorkerPool implements DocPool {
     const worker = new Worker(url, { execArgv, resourceLimits: { maxOldGenerationSizeMb: slot.big ? this.settings.heapMb : Math.min(this.settings.heapMb, SMALL_HEAP_MB), stackSizeMb: STACK_MB } });
     slot.worker = worker;
     slot.ready = false;
+    slot.heavy = false;
     worker.on('message', (raw: unknown) => this.heard(slot, worker, raw));
     worker.on('error', (e: Error & { code?: string }) => this.lost(slot, worker, e.code === 'ERR_WORKER_OUT_OF_MEMORY' ? 'memory' : 'failed', e.message));
     worker.on('exit', (code) => this.lost(slot, worker, 'failed', `exited with ${code}`));
@@ -113,6 +115,7 @@ class WorkerPool implements DocPool {
     if (!worker) return;
     clearTimeout(slot.idle);
     slot.job = job;
+    slot.heavy ||= job.big;
     worker.ref();
     slot.limit = setTimeout(() => this.lost(slot, worker, 'time', `over ${this.settings.timeoutMs} ms`), this.settings.timeoutMs);
     worker.postMessage({ id: job.id, task: job.task, input: job.input });
@@ -124,7 +127,7 @@ class WorkerPool implements DocPool {
     const { worker } = slot;
     if (worker) {
       worker.unref();
-      slot.idle = setTimeout(() => { if (!slot.job) this.stop(slot, worker); }, IDLE_MS);
+      slot.idle = setTimeout(() => { if (!slot.job) this.stop(slot, worker); }, slot.heavy ? IDLE_AFTER_BIG_MS : IDLE_MS);
       slot.idle.unref();
     }
     this.pump();

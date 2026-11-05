@@ -416,7 +416,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **A new address.** Access follows the address, so when a sign-in brings an account a new one, everything under the old
   hash moves to the new one in that transaction, keeping the stronger role where the new address already had something.
   While another account still signs in with the old address, what's under it stays that account's.
-- **Working on a document** takes `edit`: an update from someone who can only read is `403 forbidden`, and one to something in
+- **Working on a document** takes `edit`, and that's settled before anything of an update is read: an update from someone who can only read is `403 forbidden`, and one to something in
   Trash `409 conflict`, each under the workspace's lock, so nothing lands after someone is taken out. Saying where you are in
   a document takes only being able to open it. Versions are for anyone who can open it, and restoring one for anyone who can edit it.
 - **Who someone is** to the others comes from the server, never from their browser: a caret carries a keyed hash, their name and

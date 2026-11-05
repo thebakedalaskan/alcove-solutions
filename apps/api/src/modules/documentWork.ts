@@ -9,7 +9,8 @@
  *
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
-import { ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
+import { DOC_FRAGMENT, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
+import { settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
 import { b64u, concat, fromUtf8, jcs, openJson, openRecord, sealJson, sealRecord, toJson, utf8, type RecordHeader } from '../crypto';
@@ -219,13 +220,25 @@ const RESTORING = Symbol('restoring');
  * something new: replaying what happened since onto the version and undoing it writes what was deleted again, and deletes
  * what was added. A version holds a whole state, so it doesn't matter what garbage collection has let go of since. The undo
  * covers the whole document, because nothing here knows what type each root is, and a root nobody has typed reports nothing.
+ *
+ * A document's blocks are never deleted, this included: someone offline may be writing in one that's new since the version.
+ * Undoing a block's arrival empties it and leaves the element, and the undo's own transaction says which those are, having
+ * taken their `id` with everything else. They're settled the way any block is that an undo took back.
  */
-function backTo(current: Y.Doc, version: Uint8Array): Uint8Array {
+function backTo(current: Y.Doc, version: Uint8Array, kind: ContentKind): Uint8Array {
   const past = new Y.Doc({ gc: false });
   Y.applyUpdate(past, version);
-  const undo = new Y.UndoManager(past, { trackedOrigins: new Set([RESTORING]), captureTimeout: 0 });
+  const fragment = kind === 'document' ? past.getXmlFragment(DOC_FRAGMENT) : null;
+  const undo = new Y.UndoManager(past, { trackedOrigins: new Set([RESTORING]), captureTimeout: 0, ...(fragment ? { deleteFilter: (item: Y.Item) => undoMayDelete(item, fragment) } : {}) });
   Y.applyUpdate(past, Y.encodeStateAsUpdate(current, Y.encodeStateVector(past)), RESTORING);
+  const unnamed: Y.XmlElement[] = [];
+  const nameless = (tr: Y.Transaction) => {
+    for (const [type, keys] of tr.changed) if (type instanceof Y.XmlElement && type._item?.parent === fragment && keys.has('id') && type.getAttribute('id') === undefined) unnamed.push(type);
+  };
+  past.on('afterTransaction', nameless);
   undo.undo();
+  past.off('afterTransaction', nameless);
+  past.transact(() => { for (const element of unnamed) settleUndone(element); });
   const update = Y.encodeStateAsUpdate(past, Y.encodeStateVector(current));
   undo.destroy();
   past.destroy();
@@ -234,7 +247,7 @@ function backTo(current: Y.Doc, version: Uint8Array): Uint8Array {
 function restore(i: SealedLog & { version: z.infer<typeof VersionParts>; kind: ContentKind }) {
   const l = openLog(i);
   const b = build(l);
-  const update = backTo(b.doc, openParts(i, i.version));
+  const update = backTo(b.doc, openParts(i, i.version), i.kind);
   Y.applyUpdate(b.doc, update);
   const shape = shapeOf(b.doc, Y.encodeStateAsUpdate(b.doc));
   const { title } = documentText(b.doc, i.kind);

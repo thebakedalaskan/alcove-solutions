@@ -177,11 +177,12 @@ const CEILING = 2;
 /**
  * A document's size is capped, in bytes and in items, because its memory follows items, so nobody can fill the disk or an
  * instance with one. What's refused is what would add to it: new text and new elements, past what the same update takes out.
- * Blocks leave a page by having attributes written and their words deleted, and a move or a join writes the same words
- * somewhere else, so all of that goes through, and a full document can always be made smaller. That isn't free of limits,
- * because a new attribute is an item too: there's a ceiling on that, far past anything but someone doing it on purpose, and
- * past that only deletes are taken. How deep things nest is held the same way. All of this is what could be there, not what
- * is: a refusal compacts the document, which finds out, and the browser tries again with what it's holding.
+ * Blocks leave a page by having attributes written and their words deleted, and joining two lines writes the same words
+ * somewhere else, so all of that goes through, and a full document can always be made smaller. A move adds an element, so it
+ * waits like anything else that adds one. That isn't free of limits, because a new attribute is an item too: there's a
+ * ceiling on that, far past anything but someone doing it on purpose, and past that only deletes are taken. How deep things
+ * nest is held the same way. All of this is what could be there, not what is: a refusal compacts the document, which finds
+ * out, and the browser tries again with what it's holding.
  */
 function requireRoom(p: Place, documentId: string, row: DocRow, bytes: number, seen: Inspected): void {
   const size = sizeOf(row) + bytes;

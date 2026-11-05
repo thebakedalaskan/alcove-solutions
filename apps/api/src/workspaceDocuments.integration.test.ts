@@ -8,6 +8,7 @@ import {
   type KeptUpdate, type KeptUpdates, type WorkspaceHere, type WorkspaceLive, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
+import { isGone, newBlockId, retire as retireBlock } from '@alcove/api/retire';
 import { randomBytes } from 'node:crypto';
 import * as encoding from 'lib0/encoding';
 import pg from 'pg';
@@ -59,6 +60,8 @@ async function workspace(who: Account, name: string, people: [Account, Workspace
 }
 const make = async (who: Account, id: string, kind: ItemKind, name: string, parent: string | null = null) => (await who.api.workspaces.items.create(id, { kind, name, parent })).id;
 const body = (s: { doc: Y.Doc }) => s.doc.getXmlFragment('content').toString();
+/** What's on the page: all of it but what's retired and holds nothing. */
+const shown = (s: { doc: Y.Doc }) => s.doc.getXmlFragment('content').toArray().filter((el) => !(el instanceof Y.XmlElement && isGone(el))).map((el) => el.toString()).join('');
 
 /** Writes a workspace's sealed state as it's stored, for a time no test waits for. */
 async function rewrite(workspaceId: string, change: (s: WorkspaceState) => WorkspaceState) {
@@ -1635,7 +1638,7 @@ describe('versions', () => {
     const held = await heldBy(ann, id);
     const kept = await keepVersion(held, doc, { reason: 'call', callId: madeUp() });
     if (!kept) throw new Error('no version kept');
-    const then = body(a);
+    const then = shown(a);
 
     // Everything that can change, does: words, marks, a block goes, another comes, an attribute, a comment.
     title(a).insert(0, 'Today: ');
@@ -1650,7 +1653,7 @@ describe('versions', () => {
     a.doc.getXmlFragment('content').delete(1, 1);
     await saved(a);
     await until(() => body(t) === body(a), 'Theo to hear it all');
-    const today = body(a);
+    const today = shown(a);
     expect(today).not.toBe(then);
 
     expect(await code(rita.api.workspaces.restoreVersion(id, doc, kept))).toBe('forbidden');
@@ -1658,7 +1661,7 @@ describe('versions', () => {
     await ann.api.workspaces.restoreVersion(id, doc, kept);
 
     // It arrives like anything else anyone typed, for everyone, and the tree's name follows the title.
-    await until(() => body(a) === then && body(t) === then, 'both to show the version');
+    await until(() => shown(a) === then && shown(t) === then, 'both to show the version');
     expect(a.doc.getMap('comments').get('marker')).toBe(false);
     expect(await count('SELECT count(*)::int AS n FROM document_updates WHERE document_id = $1', [doc])).toBeGreaterThan(0);
     await until(async () => (await ann.api.workspaces.items.get(id, doc)).name === 'The old title', 'the tree’s name to follow');
@@ -1669,10 +1672,10 @@ describe('versions', () => {
     const saving = await ann.api.workspaces.version(id, doc, list[0]?.id ?? '');
     const past = new Y.Doc();
     Y.applyUpdate(past, saving.update);
-    expect(past.getXmlFragment('content').toString()).toBe(today);
+    expect(shown({ doc: past })).toBe(today);
     await ann.api.workspaces.restoreVersion(id, doc, list[0]?.id ?? '');
-    await until(() => body(a) === today, 'today’s to come back');
-    expect(body(await open(theo, id, doc))).toBe(today);
+    await until(() => shown(a) === today, 'today’s to come back');
+    expect(shown(await open(theo, id, doc))).toBe(today);
 
     // People keep typing through it, and nobody's words are lost.
     line(t, 'new').insert(0, 'Theo says: ');
@@ -1825,6 +1828,36 @@ describe('reading a document on the server', () => {
     // A board has neither, until a board says what it has.
     expect(documentText(read, 'board')).toEqual({ title: '', blocks: [] });
     expect(documentTodos(read, 'board')).toEqual([]);
+  });
+
+  it('reads what’s on the page, as the editor does: nothing retired, unless it’s still holding something', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const { doc, s } = await full(ann, id, 'Plan');
+    const element = (name: string) => {
+      const el = s.doc.getXmlFragment('content').toArray().find((e) => e instanceof Y.XmlElement && e.getAttribute('id') === name);
+      if (!(el instanceof Y.XmlElement)) throw new Error(`no block ${name}`);
+      return el;
+    };
+    // A toggle and a table keep their parts when they're retired, which read as a line break and a tab if read at all.
+    s.doc.transact(() => { for (const name of ['tg', 'tb', 'h1']) retireBlock(element(name), newBlockId(), ''); });
+    await saved(s);
+    const read = await readDocument(await heldBy(ann, id), doc, 'text', { kind: 'document' });
+    expect(read.blocks.map((b) => b.id)).not.toEqual(expect.arrayContaining(['tg']));
+    expect(read.blocks.some((b) => b.type === 'toggle' || b.type === 'table')).toBe(false);
+    // A todo that's retired just as someone tags someone in it is on the page, with the tag.
+    const todo = element('todo1');
+    s.doc.transact(() => {
+      retireBlock(todo, 'held', '');
+      todo.insert(0, [blockOf('mention', { id: 'p', name: 'Priya Rao' })]);
+    });
+    await saved(s);
+    const todos = async () => (await readDocument(await heldBy(ann, id), doc, 'todos', { kind: 'document' })).map((t) => t.block);
+    expect(await todos()).toEqual(['held', 'todo2']);
+    // And once that goes too, so is it.
+    s.doc.transact(() => { todo.delete(0, todo.length); });
+    await saved(s);
+    expect(await todos()).toEqual(['todo2']);
   });
 
   it('writes like anyone else: a server-made change reaches everyone, as an update, and survives', async () => {
@@ -2678,7 +2711,7 @@ describe('a full document', () => {
     }
   });
 
-  it('lets words move: what lands somewhere else is no more than what left', async () => {
+  it('lets two lines join: what lands somewhere else is no more than what left', async () => {
     const { bob, id, doc, s, second } = await filled();
     const b = await open(bob, id, doc);
     try {
@@ -2686,6 +2719,7 @@ describe('a full document', () => {
         retire(s, 'second');
         line(s).insert(line(s).length, 'Second block');
       });
+      // A move adds an element, so it has to wait for room like anything else that does.
       await until(() => s.getSnapshot().status === 'saved', 'the join to land');
       expect(s.getSnapshot().refused).toBeNull();
       await says(b, 'Words in a lineSecond block');
@@ -2755,14 +2789,40 @@ describe('restoring', () => {
     return { ann, bob, id, doc, a, version: version ?? '', was: body(a) };
   }
   const wordsIn = (text: string) => { const t = new Y.XmlText(); t.insert(0, text); return t; };
+  /** What's on the page, as the server reads it. */
+  const page = (s: { doc: Y.Doc }) => documentText(s.doc, 'document').blocks.map((b) => b.text);
 
   it('takes away a block added since', async () => {
-    const { ann, id, doc, a, version, was } = await kept();
+    const { ann, id, doc, a, version } = await kept();
     addBlock(a, 'line', 'later').insert(0, [wordsIn('Added later, should go on restore.')]);
     await saved(a);
     await ann.api.workspaces.restoreVersion(id, doc, version);
-    await until(() => body(a) === was, 'the block to go');
-    expect(body(await open(ann, id, doc))).toBe(was);
+    await until(() => page(a).length === 2, 'the block to go');
+    expect(page(await open(ann, id, doc))).toEqual(['Base words.', 'Second block.']);
+  });
+
+  it('retires a block added since, never deletes it: words typed in it offline bring it back', async () => {
+    const { ann, bob, id, doc, a, version } = await kept();
+    addBlock(a, 'line', 'later').insert(0, [wordsIn('Made since the version.')]);
+    await saved(a);
+    const link = network(bob);
+    const b = await open(link.browser, id, doc);
+    await says(b, 'Made since the version.');
+    link.drop();
+    const later = b.doc.getXmlFragment('content').toArray().find((e) => e instanceof Y.XmlElement && e.getAttribute('id') === 'later');
+    const words = later instanceof Y.XmlElement ? later.get(0) : null;
+    if (!(words instanceof Y.XmlText)) throw new Error('no text in that block');
+    words.insert(0, 'Typed on the train. ');
+    await ann.api.workspaces.restoreVersion(id, doc, version);
+    await until(() => page(a).length === 2, 'the block to go');
+    // It's still there, with nothing in it, under a name of its own.
+    const element = a.doc.getXmlFragment('content').toArray().at(-1);
+    expect(element instanceof Y.XmlElement && element.getAttribute('gone')).toBe('');
+    expect(element instanceof Y.XmlElement && element.getAttribute('id')).not.toBe('later');
+    link.back();
+    await saved(b);
+    await until(() => page(a).some((t) => t.includes('Typed on the train.')), 'Bob’s words to come back');
+    expect(page(await open(ann, id, doc))).toEqual(['Base words.', 'Second block.', 'Typed on the train. ']);
   });
 
   it('brings back a whole block deleted since', async () => {
@@ -2850,7 +2910,7 @@ describe('a big paste', () => {
     const [a, b] = await Promise.all([open(ann, id, doc), open(bob, id, doc)]);
     line(a).insert(0, 'x'.repeat(1_200_000));
     await saved(a);
-    await until(() => line(b).length >= 1_200_000, 'Bob to hear it');
+    await until(() => words(b).length >= 1_200_000, 'Bob to hear it');
     expect(a.getSnapshot().refused).toBeNull();
   });
 
@@ -3039,14 +3099,22 @@ describe('streams, read closely', () => {
     }
   });
 
-  it('don’t open the tree for carets, or for updates while it hasn’t moved', async () => {
+  it('don’t open the tree for carets, for saying where someone is, or for updates while it hasn’t moved', async () => {
     const { ann, id, doc } = await together();
     const a = await open(ann, id, doc);
+    const here = { connection: madeUp(), document: doc, block: null, typing: true };
     line(a).insert(0, 'First');
     await saved(a);
+    expect((await post(ann, `/workspaces/${id}/presence`, here)).status).toBe(200);
     await rest(100);
     const from = h.logs.length;
-    for (let i = 0; i < 5; i++) { a.awareness.setLocalStateField('cursor', { at: i }); line(a).insert(0, 'k'); await saved(a); await rest(120); }
+    for (let i = 0; i < 5; i++) {
+      a.awareness.setLocalStateField('cursor', { at: i });
+      line(a).insert(0, 'k');
+      expect((await post(ann, `/workspaces/${id}/presence`, here)).status).toBe(200);
+      await saved(a);
+      await rest(120);
+    }
     const reads = h.logs.slice(from).filter((l) => l.includes('state_ciphertext'));
     expect(reads).toEqual([]);
     // And it notices when it has: taking Ann's edit away takes effect at once.
