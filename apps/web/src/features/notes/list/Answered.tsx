@@ -3,7 +3,7 @@
  * comes from. While an answer cites anything, the list and the preview follow it, whatever the filters were.
  */
 import type { NoteFound } from '@alcove/api';
-import { Avatar, Button, Dots, IconButton, Words } from '@alcove/ui';
+import { Avatar, Button, Dots, IconButton } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import type { MouseEvent } from 'react';
 import type { Answer } from '~/features/notes/answer';
@@ -36,7 +36,7 @@ export function Answered({ answer, lost, notes, me, onClose, onAgain, onPick }: 
         <div className="nt-ans-g"><p className="nt-ans-t">A note this read was deleted while it was written.</p><Button size="sm" className="nt-tint" onClick={onAgain}>Ask again</Button></div>
       ) : answer && answer.done ? (
         <>
-          <p className="nt-ans-t"><Words text={answer.text} /></p>
+          <p className="nt-ans-t">{answer.text}</p>
           {cited.length > 0 && (
             <div className="nt-cites">
               {cited.map(({ note, at }) => {

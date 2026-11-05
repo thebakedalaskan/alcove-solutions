@@ -95,13 +95,13 @@
 
 /* ------------------------------------------------------------ the picked note */
 .nt-pv { position: relative; z-index: 3; display: flex; flex-direction: column; align-self: start; min-height: 0; max-height: calc(100% - 16px); border-radius: 20px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.nt-pv-top { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 0 20px; }
+.nt-pv-top { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; padding: 14px 16px 0 20px; }
 .nt-st { gap: 5px; height: 26px; padding: 0 10px 0 8px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--sun-text) 15%, transparent); font: 600 12.5px/1 var(--font-sans); color: color-mix(in oklch, var(--sun-text) 76%, var(--ink)); }
 .dark .nt-st { color: var(--sun-text); }
 .nt-st .ac-i { stroke-width: 2.2; }
 .nt-st.is-now, .nt-st.is-rec { padding-left: 10px; }
 .nt-st.is-rec, .dark .nt-st.is-rec { background: color-mix(in oklch, var(--rec) 15%, transparent); color: var(--rec); }
-.nt-acts { display: flex; align-items: center; gap: 2px; }
+.nt-acts { display: flex; align-items: center; gap: 2px; margin-left: auto; }
 .nt-acts .ac-btn.is-secondary { height: 32px; padding: 0 11px; background: none; box-shadow: none; color: var(--ink-2); font-size: 13px; }
 .nt-acts .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ink) 7%, transparent); color: var(--ink); }
 .nt-acts .ac-btn.is-secondary .ac-i { width: 15px; height: 15px; }
@@ -230,7 +230,7 @@ button.nt-pop-row:disabled { opacity: .5; cursor: default; }
 .nt-ans-x.ac-icon-btn:hover { background: color-mix(in oklch, var(--ink) 9%, transparent); color: var(--ink); }
 .nt-ans-r { display: flex; align-items: center; gap: 10px; min-height: 24px; font: 500 14.5px/20px var(--font-sans); color: var(--ink-2); }
 .nt-ans-r .ac-dots { color: var(--sun-text); }
-.nt-ans-t { min-height: 0; max-width: 96ch; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; font: 400 16px/25px var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.nt-ans-t { min-height: 0; max-width: 96ch; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-control) transparent; font: 400 16px/25px var(--font-sans); color: var(--ink); white-space: pre-line; text-wrap: pretty; }
 .nt-ans-g { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .nt-ans-g .ac-btn { height: 32px; font-size: 13px; }
 .nt-cites { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-top: 10px; }
