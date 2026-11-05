@@ -1107,7 +1107,8 @@ opened it, and which boards it lets everyone into. What's done is `apps/api/src/
   `role` and `seal` (`Sealed`, or `Sealed to this room`). Someone who can't open it gets `role`, `workspaceId`, `documentId` and
   `name` null: that's "A board you can't open", and nothing names it. A board in Trash, or gone, has left the call for
   everyone, and one brought back from Trash is open again. Someone waiting to be let in is told nothing. Late joiners and
-  reconnects read it from here like everyone else.
+  reconnects read it from here like everyone else. None of what happens to a board outside the call tells the call, so while
+  one's open a browser reads the call each time it checks its keys, as it does for what's presented.
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
   them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
 - **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes.
@@ -1119,8 +1120,8 @@ opened it, and which boards it lets everyone into. What's done is `apps/api/src/
   workspace, and it's by them. A call adds to a workspace only while its organizer can edit there, as it only ever took one
   they could: past that it's `409`, and the organizer can choose another. Those invited get `edit` by email, so it stays theirs
   through the note, and anyone else here a seat. Someone on the invite because they were let in from the link, or rung, has a
-  seat instead, as taking them out takes them off the invite and a seat goes with them; whoever's still on it when the call
-  ends gets it by email then. A call can let everyone into 50 boards, the ones it made included.
+  seat instead, as taking them out takes them off the invite and a seat goes with them. When the call ends, whoever's still
+  on it and still has their seat gets the board by email. A call can let everyone into 50 boards, the ones it made included.
 - **Filling one from its template** is `fillBoard`, which does nothing yet: it waits for `@alcove/board`. A new board starts
   empty whichever template is asked for, and the template is stored nowhere.
 - **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing

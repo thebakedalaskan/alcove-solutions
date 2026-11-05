@@ -20,7 +20,7 @@ import { controllerOf, placeOfBrought } from './callWorkspace';
 import { MeetingManifest } from './meetings';
 import type { Placing } from './places';
 import {
-  cantOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireOrganizerEdits, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor,
+  cantOpen, grant, holdersOf, readerInCall, requireDocument, requireOrganizerEdits, requireSharing, roleOf, seatIndex, serverWorkspace, standingIn, trashOf, whoInCall, workspaceFor,
   type Grant, type HeldWorkspace, type Maker, type Reader, type Who, type Workspace
 } from './workspaceAccess';
 import { addBoard } from './workspaces';
@@ -159,21 +159,22 @@ export async function seatNewcomers(o: Owner, db: Db, callId: string, workspaceI
   return next.size ? { ...board, letIn: board.letIn.map((e) => next.get(e) ?? e) } : board;
 }
 /**
- * After a call ends, with nothing held: whoever joined the invite during it keeps what it made, by email, as everyone on the
- * invite when it was made does. Someone taken out of the call came off the invite with it. None of this is worth failing the end of a call.
+ * When a call ends, with nothing held and before its seats go: someone who joined the invite during it keeps what it made by
+ * email, as everyone on the invite when it was made does, if they still have their seat. Taken out of the call, they came off
+ * the invite with it, and a seat taken back in Share stays taken back. None of this is worth failing the end of a call.
  */
-export async function keepForInvited(o: Owner, callId: string, meetingId: string, board: CallBoards): Promise<void> {
+export async function keepForInvited(o: Owner, callId: string, meetingId: string, board: CallBoards, people: Here[]): Promise<void> {
   try {
     const made = board.letIn.filter((e) => e.by === null);
-    const late = made.length ? (await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest))?.manifest.addedFromLink ?? [] : [];
-    if (!late.length) return;
-    const people = late.map((email) => ({ email, who: { email, principals: [emailIndex(o, email)] } }));
-    for (const e of made) {
+    const late = new Set(made.length ? ((await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest))?.manifest.addedFromLink ?? []).map((e) => e.toLowerCase()) : []);
+    const invited = people.flatMap((p) => (p.email && late.has(p.email) ? [{ email: p.email, who: { email: undefined, principals: [seatIndex(o, callId, p.seat)] } }] : []));
+    for (const e of invited.length ? made : []) {
       await tx(o.pool, async (c) => {
         const w = await serverWorkspace(o, e.workspaceId, c, 'change');
         if (!w?.state.items[e.documentId]) return;
-        const left = await cantOpen(w, c, e.documentId, people);
-        if (left.length) await grant(w, c, e.documentId, left.map(({ email }): Grant => ({ kind: 'email', email, role: 'edit' })));
+        const seatless = new Set(await cantOpen(w, c, e.documentId, invited));
+        const seated = invited.filter((p) => !seatless.has(p));
+        if (seated.length) await grant(w, c, e.documentId, seated.map(({ email }): Grant => ({ kind: 'email', email, role: 'edit' })));
       });
     }
   } catch (e) {
@@ -218,7 +219,7 @@ async function openNew<S extends Boarded>(x: Changing<S>, template: BoardTemplat
   const invited = meeting.guests.filter((e) => !fromLink.has(e.toLowerCase()));
   if (invited.length) await grant(w, c, documentId, invited.map((email): Grant => ({ kind: 'email', email, role: 'edit' })));
   const entry = await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: null, seen: [] }, x.here);
-  blog.info('board opened', { callId, workspaceId: w.workspaceId, documentId, made: true, invited: invited.length, seats: entry.seen.length });
+  blog.info('board opened', { callId, workspaceId: w.workspaceId, documentId, made: true, invited: invited.length, here: entry.seen.length });
   return { s: opening(s, x.place, { workspaceId: w.workspaceId, documentId, by: controllerOf(v, x.reader) }, [...s.board.letIn, entry]), made: { w, documentId, template } };
 }
 

@@ -314,6 +314,22 @@ describe('a new board', () => {
     expect((await opened(k))?.workspaceId).toBe((await read(host)).workspace.id);
   });
 
+  it('is read again while it’s open, so what happens to it outside the call shows with no nudge', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
+    await host.setWorkspace(id);
+    const k = await invited(host, c, kofi);
+    await k.openBoard({ template: 'blank' });
+    const board = k.getSnapshot().board.open?.documentId ?? '';
+    // Nothing tells the call: a browser finds out by reading it, as it checks its keys.
+    await art.api.workspaces.items.rename(id, board, 'Renamed');
+    await until(() => k.getSnapshot().board.open?.name === 'Renamed', 'the new name to show');
+    await art.api.workspaces.items.trash(id, board);
+    await until(() => k.getSnapshot().board.open === null, 'the board to go');
+  });
+
   it('goes from the call when it’s in Trash or deleted, and comes back with it', async () => {
     const art = await account();
     const kofi = await account();
@@ -645,6 +661,7 @@ describe('someone who joins the invite during a call', () => {
     const nora = await account();
     const omar = await account();
     const pia = await account();
+    const rosa = await account();
     const id = await workspace(art, 'Product');
     const { host, code: c } = await callBy(art);
     await host.setWorkspace(id);
@@ -657,21 +674,25 @@ describe('someone who joins the invite during a call', () => {
     await letIn(host, n);
     const o = await omar.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, o);
+    const r = await rosa.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, r);
     expect((await read(n)).role).toBe('invited');
-    await until(async () => (await opened(n))?.role === 'edit' && (await opened(o))?.role === 'edit' && (await opened(before))?.role === 'edit', 'a seat for each of them');
+    await until(async () => (await Promise.all([n, o, r, before].map(opened))).every((x) => x?.role === 'edit'), 'a seat for each of them');
     // Whoever brings it back later, it's still the call's to give: someone here letting people in again doesn't make it theirs.
     await host.closeBoard();
     await host.openBoard({ documentId: board, letIn: true });
     // Taken out of the call, they lose it at once, and with the invite goes any claim on it.
     await host.remove(o.ticket.identity);
     await host.remove(before.ticket.identity);
-    await until(async () => (await seats(board)) === 1, 'the seats to go with them');
+    await until(async () => (await seats(board)) === 2, 'the seats to go with them');
+    // A seat taken back in Share isn't given back as an address, though she stays on the invite.
+    const taken = (await art.api.workspaces.share.list(id, board)).entries.find((e) => e.person.name === rosa.name);
+    await art.api.workspaces.share.remove(id, board, taken?.id ?? '');
+    expect(await opened(r)).toMatchObject({ role: null });
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
-    await until(async () => (await code(nora.api.workspaces.get(id))) === 'allowed', 'Nora to keep it');
     expect((await nora.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
-    expect(await code(omar.api.workspaces.get(id))).toBe('not-found');
-    expect(await code(pia.api.workspaces.get(id))).toBe('not-found');
+    for (const who of [omar, pia, rosa]) expect(await code(who.api.workspaces.get(id))).toBe('not-found');
   });
 });
 

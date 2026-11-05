@@ -1189,11 +1189,13 @@ export async function previewWorkspace(v: Viewer, callId: string, workspaceId: s
 
 /* ---------- a board in a call: what's done is modules/callBoards.ts; the call's row is held here ---------- */
 
-/** Everyone in the call now, once each, as a seat on a board names them. Wherever they are in it: a main board is for the whole call. */
-function hereIn(o: Owner, callId: string, s: Stored): boards.Here[] {
-  const seats = seatKey(o, callId);
-  return [...new Map(s.people.filter((j) => j.status === 'in').map((j): [string, boards.Here] => [seatOf(seats, j), { seat: seatOf(seats, j), name: j.name, email: j.email ?? null }])).values()];
+/** These connections, once for each person, as a seat on a board names them. */
+function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here[] {
+  const key = seatKey(o, callId);
+  return [...new Map(people.map((j) => { const seat = seatOf(key, j); return [seat, { seat, name: j.name, email: j.email ?? null }] as const; })).values()];
 }
+/** Everyone in the call now, wherever they are in it: a main board is for the whole call. */
+const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in'));
 
 /**
  * Someone opens or closes a board, under the call's row. Who's asking, and for a new board which workspace the call uses, are
@@ -2246,6 +2248,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   let audio: string[] = [];
   let worked: WorkedDocument[] = [];
   let keptBoards = NO_BOARDS;
+  let everyone: boards.Here[] = [];
   const end = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     // Upkeep decided from an earlier read; the organizer may have come back since.
@@ -2262,6 +2265,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     if (row.state === 'live') {
       worked = s.workspace.worked;
       keptBoards = s.board;
+      everyone = seatsOf(o, callId, s.people);
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
@@ -2308,9 +2312,9 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   await queueDelete(o, audio);
   // Nor do moves to other devices. Deleted once the call has ended, so a move coming in at that moment never waits on it.
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
+  await boards.keepForInvited(o, callId, end.meetingId, keptBoards, everyone);
   // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
   await endSeats(o, [callId]);
-  await boards.keepForInvited(o, callId, end.meetingId, keptBoards);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
   // Deleting the room disconnects everyone in it, which is how their browsers learn the call ended: an ended call is the organizer's alone to read.
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
