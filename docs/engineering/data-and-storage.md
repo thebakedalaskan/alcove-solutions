@@ -271,8 +271,8 @@ and this way it runs through the same auth, origin check and tests as everything
   and everyone subscribed hears `missed`, because notices sent meanwhile are gone. It needs a direct connection to
   Postgres: `LISTEN` doesn't work through a transaction-mode pooler.
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
-  of a workspace and 8 of documents. All of them from one client address stop at 32 (`LIVE_STREAMS_PER_ADDRESS`), because
-  accounts are free, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
+  of a workspace and 8 of documents. All of them from one client address stop at 64 (`LIVE_STREAMS_PER_ADDRESS`), because
+  accounts are free, which is about 32 people behind one office's address with a workspace and a document open, and everyone's together at 500 an instance (`LIVE_STREAMS_MAX`), because each holds one of the requests
   an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.

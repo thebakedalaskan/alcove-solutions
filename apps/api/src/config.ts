@@ -86,7 +86,7 @@ const EnvSchema = z.object({
   /** The most workspace and document streams an instance holds, everyone's together: each holds a request, and calls need the rest. */
   LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(500),
   /** The most of them from one address, whoever's signed in, so a handful of accounts can't take them all. */
-  LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(32),
+  LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(64),
   /** How many workers open documents. The first takes big ones. */
   DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
   /** How long a worker has for one job on a document, in ms. */

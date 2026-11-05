@@ -120,7 +120,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Rings | A ring lasts 45 seconds, and 20 people can be rung at once. Each browser tab holds one stream, which delivers within about a second, repeats itself every 20 seconds and ends after 210 to 240 seconds. An account holds at most 8, a process 300. |
 | Workspace | A name of up to 120 characters; at most 5,000 items in its tree, each named in up to 200, and folders 32 deep; 1,000 people; 30 days in Trash; 100 made per account, 20 a minute; the list read 120 times a minute |
 | Sharing a document | Up to 500 people in all, 100 at a time |
-| Workspace and document streams | 500 open together on each instance, for everyone, and 32 from one client address |
+| Workspace and document streams | 500 open together on each instance, for everyone, and 64 from one client address |
 | Workspace stream | 8 open per person on each instance; a ping every 25 seconds; opened again after 280 seconds; 120 opened a minute per person; 600 changes a minute per person |
 | Document stream | 8 open per person on each instance; opened again after 280 seconds; 240 opened a minute per person; let go of when more than 256 updates or 1 MiB behind |
 | Document | An update of at most 4 MiB and 200,000 structs, 1,200 a minute and 64 MiB a minute per person; new content stops at 16 MiB or 500,000 items, anything but deletes at twice that; types nest at most 1,024 deep; compacts past 200 updates or 1 MiB; a version at most every 10 minutes of editing, the newest 200 and at most 64 MiB of them, 60 reads a minute per person and 8 at once on an instance |

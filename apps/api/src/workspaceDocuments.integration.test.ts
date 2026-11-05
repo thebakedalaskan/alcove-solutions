@@ -3039,7 +3039,7 @@ describe('a version on its way out', () => {
 });
 
 describe('streams, read closely', () => {
-  it('stop at 8 of a document for one person, and 32 from one address, however many accounts it has', async () => {
+  it('stop at 8 of a document for one person, and at a limit for one address, however many accounts it has', async () => {
     const { ann, id, doc } = await together();
     const second = await h.secondServer();
     const open8 = Array.from({ length: 8 }, () => stream(second.baseUrl, ann.fetch, id, doc));
@@ -3050,17 +3050,17 @@ describe('streams, read closely', () => {
       for (const s of open8) s.stop();
       await second.close();
     }
-    const third = await h.secondServer();
+    const third = await h.secondServer({ LIVE_STREAMS_PER_ADDRESS: 16 });
     const held: ReturnType<typeof stream>[] = [];
     try {
       const shared: typeof fetch[] = [];
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         const who = await account();
         await ann.api.workspaces.addPerson(id, who.email, 'edit');
         shared.push((input, init) => who.fetch(input, { ...init, headers: { ...init?.headers, 'x-forwarded-for': '10.9.9.9' } }));
       }
-      for (const f of shared) for (let i = 0; i < 8 && held.length < 32; i++) held.push(stream(third.baseUrl, f, id, doc));
-      await until(() => held.every((s) => s.lines.length > 0), 'thirty-two streams');
+      for (const f of shared) for (let i = 0; i < 8 && held.length < 16; i++) held.push(stream(third.baseUrl, f, id, doc));
+      await until(() => held.every((s) => s.lines.length > 0), 'sixteen streams');
       const last = shared.at(-1);
       expect(last && (await last(`${third.baseUrl}/v1${docPath(id, doc)}/live?after=0`)).status).toBe(503);
       // Someone elsewhere isn't held up by it.
