@@ -2321,6 +2321,26 @@ describe('what a browser sends', () => {
     expect(a.getSnapshot().refused).toBeNull();
   });
 
+  it('keeps what someone typed in the title while the server was renaming it', async () => {
+    const { ann, bob, id, doc } = await together();
+    const a = await open(ann, id, doc);
+    title(a).insert(0, 'Plan');
+    await saved(a);
+    const link = network(bob);
+    const b = await open(link.browser, id, doc);
+    await says(b, 'Plan');
+    link.drop();
+    title(b).insert(4, ' for Tuesday');
+    await writeDocument(await heldBy(ann, id), doc, 'retitle', { name: 'Named by the server' });
+    await says(a, 'Named by the server');
+    expect(body(a)).not.toContain('Plan');
+    link.back();
+    await saved(b);
+    await says(a, ' for Tuesday');
+    expect(body(a)).toContain('Named by the server');
+    expect(body(b)).toBe(body(a));
+  });
+
   it('keeps a client to whoever first wrote with it, so nobody can claim someone’s words away', async () => {
     const { ann, bob, mal, id, doc } = await together();
     const a = await open(ann, id, doc);
