@@ -155,7 +155,7 @@ function leafShown(id: Leaf, a: CallPanels, f: PanelFacts, A: Adapted): boolean 
 }
 const nodeShown = (n: CallPanelNode, a: CallPanels, f: PanelFacts, A: Adapted): boolean => (isBranch(n) ? n.kids.some((k) => nodeShown(k, a, f, A)) : leafShown(n.id, a, f, A));
 
-/** The least a leaf can do with across. Anything dragged wider gives that back first (`share out`). */
+/** The least a leaf can do with across. Anything dragged wider gives that back first (`shareOut`). */
 function minOf(n: CallPanelLeaf, A: Adapted, inCol: boolean): number {
   if (n.id === 'stage') return STAGE_MIN;
   if (n.id === 'ws') return A.list ? 760 : 400;

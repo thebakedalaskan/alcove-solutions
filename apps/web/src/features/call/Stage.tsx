@@ -169,8 +169,9 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
   const awaited = waiting.map((w) => ({ id: waitKey(w.id), seat: waitKey(w.id), isMe: false, waiting: true }));
   const peopleKey = [...people.map((p) => `${p.id} ${p.seat} ${p.isMe ? 1 : 0}`), ...awaited.map((w) => w.id)].join(',');
   const shareIds = ordered.map((s) => s.id).join(' ');
+  const wasBig = useRef<string[]>([]);
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
-  const raw = useMemo(() => arrange({ people: [...people, ...awaited], shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay, hold, apart }),
+  const raw = useMemo(() => arrange({ people: [...people, ...awaited], shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay, hold, kept: wasBig.current, apart }),
     [peopleKey, shareIds, own, popped, fit, spotlight, talk.speaker, talk.dominant, prefs, lay, hold, apart]);
   // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
@@ -187,6 +188,7 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
   // Each share big keeps its seat for as long as it's big, so another one coming or going moves nothing.
   const seated = useRef(new Map<string, ShareLeaf>());
   seated.current = seatShares(seated.current, plan.featured);
+  wasBig.current = plan.featured;
   return { ordered, fresh, looks, seenLooks, popped, plan, shareSeats: seated.current, narrow, shareIds };
 }
 export type StagePlan = ReturnType<typeof useStagePlan>;

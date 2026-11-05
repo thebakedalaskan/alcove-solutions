@@ -51,7 +51,7 @@
 ### Task A2: Call panels
 
 **Files:**
-- Create: `apps/web/src/features/call/panels.ts`, `apps/web/src/features/call/Panels.tsx`
+- Create: `apps/web/src/features/call/panels.ts`, `apps/web/src/features/call/PanelHost.tsx` (not `Panels.tsx`: `./Panels` resolves to `panels.ts` on a case-insensitive disk)
 - Modify: `apps/web/src/routes/call.$code.tsx`, `apps/web/src/features/call/Stage.tsx`, `stageLayout.ts`, `Panel.tsx`, `ViewMenu.tsx`, `TopBar.tsx`, `view.ts`, `packages/api/src/live.ts` (the prefs schema), `packages/ui/src/styles/call.css`, `packages/ui/src/components/call.tsx`, `docs/engineering/calls-and-recordings.md`
 
 **Interfaces:**

@@ -167,7 +167,7 @@
 .ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }
 
 /* top bar */
-.ic-top { display: flex; align-items: center; gap: 14px; height: 72px; min-width: 0; }
+.ic-top { display: flex; align-items: center; gap: 14px; height: 64px; min-width: 0; }
 .ic-top .ttl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.2 var(--font-sans); letter-spacing: -0.01em; color: var(--stage-ink); }
 .ic-top .clock { flex: none; color: var(--stage-ink-2); }
 .ic-top .vr { flex: none; width: 1px; height: 20px; background: rgb(255 255 255 / 0.1); }
@@ -224,6 +224,8 @@
 .ic-slot.is-sizing { z-index: 9; }
 .ic-slot.is-sizing .ac-tile { box-shadow: inset 0 0 0 2px rgba(238, 237, 248, .7); }
 .ic-slot > .ac-tile { position: absolute; inset: 0; }
+.ic-slot .ac-tile-name { left: 8px; bottom: 8px; }
+.ic-slot .ac-tile-mic { right: 8px; top: 8px; }
 .ic-slot .ac-figure { pointer-events: none; }
 .ac-tile-name .you { color: var(--stage-ink-2); }
 .ic-tstate { position: absolute; z-index: 3; left: 8px; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; pointer-events: none; }
@@ -474,7 +476,7 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-side.is-float { z-index: 22; box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .ic-side.is-off { display: none; }
 /* The workspace and the board on the stage. */
-.ic-surface { position: absolute; z-index: 2; display: flex; min-width: 0; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; }
+.ic-surface { position: absolute; z-index: 2; display: flex; min-width: 0; }
 .ic-surface.is-off { display: none; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 .ic-side-head .ac-tabs { border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
