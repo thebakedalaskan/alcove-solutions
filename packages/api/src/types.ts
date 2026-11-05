@@ -1029,6 +1029,8 @@ export const CallLayoutSchema = z.object({
    * big are big (as many as fit) and every other share is a tile; with none, shares follow the layout.
    */
   shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(CALL_LAYOUT_MAX.shares),
+  /** Whether the workspace is open, and the document on it, so a reload finds you where you were. */
+  workspace: z.object({ open: z.boolean(), document: z.string().max(200).nullable() }).default({ open: false, document: null }),
   /** How the space splits between two shares side by side (CALL_SHARE_SPLIT). */
   split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
 });

@@ -3,12 +3,12 @@ import {
   type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast, wsToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/access';
 import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
@@ -28,7 +28,7 @@ import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/med
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
 import {
-  PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView,
+  PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView, zenRoom,
   type Leaf, type PanelFacts, type PanelPreset
 } from '~/features/call/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
@@ -48,10 +48,12 @@ import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
 import { volumeTag } from '~/features/call/VolumeControl';
+import { WorkspacePanel, useWorkspacePanel } from '~/features/call/WorkspacePanel';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
+import { overlayOpen, typing, withModShift } from '~/lib/keys';
 import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
@@ -61,7 +63,6 @@ import { q, qk, useCallSeries } from '~/lib/queries';
 export const Route = createFileRoute('/call/$code')({ component: Call });
 
 const clog = log.child({ component: 'call' });
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable]');
 type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | 'quality' | null;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
@@ -176,6 +177,10 @@ function InCall({ session }: { session: CallSession }) {
   const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null, startPanels);
   const forgetLayout = layout.forget;
   const panels = layout.panels;
+  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot.
+  const spaceKey = JSON.stringify(told.workspace);
+  const space = useMemo(() => told.workspace, [spaceKey]);
+  const work = useWorkspacePanel(session, space, layout);
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -714,7 +719,7 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
   const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
-    if (!big && settled()) toast(`${callName(s.presenter)} started sharing`, { icon: 'screen', ms: 6000, action: { label: 'Show it', onClick: show } });
+    if (!big && settled()) work.act.say(wsToast.sharing(s.presenter, callName(s.presenter), () => { work.act.setZen(false); show(); }));
   };
   const shareStopped = (s: StageShare, wasBig: boolean) => { if (wasBig && settled()) toast(`${callName(s.presenter)} stopped sharing`, { icon: 'stopShare' }); };
 
@@ -948,10 +953,18 @@ function InCall({ session }: { session: CallSession }) {
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
-  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own });
-  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own };
+  const zenOffered = !phone && !stageRooms;
+  const zenOn = zenOffered && work.zen;
+  const latestZen = useRef(zenOn);
+  latestZen.current = zenOn;
+  const toggleZen = useCallback(() => { work.act.setZen(!latestZen.current); }, [work.act]);
+  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own, zenOffered });
+  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own, zenOffered };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Wherever the caret is, this gives you just the document, and everything back.
+      if (withModShift(e) && e.key.toLowerCase() === 'f') { if (keys.current.zenOffered) { e.preventDefault(); toggleZen(); } return; }
+      // The call's letters sleep while you're typing, in a field or in a document.
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === 'escape') {
@@ -962,6 +975,7 @@ function InCall({ session }: { session: CallSession }) {
         return;
       }
       if (k === 'p' && e.shiftKey) { e.preventDefault(); keys.current.togglePeople(); return; }
+      if (k === 'w' && !e.shiftKey && !overlayOpen()) { e.preventDefault(); work.act.toggle(); return; }
       if (k !== 'm' && k !== 'v' && k !== 'c' && !(k === 'b' && keys.current.own.enabled)) return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
@@ -972,7 +986,7 @@ function InCall({ session }: { session: CallSession }) {
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, []);
+  }, [work.act, toggleZen]);
 
   /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
   /*
@@ -1235,8 +1249,9 @@ function InCall({ session }: { session: CallSession }) {
   const [resizing, setResizing] = useState(false);
   const [front, setFront] = useState<Leaf | null>(null);
   const setApart = panels.apart || panels.people !== 'tiles';
-  const surfaces = { ws: false, board: false };
-  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
+  const surfaces = { ws: work.open, board: false };
+  const zenBox = zenOn ? zenRoom(size, horizon) : null;
+  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: zenBox, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
   // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
@@ -1247,7 +1262,8 @@ function InCall({ session }: { session: CallSession }) {
   const top = bar ? 46 : 0;
   const bottom = capNode ? (stageW < 700 ? 150 : 124) : 0;
   const facts: PanelFacts = { ...noFacts, shown: [...seats.values()], top, bottom };
-  const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom]);
+  const zenKey = zenBox ? `${zenBox.x} ${zenBox.y} ${zenBox.w} ${zenBox.h}` : '';
+  const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom, zenKey]);
   useLayoutEffect(() => {
     const now = crowdedOut(panels, solved);
     setCrowded((was) => (was.join() === now.join() ? was : now));
@@ -1258,10 +1274,10 @@ function InCall({ session }: { session: CallSession }) {
     const { A, rects } = solved;
     const shown = new Map([...seats].flatMap(([id, s]) => { const r = rects[s]; return r ? [[id, r] as const] : []; }));
     return {
-      box: A.apart ? { x: 0, y: 0, w: size.w, h: size.h } : rects.stage ?? solved.box, top, bottom, ratio: layout.prefs.ratio, split: layout.layout.split,
+      box: A.apart ? zenBox ?? { x: 0, y: 0, w: size.w, h: size.h } : rects.stage ?? solved.box, top, bottom, ratio: layout.prefs.ratio, split: layout.layout.split,
       panels: A.apart ? { shares: shown, people: rects.people ?? null, mode: A.people, horizon, loud: new Set(loudKey.split(' ')), small: A.phone } : null
     };
-  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey]);
+  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey, zenKey]);
   const clear = mainRoom(solved);
   /** What a panel is called, on its handle and for the keyboard. */
   const panelName = (leaf: Leaf): string => {
@@ -1312,6 +1328,17 @@ function InCall({ session }: { session: CallSession }) {
     </SidePanel>
   );
   const pickLayout = (l: PanelPreset) => { if (!roomsHold()) { layout.arrange((p) => layoutPreset(p, l)); onCustom(); } };
+  /* The list's button: a list that gave way for want of room comes over the page for now. One you put away comes back. */
+  const listGaveWay = panels.list && !solved.A.list;
+  const turnList = () => {
+    if (listGaveWay) { work.act.setPeek((on) => !on); return; }
+    work.act.setPeek(false);
+    layout.arrange((p) => setList(p, !p.list));
+    onCustom();
+  };
+  const listTurn = useRef(turnList);
+  listTurn.current = turnList;
+  const toggleList = useCallback(() => { listTurn.current(); }, []);
 
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
@@ -1323,7 +1350,7 @@ function InCall({ session }: { session: CallSession }) {
 
   return (
     <div className="stage ac-stage">
-      <div className={cn('ic-call', ended && 'is-ended')}>
+      <div className={cn('ic-call', ended && 'is-ended', zenOn && 'is-zen')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
           asking={hosting ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
@@ -1331,11 +1358,15 @@ function InCall({ session }: { session: CallSession }) {
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom} layout={presetOf(panels)} people={panels.people} list={facts.ws ? panels.list : null}
               roomy={roomy} phone={phone} onMode={(m) => { if (!roomsHold()) layout.setMode(m); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset}
-              onLayout={pickLayout} onPeople={setPeopleMode} onList={(on) => layout.arrange((p) => setList(p, on))} />
+              onLayout={pickLayout} onPeople={setPeopleMode} onList={(on) => layout.arrange((p) => setList(p, on))} onZen={zenOffered ? toggleZen : undefined} />
           )}
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
+          ws={work.mounted ? () => (
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} open={work.open} zen={zenOffered ? zenOn : null}
+              listOff={!solved.A.list} listPeek={work.peek} act={work.act} onToggleList={toggleList} onToggleZen={toggleZen} />
+          ) : undefined}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
@@ -1365,14 +1396,14 @@ function InCall({ session }: { session: CallSession }) {
             </>
           )} />
         <footer ref={dockBar} className="ic-dockbar">
-          <CallDock>
-            <DockSplit>
+          <CallDock tucked={zenOn}>
+            <DockSplit className="keep">
               <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} onClick={pressMic}
                 tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
               <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
                 onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
             </DockSplit>
-            <DockSplit>
+            <DockSplit className="keep">
               <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} onClick={pressCam}
                 tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
@@ -1391,6 +1422,7 @@ function InCall({ session }: { session: CallSession }) {
             <DockSeparator />
             {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
             {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
+            <DockButton icon="folderOpen" label={!work.open && space.documents.length > 0 ? `Workspace, ${space.documents.length} in this call` : 'Workspace'} tip="Workspace · W" on={work.open} badge={work.open ? 0 : space.documents.length} onClick={work.act.toggle} />
             <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
             <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
             <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
@@ -1416,7 +1448,8 @@ function InCall({ session }: { session: CallSession }) {
               )}
             </Popover>
             <DockSeparator />
-            <DockLeave disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
+            {zenOn && <DockWords icon="shrink" className="keep" onClick={toggleZen}>Show everything</DockWords>}
+            <DockLeave className="keep" disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
           </CallDock>
         </footer>
       </div>

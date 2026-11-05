@@ -5,10 +5,10 @@
 import { errorMessage, type WorkspaceItem, type WorkspaceSummary } from '@alcove/api';
 import { WsDropLine, WsList, WsListHead, WsMovePicker, WsNewMenu, WsRenameRow, WsRow, WsRowMenu, WsSection, WsSpacePicker, WsTrashRow, wsToast, type WsMenuRow, type WsNaming, type WsPoint, type WsPop, type WsSpaceChoice } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
 import { focusRow } from './actions';
-import { useWs } from './context';
+import { useWs, type WorkspaceArea } from './context';
 import type { RowDrag } from './drag';
 import { PeopleSheet } from './Sheets';
 import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
@@ -16,11 +16,27 @@ import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
 const peopleWords = (n: number | null) => (n === null ? 'Only what’s shared with you' : n === 1 ? 'Just you' : `${n} people`);
 const spaceChoice = (w: WorkspaceSummary): WsSpaceChoice => ({ id: w.id, name: w.name ?? 'Shared with you', sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
 
-/** A row's menu: which row, where it opened if someone right-clicked, and whether Move to… has taken its place. */
-interface RowMenu { id: string; at?: WsPoint | undefined; moving: boolean }
+/** A row's menu: which row, in which part of the list, where it opened if someone right-clicked, and whether Move to… has taken its place. */
+interface RowMenu { id: string; area: WorkspaceArea; at?: WsPoint | undefined; moving: boolean }
 
 /** What the list needs of a drag in progress. */
 export interface ListDrag { drag: RowDrag | null; arm: (e: PointerEvent<HTMLElement>, id: string) => void; ended: () => boolean }
+
+/** A document just brought to the call glows where it landed, for 1.4 s, as anything arriving in the list does. */
+function useJustBrought(ids: readonly string[]): ReadonlySet<string> {
+  const [lit, setLit] = useState<ReadonlySet<string>>(new Set());
+  const was = useRef(ids);
+  const key = ids.join(' ');
+  useEffect(() => {
+    const before = was.current;
+    was.current = key ? key.split(' ') : [];
+    const fresh = was.current.filter((id) => !before.includes(id));
+    if (!fresh.length) return;
+    setLit((on) => new Set([...on, ...fresh]));
+    setTimeout(() => setLit((on) => new Set([...on].filter((id) => !fresh.includes(id)))), 1400);
+  }, [key]);
+  return lit;
+}
 
 /** The name at the top of the list: your workspaces, who's in this one, and making a new one. */
 function useHead(onNaming: (n: 'new' | 'rename') => void) {
@@ -37,7 +53,9 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   const choices = list.some((s) => s.id === ws.workspaceId) ? list : [{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, ...list];
   return {
     open, onOpenChange: (to: boolean) => { if (to) { setOpen(true); void spaces.refetch(); } else close(); },
-    content: ws.call?.picker ?? (people ? <PeopleSheet /> : (
+    content: ws.call?.picker ?? (people ? <PeopleSheet /> : ws.call ? (
+      <WsSpacePicker spaces={[{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }]} current={ws.workspaceId} canChoose={false} organizer={ws.call.chooser} about={about} onPick={close} onNew={close} />
+    ) : (
       <WsSpacePicker spaces={choices} current={ws.workspaceId} canChoose heading="Workspaces" about={about}
         onPick={(id) => { close(); if (id !== ws.workspaceId) ws.switchTo(id); }} onNew={() => { close(); onNaming('new'); }} />
     ))
@@ -57,26 +75,32 @@ export function List({ drags }: { drags: ListDrag }) {
   const { drag, arm, ended } = drags;
   const member = sent.role !== null;
   const refused = (e: unknown) => { ws.say(wsToast.failed(errorMessage(e))); };
+  /* What's brought to the call and still here. Someone outside the workspace has it among what's shared with them. */
+  const call = ws.call;
+  const inCall = (call?.documents ?? []).flatMap((id) => { const item = tree.all.get(id); return member && item && item.kind === 'document' && item.trashedAt === null ? [item] : []; });
+  const justBrought = useJustBrought(inCall.map((i) => i.id));
 
   const canEdit = (item: WorkspaceItem) => item.role === 'edit';
-  const openRow = (item: WorkspaceItem) => {
+  const openRow = (item: WorkspaceItem, area: WorkspaceArea) => {
     if (ended()) return;
     if (item.kind === 'folder') { ws.setOpen(item.id, !ws.open.has(item.id)); return; }
-    ws.go({ kind: 'document', id: item.id });
+    ws.go({ kind: 'document', id: item.id, area });
   };
+  /** The row that's open is the one it was opened from: a document in This call is in Documents too. */
+  const currentIn = (area: WorkspaceArea, id: string) => ws.at.kind === 'document' && ws.at.id === id && (ws.at.area ?? (inCall.some((i) => i.id === id) ? 'pins' : 'tree')) === area;
   const newIn = (parent: string | null) => (
     <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }} />
   );
-  const menuFor = (item: WorkspaceItem): WsPop | undefined => {
+  const menuFor = (item: WorkspaceItem, area: WorkspaceArea): WsPop | undefined => {
     const folder = item.kind === 'folder';
     const changing = canChange && canEdit(item);
     if (folder && !changing) return undefined;
-    const open = menu?.id === item.id;
+    const open = menu?.id === item.id && menu.area === area;
     const close = () => setMenu(null);
-    const brought = ws.call?.brought?.(item.id);
+    const brought = call && !folder ? call.documents.includes(item.id) : undefined;
     return {
       open, at: open ? menu.at : undefined,
-      onOpenChange: (to) => setMenu(to ? { id: item.id, moving: false } : null),
+      onOpenChange: (to) => setMenu(to ? { id: item.id, area, moving: false } : null),
       content: !open ? null : menu.moving ? (
         <WsMovePicker name={nameOf(item)} space={ws.spaceName} folders={foldersFor(tree, item.id)}
           onRoot={() => { close(); actions.move(item.id, { parent: null }); }} onFolder={(id) => { close(); actions.move(item.id, { parent: id }); }} />
@@ -85,7 +109,7 @@ export function List({ drags }: { drags: ListDrag }) {
           onRename={canEdit(item) ? () => { close(); ws.setRenaming(item.id); } : undefined}
           onDuplicate={changing ? () => { close(); actions.duplicate(item.id); } : undefined}
           onMove={changing ? () => setMenu({ ...menu, moving: true }) : undefined}
-          onToggleCall={brought === undefined ? undefined : () => { close(); ws.call?.onBring?.(item.id, !brought); }}
+          onToggleCall={brought === undefined ? undefined : () => { close(); call?.onBring(item.id, !brought); }}
           onCopyLink={folder ? undefined : () => { close(); actions.copyLink(item.id); }}
           onTrash={changing ? () => { close(); actions.trash(item.id); } : undefined} />
       )
@@ -131,6 +155,26 @@ export function List({ drags }: { drags: ListDrag }) {
     }
   };
 
+  const rowOf = (item: WorkspaceItem, area: WorkspaceArea, depth: number, open: boolean): ReactElement => {
+    const folder = item.kind === 'folder';
+    const key = `${area}:${item.id}`;
+    if (ws.renaming === item.id && area === 'tree') {
+      return (
+        <WsRenameRow key={key} name={item.name} kind={folder ? 'folder' : 'document'} depth={depth} placeholder={folder ? 'Name this folder' : 'Name this document'}
+          onCancel={() => { ws.setRenaming(null); focusRow(item.id); }} onCommit={(name) => { ws.setRenaming(null); actions.rename(item.id, name); focusRow(item.id); }} />
+      );
+    }
+    return (
+      <WsRow key={key} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open} area={area}
+        current={currentIn(area, item.id)} flash={ws.glowing.has(item.id) || (area === 'pins' && justBrought.has(item.id))}
+        into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || (area === 'tree' && ws.blockInto === item.id)} ghosted={drag?.id === item.id}
+        onOpen={() => openRow(item, area)} onTwist={folder ? () => ws.setOpen(item.id, !open) : undefined}
+        menu={menuFor(item, area)} add={folder ? addFor(item) : undefined}
+        onRename={canEdit(item) ? () => ws.setRenaming(item.id) : undefined}
+        onContextMenu={(e) => { if (folder && !(canChange && canEdit(item))) return; e.preventDefault(); setMenu({ id: item.id, area, at: { x: e.clientX, y: e.clientY }, moving: false }); }}
+        onPointerDown={(e) => arm(e, item.id)} />
+    );
+  };
   const rows = rowsOf(tree, ws.open, ws.draft?.parent).map((row): ReactElement => {
     if (row.draft) {
       return (
@@ -138,24 +182,7 @@ export function List({ drags }: { drags: ListDrag }) {
           onCommit={(name) => { const parent = ws.draft?.parent ?? null; ws.setDraft(null); if (name.trim()) actions.newFolder(parent, name.trim()); }} />
       );
     }
-    const { item, depth, open } = row;
-    const folder = item.kind === 'folder';
-    if (ws.renaming === item.id) {
-      return (
-        <WsRenameRow key={item.id} name={item.name} kind={folder ? 'folder' : 'document'} depth={depth} placeholder={folder ? 'Name this folder' : 'Name this document'}
-          onCancel={() => { ws.setRenaming(null); focusRow(item.id); }} onCommit={(name) => { ws.setRenaming(null); actions.rename(item.id, name); focusRow(item.id); }} />
-      );
-    }
-    return (
-      <WsRow key={item.id} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open}
-        current={ws.at.kind === 'document' && ws.at.id === item.id} flash={ws.glowing.has(item.id)}
-        into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || ws.blockInto === item.id} ghosted={drag?.id === item.id}
-        onOpen={() => openRow(item)} onTwist={folder ? () => ws.setOpen(item.id, !open) : undefined}
-        menu={menuFor(item)} add={folder ? addFor(item) : undefined}
-        onRename={canEdit(item) ? () => ws.setRenaming(item.id) : undefined}
-        onContextMenu={(e) => { if (folder && !(canChange && canEdit(item))) return; e.preventDefault(); setMenu({ id: item.id, at: { x: e.clientX, y: e.clientY }, moving: false }); }}
-        onPointerDown={(e) => arm(e, item.id)} />
-    );
+    return rowOf(row.item, 'tree', row.depth, row.open);
   });
   const trash = trashIn(ws.items);
 
@@ -165,7 +192,9 @@ export function List({ drags }: { drags: ListDrag }) {
         <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField}
           create={canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(null) : null } : undefined} />
       ) : undefined}>
-      {ws.call?.top}
+      {(call?.top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}
+      {call?.top}
+      {inCall.map((item) => rowOf(item, 'pins', 0, false))}
       {/* Someone outside the workspace has the head's words for it in the app, and in a call no head at all. */}
       {member ? <WsSection key="section" label="Documents" /> : ws.mode === 'call' ? <WsSection key="section" label="Shared with you" /> : null}
       {rows}

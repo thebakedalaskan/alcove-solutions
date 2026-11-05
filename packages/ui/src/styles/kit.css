@@ -142,6 +142,16 @@
 .ac-dock-chev:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ac-tile-hand { position: absolute; z-index: 3; right: 10px; top: 10px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); }
 .ac-dock-sep { width: 1px; height: 24px; margin: 0 4px; background: rgba(255, 255, 255, .1); }
+/* A dock with words on a button: what brings the rest back while it's tucked away. */
+.ac-dock-words { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color var(--duration-1); }
+.ac-dock-words:hover { background: rgba(255, 255, 255, .08); }
+.ac-dock-words:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Tucked away: only what's marked `keep` stays, and it's smaller. */
+.ac-dock.is-tucked { padding: 4px; }
+.ac-dock.is-tucked > :not(.keep), .ac-dock.is-tucked .ac-dock-chev { display: none; }
+.ac-dock.is-tucked .ac-dock-btn { width: 36px; height: 36px; border-radius: 10px; }
+.ac-dock.is-tucked .ac-dock-leave { height: 36px; padding: 0 11px; }
+.ac-dock.is-tucked .ac-dock-leave .lt { display: none; }
 .ac-dock-leave { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 42px; padding: 0 16px 0 13px; border: 0; border-radius: 12px; background: rgba(255, 255, 255, .1); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); color: var(--stage-ink); font: 600 13.5px/1 var(--font-sans); white-space: nowrap; cursor: pointer; transition: background-color var(--duration-1); }
 .ac-dock-leave:hover { background: rgba(255, 255, 255, .16); }
 .ac-dock-leave[disabled] { opacity: .6; pointer-events: none; }

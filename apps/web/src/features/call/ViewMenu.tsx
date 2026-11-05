@@ -6,6 +6,7 @@
 import type { CallPeopleMode, CallViewMode, SelfView } from '@alcove/api';
 import { Icon, Kbd, Popover, Segmented, Switch, cn, type IconName } from '@alcove/ui';
 import { useState } from 'react';
+import { shortcut } from '~/lib/keys';
 import type { PanelPreset } from './panels';
 import { PRESETS, type Preset } from './view';
 
@@ -19,7 +20,7 @@ const LAYOUTS: { id: PanelPreset; label: string; cls: string; order: ('s' | 'd' 
   { id: 'doc', label: 'Document first', cls: 't4', order: ['d', 's', 'p'] }
 ];
 
-export function ViewMenu({ mode, preset, self, custom, layout, people, list, roomy, phone, onMode, onPreset, onSelf, onReset, onLayout, onPeople, onList }: {
+export function ViewMenu({ mode, preset, self, custom, layout, people, list, roomy, phone, onMode, onPreset, onSelf, onReset, onLayout, onPeople, onList, onZen }: {
   mode: CallViewMode; preset: Preset | null; self: SelfView;
   /** There's something for Reset my view to do. */
   custom: boolean;
@@ -34,6 +35,8 @@ export function ViewMenu({ mode, preset, self, custom, layout, people, list, roo
   phone: boolean;
   onMode: (m: CallViewMode) => void; onPreset: (p: Preset) => void; onSelf: (s: SelfView) => void; onReset: () => void;
   onLayout: (l: PanelPreset) => void; onPeople: (m: CallPeopleMode) => void; onList: (on: boolean) => void;
+  /** Just the document, where that's on offer. */
+  onZen?: (() => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const pick = (f: () => void) => () => { setOpen(false); f(); };
@@ -61,6 +64,12 @@ export function ViewMenu({ mode, preset, self, custom, layout, people, list, roo
           {!roomy && <p className="hint">Layouts and how you see people apply once something is shared.</p>}
           {list !== null && <div className="ic-vrow"><span>Document list</span><Switch checked={list} label="Show the document list" onChange={onList} /></div>}
           <div className="ic-msep" />
+          {onZen && (
+            <>
+              <button type="button" className="mi" onClick={pick(onZen)}><Icon name="grow" size={16} /><span className="t">Just the document</span><Kbd>{shortcut('⇧F')}</Kbd></button>
+              <div className="ic-msep" />
+            </>
+          )}
         </>
       )}
       <div className="ic-vrow">

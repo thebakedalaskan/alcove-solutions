@@ -174,7 +174,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
    */
   const leave = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || !(e.target instanceof HTMLElement)) return;
-    if (!e.target.isContentEditable) focusRow(item.id);
+    /* It's gone from the handles to the row, and that's all it does: in a call, this isn't also the call's Esc. */
+    if (!e.target.isContentEditable) { e.stopPropagation(); focusRow(item.id); }
     else requestAnimationFrame(() => { if (document.activeElement === document.body) focusRow(item.id); });
   };
 
@@ -206,7 +207,7 @@ export function DocumentPane({ item }: { item: WorkspaceItem }) {
 
 /** The head with nothing to do yet. */
 function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
-  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} />;
+  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
 }
 
 const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
@@ -235,7 +236,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   if (refused || closed) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} />
+        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
         <WsCantOpen what="document" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );

@@ -1,0 +1,144 @@
+/*
+ * The workspace in a call: whether it's open, where you are in it, and the panel it's drawn in. The call says which
+ * workspace (`CallState.workspace`, settled the first time anyone opens it); nothing here decides who can open what.
+ *
+ * Closing it and opening it again finds everything as it was: the panel stays mounted once it's been opened, out of sight
+ * (PanelHost.tsx), so the page keeps its caret, its scroll and its undo, and where you were is kept with how you arranged
+ * this call (view.ts), so a reload finds that too. Only your screen changes, whatever you do here.
+ */
+import { errorMessage, firstName, type CallSession, type CallWorkspace } from '@alcove/api';
+import { WsDoc, WsLostSpace, WsNoAccess, WsPane, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { WorkspaceCall, WorkspacePlace } from '~/features/workspace/context';
+import { Workspace } from '~/features/workspace/Workspace';
+import { overlayOpen } from '~/lib/keys';
+import { log } from '~/lib/log';
+import type { CallView } from './view';
+
+const wlog = log.child({ component: 'call-workspace' });
+
+/** Where a workspace opens: this call's agenda, or the first thing brought to it. With neither, it opens what you had open last. */
+function firstPlace(w: CallWorkspace): WorkspacePlace {
+  const id = w.agenda ?? w.documents.find((d) => d.workspaceId === w.id)?.id;
+  return id ? { kind: 'document', id, area: 'pins' } : { kind: 'home' };
+}
+
+/** What the call's screen holds about the workspace. One a call has for good: everything in `act` keeps the same identity. */
+export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace, view: CallView) {
+  const push = useToast();
+  const kept = view.layout.workspace;
+  const [open, setOpen] = useState(kept.open);
+  const [mounted, setMounted] = useState(kept.open);
+  const [at, setAt] = useState<WorkspacePlace>(kept.document ? { kind: 'document', id: kept.document } : { kind: 'home' });
+  const [zen, setZen] = useState(false);
+  const [peek, setPeek] = useState(false);
+  /** The call has said which workspace it uses, for this browser. */
+  const [settled, setSettled] = useState(false);
+  const asked = useRef(false);
+
+  const act = useMemo(() => {
+    const say = (t: WsToastData) => { push(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms }); };
+    const failed = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
+    const show = () => { setMounted(true); setOpen(true); };
+    const hide = () => { setOpen(false); setZen(false); setPeek(false); };
+    return {
+      say, failed, show, hide,
+      toggle: () => { if (openNow.current) hide(); else show(); },
+      go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
+      /** Just the document, which opens the workspace if it has to, or everything back. */
+      setZen: (on: boolean) => { if (on) show(); setZen(on); },
+      setPeek,
+      bring: (id: string, brought: boolean) => {
+        const name = () => session.getSnapshot().workspace.documents.find((d) => d.id === id)?.name || 'Untitled';
+        session.bringDocument(id, brought).then(() => { if (brought) say(wsToast.broughtToCall(name())); }, failed);
+      },
+      /** A workspace of their own, for an organizer who's lost the one the call uses. */
+      newWorkspace: () => {
+        session.newWorkspace().then(() => { say(wsToast.newSpace(session.getSnapshot().workspace.name ?? 'Untitled')); }, failed);
+      }
+    };
+  }, [push, session]);
+  const openNow = useRef(open);
+  openNow.current = open;
+
+  /* The first time it opens here, the call settles which workspace it uses, and finds its agenda. */
+  useEffect(() => {
+    if (!open || asked.current) return;
+    asked.current = true;
+    session.openWorkspace().then(() => {
+      const w = session.getSnapshot().workspace;
+      setAt((was) => (was.kind === 'home' ? firstPlace(w) : was));
+      setSettled(true);
+    }, (e: unknown) => {
+      wlog.warn('the call’s workspace didn’t open', { err: e });
+      asked.current = false;
+      act.hide();
+      act.failed(e);
+    });
+  }, [open, session, act]);
+
+  /* The call moved to another workspace: what was open here isn't in that one. */
+  const was = useRef(workspace.id);
+  useEffect(() => {
+    if (was.current !== null && workspace.id !== null && was.current !== workspace.id) setAt(firstPlace(session.getSnapshot().workspace));
+    was.current = workspace.id;
+  }, [workspace.id, session]);
+
+  /* Where you are, for a reload. */
+  const document_ = at.kind === 'document' ? at.id : null;
+  const keep = view.keepWorkspace;
+  const keepNow = useRef(keep);
+  keepNow.current = keep;
+  useEffect(() => { keepNow.current({ open, document: document_ }); }, [open, document_]);
+
+  /* Esc puts away what's over the page, then gives everything back. A menu or a sheet goes first, and so does anything that took the key before it got this far. */
+  useEffect(() => {
+    if (!zen && !peek) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || overlayOpen() || globalThis.document.querySelector('.ws-pop')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (peek) setPeek(false);
+      else setZen(false);
+    };
+    globalThis.document.addEventListener('keydown', esc, true);
+    return () => globalThis.document.removeEventListener('keydown', esc, true);
+  }, [zen, peek]);
+
+  return { open, mounted, at, zen, peek, settled, act };
+}
+export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
+
+/** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, open, zen, listOff, listPeek, top, act, onToggleList, onToggleZen }: {
+  workspace: CallWorkspace;
+  /** You're the call's organizer. */
+  organizer: boolean;
+  pass: string;
+  at: WorkspacePlace;
+  settled: boolean;
+  open: boolean;
+  /** Just the document: on or off, if it's on offer at all. */
+  zen: boolean | null;
+  listOff: boolean;
+  listPeek: boolean;
+  /** The first rows under This call. */
+  top?: ReactNode;
+  act: WorkspacePanelState['act'];
+  onToggleList: () => void;
+  onToggleZen: () => void;
+}) {
+  const chooser = firstName(workspace.chosenBy.name);
+  const documents = useMemo(() => workspace.documents.filter((d) => d.workspaceId === workspace.id).map((d) => d.id), [workspace.documents, workspace.id]);
+  const call = useMemo((): WorkspaceCall => ({
+    top, documents, onBring: act.bring, chooser: organizer ? undefined : chooser, say: act.say, closed: !open,
+    zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
+    list: { off: listOff, peek: listPeek, onToggle: onToggleList }
+  }), [top, documents, act, organizer, chooser, open, zen, onToggleZen, listOff, listPeek, onToggleList]);
+  const switchNowhere = useCallback(() => undefined, []);
+  /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
+  const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
+  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.hide} pass={pass} call={call} />;
+  if (!settled) return <WsPane />;
+  return <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}</WsDoc></WsPane>;
+});
