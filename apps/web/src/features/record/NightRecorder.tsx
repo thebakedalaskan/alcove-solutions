@@ -60,7 +60,7 @@ export function NightRecorder({ keeps }: { keeps: boolean }) {
           autoComplete="off" spellCheck={false} enterKeyHint="go" onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); start(); } }} />
         <div className="rec-a">
-          <Button variant="primary" className={cn('rec-start', locked && 'is-off')} aria-disabled={locked} aria-keyshortcuts="R" onClick={start}>
+          <Button variant="primary" className={cn('rec-start', locked && 'is-off')} aria-label="Start recording" aria-disabled={locked} aria-keyshortcuts="R" onClick={start}>
             <i className="rec-dot" aria-hidden="true" />Start recording<Kbd>R</Kbd>
           </Button>
         </div>

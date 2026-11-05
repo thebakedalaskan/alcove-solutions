@@ -201,7 +201,7 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
     setLeave(false);
     await rec.discard();
     sessions.recording = null;
-    if (!guard.proceed()) await navigate({ to: '/home' });
+    if (!guard.proceed()) await navigate({ to: '/record', replace: true });
     toast('Recording discarded. Nothing was kept.', { icon: 'trash' });
   };
   const finishLabel = forgotten ? 'End recording' : saving ? 'Finish and save' : 'Finish and write notes';

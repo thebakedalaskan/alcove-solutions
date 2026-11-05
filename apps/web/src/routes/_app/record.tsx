@@ -34,12 +34,12 @@ const useRecordsOffline = () => (useQuery(q.prefs()).data?.recordOffline ?? reco
 
 function RecordPage() {
   const room = useQuery(q.notes('room')).data;
-  const kept = useLive(uploads).list;
+  const { list: kept, read } = useLive(uploads);
   const online = useOnline();
   const keeps = useRecordsOffline();
   /* Recordings you made: someone else's room notes, shared with you, weren't recorded here. */
   const mine = room?.filter((n) => !n.received).slice(0, SHOWN);
-  const first = mine?.length === 0 && !kept.length;
+  const first = read && mine?.length === 0 && !kept.length;
   return (
     <Evening moment="record" className="rec dark" data-first={first ? true : undefined}>
       <header className="rec-head" style={{ '--d': 0 }}><h1>Record</h1></header>
@@ -80,31 +80,35 @@ function whenOf(n: NoteSummary): string {
 
 function RecordedBefore({ notes }: { notes: NoteSummary[] }) {
   const h = useId();
-  const online = useOnline();
-  const toast = useToast();
   return (
     <section className="rec-list" aria-labelledby={h}>
       <div className="rec-h"><h2 id={h}>Recorded before</h2><Link to="/notes" className="rec-more-link">In Notes<Icon name="right" size={15} /></Link></div>
-      <ul className="rec-before">
-        {notes.map((n) => (
-          <li key={n.id}>
-            <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')}
-              onClick={(e) => { if (online) return; e.preventDefault(); toast('Notes open when you’re back online.', { icon: 'wifiOff' }); }}>
-              <RecPrint id={n.id} />
-              <span className="rec-t"><b className="ac-clamp-1">{n.title}</b><small className="ac-clamp-1">{gistOf(n)}</small></span>
-              <span className="rec-f">
-                {n.openActions > 0 && <span className="rec-todo" title={`${n.openActions} ${n.openActions === 1 ? 'follow-up' : 'follow-ups'} still open`}><Icon name="userCheck" size={13} />{n.openActions}</span>}
-              </span>
-              <span className="rec-w">
-                <span>{whenOf(n)}</span>
-                {n.people.length > 1
-                  ? <small><Faces people={n.people} size={18} max={3} /></small>
-                  : <small><Icon name="lock" size={13} />Only you</small>}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <ul className="rec-before">{notes.map((n) => <Recorded key={n.id} n={n} />)}</ul>
     </section>
+  );
+}
+
+function Recorded({ n }: { n: NoteSummary }) {
+  const id = useId();
+  const online = useOnline();
+  const toast = useToast();
+  return (
+    <li>
+      {/* Named by its title alone and described by when it was, not by every word in it. */}
+      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={`${id}-w`}
+        onClick={(e) => { if (online) return; e.preventDefault(); toast('Notes open when you’re back online.', { icon: 'wifiOff' }); }}>
+        <RecPrint id={n.id} />
+        <span className="rec-t"><b id={`${id}-t`} className="ac-clamp-1">{n.title}</b><small className="ac-clamp-1">{gistOf(n)}</small></span>
+        <span className="rec-f">
+          {n.openActions > 0 && <span className="rec-todo" title={`${n.openActions} ${n.openActions === 1 ? 'follow-up' : 'follow-ups'} still open`}><Icon name="userCheck" size={13} />{n.openActions}</span>}
+        </span>
+        <span className="rec-w">
+          <span id={`${id}-w`}>{whenOf(n)}</span>
+          {n.people.length > 1
+            ? <small><Faces people={n.people} size={18} max={3} /></small>
+            : <small><Icon name="lock" size={13} />Only you</small>}
+        </span>
+      </Link>
+    </li>
   );
 }

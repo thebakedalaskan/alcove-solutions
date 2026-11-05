@@ -5,7 +5,7 @@
  * asks first, in the same menu. Shown only while there are some.
  */
 import { MAX_RECORDING_AGE_DAYS } from '@alcove/api';
-import { Icon, IconButton, Popover, cn, type IconName } from '@alcove/ui';
+import { Icon, IconButton, Popover, cn, useToast, type IconName } from '@alcove/ui';
 import { useId, useState } from 'react';
 import { useLive, useOnline } from '~/lib/live';
 import { hm, hoursAndMinutes, noteDay } from '~/lib/time';
@@ -40,6 +40,7 @@ function standing(k: KeptItem, online: boolean): { text: string; icon: IconName;
 function Row({ k, online }: { k: KeptItem; online: boolean }) {
   const [open, setOpen] = useState(false);
   const [sure, setSure] = useState(false);
+  const toast = useToast();
   const { text, icon, tone, more } = standing(k, online);
   const name = k.title || UNNAMED;
   const long = k.seconds < 60 ? 'Under a minute' : hoursAndMinutes(k.seconds / 60);
@@ -65,7 +66,7 @@ function Row({ k, online }: { k: KeptItem; online: boolean }) {
             {sure ? (
               <>
                 <p className="ac-pop-h">Delete “{name}”?</p>
-                <button type="button" className="ac-pop-item is-caution" onClick={() => { setOpen(false); setSure(false); void uploads.discard(k.id); }}>
+                <button type="button" className="ac-pop-item is-caution" onClick={() => { setOpen(false); setSure(false); void uploads.discard(k.id).then(() => toast('Deleted from this device.', { icon: 'trash' })); }}>
                   <Icon name="trash" size={17} /><span><b>Delete it</b><small>It never uploads, and nothing of it is kept.</small></span>
                 </button>
                 <button type="button" className="ac-pop-item" onClick={() => setSure(false)}>

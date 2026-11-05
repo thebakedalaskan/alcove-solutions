@@ -4,8 +4,8 @@
  * search, the phone's bars and whatever is portalled out of it stay night. The stage (/record/live) is the same scene over the
  * whole window. Every class here starts with rec-, and the orb's colours are the drawing's own. On the evening: horizon.css.
  */
-.rec { --orb: 58px; --span: 80px; --gap: clamp(48px, 7vw, 112px); --hz: clamp(424px, 55vh, 700px); }
-.rec[data-first] { --hz: clamp(424px, 68vh, 740px); }
+.rec { --orb: 58px; --span: 80px; --gap: clamp(48px, 7vw, 112px); --hz: calc(8px + clamp(424px, 55vh, 700px)); container: rec / inline-size; }
+.rec[data-first] { --hz: calc(8px + clamp(424px, 68vh, 740px)); }
 .rec-stage { --orb: 66px; --heard-at: 160px; --hz: clamp(420px, 55vh, 680px); }
 
 /* The scene's own sun and glitter give way to the orb and the voice. */
@@ -17,7 +17,7 @@
 .shell:has(.rec) :is(.sb-offline, .main-offline, .ph-offline) { display: none; }
 
 /* ------------------------------------------------------------ the recorder, on the horizon */
-.rec-sun { position: absolute; inset: 0; pointer-events: none; }
+.rec-sun { position: absolute; inset: 0; overflow: clip; pointer-events: none; }
 .dusk-in > .rec-sun { animation: none; }
 .rec-up { position: absolute; inset: 0 0 auto; height: var(--hz); overflow: hidden; }
 .rec-at { position: absolute; left: 50%; top: var(--hz); width: 0; height: 0; }
@@ -124,7 +124,7 @@
 .rec-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 36px; }
 .rec-h h2 { font: 600 15px/1.3 var(--font-sans); letter-spacing: 0; color: var(--ink); }
 .rec-h .n { margin-left: 6px; font-weight: 500; color: var(--ink-3); }
-.rec-more-link { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-sm); font: 500 14px/1 var(--font-sans); color: var(--ink); }
+.rec-more-link { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-sm); font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
 .rec-more-link .ac-i { color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
 .rec-more-link:hover .ac-i { transform: translateX(2px); color: var(--ink-2); }
 .rec-rows { display: grid; margin: 0; padding: 0; list-style: none; }
@@ -162,6 +162,7 @@
 .rec-foot { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; font: 400 13px/18px var(--font-sans); color: var(--ink-3); text-align: center; transition: opacity var(--duration-2); }
 /* A toast takes the same place. */
 body:has(.ac-toast) .rec-foot { opacity: 0; }
+.rec-go + .rec-foot { margin-top: calc(var(--orb) + 16px + var(--span) + 4px); }
 .rec-first { position: relative; margin-top: calc(var(--orb) + 16px + var(--span) + 4px); font: 400 16px/24px var(--font-sans); color: var(--ink-2); text-align: center; text-wrap: balance; }
 
 /* ------------------------------------------------------------ the stage: the whole window, the same composition */
@@ -180,11 +181,14 @@ body:has(.ac-toast) .rec-foot { opacity: 0; }
 
 /* What's said: the newest line lowest, the older ones going out. Scrolling up reads them back. */
 .rec-heard { position: absolute; left: 0; right: 0; top: calc(var(--hz) + var(--heard-at)); display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; width: min(760px, calc(100% - 48px)); height: min(208px, calc(100% - var(--hz) - var(--heard-at) - 16px)); margin-inline: auto; text-align: center; }
-.rec-lines { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); }
+.rec-lines { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding-top: 34px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 30%); mask-image: linear-gradient(to bottom, transparent, #000 30%); }
+.rec-lines.is-back { -webkit-mask-image: linear-gradient(to bottom, transparent, #000 34px); mask-image: linear-gradient(to bottom, transparent, #000 34px); }
+.rec-heard .tx-latest { top: 0; bottom: auto; }
 .rec-lines::-webkit-scrollbar { display: none; }
 .rec-lines > :first-child { margin-top: auto; }
 .rec-lines .ac-unsure { text-decoration-color: var(--ink-3); }
-.rec-lines .tx-key { flex: none; color: var(--ink-3); }
+.rec-lines .tx-key { flex: none; color: var(--ink-3); opacity: 0; transition: opacity .5s; }
+.rec-lines.is-back .tx-key { opacity: 1; }
 .rec-l { flex: none; font: 400 19px/27px var(--font-sans); color: var(--ink); text-wrap: balance; transition: color .5s, opacity .5s; }
 .rec-l.is-in { animation: ac-fade .6s var(--ease-out) backwards; }
 .rec-l.a1 { color: var(--ink-2); }
@@ -196,22 +200,13 @@ body:has(.ac-toast) .rec-foot { opacity: 0; }
 .rec-said small { display: block; font-size: 13px; line-height: 19px; color: var(--ink-3); }
 .rec-said.is-warn { color: var(--caution); }
 .rec-note-at { display: flex; justify-content: center; }
+.rec-note-at:empty { margin-top: -10px; }
 
 @media (hover: none), (max-width: 860px) { .rec-start .ac-kbd { display: none; } }
-@media (max-width: 1180px) {
+/* One list at a time once there isn't room for two: by the page's own width, since the side panel can be hidden. */
+@container rec (max-width: 1000px) {
   .rec-water { grid-template-columns: minmax(0, 1fr); row-gap: 24px; }
   .rec-water.is-one .rec-before { grid-template-columns: minmax(0, 1fr); }
-}
-/* A short window keeps the words in view: everything moves up, and what can go, goes. */
-@media (max-height: 680px) {
-  .rec-stage { --orb: 50px; --heard-at: 96px; --hz: clamp(300px, 56vh, 420px); }
-  .rec-stage .rec-name { font-size: 30px; }
-  .rec-stage .rec-time { margin-top: 4px; font-size: 40px; }
-  .rec-stage .rec-ctl { margin-top: 12px; }
-}
-@media (max-height: 480px) {
-  .rec-stage { --orb: 40px; --heard-at: 10px; --hz: 288px; }
-  .rec-stage .rec-voice, .rec-stage .rec-lines { display: none; }
 }
 @media (max-width: 860px) {
   /* The sky goes on up behind the phone's top bar. */
@@ -224,10 +219,10 @@ body:has(.ac-toast) .rec-foot { opacity: 0; }
   .rec-name { font-size: 34px; }
   .rec-a { align-self: stretch; }
   .ac-btn.rec-start { flex: 1; max-width: 320px; }
-  .rec-chips { align-self: stretch; }
+  .rec-chips { align-self: stretch; flex-wrap: nowrap; }
   .rec-chip, .ac-select.rec-chip { height: 40px; font-size: 13px; }
-  .ac-select.rec-chip { max-width: 200px; }
-  .rec-lv { min-width: 0; }
+  .ac-select.rec-chip { flex: 0 1 auto; max-width: 200px; }
+  .rec-lv { flex: none; min-width: 0; }
   .rec-foot { align-items: flex-start; text-align: left; }
   .rec-foot .ac-i { margin-top: 2px; }
 
@@ -246,7 +241,19 @@ body:has(.ac-toast) .rec-foot { opacity: 0; }
   .rec-bar { padding: 0 8px; }
   .rec-time { margin-top: 6px; font-size: 44px; }
   .rec-ctl { margin-top: 16px; }
+  .rec-ctl .ac-btn { padding: 0 16px; }
   .rec-heard { height: min(232px, calc(100% - var(--hz) - var(--heard-at) - 20px)); }
   .rec-l { font-size: 16px; line-height: 23px; }
   .rec-said { font-size: 14px; line-height: 20px; }
+}
+/* A short window keeps the words in view: everything moves up, and what can go, goes. */
+@media (max-height: 680px) {
+  .rec-stage { --orb: 50px; --heard-at: 96px; --hz: clamp(300px, 56vh, 420px); }
+  .rec-stage .rec-name { font-size: 30px; }
+  .rec-stage .rec-time { margin-top: 4px; font-size: 40px; }
+  .rec-stage .rec-ctl { margin-top: 12px; }
+}
+@media (max-height: 480px) {
+  .rec-stage { --orb: 40px; --heard-at: 10px; --hz: 288px; }
+  .rec-stage .rec-voice, .rec-stage .rec-lines { display: none; }
 }
