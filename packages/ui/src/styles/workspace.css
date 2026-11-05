@@ -436,6 +436,9 @@
   [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px 8px !important; min-width: 0 !important; transform: none !important; }
   .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
+  /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
+  [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
+  body:has([data-radix-popper-content-wrapper] > .ws-pop) .tab-rec { visibility: hidden; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
   .wv-knock { left: 8px; right: 8px; width: auto; margin-left: 0; }
