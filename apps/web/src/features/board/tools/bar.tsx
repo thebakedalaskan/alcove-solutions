@@ -53,7 +53,9 @@ export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera;
   const stickies = picked.flatMap((o) => (o.k === 'note' ? [o.id] : []));
   const copyable = picked.some((o) => o.k !== 'line' || !isAttached(o.from) || !isAttached(o.to));
   const arrangeable = picked.filter((o) => o.k !== 'line' && o.k !== 'frame');
+  // Most of what's pressed here takes the bar away, and the keys have to go on working.
   const act = (run: () => void) => (): void => {
+    board.set({ picking: false, menu: false });
     run();
     board.focusSheet();
   };
@@ -72,8 +74,8 @@ export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera;
         onTidy={arrangeable.length > 1 ? act(() => tidySelected(board)) : undefined} />
       {menu && (
         <BoardPop {...pop} label="More" items={[
-          { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => { stackSelected(board, 'front'); board.set({ menu: false }); }) },
-          { icon: 'sendToBack', label: 'Send to back', onPick: act(() => { stackSelected(board, 'back'); board.set({ menu: false }); }) }
+          { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
+          { icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
         ]} />
       )}
     </>

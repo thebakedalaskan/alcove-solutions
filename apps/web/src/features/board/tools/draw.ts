@@ -3,10 +3,10 @@
  * pointer, so everyone sees it being drawn, all as one undo. A press that doesn't go anywhere gets the standard size, with
  * its corner where the press was.
  */
-import { BOARD_LIMITS, resizeObject, type Box } from '@alcove/board';
+import { BOARD_LIMITS, moveObjects, resizeObject, type Box } from '@alcove/board';
 import type { SheetPoint } from '../camera';
 import type { Gesture } from '../gestures';
-import { CLICK_SLOP, boxBetween } from '../selection';
+import { CLICK_SLOP, boxBetween, movable } from '../selection';
 import type { Board } from '../useBoard';
 
 export interface Drawn {
@@ -49,6 +49,8 @@ export function drawGesture(board: Board, start: SheetPoint, thing: Drawn): Gest
       if (!id && !refused) begin(standard);
       else if (id && w <= BOARD_LIMITS.minSide && h <= BOARD_LIMITS.minSide) size(id, standard);
       if (!id) return;
+      // It was added at the first sign of a drag, so what frame it's in is settled now that it has its size.
+      moveObjects(board.doc, movable(board.getSnapshot().view, [id]), board.origin);
       board.set({ tool: 'select' });
       thing.done(id);
     },

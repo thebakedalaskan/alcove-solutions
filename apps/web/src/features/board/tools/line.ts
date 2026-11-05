@@ -6,7 +6,7 @@
  * A dot is the quick way to the next thing: let go in empty space and a sticky is there to type in. The Line tool draws a line,
  * so it can start and stop anywhere, and an end let go in empty space stays free.
  */
-import { addObject, contains, freeRoute, hasBox, isAttached, route, sides, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type LineStyle, type PlacedObject, type Route } from '@alcove/board';
+import { BOARD_LIMITS, addObject, contains, freeRoute, hasBox, isAttached, route, sides, type BoardObject, type BoardView, type Box, type Camera, type LineEnd, type LineObject, type LineStyle, type PlacedObject, type Route } from '@alcove/board';
 import type { BoardDot } from '@alcove/ui';
 import type { SheetPoint } from '../camera';
 import { STICKY } from '../editing';
@@ -90,12 +90,12 @@ export function hoverAt(board: Board, at: SheetPoint, target: EventTarget | null
   board.hoverOn(nearest(view, hover, at, HOVER_REACH / board.camera.getSnapshot().z));
 }
 
-/** Writes a line, and it's done: back to Select with nothing picked. */
+/** Writes a line, and it's done: back to Select with nothing picked. It can be turned down without the board being full, if what it joins has just gone. */
 function addLine(board: Board, from: LineEnd, to: LineEnd): void {
-  const style = board.getSnapshot().line;
+  const { line: style, view } = board.getSnapshot();
   const id = board.write(() => addObject(board.doc, { k: 'line', style, from, to }, board.origin));
   if (id) board.set({ tool: 'select', sel: [] });
-  else board.refuse();
+  else if (view.objects.length >= BOARD_LIMITS.objects) board.refuse();
 }
 
 /** Where a sticky goes so that a line let go at `at` runs into its near edge. */

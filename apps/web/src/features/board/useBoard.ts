@@ -185,7 +185,9 @@ export class Board implements LiveStore<BoardState> {
   };
 
   set(patch: Partial<BoardState>): void {
-    this.state = { ...this.state, ...patch };
+    // What opens off the selection bar is about what was selected.
+    const reselected = patch.sel !== undefined && patch.sel !== this.state.sel;
+    this.state = { ...this.state, ...(reselected ? { picking: false, menu: false } : {}), ...patch };
     for (const listener of this.listeners) listener();
   }
 
@@ -373,8 +375,9 @@ export class Board implements LiveStore<BoardState> {
   /** Picks a tool and opens its options. Picking it again closes them, and the tool stays, and again opens them: the pen stays picked, so that's how to reach the highlighter. */
   pickTool(tool: BoardTool): void {
     this.finishEdit();
+    const options = OPTIONS[tool] ?? null;
     const { tool: was, fly } = this.state;
-    this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly ? null : OPTIONS[tool] ?? null });
+    this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly === options ? null : options });
   }
 
   /** More, beside the rail. */

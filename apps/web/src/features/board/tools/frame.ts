@@ -2,7 +2,7 @@
  * The Frame tool. A frame holds what's in it: moving one moves that too, and its count and its hint go by what's in it. So what
  * a frame holds has to change as it's drawn and sized, as well as when things are carried in and out.
  */
-import { addObject, centre, contains, hasBox, moveObjects, type BoardObject, type BoardView, type FrameObject } from '@alcove/board';
+import { addObject, centre, contains, hasBox, moveObjects, type BoardObject, type Box, type FrameObject } from '@alcove/board';
 import type { ToolPress } from '../gestures';
 import { movable } from '../selection';
 import type { Board } from '../useBoard';
@@ -20,23 +20,26 @@ export const framePress: ToolPress = (board, { at }) => drawGesture(board, at, {
   }
 });
 
-/** Whether something is already held inside this frame, by a smaller frame in it, which goes on holding it. */
-function heldInside(view: BoardView, frame: FrameObject, o: BoardObject): boolean {
-  const home = view.byId.get(o.f);
-  if (!home || home.id === frame.id || !hasBox(home)) return false;
-  return contains(frame, home.x, home.y) && contains(frame, home.x + home.w, home.y + home.h);
+const holds = (outer: Box, inner: Box): boolean => contains(outer, inner.x, inner.y) && contains(outer, inner.x + inner.w, inner.y + inner.h);
+
+/** Whether something belongs to this frame by where it is: a frame if all of it fits, and anything else by its middle. A line goes by its free ends, which `moveObjects` looks at. */
+function within(frame: FrameObject, o: BoardObject): boolean {
+  if (!hasBox(o)) return true;
+  if (o.k === 'frame') return holds(frame, o);
+  const { x, y } = centre(o);
+  return contains(frame, x, y);
 }
 
-/** Takes in what's now inside a frame and lets go of what isn't. Moving something nowhere is how it's asked where it sits. */
+/** Takes in what's now inside a frame and lets go of what isn't. Moving something nowhere is how it's asked where it sits. A smaller frame inside goes on holding what it holds. */
 export function settleFrame(board: Board, id: string): void {
   const { view } = board.getSnapshot();
   const frame = view.byId.get(id);
   if (frame?.k !== 'frame') return;
   const ids = view.objects.flatMap((o) => {
     if (o.id === id) return [id];
-    if (heldInside(view, frame, o)) return [];
-    const spot = hasBox(o) ? centre(o) : null;
-    return o.f === id || !spot || contains(frame, spot.x, spot.y) ? [o.id] : [];
+    const home = view.byId.get(o.f);
+    const held = home?.k === 'frame' && home.id !== id && holds(frame, home);
+    return !held && (o.f === id || within(frame, o)) ? [o.id] : [];
   });
   moveObjects(board.doc, movable(view, ids), board.origin);
   board.read();
