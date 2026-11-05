@@ -51,6 +51,7 @@ const NO_FILES = { code: 'invalid', message: 'Files can’t be uploaded right no
 const NO_UPLOADS = { code: 'conflict', message: 'Files can’t be uploaded right now.', status: 409 };
 const FULL = { code: 'conflict', message: 'This workspace is full, so it can’t take more files.', status: 409 };
 const TODAYS = { code: 'conflict', message: 'That’s all you can upload today. You can upload more tomorrow.', status: 409 };
+const SEAT_ONLY = { code: 'forbidden', message: 'You can work on this in the call, but you can’t delete its files for good.', status: 403 };
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
 const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const madeUp = () => randomBytes(16).toString('base64url');
@@ -1063,6 +1064,42 @@ describe('guests in a call', () => {
     for (const o of objects) expect(await stored(o)).toBe(false);
     expect(await storedBytes(owner)).toBe(0);
     expect(await queued(owner)).toBe(0);
+  });
+
+  it('can’t delete a picture for good through their seat, so it stays where it’s reused, and the organizer still can', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const owner = await ownerOf(id);
+    const reused = await make(org, id, 'document', 'Reused here');
+    const { host, guests } = await callWith(org, ['Sam Guest']);
+    const [sam] = guests;
+    if (!sam) throw new Error('nobody joined');
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat'", [owner, board])) === 1, 'the guest’s seat on the board');
+    const opts = { pass: sam.pass };
+    const bytes = bytesOf(16);
+    const picture = await sam.api.workspaces.media.upload(id, board, fileOf(bytes, 'CANARY-SEAT.png'), opts);
+    await org.api.workspaces.media.attach(id, reused, picture.id);
+    const objects = await objectsOf(owner);
+
+    // A seat is for working on the board, and taking its picture out of it would be that. Deleting the file for everyone
+    // isn't: an ordinary refusal, which names nothing, here or in the log.
+    const from = h.logs.length;
+    expect(await refusal(sam.api.workspaces.media.remove(id, board, picture.id, opts))).toEqual(SEAT_ONLY);
+    expect(logsSince(from).filter((l) => l.msg === SEAT_ONLY.message).map((l) => l.level)).toEqual([30]);
+    expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-SEAT');
+    // Nothing went: it's on the board for them still, and in the document that reuses it, which they can't open.
+    expect(same((await read({ fetch }, await sam.api.workspaces.media.url(id, board, picture.id, opts))).bytes, bytes)).toBe(true);
+    expect(same((await read(org, await org.api.workspaces.media.url(id, reused, picture.id))).bytes, bytes)).toBe(true);
+    expect(await rowsOf(owner)).toEqual({ workspace_media: 1, workspace_media_pieces: 1, workspace_media_uses: 2 });
+
+    // The organizer can edit the board as one of the workspace's people, so it's theirs to delete, from everywhere.
+    await org.api.workspaces.media.remove(id, board, picture.id);
+    expect(await rowsOf(owner)).toEqual(NO_ROWS);
+    for (const o of objects) expect(await stored(o)).toBe(false);
+    expect(await code(org.api.workspaces.media.url(id, reused, picture.id))).toBe('not-found');
   });
 
   it('read with their seat and their account together, each counting for what it gives', async () => {

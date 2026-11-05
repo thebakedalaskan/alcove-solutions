@@ -684,11 +684,16 @@ async function forget(o: Pick<Owner, 'ownerId'>, db: Db, mediaIds: string[]): Pr
  * goes with it, so a version or another document that showed it now gets `not-found`, which the app shows as removed.
  * Someone who can open a document that has it and can't edit that one is refused, or reusing a picture would make it
  * theirs to delete. A document they can't open doesn't count, because being stopped by it would tell them it's there.
+ * Someone who can edit this one only through a seat in a call is refused too: a seat is for working on it in the call,
+ * which taking the file's block out of it is, and deleting the file for everyone isn't.
  */
 export async function remove(d: Deps, who: Who, workspaceId: string, documentId: string, mediaId: string): Promise<void> {
   const ownerId = await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, who, workspaceId, c, 'change');
-    requireDocument(who, w, documentId, 'edit');
+    const doc = requireDocument(who, w, documentId, 'edit');
+    if (roleOf(who, { role: w.role, grants: w.lasting }, documentId, doc.item) !== 'edit') {
+      throw new ForbiddenError('You can work on this in the call, but you can’t delete its files for good.', { level: 'info', context: { workspaceId, documentId, mediaId, why: 'only a seat' } });
+    }
     if (!(await fileIn(w, c, documentId, mediaId))) throw noFile(w, documentId, mediaId);
     const shown = await reachedThrough(who, w, c, mediaId);
     const stays = shown.find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, w, id, item) !== 'edit'; });

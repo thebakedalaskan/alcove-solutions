@@ -321,8 +321,9 @@ export interface AlcoveApi {
       list(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceMedia[]>;
       /**
        * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit a
-       * document that has it, and every other document they can open that has it, or it's `forbidden`. Older versions and
-       * any other document that had it get `not-found` from then on, which is the app's cue to show it as removed.
+       * document that has it, beyond a seat in a call, and every other document they can open that has it, or it's
+       * `forbidden`. Older versions and any other document that had it get `not-found` from then on, which is the app's cue
+       * to show it as removed.
        */
       remove(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     };

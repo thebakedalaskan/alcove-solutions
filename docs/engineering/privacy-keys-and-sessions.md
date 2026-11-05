@@ -805,8 +805,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   and isn't sent to anyone who opens the document after.
   Everyone's presenter notes on a document go with its `documents` row, by a foreign key, whichever account they're under.
 - **Deleting a file** from a workspace takes it from every document that has it, for everyone: rows and stored bytes in one
-  transaction, and its objects as above. It's refused for someone who can open one of those documents and can't edit it.
-  Taking its block out of a document deletes nothing: a version may still show it.
+  transaction, and its objects as above. It's refused for someone who can open one of those documents and can't edit it,
+  and for someone who can edit the document only through a seat in a call. Taking its block out of a document deletes
+  nothing: a version may still show it.
 - **Deleting your account** takes its presenter notes with its `owners` row, and also reaches every workspace its address still appears in, including ones it left: it comes
   out of them and off every document given to its address, unless another account still signs in with that address, and
   everything its calls gave people's seats ends. A workspace left with nobody in it is deleted, even if people outside it

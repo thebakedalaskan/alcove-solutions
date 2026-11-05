@@ -426,8 +426,10 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   taking one away holds it alone, so a file can't be given out as it goes.
 - **Deleting one.** `DELETE …/media/:media` deletes a file for good, the same way, for anyone who can edit a document that has
   it: every use goes with it. They have to be able to edit every document that has it that they can open, or it's `forbidden`,
-  so reusing a picture doesn't make it yours to delete. A version or another document that still shows it gets `not-found` from
-  then on, as for any file that isn't there, and the app shows it as removed.
+  so reusing a picture doesn't make it yours to delete. Someone who can edit the document only through a seat in a call is
+  refused too, as `forbidden`: a seat is for working on it in the call, and taking the file's block out of it still works. A
+  version or another document that still shows it gets `not-found` from then on, as for any file that isn't there, and the app
+  shows it as removed.
 
 ### Live traffic
 

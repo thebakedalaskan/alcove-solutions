@@ -94,8 +94,10 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   `MAX_FRAME_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
   before the body is read.
 - A file's upload logs `upload started` and `upload finished` with its IDs, and its pieces at debug; deleting one logs `file
-  deleted`. A piece that's refused after reaching the store logs `piece not recorded; deleting its object`, at info for a refusal
-  and warn for a failure. A file that can't be read to the end has already sent its first bytes, so nothing reaches the client
+  deleted`. Deleting one refused because someone can edit its document only through a seat in a call is an ordinary
+  refusal: `forbidden` at info, with `why: 'only a seat'`. A piece that's refused after reaching the store logs `piece not
+  recorded; deleting its object`, at info for a refusal and warn for a failure. A file that can't be read to the end has
+  already sent its first bytes, so nothing reaches the client
   but a broken connection: it's `a file couldn’t be read to the end`, with the request's ID and the file's and piece's, at the
   level of what stopped it (info for someone who lost the document, warn for a limit, error for a failure). The Node adapter
   also prints one generic line of its own to standard error. A read this side ends logs `a read was cut`, with its IDs and
