@@ -980,7 +980,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 
 - **Which one.** The meeting's `workspaceId`, sealed in its manifest, default null. With none, the first time anyone opens
   Workspace (`workspace-open`, anyone let in), the call settles on its organizer's most recently used, if they can still
-  edit in it, else a new one in their name. It's settled under the call's row, so people opening it at once get one, and
+  edit in it, else a new one in their name. Which one they used last is asked first, by who's in it, without opening it;
+  then it's settled under the call's row, so people opening it at once get one, and
   it's the organizer's whoever opened it: a guest's click can make it, and tells the guest nothing. "Most recently used" is
   sealed in the account's profile (`recentWorkspace`): making one, opening one they can edit in, or a call moving to one
   uses it. Opening one counts once every ten minutes for each workspace, because every change to a profile is a revision,
@@ -1001,6 +1002,13 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   nothing that names anything, `present` aside (below). Someone with one document has the `id` to open it with and no name.
   It's computed only for a call that has something to show, and a workspace that can't be read reads as private: nothing
   in one can stop anyone reading the call. Someone waiting to be let in gets nothing at all.
+  - **What a read costs.** What it needs of a workspace's tree, its name and what's brought, presented and played, with who
+    can open each, is read once for each version of the workspace, for everyone reading the call, and kept by ID until the
+    version moves on, as each update typed is checked (`editableBy`): a read by someone in it costs a small query for the
+    version and two for who holds what, two more for whoever started what's showing, and a tree is opened once a version
+    however many read at once. Who holds what is read afresh every time. Someone with nothing in it has nothing of it read for them: they're told only that something's
+    being presented, and by whom, so a read costs them the same whatever's going on there, and how long it takes says
+    nothing about a video they can't see.
 - **What's brought to the call** is `Meeting.documents`, the one list, kept as `<workspace>.<item>`. `workspace-bring`
   adds a document in the call's workspace, or takes one off, for anyone who can open it, up to 12. `CallState.workspace.documents`
   says which of them this person can open, wherever they are, by the name they have now; one in Trash isn't listed.
@@ -1014,10 +1022,17 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 - **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, plus every
   to-do with a mention and a date in the documents worked on in this call, for whoever can open each, with `notes` saying
   what the notes are doing there. With notes off they come from documents alone, and say so. It reads documents, so it isn't
-  part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the
+  part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. They come from
+  the 20 documents most recently worked on, 25 from each and 100 in all, each to-do's words cut at 300 characters with five
+  mentions and dates at most, worked out in the worker that reads the document, so nothing past that comes back from it.
+  What's in each is read once for each place the document gets to, for everyone in the call however many poll at once, and
+  that stands three seconds more while people type, so everyone's polls read a document at most every few seconds between
+  them. Who can open what is asked on every read, and a closed document is left out without a worker. `POST` to the
   same path ticks a to-do with `writeDocument`, as a server-made update that sets the block's own `done`, as the editor does,
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
-  counts as working on it. Access is checked again under the workspace's row in the transaction that writes it.
+  counts as working on it, and whoever ticked it sees the tick at once. Access is checked again under the workspace's row in
+  the transaction that writes it. Someone who
+  can't open the document gets the same `404` as for a follow-up that never was, whether or not it was worked on in this call.
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
   person on each document goes into the call's sealed state (`worked`), under the call's row and once only: that first
   update waits on it, and everything typed after doesn't. A failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
@@ -1035,7 +1050,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   server's clock, so `playPosition` lands a late joiner at the same moment whatever their own clock says. `play-start` needs the
   document open and the video to be a block in it, which is read from the document with nothing held; only IDs are kept, and
   nothing about the video changes. Paused, seeked, resumed and stopped by whoever started it or the organizer. Only someone
-  who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing.
+  who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing, or, if they start
+  a video of their own over it, as that video not being there (`404`, the same as for one that isn't).
 - **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
   - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
   - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
@@ -1043,16 +1059,33 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
     which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
-    tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never
+    tells everyone. It's found by a read from someone who can open something in the workspace, or from whoever started it,
+    never from someone with nothing in it, who's told only that something's being presented until then. While something's showing, a browser reads the call each time it checks its keys, so it never
     waits on a nudge that isn't coming.
-- **The next agenda.** When a call in a series first opens Workspace, it looks once for an agenda to make: the call before
+- **The next agenda.** When a call in a series opens Workspace, it looks for an agenda to make, until it has one or finds
+  there's none to make: the call before
   it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,
-  or says what the Agenda template says), still in the tree of the workspace this call uses. What was left open, every
-  to-do with words and no tick, is read with nothing held. Then under the call's row, so there's one however many open it,
-  the server makes a document beside the last one, in the same folder, for the same people, restricted as it was, and
-  `writeDocument` fills it in once that commits: From last time, Today, Notes. It replaces the last one among what's brought,
-  and `agenda` names it. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays
-  in its workspace, so a call that moved to another gets none.
+  or says what the Agenda template says), still in the tree of the workspace this call uses. It's made in the organizer's
+  name, so it takes what making a document there takes: `edit` in the workspace, and `edit` on the last agenda, whose open
+  to-dos it carries. An organizer taken out of the workspace, or who can only read in it or read the last one, gets none,
+  however many calls their series has. What was left open, every to-do with words and no tick, is read with nothing held.
+  Whoever opens Workspace first takes it on, under the call's row, so there's one however many open it at once: the call's
+  sealed state keeps the document it's making and until when (`agendaDraft`, two minutes). The server makes that document
+  beside the last one, in the same folder, for the same people, restricted as it was, in the workspace's own transaction, and
+  `writeDocument` fills it in, with nothing of the call held: From last time, Today, Notes. Only once it's filled in does the
+  call say it's done, `agenda` name it, and it take the last one's place among what's brought. A try that fails lets go and
+  keeps the document, so the next opening fills that one in, never a second; one a worker gave up on stays closed for five
+  minutes first ([Data and storage › Documents](data-and-storage.md#documents)), and filling in one that's filled changes
+  nothing. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays in its
+  workspace, so a call that moved to another gets none.
+
+A live call comes first, so nothing under the call's row waits on a workspace's lock, opens a workspace, or works through its
+documents. Each action is two steps (`prepare` in `callWorkspace.ts`): everything that reads a workspace, and a grant, which
+changes one under that workspace's row in a transaction of its own, with nothing of the call held; then the call's row, held
+only to check again what that went by, from the call's own state, and to save. A call that moved on in between is asked
+afresh, three times at most before a `409`. So a big change to a workspace, such as duplicating a folder of thousands of
+documents, can make a grant wait for it, and never a hand going up, nor anyone else's request for a connection. A grant to
+someone removed while it was being made is taken back, as their removal takes everything else.
 
 Actions are rate limited per person: 240 a minute for what goes on in the workspace, as each makes every browser read the
 call again. Following a change to who can open what, the state is right on the next read; only what's shared with a seat

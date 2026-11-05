@@ -21,10 +21,12 @@ export const DOC_COMMENTS = 'comments';
  * no real client gets (theirs are random 32-bit numbers). A document's title is the first element of its fragment, so two
  * browsers each making their own would merge into two titles, and a browser that can only read mustn't write. So the API
  * writes these bytes when a document is made, and the first `sync` always carries them. They merge into one, whoever
- * applies them and however often. They're fixed for good: every document holds them.
+ * applies them and however often. Each of the two has an empty text in it, so whoever types there first types in the text
+ * that's there: two people each making one would sit side by side, and y-prosemirror merges those by deleting one. They're
+ * fixed for good: every document holds them.
  */
 export const DOC_SEED: Uint8Array = new Uint8Array([
-  1, 3, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 135, 1, 0, 3, 4, 108, 105, 110, 101, 40, 0, 1, 1, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0
+  1, 5, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 7, 0, 1, 0, 6, 135, 1, 0, 3, 4, 108, 105, 110, 101, 7, 0, 1, 2, 6, 40, 0, 1, 2, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0
 ]);
 
 /**
