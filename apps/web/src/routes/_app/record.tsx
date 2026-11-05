@@ -92,15 +92,18 @@ function Recorded({ n }: { n: NoteSummary }) {
   const id = useId();
   const online = useOnline();
   const toast = useToast();
+  const left = `${n.openActions} ${n.openActions === 1 ? 'follow-up' : 'follow-ups'} still open`;
+  /* Described by when it was, then how it stands: still going, being written, or the follow-ups left. */
+  const standing = n.status !== 'ready' ? `${id}-g` : n.openActions > 0 ? `${id}-f` : null;
   return (
     <li>
-      {/* Named by its title alone and described by when it was, not by every word in it. */}
-      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={`${id}-w`}
+      {/* Named by its title alone, not by every word in it. */}
+      <Link to="/notes/$noteId" params={{ noteId: n.id }} className={cn('rec-n', n.status === 'pending' && 'is-writing')} aria-labelledby={`${id}-t`} aria-describedby={standing ? `${id}-w ${standing}` : `${id}-w`}
         onClick={(e) => { if (online) return; e.preventDefault(); toast('Notes open when you’re back online.', { icon: 'wifiOff' }); }}>
         <RecPrint id={n.id} />
-        <span className="rec-t"><b id={`${id}-t`} className="ac-clamp-1">{n.title}</b><small className="ac-clamp-1">{gistOf(n)}</small></span>
+        <span className="rec-t"><b id={`${id}-t`} className="ac-clamp-1">{n.title}</b><small id={`${id}-g`} className="ac-clamp-1">{gistOf(n)}</small></span>
         <span className="rec-f">
-          {n.openActions > 0 && <span className="rec-todo" title={`${n.openActions} ${n.openActions === 1 ? 'follow-up' : 'follow-ups'} still open`}><Icon name="userCheck" size={13} />{n.openActions}</span>}
+          {n.openActions > 0 && <span className="rec-todo" title={left}><Icon name="userCheck" size={13} /><span aria-hidden="true">{n.openActions}</span><span id={`${id}-f`} className="sr-only">{left}</span></span>}
         </span>
         <span className="rec-w">
           <span id={`${id}-w`}>{whenOf(n)}</span>

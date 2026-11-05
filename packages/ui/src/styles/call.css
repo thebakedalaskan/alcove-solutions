@@ -14,13 +14,6 @@
 .stage .ac-brand { font-size: 18px; }
 .stage :focus-visible { outline-color: var(--speak); }
 
-/* A round control on the stage, outside the dock: the room's pause, the chat's send. */
-.stage-btn { display: grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 50%; background: rgb(255 255 255 / 0.08); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: background-color var(--duration-1), transform var(--duration-1); }
-.stage-btn:hover { background: rgb(255 255 255 / 0.14); }
-.stage-btn:active { transform: scale(0.96); }
-.stage-btn[disabled] { opacity: 0.5; pointer-events: none; }
-.stage-btn.sm { width: 40px; height: 40px; border-radius: 12px; }
-
 /* ---- camera feeds ---- */
 .feed { position: relative; overflow: hidden; background: var(--stage-tile); }
 .feed video, .ac-tile video { transform: scaleX(-1); }

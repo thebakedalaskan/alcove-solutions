@@ -5,7 +5,7 @@
  * level" does, until Stop is pressed or the page is left. The camera has no part here.
  */
 import { Button, Icon, Kbd, RecMeter, RecorderSun, Select, Tooltip, cn, useVoice, type SelectOption } from '@alcove/ui';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { troubles } from '~/features/call/access';
 import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/devices';
@@ -52,7 +52,7 @@ export function NightRecorder({ keeps }: { keeps: boolean }) {
           {!online && (
             <p className="rec-off">
               <Icon name="wifiOff" size={15} />
-              {keeps ? 'Offline. Recording still works.' : <>Offline. Recording needs a connection.<Link to="/settings" hash="recording" className="rec-link">Settings</Link></>}
+              {keeps ? 'Offline. Recording still works.' : 'Offline. Recording needs a connection.'}
             </p>
           )}
         </div>
@@ -61,7 +61,8 @@ export function NightRecorder({ keeps }: { keeps: boolean }) {
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); start(); } }} />
         <div className="rec-a">
           <Button variant="primary" className={cn('rec-start', locked && 'is-off')} aria-label="Start recording" aria-disabled={locked} aria-keyshortcuts="R" onClick={start}>
-            <i className="rec-dot" aria-hidden="true" />Start recording<Kbd>R</Kbd>
+            {/* On the cream of the button, so it's the day's rec. */}
+            <i className="rec-dot light" aria-hidden="true" />Start recording<Kbd>R</Kbd>
           </Button>
         </div>
         <MicCheck check={check} meter={meter} />
@@ -148,7 +149,7 @@ function MicCheck({ check, meter }: { check: ReturnType<typeof useMicCheck>; met
       <div role="status" className={cn('rec-say', (trouble || said) && 'is-warn')}>
         {trouble
           ? <p>{trouble.title} {trouble.how}{trouble.retry && <button type="button" className="rec-retry" onClick={() => void media.retry()}>Try again</button>}</p>
-          : said ? <p>{said.text}</p> : checking && <p>Nothing is recorded.</p>}
+          : <p>{said ? said.text : checking ? 'Nothing is recorded.' : 'Let everyone here know before you start.'}</p>}
       </div>
     </>
   );

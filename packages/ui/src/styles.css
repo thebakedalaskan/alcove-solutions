@@ -144,7 +144,7 @@
   color-scheme: light;
 }
 
-.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.rec) {
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.dusk.rec) {
   --ground: #0F1F38;
   --surface: #172944;
   --surface-raised: #203350;

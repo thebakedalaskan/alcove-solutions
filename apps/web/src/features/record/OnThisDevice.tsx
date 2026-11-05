@@ -53,7 +53,10 @@ function Row({ k, online }: { k: KeptItem; online: boolean }) {
   const remove = () => {
     setOpen(false);
     setSure(false);
-    uploads.discard(k.id).then(() => toast('Deleted from this device.', { icon: 'trash' }), (e: unknown) => {
+    uploads.discard(k.id).then((gone) => {
+      if (gone) toast('Deleted from this device.', { icon: 'trash' });
+      else toast('Another tab is using it, so it wasn’t deleted. Try again in a moment.', { icon: 'x' });
+    }, (e: unknown) => {
       klog.error('couldn’t delete a recording from this device', { id: k.id, err: e });
       toast('It couldn’t be deleted from this device. Try again.', { icon: 'x' });
     });

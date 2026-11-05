@@ -10,9 +10,10 @@ import { position } from '~/lib/time';
 /**
  * Keeps a list scrolled to its newest line, unless the person has scrolled up to read. Only scrolling
  * up counts as reading back: new lines, a resized window and the glide after "Latest" never do.
- * `glide`: each new line slides the list up, instead of the list jumping to it.
+ * `newest` changes with every new line: a count wouldn't, once the list has reached its cap and the oldest line goes as
+ * each new one comes. `glide`: each new line slides the list up, instead of the list jumping to it.
  */
-function useFollow(count: number, glide = false) {
+function useFollow(newest: string, glide = false) {
   const ref = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const last = useRef(0);
@@ -21,7 +22,7 @@ function useFollow(count: number, glide = false) {
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && pinned.current) el.scrollTo({ top: el.scrollHeight, behavior: glide && !reduce ? 'smooth' : 'auto' });
-  }, [count, glide, reduce]);
+  }, [newest, glide, reduce]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -84,7 +85,7 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
  * explained once at the top. `onMark` bookmarks a line for the reader alone.
  */
 export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
-  const { ref, onScroll, away, jump } = useFollow(lines.length + gaps.length);
+  const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}:${gaps.length}`);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
   return (
@@ -126,7 +127,7 @@ export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptL
  * scrolling up reads back the rest. A line's time is on it for anyone who wants it.
  */
 export function RoomLines({ lines }: { lines: TranscriptLine[] }) {
-  const { ref, onScroll, away, jump } = useFollow(lines.length, true);
+  const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}`, true);
   const arrived = useArrivals(lines);
   return (
     <div className="tx-wrap">

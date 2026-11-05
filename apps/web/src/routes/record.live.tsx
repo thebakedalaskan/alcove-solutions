@@ -31,6 +31,8 @@ export const Route = createFileRoute('/record/live')({
 const rlog = log.child({ component: 'room' });
 /** Said when finishing leaves the recording on this device to upload. */
 const SAVED = 'Saved on this device. It uploads when you’re back online.';
+/** How many recorded seconds the reminder keeps its place, whatever else there is to say about where the recording goes. */
+const REMINDER_S = 20;
 
 /** What finishing says when the recording stays on this device for now, by what it waits for. */
 function keptSaying(waiting: Waiting): string {
@@ -125,19 +127,24 @@ function Failed({ why }: { why: string }) {
 
 interface Say { text: string; sub?: string | undefined; icon?: IconName | undefined; warn?: boolean | undefined; retry?: boolean | undefined }
 
+const REMINDER: Say = { text: 'Listening. Let everyone here know it’s recording.' };
+
 /**
- * What's said under the voice, one thing at a time: why it stopped by itself, a microphone that isn't working, that it's
- * paused, that it's saving here, why the words are behind, or, until the first words, the reminder.
+ * What's said under the voice, one thing at a time: why it stopped by itself, a finish that failed, a microphone that isn't
+ * working, that it's paused, then the reminder for the first moments, even with no connection, and only after them that
+ * it's saving here or why the words are behind. Until the first words the reminder stays.
  */
-function sayOf(s: StageState, trouble: Trouble | undefined, paused: boolean): Say | null {
+function sayOf(s: StageState, trouble: Trouble | undefined, paused: boolean, finishing: boolean): Say | null {
   if (s.held === 'forgotten') return { text: 'You signed out on this device, so this recording can’t be kept. Nothing more is recorded.', icon: 'alert', warn: true };
+  if (s.ending && !finishing) return { text: 'It hasn’t finished, and nothing more is recorded. Try Finish again.', icon: 'alert', warn: true };
   if (trouble) return { text: `${trouble.title}${trouble.how ? ` ${trouble.how}` : ''}`, icon: 'micOff', warn: true, retry: trouble.retry };
-  if (s.held === 'offline') return { text: 'Paused: you’re offline, and recording without a connection is off. Resume once you’re back.', icon: 'wifiOff', warn: true };
+  if (!s.keeping && !s.online && !s.ending) return { text: 'Paused: you’re offline, and recording without a connection is off. Resume once you’re back.', icon: 'wifiOff', warn: true };
   if (s.held === 'full') return { text: 'Paused: there’s no space left on this device. Free some up, or get back online, then resume.', icon: 'hardDrive', warn: true };
   if (paused) return { text: 'Paused. Nothing is heard until you resume.' };
+  if (!s.ending && s.elapsed < REMINDER_S) return REMINDER;
   if (s.keeping && !s.connected) return { text: `Saved on this device. ${awayWhy(s).saved}`, sub: 'What’s said now is written out then.', icon: 'hardDrive' };
   if (s.heard) return { text: s.heard, icon: 'clock' };
-  return s.transcript.length || s.ending ? null : { text: 'Listening. Let everyone here know it’s recording.' };
+  return s.transcript.length || s.ending ? null : REMINDER;
 }
 
 function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
@@ -205,12 +212,13 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
     toast('Recording discarded. Nothing was kept.', { icon: 'trash' });
   };
   const finishLabel = forgotten ? 'End recording' : saving ? 'Finish and save' : 'Finish and write notes';
-  const say = sayOf(s, micTrouble, paused);
+  const say = sayOf(s, micTrouble, paused, busy);
 
   return (
     <>
-      <h1 className="sr-only">{s.ending ? 'Finishing' : paused ? 'Paused' : 'Recording'}</h1>
-      <RecorderSun ref={sun} orb={s.ending ? 'set' : paused ? 'paused' : 'live'} voice={still || micTrouble ? 'still' : 'live'} />
+      {/* `ending` stays once finishing has begun, even if it failed; `busy` is whether it's finishing now. */}
+      <h1 className="sr-only">{busy ? 'Finishing' : still ? 'Paused' : 'Recording'}</h1>
+      <RecorderSun ref={sun} orb={busy ? 'set' : still ? 'paused' : 'live'} voice={still || micTrouble ? 'still' : 'live'} />
       <Bar left={
         <Popover open={leave} onOpenChange={(o) => { setLeave(o); if (!o) guard.stay(); }} stage label="Leave the room" className="rec-pop"
           anchor={<Button variant="quiet" size="sm" icon="left" className="rec-back">Home</Button>}>
@@ -225,8 +233,8 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
         <p className="rec-time" role="timer" aria-label="Time recorded">{clock(s.elapsed)}</p>
         <div className="rec-ctl">
           {/* Resuming while it can't record, with no connection and nowhere to keep it, would lose what's said. */}
-          <Button className="rec-pause" icon={paused ? 'recordDot' : 'pause'} disabled={pausing || s.ending || forgotten || (s.held === 'offline' && !s.online)} onClick={() => (paused ? rec.resume() : void pause())}>{paused ? 'Resume' : 'Pause'}</Button>
-          <Button variant="primary" className="rec-finish" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={16} className="rec-sq" />}{s.ending ? 'Finishing' : finishLabel}</Button>
+          <Button className="rec-pause" icon={paused ? 'recordDot' : 'pause'} disabled={pausing || s.ending || forgotten || (!s.keeping && !s.online)} onClick={() => (paused ? rec.resume() : void pause())}>{paused ? 'Resume' : 'Pause'}</Button>
+          <Button variant="primary" className="rec-finish" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={16} className="rec-sq" />}{busy ? 'Finishing' : finishLabel}</Button>
         </div>
       </div>
       <section className="rec-heard" aria-label="What’s said">
