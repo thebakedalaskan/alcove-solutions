@@ -6,9 +6,9 @@
  */
 import { AlcoveApiError, type CallSession, type CallState, type ItemCall, type Note, type TranscriptClip, type WorkspaceItem, type WorkspaceReadOptions } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { sealJson, stateKey, toJson } from './crypto';
+import { id128, sealJson, stateKey, toJson } from './crypto';
 import { tx } from './db';
-import { serverWorkspace } from './modules/workspaceAccess';
+import { saveState, serverWorkspace, type StoredItem } from './modules/workspaceAccess';
 import { speechWav } from './testing/fake-near';
 import { startHarness, type Browser, type Harness } from './testing/harness';
 import { disposeLiveKit } from './testing/livekit';
@@ -77,6 +77,30 @@ const folders = async (who: Browser, workspaceId: string, opts?: WorkspaceReadOp
   (await who.api.workspaces.get(workspaceId, opts)).items.flatMap((x) => (x.call ? [{ ...x, call: x.call }] : []));
 const peopleIn = async (who: Account, workspaceId: string) => Object.fromEntries((await who.api.workspaces.people(workspaceId)).map((p) => [p.person.email, p.role]));
 const DAY = /^\d{1,2} \p{L}{3,4}$/u;
+/** Someone's place in a workspace, to take them out or change it. */
+const placeOf = async (who: Account, workspaceId: string, email: string) => (await who.api.workspaces.people(workspaceId)).find((p) => p.person.email === email)?.id ?? '';
+/** A workspace as full as one can be, written straight into its sealed state: making 5,000 things through the API would take minutes. */
+async function fill(workspaceId: string): Promise<void> {
+  await tx(h.pool, async (c) => {
+    const w = await serverWorkspace(h.deps, workspaceId, c, 'change');
+    if (!w) throw new Error('no workspace');
+    const now = new Date().toISOString();
+    const items: Record<string, StoredItem> = { ...w.state.items };
+    for (let i = Object.keys(items).length; i < 5000; i++) items[id128()] = { kind: 'document', name: `Planning notes ${i}`, parent: null, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
+    w.state = { ...w.state, items };
+    await saveState(w, c);
+  });
+}
+/** How tags named someone before IDs were keyed: a plain hash of their address, the same anywhere. */
+function plainHash(value: string): string {
+  let a = 0xdeadbeef, b = 0x41c6ce57;
+  for (let i = 0; i < value.length; i++) {
+    const c = value.charCodeAt(i);
+    a = Math.imul(a ^ c, 2654435761);
+    b = Math.imul(b ^ c, 1597334677);
+  }
+  return `p${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}`;
+}
 
 describe('a call’s home', () => {
   it('is a new workspace for each call: named after it and the day, its folder at the top, the organizer and everyone invited in it, a guest nowhere', async () => {
@@ -163,6 +187,36 @@ describe('a call’s home', () => {
     expect(fresh).not.toBe(product);
     expect((await folders(priya, product)).map((f) => f.name.split(' · ')[0])).toEqual(['Pricing', 'Design review']);
     await third.leave();
+  });
+
+  it('is a new workspace when the one chosen has no room for the call’s folder, and only a folder that’s there counts', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const { id: product } = await ann.api.workspaces.create('Product');
+    await fill(product);
+    const m = await ann.api.meetings.create({ title: 'Full', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [kofi.email], notes: 'on', workspaceId: product });
+    const host = await ann.api.calls.join(m.code, { mic: false, cam: false });
+    await inGroup(host);
+    await host.openWorkspace();
+
+    // A home of its own, made for the call, with its folder and everyone invited; the meeting names it from now on.
+    const home = (await space(host)).home ?? '';
+    expect(home).not.toBe('');
+    expect(home).not.toBe(product);
+    expect((await folders(ann, home)).map((f) => f.name.split(' · ')[0])).toEqual(['Full']);
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit' });
+    expect((await ann.api.meetings.get(m.id)).workspaceId).toBe(home);
+    // The full one is as it was: no folder in it, nothing more in it.
+    expect(await folders(ann, product)).toEqual([]);
+    expect((await ann.api.workspaces.get(product)).items).toHaveLength(5000);
+
+    // Its note lands in the new home's folder when the call ends.
+    await host.transcribe(speech('Kofi takes the launch list.', 0, 0), host.ticket.identity);
+    const ended = await host.leave();
+    const noteId = ended?.pendingNoteId ?? '';
+    await noteOf(ann, noteId);
+    await until(async () => (await folders(ann, home))[0]?.call.noteId === noteId, 'the folder to read the note');
+    expect(await folders(ann, product)).toEqual([]);
   });
 
   it('stays where it is when everyone views another workspace: the notes and transcript still go home', async () => {
@@ -311,6 +365,188 @@ describe('who’s in a home made for a call', () => {
     await letIn(host, jamie);
     expect(await space(jamie)).toMatchObject({ id: null, home: null, canOpen: false });
     expect(Object.keys(await peopleIn(ann, home))).toHaveLength(3);
+    await host.leave();
+  });
+
+  it('never puts back someone taken out of it by hand, or who left it, however the invite changes after; an admin can', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const priya = await account();
+    const zed = await account();
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email, priya.email], title: 'Standup' });
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [priya.email]: 'edit' });
+
+    // Ann takes Kofi out, and Priya leaves by herself.
+    await ann.api.workspaces.removePerson(home, await placeOf(ann, home, kofi.email));
+    await priya.api.workspaces.removePerson(home, (await priya.api.workspaces.people(home)).find((p) => p.isMe)?.id ?? '');
+
+    // Zed is let in from the link, which puts him on the invite and in the home: nobody else comes back with him.
+    const z = await zed.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, z);
+    await until(async () => (await peopleIn(ann, home))[zed.email] === 'edit', 'Zed to be in the home');
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [zed.email]: 'edit' });
+    expect(await code(kofi.api.workspaces.get(home))).toBe('not-found');
+    expect(await code(priya.api.workspaces.get(home))).toBe('not-found');
+
+    // An admin can put Kofi back by hand: his place is Ann's doing, so the invite leaves it alone from then on.
+    await ann.api.workspaces.addPerson(home, kofi.email, 'edit');
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [zed.email]: 'edit', [kofi.email]: 'edit' });
+    await host.leave();
+  });
+
+  it('leaves anyone whose place an admin changed by hand when they come off the invite', async () => {
+    const ann = await account();
+    const sam = await account();
+    const tess = await account();
+    const { host, code: c } = await callBy(ann, { title: 'Standup' });
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    const s = await sam.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, s);
+    const t = await tess.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, t);
+    await until(async () => { const p = await peopleIn(ann, home); return p[sam.email] === 'edit' && p[tess.email] === 'edit'; }, 'Sam and Tess to be in the home');
+
+    // Ann takes Sam out and adds him back herself, and makes Tess a reader and then an editor again.
+    await ann.api.workspaces.removePerson(home, await placeOf(ann, home, sam.email));
+    await ann.api.workspaces.addPerson(home, sam.email, 'edit');
+    await ann.api.workspaces.setRole(home, await placeOf(ann, home, tess.email), 'read');
+    await ann.api.workspaces.setRole(home, await placeOf(ann, home, tess.email), 'edit');
+
+    // Taken out of the call, both come off the invite: the places Ann gave them stay.
+    await host.remove(s.ticket.identity);
+    await host.remove(t.ticket.identity);
+    await settle(host, (x) => !x.participants.some((p) => p.id === s.ticket.identity || p.id === t.ticket.identity));
+    await rest(400);
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [sam.email]: 'edit', [tess.email]: 'edit' });
+    await host.leave();
+  });
+
+  it('follows a series’ invite as it changes: off the calls to come, someone’s out of its home; put on, they’re in; who left stays out', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const priya = await account();
+    const lena = await account();
+    const at = Date.now() + 3_600_000;
+    const week = (n: number) => new Date(at + n * 7 * 86_400_000).toISOString();
+    const series = await ann.api.meetings.create({ title: 'Weekly', startsAt: week(0), durationMinutes: 30, guests: [kofi.email, priya.email], notes: 'off',
+      repeat: { rule: { every: 'week', weeks: 1, days: [new Date(week(0)).getUTCDay()] }, until: week(2).slice(0, 10), timeZone: 'UTC', occurrences: [week(0), week(1), week(2)] } });
+    const calls = (await ann.api.meetings.upcoming()).filter((x) => x.seriesId === series.seriesId).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+    const [first, second, third] = calls;
+    const host = await ann.api.calls.join(first?.code ?? '', { mic: false, cam: false });
+    await inGroup(host);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [priya.email]: 'edit' });
+    await priya.api.workspaces.removePerson(home, (await priya.api.workspaces.people(home)).find((p) => p.isMe)?.id ?? '');
+    await host.leave();
+
+    // Kofi off this call and every one after, Lena on: the home follows, and Priya, who left, stays out.
+    await ann.api.meetings.update(second?.id ?? '', { guests: [priya.email, lena.email] }, { scope: 'following' });
+    expect((await ann.api.meetings.get(second?.id ?? '')).workspaceId).toBe(home);
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [lena.email]: 'edit' });
+    expect(await code(kofi.api.workspaces.get(home))).toBe('not-found');
+    // Off the last call alone, Lena stays: the series still invites her to the next one.
+    await ann.api.meetings.update(third?.id ?? '', { guests: [priya.email] });
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [lena.email]: 'edit' });
+
+    // The next call settles in the same home, and lets in only who its invite says and isn't out.
+    const host2 = await ann.api.calls.join(second?.code ?? '', { mic: false, cam: false });
+    await inGroup(host2);
+    await host2.openWorkspace();
+    expect(await space(host2)).toMatchObject({ home });
+    expect(await peopleIn(ann, home)).toEqual({ [ann.email]: 'admin', [lena.email]: 'edit' });
+    expect((await folders(lena, home)).map((f) => f.name.split(' · ')[0])).toEqual(['Weekly', 'Weekly']);
+    expect(await code(kofi.api.workspaces.get(home))).toBe('not-found');
+    await host2.leave();
+  });
+
+  it('gives its admins what only someone taken out could open, rather than send it where nobody can', async () => {
+    const ann = await account();
+    const sam = await account();
+    const theo = await account();
+    const { host, code: c } = await callBy(ann, { title: 'Standup' });
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    const s = await sam.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, s);
+    await until(async () => (await peopleIn(ann, home))[sam.email] === 'edit', 'Sam to be in the home');
+    await ann.api.workspaces.addPerson(home, theo.email, 'edit');
+    // Each keeps a document to themselves.
+    const sams = (await sam.api.workspaces.items.create(home, { kind: 'document', name: 'Sam’s draft' })).id;
+    await sam.api.workspaces.share.restrict(home, sams, true);
+    const theos = (await theo.api.workspaces.items.create(home, { kind: 'document', name: 'Theo’s draft' })).id;
+    await theo.api.workspaces.share.restrict(home, theos, true);
+    expect(await code(ann.api.workspaces.items.get(home, sams))).toBe('not-found');
+
+    // Sam comes off the invite when he's taken out of the call, and Ann takes Theo out by hand.
+    await host.remove(s.ticket.identity);
+    await until(async () => (await peopleIn(ann, home))[sam.email] === undefined, 'Sam to be out of the home');
+    await ann.api.workspaces.removePerson(home, await placeOf(ann, home, theo.email));
+
+    // Neither document is in Trash: each is still kept to itself, given to Ann, the admin, to edit.
+    for (const id of [sams, theos]) {
+      expect(await ann.api.workspaces.items.get(home, id)).toMatchObject({ id, restricted: true, trashedAt: null, role: 'edit' });
+      expect((await ann.api.workspaces.share.list(home, id)).entries).toEqual([expect.objectContaining({ kind: 'email', role: 'edit', person: expect.objectContaining({ email: ann.email }) })]);
+    }
+    expect(await code(sam.api.workspaces.get(home))).toBe('not-found');
+    expect(await code(theo.api.workspaces.get(home))).toBe('not-found');
+    await host.leave();
+  });
+
+  it('is made with its organizer alone, and lets everyone invited in once the call’s row is let go', async () => {
+    const ann = await account();
+    const guests = Array.from({ length: 40 }, () => unique('invitee'));
+    const { host } = await callBy(ann, { guests, title: 'All hands' });
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    expect(Object.keys(await peopleIn(ann, home))).toHaveLength(41);
+    // Each place is stamped with the moment its transaction began: only the organizer's began with the home's.
+    const made = await h.pool.query<{ first: number; later: number }>(`SELECT count(*) FILTER (WHERE m.created_at = w.created_at)::int AS first, count(*) FILTER (WHERE m.created_at > w.created_at)::int AS later
+      FROM workspace_members m JOIN workspaces w ON w.owner_id = m.owner_id WHERE w.workspace_id = $1`, [home]);
+    expect(made.rows[0]).toEqual({ first: 1, later: 40 });
+    await host.leave();
+  });
+});
+
+describe('who’s who in a workspace’s documents', () => {
+  it('keys each address under the workspace: a member’s own ID, nothing to check a guess against, and only who’s been in the call for someone here through one', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const ola = await account();
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email], title: 'Launch' });
+    await invited(host, c, kofi);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    const plan = (await ann.api.workspaces.items.create(home, { kind: 'document', name: 'Plan' })).id;
+
+    // In the workspace, any address: a member's is the ID the workspace already knows them by.
+    const ids = await ann.api.workspaces.ids(home, [ann.email, kofi.email, ola.email.toUpperCase(), 'nobody@elsewhere.example']);
+    expect(Object.keys(ids).sort()).toEqual([ann.email, kofi.email, ola.email, 'nobody@elsewhere.example'].sort());
+    expect(ids[kofi.email]).toBe((await ann.api.workspaces.people(home)).find((p) => p.person.email === kofi.email)?.person.id);
+    // An outsider's says nothing about their address: it isn't the address, nor the plain hash tags carried, and it's the
+    // same each time here and different in another workspace, so it can't be matched across them.
+    const olas = ids[ola.email] ?? '';
+    expect(olas).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(olas).not.toContain(ola.email.split('@')[0] ?? '');
+    expect(olas).not.toBe(plainHash(ola.email));
+    expect((await kofi.api.workspaces.ids(home, [ola.email]))[ola.email]).toBe(olas);
+    const { id: other } = await ann.api.workspaces.create('Elsewhere');
+    expect((await ann.api.workspaces.ids(other, [ola.email]))[ola.email]).not.toBe(olas);
+    // Someone who can't open anything in it is told nothing.
+    expect(await code(ola.api.workspaces.ids(home, [kofi.email]))).toBe('not-found');
+
+    // A guest given a document in the call: only the people who've been in it, never anyone else's.
+    const jamieBrowser = h.browser();
+    const jamie = await jamieBrowser.api.calls.join(c, { mic: false, cam: false, name: 'Jamie Guest' });
+    await letIn(host, jamie);
+    await jamie.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read');
+    const theirs = await jamieBrowser.api.workspaces.ids(home, [ann.email, kofi.email, ola.email], { pass: jamie.ticket.pass });
+    expect(theirs).toEqual({ [ann.email]: ids[ann.email], [kofi.email]: ids[kofi.email] });
     await host.leave();
   });
 });

@@ -503,7 +503,7 @@ describe('what a guest’s pass reaches', () => {
       'GET /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/ask',
       'GET /v1/workspaces/:id/media', 'POST /v1/workspaces/:id/documents/:doc/media', 'GET /v1/workspaces/:id/documents/:doc/media/:media/token', 'POST /v1/workspaces/:id/documents/:doc/media/:media/pieces/:seq',
       'POST /v1/workspaces/:id/documents/:doc/media/:media/finish', 'POST /v1/workspaces/:id/documents/:doc/media/:media/attach', 'DELETE /v1/workspaces/:id/documents/:doc/media/:media',
-      'POST /v1/workspaces/:id/documents/:doc/mentions', 'DELETE /v1/workspaces/:id/mentions/:mention'
+      'POST /v1/workspaces/:id/documents/:doc/mentions', 'DELETE /v1/workspaces/:id/mentions/:mention', 'POST /v1/workspaces/:id/ids'
     ]);
     const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);
     const routes = table.filter((r) => !PUBLIC.has(r.path) && !r.path.startsWith('/v1/live/calls/') && !byPass(r));
@@ -524,7 +524,8 @@ describe('what a guest’s pass reaches', () => {
     const asking: Record<string, unknown> = {
       'POST /v1/workspaces/:id/presence': presence, 'POST /v1/workspaces/:id/documents/:doc/updates': { update }, 'POST /v1/workspaces/:id/documents/:doc/awareness': { update: 'AA' },
       'POST /v1/workspaces/:id/documents/:doc/presenter-notes': { text: 'Mine' }, 'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' },
-      'POST /v1/workspaces/:id/documents/:doc/mentions': { to: { email: 'someone@example.com' }, block: null }
+      'POST /v1/workspaces/:id/documents/:doc/mentions': { to: { email: 'someone@example.com' }, block: null },
+      'POST /v1/workspaces/:id/ids': { emails: ['someone@example.com'] }
     };
     for (const r of passRoutes) {
       const res = await send(r.method, fill(r.path), JSON.stringify(asking[`${r.method} ${r.path}`] ?? { name: 'Renamed by a guest' }));

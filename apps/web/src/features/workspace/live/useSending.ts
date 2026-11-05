@@ -15,7 +15,8 @@ import { withDocument } from '../session';
 import { nameOf, type Tree } from '../tree';
 import { decidedBlock, followUpBlock, quoteBlocks } from './blocks';
 import { dateOf } from './dates';
-import { asInDocuments, momentOf, personNamed, sameName } from './lines';
+import { asNamed, type PersonIds } from '../ids';
+import { momentOf, personNamed, sameName } from './lines';
 import type { LiveCall, LivePut } from './types';
 
 interface Sending {
@@ -32,10 +33,12 @@ interface Sending {
   go: Ws['go'];
   say: (toast: WsToastData) => void;
   openDoc: Ws['openDoc'];
+  /** Who's who in the workspace's documents (../ids.ts). */
+  ids: PersonIds;
 }
 
 /** The document you were last in, and how to send things to it while you can edit it. */
-export function useSending({ live, workspaceId, pass, owner, tree, at, member, here, closed, go, say, openDoc }: Sending): { put: LivePut | null; lastDocument: string | null } {
+export function useSending({ live, workspaceId, pass, owner, tree, at, member, here, closed, go, say, openDoc, ids }: Sending): { put: LivePut | null; lastDocument: string | null } {
   /* With a live page open first, it's the document you had open last in this workspace. */
   const [last, setLast] = useState<string | null>(() => placesOf(owner).documents[workspaceId] ?? null);
   const documentId = at.kind === 'document' ? at.id : null;
@@ -47,8 +50,8 @@ export function useSending({ live, workspaceId, pass, owner, tree, at, member, h
 
   const people = useQuery({ ...q.workspacePeople(workspaceId), enabled: live !== undefined && member }).data;
   /* What sending reads changes all the time, and the arrows' labels shouldn't be drawn again for it. */
-  const latest = useRef({ people, here, closed, go, say });
-  latest.current = { people, here, closed, go, say };
+  const latest = useRef({ people, here, closed, go, say, ids });
+  latest.current = { people, here, closed, go, say, ids };
 
   const put = useMemo((): LivePut | null => {
     if (!live || targetId === null || targetName === null) return null;
@@ -75,14 +78,14 @@ export function useSending({ live, workspaceId, pass, owner, tree, at, member, h
       if (!name) return null;
       const said = personNamed(live.session.getSnapshot(), name);
       const known = [...(latest.current.people ?? []).map((p) => p.person), ...latest.current.here.map((h) => h.person)];
-      const found = said ? asInDocuments(said) : known.find((p) => p.name === name) ?? known.find((p) => sameName(p.name, name));
+      const found = (said && asNamed(said, latest.current.ids)) ?? known.find((p) => p.name === name) ?? known.find((p) => sameName(p.name, name));
       return found ? { id: found.id, name: found.name } : null;
     };
     return {
       target: targetName,
       decided: (text) => { send([decidedBlock(text)]).catch(failed); },
       followUp: ({ text, owner: who, due }) => { send([followUpBlock({ text, who: tagFor(who), owner: who, date: due ? dateOf(due, new Date()) : null, due })]).catch(failed); },
-      line: (l) => { send(quoteBlocks(momentOf(live.session.getSnapshot(), l))).catch(failed); }
+      line: (l) => { send(quoteBlocks(momentOf(live.session.getSnapshot(), l, latest.current.ids))).catch(failed); }
     };
   }, [live, targetId, targetName, workspaceId, owner, pass, openDoc]);
 

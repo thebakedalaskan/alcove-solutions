@@ -4,6 +4,7 @@
  */
 import { createContext, useContext } from 'react';
 import type { Ws, WorkspaceCall, WorkspacePlace } from '../context';
+import type { PersonIds } from '../ids';
 import type { LiveCall, LivePut } from './types';
 
 export interface LiveHost {
@@ -21,6 +22,8 @@ export interface LiveHost {
   closed: boolean;
   toggleList: () => void;
   zen: WorkspaceCall['zen'];
+  /** Who's who in the workspace's documents, as far as it's known (../ids.ts). */
+  ids: PersonIds;
 }
 
 export const LiveHostContext = createContext<LiveHost | null>(null);

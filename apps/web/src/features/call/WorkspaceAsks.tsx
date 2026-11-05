@@ -34,10 +34,11 @@ function offered(w: CallWorkspace, at: WorkspacePlace): string | null {
 }
 
 /**
- * The organizer's answer to whoever's asking, oldest first, at the top of the call. It offers only what they can share: a
- * document in the call's workspace they can edit. With none in front of them, it opens the workspace to find one.
+ * The organizer's answer to whoever's asking, oldest first, at the top of the call, or above the dock on a phone, clear of the
+ * list's button. It offers only what they can share: a document in the call's workspace they can edit. With none in front of
+ * them, `onChoose` opens the workspace in front of whatever covers it, on the document they were last in there or the list.
  */
-export function WorkspaceKnock({ session, workspace, at, act }: { session: CallSession; workspace: CallWorkspace; at: WorkspacePlace; act: WorkspacePanelState['act'] }) {
+export function WorkspaceKnock({ session, workspace, at, act, onChoose }: { session: CallSession; workspace: CallWorkspace; at: WorkspacePlace; act: WorkspacePanelState['act']; onChoose: () => void }) {
   /** Asks answered here: each lifts away at once, while the call takes a moment to say so. */
   const [answered, setAnswered] = useState<ReadonlySet<string>>(new Set());
   const ask = workspace.asks.find((a) => !answered.has(a.id)) ?? null;
@@ -61,6 +62,6 @@ export function WorkspaceKnock({ session, workspace, at, act }: { session: CallS
   };
   return (
     <WsKnock person={ask?.person ?? null} document={shareable ? nameOf(shareable) : null}
-      onLet={() => answer('read')} onEdit={() => answer('edit')} onChoose={act.reveal} onNotNow={() => answer(null)} />
+      onLet={() => answer('read')} onEdit={() => answer('edit')} onChoose={onChoose} onNotNow={() => answer(null)} />
   );
 }

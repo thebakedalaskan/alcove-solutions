@@ -92,11 +92,11 @@ export async function mayRing(o: Owner, meetingId: string, emails: string[]): Pr
 
 /**
  * Rings people into a call. Everyone rung goes on the invite, so they get the notes and come in without asking. Someone
- * rung before starts over, on the same ring, whatever they said to it.
+ * rung before starts over, on the same ring, whatever they said to it. Who was rung.
  */
-export async function ring(o: Owner, c: Db, at: InviteOf, emails: string[]): Promise<void> {
+export async function ring(o: Owner, c: Db, at: InviteOf, emails: string[]): Promise<string[]> {
   const wanted = [...new Set(emails)];
-  if (!wanted.length) return;
+  if (!wanted.length) return [];
   const added = await addToInvite(o, c, at, wanted);
   const invited = new Set((await getItem(o, c, 'meeting', at.meetingId, MeetingManifest, 'That meeting')).manifest.guests.map((e) => e.toLowerCase()));
   // Unlike someone let in from the link, nobody is in the call yet, so a full invite is a refusal.
@@ -111,6 +111,7 @@ export async function ring(o: Owner, c: Db, at: InviteOf, emails: string[]): Pro
     [o.ownerId, ringId, at.meetingId, index, RING_SECONDS, seal(o, at.meetingId, ringId, { email, reply: null, since: null })]);
   }
   rlog.info('people rung', { meetingId: at.meetingId, people: wanted.length, again: earlier.length, added: added.length });
+  return wanted;
 }
 
 /** The organizer stops ringing someone. Only a ring of this call; one that's already over needs no stopping. They stay on the invite. */

@@ -7,9 +7,9 @@ import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTre
 import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
-import { overlayOpen, typing, withMod } from '~/lib/keys';
+import { moveFocusOut, overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
 import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
@@ -21,6 +21,7 @@ import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
 import { useFollow } from './follow';
 import { Find, useFindKeys } from './Find';
+import { usePersonIds } from './ids';
 import { Keys } from './Keys';
 import { List } from './List';
 import { LiveHostContext } from './live/host';
@@ -170,10 +171,32 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const { following, follow, stopFollowing } = useFollow({ others, tree, at, goWith, say });
   /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
+  /*
+   * Something outside the workspace needs a document from it, such as someone asking to see it: the one you were last in here,
+   * if you can share it, or else the list to pick one from, on a phone too. Only for each ask after this opened.
+   */
+  const wanted = call?.list.wanted ?? 0;
+  const seenWant = useRef(wanted);
+  const forWant = useRef({ tree, owner, go });
+  forWant.current = { tree, owner, go };
+  useEffect(() => {
+    if (wanted === seenWant.current) return;
+    seenWant.current = wanted;
+    const { tree: t, owner: o, go: to } = forWant.current;
+    const lastId = placesOf(o).documents[workspaceId];
+    const last = lastId === undefined ? undefined : t.all.get(lastId);
+    if (last && last.kind === 'document' && last.role === 'edit' && last.trashedAt === null) to({ kind: 'document', id: last.id });
+    else setPhoneList(true);
+  }, [wanted, workspaceId]);
   useTagToasts(store, view.mentions, tree, at, say, go);
   const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
+  /* Everyone a document here may tag, quote or name for a follow-up, by the ID the workspace knows them by. */
+  const member = view.tree?.role != null;
+  const team = useQuery({ ...q.team(), enabled: member }).data;
+  const named = useMemo(() => [...(call?.people ?? []).map((p) => p.person.email), ...(call?.invited ?? []).map((p) => p.email), ...(team?.members ?? []).map((m) => m.person.email)], [call?.people, call?.invited, team]);
+  const ids = usePersonIds(workspaceId, pass, named, member || call !== undefined);
   const { put, lastDocument } = useSending({
-    live: call?.live, workspaceId, pass, owner, tree, at, member: view.tree?.role != null, here: view.here, closed: call?.closed ?? false, go, say, openDoc
+    live: call?.live, workspaceId, pass, owner, tree, at, member, here: view.here, closed: call?.closed ?? false, go, say, openDoc, ids
   });
   const role = view.tree?.role ?? null;
   const canChange = role === 'admin' || role === 'edit';
@@ -195,6 +218,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
    */
   const empty = view.tree !== null && tree.kids.size === 0;
   useEffect(() => { setPhoneList(at.kind === 'home' && !empty); }, [at.kind, documentId, empty]);
+
   const arrived = useRef(false);
   const given = call !== undefined && view.tree?.role === null;
   useEffect(() => {
@@ -233,7 +257,9 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return () => { togetherRef.current = null; };
   }, [togetherRef, follow, stopFollowing]);
   /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
-  useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
+  /* Leaving with the call's workspace, it's said: they'd otherwise just stop going with whoever they followed. */
+  const leaving = call?.leaving ?? false;
+  useEffect(() => { if (closed) stopFollowing(leaving ? 'moved' : 'quiet'); }, [closed, leaving, stopFollowing]);
 
   /*
    * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
@@ -241,6 +267,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
    */
   const watching = call?.presenting.watching ?? false;
   const reduce = useReducedMotion();
+  /*
+   * Your page goes out of reach under it, and with it whatever had your caret: you land on the document being presented,
+   * where a key does nothing, and the call's letters sleep, since you may be mid-sentence.
+   */
+  const pane = useRef<HTMLElement>(null);
+  const over = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (watching) moveFocusOut(pane.current, over.current?.querySelector<HTMLElement>('.wd-scroll') ?? over.current);
+  }, [watching]);
 
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
@@ -312,13 +347,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const ws: Ws = {
     mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
-  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen } : null;
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen, ids } : null;
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>
-      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
+      <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
@@ -340,7 +375,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
       {/* It comes and goes over 240 ms, and your own page is back underneath as it goes. */}
       <AnimatePresence>
         {watching && call && (
-          <motion.div key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
+          <motion.div ref={over} tabIndex={-1} key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
             <Presentation ws={ws} presenting={call.presenting} />
           </motion.div>
         )}

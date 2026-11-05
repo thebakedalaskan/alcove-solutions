@@ -331,6 +331,13 @@ export interface AlcoveApi {
      * and the answer doesn't say which. They hear on the workspace's stream, or whenever they're next here.
      */
     mention(id: ID, documentId: ID, tag: MentionBody, opts?: WorkspaceReadOptions): Promise<void>;
+    /**
+     * The IDs this workspace's documents know people by, for what a tag, a quote or a follow-up carries: the ID a member of it
+     * has, keyed under the workspace's own keys, so one in a document says nothing about an address. Anyone in the workspace
+     * may ask about any address; someone here only through a call, about the people who've been in it. The answer, by address
+     * lower-cased, leaves out the rest.
+     */
+    ids(id: ID, emails: string[], opts?: WorkspaceReadOptions): Promise<Record<string, string>>;
     /** What you've been tagged in and haven't seen, in every workspace, the newest first: only what you can open now. */
     mentions(): Promise<MentionNotice[]>;
     /** You've heard about this tag, so it isn't kept any more. A tag that's gone is fine. */

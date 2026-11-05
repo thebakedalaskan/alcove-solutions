@@ -477,7 +477,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping
    its row on This call. Pressing Workspace or **W** again gives the stage back and keeps your place: the document, where
    you'd scrolled to, your caret and your undo, for the rest of the call and across a reload. The call's letters (**M**,
-   **V**, **C**, **B**, **W**) sleep while the caret is in a document.
+   **V**, **C**, **B**, **W**) and the workspace's **N** sleep while the caret is in a document, for a moment and a half after
+   a key goes into one, and, when what held the caret goes from under it (a presentation coming over the page, or the
+   workspace switching), until you click, tap, Tab or Esc: the rest of a sentence never mutes you or makes a document
+   somewhere else. Focus lands on the document taking the page's place, where a key does nothing.
    - **Someone shares while you're writing:** nothing you're looking at moves. It lands as a tile among the people and glows
      for 3 seconds, and a toast offers **Show it**, as does the tile. It takes its place beside the document, and the
      people and the list give way if they must. Drag the line between them (it snaps at half, and a double-click evens it);
@@ -502,7 +505,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 2. **Only the organizer switches what everyone views**, from the name at the top of the list: their workspaces they can edit
    in, with who's in each, the call's home marked **This call's home**, and **New workspace**. Picking one asks once, in
    place, says who in the call can't open it, and that the notes and transcript still go to the home; **Switch to …**
-   changes the list for everyone at once, a toast says where the notes still go, and **Back** on it changes it back. The
+   changes the list for everyone at once, a toast says where the notes still go (in two lines at most), and **Back** on it
+   changes it back; it goes when the call ends, or when Leave asks its question. The question takes focus as it opens, and
+   **Tab** reaches its answers. Someone following someone stops, and is told the call's workspace changed. The
    call's Notes, Follow-ups and Transcript stay at the top of the list while another workspace is viewed. Nobody is
    interrupted and nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and
    sees that it's private, not what's in it. What was brought to the call from the workspace before stays with that one.
@@ -511,8 +516,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    name, and that the organizer chooses.
 3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
    names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
-   with the call. The organizer sees who's asking at the top of the call, and shares the document in front of them:
-   **Let … read**, **Let … edit**, or **Not now** (with nothing open, **Open the workspace** finds one). Only that document
+   with the call. The organizer sees who's asking at the top of the call (above the dock on a phone, clear of the list's button), and
+   shares the document in front of them: **Let … read**, **Let … edit**, or **Not now**. With nothing open, **Open the
+   workspace** opens the document they were last in there, to share, or else the list to pick one, on a phone too. Only that document
    opens for whoever asked, by itself, under Shared with you, and read only says to ask the organizer to edit. **Not now**
    is said to them, and they can ask again. Share lists them as a guest in this call and **Remove** takes it back, and it
    ends with the call.
@@ -545,7 +551,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    - **Work on my own** goes back to your own page, or to the document itself, while the presentation carries on; the strip
      says **Back to the presentation**. The organizer can also stop someone else's from the strip.
    - **Stop presenting** puts everyone back exactly where they were: your own page as you left it, and the workspace put
-     away again if it opened for the presentation. Nobody's access changes: someone who can't open it is told who's
+     away again if it opened for the presentation. If the presenter leaves the call, the same happens, and a toast says
+     they left, so the presentation ended. Nobody's access changes: someone who can't open it is told who's
      presenting, never what.
 6. **Play for everyone**, on a video in a document, plays it at the same moment on the screen of everyone who can open it,
    from the workspace: no screen share, and nobody hears it twice. Late joiners land at the same moment.

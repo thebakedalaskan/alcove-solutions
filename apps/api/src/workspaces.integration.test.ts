@@ -889,7 +889,7 @@ describe('who can open what', () => {
     expect((await kofi.api.workspaces.get(id)).items.map((i) => [i.id, i.role])).toEqual([[doc, 'read']]);
   });
 
-  it('sends what nobody can open any more to Trash, for its creator to find if they come back', async () => {
+  it('sends what only someone who left could open to Trash, for them to find if they come back; taken out, the admins get it', async () => {
     const ann = await account();
     const theo = await account();
     const kofi = await account();
@@ -900,9 +900,9 @@ describe('who can open what', () => {
     await theo.api.workspaces.share.restrict(id, alone, true);
     await theo.api.workspaces.share.restrict(id, shared, true);
     await theo.api.workspaces.share.set(id, shared, [{ email: kofi.email }], 'edit');
-    const theoId = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
+    const leave = async (who: Account) => who.api.workspaces.removePerson(id, (await who.api.workspaces.people(id)).find((p) => p.isMe)?.id ?? '');
 
-    await ann.api.workspaces.removePerson(id, theoId);
+    await leave(theo);
     // Nobody here can see it, it's not deleted, and it isn't given to anyone: an admin can't open it any more than before.
     expect(named(await itemsOf(ann.api, id))).toEqual(['Everyone’s']);
     expect(await refusal(ann.api.workspaces.items.get(id, alone))).toEqual(await refusal(ann.api.workspaces.items.get(id, madeUp())));
@@ -919,7 +919,7 @@ describe('who can open what', () => {
     expect((await theo.api.workspaces.items.get(id, alone)).trashedAt).toBeNull();
 
     // Not back, it goes as anything in Trash does.
-    await ann.api.workspaces.removePerson(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '');
+    await leave(theo);
     await maintain(h.deps, { trashAgeMs: 0 });
     expect(await count('SELECT count(*)::int AS n FROM documents WHERE document_id = $1', [alone])).toBe(0);
 
@@ -929,6 +929,14 @@ describe('who can open what', () => {
     expect(await code(kofi.api.workspaces.items.get(id, shared))).toBe('not-found');
     await maintain(h.deps, { trashAgeMs: 0 });
     expect(await count('SELECT count(*)::int AS n FROM documents WHERE document_id = $1', [shared])).toBe(0);
+
+    // Taken out by an admin, someone's words go to the admins, still restricted, and not to Trash: nobody changed that document.
+    const kofis = await make(kofi, id, 'document', 'Only Kofi’s');
+    await kofi.api.workspaces.share.restrict(id, kofis, true);
+    await ann.api.workspaces.removePerson(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === kofi.email)?.id ?? '');
+    expect(await ann.api.workspaces.items.get(id, kofis)).toMatchObject({ restricted: true, trashedAt: null, role: 'edit' });
+    expect((await ann.api.workspaces.share.list(id, kofis)).entries.map((e) => [e.person.email, e.role])).toEqual([[ann.email, 'edit']]);
+    expect(await code(kofi.api.workspaces.items.get(id, kofis))).toBe('not-found');
   });
 
   it('treats a board as a document: restricted, shared, duplicated and in Trash the same way', async () => {

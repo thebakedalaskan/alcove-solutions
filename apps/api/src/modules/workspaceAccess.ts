@@ -81,11 +81,11 @@ export const StoredItem = z.object({
 });
 export type StoredItem = z.infer<typeof StoredItem>;
 /**
- * The call a workspace was made for, as its home: what it was called and when, its meeting and series (the series' later
- * calls share it), and who it added as people invited, so taking someone off the invite takes them out again. Nobody
- * added by hand is ever taken out for that.
+ * The call a workspace was made for, as its home: what it was called and when, and its meeting and series (the series' later
+ * calls share it). `out`: the addresses taken out of it by hand, or who left: the invite never puts them back. Whom the invite
+ * put there is on each member (`workspaces.ts`), so taking them off the invite takes out only them.
  */
-export const MadeFor = z.object({ title: z.string(), at: z.string(), meetingId: z.string(), seriesId: z.string().nullable(), added: z.array(z.string()) });
+export const MadeFor = z.object({ title: z.string(), at: z.string(), meetingId: z.string(), seriesId: z.string().nullable(), out: z.array(z.string()).default([]) });
 export type MadeFor = z.infer<typeof MadeFor>;
 /** A workspace's name and tree: one record, because its server serialises every change under the row's lock. */
 export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem), madeFor: MadeFor.nullable().default(null) });

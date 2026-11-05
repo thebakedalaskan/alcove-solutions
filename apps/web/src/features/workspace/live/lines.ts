@@ -3,6 +3,7 @@ import { firstName, notesAreOn, type CallState, type Person, type TranscriptLine
 import { captureHere } from '~/lib/capture';
 import { hm } from '~/lib/time';
 import type { LiveLine, MomentLine } from '../editor/types';
+import { asNamed, type PersonIds } from '../ids';
 
 /** What's captured where you are. */
 export const modeHere = (s: CallState) => captureHere(s.capture).mode;
@@ -30,22 +31,22 @@ export function personNamed(s: CallState, name: string | undefined): Person | un
   return people.find((p) => p.name === name) ?? people.find((p) => sameName(p.name, name));
 }
 
-/** Someone as a document tags them. A workspace knows people by their address, and an organizer's ID in the call isn't that. */
-export const asInDocuments = (p: Person): Person => ({ ...p, id: p.email.toLowerCase() || p.id });
-
 /** Who said a line. A breakout room's stand-in has no name to give. */
 export const speakerOf = (l: TranscriptLine): { person: Pick<Person, 'name'> & Partial<Person>; name: string } => {
   const name = l.speaker?.name ?? 'Someone';
   return { person: l.speaker?.person ?? { name }, name };
 };
 
-/** A line of the transcript as a quote keeps it: when it was said, for each reader to read in their own time. */
-export const momentOf = (s: CallState, l: TranscriptLine): MomentLine => ({
-  id: l.id, person: l.speaker?.person ? asInDocuments(l.speaker.person) : null, name: l.speaker?.name ?? 'Someone', at: lineMoment(s, l.at).toISOString(), text: l.text, note: s.notes.noteId
+/**
+ * A line of the transcript as a quote keeps it: when it was said, for each reader to read in their own time, and who said it
+ * by their ID in the workspace (../ids.ts), or by name alone while that isn't known.
+ */
+export const momentOf = (s: CallState, l: TranscriptLine, ids: PersonIds): MomentLine => ({
+  id: l.id, person: (l.speaker?.person && asNamed(l.speaker.person, ids)) ?? null, name: l.speaker?.name ?? 'Someone', at: lineMoment(s, l.at).toISOString(), text: l.text, note: s.notes.noteId
 });
 
 /** The last few lines, newest first, for Quote what was said. */
-export const recentLines = (s: CallState): MomentLine[] => s.transcript.slice(-4).reverse().map((l) => momentOf(s, l));
+export const recentLines = (s: CallState, ids: PersonIds): MomentLine[] => s.transcript.slice(-4).reverse().map((l) => momentOf(s, l, ids));
 
 /**
  * Whether this browser may write what a `live` block shows. A document's `live` block follows the notes everyone shares in
@@ -56,20 +57,21 @@ export const writesLiveBlocks = (s: CallState): boolean => s.capture.room === nu
 
 /**
  * What `live` blocks show now. The same in every browser with the same notes, wherever in the world it is, which is what lets
- * one that finds it's already there leave it: a moment and words as they were said, not how they read here.
+ * one that finds it's already there leave it: a moment and words as they were said, not how they read here. Whose a
+ * follow-up is goes by their ID in the workspace (../ids.ts): null while one isn't known here yet, since writing without it
+ * would only fight the browsers that know it.
  */
-export function liveLinesOf(s: CallState): { decided: LiveLine[]; followUps: LiveLine[] } {
+export function liveLinesOf(s: CallState, ids: PersonIds): { decided: LiveLine[]; followUps: LiveLine[] } | null {
   const n = s.liveNotes.notes;
   const moment = (seconds: number) => new Date(Date.parse(s.startedAt) + seconds * 1000).toISOString();
   const said = [
     ...(n?.next ?? []).map((f) => ({ ...f, when: f.evidence[0]?.said ?? 0 })),
     ...s.liveNotes.added.map((f) => ({ ...f, when: f.at }))
   ].sort((a, b) => a.when - b.when);
+  const owners = said.map((f) => { const who = personNamed(s, f.owner); return { who, named: who && asNamed(who, ids) }; });
+  if (owners.some((o) => o.who !== undefined && o.named === undefined)) return null;
   return {
     decided: (n?.decided ?? []).map((d) => ({ text: d.text, at: moment(d.evidence[0]?.said ?? 0) })),
-    followUps: said.map((f) => {
-      const who = personNamed(s, f.owner);
-      return { text: f.text, at: moment(f.when), person: who ? asInDocuments(who).id : null, name: f.owner ?? '', due: f.due ?? '' };
-    })
+    followUps: said.map((f, i) => ({ text: f.text, at: moment(f.when), person: owners[i]?.named?.id ?? null, name: f.owner ?? '', due: f.due ?? '' }))
   };
 }

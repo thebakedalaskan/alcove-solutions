@@ -13,6 +13,7 @@ import { q, useDocumentShare, useMention } from '~/lib/queries';
 import { shortDay } from '~/lib/time';
 import type { Ws } from './context';
 import type { MentionItem, MentionSection, Rect } from './editor/types';
+import { hashId, withEarlier } from './ids';
 import { documentsIn, nameOf } from './tree';
 
 const tlog = log.child({ component: 'tags' });
@@ -27,25 +28,11 @@ export function dateChoices(now: number): { label: string; date: string }[] {
   return [{ label: 'Today', date: iso(day(0)) }, { label: 'Tomorrow', date: iso(day(1)) }, { label: shortDay(friday), date: iso(friday) }];
 }
 
-/**
- * What a tag calls someone who has no ID in this workspace. A tag is read by everyone with the document, and an address goes
- * only between people in the workspace, so it's a hash of it: the same for them each time, and nothing to read.
- */
-function outsiderId(email: string): string {
-  let a = 0xdeadbeef, b = 0x41c6ce57;
-  for (let i = 0; i < email.length; i++) {
-    const c = email.charCodeAt(i);
-    a = Math.imul(a ^ c, 2654435761);
-    b = Math.imul(b ^ c, 1597334677);
-  }
-  return `p${(a >>> 0).toString(36)}${(b >>> 0).toString(36)}`;
-}
-
 /** Someone as a tag shows them: never by their address, which a tag would carry to everyone who reads it. */
 const named = (p: Person): Person => (p.name === p.email ? { ...p, name: callName(p) } : p);
 
-/** What a tag calls someone in a call who has no address here. */
-const seatPerson = (p: Person, seat: string): Person => ({ ...p, id: outsiderId(seat) });
+/** What a tag calls someone in a call who has no address here: their seat, which is already nobody's address. */
+const seatPerson = (p: Person, seat: string): Person => ({ ...p, id: hashId(seat) });
 
 /** Someone asked about before anything's shared: who, the line, and where to ask. */
 export interface TagAsk { person: Person; block: string; rect: () => DOMRect }
@@ -66,20 +53,30 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
 
   /* Someone added by address is known here by that until they're around, when they say who they are. */
   const members = useMemo(() => (people ?? []).map((p) => named({ ...p.person, name: ws.here.find((h) => h.person.id === p.person.id)?.person.name ?? p.person.name })), [people, ws.here]);
+  /* Anyone else by the ID the workspace keys for their address: someone whose ID isn't known yet isn't offered yet. */
+  const ids = ws.ids;
   const company = useMemo(() => {
     const inHere = new Set(members.map((p) => p.email));
-    return (team?.members ?? []).filter((m) => !inHere.has(m.person.email)).map((m) => named({ ...m.person, id: outsiderId(m.person.email) }));
-  }, [team, members]);
+    return (team?.members ?? []).filter((m) => !inHere.has(m.person.email)).flatMap((m) => {
+      const id = ids.of(m.person.email);
+      return id === undefined ? [] : [named({ ...m.person, id })];
+    });
+  }, [team, members, ids]);
   /* Everyone in the call, as this workspace knows them: by what they're called here if they're in it, and by their seat if not. */
   const inCall = useMemo(() => (ws.call?.people ?? []).filter((p) => !p.isMe).map((p) => {
     const here = ws.here.find((h) => h.callIdentity === p.id)?.person;
     const known = p.person.email ? members.find((m) => m.email === p.person.email) : undefined;
-    const person = known ?? (here && { ...here, email: p.person.email }) ?? (p.person.email ? { ...p.person, id: outsiderId(p.person.email) } : seatPerson(p.person, p.seat));
+    const id = p.person.email ? ids.of(p.person.email) : undefined;
+    const person = known ?? (here && { ...here, email: p.person.email }) ?? (id === undefined ? seatPerson(p.person, p.seat) : { ...p.person, id });
     return { connection: p.id, seat: p.seat, person: named(person) };
-  }), [ws.call?.people, ws.here, members]);
-  const invited = useMemo(() => (ws.call?.invited ?? []).map((p) => members.find((m) => m.email === p.email) ?? named({ ...p, id: outsiderId(p.email) })), [ws.call?.invited, members]);
-  /** Everyone a tag here may show a face for. */
-  const faces = useMemo(() => [...members, ...company, ...invited, ...inCall.map((c) => c.person)], [members, company, invited, inCall]);
+  }), [ws.call?.people, ws.here, members, ids]);
+  const invited = useMemo(() => (ws.call?.invited ?? []).flatMap((p) => {
+    const known = members.find((m) => m.email === p.email);
+    const id = ids.of(p.email);
+    return known ? [known] : id === undefined ? [] : [named({ ...p, id })];
+  }), [ws.call?.invited, members, ids]);
+  /** Everyone a tag here may show a face for, under the IDs tags carried before they were keyed too. */
+  const faces = useMemo(() => withEarlier([...members, ...company, ...invited, ...inCall.map((c) => c.person)]), [members, company, invited, inCall]);
   const myEmail = ws.me?.email;
   const seatOf = useCallback((p: Person) => inCall.find((c) => c.person.id === p.id)?.seat, [inCall]);
 

@@ -36,7 +36,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
-| `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
+| `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
 | `document_clients` | owner (the workspace), document, `client_id` (a Yjs client: a random number), `next_clock` (how far it's written). Kept as long as the document | `people`: keyed hashes of who it belongs to, by every way access knows them and by their account, each bound to this client and document, so no two rows can be linked. Empty for what the server wrote |
@@ -98,8 +98,9 @@ Its name and tree are one record, `workspace-state`, under the workspace's key: 
 or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
 address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
 the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
-`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and the
-addresses its invite put in it. Older records take `null` for both. To the tree `kind` is only data: a document and a board
+`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
+addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
+take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
 are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
 content of its own: its pages read the call and its note through their own access
 ([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
@@ -119,9 +120,11 @@ forever: state, then `documents` rows, and what hangs off them. Each workspace i
 one that can't be read is logged by its ID and left for next time, so it can't hold up the others.
 
 **What nobody can open.** A restricted document with no creator or restrictor left in the workspace, and nobody it's shared
-with, goes to Trash, whenever that happens: someone taken out, an entry removed, a seat ended. Nobody who could decide its
-fate can see it, so it isn't deleted then, and it isn't given to anyone. If its creator comes back within 30 days they
-find it there and can restore it. Otherwise it goes as anything in Trash does.
+with, would be nobody's. When that's because someone was taken out, by an admin or by a call's invite, it's given to the
+workspace's admins, to edit, and stays restricted: nobody's words are lost to a change of people nobody made to that document.
+When it's because someone left by themselves, or an entry was removed, or a seat ended, it goes to Trash: nobody who could
+decide its fate can see it, so it isn't deleted then, and it isn't given to anyone. If its creator comes back within 30 days
+they find it there and can restore it. Otherwise it goes as anything in Trash does.
 
 **People.** `workspace_members` and `document_access` find people by keyed hash and seal who they are beside it, in the
 same row, so taking someone out takes their address with them. `workspace_authors` keeps the hash of every address whose
@@ -132,6 +135,16 @@ have made at most 100 workspaces by hand: a home made for a call doesn't count. 
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
 ### Tags
+
+**Who a document names.** A tag, a quote of what was said and a follow-up line carry someone's ID, which everyone with the
+document reads, so it's never their address or anything made from it alone. Each is the ID a member has in that workspace,
+`HMAC(state key "workspace-person", their address's keyed hash)` under the workspace's own keys, whether they're in it or
+not: `POST /v1/workspaces/:id/ids` (`api.workspaces.ids`) gives them for a list of addresses, to anyone in the workspace for
+any address, and to someone here only through a call for the people who've been in that call, and leaves out the rest. So
+nobody can check a guessed address against an ID in a document without asking the server, as someone who's allowed to, and
+the same person has different IDs in different workspaces. Someone in a call with no address is named by their seat, which
+is already a keyed hash. What was written before IDs were keyed, an address on a quote or a plain hash of one on a tag, still
+finds its face and tells someone a to-do is theirs: the app works those out to read them, and never writes them.
 
 Someone tagged in a document hears about it, on the workspace's stream if they're here, and whenever they're next here if
 they aren't. `POST /v1/workspaces/:id/documents/:doc/mentions` (`api.workspaces.mention`) names them by address, or by their seat

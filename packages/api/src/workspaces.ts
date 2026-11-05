@@ -138,6 +138,10 @@ const BlockIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 /** Someone tagged on a line of a document, by address, or by their seat in the call you're both in. */
 export const MentionBodySchema = z.object({ to: ShareTargetSchema, block: BlockIdSchema.nullable() });
 export type MentionBody = z.infer<typeof MentionBodySchema>;
+/** Addresses a document may name someone by, to have the ID each has in the workspace (`AlcoveApi.workspaces.ids`). */
+export const PersonIdsBodySchema = z.object({ emails: z.array(EmailSchema).min(1).max(1000) });
+/** The IDs, by address, lower-cased: only the addresses you may ask about are in it. */
+export const PersonIdsSchema = z.object({ ids: z.record(z.string(), z.string()) });
 
 /* ---------- in this browser ---------- */
 

@@ -11,7 +11,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import type { Doc } from 'yjs';
 import type { Ws } from '../context';
 import type { EditorCall, EditorHandle } from '../editor/types';
-import { asInDocuments, liveLinesOf, notesOnHere, recentLines, writesLiveBlocks } from './lines';
+import { asNamed, withEarlier } from '../ids';
+import { liveLinesOf, notesOnHere, recentLines, writesLiveBlocks } from './lines';
 
 /** How long each browser waits behind the one before it: longer than an update takes to get round. */
 const TURN_MS = 600;
@@ -34,14 +35,19 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
   const session = live?.session;
   const closed = ws.call?.closed ?? false;
   const notes = useSyncExternalStore(session?.subscribe ?? nothing, () => (session ? notesOnHere(session.getSnapshot()) : false));
+  /* Who's who, as it's known now, for what's written when its turn comes. */
+  const ids = ws.ids;
+  const idsNow = useRef(ids);
+  idsNow.current = ids;
   /* What this browser would write, as words: it's how a change to the notes is told from every other change to the call. */
   const lines = useSyncExternalStore(session?.subscribe ?? nothing, () => {
     const s = session?.getSnapshot();
-    return s && writesLiveBlocks(s) ? JSON.stringify(liveLinesOf(s)) : '';
+    const now = s && writesLiveBlocks(s) ? liveLinesOf(s, ids) : null;
+    return now ? JSON.stringify(now) : '';
   });
-  /* Faces on quotes and live lines: whoever said them may be in the call and not in the workspace. */
+  /* Faces on quotes and live lines: whoever said them may be in the call and not in the workspace, and a line from before may name them by an earlier ID. */
   const here = useSyncExternalStore(session?.subscribe ?? nothing, () => session?.getSnapshot().participants.map((p) => p.person.id).join(' ') ?? '');
-  const people = useMemo(() => (session?.getSnapshot().participants ?? []).map((p) => asInDocuments(p.person)), [session, here]);
+  const people = useMemo(() => withEarlier((session?.getSnapshot().participants ?? []).map((p) => asNamed(p.person, ids) ?? p.person)), [session, here, ids]);
   const held = useRef(editor);
   held.current = editor;
 
@@ -64,10 +70,10 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
     if (!editor || !session || readOnly || !holdsLive || !lines) return;
     const write = () => {
       const s = session.getSnapshot();
-      if (!writesLiveBlocks(s)) return;
-      const { decided, followUps } = liveLinesOf(s);
-      if (decided.length) editor.setLiveLines('decided', decided);
-      if (followUps.length) editor.setLiveLines('followups', followUps);
+      const now = writesLiveBlocks(s) ? liveLinesOf(s, idsNow.current) : null;
+      if (!now) return;
+      if (now.decided.length) editor.setLiveLines('decided', now.decided);
+      if (now.followUps.length) editor.setLiveLines('followups', now.followUps);
     };
     const wait = setTimeout(write, turnOf(session) * TURN_MS);
     return () => clearTimeout(wait);
@@ -77,13 +83,12 @@ export function useEditorCall(ws: Ws, editor: EditorHandle | null, doc: Doc, rea
     if (!session) return undefined;
     return {
       id: session.getSnapshot().callId, notes,
-      recent: () => recentLines(session.getSnapshot()),
+      recent: () => recentLines(session.getSnapshot(), idsNow.current),
       /* Whoever adds a block sees it fill at once, if they're someone who can write it: it isn't anyone else's turn yet. */
       onLive: (what) => {
         const s = session.getSnapshot();
-        if (!writesLiveBlocks(s)) return;
-        const { decided, followUps } = liveLinesOf(s);
-        const now = what === 'decided' ? decided : followUps;
+        const lines = writesLiveBlocks(s) ? liveLinesOf(s, idsNow.current) : null;
+        const now = lines ? (what === 'decided' ? lines.decided : lines.followUps) : [];
         if (now.length) held.current?.setLiveLines(what, now);
       }
     };

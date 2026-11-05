@@ -1,4 +1,5 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
+import type { PersonIds } from './ids';
 import type { CallPresent, ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsMenuRow, WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
@@ -89,13 +90,16 @@ export interface WorkspaceCall {
   zen?: { on: boolean; onToggle: () => void } | undefined;
   /**
    * Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). `onToggle` is
-   * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it.
+   * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it. `wanted`
+   * goes up each time something outside the workspace needs the list, such as someone asking to see it: a phone shows it too.
    */
-  list: { off: boolean; peek: boolean; onToggle: () => void; onShow: () => void };
+  list: { off: boolean; peek: boolean; onToggle: () => void; onShow: () => void; wanted: number };
   /** Where what the workspace says goes: a call has one place for toasts. */
   say: (toast: WsToastData) => void;
   /** Out of sight, and kept as it was for next time: closed, or behind something it's taking turns with. Its keys sleep. */
   closed: boolean;
+  /** On its way out: the call's workspace changed, so this one is fading from the panel. */
+  leaving?: boolean | undefined;
   /** Who's in the call, and who's invited, if you can know: first in `@`. */
   people: readonly CallPerson[];
   invited: readonly Person[];
@@ -217,6 +221,8 @@ export interface Ws {
   openFind: () => void;
   /** The workspace's stored pictures, read for whatever shows them. */
   pictures: Pictures;
+  /** Who's who in documents here: IDs the server keys, never anyone's address (ids.ts). */
+  ids: PersonIds;
 }
 
 export const WsContext = createContext<Ws | null>(null);

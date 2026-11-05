@@ -9,7 +9,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { useLive } from '~/lib/live';
 import { dayWords, dueWords } from './dates';
 import type { LiveHost } from './host';
-import { asInDocuments, clockAt, personNamed, sameName } from './lines';
+import { earlierIds, type PersonIds } from '../ids';
+import { clockAt, personNamed, sameName } from './lines';
 
 /** A row, what it takes to tick it, and whether it's yours. */
 export interface FollowUpRow extends WsFollowUp { mine: boolean; ticks: ((done: boolean) => Promise<void>)[]; said: { text: string; owner?: string | undefined; due?: string | undefined } }
@@ -33,13 +34,13 @@ export async function tickEverywhere(session: CallSession, id: string, done: boo
   await Promise.all([session.tickFollowUp(id, done), ...(line ? [tickLine(session, line, done)] : [])]);
 }
 
-/** Whether a document's to-do is for you: by who it tags, as this workspace knows you, or else by name. */
-function isYours(d: DocFollowUp, me: Person | undefined, myId: string | undefined): boolean {
-  const tagged = me && asInDocuments(me).id;
-  return d.mentions.some((m) => m.id === myId || m.id === tagged || (me !== undefined && m.name === me.name));
+/** Whether a document's to-do is for you: by who it tags, as this workspace knows you now or knew you before, or else by name. */
+function isYours(d: DocFollowUp, me: Person | undefined, myId: string | undefined, ids: PersonIds): boolean {
+  const mine = new Set([myId, ...(me ? [ids.of(me.email), ...earlierIds(me.email)] : [])].filter((id) => id !== undefined));
+  return d.mentions.some((m) => mine.has(m.id) || (me !== undefined && m.name === me.name));
 }
 
-export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost, 'live' | 'here' | 'workspaceId' | 'go' | 'say'>) {
+export function useFollowUps({ live, here, workspaceId, go, say, ids }: Pick<LiveHost, 'live' | 'here' | 'workspaceId' | 'go' | 'say' | 'ids'>) {
   const { session } = live;
   const state = useLive(session);
   const written = useLive(session.followUps);
@@ -76,7 +77,7 @@ export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost
         same.done = same.done || d.done;
         same.ticks = [...same.ticks, ...tickDoc];
         same.locked = same.ticks.length === 0;
-        same.mine = same.mine || isYours(d, me, myId);
+        same.mine = same.mine || isYours(d, me, myId, ids);
         /* What was said may not have said who or when, and a line with tags does. */
         if (!same.person && tag) { same.person = face(state, tag.name); same.name = firstOf(tag.name); }
         if (!same.said.due && date) same.due = dayWords(date, now);
@@ -84,11 +85,11 @@ export function useFollowUps({ live, here, workspaceId, go, say }: Pick<LiveHost
       }
       lines.push({
         id: `${d.documentId}:${d.block}`, text: d.text.replace(/\s+/g, ' ').trim(), done: d.done, person: tag ? face(state, tag.name) : null, name: tag ? firstOf(tag.name) : '', due: date ? dayWords(date, now) : 'No date',
-        source: d.document, onSource: open, locked: tickDoc.length === 0, mine: isYours(d, me, myId), ticks: tickDoc, said: { text: d.text }
+        source: d.document, onSource: open, locked: tickDoc.length === 0, mine: isYours(d, me, myId, ids), ticks: tickDoc, said: { text: d.text }
       });
     }
     return [...spoken, ...lines].map((r) => { const done = ticking.get(r.id); return done === undefined ? r : { ...r, done }; });
-  }, [notes, written, state.participants, state.startedAt, mayTick, me, myId, session, workspaceId, go, ticking]);
+  }, [notes, written, state.participants, state.startedAt, mayTick, me, myId, session, workspaceId, go, ticking, ids]);
 
   const tick = useCallback((id: string) => {
     const row = rows.find((r) => r.id === id);

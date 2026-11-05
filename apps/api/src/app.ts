@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -231,6 +231,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const searchLimiter = rateLimit(12, 60_000);
   /** Tagging people and saying you've heard, per person: a tag is typed, so this is far more than anyone writes. */
   const mentionLimiter = rateLimit(240, 60_000);
+  /** People's IDs in a workspace, per person: asked as a document opens and as people come and go in a call. */
+  const idsLimiter = rateLimit(120, 60_000);
   /** Saving someone's own notes on a document, per person: they save as they're typed. */
   const presenterLimiter = rateLimit(120, 60_000);
   /** Pieces of a file, per person: 4 MiB each, so about 40 MiB a second, more than any browser's upload. */
@@ -732,6 +734,13 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     mentionLimiter(access.limitKey(r), 'tagging people');
     await mentions.mention(d, r, c.req.param('id'), c.req.param('doc'), await body(c, MentionBodySchema));
     return c.json({ said: true });
+  });
+  /* The IDs documents know people by: keyed here, so one in a document says nothing about anyone's address. */
+  app.use('/v1/workspaces/:id/ids', capped(64 * 1024));
+  app.post('/v1/workspaces/:id/ids', async (c) => {
+    const r = await readerOf(c);
+    idsLimiter(access.limitKey(r), 'people’s IDs');
+    return c.json({ ids: await workspaces.idsOf(d, r, c.req.param('id'), (await body(c, PersonIdsBodySchema)).emails) });
   });
   app.delete('/v1/workspaces/:id/mentions/:mention', async (c) => {
     const r = await readerOf(c);

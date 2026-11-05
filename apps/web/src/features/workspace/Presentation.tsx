@@ -152,7 +152,7 @@ function Presented({ ws, presenting, present, documentId }: { ws: Ws; presenting
       <WsDoc>
         {strip}
         {gone ? <WsCantOpen what="document" /> : (
-          <WsScroll ref={scroller}>
+          <WsScroll ref={scroller} tabIndex={-1}>
             <WsPage>
               <div ref={page}>
                 {opened?.ready && (

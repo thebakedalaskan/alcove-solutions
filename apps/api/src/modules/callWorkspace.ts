@@ -29,7 +29,7 @@ import { placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
 import { TREE_NOTICE, canOpen, emailIndex, grant, holdersOf, organizerEdits, readerInCall, requireDocument, requireRole, requireSharing, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
 import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
-import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder } from './workspaces';
+import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder, type InviteChange } from './workspaces';
 
 const wlog = log.child({ component: 'call-workspace' });
 
@@ -272,7 +272,7 @@ export const folderFor = (o: Owner, organizer: string, callId: string, folderId:
 });
 
 /** What a call's new home starts with, besides its folder: the call it's for. */
-export const madeForCall = (m: Loaded<MeetingManifest>, startedAt: Date): Omit<MadeFor, 'added'> =>
+export const madeForCall = (m: Loaded<MeetingManifest>, startedAt: Date): Omit<MadeFor, 'out'> =>
   ({ title: m.manifest.title, at: startedAt.toISOString(), meetingId: m.itemId, seriesId: m.manifest.seriesId ?? null });
 /** Whether a home was made for this call, or for its series, so who's in it follows the call's invite. */
 export const homeOf = (made: MadeFor | null, m: Loaded<MeetingManifest>): boolean =>
@@ -287,37 +287,88 @@ export async function usableHome(o: Owner, email: string, workspaceId: string | 
   return w && await organizerEdits(o, w, o.pool, email) ? w : undefined;
 }
 
+/** Where putting a call's folder in a home left it: there, with no room for it in a full workspace, or with no home, deleted since. */
+export type FolderPut = 'made' | 'full' | 'gone';
 /**
  * Puts this run of the call's folder in a home that's there already, in that workspace's own transaction, with nothing of the
- * call held: everyone invited is let in too, when the home was made for this call or its series. False when the home's gone.
+ * call held. Only a folder that's there counts as made: a full home has no room, and the call settles on another.
  */
-export async function folderIn(o: Owner, workspaceId: string, folder: CallFolder, m: Loaded<MeetingManifest>, organizer: string): Promise<boolean> {
+export async function folderIn(o: Owner, workspaceId: string, folder: CallFolder): Promise<FolderPut> {
   return tx(o.pool, async (c) => {
     const w = await serverWorkspace(o, workspaceId, c, 'change');
-    if (!w) return false;
-    await addCallFolder(w, c, folder);
-    if (homeOf(w.state.madeFor, m)) await followInvite(w, c, organizer, m.manifest.guests);
-    return true;
+    if (!w) return 'gone';
+    return await addCallFolder(w, c, folder) ? 'made' : 'full';
   });
 }
 
 /**
- * Who's in the call's home follows its invite, when it was made for the call or its series: whoever was just added to the
- * invite is in it, and whoever was just taken off it (`gone`) is out again, if the invite put them there. It never throws:
- * the call goes on, and the next change tries again.
+ * Who's on the invite as far as a call's home goes: the call's own, and, for a call in a series, every call of it that hasn't
+ * ended and has the same home. Lower-cased.
  */
-export async function followHome(o: Owner, meetingId: string, gone: string[] = []): Promise<void> {
+async function invitedTo(o: Owner, m: Loaded<MeetingManifest>, home: string): Promise<Set<string>> {
+  const series = m.manifest.seriesId;
+  const calls = series ? (await allMeetings(o)).filter((x) => x.manifest.seriesId === series && x.manifest.workspaceId === home && x.manifest.status !== 'ended') : [];
+  return new Set([m, ...calls].flatMap((x) => x.manifest.guests.map((e) => e.trim().toLowerCase())));
+}
+
+/**
+ * Who's in the call's home follows its invite, one change at a time, when it was made for the call or its series
+ * (`followInvite`): whoever the change put on the invite is let in, if they're on it still, and whoever it took off is
+ * taken out, unless the series still invites them to a call to come. It never throws: the call goes on, and the next
+ * change, or the next call's start, tries again.
+ */
+export async function followHome(o: Owner, meetingId: string, change: InviteChange): Promise<void> {
+  if (!change.add?.length && !change.gone?.length) return;
   try {
     const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
     const home = m?.manifest.workspaceId;
     if (!m || !home) return;
+    const invited = await invitedTo(o, m, home);
+    const add = (change.add ?? []).filter((e) => invited.has(e.trim().toLowerCase()));
+    const gone = (change.gone ?? []).filter((e) => !invited.has(e.trim().toLowerCase()));
+    if (!add.length && !gone.length) return;
     const organizer = (await profile(o)).email;
     await tx(o.pool, async (c) => {
       const w = await serverWorkspace(o, home, c, 'change');
-      if (w && homeOf(w.state.madeFor, m)) await followInvite(w, c, organizer, m.manifest.guests, gone);
+      if (w && homeOf(w.state.madeFor, m)) await followInvite(w, c, organizer, { add, gone });
     });
   } catch (e) {
     wlog.warn('a call’s home didn’t follow its invite', { meetingId, err: e });
+  }
+}
+
+/**
+ * Who each call a change to `meetingId` can reach invites, as they are: that call's, and the rest of its series' that haven't
+ * ended. Asked before the change, for the calls' homes to follow it afterwards (`followInvites`).
+ */
+export async function invitesOf(o: Owner, meetingId: string, m: Pick<MeetingManifest, 'guests' | 'seriesId'>): Promise<Map<string, string[]>> {
+  const series = m.seriesId;
+  const calls = series ? (await allMeetings(o)).filter((x) => x.manifest.seriesId === series && x.itemId !== meetingId && x.manifest.status !== 'ended') : [];
+  return new Map([[meetingId, m.guests], ...calls.map((x): [string, string[]] => [x.itemId, x.manifest.guests])]);
+}
+/**
+ * A change to scheduled calls' invites reaches the homes made for them as a change in the call does (`followHome`): who it
+ * put on an invite is let in, and who it took off is taken out. `before`: the invites as they were (`invitesOf`). Never throws.
+ */
+export async function followInvites(o: Owner, before: Map<string, string[]>): Promise<void> {
+  try {
+    const now = new Map((await allMeetings(o)).map((x) => [x.itemId, x]));
+    const lower = (xs: string[]) => new Set(xs.map((e) => e.trim().toLowerCase()));
+    const homes = new Map<string, { meetingId: string; add: Set<string>; gone: Set<string> }>();
+    for (const [meetingId, was] of before) {
+      const m = now.get(meetingId);
+      const home = m?.manifest.workspaceId;
+      if (!m || !home) continue;
+      const then = lower(was);
+      const after = lower(m.manifest.guests);
+      const at = homes.get(home) ?? { meetingId, add: new Set<string>(), gone: new Set<string>() };
+      for (const e of after) if (!then.has(e)) at.add.add(e);
+      for (const e of then) if (!after.has(e)) at.gone.add(e);
+      homes.set(home, at);
+    }
+    for (const { meetingId, add, gone } of homes.values()) await followHome(o, meetingId, { add: [...add], gone: [...gone] });
+  } catch (e) {
+    wlog.warn('calls’ homes didn’t follow their invites', { calls: before.size, err: e });
   }
 }
 
@@ -727,34 +778,39 @@ async function homeAfter(o: Owner, end: Ended): Promise<void> {
   const home = end.home;
   if (home) {
     const folder = over(home.folderId);
-    await tx(o.pool, async (c) => {
+    const put = await tx(o.pool, async (c): Promise<FolderPut> => {
       const w = await serverWorkspace(o, home.workspaceId, c, 'change');
       const there = w?.state.items[folder.id];
-      if (!w) return;
+      if (!w) return 'gone';
       if (there?.call) {
         w.state = { ...w.state, items: { ...w.state.items, [folder.id]: { ...there, call: { ...there.call, ended: true, noteId: end.noteId } } } };
         await saveState(w, c);
         await publish(c, w.workspaceId, TREE_NOTICE);
-      } else if (!there && !home.made) await addCallFolder(w, c, folder);
+        return 'made';
+      }
+      // A folder someone deleted stays gone; one the call took and never made is made now, if there's room.
+      return there || home.made ? 'made' : await addCallFolder(w, c, folder) ? 'made' : 'full';
     });
-    wlog.info('call folder told the call is over', { callId: end.callId, workspaceId: home.workspaceId, notes: end.noteId !== null });
-    return;
+    wlog.info('call folder told the call is over', { callId: end.callId, workspaceId: home.workspaceId, notes: end.noteId !== null, put });
+    if (put !== 'full') return;
   }
   if (!end.noteId) return;
   const chosen = m.manifest.workspaceId;
   const folder = over(id128());
-  if (chosen && await usableHome(o, organizer, chosen) && await folderIn(o, chosen, folder, m, organizer)) {
+  if (chosen && await usableHome(o, organizer, chosen) && await folderIn(o, chosen, folder) === 'made') {
     wlog.info('call folder made after the call', { callId: end.callId, workspaceId: chosen });
+    await followHome(o, m.itemId, { add: m.manifest.guests });
     return;
   }
-  // A new one: nobody can reach it until the meeting names it.
+  // A new one: nobody can reach it until the meeting names it, and everyone invited comes in once it does.
   const made = await tx(o.pool, async (c) => {
-    const { id } = await makeHome(o, c, { name: folder.name, madeFor: madeForCall(m, end.startedAt), invited: m.manifest.guests, folder });
-    await updateManifest(o, c, m.itemId, (x) => ({ ...x, workspaceId: id }));
-    return id;
+    const { id } = await makeHome(o, c, { name: folder.name, madeFor: madeForCall(m, end.startedAt), folder });
+    const next = await updateManifest(o, c, m.itemId, (x) => ({ ...x, workspaceId: id }));
+    return { id, guests: next.guests };
   });
-  wlog.info('call home made after the call', { callId: end.callId, workspaceId: made });
-  await carryForward(o, m.itemId, chosen, made);
+  wlog.info('call home made after the call', { callId: end.callId, workspaceId: made.id });
+  await followHome(o, m.itemId, { add: made.guests });
+  await carryForward(o, m.itemId, chosen, made.id);
 }
 
 /**

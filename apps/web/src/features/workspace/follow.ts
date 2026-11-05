@@ -15,8 +15,8 @@ import { nameOf, type Tree } from './tree';
 /** Who you're following and where they are now. `document` and `block` only ever name what you can open. */
 export interface Following { person: Person; name: string; where: string; lost: boolean; document: string | null; block: string | null }
 
-/** Why it stopped. `quiet` says nothing: something else took over. */
-export type StopFollowing = 'asked' | 'quiet';
+/** Why it stopped. `quiet` says nothing: something else took over. `moved`: the call's workspace changed under them, which is said. */
+export type StopFollowing = 'asked' | 'quiet' | 'moved';
 
 interface FollowInput {
   others: readonly Someone[];
@@ -46,6 +46,7 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
     if (was === null) return;
     setId(null);
     if (how === 'asked' && person) tell(wsToast.stoppedFollowing(firstName(person.name), () => setId(was)));
+    if (how === 'moved' && person) tell(wsToast.followingEnded(firstName(person.name)));
   }, []);
 
   /* They moved: you go too. You moved, by the address, say, and not with them: that's you going somewhere. */

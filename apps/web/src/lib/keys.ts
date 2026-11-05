@@ -13,7 +13,58 @@ export const shortcut = (key: string): string => (mac ? `⌘${key}` : `Ctrl ${ke
 /** The same shortcut for `aria-keyshortcuts`: "Meta+K" or "Control+K". */
 export const ariaShortcut = (key: string): string => `${mac ? 'Meta' : 'Control'}+${key}`;
 
-/** A key pressed while typing into a field, a select or editable text: single-key shortcuts leave it alone. */
-export const typing = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+/** Something keys type into: a field, a select or editable text. */
+const editable = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+
+/**
+ * How long single-key shortcuts sleep after a key goes into something editable. Whoever's typing keeps typing for a moment
+ * whatever happens on screen, and what held their caret can go, under a presentation or with the workspace switching:
+ * the rest of their sentence must never mute them, or make a document somewhere else.
+ */
+const TYPING_MS = 1500;
+let typedAt = Number.NEGATIVE_INFINITY;
+/** What keys last went into, since whoever's here last clicked, tapped or tabbed away: where they're typing, if anywhere. */
+let typedIn: Element | null = null;
+/**
+ * Their caret was taken from under them, by what held it going inert or away, and they haven't chosen anything since: shortcuts
+ * sleep until they click or tap, or move on with Tab or Escape, whatever has focus meanwhile.
+ */
+let stranded = false;
+const lost = (e: Element | null): boolean => e !== null && (!e.isConnected || e.closest('[inert]') !== null);
+if (typeof window !== 'undefined') {
+  /* Before anything else hears the key. */
+  addEventListener('keydown', (e) => {
+    if (e.target instanceof Element && editable(e.target)) {
+      typedAt = performance.now();
+      typedIn = e.target;
+      stranded = false;
+    } else if (e.key === 'Tab' || e.key === 'Escape') {
+      stranded = false;
+      typedIn = null;
+    } else if ((e.target === document.body || e.target === document.documentElement) && lost(typedIn)) stranded = true;
+  }, true);
+  addEventListener('pointerdown', () => { stranded = false; typedIn = null; }, true);
+}
+
+/**
+ * Moves focus out of `from`, which is about to go inert or away, to `to`: somewhere nothing happens on a key, such as the
+ * document taking its place, and never anything editable, where the rest of a sentence would land. Someone who was typing
+ * in it is mid-sentence, so single-key shortcuts sleep until they choose something.
+ */
+export function moveFocusOut(from: Element | null, to: HTMLElement | null): void {
+  if (!from) return;
+  const at = document.activeElement;
+  const typingHere = typedIn !== null && from.contains(typedIn);
+  if (!(at !== null && from.contains(at)) && !(typingHere && (at === null || at === document.body))) return;
+  if (typingHere) stranded = true;
+  if (to && !editable(to)) to.focus({ preventScroll: true });
+  else if (at instanceof HTMLElement) at.blur();
+}
+
+/**
+ * A key pressed while typing, which single-key shortcuts leave alone: into a field, a select or editable text, or a moment
+ * after one was, or since whoever was typing lost their caret to the page going inert.
+ */
+export const typing = (t: EventTarget | null): boolean => editable(t) || performance.now() - typedAt < TYPING_MS || stranded;
 /** A dialog, a menu or a list of choices is open: shortcuts leave the page alone, and nothing opens on top. */
 export const overlayOpen = (): boolean => !!document.querySelector('[role="dialog"], [role="listbox"], [role="menu"]');

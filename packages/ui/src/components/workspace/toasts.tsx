@@ -17,6 +17,8 @@ export interface WsToastData {
 
 const PLAIN = 5200;
 const say = (icon: IconName, text: string, action?: WsToastData['action']): WsToastData => ({ icon, text, action, ms: PLAIN });
+/** Words with workspaces' names in them, which can be long: two lines at most, and all of them on hover. */
+const clamped = (text: string): ReactNode => <span className="ac-clamp-2" title={text}>{text}</span>;
 
 /** Every toast in the workspace. Each returns what to show; `WsToasts` draws it, and whoever shows it takes it away after `ms`. */
 export const wsToast = {
@@ -28,6 +30,8 @@ export const wsToast = {
   blockDeleted: (onUndo: () => void) => say('trash', 'Block deleted', { label: 'Undo', onClick: onUndo }),
   canOpen: (first: string, level: 'read' | 'edit', document: string) => say('check', `${first} can ${level} ${document}`),
   stoppedFollowing: (first: string, onAgain: () => void) => say('navigate', `Stopped following ${first}`, { label: 'Follow again', onClick: onAgain }),
+  /** The call's workspace changed while you were following someone in it. */
+  followingEnded: (first: string) => say('navigate', `Stopped following ${first}. The call’s workspace changed.`),
   cantOpen: (first: string) => say('lock', `${first} is in a document you can’t open`),
   tagged: (person: AvatarPerson, first: string, document: string, onGo: () => void): WsToastData => ({ person, text: `${first} tagged you in ${document}`, action: { label: 'Go there', onClick: onGo }, ms: 9000 }),
   resolved: (onReopen: () => void) => say('check', 'Comment resolved', { label: 'Reopen', onClick: onReopen }),
@@ -40,10 +44,12 @@ export const wsToast = {
   stoppedPresenting: () => say('presentation', 'You stopped presenting. Everyone’s back where they were.'),
   stoppedTheirPresenting: (first: string) => say('presentation', `You stopped ${first}’s presentation. Everyone’s back where they were.`),
   presentingPrivate: (first: string) => say('lock', `${first} is presenting something you can’t open`),
+  presenterLeft: (first: string) => say('presentation', `${first} left the call, so the presentation ended`),
   /** Everyone views another workspace, or the call's home again (`home` null): the notes still go home. */
-  switched: (name: string, home: string | null, onBack: () => void) =>
-    say('swap', home ? `Everyone’s in ${name} now. Notes still go to ${home}.` : `Everyone’s back in ${name}, where the notes go.`, { label: 'Back', onClick: onBack }),
-  newSpace: (name: string, home: string | null) => say('folders', home ? `New workspace, ${name}. Everyone’s in it, and notes still go to ${home}.` : `New workspace, ${name}. Everyone’s in it now.`),
+  switched: (name: string, home: string | null, onBack: () => void): WsToastData =>
+    ({ ...say('swap', '', { label: 'Back', onClick: onBack }), text: clamped(home ? `Everyone’s in ${name} now. Notes still go to ${home}.` : `Everyone’s back in ${name}, where the notes go.`) }),
+  newSpace: (name: string, home: string | null): WsToastData =>
+    ({ ...say('folders', ''), text: clamped(home ? `New workspace, ${name}. Everyone’s in it, and notes still go to ${home}.` : `New workspace, ${name}. Everyone’s in it now.`) }),
   /** For whoever asked to see the workspace, when the organizer says not now; and for the organizer who said it. */
   saidNotNow: (organizer: string) => say('lock', `${organizer} said not now`),
   toldNotNow: (first: string) => say('check', `${first} was told not now`),

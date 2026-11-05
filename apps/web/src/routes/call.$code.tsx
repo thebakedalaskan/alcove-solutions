@@ -1012,6 +1012,9 @@ function InCall({ session }: { session: CallSession }) {
     return () => removeEventListener('keydown', onKey);
   }, [work.act, toggleZen]);
 
+  /* What the workspace said last, such as a switch with Back, means nothing once the call's over, and sits over Leave's question. */
+  useEffect(() => { if (ended || leaveOpen) work.act.hush(); }, [ended, leaveOpen, work.act]);
+
   /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
   /*
    * The last audio and speech go before the call ends or this browser leaves it: the server refuses them after. That's
@@ -1439,7 +1442,7 @@ function InCall({ session }: { session: CallSession }) {
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
             <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
-              listOff={!solved.A.list} listPeek={work.peek} live={liveCall} act={work.act} presenting={presenting} playing={playing} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+              listOff={!solved.A.list} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenting={presenting} playing={playing} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
@@ -1530,7 +1533,8 @@ function InCall({ session }: { session: CallSession }) {
           </CallDock>
         </footer>
       </div>
-      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act} />
+      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act}
+        onChoose={() => { work.act.wantList(); setFront('ws'); if (phone) setPanel(null); onShowList(); }} />
       <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
         others={sharing.map((s) => s.presenter)} trouble={shareTrouble} read={sharingInRoom ? undefined : screenRead(state.capture.screen.mode)} onShare={share} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}

@@ -7,6 +7,7 @@ import { WsDoc, WsDocHead, WsList, WsPane, WsSection } from '@alcove/ui';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { WorkspaceCall, WorkspacePlace } from '../context';
 import { LiveHostContext, type LiveHost } from './host';
+import { NO_IDS } from '../ids';
 import { LivePage } from './LivePage';
 import { LiveRows } from './LiveRows';
 import type { LiveCall } from './types';
@@ -24,7 +25,7 @@ export function OutsideSpace({ live, at, go, say, closed, zen, list, children }:
     else list.onToggle();
   }, [list.onToggle]);
   const goAndClose = useCallback<LiveHost['go']>((to) => { setPhoneList(false); go(to); }, [go]);
-  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, zen }), [live, at, goAndClose, say, closed, toggleList, zen]);
+  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, zen, ids: NO_IDS }), [live, at, goAndClose, say, closed, toggleList, zen]);
   return (
     <LiveHostContext value={host}>
       <WsPane listOff={list.off} listPeek={list.peek} phoneList={phoneList} zen={zen?.on}>

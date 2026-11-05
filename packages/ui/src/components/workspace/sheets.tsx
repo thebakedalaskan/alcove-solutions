@@ -238,9 +238,13 @@ export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, on
   name: string; current: string; home?: string | undefined; cantOpen?: string[] | undefined; onSwitch: () => void; onKeep: () => void;
 }) {
   const who = cantOpen.length === 1 ? cantOpen[0] : `${cantOpen.length} people`;
+  /* It takes the menu's place, and focus with it: on the question, so a stray key or Enter switches nobody. Tab reaches the answers. */
+  const box = useRef<HTMLDivElement>(null);
+  const question = useId();
+  useEffect(() => { box.current?.focus({ preventScroll: true }); }, []);
   return (
-    <div className="wv-switch">
-      <b>Switch this call to {name}?</b>
+    <div ref={box} className="wv-switch" tabIndex={-1} role="group" aria-labelledby={question}>
+      <b id={question}>Switch this call to {name}?</b>
       <p>Everyone sees the change. Nobody is disconnected, and nothing moves or is copied.{home ? ` Notes and the transcript still go to ${home}.` : ''}</p>
       {cantOpen.length > 0 && <p className="warn"><Icon name="info" size={15} /><span>{who} can’t open {name}. They stay in the call and see that it’s private, not what’s in it.</span></p>}
       <div className="ac">
@@ -361,9 +365,10 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
 }
 
 /**
- * Someone in the call asked to see the workspace, on the organizer's screen. Pass the person to show it: it drops in 8 px,
- * 420 ms, waits, and lifts away, 240 ms, when you pass null. `document`: what they can be let into, read only (`onLet`) or
- * to edit (`onEdit`), the one open in front of you. With none open, `onChoose` opens the workspace to pick one.
+ * Someone in the call asked to see the workspace, on the organizer's screen: at the top, or above the dock on a phone, where
+ * it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
+ * you pass null. `document`: what they can be let into, read only (`onLet`) or to edit (`onEdit`), the one open in front of
+ * you. With none open, `onChoose` opens the workspace on something to share, or its list to pick one.
  */
 export function WsKnock({ person, document, onLet, onEdit, onChoose, onNotNow }: {
   person: AvatarPerson | null; document: string | null; onLet: () => void; onEdit: () => void; onChoose: () => void; onNotNow: () => void;

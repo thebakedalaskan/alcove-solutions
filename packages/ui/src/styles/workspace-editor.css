@@ -220,7 +220,8 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 
 .ws-float .ws-pop { position: fixed; left: 0; top: 0; }
 .ws-float .ws-ghost { pointer-events: none; }
-.wd-title.is-empty::before { content: attr(data-ph); float: left; height: 0; color: var(--ink-3); opacity: .7; pointer-events: none; }
+/* The name it'll have, in the title's place: as tall as it is, wrapped, with the caret over its first line. */
+.wd-title.is-empty::before { content: attr(data-ph); display: inline-block; vertical-align: top; width: 100%; margin-right: -100%; color: var(--ink-3); opacity: .7; pointer-events: none; }
 .wd-title { margin: 0; }
 .wd-tail { padding: 0; border: 0; background: none; }
 .ws-pane.is-reading .wb-rc { display: none; }

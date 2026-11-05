@@ -39,6 +39,7 @@ export const qk = {
   balance: ['credits'] as const,
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  personIds: (id: string, emails: readonly string[]) => ['workspaces', id, 'ids', ...emails] as const,
   workspaceMedia: (id: string) => ['workspaces', id, 'media'] as const,
   mentions: ['workspaces', 'mentions'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
@@ -131,6 +132,8 @@ export const q = {
   documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** The IDs a workspace's documents know these people by (features/workspace/ids.ts). An ID never changes. */
+  personIds: (id: string, emails: readonly string[], pass?: string | undefined) => queryOptions({ queryKey: qk.personIds(id, emails), queryFn: () => api.workspaces.ids(id, [...emails], pass ? { pass } : undefined), staleTime: Infinity }),
   /** What you've been tagged in and haven't seen, anywhere. */
   mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */

@@ -10,14 +10,14 @@ import { errorMessage, firstName, type CallSession, type CallWorkspace, type Per
 import { DURATION, WsLostSpace, WsNoAccess, WsPane, cn, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CallPerson, CallTogether, SpaceHead, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspacePresenting, WorkspaceTogether } from '~/features/workspace/context';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
 import type { LiveCall } from '~/features/workspace/live/types';
 import { presentingStrip } from '~/features/workspace/Presentation';
 import { Workspace } from '~/features/workspace/Workspace';
-import { overlayOpen } from '~/lib/keys';
+import { moveFocusOut, overlayOpen } from '~/lib/keys';
 import { log } from '~/lib/log';
 import { useFirstDocument, q, useMentionSeen } from '~/lib/queries';
 import { SpacePicker } from './SpacePicker';
@@ -54,6 +54,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   const [at, setAt] = useState<WorkspacePlace>(kept.document ? { kind: 'document', id: kept.document } : { kind: 'home' });
   const [zen, setZen] = useState(false);
   const [peek, setPeek] = useState(false);
+  /** How many times something outside the workspace asked for its list (`WorkspaceCall.list.wanted`). */
+  const [listWanted, setListWanted] = useState(0);
   /** ⌘K asked for Find, and the workspace hasn't heard yet. */
   const [finding, setFinding] = useState(false);
   /** The call has said which workspace it uses, for this browser. */
@@ -104,6 +106,10 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       found: () => setFinding(false),
       /** Opens it where you were, as for a presentation. */
       show: reveal,
+      /** Opens it on something to share: the document last open there, or its list to pick one, on a phone too (`WorkspaceCall.list.wanted`). */
+      wantList: () => { reveal(); setListWanted((n) => n + 1); },
+      /** Takes away what the workspace said last, for something it would sit over, such as the call ending. */
+      hush: () => { said.current?.(); said.current = null; },
       go: (to: WorkspacePlace) => { setAt(to); setPeek(false); },
       /** Just the document, which opens the workspace if it has to, or everything back. */
       setZen: (on: boolean) => { if (on) reveal(); setZen(on); },
@@ -204,7 +210,7 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     return () => document.removeEventListener('keydown', esc, true);
   }, [zen, peek]);
 
-  return { open, mounted, at, zen, peek, settled, finding, act, together, lit, reach };
+  return { open, mounted, at, zen, peek, listWanted, settled, finding, act, together, lit, reach };
 }
 export type WorkspacePanelState = ReturnType<typeof useWorkspacePanel>;
 
@@ -222,7 +228,7 @@ function editing(t: EventTarget | null): boolean {
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, live, act, reach, people, invited, presenting, playing, onToggleList, onShowList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, listWanted, live, act, reach, people, invited, presenting, playing, onToggleList, onShowList, onToggleZen }: {
   workspace: CallWorkspace;
   /** What's presented where you are, and what you're doing about it (presenting.ts). */
   presenting: WorkspacePresenting;
@@ -244,6 +250,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   zen: boolean | null;
   listOff: boolean;
   listPeek: boolean;
+  listWanted: number;
   /** The call's notes, follow-ups and transcript. */
   live: LiveCall;
   act: WorkspacePanelState['act'];
@@ -261,9 +268,9 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const call = useMemo((): WorkspaceCall => ({
     top: home !== null && home === workspace.id ? undefined : LIVE_ROWS, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
-    list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList },
+    list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList, wanted: listWanted },
     presenting, playing
-  }), [ home, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, onToggleList, onShowList, presenting, playing ]);
+  }), [ home, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, listWanted, onToggleList, onShowList, presenting, playing ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /*
@@ -271,7 +278,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
    * with that one, as it does in the list: whoever can't open this one is told it's private, and nothing about another.
    */
   const now: Shown = { key: workspace.id ?? 'outside', id: workspace.id, at, call };
-  const { leaving, gone, box } = useLeaving(now, settled);
+  const { leaving, gone, box, held } = useLeaving(now, settled);
   /* Nothing opens until the call has said what's here: what it opens on may have only just been made. */
   if (!settled) return <WsPane />;
   const draw = (s: Shown) => (s.id !== null
@@ -284,8 +291,8 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
       ));
   return (
     <div className="ic-wsx">
-      {leaving && <div key={leaving.key} className={cn('ic-wsx-slot is-leaving', gone && 'is-gone')} inert aria-hidden>{draw(leaving)}</div>}
-      <div key={now.key} ref={box} className="ic-wsx-slot">{draw(now)}</div>
+      {leaving && <div key={leaving.key} ref={held} className={cn('ic-wsx-slot is-leaving', gone && 'is-gone')} inert aria-hidden>{draw(leaving)}</div>}
+      <div key={now.key} ref={box} tabIndex={-1} className="ic-wsx-slot">{draw(now)}</div>
     </div>
   );
 });
@@ -304,13 +311,17 @@ function useLeaving(now: Shown, settled: boolean) {
   const [leaving, setLeaving] = useState<Shown | null>(null);
   const [gone, setGone] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  /** What's leaving, which goes out of reach the moment it starts to. */
+  const held = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
   /* Worked out as it's drawn, so there's never a frame with neither. What's leaving keeps the place and the call it had. */
   if (shown.key !== now.key) {
     setShown(now);
-    setLeaving(settled ? { ...shown, call: { ...shown.call, closed: true } } : null);
+    setLeaving(settled ? { ...shown, call: { ...shown.call, closed: true, leaving: true } } : null);
     setGone(false);
   } else if (shown.at !== now.at || shown.call !== now.call) setShown(now);
+  /* Whoever was in what's leaving, typing perhaps, lands on what's coming, where a key does nothing, and the call's letters sleep. */
+  useLayoutEffect(() => { if (leaving) moveFocusOut(held.current, box.current); }, [leaving]);
   useEffect(() => {
     if (!leaving) return;
     let frame = 0;
@@ -332,11 +343,14 @@ function useLeaving(now: Shown, settled: boolean) {
       const hold = drawn();
       since = hold === null ? 0 : since || now;
       if ((hold === null || now - since < hold) && now - started < 1500) { frame = requestAnimationFrame(look); return; }
+      // Drawn: from the slot to its document, if focus is still where it landed, so the keys that move a page move this one.
+      const page = box.current?.querySelector<HTMLElement>('.wd-scroll');
+      if (page && document.activeElement === box.current) { page.tabIndex = -1; page.focus({ preventScroll: true }); }
       setGone(true);
       done = setTimeout(() => setLeaving(null), reduce ? 0 : DURATION[2] * 1000 + 40);
     };
     look();
     return () => { cancelAnimationFrame(frame); clearTimeout(done); };
   }, [leaving, reduce]);
-  return { leaving, gone, box };
+  return { leaving, gone, box, held };
 }

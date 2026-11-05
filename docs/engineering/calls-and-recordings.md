@@ -988,13 +988,15 @@ into the call. Being in a call, or organizing it, opens nothing.
   (`workspaceForCall`), or, for a call that had notes and never did either, as it ends, so its notes land somewhere. A call
   with notes off that nobody opened Workspace in makes none. It's the organizer's whoever settles it: a guest's click can
   make it, and tells the guest nothing. A new home is made under the call's row, since nobody else can reach it yet, so
-  people opening it at once get one. A chosen home the organizer can no longer make things in, or one deleted since, isn't
-  theirs to use: the call gets a new one, and the meeting names it. A home made for a call doesn't count towards the
+  people opening it at once get one. A chosen home the organizer can no longer make things in, one deleted since, or one with
+  no room for the call's folder (a full tree), isn't theirs to use: the call gets a new one, and the meeting names it. A home
+  counts as having the call's folder only once the folder's there. A home made for a call doesn't count towards the
   workspaces someone can make by hand (`MAX_MADE`). The home doesn't change during the call, whichever workspace is viewed.
 - **In a series.** The next call scheduled takes `workspaceId` with it, and every call of a series scheduled to repeat
   starts with it. A call that settles a new home takes the later calls that had none, or had the one it replaced, along,
   once the call's row is let go, so a series shares one home with a folder for each call. A later call someone gave a
-  workspace of its own keeps it. A home made for a series lets in each of its calls' invitees as that call settles there.
+  workspace of its own keeps it. A home made for a series lets in each of its calls' invitees as that call settles there, as below. A home made for a call
+  isn't capped by count: only a call opening Workspace, or ending with notes, makes one.
 - **Switching what's viewed.** Only the organizer (`workspace-set`), and only to a workspace where they have at least `edit`:
   a role of `read` is `403`, and one they can't reach is the same `404` as one that doesn't exist. It's the call's sealed
   `workspace.viewing` (null: the home), and it ends with the call: the meeting, its home and the series' later calls don't
@@ -1158,11 +1160,15 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
   put in it. Opening a page reads the call or the note through their own access, so a stale tree can never read either.
 - **When the call ends** (`afterCall`), the folder is told it's over and given its note, if it had notes, which publishes the
   tree. A folder taken and never made is made then. It never throws: the call has ended all the same.
-- **Who's in a home made for a call** follows its invite (`followInvite`): everyone invited is in it to edit; someone let
-  in from the link who goes on the invite, or rung, is let in too; and someone taken off the invite is taken out again, if
-  the invite put them there (the home keeps who it added, sealed) and their role is the one it gave them. Nobody added by
-  hand is taken out, and a guest without an account gets nothing unless something's shared. A chosen home's people are its
-  own. All of it happens once the call's row is let go, and a failure is logged, and tried again by the next change.
+- **Who's in a home made for a call** follows its invite (`followInvite`), one change at a time. A new home is made with its
+  organizer alone, under the call's row; everyone invited is let in to edit once the row's let go, and again as each call of
+  a series settles there. Whoever a change puts on the invite is let in: rung, let in from the link, or added to a scheduled
+  call or a series' later calls. Whoever a change takes off it is taken out: removed in the call, or taken off a scheduled
+  call or a series' later calls, unless the series still invites them to a call that hasn't ended. Each member's sealed record
+  says whether the invite put them there; only those are ever taken out, and adding someone or changing their role by hand
+  makes their place theirs. Someone taken out by hand, or who left, is kept on the home's `out` list, and no invite puts
+  them back; an admin adding them by hand takes them off it. A guest without an account gets nothing unless something's
+  shared. A chosen home's people are its own. A failure is logged, and tried again by the next change or the next call.
 - **Like any folder** otherwise: it can be renamed, moved and sent to Trash. A copy of it is a plain folder.
 
 ## A board in a call
@@ -1380,8 +1386,9 @@ share picker, the leave sheet and the device pickers.
   The panel shows only the workspace everyone views now, so what was brought from another stays with that one, and anyone
   who can't open this one is told it's private (`WsNoAccess`, whose Ask is `askForWorkspace`). When which it shows changes,
   what was there stays over what's coming, as it was and out of reach, until that has drawn its list and page (or says
-  it's private), then fades, 240 ms. The organizer answers asks at the top of the call (`WsKnock`, `WorkspaceAsks.tsx`) with
-  the document in front of them, else the agenda or the first thing brought: `grantWorkspaceAsk` to read or edit,
+  it's private), then fades, 240 ms. The organizer answers asks at the top of the call, or above the dock on a phone (`WsKnock`,
+  `WorkspaceAsks.tsx`), with the document in front of them, else the agenda or the first thing brought; with none, Open the
+  workspace opens the document they were last in there, or the list (`WorkspaceCall.list.wanted`): `grantWorkspaceAsk` to read or edit,
   `declineWorkspaceAsk` for not now, and only a document they can share is offered. Whoever asked sees the workspace open by
   itself on the document (on a phone too, which otherwise shows the list first), or hears not now and can ask again.
 - **The call's own pages** (`features/workspace/live`). The call gives the workspace one object for the whole call (`LiveCall`, from

@@ -14,6 +14,8 @@ import type { WorkspacePlace, WorkspacePresenting } from '~/features/workspace/c
 import { log } from '~/lib/log';
 
 const plog = log.child({ component: 'presenting' });
+/** How long after a presentation ends its presenter's leaving the call is taken as why it ended. */
+const PRESENTER_LEFT_MS = 4000;
 
 /** Who started what's presented, and what it is: a new presentation is a new key, even of the same document. */
 const keyOf = (p: CallPresent | null): string | null => (p ? `${p.by.seat} ${p.kind ?? ''} ${p.id ?? ''}` : null);
@@ -71,6 +73,30 @@ export function usePresenting({ session, present, participants, open, inSight, s
     awayAtEnd.current = false;
     setOwnWay(null);
   }, [presented, hide]);
+
+  /*
+   * A presentation that ends because its presenter left the call is said to have, for everyone, whether they could open
+   * it or not: otherwise it just vanishes. The call can say they've gone a moment before or after it says the presentation
+   * has, so their going is looked for for a moment after it ends. Someone who stopped it themselves stays, and nothing's said.
+   */
+  const by = useRef<CallPresent['by'] | null>(null);
+  if (present) by.current = present.by;
+  const lastKey = useRef(key);
+  const ended = useRef<{ by: CallPresent['by']; at: number } | null>(null);
+  useEffect(() => {
+    const was = lastKey.current;
+    lastKey.current = key;
+    if (was !== null && key === null && by.current) ended.current = { by: by.current, at: Date.now() };
+    else if (key !== null) ended.current = null;
+  }, [key]);
+  useEffect(() => {
+    const e = ended.current;
+    if (!e) return;
+    if (Date.now() - e.at > PRESENTER_LEFT_MS) { ended.current = null; return; }
+    if (participants.some((p) => p.seat === e.by.seat)) return;
+    ended.current = null;
+    say(wsToast.presenterLeft(firstName(e.by.name)));
+  }, [key, participants, say]);
 
   /* Someone who can't open what's presented is told who's presenting, and nothing else: in the strip, or here if the workspace isn't in sight. */
   const toldOf = useRef<string | null>(null);

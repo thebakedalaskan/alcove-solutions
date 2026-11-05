@@ -21,10 +21,10 @@ import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
 import {
   TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
-  workspaceFor, workspaceKey, type Credentials, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
+  workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
-import { nudgeCall, seated } from './calls';
+import { addressesIn, nudgeCall, seated } from './calls';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, startContent } from './workspaceDocuments';
@@ -299,28 +299,27 @@ const inviteesOf = (invited: string[], organizer: string): string[] => [...new S
 
 /**
  * A call's new home, in the caller's transaction, which holds the call's row: nobody else can reach it yet, so nothing waits
- * on it. The organizer is its admin, and everyone invited is in it to edit, the same people who get the notes; the call's
- * folder is at the top. It's the call's, so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
+ * on it. The organizer is its admin and the call's folder is at the top. Everyone invited, the same people who get the notes,
+ * is let in to edit once the call's row is let go (`followInvite`), so a big invite never holds the call up. It's the call's,
+ * so it doesn't count towards the workspaces someone can make (`MAX_MADE`).
  */
-export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'added'>; invited: string[]; folder: CallFolder }): Promise<{ id: string }> {
+export async function makeHome(o: Owner, c: Db, home: { name: string; madeFor: Omit<MadeFor, 'out'>; folder: CallFolder }): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  const added = inviteesOf(home.invited, me.email).slice(0, MAX_PEOPLE - 1);
-  const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, added } };
+  const state: WorkspaceState = { name: home.name, items: { [home.folder.id]: folderOf(home.folder, FIRST, new Date().toISOString()) }, madeFor: { ...home.madeFor, out: [] } };
   await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, state)]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
-  for (const email of added) await addMember(owner, c, id, email, 'edit');
   await noteAuthor({ owner }, c, me.email);
-  wlog.info('call home made', { workspaceId: id, people: added.length + 1 });
+  wlog.info('call home made', { workspaceId: id });
   return { id };
 }
 
 /**
  * Puts a call's folder at the top of its home, in the caller's transaction, which holds the home's row (`serverWorkspace` with
- * `change`), unless it's there already, or was and has gone: whoever gets there first makes it, with the ID the call took for
- * it. True when it's there now. A full workspace has no room for it, and the call goes on without.
+ * `change`), unless it's there already: whoever gets there first makes it, with the ID the call took for it. True when it's
+ * there now; false for a workspace with no room for it, and the call settles on another home.
  */
 export async function addCallFolder(w: HeldWorkspace, db: Db, folder: CallFolder): Promise<boolean> {
   if (w.state.items[folder.id]) return true;
@@ -332,37 +331,33 @@ export async function addCallFolder(w: HeldWorkspace, db: Db, folder: CallFolder
   return true;
 }
 
+/** What a change to a call's invite asks of its home: who it just put on the invite, and who it just took off. */
+export interface InviteChange { add?: string[] | undefined; gone?: string[] | undefined }
 /**
- * Who's in a call's home follows its invite, when it was made for that call or its series (`MadeFor`): everyone invited is in
- * it, to edit, and whoever's taken off the invite (`gone`) is taken out again, if it was the invite that put them there and
- * their role is still the one it gave them. Anyone added by hand stays as they are. In the caller's transaction, which holds
- * the home's row.
+ * Who's in a call's home follows its invite, when it was made for that call or its series (`MadeFor`), one change at a time:
+ * whoever the change put on the invite is let in to edit, once, unless they're in already or out by hand (`MadeFor.out`:
+ * taken out, or they left); and whoever it took off is taken out, if the invite let them in and nobody has changed their place
+ * by hand since. Anyone added or changed by hand stays as they are. In the caller's transaction, which holds the home's row.
  */
-export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, invited: string[], gone: string[] = []): Promise<{ added: number; removed: number }> {
+export async function followInvite(w: HeldWorkspace, db: Db, organizer: string, change: InviteChange): Promise<{ added: number; removed: number }> {
   const made = w.state.madeFor;
   if (!made) return { added: 0, removed: 0 };
-  const ownerId = w.owner.ownerId;
-  const members = await rows(db, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [ownerId]);
+  const members = await rows(db, Member, 'SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId]);
   const indexOf = (email: string) => blindIndex(masterKey(w.owner), 'email', email);
   const memberOf = (email: string) => { const at = indexOf(email); return members.find((m) => Buffer.compare(m.email_index, at) === 0); };
-  const leaving = inviteesOf(gone, organizer).filter((e) => made.added.includes(e));
-  const joining = inviteesOf(invited, organizer).filter((e) => !leaving.includes(e) && !memberOf(e)).slice(0, Math.max(0, MAX_PEOPLE - members.length));
-  for (const email of joining) await addMember(w.owner, db, w.workspaceId, email, 'edit');
-  let removed = 0;
-  for (const email of leaving) {
-    const m = memberOf(email);
-    if (m?.role !== 'edit') continue;
-    await dropMember(w, db, m);
-    removed++;
-  }
-  const added = [...made.added.filter((e) => !leaving.includes(e)), ...joining];
+  const leaving = inviteesOf(change.gone ?? [], organizer).flatMap((e) => {
+    const m = memberOf(e);
+    return m && m.role === 'edit' && personOfMember(w, m).invited ? [m] : [];
+  });
+  const joining = inviteesOf(change.add ?? [], organizer).filter((e) => !made.out.includes(e) && !memberOf(e)).slice(0, Math.max(0, MAX_PEOPLE - members.length));
+  for (const email of joining) await addMember(w.owner, db, w.workspaceId, email, 'edit', undefined, true);
+  for (const m of leaving) await dropMember(w, db, m, 'taken');
   if (joining.length || leaving.length) {
-    w.state = { ...w.state, madeFor: { ...made, added } };
     await saveState(w, db);
     await publish(db, w.workspaceId, TREE_NOTICE);
-    wlog.info('call home follows its invite', { workspaceId: w.workspaceId, added: joining.length, removed });
+    wlog.info('call home follows its invite', { workspaceId: w.workspaceId, added: joining.length, removed: leaving.length });
   }
-  return { added: joining.length, removed };
+  return { added: joining.length, removed: leaving.length };
 }
 export async function rename(d: Deps, reader: Reader, workspaceId: string, name: string): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
@@ -390,15 +385,27 @@ export async function remove(d: Deps, reader: Reader, workspaceId: string): Prom
 
 /* ---------- people ---------- */
 
-/** Who a member is, beside the keyed hash of their address, so it goes with their row. */
-const MemberPerson = z.object({ email: z.string(), name: z.string().optional() });
+/**
+ * Who a member is, beside the keyed hash of their address, so it goes with their row. `invited`: a call's invite let them into
+ * its home, and nobody has changed their place by hand since, so taking them off the invite takes them out again.
+ */
+const MemberPerson = z.object({ email: z.string(), name: z.string().optional(), invited: z.boolean().default(false) });
 const memberHeader = (o: Owner, workspaceId: string, memberId: string): RecordHeader => ({ v: 1, kind: 'workspace-member', ownerId: o.ownerId, workspaceId, memberId });
 const Member = z.object({ member_id: z.string(), email_index: bytea, role: z.enum(['admin', 'edit', 'read']), person_ciphertext: bytea, created_at: timestamp });
-async function addMember(o: Owner, db: Db, workspaceId: string, email: string, role: WorkspaceRole, name?: string | undefined): Promise<string> {
+const sealMember = (o: Owner, workspaceId: string, memberId: string, who: z.input<typeof MemberPerson>): Uint8Array => sealJson(workspaceKey(o), memberHeader(o, workspaceId, memberId), toJson(who));
+const personOfMember = (w: Pick<HeldWorkspace, 'owner' | 'workspaceId'>, m: z.infer<typeof Member>) => openJson(workspaceKey(w.owner), memberHeader(w.owner, w.workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
+async function addMember(o: Owner, db: Db, workspaceId: string, email: string, role: WorkspaceRole, name?: string | undefined, invited = false): Promise<string> {
   const memberId = id128();
-  const person = sealJson(workspaceKey(o), memberHeader(o, workspaceId, memberId), toJson({ email: email.trim().toLowerCase(), ...(name ? { name } : {}) }));
+  const person = sealMember(o, workspaceId, memberId, { email: email.trim().toLowerCase(), ...(name ? { name } : {}), ...(invited ? { invited } : {}) });
   await exec(db, 'INSERT INTO workspace_members (owner_id, member_id, email_index, role, person_ciphertext) VALUES ($1,$2,$3,$4,$5)', [o.ownerId, memberId, blindIndex(masterKey(o), 'email', email), role, person]);
   return memberId;
+}
+/** Someone's place changed by hand: from now on it's theirs, not the invite's, and an address back by hand isn't out any more. */
+async function byHand(w: Workspace, db: Db, m: z.infer<typeof Member>): Promise<void> {
+  const who = personOfMember(w, m);
+  if (who.invited) await exec(db, 'UPDATE workspace_members SET person_ciphertext = $3 WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id, sealMember(w.owner, w.workspaceId, m.member_id, { ...who, invited: false })]);
+  const made = w.state.madeFor;
+  if (made?.out.includes(who.email)) w.state = { ...w.state, madeFor: { ...made, out: made.out.filter((e) => e !== who.email) } };
 }
 const admins = async (w: Workspace, db: Db): Promise<number> => (await maybeOne(db, z.object({ n: z.number() }), "SELECT count(*)::int AS n FROM workspace_members WHERE owner_id = $1 AND role = 'admin'", [w.owner.ownerId]))?.n ?? 0;
 const onlyAdmin = (w: Workspace) => new ConflictError('A workspace needs an admin. Make someone else one first.', { context: { workspaceId: w.workspaceId } });
@@ -414,6 +421,20 @@ export async function people(d: Deps, reader: Reader, workspaceId: string): Prom
     return { id: m.member_id, person: { ...personOf(who.email, who.name), id: personKey(w.owner, m.email_index) }, role: m.role, since: m.created_at.toISOString(), isMe: reader.principals.some((p) => Buffer.compare(p, m.email_index) === 0) };
   });
 }
+/**
+ * The IDs this workspace's documents know people by, for addresses a document may tag or quote: each keyed under the
+ * workspace's own keys, as a member's is (`people`), so an ID in a document says nothing about an address, and nobody can
+ * check a guess against one without asking here. Anyone in the workspace may ask about any address; someone who can open
+ * something here only through a call, about the people who've been in that call, the organizer among them.
+ */
+export async function idsOf(d: Deps, reader: Reader, workspaceId: string, emails: string[]): Promise<Record<string, string>> {
+  const w = await workspaceFor(d, reader, workspaceId);
+  const wanted = [...new Set(emails.map((e) => e.trim().toLowerCase()))];
+  const inCall = w.role === null && reader.seat ? await addressesIn(reader.seat.viewer) : new Set<string>();
+  const may = w.role !== null ? wanted : wanted.filter((e) => inCall.has(e));
+  wlog.debug('people’s IDs given', { workspaceId, asked: wanted.length, given: may.length, member: w.role !== null });
+  return Object.fromEntries(may.map((e) => [e, personKey(w.owner, blindIndex(masterKey(d), 'email', e))]));
+}
 export async function addPerson(d: Deps, reader: Reader, workspaceId: string, email: string, role: WorkspaceRole): Promise<{ id: string }> {
   return change(d, reader, workspaceId, async (w, c) => {
     requireRole(w, 'admin');
@@ -422,10 +443,14 @@ export async function addPerson(d: Deps, reader: Reader, workspaceId: string, em
     if (!there) {
       if (w.people >= MAX_PEOPLE) throw new ConflictError('This workspace has as many people as it can. Take someone out first.', { context: { workspaceId, people: w.people } });
       const id = await addMember(w.owner, c, workspaceId, email, role);
+      const made = w.state.madeFor;
+      const address = email.trim().toLowerCase();
+      if (made?.out.includes(address)) w.state = { ...w.state, madeFor: { ...made, out: made.out.filter((e) => e !== address) } };
       wlog.info('person added', { workspaceId, memberId: id, role });
       return { id };
     }
     await setMemberRole(w, c, there, role);
+    await byHand(w, c, there);
     return { id: there.member_id };
   });
 }
@@ -440,6 +465,7 @@ export async function setRole(d: Deps, reader: Reader, workspaceId: string, memb
     const m = await memberBy(w, c, memberId);
     if (!m) throw noOne(w, memberId);
     await setMemberRole(w, c, m, role);
+    await byHand(w, c, m);
   });
 }
 export async function removePerson(d: Deps, reader: Reader, workspaceId: string, memberId: string): Promise<void> {
@@ -450,21 +476,27 @@ export async function removePerson(d: Deps, reader: Reader, workspaceId: string,
     if (!leaving) requireRole(w, 'admin');
     if (!m) throw noOne(w, memberId);
     if (m.role === 'admin' && (await admins(w, c)) <= 1) throw onlyAdmin(w);
-    const trashed = await dropMember(w, c, m);
-    wlog.info('person removed', { workspaceId, memberId, leaving, trashed });
+    const stranded = await dropMember(w, c, m, leaving ? 'left' : 'taken');
+    // A call's invite never puts back someone taken out by hand, or who left. The newest are kept, as many as can be in it.
+    const made = w.state.madeFor;
+    const { email } = personOfMember(w, m);
+    if (made && !made.out.includes(email)) w.state = { ...w.state, madeFor: { ...made, out: [...made.out, email].slice(-MAX_PEOPLE) } };
+    wlog.info('person removed', { workspaceId, memberId, leaving, stranded });
   });
 }
 /**
  * Takes someone out, in the caller's transaction, which holds the workspace's row; the caller saves the state. What they had
- * by restricting something goes with them, so coming back gives them only what they're given, and what only they could reach
- * goes to Trash. How much did.
+ * by restricting something goes with them, so coming back gives them only what they're given. What only they could reach:
+ * taken out (`taken`, by an admin or by a call's invite), it goes to the workspace's admins (`handStranded`), so nobody's
+ * words are lost to a change nobody made of that document; leaving (`left`), it's still theirs, in Trash, for 30 days, should
+ * they come back (`trashStranded`), and nobody else's to read. How much did.
  */
-async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>): Promise<number> {
+async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, why: 'taken' | 'left'): Promise<number> {
   await exec(c, 'DELETE FROM workspace_members WHERE owner_id = $1 AND member_id = $2', [w.owner.ownerId, m.member_id]);
   await exec(c, 'DELETE FROM workspace_mentions WHERE owner_id = $1 AND principal_index = $2', [w.owner.ownerId, m.email_index]);
-  const { email } = openJson(workspaceKey(w.owner), memberHeader(w.owner, w.workspaceId, m.member_id), m.person_ciphertext, MemberPerson);
+  const { email } = personOfMember(w, m);
   w.state = { ...w.state, items: Object.fromEntries(Object.entries(w.state.items).map(([id, x]) => [id, x.restrictedBy === email ? { ...x, restrictedBy: null } : x])) };
-  return trashStranded(w, c);
+  return why === 'taken' ? handStranded(w, c) : trashStranded(w, c);
 }
 
 /* ---------- the tree ---------- */
@@ -745,6 +777,23 @@ async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
     return members.has(index);
   };
   return restricted.filter(([id, x]) => !given.has(id) && !inHere(x.by?.email) && !inHere(x.restrictedBy)).map(([id]) => id);
+}
+/**
+ * Gives the workspace's admins what nobody can open any more because someone was taken out: restricted as it was, shared with
+ * each admin to edit, so they decide its fate and nobody's words go to Trash for a change of people. In the caller's
+ * transaction, which holds the workspace's row. How many it gave.
+ */
+async function handStranded(w: HeldWorkspace, db: Db): Promise<number> {
+  const stranded = (await strandedIn(w, db)).filter((id) => !w.state.items[id]?.trashedAt);
+  if (!stranded.length) return 0;
+  // Its longest-standing hundred admins at most: any of them can give it on.
+  const admins = await rows(db, Member, "SELECT member_id, email_index, role, person_ciphertext, created_at FROM workspace_members WHERE owner_id = $1 AND role = 'admin' ORDER BY created_at, member_id LIMIT 100", [w.owner.ownerId]);
+  const to = admins.map((m): Grant => ({ kind: 'email', email: personOfMember(w, m).email, role: 'edit' }));
+  // A workspace always keeps an admin, so there's someone to give it to; were there nobody, Trash is all that's left.
+  if (!to.length) return trashStranded(w, db);
+  for (const id of stranded) await grant(w, db, id, to);
+  wlog.info('restricted things given to the admins', { workspaceId: w.workspaceId, documents: stranded.length, admins: to.length });
+  return stranded.length;
 }
 /**
  * Sends to Trash what nobody can open any more, rather than leave it sealed for good: nobody who could decide its fate can

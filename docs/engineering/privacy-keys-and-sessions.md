@@ -408,8 +408,10 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   null) gives nobody the creator's rule, and opens only through `document_access`. Whoever restricts something they didn't
   make keeps it as its creator does, or they'd be locked out of it, for as long as it's restricted and they're in the
   workspace: it's kept on the item, so there's no entry to outlive either. A copy of something restricted is restricted to
-  whoever made the copy. When nobody can open one any more it goes to Trash, and to nobody else
-  ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
+  whoever made the copy. When nobody can open one any more because someone was taken out, by an admin or by a call's invite,
+  it goes to the workspace's admins, still restricted; when it's because they left, or an entry or a seat ended, it goes to
+  Trash, and to nobody else ([Data and storage › Workspaces](data-and-storage.md#workspaces)). Deleting an account deletes
+  what only it can open by then.
 - **Shared.** `document_access` opens one document for anyone, at `edit` or `read`. Someone outside the workspace sees that
   document alone: no folders (its `parent` reads null), no name or head count for the workspace, and no address of anyone.
   People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`, and a seat
@@ -420,8 +422,13 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   Someone who also has it through their account keeps what that gives them.
 - **A call's home.** A workspace made as a call's home has the organizer as its admin and the people invited in it, to
   edit: the same people who get the call's notes. Someone let in from the link who goes on the invite is let in too, and
-  taken out again when they're taken off it; nobody added by hand is ever taken out for that, and a guest without an
-  account gets nothing unless something's shared with their seat. A home the organizer chose keeps its own people.
+  taken out again when they're taken off it, as is someone taken off a scheduled call or a series. Only someone the invite
+  put there is ever taken out, and only while nobody has changed their place by hand; someone an admin took out, or who
+  left, is never put back by the invite. A guest without an account gets nothing unless something's shared with their seat.
+  A home the organizer chose keeps its own people.
+- **Who a document names.** Tags, quotes and follow-up lines name people by an ID the server keys under the workspace's own
+  keys, never by an address or a plain hash of one, so reading a document says nothing about anyone's address and a guess
+  can't be checked against it offline ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
 - **A call's folder** shows its pages only to whoever may read them now, worked out on every read of the tree: while the
   call's on, whoever's in it (their pass is for that call), who read its live pages as anywhere in the call; after it, its
   organizer and whoever has its note by the note's own rows, so taking the note out of your notes, or deleting it, takes
