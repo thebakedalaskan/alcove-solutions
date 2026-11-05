@@ -123,8 +123,10 @@ export interface PanelFacts {
   /** Room to keep at the top and bottom of the panels for the status bar and captions, once the stage has come apart. */
   top: number;
   bottom: number;
+  /** Tabs you don't have in this call: a guest has no Yours. A panel that loses the tab it's on moves on past these. */
+  absent: CallPanelTab[];
 }
-export type Gave = 'people' | 'list' | 'side' | 'tabs' | 'phone';
+export type Gave ='people' | 'list' | 'side' | 'tabs' | 'phone';
 export interface Adapted {
   /** The people and what's shared are panels of their own, rather than sharing the stage. */
   apart: boolean;
@@ -473,7 +475,7 @@ export function tearTab(a: CallPanels, tab: CallPanelTab, target: Target, side: 
   if (into?.id === g.id && side === 'swap') return a;
   if (g.tabs.length < 2) return moveLeaf(a, groupLeaf(g.id), target, side, size, f);
   const rest = g.tabs.filter((t) => t !== tab);
-  const left: CallPanelGroup = { ...g, tabs: rest, active: g.active === tab ? rest[0] ?? tab : g.active };
+  const left: CallPanelGroup = { ...g, tabs: rest, active: g.active === tab ? rest.find((t) => !f.absent.includes(t)) ?? rest[0] ?? tab : g.active };
   if (into && side === 'swap') {
     return { ...a, front: into.id, groups: a.groups.map((x) => (x.id === g.id ? left : x.id === into.id ? { ...x, tabs: [...x.tabs, tab], active: tab, open: true } : x)) };
   }

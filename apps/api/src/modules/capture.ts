@@ -47,7 +47,7 @@ export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment:
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /** The paths that capture something, or send what was captured to the AI. */
-export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask';
+export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes';
 /**
  * What the gate needs to know about a call, in the part of it something was captured in: whether it's live, notes, the
  * note and recording, and whether shared screens are read (`screens`). `status` is that part's (a breakout room's is
@@ -64,16 +64,17 @@ export const roomStatus = (call: CaptureStatus, pauses: RoomPause[]): CaptureSta
 
 /**
  * The capture gate: whether `path` may capture into this call, or send its transcript to the AI, right now. Every
- * such path asks here first (calls.ts: audio pieces, speech clips, shared-screen frames, captions, catch-up and
- * questions). Audio, speech and frames need notes on; frames also need shared screens read, and never come from a
- * breakout room. Captions, catch-up and questions need notes to have been on. While notes are paused nothing goes
- * anywhere. Whatever arrives once capture is paused or off is refused (409), whoever sends it; what got through here
- * before stays. Returns the note and recording to capture into.
+ * such path asks here first (calls.ts: audio pieces, speech clips, shared-screen frames, captions, catch-up, questions
+ * and refreshing the live notes). Audio, speech and frames need notes on, and so does a refresh, which nobody asked for
+ * by name: what's kept is read, and nothing new goes to the AI by itself once the organizer has turned notes off.
+ * Frames also need shared screens read, and never come from a breakout room. Captions, catch-up and questions need
+ * notes to have been on. While notes are paused nothing goes anywhere. Whatever arrives once capture is paused or off
+ * is refused (409), whoever sends it; what got through here before stays. Returns the note and recording to capture into.
  */
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
   const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
   mayReachAi(call, path, ctx);
-  const captures = path === 'audio' || path === 'speech' || path === 'screen';
+  const captures = path === 'audio' || path === 'speech' || path === 'screen' || path === 'live-notes';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
   if (path === 'screen' && call.inRoom) throw new ConflictError('What’s shared in a breakout room stays in the room. It isn’t read for the notes.', { context: ctx });
