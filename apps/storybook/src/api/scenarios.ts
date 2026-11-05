@@ -27,7 +27,7 @@ import { stopLive } from './standin';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -221,6 +221,10 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
       refuse('Expenses', 'read-only', ['Trains over four hours can be first class.']);
       return { world: w, opening: {} };
     }
+  },
+  'first-sign-in': {
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen, opens on his first day, and the tour of Home follows.',
+    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null }, opening: { tourSeen: false } })
   }
 };
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);

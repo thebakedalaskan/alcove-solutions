@@ -36,7 +36,7 @@ const WIDE = { parameters: { layout: 'padded' } };
 
 /* ---------- share ---------- */
 
-const SHARE = { name: 'Launch plan', query: '', onQuery: did('onQuery'), rows: [] };
+const SHARE = { title: 'Share Launch plan', query: '', onQuery: did('onQuery'), rows: [] };
 const shareTypes: Story['argTypes'] = {
   rows: { table: { disable: true } }, matches: { table: { disable: true } }, guest: { table: { disable: true } }, onQuery: { table: { disable: true } }, onAdd: { table: { disable: true } }
 };
@@ -44,13 +44,13 @@ const shareTypes: Story['argTypes'] = {
  * Who has the document: everyone in the workspace, and anyone it was shared with, each with what they can do, which
  * the arrow beside it changes. Typing finds people to add; Enter adds the first.
  */
-export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} /></PopSurface> };
+export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
 /** People the field found as you typed, not added yet: pressing one adds them. */
-export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} /></PopSurface> };
+export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
 /** In a call, a guest who can't open it is offered too: Let them read shares it with them for the call. */
-export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call query={query} /></PopSurface> };
+export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
-export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} restricted /></PopSurface> };
+export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} restricted /></PopSurface> };
 
 /* ---------- someone's card ---------- */
 

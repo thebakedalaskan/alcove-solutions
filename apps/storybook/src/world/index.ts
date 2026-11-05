@@ -4,9 +4,10 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
 } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
+import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
 import { ART, ME_ID } from './people';
 import { iso } from './clock';
@@ -15,6 +16,19 @@ import { iso } from './clock';
 export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
 /** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
 export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
+
+/** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
+export interface MoveSpec {
+  /** 22 letters, digits, `-` or `_`, as a claim is. */
+  claim: string;
+  title: string;
+  organizerName: string;
+  you: MoveIn['you'];
+  /** The microphone and camera as they were on the other device. */
+  media: MoveMedia;
+  /** How long it has left before it runs out, in seconds: none, and it ran out already. */
+  seconds?: number | undefined;
+}
 
 export interface World {
   /** Who's signed in, or nobody. */

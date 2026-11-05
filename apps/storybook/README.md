@@ -72,6 +72,7 @@ and who it's shared with in the world's `shares`; a page can say what Alcove ref
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
+| `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
 ## Add a component story
 
