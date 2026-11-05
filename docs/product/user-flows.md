@@ -916,15 +916,27 @@ into a field: type, then **Enter**. A workspace always keeps an admin.
 - Someone moves the document you're in to Trash: you aren't thrown out. A bar says who, the page stops taking edits, and
   **Restore it** brings it back for everyone, where it was. Whoever moved it goes on to the next document, with **Undo**.
 - It stops being yours (taken off it, or closed to the workspace) or it's deleted: the page says you can't open it, the
-  same as for a document that never existed, with the way back. The same goes for a whole workspace.
+  same as for a document that never existed, with the way back. The same goes for a whole workspace. Anything you'd
+  written there that hadn't reached Alcove is still in this browser, and the page offers it (below).
 - A document opened with no connection says so, and opens by itself when you're back. Sending a block to another document
   waits for a connection too.
-- A document too big to save says so, and what's typed stays in this browser.
+- A document that can't be opened right now (someone restored a version of it, or it's too much to open) says so, stops
+  taking edits, and opens again by itself, a little later each time.
+- A document too big to save says so: delete something, or send a block to another document, and what's waiting saves.
+  Anything Alcove can't take at all says so too, and so does losing the right to edit with something unsaved.
+- Signed out in another tab: a bar says your edits are safe in this browser, and save when you sign in again.
 - Someone who can only read gets no buttons that change anything: a bar says who to ask, and the list has no **+**.
+
+**Nothing written is trapped.** What you write stays in this browser until Alcove has it or you let it go, however the
+document ends up. Wherever it may not get there by itself (the document refuses it, you can only read it now, or it's
+gone), the page offers **Copy text**, **Save as new document**, which makes a copy named after it of everything as you
+have it, opens it, and lets this one carry on from what Alcove has, and **Discard**, which asks once. A document that's
+gone keeps offering them where it was. Words this browser holds for a document you aren't looking at, found when the app
+opens or the connection comes back, get one toast, with **Show it**.
 
 Signing out, or deleting your account, on this browser deletes every edit still kept here for it and where you were in
 your workspaces.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
-touch screen: **Move to…** does that.
+touch screen: **Move to…** does that. A bar's buttons go under its words.
