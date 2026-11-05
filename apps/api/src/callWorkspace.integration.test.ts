@@ -1611,6 +1611,42 @@ describe('the next call’s agenda', () => {
     expect(single.host.getSnapshot().workspace.agenda).toBeNull();
   });
 
+  it('isn’t there until it’s filled in: a fill that fails leaves the last one, and a later opening fills the same one', async () => {
+    const { art, priya, id, agenda, next } = await series();
+    const host = await art.api.calls.join(next.code, { mic: false, cam: false });
+    await inGroup(host);
+    await host.bringDocument(agenda, true);
+    const before = (await art.api.workspaces.get(id)).items.length;
+    const pool = h.deps.docs;
+    const run = pool.run;
+    const real = pool.run.bind(pool);
+    pool.run = (task, input, o) => (task === 'edit' ? Promise.reject(new DocFailure('time', 'over the limit')) : real(task, input, o));
+    try {
+      await host.openWorkspace();
+    } finally {
+      pool.run = run;
+    }
+    // Nothing says it's there: nothing names an agenda, and the last one is still what's brought.
+    expect(await space(host)).toMatchObject({ agenda: null, documents: [expect.objectContaining({ id: agenda })] });
+    // What failed closed the document it was filling for a while (modules/workspaceDocuments.ts): opening again meanwhile
+    // makes no other, and says nothing new.
+    await host.openWorkspace();
+    expect(await space(host)).toMatchObject({ agenda: null, documents: [expect.objectContaining({ id: agenda })] });
+    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    // Once it opens again, the next opening fills that one in, in the last one's place.
+    await h.pool.query('UPDATE documents SET closed_until = NULL WHERE owner_id = $1', [await ownerOf(id)]);
+    await host.openWorkspace();
+    const made = await agendaIn(art, id, host);
+    expect(documentTodos(made.page.doc, 'document').map((t) => t.text)).toEqual([`CANARY-AGENDA book the briefing ${priya.name} by 2026-11-06`, `Who signs off the pricing? ${art.name}`]);
+    expect(documentText(made.page.doc, 'document').title).toMatch(/^Agenda · /);
+    expect((await space(host)).documents.map((x) => x.id)).toEqual([made.id]);
+    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    // And filling it in again, as a retry would if it had been filled and not said so, changes nothing.
+    await host.openWorkspace();
+    expect(documentTodos(made.page.doc, 'document')).toHaveLength(2);
+    await host.leave();
+  });
+
   it('isn’t made for an organizer taken out of the workspace, or who can only read in it or read the last one', async () => {
     const admin = await account();
     const art = await account();

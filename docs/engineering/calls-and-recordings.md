@@ -1047,16 +1047,22 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
     everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
     tells everyone. While something's showing, a browser reads the call each time it checks its keys, so it never
     waits on a nudge that isn't coming.
-- **The next agenda.** When a call in a series first opens Workspace, it looks once for an agenda to make: the call before
+- **The next agenda.** When a call in a series opens Workspace, it looks for an agenda to make, until it has one or finds
+  there's none to make: the call before
   it that had one (kept on its meeting, as IDs, when that call ended: whatever it brought or worked on that's named Agenda,
   or says what the Agenda template says), still in the tree of the workspace this call uses. It's made in the organizer's
   name, so it takes what making a document there takes: `edit` in the workspace, and `edit` on the last agenda, whose open
   to-dos it carries. An organizer taken out of the workspace, or who can only read in it or read the last one, gets none,
-  however many calls their series has. What was left open, every to-do with words and no tick, is read with nothing held. Then under the call's row, so there's one however many open it,
-  the server makes a document beside the last one, in the same folder, for the same people, restricted as it was, and
-  `writeDocument` fills it in once that commits: From last time, Today, Notes. It replaces the last one among what's brought,
-  and `agenda` names it. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays
-  in its workspace, so a call that moved to another gets none.
+  however many calls their series has. What was left open, every to-do with words and no tick, is read with nothing held.
+  Whoever opens Workspace first takes it on, under the call's row, so there's one however many open it at once: the call's
+  sealed state keeps the document it's making and until when (`agendaDraft`, two minutes). The server makes that document
+  beside the last one, in the same folder, for the same people, restricted as it was, in the workspace's own transaction, and
+  `writeDocument` fills it in, with nothing of the call held: From last time, Today, Notes. Only once it's filled in does the
+  call say it's done, `agenda` name it, and it take the last one's place among what's brought. A try that fails lets go and
+  keeps the document, so the next opening fills that one in, never a second; one a worker gave up on stays closed for five
+  minutes first ([Data and storage › Documents](data-and-storage.md#documents)), and filling in one that's filled changes
+  nothing. Nothing from the notes goes in it: not everyone in a workspace gets a call's notes. An agenda stays in its
+  workspace, so a call that moved to another gets none.
 
 Actions are rate limited per person: 240 a minute for what goes on in the workspace, as each makes every browser read the
 call again. Following a change to who can open what, the state is right on the next read; only what's shared with a seat

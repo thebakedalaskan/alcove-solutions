@@ -1102,24 +1102,44 @@ export async function settledWorkspace(o: Owner, callId: string): Promise<string
 }
 
 /**
- * Looks once, in each run of a call, for an agenda to make: what it says is worked out with nothing held, and it's made under
- * the call's row, so there's one however many people open Workspace at once. What goes in it is written after that.
+ * Looks, in each run of a call, for an agenda to make, until there is one or there's none to make. What it says is worked out
+ * with nothing held. Whoever opens Workspace first takes it on, under the call's row, so there's one however many open it at
+ * once; it's made in the workspace's own transaction and filled in with nothing of the call held, and only once it's filled in
+ * does the call say it's done, the meeting name it, and it take the last one's place. A try that fails lets go, keeping the
+ * document it was making, so the next person opening Workspace fills that one in.
  */
 async function agendaFor(o: Owner, callId: string): Promise<void> {
   const { row, state } = await load(o, o.pool, callId);
-  if (row.state !== 'live' || state.workspace.agendaLooked) return;
+  if (row.state !== 'live' || state.workspace.agendaLooked || space.makingAgenda(state.workspace, Date.now())) return;
   const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const plan = await space.planAgenda(o, meeting);
-  const made = await tx(o.pool, async (c) => {
+  const draft = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
-    if (held.row.state !== 'live' || held.state.workspace.agendaLooked) return undefined;
-    await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, agendaLooked: true } });
-    return plan ? space.claimAgenda(o, c, meeting.itemId, plan) : undefined;
+    if (held.row.state !== 'live' || held.state.workspace.agendaLooked || space.makingAgenda(held.state.workspace, Date.now())) return undefined;
+    const claimed = space.claimAgenda(held.state.workspace, plan, Date.now());
+    await save(o, c, callId, { ...held.state, workspace: claimed.space });
+    return claimed.draft;
   });
-  if (!made || !plan) return;
-  await space.fillAgenda(made, plan, callId);
-  clog.info('next agenda made', { callId, workspaceId: plan.workspaceId, documentId: made.documentId, carried: plan.open.length });
-  await nudge(o, row.room_name, callId, { call: true, log: false });
+  if (!draft || !plan) return;
+  try {
+    const made = await space.makeAgenda(o, plan, draft);
+    if (made) await space.fillAgenda(made, plan, callId);
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      if (held.row.state === 'live') await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, agendaLooked: true, agendaDraft: null } });
+      if (made) await updateManifest(o, c, meeting.itemId, (m) => space.withAgenda(m, plan, made.documentId));
+    });
+    if (!made) return;
+    clog.info('next agenda made', { callId, workspaceId: plan.workspaceId, documentId: made.documentId, carried: plan.open.length });
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+  } catch (e) {
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      const w = held.state.workspace;
+      if (held.row.state === 'live' && w.agendaDraft?.documentId === draft.documentId) await save(o, c, callId, { ...held.state, workspace: { ...w, agendaDraft: { ...w.agendaDraft, until: 0 } } });
+    }).catch((err: unknown) => clog.warn('next agenda not let go of', { callId, err }));
+    throw e;
+  }
 }
 
 /**

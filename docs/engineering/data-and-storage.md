@@ -376,8 +376,8 @@ and this way it runs through the same auth, origin check and tests as everything
   scheduled, or against what the person bringing one can open in the call. A demo account's library is a catalog in
   `apps/api/src/demo.ts`, and anyone else's is empty until the library reads workspaces.
 - **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
-  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, and what's been
-  worked on and by whom), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
+  during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
+  worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
