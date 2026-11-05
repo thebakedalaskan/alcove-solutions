@@ -213,27 +213,6 @@
 .ac-nav-item[aria-current="page"] { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .ac-nav-item .count { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 
-
-/* ---- SettingsCard, SettingRow: a control that can't sit beside its words wraps under them ---- */
-.ac-set-card { padding: 24px 28px 10px; scroll-margin-top: 24px; }
-.ac-set-card > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
-.ac-set-card > .lead { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-card > h3 + .ac-set-row, .ac-set-card > .lead + .ac-set-row { margin-top: 12px; }
-/* MinutesCard: the minutes of notes left. The time sizes to the card. */
-.ac-minutes { container-type: inline-size; scroll-margin-top: 24px; }
-.ac-minutes > h3 { font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
-.ac-minutes .big { margin-top: 14px; font: 450 clamp(34px, 11cqi, 48px)/1.05 var(--font-display); letter-spacing: -0.02em; font-variation-settings: 'opsz' 48; }
-.ac-minutes .big small { margin-left: 8px; font: 500 15px/1 var(--font-sans); letter-spacing: 0; color: var(--ink-3); white-space: nowrap; }
-.ac-minutes > .ac-meter { height: 8px; margin: 16px 0 12px; }
-.ac-minutes .used { padding-bottom: 12px; font-size: 13.5px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 17px 0; border-top: 1px solid var(--line); }
-.ac-set-row > .txt { flex: 1 1 220px; min-width: 0; }
-.ac-set-row > .txt > b { display: block; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
-.ac-set-row > .txt > small { display: block; max-width: 54ch; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
-.ac-set-row.is-caution > .txt > b { color: var(--caution); }
-.ac-set-row > .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; max-width: 100%; }
-@media (max-width: 600px) { .ac-set-card { padding: 20px 18px 6px; } }
-
 /* ---- The palette's line, Field ---- */
 .ac-composer { display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 0 8px 0 18px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); color: var(--ink-3); font: 400 15.5px/1.4 var(--font-sans); }
 .ac-composer > .ac-i { color: var(--sun-text); }
@@ -405,27 +384,7 @@
 .ac-stage .ac-avatar .initial { color: var(--stage-ink-2); }
 .ac-stage .ac-faces .ac-avatar { --ring: var(--stage); }
 
-/* ---- ThemePreview: a window in each theme's own colours (.light/.dark scope them), ringed in sun when it's the one ---- */
-.ac-theme { display: grid; gap: 10px; min-width: 0; text-align: left; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink-2); cursor: pointer; transition: color var(--duration-1); }
-.ac-theme:hover, .ac-theme[aria-pressed="true"] { color: var(--ink); }
-.ac-theme .win { position: relative; display: grid; height: 104px; border-radius: 14px; overflow: hidden; transition: box-shadow var(--duration-1); }
-.ac-theme .win::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; transition: box-shadow var(--duration-1); }
-.ac-theme:hover .win::after { box-shadow: inset 0 0 0 1px var(--line-control); }
-.ac-theme[aria-pressed="true"] .win { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--sun); }
-.ac-theme:focus-visible { outline: none; }
-.ac-theme:focus-visible .win { outline: 2px solid var(--focus); outline-offset: 3px; }
-.ac-theme[aria-pressed="true"]:focus-visible .win { outline-offset: 6px; }
-.ac-theme .win.is-split { grid-template-columns: 1fr 1fr; }
-.ac-theme .pane { display: grid; grid-template-columns: 30% 1fr; min-width: 0; background: var(--ground); }
-.ac-theme .is-split .pane { grid-template-columns: 44% 1fr; }
-.ac-theme .w-side { display: grid; align-content: start; gap: 6px; padding: 12px 9px; background: var(--frame); }
-.ac-theme .w-side i { display: block; height: 6px; border-radius: 3px; background: var(--line); }
-.ac-theme .w-side i:first-child { width: 70%; height: 8px; background: var(--sun); }
-.ac-theme .w-main { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 12px; }
-.ac-theme .w-main i { display: block; height: 26px; border-radius: 7px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
-.ac-theme .w-main i + i { width: 80%; height: 18px; }
-
-/* ---- MicLevel: eight bars in horizon ---- */
+/* ---- MicLevel: bars in horizon ---- */
 .ac-mic-level { display: inline-flex; flex: none; align-items: center; gap: 3px; height: 18px; vertical-align: middle; }
 .ac-mic-level i { width: 4px; height: 100%; border-radius: 2px; background: var(--sunk); transition: background-color 80ms linear; }
 .ac-mic-level i.on { background: var(--horizon); }

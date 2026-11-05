@@ -18,6 +18,7 @@ export * from './components/capture';
 export * from './components/ringing';
 export * from './components/screens';
 export * from './components/app';
+export * from './components/settings';
 export * from './components/guidance';
 export * from './components/workspace';
 export * from './components/qr';
