@@ -39,7 +39,9 @@ export const qk = {
   trust: ['trust'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
   mentions: ['workspaces', 'mentions'] as const,
-  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
+  /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
+  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -127,7 +129,9 @@ export const q = {
   /** What you've been tagged in and haven't seen, anywhere. */
   mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
-  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 })
+  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
+  /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
+  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity })
 };
 
 /**
@@ -581,6 +585,14 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
 export function useMentionSeen() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
+/** Keeps your notes for presenting a document. Empty text deletes them. */
+export function useSavePresenterNotes(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => api.workspaces.presenterNotes.set(workspaceId, documentId, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
+  });
 }
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {

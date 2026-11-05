@@ -319,7 +319,7 @@
 .ws-play .bar.can-seek i { border-radius: 2px; }
 .ws-play .bar:has(:focus-visible) { outline: 2px solid var(--speak); outline-offset: 4px; }
 .ws-play .bar input { position: absolute; left: 0; right: 0; top: -10px; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
-.ws-play .ws-ph { flex: none; }
+.ws-play .ws-ph { flex: none; margin-right: auto; }
 /* Where the one player in a call waits while no block on screen holds its picture: playing, heard, and out of sight. */
 .ws-vhold { position: fixed; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
 

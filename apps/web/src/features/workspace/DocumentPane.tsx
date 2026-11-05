@@ -3,7 +3,7 @@
  * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place.
  */
 import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsFullBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsFace, type WsPop } from '@alcove/ui';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsFullBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPresentPreview, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsFace, type WsPop } from '@alcove/ui';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
@@ -13,9 +13,12 @@ import type { CommentOpen } from './Comments';
 import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
+import type { DocSection } from './editor/sections';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
 import { PersonCard } from './People';
 import { facesIn } from './presence';
+import { useVideoHandlers } from './playing';
+import { presentingStrip } from './Presentation';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { tagRect, useTags } from './tags';
@@ -52,7 +55,7 @@ function useSession(ws: Ws, documentId: string) {
   return opened;
 }
 
-function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus }) {
+function Page({ ws, item, session, status, onSections }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus; onSections: (sections: readonly DocSection[]) => void }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
   const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
@@ -62,6 +65,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   const [comment, setComment] = useState<CommentOpen | null>(null);
   const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
+  const media = useVideoHandlers(ws, item.id, true);
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
 
@@ -205,7 +209,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
             onOpenPerson={openPerson} onTagged={(person, block, rect) => { void onTagged(person, block, tagRect(person.id, block, rect)); }}
             onComment={readOnly || !ws.self ? undefined : (draft) => setComment({ kind: 'draft', draft })} onOpenThread={(id, rect) => setComment({ kind: 'thread', id, rect })}
             onPresence={(p) => ws.present({ document: item.id, ...p })}
-            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
+            onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast} onSections={onSections} media={media}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
@@ -242,7 +246,7 @@ export function DocumentPane({ item }: { item: WorkspaceItem }) {
 
 /** The head with nothing to do yet. */
 function Blank({ ws, item }: { ws: Ws; item: WorkspaceItem }) {
-  return <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
+  return presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={crumbsOf(ws, item)} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />;
 }
 
 const crumbsOf = (ws: Ws, item: WorkspaceItem) => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf), nameOf(item)];
@@ -254,6 +258,9 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   const [share, setShare] = useState(false);
   /** Whose face on the head was pressed. */
   const [card, setCard] = useState<string | null>(null);
+  /** Present's preview, and the sections it counts, as the page has them. */
+  const [previewing, setPreviewing] = useState(false);
+  const [sections, setSections] = useState<readonly DocSection[] | null>(null);
   const member = ws.sent.role !== null;
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
@@ -273,7 +280,7 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   if (refused || closed) {
     return (
       <WsDoc>
-        <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+        {presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={ws.sent.name === null ? [] : [ws.spaceName]} save="quiet" onToggleList={ws.toggleList} zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />}
         <WsCantOpen what="document" action={<Button size="sm" onClick={() => ws.go({ kind: 'home' }, { replace: true })}>Back to {ws.spaceName}</Button>} />
       </WsDoc>
     );
@@ -299,17 +306,25 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   }));
   /* Scrolling or pressing the page stops following: you stay where you are. */
   const stayHere = () => ws.stopFollowing();
+  /* Present is at the top of every document in a call, once the page knows its sections. Something in Trash can't be presented. */
+  const present = ws.call?.presenting;
+  const presentPop: WsPop | undefined = present && sections && ready && !trashed ? {
+    open: previewing, onOpenChange: setPreviewing,
+    content: <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { setPreviewing(false); present.start(item.id); }} />
+  } : undefined;
   return (
     <WsDoc>
-      <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList} faces={faces}
-        share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
-        zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+      {presentingStrip(ws.call?.presenting) ?? (
+        <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList} faces={faces}
+          share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} present={presentPop} more={morePop}
+          zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+      )}
       <WsFollowBar following={ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready} />
       <WsFullBar show={status.refused === 'too-large'} />
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
       <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
-      {ready ? <WsScroll onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
+      {ready ? <WsScroll onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page ws={ws} item={item} session={session} status={status} onSections={setSections} /></WsScroll> : offline && <WsOfflineEmpty />}
     </WsDoc>
   );
 }

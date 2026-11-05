@@ -4,8 +4,9 @@
  * address. See WorkspaceProps in context.ts.
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
-import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
+import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
@@ -21,6 +22,7 @@ import { useFollow } from './follow';
 import { List } from './List';
 import { placesOf, rememberPlaces } from './places';
 import { othersIn } from './presence';
+import { Presentation, presentingStrip } from './Presentation';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
 
@@ -210,6 +212,18 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
   useEffect(() => { if (closed) stopFollowing('quiet'); }, [closed, stopFollowing]);
 
+  /*
+   * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
+   * counts as out of sight meanwhile (`closed`): you're following nobody, and the keyboard can't reach what's under it.
+   */
+  const watching = call?.presenting.watching ?? false;
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (!watching) return;
+    const el = document.activeElement;
+    if (el instanceof HTMLElement && el.closest('.ws-pane.is-under')) el.blur();
+  }, [watching]);
+
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
   const closedNow = useRef(closed);
@@ -266,22 +280,30 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   };
   return (
     <WsContext value={ws}>
-      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null}>
+      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} className={watching ? 'is-under' : undefined}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
-            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
             <WsCantOpen what="document" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
           <WsDoc className="is-bare">
-            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
             {empty
               ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
               : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
           </WsDoc>
         )}
       </WsPane>
+      {/* It comes and goes over 240 ms, and your own page is back underneath as it goes. */}
+      <AnimatePresence>
+        {watching && call && (
+          <motion.div key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
+            <Presentation ws={ws} presenting={call.presenting} />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {!call && <WsToasts toasts={toasts} />}
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
     </WsContext>
