@@ -28,10 +28,10 @@ function othersOf(board: BoardView): PlacedObject[] {
  * `BOARD_LIMITS.objects` takes what fits: the room's own board still has the rest.
  */
 export function landBoards(main: Y.Doc, rooms: readonly { name: string; who: readonly string[]; doc: Y.Doc }[], origin: unknown): void {
-  writing(main, origin, undefined, (objects) => {
+  writing(main, origin, undefined, (into) => {
     const view = viewOf(main);
     const at = stack(view);
-    let room = BOARD_LIMITS.objects - objects.size;
+    let room = BOARD_LIMITS.objects - into.objects.size;
     let { x, y } = clearSpot(view);
 
     for (const { name, who, doc } of rooms) {
@@ -50,26 +50,26 @@ export function landBoards(main: Y.Doc, rooms: readonly { name: string; who: rea
 
       const w = Math.min(BOARD_LIMITS.maxSide, Math.max(FRAME_W, hasBlock ? block.w + 2 * GAP : 0));
       const h = Math.min(BOARD_LIMITS.maxSide, Math.max(FRAME_H, rowsTall + GAP + (hasBlock ? block.h + GAP : 0)));
-      const frame = insert(objects, { k: 'frame', x, y, w, h, title: name, hint: '', sub: who.join(', '), c: '', role: '', id: newId(), at: at('frame'), f: '' });
+      const frame = insert(into, { k: 'frame', x, y, w, h, title: name, hint: '', sub: who.join(', '), c: '', role: '', id: newId(), at: at('frame'), f: '' });
       if (!frame) continue;
       room -= 1;
 
       stickies.forEach((o, i) => {
         if (room <= 0) return;
         room -= 1;
-        insert(objects, { ...o, id: copies.get(o.id), at: at('note'), f: frame.id, w: STICKY, h: STICKY, x: x + GAP + (i % 2) * (STICKY + GAP), y: y + GAP + Math.floor(i / 2) * (STICKY + GAP) });
+        insert(into, { ...o, id: copies.get(o.id), at: at('note'), f: frame.id, w: STICKY, h: STICKY, x: x + GAP + (i % 2) * (STICKY + GAP), y: y + GAP + Math.floor(i / 2) * (STICKY + GAP) });
       });
       for (const o of others) {
         if (room <= 0) break;
         room -= 1;
         const parent = o.k === 'node' ? { parent: copies.get(o.parent) ?? '' } : {};
-        insert(objects, { ...o, ...parent, id: copies.get(o.id), at: at(o.k), f: frame.id, x: o.x + dx, y: o.y + dy });
+        insert(into, { ...o, ...parent, id: copies.get(o.id), at: at(o.k), f: frame.id, x: o.x + dx, y: o.y + dy });
       }
       const landed = (end: LineEnd): LineEnd => (isAttached(end) ? { ...end, on: copies.get(end.on) ?? end.on } : { x: end.x + dx, y: end.y + dy });
       for (const line of kept) {
         if (room <= 0) break;
         room -= 1;
-        insert(objects, { ...line, from: landed(line.from), to: landed(line.to), id: newId(), at: at('line'), f: frame.id });
+        insert(into, { ...line, from: landed(line.from), to: landed(line.to), id: newId(), at: at('line'), f: frame.id });
       }
       x += w + BESIDE;
     }

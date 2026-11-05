@@ -1,6 +1,7 @@
 /*
  * Every change to a board, each one a single `doc.transact` under the caller's origin, so even something as big
- * as Sort into themes is one undo. A write brings what it's given inside the limits, or refuses it, and checks
+ * as Sort into themes is one undo. Where things are is written to `places` and everything else to their Y.Maps, and each
+ * write ends by deleting the places it replaced, so a move is a delete and a push in one transaction. A write brings what it's given inside the limits, or refuses it, and checks
  * the result with the schema `readBoard` uses, so nothing written here is left out for anyone. Text people are
  * typing doesn't come through here: that's the object's Y.Text, from `objectText`, and the surface keeps each one
  * inside the limit. Two browsers merging can still pass it, which is why `readBoard` cuts text rather than leaving it
@@ -8,10 +9,11 @@
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt, holds } from './geometry';
+import { rootList, setPlace, tidyPlaces } from './places';
 import { listOf, mapOf, readBoard, recordOf, rootMap, same } from './read';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
-  type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type PlacedObject, type ShapeKind, type StickyColour
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardObjectSchema, LineEndSchema, PLACE_FIELDS, PlaceSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
+  type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type Place, type PlacedObject, type ShapeKind, type StickyColour
 } from './shape';
 
 /** Where an object was let go. */
@@ -81,15 +83,23 @@ function arrayOf(value: unknown): Y.Array<unknown> {
   return list;
 }
 
+/** The roots a write works on. */
+export interface Board {
+  objects: Y.Map<unknown>;
+  places: Y.Array<unknown>;
+}
+
+const PLACED = new Set<string>(PLACE_FIELDS);
+
 /**
- * Writes an object from plain values, under its id. It's the one place an object's Y.Map is made: everything that adds one
- * comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written if it has
- * words, as cells are made on their first write.
+ * Writes an object from plain values, under its id, with its place. It's the one place an object's Y.Map is made: everything
+ * that adds one comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written
+ * if it has words, as cells are made on their first write.
  */
-export function put(objects: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
+export function put({ objects, places }: Board, id: string, fields: Record<string, unknown>): void {
   const m = new Y.Map<unknown>();
   for (const [key, value] of Object.entries(fields)) {
-    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells') continue;
+    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || PLACED.has(key)) continue;
     m.set(key, (key === 't' || key === 'title') && typeof value === 'string' ? new Y.Text(value) : value);
   }
   if (fields['k'] === 'table') {
@@ -100,19 +110,52 @@ export function put(objects: Y.Map<unknown>, id: string, fields: Record<string, 
     m.set('cells', cells);
   }
   objects.set(id, m);
+  const place = placeFrom(id, fields);
+  if (place) setPlace(places, place);
+}
+
+/** Where something is, from its fields, or null if it has no box, as a line hasn't. */
+export function placeFrom(id: string, fields: Record<string, unknown>): Place | null {
+  const place = PlaceSchema.safeParse({ k: id, x: fields['x'], y: fields['y'], w: fields['w'], h: fields['h'] });
+  return place.success ? place.data : null;
 }
 
 /** Clamps, checks and writes one object. For the writers that work out its id, `at` and `f` themselves. */
-export function insert(objects: Y.Map<unknown>, fields: Record<string, unknown>): BoardObject | null {
+export function insert(board: Board, fields: Record<string, unknown>): BoardObject | null {
   const object = admit(fields);
-  if (object) put(objects, object.id, object);
+  if (object) put(board, object.id, object);
   return object;
 }
 
-/** The one way into a board: a transaction under the caller's origin, or `refused` if the doc holds no board. */
-export function writing<T>(doc: Y.Doc, origin: unknown, refused: T, change: (objects: Y.Map<unknown>) => T): T {
-  const objects = rootMap(doc, BOARD_OBJECTS);
-  return objects ? doc.transact(() => change(objects), origin) : refused;
+/** Deletes the places nobody needs: what a write replaced, and any for something that isn't on the board or has no box. */
+export function tidy({ objects, places }: Board): void {
+  tidyPlaces(places, (k) => {
+    const m = mapOf(objects.get(k));
+    return m !== null && m.get('k') !== 'line';
+  });
+}
+
+/**
+ * The one way into a board: a transaction under the caller's origin, or `refused` if the doc holds no board. Its places are
+ * written at the end, even if the change stops part way, as what it did write stays in the doc.
+ */
+export function writing<T>(doc: Y.Doc, origin: unknown, refused: T, change: (board: Board) => T): T {
+  const objects = rootMap(doc, BOARD_OBJECTS), places = rootList(doc, BOARD_PLACES);
+  if (!objects || !places) return refused;
+  return doc.transact(() => {
+    const board = { objects, places };
+    try {
+      return change(board);
+    } finally {
+      tidy(board);
+    }
+  }, origin);
+}
+
+/** Puts something with a box somewhere new, if that's not where it is. */
+function place(board: Board, o: PlacedObject, box: Box): void {
+  if (o.x === box.x && o.y === box.y && o.w === box.w && o.h === box.h) return;
+  setPlace(board.places, { k: o.id, x: box.x, y: box.y, w: box.w, h: box.h });
 }
 
 const lastRead = new WeakMap<Y.Doc, BoardView>();
@@ -180,11 +223,11 @@ function frameFor(o: NewObject | BoardObject, frames: readonly FrameObject[], ru
 
 /** Adds an object and returns its id, or null if the board is full or the object can't be on it. */
 export function addObject(doc: Y.Doc, input: NewObject, origin: unknown): string | null {
-  return writing<string | null>(doc, origin, null, (objects) => {
-    if (objects.size >= BOARD_LIMITS.objects) return null;
+  return writing<string | null>(doc, origin, null, (board) => {
+    if (board.objects.size >= BOARD_LIMITS.objects) return null;
     const view = viewOf(doc);
     if (input.k === 'line' && !(joins(view, input.from) && joins(view, input.to))) return null;
-    return insert(objects, { ...input, id: newId(), at: stack(view)(input.k), f: input.f ?? frameFor(input, view.frames) })?.id ?? null;
+    return insert(board, { ...input, id: newId(), at: stack(view)(input.k), f: input.f ?? frameFor(input, view.frames) })?.id ?? null;
   });
 }
 
@@ -269,20 +312,17 @@ function shifted(view: BoardView, shifts: ReadonlyMap<string, Shift>): Map<strin
 export const afterMove = (view: BoardView, moves: readonly Move[]): Map<string, BoardObject> => shifted(view, shiftsOf(view, moves).shifts);
 
 /** Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. */
-function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move[]): void {
+function relocate(board: Board, view: BoardView, moves: readonly Move[]): void {
   const { wanted, shifts } = shiftsOf(view, moves);
   const held = heldBy(view);
   const moved = shifted(view, shifts);
   for (const [id, next] of moved) {
-    const m = mapOf(objects.get(id));
-    if (!m) continue;
+    const o = view.byId.get(id), m = mapOf(board.objects.get(id));
+    if (!o || !m) continue;
     if (next.k === 'line') {
       change(m, 'from', next.from);
       change(m, 'to', next.to);
-    } else {
-      change(m, 'x', next.x);
-      change(m, 'y', next.y);
-    }
+    } else if (o.k !== 'line') place(board, o, next);
   }
 
   const frames = view.frames.flatMap((f) => {
@@ -291,7 +331,7 @@ function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move
   });
   const carried = new Set(shifts.keys());
   for (const id of wanted.keys()) {
-    const o = moved.get(id), m = mapOf(objects.get(id));
+    const o = moved.get(id), m = mapOf(board.objects.get(id));
     if (o && m) change(m, 'f', landing(o, frames, carried, o.k === 'frame' ? within(held, [o.id]) : new Set()));
   }
 }
@@ -301,7 +341,7 @@ function relocate(objects: Y.Map<unknown>, view: BoardView, moves: readonly Move
  * the frame it landed in, or none. A line's `x y` say where its first free end goes, and the other follows.
  */
 export function moveObjects(doc: Y.Doc, moves: readonly Move[], origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => relocate(objects, viewOf(doc), moves));
+  writing(doc, origin, undefined, (board) => relocate(board, viewOf(doc), moves));
 }
 
 /** What an object would be in a new box, inside the limits, with nothing written. A stroke stretches with its box. */
@@ -312,18 +352,18 @@ export function afterResize(o: PlacedObject, box: Box): PlacedObject {
 
 /** Gives an object a new box. */
 export function resizeObject(doc: Y.Doc, id: string, box: Box, origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
-    const o = viewOf(doc).byId.get(id), m = mapOf(objects.get(id));
+  writing(doc, origin, undefined, (board) => {
+    const o = viewOf(doc).byId.get(id), m = mapOf(board.objects.get(id));
     if (!o || !m || !hasBox(o) || ![box.x, box.y, box.w, box.h].every(Number.isFinite)) return;
     const next = afterResize(o, box);
     if (next.k === 'ink') change(m, 'pts', next.pts);
-    for (const key of ['x', 'y', 'w', 'h'] as const) change(m, key, next[key]);
+    place(board, o, next);
   });
 }
 
 /** Changes fields on several objects at once. Each takes what applies to it, and refuses a value it can't hold. */
 export function setObjects(doc: Y.Doc, ids: readonly string[], patch: ObjectPatch, origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, ({ objects }) => {
     const view = viewOf(doc);
     for (const id of ids) {
       const o = view.byId.get(id), m = mapOf(objects.get(id));
@@ -359,7 +399,7 @@ function atEdge(view: BoardView, picked: ReadonlySet<string>, edge: 'front' | 'b
 
 /** Brings objects in front of everything else in their layer, or sends them behind it, keeping their order among themselves. What's already there stays as it is, with nothing to undo. */
 export function stackObjects(doc: Y.Doc, ids: readonly string[], edge: 'front' | 'back', origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, ({ objects }) => {
     const view = viewOf(doc);
     const picked = new Set(ids);
     if (atEdge(view, picked, edge)) return;
@@ -378,11 +418,11 @@ function pointsAt(value: unknown, gone: ReadonlySet<string>): boolean {
 }
 
 /**
- * Removes objects, with the lines attached to them and the comments pinned to them. What was in a frame stays on
- * the board. Lines are found in the doc rather than the view, to reach one already left dangling by someone else.
+ * Removes objects, with the lines attached to them and the comments pinned to them, and their places. What was in a frame
+ * stays on the board. Lines are found in the doc rather than the view, to reach one already left dangling by someone else.
  */
 export function removeObjects(doc: Y.Doc, ids: readonly string[], origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, ({ objects }) => {
     const gone = new Set(ids.filter((id) => objects.has(id)));
     objects.forEach((value, id) => {
       const m = mapOf(value);
@@ -406,7 +446,7 @@ export function removeObjects(doc: Y.Doc, ids: readonly string[], origin: unknow
  * was. It's all or nothing at the limit: half a selection would be a surprise.
  */
 export function duplicateObjects(doc: Y.Doc, ids: readonly string[], by: { x: number; y: number }, origin: unknown): string[] {
-  return writing<string[]>(doc, origin, [], (objects) => {
+  return writing<string[]>(doc, origin, [], (board) => {
     if (!Number.isFinite(by.x) || !Number.isFinite(by.y)) return [];
     const view = viewOf(doc);
     const asked = ids.filter((id) => view.byId.has(id));
@@ -416,7 +456,7 @@ export function duplicateObjects(doc: Y.Doc, ids: readonly string[], by: { x: nu
       if (ends.length && ends.every((end) => picked.has(end.on))) picked.add(o.id);
     }
     const list = view.objects.filter((o) => picked.has(o.id));
-    if (objects.size + list.length > BOARD_LIMITS.objects) return [];
+    if (board.objects.size + list.length > BOARD_LIMITS.objects) return [];
 
     const copies = new Map(list.map((o) => [o.id, newId()]));
     const at = stack(view);
@@ -425,7 +465,7 @@ export function duplicateObjects(doc: Y.Doc, ids: readonly string[], by: { x: nu
       const moved = o.k === 'line' ? { ...o, from: movedEnd(o.from), to: movedEnd(o.to) } : { ...o, x: reach(o.x + by.x), y: reach(o.y + by.y) };
       const f = copies.get(o.f) ?? frameFor(moved, view.frames);
       const parent = o.k === 'node' ? { parent: copies.get(o.parent) ?? o.parent } : {};
-      insert(objects, { ...moved, ...parent, id: copies.get(o.id), at: at(o.k), f });
+      insert(board, { ...moved, ...parent, id: copies.get(o.id), at: at(o.k), f });
     }
     return asked.flatMap((id) => {
       const copy = copies.get(id);
@@ -444,14 +484,14 @@ function arrangeable(view: BoardView, ids: readonly string[]): PlacedObject[] {
 
 /** Lines objects up in a square grid from their top left, in reading order. Grid cells fit the largest, so nothing overlaps. */
 export function tidyObjects(doc: Y.Doc, ids: readonly string[], origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, (board) => {
     const view = viewOf(doc);
     const picked = arrangeable(view, ids);
     if (picked.length < 2) return;
     const b = bounds(picked), cols = Math.ceil(Math.sqrt(picked.length));
     const w = Math.max(...picked.map((o) => o.w)), h = Math.max(...picked.map((o) => o.h));
     const reading = [...picked].sort((p, q) => p.y - q.y || p.x - q.x);
-    relocate(objects, view, reading.map((o, i) => ({ id: o.id, x: b.x + (i % cols) * (w + TIDY_GAP), y: b.y + Math.floor(i / cols) * (h + TIDY_GAP) })));
+    relocate(board, view, reading.map((o, i) => ({ id: o.id, x: b.x + (i % cols) * (w + TIDY_GAP), y: b.y + Math.floor(i / cols) * (h + TIDY_GAP) })));
   });
 }
 
@@ -474,7 +514,7 @@ function themeColumns(view: BoardView, themes: readonly { name: string; ids: rea
  * with its name on top. Stickies sharing a frame stay in it, and it grows to fit them.
  */
 export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: readonly string[] }[], origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, (board) => {
     const before = viewOf(doc);
     const columns = themeColumns(before, themes);
     const all = columns.flatMap((column) => column.notes);
@@ -484,35 +524,31 @@ export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: re
     const shared = before.frames.find((f) => f.id === first.f && all.every((o) => o.f === f.id));
     const base = shared ?? bounds(all);
     if (shared) {
-      const m = mapOf(objects.get(shared.id));
       const tallest = Math.max(...columns.map((column) => Math.ceil(column.notes.length / 2)));
       const w = THEME.x + (columns.length - 1) * THEME.across + THEME.step + THEME.sticky + THEME.margin;
       const h = THEME.y + (tallest - 1) * THEME.step + THEME.sticky + THEME.margin;
-      if (m) {
-        change(m, 'w', side(Math.max(shared.w, w)));
-        change(m, 'h', side(Math.max(shared.h, h)));
-      }
+      place(board, shared, { x: shared.x, y: shared.y, w: side(Math.max(shared.w, w)), h: side(Math.max(shared.h, h)) });
     }
 
     const view = viewOf(doc);
-    relocate(objects, view, columns.flatMap(({ notes }, col) => notes.map((o, i) => ({
+    relocate(board, view, columns.flatMap(({ notes }, col) => notes.map((o, i) => ({
       id: o.id, x: base.x + THEME.x + col * THEME.across + (i % 2) * THEME.step, y: base.y + THEME.y + Math.floor(i / 2) * THEME.step
     }))));
     columns.forEach(({ notes }, col) => {
       for (const o of notes) {
-        const m = mapOf(objects.get(o.id));
+        const m = mapOf(board.objects.get(o.id));
         if (m) change(m, 'c', THEME_COLOURS[col % THEME_COLOURS.length]);
       }
     });
 
     const at = stack(view);
-    let room = BOARD_LIMITS.objects - objects.size;
+    let room = BOARD_LIMITS.objects - board.objects.size;
     columns.forEach(({ name }, col) => {
       if (room <= 0) return;
       room -= 1;
       const label = { x: base.x + THEME.label.x + col * THEME.across, y: base.y + THEME.label.y, w: THEME.label.w, h: THEME.label.h };
       const spot = centre(label);
-      insert(objects, { k: 'text', ...label, size: 'heading', t: name, id: newId(), at: at('text'), f: frameAt(view, spot.x, spot.y)?.id ?? '' });
+      insert(board, { k: 'text', ...label, size: 'heading', t: name, id: newId(), at: at('text'), f: frameAt(view, spot.x, spot.y)?.id ?? '' });
     });
   });
 }
@@ -559,7 +595,7 @@ function lineIds(lines: Y.Array<unknown>): (string | null)[] {
 
 /** Adds a row or column at `index` and returns its id, or null past `TABLE_MAX`. Its cells come to be as they're written. */
 export function addTableLine(doc: Y.Doc, id: string, axis: TableAxis, index: number, size: number, origin: unknown): string | null {
-  return writing<string | null>(doc, origin, null, (objects) => {
+  return writing<string | null>(doc, origin, null, ({ objects }) => {
     const table = tableOf(objects, id);
     if (!table || table[axis].length >= TABLE_MAX || !Number.isFinite(size) || !Number.isFinite(index)) return null;
     const line = newId();
@@ -573,7 +609,7 @@ export function addTableLine(doc: Y.Doc, id: string, axis: TableAxis, index: num
  * browser hasn't seen, stays in the map, but nothing reads it: a cell is only read through its row and its column.
  */
 export function removeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: string, origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, ({ objects }) => {
     const table = tableOf(objects, id);
     if (!table) return;
     const ids = lineIds(table[axis]);
@@ -584,7 +620,7 @@ export function removeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: s
 
 /** Resizes a row or column. An entry in a Y.Array can't change, so it's replaced where it is. */
 export function sizeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: string, size: number, origin: unknown): void {
-  writing(doc, origin, undefined, (objects) => {
+  writing(doc, origin, undefined, ({ objects }) => {
     const table = tableOf(objects, id);
     const index = table ? lineIds(table[axis]).indexOf(line) : -1;
     if (!table || index < 0 || !Number.isFinite(size)) return;
@@ -598,7 +634,7 @@ export function sizeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: str
  * cells being sparse: a Y.Map key has one winner, so one person's words in that cell are lost. Once it exists, words merge.
  */
 export function tableCell(doc: Y.Doc, id: string, row: string, col: string, origin: unknown): Y.Text | null {
-  return writing<Y.Text | null>(doc, origin, null, (objects) => {
+  return writing<Y.Text | null>(doc, origin, null, ({ objects }) => {
     const table = tableOf(objects, id);
     if (!table || !lineIds(table.rows).includes(row) || !lineIds(table.cols).includes(col)) return null;
     const key = cellKey(row, col);
