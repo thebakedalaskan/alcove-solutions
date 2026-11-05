@@ -4,10 +4,10 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocAppendedSchema, DocLiveEventSchema, DocumentShareSchema, DocVersionSummarySchema, DocVersionWireSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
-  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
+  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
@@ -15,7 +15,8 @@ import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls'
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
-import { HttpWorkspaceLive, QUIET_MS } from './workspaces';
+import { HttpDocSession } from './workspaceDocuments';
+import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './workspaces';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -40,6 +41,8 @@ export interface HttpOptions {
   ringSilenceMs?: number | undefined;
   /** How long a live stream can say nothing before it's taken for gone and opened again, in ms (default a minute). */
   liveQuietMs?: number | undefined;
+  /** How often an open workspace says this browser is still there, in ms (default 10 seconds). */
+  livePresenceMs?: number | undefined;
 }
 export interface ClientEvent {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -102,17 +105,20 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const res = await send('GET', path, null, headers, false, signal);
     if (!res.body) throw new AlcoveApiError('unknown', 'Empty stream.');
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buf = '';
+    // A line can be a whole document, so what's come so far is looked through once, not again with every piece that arrives.
+    let pieces: string[] = [];
     for (;;) {
       const { value, done } = await reader.read();
       if (done) break;
-      buf += value;
-      let i = buf.indexOf('\n');
-      while (i >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      let from = 0;
+      for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
+        pieces.push(value.slice(from, i));
+        const line = pieces.join('').trim();
+        pieces = [];
+        from = i + 1;
         if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
-        i = buf.indexOf('\n');
       }
+      if (from < value.length) pieces.push(value.slice(from));
     }
   }
   /** Every stream of rings this client has open, so an answer leaves them all at once. */
@@ -338,7 +344,26 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
         restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }
       },
-      live: (id, w) => new HttpWorkspaceLive((signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS)
+      live: (id, w) => new HttpWorkspaceLive(
+        (signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS,
+        (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS
+      ),
+      document: (id, documentId, opts) => {
+        const at = `${space(id)}/documents/${encodeURIComponent(documentId)}`;
+        const headers = withPass(opts);
+        return new HttpDocSession({
+          open: (after, signal) => ndjson(DocLiveEventSchema, `${at}/live?after=${after}`, signal, headers),
+          update: (update) => req(DocAppendedSchema, 'POST', `${at}/updates`, { update }, headers),
+          awareness: (update, keepalive) => req(z.unknown(), 'POST', `${at}/awareness`, { update }, headers, keepalive)
+        }, opts?.keep, o.liveQuietMs ?? QUIET_MS);
+      },
+      versions: (id, documentId, w) => req(z.array(DocVersionSummarySchema), 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions`, undefined, withPass(w)),
+      version: async (id, documentId, versionId, w) => {
+        const { update, ...version } = await req(DocVersionWireSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}`, undefined, withPass(w));
+        return { ...version, update: fromBase64Url(update) };
+      },
+      restoreVersion: async (id, documentId, versionId, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/restore`, {}, withPass(w)); },
+      searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w))
     },
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits')
