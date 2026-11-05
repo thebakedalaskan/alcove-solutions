@@ -1089,6 +1089,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
+  addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
   openWorkspace = () => this.space({ type: 'workspace-open' });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);

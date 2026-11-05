@@ -994,7 +994,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   grant is a seat entry in `document_access`: it ends with the call, when they're removed, or from Share, and it holds across
   a reload, because a seat does. Anything shared with someone in a call, by asking or from Share, tells the call to read
   itself again, so it opens by itself.
-- **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, plus every
+- **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, what people
+  added by hand ([Notes and inference › Adding a follow-up](notes-and-inference.md#adding-a-follow-up)), plus every
   to-do with a mention and a date in the documents worked on in this call, for whoever can open each, with `notes` saying
   what the notes are doing there. With notes off they come from documents alone, and say so. It reads documents, so it isn't
   part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the

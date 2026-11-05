@@ -504,7 +504,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
-    if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
+    if (a.type === 'follow-up' || a.type === 'follow-up-add') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     if (a.type === 'workspace-ask') askSpaceLimiter(c.get('viewer').pass.person, 'workspace-ask');
     else if (a.type.startsWith('workspace-') || a.type.startsWith('present-') || a.type.startsWith('play-')) spaceLimiter(c.get('viewer').pass.person, 'workspace');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));

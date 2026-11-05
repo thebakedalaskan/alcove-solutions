@@ -4,7 +4,7 @@
  * know it. Being in a call, or organizing it, opens nothing, so whoever can't open something is told nothing that names it.
  */
 import { z } from './zod';
-import { LiveFollowUpSchema } from './catchup';
+import { AddedFollowUpSchema, LiveFollowUpSchema } from './catchup';
 import { IDSchema, ISODateSchema, PersonSchema } from './types';
 import { DocumentRoleSchema, ItemIdSchema, ItemKindSchema, WorkspaceRoleSchema } from './workspaces';
 
@@ -99,6 +99,8 @@ export type CallWorkspaceSwitch = z.infer<typeof CallWorkspaceSwitchSchema>;
 
 /** One from the call's shared live notes: ticked with `CallSession.tickFollowUp`. */
 export const NotesFollowUpSchema = LiveFollowUpSchema.extend({ from: z.literal('notes') });
+/** One someone added in their own words: ticked with `CallSession.tickFollowUp` too. */
+export const AddedCallFollowUpSchema = AddedFollowUpSchema.extend({ from: z.literal('added') });
 /**
  * A to-do with a person and a date, in a document worked on in this call that you can open: ticked with
  * `CallSession.tickDocumentFollowUp`, or in the document itself, which is the same thing.
@@ -119,7 +121,7 @@ export const DocFollowUpSchema = z.object({
   canTick: z.boolean()
 });
 export type DocFollowUp = z.infer<typeof DocFollowUpSchema>;
-export const CallFollowUpSchema = z.discriminatedUnion('from', [NotesFollowUpSchema, DocFollowUpSchema]);
+export const CallFollowUpSchema = z.discriminatedUnion('from', [NotesFollowUpSchema, AddedCallFollowUpSchema, DocFollowUpSchema]);
 export type CallFollowUp = z.infer<typeof CallFollowUpSchema>;
 /** The call's follow-ups as you may read them. "Mine" is yours to filter. */
 export const CallFollowUpsSchema = z.object({

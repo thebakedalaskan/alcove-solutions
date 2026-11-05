@@ -412,10 +412,11 @@ async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]):
   }
   return out;
 }
-/** The call's follow-ups: the live notes' as this person reads them, then the documents'. */
+/** The call's follow-ups: the live notes' as this person reads them, what people added, then the documents'. */
 export async function followUps(d: Deps, reader: Reader, notes: LiveNotes, status: CallFollowUps['notes'], worked: WorkedDocument[]): Promise<CallFollowUps> {
   const said: CallFollowUp[] = (notes.notes?.next ?? []).map((f) => ({ ...f, from: 'notes' }));
-  return { items: [...said, ...await fromDocuments(d, reader, worked)], notes: status };
+  const added: CallFollowUp[] = notes.added.map((f) => ({ ...f, from: 'added' }));
+  return { items: [...said, ...added, ...await fromDocuments(d, reader, worked)], notes: status };
 }
 /**
  * A follow-up ticked from the call, or the tick taken back: the to-do's own `done`, as the editor sets it, so a tick here and

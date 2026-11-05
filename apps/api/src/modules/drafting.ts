@@ -41,7 +41,7 @@ export interface Brief {
   summary?: string | undefined;
   /** The meeting is still going on. */
   live?: boolean | undefined;
-  /** For notes written again: what people already settled, which the model is told not to list again (settledOf). */
+  /** What people already settled, or added during the call, which the model is told not to list again (settledOf). */
   settled?: string[] | undefined;
   /** What was ticked during the call in the part these notes are for, for the model to say which follow-up each is. */
   ticks?: Known[] | undefined;
@@ -57,7 +57,7 @@ export interface Brief {
 /** A finished note, as the model reads it: the main room's transcript, and each breakout room's section. */
 export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): Brief => ({
   title: m.title, kind: m.kind, organizer, people, seconds: m.duration, lines: m.transcript ?? [], gaps: m.gaps, screens: m.screens, summary: m.summary,
-  settled: m.writtenAt === null ? [] : settledOf(m), written: { decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters },
+  settled: settledOf(m), written: { decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters },
   deleted: !m.keep.transcript && m.writtenAt !== null, rooms: m.rooms
 });
 
@@ -65,10 +65,10 @@ export const briefOf = (m: NoteManifest, organizer: Person, people: Person[]): B
 export type Settled = Pick<NoteManifest, 'decisions' | 'questions' | 'actions'>;
 const DECIDED: Record<Decision['state'], string> = { proposed: 'proposed', confirmed: 'confirmed', rejected: 'said not to be decided', superseded: 'no longer holds' };
 /**
- * What people have already settled in a part of notes written before: each decision, open question and follow-up
- * someone proposed, confirmed, answered, took on, turned down, reworded or otherwise changed, with where it stands. Notes written again keep
- * these as they are (keepSettled in modules/writer.ts), so the model is told not to list them again, even in other
- * words. Any part with its own decisions, questions and follow-ups is listed the same way.
+ * What people have already settled in a part of notes: each decision, open question and follow-up someone proposed,
+ * confirmed, answered, took on, turned down, reworded or otherwise changed, with where it stands, and on notes not written
+ * yet what they added during the call. Notes keep these as they are (keepSettled in modules/writer.ts), so the model is told
+ * not to list them again, even in other words. Any part with its own decisions, questions and follow-ups is listed the same way.
  */
 export function settledOf(m: Settled): string[] {
   return [
@@ -88,7 +88,7 @@ export function settledOf(m: Settled): string[] {
  */
 export const roomBriefOf = (m: NoteManifest, room: RoomNote, organizer: Person): Brief => ({
   title: m.title, kind: m.kind, organizer, people: room.people.flatMap((x) => (x.person && x.person.id !== organizer.id ? [x.person] : [])),
-  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: m.writtenAt === null ? [] : settledOf(room)
+  seconds: Math.max(0, room.to - room.from), lines: room.transcript, gaps: room.gaps, room: room.name, settled: settledOf(room)
 });
 
 /**
