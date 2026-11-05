@@ -83,6 +83,10 @@ const EnvSchema = z.object({
   /** How often the hub checks its LISTEN connection is alive, in ms, and how long that connection has to answer. */
   HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
   HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),
+  /** The most workspace and document streams an instance holds, everyone's together: each holds a request, and calls need the rest. */
+  LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(300),
+  /** How long someone stays here in a workspace after their browser last said so, in ms. Browsers say so every 10 seconds. */
+  LIVE_PRESENCE_MS: z.coerce.number().int().min(10).default(30_000),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */
