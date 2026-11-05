@@ -46,6 +46,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
     const hide = () => { setOpen(false); setZen(false); setPeek(false); };
     return {
       say, failed, hide,
+      /** A workspace that won't open any more: back to the call, which is asked again, so what opens next time is what it says now. */
+      leave: () => { hide(); session.openWorkspace().catch(failed); },
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
       announce: show,
       toggle: () => { if (openNow.current) hide(); else reveal(); },
@@ -59,7 +61,11 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       },
       /** A workspace of their own, for an organizer who's lost the one the call uses. */
       newWorkspace: () => {
-        session.newWorkspace().then(() => { say(wsToast.newSpace(session.getSnapshot().workspace.name ?? 'Untitled')); }, failed);
+        session.newWorkspace().then(() => {
+          const w = session.getSnapshot().workspace;
+          setAt(firstPlace(w));
+          say(wsToast.newSpace(w.name ?? 'Untitled'));
+        }, failed);
       }
     };
   }, [push, session]);
@@ -85,7 +91,8 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
   /* The call moved to another workspace: what was open here isn't in that one. */
   const was = useRef(workspace.id);
   useEffect(() => {
-    if (was.current !== null && workspace.id !== null && was.current !== workspace.id) setAt(firstPlace(session.getSnapshot().workspace));
+    if (workspace.id === null) return;
+    if (was.current !== null && was.current !== workspace.id) setAt(firstPlace(session.getSnapshot().workspace));
     was.current = workspace.id;
   }, [workspace.id, session]);
 
@@ -143,7 +150,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const switchNowhere = useCallback(() => undefined, []);
   /* Something brought to the call can open for someone with nothing in the workspace the call uses now. */
   const id = workspace.id ?? workspace.documents[0]?.workspaceId ?? null;
-  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.hide} pass={pass} call={call} />;
+  if (id !== null) return <Workspace mode="call" workspaceId={id} at={at} onGo={act.go} onSwitch={switchNowhere} onLeave={act.leave} pass={pass} call={call} />;
   if (!settled) return <WsPane />;
   return <WsPane><WsDoc className="is-bare">{organizer ? <WsLostSpace onNew={act.newWorkspace} /> : <WsNoAccess organizer={chooser} asked={false} />}</WsDoc></WsPane>;
 });
