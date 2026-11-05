@@ -74,9 +74,10 @@ Beside every page, dark in both themes:
   back, and the offline notice moves to the top of the page meanwhile. This browser remembers which.
 
 At the top right of every page: **Search or ask** (**⌘K** on a Mac, **Ctrl+K** elsewhere), which opens the palette
-below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass.
+below, and you, which opens Settings (flow 11). In a narrow window search shrinks to its magnifying glass. Notes has
+its own search, so there's none at the top right, and the shortcut goes to the line in its sky (flow 8).
 
-On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search, **Start a call** (a plus) and
+On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
 you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised),
 **Team** when you're on one, and **Settings**. Offline, the same notice sits under the top bar.
 
@@ -476,19 +477,41 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 ## 8. Notes
 
 - **Notes** lists every note you have, your own and those from other people, newest first and grouped by day
-  (Today, Yesterday, This week, Last week, then months). Each row has the start of the summary, who has the
-  note, what's still open in it (follow-ups, decisions to confirm), the time or the day, and a pin when it's
-  pinned. Search matches titles, summaries and transcripts. **All**, **Calls**, **In the room** and **Shared
-  with you** (notes someone shared with you afterwards) narrow the list, and **With anyone** picks someone you
-  have notes with: the list shows only the notes they have too, under a chip whose × shows everyone's again.
-  That person is in the address after `#with=` (the Team page links there), which never leaves the browser.
-- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready,
-  **Pin**, **Share** and **Open notes**, when it was and who has it, the summary, decisions (**Confirm** one
-  there) and follow-ups (tick one there). A click picks a note; a double click, Enter or **Open notes** opens
-  it; ↑, ↓, Home and End move through the list. Narrower, a note opens on its own page.
-- When the list has nothing to show, it says why: nothing matches the search (**Clear search**), nothing has
-  been shared with you yet, or you have no notes with that person yet (**Show notes with anyone**). Before your
-  first notes, Notes shows an example of what they'll look like, with **Start a call** and **Record in the room**.
+  (Today, Yesterday, This week, Last week, then months), on the water under a band of sky. Each row has the faces of
+  whoever else has the note (an arch with a microphone for a recording only you have), its title, how you got it, the
+  start of the summary, chips for what's still open in it (decisions to confirm, follow-ups), the time or the day, and
+  a pin when it's pinned. On a wide screen the list scrolls under the horizon, so the sky stays in view; on a phone the
+  page scrolls as one.
+- **Search everything said, or ask** is the line in the middle of the sky (**⌘K** on a Mac, **Ctrl+K** elsewhere goes to
+  it; **↓** goes from it to the list, and **Escape** clears it). It finds the words, not just the note: every word typed
+  has to be somewhere in the note's title, summary or what was said, in any order, breakout rooms included. A row quotes
+  the line and who said it, with a chip for each moment, up to three, unless the summary has the words, and the preview
+  lists up to four of those moments above the summary. A moment opens the note there, not playing. While a question is
+  being typed the list shows the notes with any of its words, and all of them when none has. Someone who can't read a
+  note's transcript finds the note only by what they can read, and nothing is quoted to them.
+- Under the line are the four people you have most notes with, and **+** to find anyone else you have notes with. Picking
+  someone shows only the notes they have too, under a chip whose × shows everyone's again, and **+** still changes who.
+  That person is in the address after `#with=` (the Team page links there), which never leaves the browser. Then **All**,
+  **Calls**, **In the room** and **Shared with you** (notes someone shared with you afterwards) narrow the list.
+- On a wide screen (more than 1240px) the note picked in the list shows beside it: whether it's ready, the pin, **Share**,
+  **More** and **Open notes**; when it was and who has it (pressing the faces shows **Who has these notes**); then the
+  summary, decisions and follow-ups. **Confirm** or **It wasn’t decided** settle a decision there, with **Undo** after,
+  or **Take that back**, or for the organizer **Keep it confirmed** when someone disputes a confirmed one; a follow-up ticks
+  off in place, and the row's chips follow. A click picks a note; a double click, Enter or **Open notes** opens it; ↑, ↓,
+  Home and End move through the list. Narrower, a note opens on its own page. Only one button is filled at a time: while
+  Share or the question in More is up, Open notes turns tinted.
+- **Enter** or **Ask** asks every note you have, whatever the filters are (see below). It reads them in confidential compute
+  while the horizon pulses, and the answer lands on the water above the list, with a chip for each note and moment it
+  comes from. The list and the preview then follow what it cites: each row quotes the line it used, and the preview lists
+  those moments. **×** puts the answer away, and so does typing, or picking someone or a filter. An answer that cites
+  nothing just says so and leaves the list alone. When a note it read was deleted or taken from you while it was being
+  written, it isn't shown, and **Ask again** asks once more.
+- When the list has nothing to show, it says why: nothing matches the search (**Clear search**, and **Search all notes**
+  when a filter is on), the search couldn't get an answer (**Try again**), nothing has been shared with you yet, nothing
+  was recorded in the room yet (**Record in the room**), or you have no notes with that person yet (**Show notes with
+  anyone**). Before your first notes there's nothing to search, so there's no line: **No notes yet**, with **Start a call**
+  and **Record in the room**, takes the middle of the sky, and an example on the water shows what notes look like, with
+  **Open the example**.
 - **Share** gives the notes to more people by email, or to one of your groups (offered first, by name), once
   the call has ended or the room recording has stopped. Anyone who has the notes can share them; people who have them already are skipped, and someone
   who removed them gets them again. Each share records who shared the notes and when, and the group's name
@@ -498,9 +521,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   their groups. Notes lists them under the call they came from, and **Who has these notes** says how each person
   got them: organizer, invited, or shared afterwards by whom (and with which group). A long list shows its
   first eight people until **Show all** opens it.
-- **More › Delete notes** deletes your own notes for everyone, audio included, with anyone's own notes on them, and
-  then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
+- **More** has **Copy as text**, once the notes are written, and **Delete notes**, which deletes your own notes for everyone, audio included, with anyone's own notes on them, once you say so,
+  and then lists what went. For notes from someone else it's **Remove from your notes**: everyone else keeps them, and
   you're no longer listed as having them. Your own notes on them go for good, and what you added to the shared notes stays.
+  Beside the list it asks in place, and the row leaves the list.
 - **Your notes**, beside the note, is what you kept in the call and more: write something, bookmark a line (the bookmark
   beside it) or a shared screen, or **Keep in your notes** under an answer. It says **Only you**, and the note itself
   says **Everyone with the notes**: nobody else reads Your notes, the organizer included.
@@ -531,7 +555,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   notes** it lists what went; a note that isn't there (deleted, or never shared with you) says so, with **Back
   to notes**.
 - A question can also go across every note you have, your own and other people's (`POST /v1/notes/ask`,
-  behind **Search or ask**, flow 2). The answer comes from those notes only, up
+  behind the line in Notes' sky, and **Search or ask**, flow 2). The answer comes from those notes only, up
   to 12 of them that share the most words with the question, and cites the notes and the moments in them it
   comes from. Until a note is written, or when nothing was said in any, it says so instead, and nothing is sent to
   the notes model. An answer written while a note it read was deleted or taken from you isn't shown: ask again.

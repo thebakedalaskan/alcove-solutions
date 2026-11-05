@@ -31,7 +31,7 @@ export function Answered({ answer, lost, notes, me, onClose, onAgain, onPick }: 
 }) {
   const cited = answer ? sources(answer, notes) : [];
   return (
-    <section className="nt-ans" aria-live="polite" aria-busy={!!answer && !answer.done} aria-label="Answer from your notes" style={{ '--d': 0 }}>
+    <section className="nt-ans" aria-live="polite" aria-busy={!!answer && !answer.done} aria-label="Answer from your notes">
       {lost ? (
         <div className="nt-ans-g"><p className="nt-ans-t">A note this read was deleted while it was written.</p><Button size="sm" className="nt-tint" onClick={onAgain}>Ask again</Button></div>
       ) : answer && answer.done ? (

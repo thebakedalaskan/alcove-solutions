@@ -217,9 +217,9 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
   const more = (n: number, what: string) => n > 0 && <Link to="/notes/$noteId" params={{ noteId: note.id }} className="nt-more">{n} more {what} in the notes<Icon name="right" size={14} /></Link>;
 
   if (note.status !== 'ready') {
-    const everyone = note.kind === 'room' ? 'They show here when they’re ready.' : 'Everyone invited gets them.';
     const kept = note.kept.recording ? 'The audio is saved and encrypted.' : 'The call has ended.';
-    return <p className="nt-pv-wait"><Icon name="lock" size={16} /><span>{note.status === 'recording' ? 'Still recording. The notes are written in confidential compute once it stops.' : `${kept} The notes are being written in confidential compute. ${everyone}`}</span></p>;
+    const writing = `The notes are being written in confidential compute${note.kind === 'room' ? '' : ', and everyone invited gets them'}.`;
+    return <p className="nt-pv-wait"><Icon name="lock" size={16} /><span>{note.status === 'recording' ? 'Still recording. The notes are written in confidential compute once it stops.' : `${kept} ${writing}`}</span></p>;
   }
   if (!note.summary.trim()) {
     return note.transcript?.length

@@ -115,6 +115,8 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
   /* The answer's first note is the one to read first. */
   const firstCited = cites[0]?.noteId;
   useEffect(() => { if (firstCited) setPicked(firstCited); }, [firstCited]);
+  /* A different list starts at its top. */
+  useEffect(() => { box.current?.scrollTo({ top: 0 }); }, [term, show, who, firstCited]);
 
   const change = (typed: string) => {
     setText(typed);
@@ -190,7 +192,7 @@ function Library({ all, me }: { all: NoteFound[]; me: string | undefined }) {
             </div>
             {wide && current && <Preview key={current.id} s={current} me={me} terms={search.terms} said={saidOf(current)} onDropped={() => { dropped.current = true; }} />}
           </div>
-        ) : <Nothing term={term} show={show} person={person} failed={searched.isError ? errorMessage(searched.error) : undefined} onRetry={() => void searched.refetch()} onClear={clear} onAll={() => { setShow('all'); anyone(); }} onAnyone={anyone} />}
+        ) : <Nothing term={term} show={show} person={person} failed={searched.isError ? errorMessage(searched.error) : undefined} onRetry={() => void searched.refetch()} onClear={clear} onAll={() => { setShow('all'); if (who) anyone(); }} onAnyone={anyone} />}
       </div>
     </Evening>
   );
