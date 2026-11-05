@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - AGENTS.md applies to every task. Read it first, and `.claude/skills/strict-typescript/SKILL.md` before writing TypeScript.
-- Canvas source, the UI spec for every task: `CANVAS=/private/tmp/claude-501/-Users-benjaminkurrek--superset-worktrees-the-privacy-suite-create-depth-artifact-showing-c9732571/5ccd2617-49e8-452a-bb4a-15d67de25532/scratchpad/canvas`. `$CANVAS/src/` has `ws.css`, `WS.src.html`, `ws-core.js`, `ws-ui.js`, `ws-layout.js`, `ws-journeys.js`, `ws-data.js`. `$CANVAS/project/` is the built canvas, servable with `support.js`. Read it; never copy its fictional data into the app.
+- Canvas source, the UI spec for every task: `CANVAS=<the session scratch folder>/canvas`. `$CANVAS/src/` has `ws.css`, `WS.src.html`, `ws-core.js`, `ws-ui.js`, `ws-layout.js`, `ws-journeys.js`, `ws-data.js`. `$CANVAS/project/` is the built canvas, servable with `support.js`. Read it; never copy its fictional data into the app.
 - Fidelity: same layout, spacing, type, colours, motion durations and words as the canvas. Port `ws.css` rather than restyling. A difference needs a reason.
 - UI copy is the canvas's words, exactly. Use "they" for people. No "coming soon".
 - Boards are out of scope: no New board, Board block, B key or Board dock button.

@@ -1,7 +1,7 @@
 # The in-call workspace: design
 
 The approved design is the Design canvas <https://claude.ai/artifact/Gvy2XmrrPebzqdiufjgMyt> (version 5): 21 journeys,
-a working prototype, a control map and reference boards. Ben's instruction: build all of it, end to end, and make it
+a working prototype, a control map and reference boards. The instruction: build all of it, end to end, and make it
 look like the canvas. GitHub issue #81 holds the acceptance criteria. This page records the engineering decisions the
 canvas can't show. Where it's silent on how something looks or moves, the canvas decides.
 
