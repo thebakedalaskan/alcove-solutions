@@ -52,7 +52,7 @@ New tables, in new migrations (renumber after main's latest). Each row is scoped
 | `document_versions` | `owner_id`, `document_id`, `version_id`, `created_at` | `info_ciphertext`, `state_ciphertext` |
 | `workspace_media` | `owner_id`, `media_id`, `state` (`uploading`/`ready`), `bytes`, `pieces`, `created_at` | `info_ciphertext` (name, type, size, dimensions) |
 | `workspace_media_pieces` | `owner_id`, `media_id`, `seq`, `object_id`, `sha256`, `length` | (the object) |
-| `presenter_notes` | account `owner_id`, `document_id` | `body_ciphertext` |
+| `presenter_notes` | account `owner_id`, the document's `workspace_owner_id`, `document_id` | `body_ciphertext` |
 
 Keys and records, by the pattern in `docs/engineering/privacy-keys-and-sessions.md`: state keys
 `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")` with scopes `workspace`, `document:<id>` and `media:<id>`.
