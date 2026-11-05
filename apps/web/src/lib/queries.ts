@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
-import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { AlcoveApiError, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
+import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { api } from './api';
@@ -11,6 +11,7 @@ export const qk = {
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   team: ['team'] as const,
+  workspaces: ['workspaces'] as const,
   people: (query: string) => ['people', query] as const,
   meetings: ['meetings'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
@@ -56,6 +57,7 @@ export const q = {
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
+  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
@@ -152,15 +154,27 @@ async function forgetHere(qc: QueryClient) {
 }
 export function useSignOut() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
+  // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
+  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
- * then, even if the screen that asked has gone meanwhile.
+ * then, even if the screen that asked has gone meanwhile. It's never queued for later, as signing out isn't. The cookie
+ * decides whose account goes and another tab can have changed it since this page was drawn, so it first asks who's
+ * signed in, and goes ahead only for the account on this screen.
  */
 export function useDeleteAccount(onDeleted: () => void) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); } });
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async () => {
+      const here = qc.getQueryData(q.session().queryKey)?.ownerId;
+      const now = await api.auth.getSession();
+      if (!here || now?.ownerId !== here) throw new AlcoveApiError('forbidden', 'Who’s signed in here changed in another tab, so nothing was deleted. Reload this page.');
+      await api.account.delete();
+    },
+    onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+  });
 }
 /*
  * Changes to preferences show at once and reach the server one at a time, in order (two at once would refuse each
@@ -178,8 +192,8 @@ function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Pr
 }
 const prefsWrite = (qc: QueryClient) => {
   const key = q.prefs().queryKey;
-  /** The fields this change set that nothing has changed since. */
-  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && p[k] === patch[k];
+  /** The fields this change set that nothing has changed since. By value: the cache keeps its own copy of what it's given. */
+  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && replaceEqualDeep(p[k], patch[k]) === p[k];
   return {
     ...PREFS_WRITE,
     show: async (patch: Patch<Preferences>) => {
@@ -268,7 +282,7 @@ export const calendarConnectUrl = () => api.calendar.connectUrl();
 /** Forgets the Google connection; the calendar then asks for access again. */
 export function useDisconnectCalendar() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
+  return useMutation({ networkMode: 'always', mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
 }
 /**
  * Cancels a call. In a series, `scope: 'following'` cancels this call and every later one. Its link leads nowhere now, so

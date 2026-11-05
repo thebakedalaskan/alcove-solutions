@@ -376,7 +376,7 @@ function summaryOf(l: Located, organizer: Person, who: Recipient[]): NoteSummary
   const m = l.note.manifest;
   return {
     id: l.note.itemId, kind: m.kind, status: m.status, title: m.title, startedAt: m.startedAt, duration: m.duration,
-    people: who.map((r) => r.person),
+    people: who.map((r) => r.person), sharedWith: who.filter((r) => r.role === 'shared').map((r) => r.person.email),
     excerpt: m.summary.split(/(?<=\.)\s/).slice(0, 2).join(' '),
     openActions: actionsOf(m).filter((a) => !a.done).length, totalActions: actionsOf(m).length,
     ...(m.meetingId && l.mine ? { meetingId: m.meetingId } : {}), ...(l.mine ? {} : { received: receivedBy(m, l.as, organizer) }),
