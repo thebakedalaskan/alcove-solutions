@@ -740,36 +740,43 @@ the page works.
 
 ## 11. Settings
 
-**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. It says who
-you're signed in as and how, and has **Take the tour** (the tour of Home again, flow 1) and **Sign out**. With
-recordings on this device that haven't uploaded, **Sign out** first says so in place, under it ("2 recordings on
-this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by themselves, or,
-too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
-**Sign out and delete them**. It counts only this account's recordings, and only those go. On a wide
-screen a nav beside the cards jumps to each part and marks the one in view. Every control saves as it changes: the
-setting says **Saved** for a moment once it's kept, and one the server refuses goes back, with a toast saying why.
+**Settings** opens from you at the top right of every page, the phone's avatar or its **Settings** tab. You stand on
+the horizon with your name and address, beside **Take the tour** (the tour of Home again, flow 1) and **Sign out**.
+With recordings on this device that haven't uploaded, **Sign out** first says so: the sky grows to hold the question
+("2 recordings on this device haven't uploaded. Signing out deletes them."), says what staying does (they upload by
+themselves, or, too old or unreadable here, never will), with **Stay signed in** (focused; **Escape** too) and
+**Sign out and delete them**. It counts only this account's recordings, and only those go. With no connection, signing
+out says so and nothing happens later by itself. Under the water the page is
+one long list of rows, with an index beside it that jumps to each part and moves a small sun to the one in view; on a
+narrow screen the index is a strip that stays at the top. Every control saves as it changes: the row says **Saved** for a
+moment, just left of the control (**Saved for new notes** for the language and the summary), and one the server refuses
+goes back, with a toast saying why. Parts that don't load say so, with **Try again**, and the rest of the page still works.
 
-- **Profile**: your name, address and photo from the sign-in, with a link to change them at Google or Microsoft
-  (they update here the next time you sign in); your company, from the company directory or the people at your
-  work domain you meet (not at a personal address); and the time zone times are shown in, this computer's.
+- **Profile**: your name and photo, from your sign-in, with a link to change them at Google or Microsoft (they update
+  the next time you sign in; with single sign-on they come from your company's sign-in); your company, which opens
+  Team (not at a personal address); and the time zone times are shown in, this computer's.
 - **Notes**: notes on or off for new calls (each call can still be set when it's scheduled), that everyone invited
   always gets them, the language they're written in ("Same as the call", or one of twelve), and how much the
   summary says (**Short** or **Detailed**). Language and summary apply to notes written from then on.
 - **Recording in the room**: **Record without a connection** (on by default), and **On this device**: how many
-  recordings, and how much room, wait here to upload, with **See them** (Record's list), or that nothing is waiting.
+  recordings, and how much room, wait here to upload, with **See them** (Record's list), or **Nothing waiting**.
 - **Calendar**: Google Calendar, **Connected** with **Disconnect** (it forgets the connection and withdraws Alcove's
   access at Google), or **Connect**, which goes to Google and comes back to Home; a demo account's sample calendar
-  instead. Then **Put calls I schedule on my calendar** and **Show my other meetings on Home** (both on by default).
+  instead; signed in another way, **Not connected**, since Google Calendar connects when you sign in with Google. A
+  calendar that doesn't answer says why, with **Try again**. Then **Put calls I schedule on my calendar** and
+  **Show my other meetings on Home** (both on by default).
 - **Microphone, speaker and camera**: this browser's choices, the ones the join screen and the call use; choosing
-  one doesn't open it. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the
-  browser asks first if it hasn't been allowed) and its level moves as you speak, records nothing, and closes
-  sooner when pressed again or when this part leaves the screen. **Play test sound** plays through the chosen
-  speaker; the camera is a list only, never opened here, and until the browser has allowed a camera on the join
+  one doesn't open it. A browser names devices only once they're allowed, so until then the microphone and speaker
+  have no list. Nothing opens by itself: **Check the level** opens the microphone for eight seconds (the browser asks
+  first if it hasn't been allowed), its level moves as you speak, and **Stop** counts down; it records nothing, and
+  closes sooner when stopped or when this part leaves the screen. A microphone that won't open says why, with **Try
+  again**. **Play test sound** plays through the chosen speaker; a browser that can't choose one says it uses the
+  system's. The camera is a list only, never opened here, and until the browser has allowed a camera on the join
   screen it says it isn't allowed yet; **Reduce background noise**. They're kept in this browser only.
 - **Notifications**: browser notifications, shown on this device while Alcove is open in a tab (any page, a call or a
   recording included; nothing is pushed when no tab is open). Until the browser allows them the choices are greyed
-  out and **Turn on browser notifications** asks it (only when pressed; focus stays on the row once it answers);
-  when the browser blocks them, the card says to allow them for the site in the browser's settings. Then: before a
+  out and **Turn on** asks it (only when pressed; focus stays on the row once it answers);
+  when the browser blocks them, the row says to allow them for the site in the browser's settings. Then: before a
   call you organize starts (1 min, 5 min or off); when notes you have are ready (not while that note's page is on
   screen, where they arrive anyway); when someone shares notes with you ("Priya shared it with Product"); when
   someone asks for notes in a call you organize, while you're in another tab or app (in front of you, the call says
@@ -781,18 +788,21 @@ setting says **Saved** for a moment once it's kept, and one the server refuses g
   last, asking first if that means leaving a call or a recording. With no tab left, it opens one. Signing out, or
   deleting the account, closes the ones still showing and forgets which have shown. The choices are saved with your
   preferences, and one changed in another tab or on another device takes effect within a minute.
-- **Appearance**: match the system, light or dark, each shown as a small window in its own colours, kept in this
-  browser.
-- **Plan and credits**: the time of notes left, a meter, and the minutes of notes used this month (since 00:00 UTC
-  on the 1st). Calls without notes are free.
-- **Privacy**: what Alcove knows and what it can't read, and the confidential-compute check with the time the
-  hardware was verified, when this browser could check it.
+- **Appearance**: system, light or dark, each shown as a small evening in its own colours, kept in this browser.
+- **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
+  account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
+  (since 00:00 UTC on the 1st). Calls without notes are free.
+- **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
+  verified when this browser could check it, or where your audio is opened and your notes are written.
 
-**Delete account** opens one step in place (never a window over the page) that names what goes: the notes you
-made, with their audio, for everyone who has them; the calls you scheduled; the minutes of notes left; your own notes on
-every call, and anything you added from them to other people's notes; your groups
-and pins; your Google Calendar connection; and your sign-in on every browser. It says what stays too: the notes other
-people gave you, which still have what you said in the call and still say where you changed or shared them.
+**Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
+your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
+everyone who has them; the calls you scheduled, for everyone invited; the minutes of notes left; your own notes on every
+call, and anything you added from them to other people's notes; your groups and pins; workspaces only you are in, and
+documents only you can open; your Google Calendar connection, where Alcove also asks Google to cancel your calls and end
+its access; and your sign-in on every browser. What stays: the notes other people gave you stay with them, without you,
+keeping what you said in the call and your name and address on what you did in them. **Keep my account** has focus, and
+**Escape** does the same.
 **Delete my account** then deletes the account for good:
 the notes you organized, for everyone you gave them to, with their audio; your recordings, calls and meetings; your own
 notes, and everything you added to anyone's shared notes, whether or not you still had the note; your groups and pins; your
@@ -802,7 +812,9 @@ Your calls on Google Calendar that haven't ended are cancelled there, begun or n
 except a meeting you made an Alcove call with **Use Alcove**: it's your own event, so it stays on your calendar
 as it was, and its Alcove link stops working. Alcove's access to your Google account is revoked. If Google is
 slow or unavailable, the account is deleted all the same, and calls it couldn't cancel stay on the calendar.
-The shared demo account can't be deleted: the step says so and offers only **Close**; any other failure is said
-there too, and **Delete my account** tries again. Once it's deleted you land on the welcome page, signed out, even
+The shared demo account can't be deleted: as soon as **Delete account** is pressed the row says so and offers only
+**Close**. So does a tab left showing one account after another tab changed who's signed in: nothing is deleted, and the
+row says to reload the page. Any other failure, having no connection included, is said in the step, **Delete my account**
+tries again, and nothing happens later by itself. Once it's deleted you land on the welcome page, signed out, even
 if you left Settings meanwhile, and this browser forgets the tour and call view it kept for the account.
 Signing in again starts a new, empty account with 10,000 credits.

@@ -2826,6 +2826,17 @@ describe('the shared demo account', () => {
     expect((await demo.api.auth.getSession())?.sample).toBe(true);
     expect((await demo.api.meetings.upcoming()).length).toBeGreaterThan(0);
   });
+
+  it('says so in the session, so the app needn’t offer what the server would refuse', async () => {
+    const shared = h.browser();
+    expect((await shared.api.auth.signIn('microsoft')).session).toMatchObject({ sample: true, sharedDemo: true });
+    expect((await shared.api.auth.getSession())?.sharedDemo).toBe(true);
+    // Every other demo account is its owner's own, and can go.
+    const own = h.browser();
+    expect((await own.api.auth.signIn('sso', { email: unique('own') })).session).toMatchObject({ sample: true, sharedDemo: false });
+    await own.api.account.delete();
+    expect(await own.api.auth.getSession()).toBeNull();
+  });
 });
 
 describe('privacy at rest', () => {
