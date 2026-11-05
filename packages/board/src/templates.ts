@@ -2,12 +2,14 @@
  * What a new board can start from. Sizes, positions, hints and colours are the design canvas's, and so are its words
  * wherever they suit any meeting. Where the canvas's were about its fictional launch, they're generic: Flow's shapes
  * read as what each kind is for. A template fills in one transaction, and the server makes that update, so everyone
- * gets the same frames and nobody's undo can take them away.
+ * gets the same frames and nobody's undo can take them away. The server writes it as one fixed Yjs client, so two fills
+ * at once come to the same thing: that needs a fill to be the same bytes every time, so nothing in it is random, its ids
+ * come from the board's id, and it only ever fills an empty board, as a list entry lands after whatever's last.
  */
 import type * as Y from 'yjs';
 import { sides } from './routes';
-import { BOARD_LIMITS, hasBox, newId, type NewObject, type ShapeKind, type StickyColour } from './shape';
-import { clearSpot, insert, stack, viewOf, writing } from './write';
+import { hasBox, idFrom, type NewObject, type ShapeKind, type StickyColour } from './shape';
+import { insert, stack, viewOf, writing } from './write';
 
 export const TEMPLATES = ['blank', 'retro', 'ideas', 'flow', 'what-why-next'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
@@ -61,20 +63,21 @@ const BOARDS: Record<TemplateName, Template> = {
   }
 };
 
-/** Puts a template on a board, clear of anything already there. */
-export function fillTemplate(doc: Y.Doc, name: TemplateName, origin: unknown): void {
+/**
+ * Fills an empty board with a template, the same way every time for the same `seed`, which is the board's document id: each
+ * id is made from the seed, the template and where the object comes in it. A board with anything on it is left as it is.
+ */
+export function fillTemplate(doc: Y.Doc, name: TemplateName, origin: unknown, seed: string): void {
   writing(doc, origin, undefined, (board) => {
+    if (board.objects.size || board.places.length) return;
     const { objects: pieces, links } = BOARDS[name];
-    if (board.objects.size + pieces.length + links.length > BOARD_LIMITS.objects) return;
-    const view = viewOf(doc);
-    const { x, y } = clearSpot(view);
-    const at = stack(view);
-    const made = pieces.map((piece) => insert(board, { ...piece, x: piece.x + x, y: piece.y + y, id: newId(), at: at(piece.k), f: '' }));
-    for (const [from, to] of links) {
+    const at = stack(viewOf(doc)), id = (index: number): string => idFrom(seed, name, String(index));
+    const made = pieces.map((piece, index) => insert(board, { ...piece, id: id(index), at: at(piece.k), f: '' }));
+    links.forEach(([from, to], index) => {
       const a = made[from], b = made[to];
-      if (!a || !b || !hasBox(a) || !hasBox(b)) continue;
+      if (!a || !b || !hasBox(a) || !hasBox(b)) return;
       const [start, end] = sides(a, b);
-      insert(board, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: newId(), at: at('line'), f: '' });
-    }
+      insert(board, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: id(pieces.length + index), at: at('line'), f: '' });
+    });
   });
 }

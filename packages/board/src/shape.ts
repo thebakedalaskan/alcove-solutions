@@ -145,3 +145,19 @@ export function newId(): string {
   return id;
 }
 
+/** A 32-bit hash of some text, from `salt`: FNV-1a over its UTF-16 code units, then MurmurHash3's finaliser to spread the bits. */
+function hash(text: string, salt: number): number {
+  let h = (0x811c9dc5 ^ salt) >>> 0;
+  for (let i = 0; i < text.length; i += 1) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+/** An id that's the same every time for the same parts, like `newId`'s: each character from a hash of its own, 72 bits in all. */
+export function idFrom(...parts: readonly string[]): string {
+  const text = parts.join('\u0000');
+  let id = '';
+  for (let i = 0; i < 12; i += 1) id += ID_CHARACTERS.charAt(hash(text, i) & 63);
+  return id;
+}
