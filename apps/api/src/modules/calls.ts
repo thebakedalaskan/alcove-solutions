@@ -2,7 +2,7 @@ import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
   type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
   type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Person,
-  type RingReply, type ScreenFrameReceipt, type Speaker
+  type RingReply, type ScreenFrameReceipt, type SeriesAnswerPart, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
@@ -35,6 +35,7 @@ import {
 import * as rings from './rings';
 import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
+import * as series from './series';
 import * as transcripts from './transcripts';
 import * as writer from './writer';
 import { log } from '../log';
@@ -1634,6 +1635,25 @@ export async function askSoFar(v: Viewer, callId: string, question: string, rang
   await stillIn(v, callId, 'ask');
   clog.info('question answered during a call', { ...ctx, cites: a.refs.length, cut: a.cut?.count ?? 0, ms: Math.round(performance.now() - t0) });
   return { text: a.text, evidence: catchup.evidenceOf(a.refs, lines), read: catchup.withCut(read, a.cut, lines) };
+}
+
+/** The series a call is in, by its link: what carries over into it is read for whoever asks (modules/series.ts). */
+export const seriesOf = async (d: Deps, code: string): Promise<string | undefined> => (await meetingFor(d, code)).meeting.manifest.seriesId;
+
+/**
+ * Answers a question across the earlier calls in this call's series, from the notes `asker`'s own account has now: being
+ * in this call adds nothing to them. It reads nothing of this call, so it needs no notes here, but while notes are
+ * paused nothing goes to the AI, questions included.
+ */
+export async function askEarlier(v: Viewer, callId: string, asker: Owner, question: string, timeZone: string): Promise<SeriesAnswerPart[]> {
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  capture.mayReachAi(capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE), 'ask', { callId, what: 'ask-earlier' });
+  const { seriesId } = (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest;
+  if (!seriesId) throw notFound('That series', { callId });
+  return series.ask(asker, seriesId, question, timeZone);
 }
 
 /** What this person can catch up on, for choosing what to read. */

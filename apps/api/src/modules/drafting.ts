@@ -2,8 +2,9 @@
  * What Alcove asks the notes model, and how its replies are checked before anything is kept:
  * writing a call's notes from its transcript and what was on its shared screens, reading a frame of a
  * shared screen, answering a question about a call (finished or still going) or across someone's notes,
- * and catching someone up during a call. Each goes to NEAR AI Cloud through inference.ts and accepts only
- * the JSON shapes below; anything else is refused (docs: notes-and-inference › Prompts).
+ * catching someone up during a call, and comparing a call with what earlier ones in its series left
+ * standing. Each goes to NEAR AI Cloud through inference.ts and accepts only the JSON shapes below;
+ * anything else is refused (docs: notes-and-inference › Prompts).
  */
 import {
   firstName, type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type InferenceEvidence, type NoteKind, type NotesLanguage, type Person, type Question,
@@ -238,9 +239,9 @@ function about(b: Brief): string {
     b.live ? `Going on for: ${Math.max(1, Math.round(b.seconds / 60))} minutes so far` : `Length: ${Math.max(1, Math.round(b.seconds / 60))} minutes`
   ].join('\n');
 }
-/** Seconds the model may point at: within what was recorded. */
+/** Seconds the model may point at: within what was recorded, the breakout rooms' lines included. */
 const moment = (b: Brief) => {
-  const last = Math.max(b.seconds, b.lines.at(-1)?.at ?? 0);
+  const last = Math.max(b.seconds, b.lines.at(-1)?.at ?? 0, ...(b.rooms ?? []).map((r) => r.transcript.at(-1)?.at ?? 0));
   return (s: number): number | undefined => (Number.isFinite(s) && s >= 0 && s <= last + 1 ? Math.round(s) : undefined);
 };
 const issues = (e: z.ZodError) => e.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`).join('; ');
@@ -681,6 +682,72 @@ export async function answerSoFar(cfg: Config, b: Brief, asker: Person, question
   ], { what: 'ask-live', maxTokens: 1200, timeoutMs: 60_000 }));
   if (!reply.success) throw new UnavailableError('The answer came back in the wrong shape. Try asking again.', { context: { what: 'ask-live', issues: issues(reply.error) } });
   return { text: reply.data.answer.trim(), refs: refsOf(reply.data.lines, sent.kept, 4), cut: sent.cut };
+}
+
+/* ---------- what a later call came back to ---------- */
+
+/** Something earlier calls in a series left standing, as a later call is compared with it: which note and item, and what it says. */
+export interface Standing { kind: 'decision' | 'question'; noteId: string; itemId: string; text: string }
+/** Where a later call came back to something: replaced by one of its own decisions, or answered at a moment of it. */
+export interface Revisited { kind: 'replaced' | 'answered'; noteId: string; itemId: string; by?: string; at?: number; room?: string }
+/** How many of a call's revisits are kept at most. */
+const MAX_REVISITS = 12;
+
+const REVISIT_PROMPT = `You compare one meeting with what earlier meetings in its series left standing: their decisions, and the questions they left open. Reply with a single JSON object and nothing else: {"replaced": [{"earlier": string, "by": string}], "answered": [{"earlier": string, "at": number | null, "room": number | null}]}
+
+replaced: an earlier decision (E1, E2, ...) that one of this meeting's own decisions (N1, N2, ...) changes or overturns, so that the two can't both stand. earlier and by are those labels.
+answered: an earlier open question (Q1, Q2, ...) this meeting plainly answered. earlier is its label; at is the second the answer came, read from the transcript's [mm:ss] marks, or null if you can't tell; room is the number of the breakout room whose transcript it's in, or null for the main transcript.
+Both lists are usually empty. Talking about the same subject isn't changing a decision, and asking a question again isn't answering it: leave out anything the transcript doesn't plainly show. Use only the labels given, and nothing but labels and numbers. ${DOUBT} ${SAID_ONLY} The same goes for what the earlier meetings left standing, listed before it.`;
+
+const RevisitReply = z.object({
+  replaced: z.array(z.object({ earlier: z.string(), by: z.string() })).catch([]),
+  answered: z.array(z.object({ earlier: z.string(), at: At, room: At })).catch([])
+});
+/** The item a label names: "E3" in the list with that letter. */
+const labelled = <T,>(label: string, letter: string, xs: T[]): T | undefined => {
+  const n = new RegExp(`^\\s*${letter}(\\d+)\\s*$`, 'i').exec(label)?.[1];
+  return n === undefined ? undefined : xs[Number(n) - 1];
+};
+
+/**
+ * Which of what earlier calls left standing this call came back to, with its own `decisions`, from its transcript and
+ * each breakout room's, in the same verified path as its notes. The reply is labels and seconds and nothing else, so
+ * nothing from the earlier calls gets into this note for people who don't have them. A label it wasn't given, or a
+ * moment outside the recording, is dropped.
+ */
+export async function revisited(cfg: Config, b: Brief, decisions: Decision[], earlier: Standing[]): Promise<{ found: Revisited[]; evidence: InferenceEvidence }> {
+  const was = earlier.filter((x) => x.kind === 'decision');
+  const open = earlier.filter((x) => x.kind === 'question');
+  const rooms = (b.rooms ?? []).filter((r) => r.transcript.length);
+  const [said = '', ...roomTexts] = fitTogether([{ lines: b.lines, gaps: b.gaps, screens: [] }, ...rooms.map((r) => ({ lines: r.transcript, gaps: r.gaps, screens: [] }))]);
+  const list = <T,>(title: string, letter: string, xs: T[], text: (x: T) => string) => (xs.length ? [`${title}:`, ...xs.map((x, i) => `${letter}${i + 1}: ${oneLine(text(x))}`), ''] : []);
+  const { json, evidence } = await complete(cfg, [
+    { role: 'system', content: REVISIT_PROMPT },
+    {
+      role: 'user', content: [
+        about(b), '', ...list('Decided in earlier meetings', 'E', was, (x) => x.text), ...list('Left open by earlier meetings', 'Q', open, (x) => x.text),
+        ...list('Decided in this meeting', 'N', decisions, (x) => x.text), `Transcript:\n${fenced(said)}`,
+        ...rooms.map((r, i) => `\nBreakout room ${i + 1}, ${oneLine(r.name)}:\n${fenced(roomTexts[i] ?? '')}`)
+      ].join('\n')
+    }
+  ], { what: 'revisits', maxTokens: 500, timeoutMs: 60_000 });
+  const reply = RevisitReply.safeParse(json);
+  if (!reply.success) throw new UnavailableError('The comparison with earlier calls came back in the wrong shape.', { context: { what: 'revisits', issues: issues(reply.error) } });
+  const when = moment(b);
+  const out = new Map<string, Revisited>();
+  for (const x of reply.data.replaced) {
+    const e = labelled(x.earlier, 'E', was);
+    const by = labelled(x.by, 'N', decisions);
+    if (e && by) out.set(e.itemId, { kind: 'replaced', noteId: e.noteId, itemId: e.itemId, by: by.id });
+  }
+  for (const x of reply.data.answered) {
+    const q = labelled(x.earlier, 'Q', open);
+    if (!q) continue;
+    const at = x.at === null || x.at === undefined ? undefined : when(x.at);
+    const room = Number.isInteger(x.room) ? rooms[(x.room ?? 0) - 1] : undefined;
+    out.set(q.itemId, { kind: 'answered', noteId: q.noteId, itemId: q.itemId, ...(at === undefined ? {} : { at }), ...(room ? { room: room.id } : {}) });
+  }
+  return { found: [...out.values()].slice(0, MAX_REVISITS), evidence };
 }
 
 const TRANSLATE_PROMPT = `You translate live captions of a meeting. You get a JSON object with the language to translate into and the lines, each with an id. Reply with a single JSON object and nothing else: {"lines": [{"id": string, "text": string}]}

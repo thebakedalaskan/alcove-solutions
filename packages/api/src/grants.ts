@@ -52,6 +52,14 @@ export function mayDecide(d: Decided, to: Decision['state'], r: NoteReader): boo
 }
 
 /**
+ * Whether someone may say a later call didn't replace a decision, or take that back. The notes only suggested it, and
+ * saying so settles that for everyone with both notes, so it's for whoever answers for where the decision stands: who
+ * could say it stopped holding, or that it still does, and while it's only proposed, who could settle it.
+ */
+export const maySayNotReplaced = (d: Decided, r: NoteReader): boolean =>
+  (d.state === 'proposed' ? mayDecide(d, 'confirmed', r) || mayDecide(d, 'rejected', r) : mayDecide(d, d.state === 'superseded' ? 'confirmed' : 'superseded', r));
+
+/**
  * Whether someone may reword a decision. Someone's proposal is theirs to reword; what the notes heard, anyone's who was
  * invited. Once it's settled, whoever settled it may, and it goes back to proposed for someone else to confirm.
  */

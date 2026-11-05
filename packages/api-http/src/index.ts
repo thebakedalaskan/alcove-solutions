@@ -9,7 +9,7 @@ import {
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
-  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
+  type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
@@ -168,6 +168,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
       moment: (id, lineId) => req(CallMomentSchema, 'GET', `${live(id)}/transcript/${encodeURIComponent(lineId)}`, undefined, p),
       personal: (id) => personal(`${live(id)}/personal`, p),
+      askEarlier: (id, question, timeZone) => req(z.array(SeriesAnswerPartSchema), 'POST', `${live(id)}/series/ask`, { question, timeZone }, p),
       translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
       leave: async (id, o) => (await req(z.object({ ended: CallEndResultSchema.nullable() }), 'POST', `${live(id)}/leave`, { end: o.end }, p, o.keepalive ?? false)).ended,
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
@@ -227,6 +228,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
       pick: (code, at) => req(CallCardSchema, 'POST', `/calls/${encodeURIComponent(code)}/pick`, { at }),
+      series: (code) => req(SeriesSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/series`),
       join: async (code, opts) => {
         // This connection's identity and MLS keys are made here; key packages are all the API gets.
         const identity = newIdentity();
@@ -276,6 +278,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
       updateAction: (noteId, actionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/actions/${encodeURIComponent(actionId)}`, patch),
       updateQuestion: (noteId, questionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/questions/${encodeURIComponent(questionId)}`, patch),
+      updateRevisit: (noteId, revisitId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/revisits/${encodeURIComponent(revisitId)}`, patch),
       inbox: () => req(InboxSchema, 'GET', '/notes/inbox'),
       correctLine: (noteId, lineId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/lines/${encodeURIComponent(lineId)}`, patch),
       rewrite: (noteId) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, {}),
@@ -331,6 +334,7 @@ interface CallTransport {
   catchUpWindow(id: string): Promise<CatchUpWindow>;
   moment(id: string, lineId: string): Promise<CallMoment>;
   personal(id: string): PersonalApi;
+  askEarlier(id: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
   /** `end`: whoever hosts ends the call for everyone; otherwise this connection just leaves (refused for whoever hosts). */
   leave(id: string, o: { end: boolean; keepalive?: boolean | undefined }): Promise<z.infer<typeof CallEndResultSchema> | null>;
@@ -979,6 +983,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   askSoFar = (question: string, range: CatchUpRange) => this.t.askSoFar(this.state.callId, question, range);
   catchUpWindow = () => this.t.catchUpWindow(this.state.callId);
   moment = (lineId: string) => this.t.moment(this.state.callId, lineId);
+  askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
     this.closed = true;
     this.stopTicking();

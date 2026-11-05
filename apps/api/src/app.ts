@@ -1,6 +1,6 @@
 import {
   ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
-  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -66,9 +66,9 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  */
 const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|translate)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
-  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
+  /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];
 const keepsReceipt = (path: string) => !NO_RECEIPT.some((r) => r.test(path));
@@ -176,6 +176,11 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const ringStreams = new rings.RingStreams(d, stopping);
   /** Your own notes, per connection to a call or per account: reading them in a call reads its live transcript too. */
   const personalLimiter = rateLimit(120, 60_000);
+  /**
+   * What carries over into a call, per account. Each read opens every note the person has, not only the series' (which
+   * of them are in it is sealed in them), and a pre-join or a call's panel reads it about once a minute.
+   */
+  const carryLimiter = rateLimit(60, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -326,6 +331,21 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.post('/v1/calls/:code/pick', async (c) => {
     pickLimiter(clientAddress(c), 'call pick');
     return c.json(await calls.pick(d, c.req.param('code'), (await body(c, PickTimeBodySchema)).at, await optionalOwner(c)));
+  });
+  /*
+   * What carries over into a call: its series as someone signed in sees it. It comes from their own notes, so it needs
+   * their session, whatever pass they hold: a guest has no account, and nothing to carry over.
+   */
+  const signedIn = async (c: Context): Promise<Owner> => {
+    const o = await optionalOwner(c);
+    if (!o) throw new AuthError('Sign in to see what carries over from earlier calls.');
+    return o;
+  };
+  app.get('/v1/calls/:code/series', async (c) => {
+    const o = await signedIn(c);
+    carryLimiter(o.ownerId, 'carry-over');
+    const seriesId = await calls.seriesOf(d, c.req.param('code'));
+    return c.json(seriesId ? await series.read(o, seriesId) : null);
   });
   app.post('/v1/calls/:code/join', async (c) => {
     callLimiter(clientAddress(c), 'call join');
@@ -515,6 +535,15 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     askLimiter(v.pass.identity, 'ask');
     const { question, range } = await body(c, AskSoFarBodySchema);
     return c.json(await calls.askSoFar(v, c.req.param('id'), question, range));
+  });
+  /* Asking across the calls before this one, during it: from the asker's own notes, so it takes their session as well as their pass. */
+  app.post('/v1/live/calls/:id/series/ask', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'ask-earlier');
+    const o = await signedIn(c);
+    askLimiter(o.ownerId, 'ask-earlier');
+    const { question, timeZone } = await body(c, SeriesAskBodySchema);
+    return c.json(await calls.askEarlier(v, c.req.param('id'), o, question, timeZone));
   });
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
     const v = c.get('viewer');
@@ -738,6 +767,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.patch('/v1/notes/:id/actions/:actionId', async (c) => c.json(await notes.updateAction(changing(c), c.req.param('id'), c.req.param('actionId'), await body(c, ActionPatchSchema))));
   app.patch('/v1/notes/:id/questions/:questionId', async (c) => c.json(await notes.updateQuestion(changing(c), c.req.param('id'), c.req.param('questionId'), await body(c, QuestionPatchSchema))));
   app.patch('/v1/notes/:id/lines/:lineId', async (c) => c.json(await notes.correctLine(changing(c), c.req.param('id'), c.req.param('lineId'), await body(c, LinePatchSchema))));
+  app.patch('/v1/notes/:id/revisits/:revisitId', async (c) => c.json(await notes.updateRevisit(changing(c), c.req.param('id'), c.req.param('revisitId'), await body(c, RevisitPatchSchema))));
   app.post('/v1/notes/:id/rewrite', async (c) => {
     const o = c.get('owner');
     // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.

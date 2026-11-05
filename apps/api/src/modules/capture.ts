@@ -72,17 +72,26 @@ export const roomStatus = (call: CaptureStatus, pauses: RoomPause[]): CaptureSta
  */
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
   const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
-  if (!call.live) throw new ConflictError(path === 'catch-up' || path === 'ask' ? 'This call has ended. Its notes have everything.' : 'This call has ended.', { context: ctx });
-  if (call.status === 'paused') {
-    throw new ConflictError(call.room ? 'Notes are paused in this room. Nothing said here is transcribed or sent to the AI until the organizer resumes.'
-      : 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.', { context: { ...ctx, room: call.room ? 1 : 0 } });
-  }
+  mayReachAi(call, path, ctx);
   const captures = path === 'audio' || path === 'speech' || path === 'screen';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
   if (path === 'screen' && call.inRoom) throw new ConflictError('What’s shared in a breakout room stays in the room. It isn’t read for the notes.', { context: ctx });
   if (!call.noteId || !call.recordingId) throw new ConflictError('Notes haven’t been on in this call, so nothing has been transcribed.', { context: ctx });
   return { noteId: call.noteId, recordingId: call.recordingId };
+}
+
+/**
+ * The first half of the gate: the call is live and nothing holds it. Asking about earlier calls during this one stops
+ * here, since it reads nothing of this call: it needs no notes here, only that they aren't paused, when nothing goes
+ * to the AI, questions included.
+ */
+export function mayReachAi(call: Pick<Capturing, 'live' | 'status' | 'room'>, path: CapturePath, context: Record<string, string | number | null>): void {
+  if (!call.live) throw new ConflictError(path === 'catch-up' || path === 'ask' ? 'This call has ended. Its notes have everything.' : 'This call has ended.', { context });
+  if (call.status === 'paused') {
+    throw new ConflictError(call.room ? 'Notes are paused in this room. Nothing said here is transcribed or sent to the AI until the organizer resumes.'
+      : 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.', { context: { ...context, room: call.room ? 1 : 0 } });
+  }
 }
 
 /** A stretch of the call with nothing captured, in seconds since it started, and the segment it follows (null before anything was recorded). */
