@@ -48,6 +48,8 @@ export type Tamper =
   | 'nvidia-root' | 'nvidia-expired' | 'nvidia-not-ca' | 'nras-down' | 'jwks-down'
   | 'report-down' | 'refuse' | 'reply-sealed';
 export type Task = 'transcript' | 'notes';
+/** How a reply can fail: the service down, prose instead of JSON, empty notes, or a reply that ran out of tokens part way. */
+export type Failure = 'down' | 'prose' | 'stub' | 'cut-off';
 
 export interface FakeNear {
   /** What the API is configured with to use this NEAR AI, and the stand-in Intel and NVIDIA that vouch for it. */
@@ -81,7 +83,7 @@ export interface FakeNear {
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
   /** The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and nothing in it. */
-  failNext(n: number, how: 'down' | 'prose' | 'stub'): void;
+  failNext(n: number, how: Failure): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number): void;
   close(): Promise<void>;
@@ -287,16 +289,28 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
   if (system.startsWith('You write the notes')) {
     // Written again, told what people already settled: like a model can, it lists the decisions again anyway, in other words.
     const again = user.includes('Already settled');
-    const decided = (h: Heard) => ({ ...item(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text });
+    /*
+     * Each entry points at the line it came from and, as a model can, at lines that aren't there. A line that disagrees
+     * ("No, ...") is pointed at as cutting against whatever came just before it. And like a model told what to do by
+     * something said in the call, it says what only people can: that things are confirmed, and that someone took them on.
+     */
+    const nowhere = heard.length + 7;
+    const refs = (h: Heard) => {
+      const next = heard[heard.indexOf(h) + 1];
+      return { lines: [h.ref, `L${nowhere}`, 0], against: next && /^no\b/i.test(next.text) ? [next.ref, nowhere] : [] };
+    };
+    const decided = (h: Heard) => ({ ...item(h), ...refs(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text, state: 'confirmed', disputes: [{ by: 'the model' }], changes: [{ what: 'confirmed' }] });
+    /** A sentence nothing said backs: the model's word alone, which the notes must keep marked as that. */
+    const unbacked = /\bunbacked\b/i.test(user) ? [{ text: 'Everyone agreed to double the budget.', at: heard[0]?.at ?? 0, lines: [nowhere], against: [] }] : [];
     return {
       summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided),
-      questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
+      decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
+      questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
       actions: heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         if (!m) return [];
         const rest = m[2] ?? '';
-        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h) }];
+        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), takenOn: true, done: true, changes: [{ what: 'took-on' }] }];
       }),
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
@@ -430,7 +444,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   const images: FakeNear['images'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
-  let failure: 'down' | 'prose' | 'stub' = 'down';
+  let failure: Failure = 'down';
   let slow = 0;
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
@@ -528,10 +542,12 @@ export async function startFakeNear(): Promise<FakeNear> {
     }
     if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
     let content: string;
+    let finish = 'stop';
     if (failing > 0) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
-      content = failure === 'stub'
+      if (failure === 'cut-off') { finish = 'length'; content = JSON.stringify(notesReply(system, user, sent)).slice(0, 60); }
+      else content = failure === 'stub'
         ? JSON.stringify({ summary: '...', decisions: [], questions: [], actions: [], chapters: [], suggestedQuestions: [], screens: [] })
         : 'Here are your notes! The team talked about a few things.';
     } else content = JSON.stringify(notesReply(system, user, sent));
@@ -539,7 +555,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       status: 200,
       body: {
         id: `chatcmpl-${randomUUID().replace(/-/g, '')}`, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
+        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
       }
     };
   }
