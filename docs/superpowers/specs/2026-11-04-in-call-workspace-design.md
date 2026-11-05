@@ -118,31 +118,53 @@ send on return. Node tests use the same class, so concurrent editing is tested t
 
 `apps/web/src/features/workspace/editor/`, loaded lazily so a call without the workspace pays nothing.
 
-Blocks are flat: `doc` is `title block+`, so handles, drag and links are simple. Lists are flat blocks with an `indent`
+Blocks are flat: `doc` is `title block+`, so handles, drag and links are simple. Lists are flat lines with an `indent`
 attr. Every block has a stable `id` attr (a plugin re-issues duplicates after a split or paste). The Yjs root fragment
 is named `content`; comments are the root map `comments`, each thread a `Y.Map` with a `Y.Array` of replies.
 
-Blocks: `paragraph`, `heading` (1–3), `bullet`, `numbered`, `todo` (`done`), `toggle`, `quote`, `callout`, `divider`,
-`code`, `table` (prosemirror-tables), `gallery`, `file`, `video`, `doclink`, `live` (`what`: decided or follow-ups, plus
-the lines it last showed), `moment` (a quoted transcript line). Inline: `mention`, `dateChip`, `docref`, and `hardBreak`
-for ⇧↵. Marks: `bold`, `italic`, `strike`, `inlineCode` (ProseMirror won't let a mark and a node share the name `code`),
-`link`, `highlight`, `comment`. A `toggle` holds a `toggleSummary` and a `toggleBody`, both inline text, so it stays one
-flat block. `docref` and `doclink` store only the document's ID, and its name is looked up for each reader, so a tag
-never names a document to someone who can't open it. `unsupported` stands in for a block from a newer release, because
-y-prosemirror deletes, for everyone, any element it can't make a node from.
+Every kind of line is one node, `line`, with a `kind`: absent for plain text, or `heading` (`level` 1–3), `bullet`,
+`numbered`, `todo` (`done`), `quote`, `callout` (`icon`). `indent` is on list lines. Each of these is absent until it means
+something, so turning a line into another kind is an attribute change that merges with anyone typing in it. The other
+blocks are `toggle`, `divider`, `code`, `table` (prosemirror-tables), `gallery`, `file`, `video`, `doclink`, `live` (`what`:
+decided or follow-ups, plus the lines it last showed), `moment` (a quoted transcript line). Inline: `mention`, `dateChip`,
+`docref`, and `hardBreak` for ⇧↵. Marks: `bold`, `italic`, `strike`, `inlineCode` (ProseMirror won't let a mark and a node
+share the name `code`), `link`, `highlight`, `comment`. A `toggle` holds a `toggleSummary` and a `toggleBody`, both inline
+text, so it stays one flat block. A photo's caption is an attribute of its own on the `gallery`, `cap:<mediaId>`, so two
+people captioning two photos don't write over each other. `docref` and `doclink` store only the document's ID, and its
+name is looked up for each reader, so a tag never names a document to someone who can't open it.
 
-Every document starts from the same seed: its title and first line are one fixed Yjs update under a fixed client ID, so
-two browsers opening a new document merge into one title instead of two. Mount the editor after the first `sync`.
-Anything the server writes into a new document has to start from that seed, or arrive before the editor mounts.
+y-prosemirror deletes, for everyone, what it can't make a node or mark from, and removes from an element what its node
+doesn't carry. So nothing read from a document is refused, and a tab left open across a deploy damages nothing:
+`unsupported` stands in for an unknown block or one that doesn't fit where it is, `unsupportedInline` for an unknown tag,
+and unknown marks and attributes are learned as they're met and written back as they came.
 
-Yjs has no move, and y-prosemirror compares by position, so a move left to it would rewrite the text of every block it
-passes. Moving a block edits the Yjs elements directly. A move or a change of kind deletes the element and inserts a
-copy, so whoever typed in the old element while that was in flight puts their own words back into the new one; if two
-people moved one block, every browser drops the same copy.
+The server makes every document with its title and first line: one fixed Yjs update under a fixed client ID, `DOC_SEED` in
+`@alcove/api`, so a document's first `sync` always has them and the editor never seeds. Mount the editor after that.
 
-y-prosemirror gives sync, per-user undo (⌘Z undoes only your own changes) and carets, drawn as the canvas draws them:
-one horizon colour, told apart by face and name. A `live` block is written by whichever editing browser in the call
-sees new notes, so it fills in for everyone and stays as it was when the call ends.
+A block's element is never deleted. Yjs has no move, and what lands in a deleted element is lost on every replica, so a
+move, a join, a delete and a turn into something structural retire the element instead: what the browser can see is
+deleted, attributes that say anything go with it, `gone` says which block took the words ('' if none did), and it gets a
+new `id`. A retired element with nothing in it isn't on the page, and readers skip it. An edit that reaches it later, from
+someone who hadn't heard, however long they were offline and whether or not they reloaded, is in a live element, so Yjs
+keeps it on every browser and on the server, and the block is back on the page holding just those words, where it was.
+Nothing has to notice for that to be true. Anything that takes a block off the page puts an empty stand-in back in
+ProseMirror, so it stays one node per element, y-prosemirror never deletes an element, and `retire` runs just before it
+writes the rest. A move edits the Yjs elements directly, because y-prosemirror compares by position and would rewrite the
+text of every block the move passes. Only tidying is left on top: the author's own browser folds words typed as a block
+left into the block they were meant for, text into text, in one step, and if two people moved one block every browser
+retires the same copy. Undo leaves elements in place too. What can't be kept this way: a row or a column someone removes
+takes what was typed in it offline with it, and so does a tag someone deletes, for words typed offline straight after it,
+because y-prosemirror joins the texts around it. A tick or a change of kind made offline on a block someone moved stays
+on the retired element, so the moved block keeps what it had. A retired element stays in the document for good: nothing
+can say nobody is still offline with an edit for it.
+
+ProseMirror and Yjs have to hold the same document, because y-prosemirror writes ProseMirror's document on every view
+update. Whatever goes wrong on the way to the page, `keepInStep` draws it again from Yjs, with a log line, and if that fails
+too nothing is written until it works. Someone who can only read never writes, from any path.
+
+y-prosemirror gives sync, per-user undo (⌘Z undoes only your own changes, and follows them into a block someone else moved)
+and carets, drawn as the canvas draws them: one horizon colour, told apart by face and name. A `live` block is written by
+whichever editing browser in the call sees new notes, so it fills in for everyone and stays as it was when the call ends.
 
 ## The call
 
@@ -161,7 +183,7 @@ at least edit in the target), bring a document, ask for access, grant it, and dr
 - **Notes, Follow-ups, Transcript.** Built on what the call already has (`CallState.transcript`, catch-up, `liveNotes.ts`).
   Live notes become shared: the server keeps the call's latest catch-up sealed and refreshes it at most every 30 s, so
   everyone sees the same list, ticking is shared, and inference runs once instead of once per viewer.
-- **Follow-ups from documents.** A `todo` with a mention and a date joins the call's follow-ups. The server reads them
+- **Follow-ups from documents.** A `todo` line with a mention and a date joins the call's follow-ups. The server reads them
   from the Yjs state of the documents worked on in the call, filtered to what each reader can open. Ticking one sets
   the block's `done` with a server-made Yjs update.
 - **After.** The note's manifest gains `workedOn` (document IDs and who, default `[]`), shown only to those who can open
