@@ -3388,6 +3388,28 @@ describe('a refusal', () => {
     expect(b.unsentCopy().text).toBe('Bob on the train,\nA second line.');
   });
 
+  it('lets someone who can only read now let go of what they wrote, so nothing says it couldn’t save', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(bob);
+    const b = await open(link.browser, id, doc, { keep: store.keep });
+    link.drop();
+    line(b).insert(0, 'Written before Bob could only read. ');
+    await until(() => store.kept.length > 0, 'it to be kept');
+    const person = (await ann.api.workspaces.people(id)).find((p) => p.person.email === bob.email)?.id ?? '';
+    await ann.api.workspaces.setRole(id, person, 'read');
+    link.back();
+    await until(() => b.getSnapshot().refused === 'read-only', 'it to say so', 20_000);
+    expect(b.getSnapshot()).toMatchObject({ status: 'failed', unsent: true });
+    const copy = b.unsentCopy();
+    expect(copy.text).toBe('Written before Bob could only read.');
+    await b.discardUnsaved(copy.token);
+    expect(store.kept).toEqual([]);
+    const again = await open(bob, id, doc, { keep: store.keep });
+    expect(again.getSnapshot()).toMatchObject({ status: 'saved', refused: null, unsent: false, role: 'read' });
+    again.close();
+  });
+
   it('won’t take a copy over a document someone has written to', async () => {
     const { ann, id, doc } = await together();
     await sendUpdate(ann, id, doc, anUpdate('Already here'));
