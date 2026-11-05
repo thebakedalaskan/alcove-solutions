@@ -7,9 +7,12 @@
 import { MAX_RECORDING_AGE_DAYS } from '@alcove/api';
 import { Icon, IconButton, Popover, cn, useToast, type IconName } from '@alcove/ui';
 import { useId, useState } from 'react';
+import { log } from '~/lib/log';
 import { useLive, useOnline } from '~/lib/live';
 import { hm, hoursAndMinutes, noteDay } from '~/lib/time';
 import { UNNAMED, uploads, type KeptItem } from './uploads';
+
+const klog = log.child({ component: 'record' });
 
 export function OnThisDevice() {
   const v = useLive(uploads);
@@ -47,6 +50,14 @@ function Row({ k, online }: { k: KeptItem; online: boolean }) {
   const day = noteDay(k.startedAt);
   const busy = k.status === 'recording' || k.status === 'uploading';
   const canUpload = online && (k.status === 'waiting' || k.status === 'refused');
+  const remove = () => {
+    setOpen(false);
+    setSure(false);
+    uploads.discard(k.id).then(() => toast('Deleted from this device.', { icon: 'trash' }), (e: unknown) => {
+      klog.error('couldn’t delete a recording from this device', { id: k.id, err: e });
+      toast('It couldn’t be deleted from this device. Try again.', { icon: 'x' });
+    });
+  };
   return (
     <li className={cn('rec-r', tone)}>
       <span className="rec-i"><Icon name={icon} size={17} /></span>
@@ -66,7 +77,7 @@ function Row({ k, online }: { k: KeptItem; online: boolean }) {
             {sure ? (
               <>
                 <p className="ac-pop-h">Delete “{name}”?</p>
-                <button type="button" className="ac-pop-item is-caution" onClick={() => { setOpen(false); setSure(false); void uploads.discard(k.id).then(() => toast('Deleted from this device.', { icon: 'trash' })); }}>
+                <button type="button" className="ac-pop-item is-caution" onClick={remove}>
                   <Icon name="trash" size={17} /><span><b>Delete it</b><small>It never uploads, and nothing of it is kept.</small></span>
                 </button>
                 <button type="button" className="ac-pop-item" onClick={() => setSure(false)}>
