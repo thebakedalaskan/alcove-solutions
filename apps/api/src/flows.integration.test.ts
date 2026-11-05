@@ -2765,7 +2765,9 @@ describe('privacy at rest', () => {
     const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'on' });
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
     // A series' item holds its title, how it repeats, where the organizer is and its link, and its calls follow them.
-    const weekOn = (n: number) => new Date(Date.now() + (n * 7 + 1) * 86_400_000).toISOString();
+    // Worked out once: the first call and the repeat's first occurrence have to be the same instant, to the millisecond.
+    const firstCall = Date.now() + 86_400_000;
+    const weekOn = (n: number) => new Date(firstCall + n * 7 * 86_400_000).toISOString();
     const series = await c.api.meetings.create({
       title: 'CANARY-SERIES-TITLE merger', startsAt: weekOn(0), durationMinutes: 30, guests: ['canary-series-guest@example.com'], notes: 'off',
       repeat: { rule: { every: 'week', weeks: 1, days: [new Date(weekOn(0)).getUTCDay()] }, until: weekOn(1).slice(0, 10), timeZone: 'Pacific/Apia', occurrences: [weekOn(0), weekOn(1)] }

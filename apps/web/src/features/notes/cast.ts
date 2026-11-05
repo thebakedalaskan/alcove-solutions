@@ -1,5 +1,5 @@
 /*
- * The people in Alcove's example calls: the welcome page's scenes and the example note on Home.
+ * The people in Alcove's example calls: the welcome page's scenes and the example note.
  * Illustrated, so they can't be mistaken for real users.
  */
 import type { AvatarPerson } from '@alcove/ui';

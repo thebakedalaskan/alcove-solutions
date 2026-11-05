@@ -12,11 +12,11 @@
 /* The frame: the page scrolls under this rounded edge, so the window's own scrolling carries on as it always has. */
 .shell::after { content: ""; position: fixed; z-index: 6; inset: 8px 8px 8px var(--side); border-radius: 24px; box-shadow: 0 0 0 100vmax var(--frame), inset 0 0 0 1px color-mix(in srgb, var(--ink) 7%, transparent); pointer-events: none; transition: left var(--duration-3) var(--ease-out); }
 .shell.is-bare::after { left: 8px; }
-.main { --top-room: 322px; min-width: 0; padding: 30px clamp(28px, 3.4vw, 60px) 88px; }
+.main { --top-room: 322px; --page-x: clamp(28px, 3.4vw, 60px); min-width: 0; padding: 30px var(--page-x) 88px; }
 .main-in { max-width: 1480px; margin: 0 auto; }
 .main-in.enter > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
 /* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
-.shell.is-bare .main { padding-left: max(72px, clamp(20px, 3.4vw, 56px)); }
+@media (min-width: 861px) { .shell.is-bare .main:not(:has(> .main-in > .hm)) { padding-left: max(72px, var(--page-x)); } }
 .sb-show { position: fixed; z-index: 20; top: 24px; left: 16px; background: var(--ground); }
 .main-offline { max-width: 1480px; margin: 0 auto; }
 .main-offline .sb-status { width: fit-content; max-width: 100%; margin: 0 0 24px; }
@@ -65,6 +65,9 @@
 .sb-status .ac-i { margin-top: 1px; }
 .sb-status b { display: block; font-weight: 600; }
 .sb-new { flex: none; width: 100%; justify-content: flex-start; gap: 10px; padding: 0 12px 0 14px; }
+.sb-new.is-tint { background: color-mix(in srgb, var(--ink) 10%, transparent); color: var(--ink); }
+.sb-new.is-tint:hover { background: color-mix(in srgb, var(--ink) 15%, transparent); }
+.sb-new.is-tint .ac-kbd { background: color-mix(in srgb, var(--ink) 12%, transparent); color: var(--ink); }
 .sb-new .ac-kbd { margin-left: auto; background: color-mix(in srgb, var(--on-sun) 16%, transparent); color: var(--on-sun); box-shadow: none; opacity: .8; }
 .sb .ac-nav { flex: none; }
 /*

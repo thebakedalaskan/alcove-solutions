@@ -17,13 +17,6 @@ export const shortDay = (d: Date) => `${weekday(d).slice(0, 3)} ${d.getDate()} $
 export const dayMonth = (d: Date) => `${d.getDate()} ${month(d).slice(0, 3)}`;
 /** "Tuesday 3 November" */
 export const longDay = (d: Date) => `${weekday(d)} ${d.getDate()} ${month(d)}`;
-/** "Today, Tue 3 Nov", "Tomorrow, Wed 4 Nov" or "Thursday, 5 Nov". */
-export function dayChoice(d: Date, now = new Date()): string {
-  const n = daysFromToday(d, now);
-  if (n === 0) return `Today, ${shortDay(d)}`;
-  if (n === 1) return `Tomorrow, ${shortDay(d)}`;
-  return `${weekday(d)}, ${d.getDate()} ${month(d).slice(0, 3)}`;
-}
 /** For lists of notes: "Today", "Yesterday" or "Fri 30 Oct". */
 export function noteDay(iso: string, now = new Date()): string {
   const d = new Date(iso);
@@ -48,10 +41,6 @@ export function noteGroup(iso: string, now = new Date()): string {
   return d.getFullYear() === now.getFullYear() ? month(d) : `${month(d)} ${d.getFullYear()}`;
 }
 
-export function greeting(now = new Date()): string {
-  const h = now.getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-}
 /** Minutes from now until `iso`, rounded up; negative once it has started. */
 export const minutesUntil = (iso: string, now = Date.now()) => Math.ceil((new Date(iso).getTime() - now) / 60_000);
 /** "in 12 min", "in 1 h 30 min" */
@@ -61,13 +50,6 @@ export function untilLabel(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `in ${h} h${m ? ` ${m} min` : ''}`;
-}
-/** When something starts, for "Up next ·": "in 12 min", "in 2 h 5 min" later today, "tomorrow", "on Thursday" this week, else "on Mon 16 Nov". */
-export function startsLabel(iso: string, now = Date.now()): string {
-  const days = daysFromToday(new Date(iso), new Date(now));
-  if (days <= 0) return untilLabel(minutesUntil(iso, now));
-  if (days === 1) return 'tomorrow';
-  return days < 7 ? `on ${weekday(new Date(iso))}` : `on ${shortDay(new Date(iso))}`;
 }
 /** How long ago: "just now", "12 min ago", "2 h ago", "yesterday", the weekday this past week ("Friday"), else "Tue 27 Oct". */
 export function agoLabel(iso: string, now = Date.now()): string {

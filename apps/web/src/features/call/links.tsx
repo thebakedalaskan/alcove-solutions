@@ -1,5 +1,4 @@
-import type { NotesSetting } from '@alcove/api';
-import { Chip, useToast } from '@alcove/ui';
+import { useToast } from '@alcove/ui';
 
 export const joinUrl = (code: string) => `${location.origin}/join/${code}`;
 /** A call's link as it's shown, without its https://. */
@@ -14,11 +13,4 @@ export function useCopyLink() {
     copyUrl(code);
     toast(<>Link copied <span className="ac-mono opacity-60">{shownUrl(code)}</span></>, { icon: 'link' });
   };
-}
-
-/** Whether a call has notes, as a chip: chosen (sun) or switched off (outline). */
-export function NotesFlag({ notes, className }: { notes: NotesSetting; className?: string }) {
-  return notes === 'on'
-    ? <Chip tone="sun" icon="notes" className={className} data-tour="notes">Notes</Chip>
-    : <Chip tone="outline" className={className} data-tour="notes">No notes</Chip>;
 }

@@ -10,7 +10,7 @@ import { OfflinePage } from '~/features/shell/OfflinePage';
 import { Offline, Sidebar, useSidePanel } from '~/features/shell/Sidebar';
 import { PhoneTop, TabBar } from '~/features/shell/TabBar';
 import { TopActions } from '~/features/shell/TopActions';
-import { CallFlowContext, PaletteContext, type PaletteStart } from '~/features/shell/context';
+import { CallFlowContext, type PaletteStart } from '~/features/shell/context';
 import { ownerOf, requireAccount } from '~/lib/guards';
 import { overlayOpen, typing, withMod } from '~/lib/keys';
 
@@ -63,7 +63,6 @@ function Shell() {
 
   return (
     <CallFlowContext.Provider value={flow}>
-      <PaletteContext.Provider value={openPalette}>
         {/* Behind a new account's arrival screen until it opens; then in again, as the arch opens. */}
         <div key={opened} className={cn('shell world-in', side.hidden && 'is-bare')} inert={stage === 'creating'}>
           <Sidebar hidden={side.hidden} hideRef={side.hideRef} onHide={side.hide} onNew={() => flow.start()} onPin={() => openPalette({ mode: 'pin' })} />
@@ -80,7 +79,6 @@ function Shell() {
         <CallFlowHost opened={calls.opened} open={calls.open} close={calls.close} />
         <Palette open={palette} onOpenChange={setPalette} start={start} />
         <TourHost />
-      </PaletteContext.Provider>
     </CallFlowContext.Provider>
   );
 }

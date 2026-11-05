@@ -922,7 +922,7 @@ Calendar event moved to Alcove, and a call scheduled as the next one.
   asker is told to ask again (`409 conflict`). It needs a written note in the series (`409 conflict`
   otherwise), shares the 20-a-minute limit with asking about notes, keeps no operation receipt, stores
   nothing and costs no credits.
-- **In the app.** Home shows **From earlier calls** under the call that's up next when it's in a series:
+- **In the app.** A call in a series has **What carries over** on its card, which opens the series page:
   confirmed decisions, questions still open and follow-ups someone took on, with counts of the rest. A note
   says when it's in a series, and offers its organizer **Meet again** when it isn't. The series page
   (`/notes/series/<id>`) has everything, lets people settle it, and answers questions across the calls; under
