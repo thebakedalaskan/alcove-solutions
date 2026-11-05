@@ -454,10 +454,20 @@ async function agendaOf(o: Owner, documents: string[], worked: WorkedDocument[])
   return undefined;
 }
 /**
- * After a call ends, with nothing held: a version with reason `call` of everything worked on, and for a call in a series,
- * which document was its agenda, so the next one can carry on from it. None of this is worth failing the end of a call.
+ * Once a call has ended and everyone's gone, with nothing held and nobody waiting: for a call in a series, which document was
+ * its agenda, so the next one can carry on from it, and then a version with reason `call` of everything worked on. It never
+ * throws: whatever doesn't work is logged, and costs only what it was keeping.
  */
 export async function afterCall(o: Owner, callId: string, meetingId: string, worked: WorkedDocument[]): Promise<void> {
+  try {
+    const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
+    if (m?.manifest.seriesId && !m.manifest.agenda) {
+      const agenda = await agendaOf(o, m.manifest.documents, worked);
+      if (agenda) await tx(o.pool, (c) => updateManifest(o, c, meetingId, (x) => (x.agenda ? x : { ...x, agenda })));
+    }
+  } catch (e) {
+    wlog.warn('a call’s agenda not kept', { callId, err: e });
+  }
   try {
     for (const [workspaceId, documents] of byWorkspace(worked)) {
       const w = await serverWorkspace(o, workspaceId);
@@ -467,10 +477,6 @@ export async function afterCall(o: Owner, callId: string, meetingId: string, wor
         await keepVersion(w, documentId, { reason: 'call', callId }).catch((e: unknown) => wlog.warn('version not kept for a call', { callId, workspaceId, documentId, err: e }));
       }
     }
-    const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
-    if (!m?.manifest.seriesId || m.manifest.agenda) return;
-    const agenda = await agendaOf(o, m.manifest.documents, worked);
-    if (agenda) await tx(o.pool, (c) => updateManifest(o, c, meetingId, (x) => (x.agenda ? x : { ...x, agenda })));
   } catch (e) {
     wlog.warn('what a call worked on not kept', { callId, err: e });
   }
