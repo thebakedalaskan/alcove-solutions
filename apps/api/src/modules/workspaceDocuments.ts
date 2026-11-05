@@ -222,13 +222,13 @@ async function writeVersion(c: Db, p: Place, documentId: string, versionId: stri
  * before anything is deleted. The row's lock is taken only to swap it in, and only if the snapshot is still the one this
  * started from: otherwise someone else folded it first, on this instance or another, and nothing is written. That's `raced`.
  */
-async function fold(p: Place, documentId: string, through: number, keep?: Keep): Promise<{ raced: boolean; versionId: string | null }> {
+async function fold(p: Place, documentId: string, through: number, keep?: Keep): Promise<{ raced: boolean; wrote: boolean; versionId: string | null }> {
   const row = await documentRow(p, documentId);
-  if (row.closed) return { raced: false, versionId: null };
+  if (row.closed) return { raced: false, wrote: false, versionId: null };
   const l = await sealedLog(p, documentId, through);
   const from = l.base?.throughSeq ?? null;
   const reach = Math.max(through, from ?? 0);
-  if (!keep && from !== null && reach === from) return { raced: false, versionId: null };
+  if (!keep && from !== null && reach === from) return { raced: false, wrote: false, versionId: null };
   const versionId = keep ? id128() : null;
   const covered = l.rows.filter((r) => r.seq > (from ?? 0));
   const made = await working(p, documentId, row, () => p.owner.docs.run('fold', { ...l, rows: covered, through: reach, keep: keep && versionId ? { ...keep, versionId } : null }, jobFor(row)));
@@ -244,7 +244,7 @@ async function fold(p: Place, documentId: string, through: number, keep?: Keep):
     return true;
   });
   if (wrote) dlog.debug('document folded', { workspaceId: p.workspaceId, documentId, through: reach, updates: covered.length, bytes: made.shape.bytes, items: made.shape.items, version: versionId });
-  return { raced: !wrote, versionId: wrote ? versionId : null };
+  return { raced: !wrote, wrote, versionId: wrote ? versionId : null };
 }
 /** What a document comes to now a snapshot says it exactly, and what's left in the log on top. */
 async function settleFigures(c: Db, p: Place, documentId: string, shape: { bytes: number; items: number; nesting: number }, versionSeq: number | null): Promise<void> {
@@ -1024,15 +1024,17 @@ async function syncFrom(p: Place, documentId: string, row: DocRow, after: number
 }
 
 /**
- * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much closes,
- * so a poll asking again can't keep a worker on it, however many people are polling.
+ * A job on a document, as the server does for itself: one that's closed costs no worker, and one that proves too much, out of
+ * a worker's time or memory, closes, so a poll asking again can't keep a worker on it, however many people are polling. A
+ * worker that only says the job failed closes nothing: a compaction that won't pass a row it can't read is one, and the
+ * document opens fine without that row.
  */
 async function working<T>(p: Place, documentId: string, row: DocRow, job: () => Promise<T>): Promise<T> {
   if (row.closed) throw new UnavailableError('This document can’t be opened right now.', { context: { workspaceId: p.workspaceId, documentId } });
   try {
     return await job();
   } catch (e) {
-    if (e instanceof DocFailure) await closeFor(p, documentId, e);
+    if (e instanceof DocFailure && e.reason !== 'failed') await closeFor(p, documentId, e);
     throw e;
   }
 }

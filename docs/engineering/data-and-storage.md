@@ -194,8 +194,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
   stream says `closed`, `unavailable`, as its only line. The same goes for what the server does itself: `readDocument`,
-  `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much closes it, so a
-  poll can't keep a worker on one however many people are polling. Its versions still read, and restoring one replaces what won't open
+  `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much, out of a worker's
+  time or memory, closes it, so a poll can't keep a worker on one however many people are polling. A worker that only says a
+  job failed closes nothing: a compaction that won't pass a row it can't read is one, and the document opens without that row. Its versions still read, and restoring one replaces what won't open
   and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
   document that may only be slow.
 
