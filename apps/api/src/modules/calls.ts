@@ -1186,12 +1186,18 @@ export async function tickDocumentFollowUp(v: Viewer, callId: string, t: DocFoll
   return followUpsIn(v, callId);
 }
 
-/** Everything that reaches the AI from a call waits while notes, or the room someone's in, are paused. */
+/**
+ * Asking about a selection needs in a call what catching up does: everything that reaches the AI from a call waits while
+ * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing.
+ */
 export async function mayAskInCall(v: Viewer): Promise<void> {
   const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
   const s = settle(state, row);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
-  capture.mayReachAi(capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE), 'ask', { callId: v.pass.callId, what: 'ask-selection' });
+  const ctx = { callId: v.pass.callId, what: 'ask-selection' };
+  const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
+  capture.mayReachAi(call, 'ask', ctx);
+  if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
 }
 
 /** Someone rung answers: the organizer's browser is told, so their arch shows it. */
