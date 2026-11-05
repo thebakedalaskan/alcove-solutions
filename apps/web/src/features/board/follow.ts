@@ -1,7 +1,8 @@
 /*
  * Following someone, and Go to. Following reads that person's `view` and drives this camera, until something stops it:
- * `Board` knows every stop there is (a scroll, a zoom, Esc), so this only watches `following` go. All of them end the same
- * way, with the camera back where it was before, because the view you were following was never your own.
+ * `Board` knows every stop there is, so this only watches `following` go. Stop and Esc go back to where you were, because
+ * the view you were following was never your own, and so does that person leaving. Moving the board yourself leaves you
+ * where you are, because you've started looking around from there: `takeCamera` drops `home` first, so there's nowhere to go.
  *
  * It starts with the board's glide. After that a person's view arrives ten times a second, and a glide starting again each
  * time would stutter and trail, so the camera eases towards the latest one a frame at a time, and stops when it gets there.
@@ -51,8 +52,6 @@ export class BoardFollowing {
   private readonly people: FollowedPeople;
   /** Who this camera is following, which trails the board's own `following` until `boardChanged` has seen it. */
   private who: string | null = null;
-  /** Where this person was before they started, which is where stopping takes them. */
-  private home: BoardPlace | null = null;
   /** What to say on the way back, if it isn't the usual. */
   private parting: string | null = null;
   /** Their last view, to tell a new one from someone else's update. */
@@ -87,7 +86,7 @@ export class BoardFollowing {
       removeEventListener('keydown', escape, { capture: true });
       this.halt();
       this.who = null;
-      this.home = null;
+      this.board.home = null;
       this.board.stopFollow();
     };
   }
@@ -99,7 +98,7 @@ export class BoardFollowing {
       this.say(this.notHere(id));
       return;
     }
-    this.home = null;
+    board.home = null;
     board.stopFollow();
     board.goTo(viewHere(view, board.camera.width));
   }
@@ -149,17 +148,17 @@ export class BoardFollowing {
     const { board } = this;
     this.halt();
     // Going from one person straight to another, where you were is still where you were.
-    this.home ??= board.camera.place();
+    board.home ??= board.camera.place();
     this.seen = view;
     board.goTo(viewHere(view, board.camera.width));
   }
 
   private back(): void {
     this.halt();
-    const { home, parting } = this;
-    this.home = null;
+    const { board, parting } = this, { home } = board;
+    board.home = null;
     this.parting = null;
-    if (home) this.board.goTo(home);
+    if (home) board.goTo(home);
     const text = parting ?? (home ? BACK : null);
     if (text) this.say(text);
   }

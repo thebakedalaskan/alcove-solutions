@@ -117,6 +117,8 @@ export class Board implements LiveStore<BoardState> {
   tell: (text: string) => void = () => undefined;
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
+  /** Where this person was when they started following, which is where Stop and Esc take them. */
+  home: BoardPlace | null = null;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -448,8 +450,10 @@ export class Board implements LiveStore<BoardState> {
     });
   }
 
-  /** The person has taken the camera: anything easing it stops where it is. */
-  stopGlide(): void {
+  /** The person has taken the camera. They've started looking around from here, so following stops and leaves them here, and anything easing it stops where it is. */
+  takeCamera(): void {
+    this.home = null;
+    this.stopFollow();
     if (this.state.glide) this.set({ glide: false });
   }
 
@@ -462,7 +466,7 @@ export class Board implements LiveStore<BoardState> {
   }
 
   zoomBy(factor: number): void {
-    this.stopFollow();
+    this.takeCamera();
     this.glideTo(this.camera.zoomed(factor, this.camera.width / 2, this.camera.height / 2));
   }
 
@@ -470,7 +474,7 @@ export class Board implements LiveStore<BoardState> {
   zoomOut = (): void => this.zoomBy(1 / ZOOM_STEP);
 
   showEverything = (): void => {
-    this.stopFollow();
+    this.takeCamera();
     this.fitAll();
   };
 
