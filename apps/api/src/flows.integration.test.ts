@@ -7,6 +7,7 @@ import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type Al
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
+import { addObject, newId, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
 import { cookieName } from './sessions';
@@ -3144,7 +3145,18 @@ describe('privacy at rest', () => {
     await c.api.workspaces.addPerson(space.id, 'canary-ws-member@canary.example', 'edit');
     const spaceFolder = await c.api.workspaces.items.create(space.id, { kind: 'folder', name: 'CANARY-WSFOLDER' });
     const spaceDoc = await c.api.workspaces.items.create(space.id, { kind: 'document', name: 'CANARY-WSDOC', parent: spaceFolder.id });
-    await c.api.workspaces.items.create(space.id, { kind: 'board', name: 'CANARY-WSBOARD', parent: spaceFolder.id });
+    const spaceBoard = await c.api.workspaces.items.create(space.id, { kind: 'board', name: 'CANARY-WSBOARD', parent: spaceFolder.id });
+    // What's on a board, written as the board writes it: a frame's title, a sticky's words and a table's cell.
+    const onBoard = await c.api.workspaces.document(space.id, spaceBoard.id);
+    await onBoard.ready;
+    const row = newId();
+    const col = newId();
+    addObject(onBoard.doc, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: '', hint: '', sub: '', title: 'CANARY-WSFRAME roadmap' }, null);
+    addObject(onBoard.doc, { k: 'note', x: 40, y: 80, w: 150, h: 150, c: 'butter', size: 'm', t: 'CANARY-WSSTICKY sign by Friday' }, null);
+    const grid = addObject(onBoard.doc, { k: 'table', x: 800, y: 0, w: 120, h: 40, rows: [{ id: row, size: 40 }], cols: [{ id: col, size: 120 }], cells: {} }, null) ?? '';
+    tableCell(onBoard.doc, grid, row, col, null)?.insert(0, 'CANARY-WSCELL owner');
+    await until(async () => onBoard.getSnapshot().status === 'saved', 'the board to reach Alcove');
+    onBoard.close();
     await c.api.workspaces.items.rename(space.id, spaceDoc.id, 'CANARY-WSRENAMED');
     await c.api.workspaces.share.set(space.id, spaceDoc.id, [{ email: 'canary-ws-shared@canary.example' }], 'read');
     await c.api.workspaces.items.duplicate(space.id, spaceDoc.id);
@@ -3197,7 +3209,8 @@ describe('privacy at rest', () => {
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
-      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared'
+      'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
+      'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
