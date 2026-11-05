@@ -4,7 +4,7 @@
  * one sticky. It always shows the Y.Text, never the view, because the view cuts text past the limit and this is where
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
-import { BOARD_LIMITS, difference, objectText, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
+import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
 import { BoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
@@ -156,10 +156,20 @@ export function holdKeys(then: () => void): void {
 export function BoardTyping({ board, id, label }: { board: Board; id: string; label: string }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current, text = objectText(board.doc, id);
+    const el = ref.current;
+    let text = objectText(board.doc, id);
     if (!el || !text) return undefined;
-    const { flush, stop } = bindText(el, text, board.origin);
-    board.flushTyping = flush;
+    let binding = bindText(el, text, board.origin);
+    // Undo makes a deleted object again with a new Y.Text. Someone can be typing in it, and a reconnect can bring the delete and the undo at once, so nothing closes this field: without following, what they type next would go nowhere.
+    const follow = (): void => {
+      const now = objectText(board.doc, id);
+      if (!now || now === text) return;
+      binding.stop();
+      text = now;
+      binding = bindText(el, now, board.origin);
+    };
+    const stopFollowing = observeBoard(board.doc, follow);
+    board.flushTyping = () => binding.flush();
     const key = (e: KeyboardEvent): void => {
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
@@ -182,7 +192,8 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
     el.scrollTop = el.scrollHeight;
     return () => {
       board.flushTyping = null;
-      stop();
+      stopFollowing();
+      binding.stop();
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };
