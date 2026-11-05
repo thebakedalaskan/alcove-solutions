@@ -104,7 +104,7 @@ function FollowUpRows({ items, times, onSeek, onTick }: { items: LiveFollowUp[];
             : it.done ? <span className="mk"><Icon name="check" size={12} /></span>
               : it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk" />}
           <div>
-            <span className="tx">{it.text}</span>
+            <span className="nr-text">{it.text}</span>
             {(it.owner || it.due) && (
               <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
@@ -195,6 +195,9 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
         {pausedHere && n && (
           <div className="ic-problems is-top"><Notice icon="pause">{roomHeld ? ROOM_PAUSED : <>Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</>}</Notice></div>
         )}
+        {(problems.length > 0 || live.error) && (
+          <div className="ic-problems is-top">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
+        )}
         {roomHeld && !n ? (
           <EmptyState title="Notes are paused in this room" className="ic-empty">Nothing said here is transcribed until the organizer resumes.</EmptyState>
         ) : paused && !n ? (
@@ -233,12 +236,13 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
               </div>
             )}
             <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
-            {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
-            {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+            {(n.read.whileHere || on) && (
+              <div className="ic-about">
+                {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
+                {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+              </div>
+            )}
           </div>
-        )}
-        {(problems.length > 0 || live.error) && (
-          <div className="ic-problems">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
         )}
       </div>
       <Foot end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone with the notes</Foot>
