@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DocAwarenessBodySchema, DocUpdateBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DocAwarenessBodySchema, DocUpdateBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
@@ -39,6 +39,7 @@ import * as rings from './modules/rings';
 import { jpegSize } from './modules/screens';
 import * as series from './modules/series';
 import * as workspaceDocuments from './modules/workspaceDocuments';
+import * as mentions from './modules/workspaceMentions';
 import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
@@ -203,6 +204,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const presenceLimiter = rateLimit(600, 60_000);
   /** Reading every document someone can open, for searching: once when search opens. */
   const searchLimiter = rateLimit(12, 60_000);
+  /** Tagging people and saying you've heard, per person: a tag is typed, so this is far more than anyone writes. */
+  const mentionLimiter = rateLimit(240, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -637,6 +640,23 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json({ said: true });
   });
   /*
+   * Tags: someone told they were tagged, and saying you've heard. No receipts: a retry tells them twice at worst, and a
+   * receipt filed under someone in a workspace outlives whatever it was about.
+   */
+  app.use('/v1/workspaces/:id/documents/:doc/mentions', capped(1024));
+  app.post('/v1/workspaces/:id/documents/:doc/mentions', async (c) => {
+    const r = await readerOf(c);
+    mentionLimiter(access.limitKey(r), 'tagging people');
+    await mentions.mention(d, r, c.req.param('id'), c.req.param('doc'), await body(c, MentionBodySchema));
+    return c.json({ said: true });
+  });
+  app.delete('/v1/workspaces/:id/mentions/:mention', async (c) => {
+    const r = await readerOf(c);
+    mentionLimiter(access.limitKey(r), 'tagging people');
+    await mentions.seen(d, r, c.req.param('id'), c.req.param('mention'));
+    return c.json({ seen: true });
+  });
+  /*
    * A document or board: its stream down, its updates and carets up, and its versions. An update that arrives twice changes
    * nothing, and a receipt would hold a copy of it, so none of this keeps one.
    */
@@ -949,6 +969,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   };
   const ws = (c: Context<Env>) => c.req.param('id') ?? '';
   const itemOf = (c: Context<Env>) => c.req.param('item') ?? '';
+  app.get('/v1/mentions', async (c) => {
+    workspaceListLimiter(c.get('owner').ownerId, 'reading your tags');
+    return c.json(await mentions.notices(d, await access.accountReader(c.get('owner'))));
+  });
   app.get('/v1/workspaces', async (c) => {
     workspaceListLimiter(c.get('owner').ownerId, 'workspace list');
     return c.json(await workspaces.list(await access.accountReader(c.get('owner'))));

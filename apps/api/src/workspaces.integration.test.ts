@@ -1252,7 +1252,7 @@ describe('the live stream', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Doc');
     const live = theo.api.workspaces.live(id);
-    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [], mentions: [] });
     await until(() => live.getSnapshot().status === 'live', 'the first line');
     expect(liveNames(live)).toEqual(['Doc']);
     let heard = 0;
@@ -1277,7 +1277,7 @@ describe('the live stream', () => {
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.removePerson(id, me);
     await until(() => live.getSnapshot().status === 'closed', 'being taken out to end the stream');
-    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [], mentions: [] });
     live.close();
   });
 

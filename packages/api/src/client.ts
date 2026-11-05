@@ -4,7 +4,7 @@ import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
 import type { DocSession, DocSessionOptions, DocVersion, DocVersionSummary, SearchDoc } from './workspaceDocuments';
-import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
+import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, MentionBody, MentionNotice, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -271,6 +271,15 @@ export interface AlcoveApi {
       /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
       restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
     };
+    /**
+     * Tells someone you tagged them in a document you can edit. It gives them nothing: someone who can't open it isn't told,
+     * and the answer doesn't say which. They hear on the workspace's stream, or whenever they're next here.
+     */
+    mention(id: ID, documentId: ID, tag: MentionBody, opts?: WorkspaceReadOptions): Promise<void>;
+    /** What you've been tagged in and haven't seen, in every workspace, the newest first: only what you can open now. */
+    mentions(): Promise<MentionNotice[]>;
+    /** You've heard about this tag, so it isn't kept any more. A tag that's gone is fine. */
+    mentionSeen(id: ID, mentionId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
     live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
     /**
