@@ -36,7 +36,7 @@ isn't. Nothing is a setting.
 | Waiting | Rung people wait as empty arches, with their answers | Guests ask to join, and you let them in |
 | Who | Groups, everyone at the company, the people you meet | People you've met, and any address |
 | When | Free time across everyone's calendars | Your own calendar, with **Let Jamie pick** for private calendars |
-| Documents | From a workspace | From your own documents |
+| Documents | What you can open, by workspace | The same |
 
 ## Decisions
 

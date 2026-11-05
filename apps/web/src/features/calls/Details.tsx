@@ -20,11 +20,11 @@ function footLine(draft: Draft, guests: readonly Person[], invites: boolean): st
   return invites ? invitationLine(guests) : 'Nobody’s told until you send them the link.';
 }
 
-export function Details({ draft, change, guests, at, invites, team, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
+export function Details({ draft, change, guests, at, invites, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
   draft: Draft; change: (d: Partial<Draft>) => void; guests: Person[]; at: Date;
   /** A calendar will take this call and invite everyone: it decides what can be promised. */
   invites: boolean;
-  team: boolean; back: boolean;
+  back: boolean;
   /** Came back from the documents: focus goes to their row. */
   returning: boolean;
   /** The call is on its way: the rows that step elsewhere wait for the answer. */
@@ -85,7 +85,7 @@ export function Details({ draft, change, guests, at, invites, team, back, return
           <FlowRow icon="notes" on={draft.notes === 'on'} title={notesWord(draft)} sub={draft.notes === 'on' ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded={open === 'notes'} onClick={() => setOpen((o) => (o === 'notes' ? null : 'notes'))} />
           {open === 'notes' && <div className="cf-more"><NotesSwitches notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
           <FlowRow id="cf-docs-row" icon="fileText" onClick={onDocs} disabled={saving} title={draft.documents.length ? `${draft.documents.length} ${draft.documents.length === 1 ? 'document' : 'documents'}` : 'Documents'}
-            sub={draft.documents.length ? docNames(draft.documents) : team ? 'Add from a workspace' : 'Add from your documents'} />
+            sub={draft.documents.length ? docNames(draft.documents) : 'Add from a workspace'} />
         </div>
       </FlowBody>
       {failed !== null && <Failed error={failed} />}
