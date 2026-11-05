@@ -41,6 +41,8 @@ export interface ObjectPatch {
 }
 
 export type TableAxis = 'rows' | 'cols';
+/** What became of an undo or redo: whether anything changed, or what went wrong, for the caller to log. */
+export type StepResult = { ok: true; changed: boolean } | { ok: false; error: unknown };
 type UndoStep = Y.UndoManager['undoStack'][number];
 
 const PATCHABLE = new Set(['at', 'c', 'size', 's', 'role', 'hint', 'sub', 'style', 'from', 'to', 'tool', 'media', 'item', 'caption', 'parent']);
@@ -574,16 +576,22 @@ function lineHoldsOthers(entry: Y.Item, lines: Y.Array<unknown>, axis: TableAxis
 }
 
 /**
- * Whether undoing would take someone else's work with it, which it never should. Yjs asks about an item after it has
- * popped the step, so the step isn't there to look at. But an object is only going if this undo added it, in one of
- * `steps`, and that step has left the stack. Your own edits inside something shared still undo: only its removal is
- * refused, and whole, because Yjs deletes children first and half a sticky wouldn't parse. A copy someone else's undo
- * restored is theirs, so it's refused too.
+ * Whether undo has to leave an item alone, so that it never costs anyone their work or leaves an object that won't read.
+ *
+ * A field's value only goes when another replaces it, or with its object. Yjs refuses to bring back an old value if someone
+ * else changed the field, but deletes yours anyway. If two people set a field at once and yours won, that leaves the field
+ * empty, and the object gone for everyone. A value that was replaced has already gone, so refusing it costs nothing.
+ *
+ * Nothing goes with an object that has someone else's work in it. Yjs asks after popping the step, so the step isn't there
+ * to look at, but an object is only going if this undo added it, in one of `steps`, and that step has left the stack. Your
+ * own edits inside something shared still undo: only its removal is refused, and whole. A copy someone else's undo restored
+ * is theirs, so that's refused too.
  */
-function takesOthersWork(undo: Y.UndoManager, steps: readonly UndoStep[], item: Y.Item): boolean {
+function undoKeeps(undo: Y.UndoManager, steps: readonly UndoStep[], item: Y.Item): boolean {
   const me = undo.doc.clientID;
   if (item.id.client !== me) return true;
   const [top = item, field, entry] = pathTo(item);
+  if (item === field) return true;
   const addedIn = (list: readonly UndoStep[]): boolean => list.some((step) => Y.isDeleted(step.insertions, top.id));
   if (addedIn(steps) && !addedIn(undo.undoing ? undo.undoStack : undo.redoStack) && othersIn(top, me)) return true;
   const table = mapOf(typeIn(top));
@@ -597,14 +605,93 @@ function takesOthersWork(undo: Y.UndoManager, steps: readonly UndoStep[], item: 
  * Undo for one browser: both roots, with only its origin tracked, which is exactly "undo only ever takes back your
  * own changes", and a filter so that taking back an add can't take what someone else put inside it. Changes within half
  * a second of each other are one step, so a drag or a burst of typing undoes together. Call `stopCapturing` between
- * gestures that shouldn't.
+ * gestures that shouldn't, and take steps with `undoStep` and `redoStep`, not its own `undo` and `redo`.
  */
 export function makeUndo(doc: Y.Doc, origin: unknown): Y.UndoManager {
   const roots = [rootMap(doc, BOARD_OBJECTS), rootMap(doc, BOARD_COMMENTS)].flatMap((root) => (root ? [root] : []));
   const steps: UndoStep[] = [];
-  const undo: Y.UndoManager = new Y.UndoManager(roots, { doc, trackedOrigins: new Set([origin]), deleteFilter: (item) => !takesOthersWork(undo, steps, item) });
+  const undo: Y.UndoManager = new Y.UndoManager(roots, { doc, trackedOrigins: new Set([origin]), deleteFilter: (item) => !undoKeeps(undo, steps, item) });
   undo.on('stack-item-added', ({ stackItem }) => {
     steps.push(stackItem);
   });
   return undo;
+}
+
+/** Where something is now: the last copy undo restored it as, if it has been restored. */
+function lastCopy(item: Y.Item, doc: Y.Doc): Y.Item | Y.GC {
+  let at: Y.Item | Y.GC = item;
+  while (at instanceof Y.Item && at.redone) at = Y.getItem(doc.store, at.redone);
+  return at;
+}
+
+/** Whether someone else's value now stands where a map value would come back: in a field, or a table's cell. */
+function overtaken(item: Y.Item, doc: Y.Doc): boolean {
+  const holder = holderOf(item), copy = holder ? lastCopy(holder, doc) : null;
+  const type = copy instanceof Y.Item && copy.content instanceof Y.ContentType ? copy.content.type : null;
+  const now = type && item.parentSub !== null ? type._map.get(item.parentSub) : undefined;
+  return now !== undefined && !now.deleted && now.id.client !== doc.clientID;
+}
+
+/**
+ * Readies a step as it comes off the stack, by looking at the object each thing it would bring back sits in.
+ *
+ * If it restores an object, it ignores other people's changes. Yjs skips a field someone else changed, which is right for a
+ * live object: undoing a recolour mustn't overwrite someone's later one. But for an object being restored it leaves a shell
+ * that doesn't parse, gone for everyone. It fits deleting winning, and a step that also touched something live keeps
+ * that care by leaving out any field of it someone has since changed.
+ *
+ * If an object's last copy has been collected, nothing of it can come back, and Yjs throws if it tries. That happens when
+ * someone deletes a restored object, because Yjs only keeps a copy while a step still deleted something in it.
+ *
+ * Yjs never redoes what's in a step's `insertions`, so that's where both kinds go.
+ */
+function ready(undo: Y.UndoManager, step: UndoStep): void {
+  const leftOut = Y.createDeleteSet();
+  const leaveOut = ({ id: { client, clock }, length: len }: Y.Item): void => {
+    leftOut.clients.set(client, [...(leftOut.clients.get(client) ?? []), { clock, len }]);
+  };
+  let restores = false;
+  undo.doc.transact((transaction) => {
+    Y.iterateDeletedStructs(transaction, step.deletions, (struct) => {
+      if (!(struct instanceof Y.Item)) return;
+      const copy = lastCopy(pathTo(struct)[0] ?? struct, undo.doc);
+      if (!(copy instanceof Y.Item) || !(copy.content instanceof Y.ContentType)) leaveOut(struct);
+      else if (copy.deleted) restores = true;
+      else if (overtaken(struct, undo.doc)) leaveOut(struct);
+    });
+  });
+  step.insertions = Y.mergeDeleteSets([step.insertions, leftOut]);
+  undo.ignoreRemoteMapChanges = restores;
+}
+
+/**
+ * Takes one step. Yjs moves on from a step that changes nothing, so each is readied as it comes off, with the stack left
+ * whole, because Yjs reads it to judge conflicts. `ready` leaves out what's known to make Yjs throw, but if it throws anyway
+ * the step is gone and the doc is fine, so that's a result for the caller to log: there's no logger here.
+ */
+function takeStep(undo: Y.UndoManager, stack: UndoStep[], take: () => UndoStep | null): StepResult {
+  const setting = undo.ignoreRemoteMapChanges;
+  stack.pop = () => {
+    const step: UndoStep | undefined = Array.prototype.pop.call(stack);
+    if (step) ready(undo, step);
+    return step;
+  };
+  try {
+    return { ok: true, changed: take() !== null };
+  } catch (error) {
+    return { ok: false, error };
+  } finally {
+    undo.ignoreRemoteMapChanges = setting;
+    Reflect.deleteProperty(stack, 'pop');
+  }
+}
+
+/** Takes back this browser's last step, whole if it restores an object. Use this, not the manager's own `undo`. */
+export function undoStep(undo: Y.UndoManager): StepResult {
+  return takeStep(undo, undo.undoStack, () => undo.undo());
+}
+
+/** Puts back the last step undone, whole if it restores an object. Use this, not the manager's own `redo`. */
+export function redoStep(undo: Y.UndoManager): StepResult {
+  return takeStep(undo, undo.redoStack, () => undo.redo());
 }

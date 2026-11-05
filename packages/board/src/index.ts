@@ -17,9 +17,9 @@ export type { Camera, Pad } from './geometry';
 export { freeRoute, route, shapePath, sides } from './routes';
 export type { Route } from './routes';
 export {
-  addObject, addReply, addTableLine, addThread, applyThemes, duplicateObjects, makeUndo, moveObjects, removeObjects, removeTableLine, resizeObject, setObjects, sizeTableLine, tableCell, tidyObjects
+  addObject, addReply, addTableLine, addThread, applyThemes, duplicateObjects, makeUndo, moveObjects, redoStep, removeObjects, removeTableLine, resizeObject, setObjects, sizeTableLine, tableCell, tidyObjects, undoStep
 } from './write';
-export type { Move, ObjectPatch, TableAxis } from './write';
+export type { Move, ObjectPatch, StepResult, TableAxis } from './write';
 export { TEMPLATES, fillTemplate } from './templates';
 export type { TemplateName } from './templates';
 export { boardFollowUps, boardText } from './text';
