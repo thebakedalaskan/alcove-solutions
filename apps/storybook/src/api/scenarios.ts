@@ -6,23 +6,27 @@
  */
 import {
   CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
-  SessionSchema, TeamSchema, WorkspaceTreeSchema, type Group, type Person, type WorkspaceItem, type WorkspaceTree
+  SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceTreeSchema, type DocumentRole, type Group, type Person, type ShareEntry, type WorkspaceItem,
+  type WorkspaceTree
 } from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
 import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type World } from '../world';
+import { CREDITS, PREFS, WELCOME_CREDITS, session, type Opening, type Page, type Refused, type World } from '../world';
+import {
+  COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, OLD_ROADMAP, PRICING_COPY, WORKING_FROM_HOME
+} from '../world/documents';
 import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, standupOwn, walkthrough } from '../world/notes';
-import { AIKO, ANA, ART, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, PRIYA, teamOf, type Colleague } from '../world/people';
+import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
 import { forgetAudio } from './media';
 import { stopLive } from './standin';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -31,19 +35,55 @@ interface Scenario { title: string; about: string; make: () => { world: World; o
 const group = (id: string, name: string, people: readonly Person[]): Group => ({ id, name, emails: people.map((p) => p.email) });
 const GROUPS = [group('g-leads', 'Leads', [PRIYA, KOFI, INES]), group('g-product', 'Product', [PRIYA, KOFI, AIKO, MAYA])];
 
-const itemId = (slug: string) => slug.replace(/[^A-Za-z0-9]/g, '').padEnd(22, '0').slice(0, 22);
-function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, parent: string | null = null): WorkspaceItem {
-  const at = new Date(Date.parse(iso(0, 16, 12)) - hoursAgo * 3_600_000).toISOString();
-  return { id: itemId(name), kind, name, parent, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit' };
+/** A workspace item's ID, from its name: the 22 characters the contract asks for. Stories open a document by it. */
+export const itemId = (slug: string) => slug.replace(/[^A-Za-z0-9]/g, '').padEnd(22, '0').slice(0, 22);
+const hoursBefore = (hours: number) => new Date(Date.parse(iso(0, 16, 12)) - hours * 3_600_000).toISOString();
+interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: boolean; trashed?: { hoursAgo: number; by: Person } }
+function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, o: ItemShape = {}): WorkspaceItem {
+  const at = hoursBefore(hoursAgo);
+  return {
+    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: at, editedAt: at,
+    trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit'
+  };
 }
+/** The workspaces: Product, which Art runs; Design, where he edits; and the company handbook, which he can only read. */
 function workspaces(): WorkspaceTree[] {
+  const research = { parent: itemId('Research') };
+  const reading = { role: 'read' } as const;
   return [
     {
       id: 'ws-product', name: 'Product', role: 'admin', people: 6,
-      items: [item('Launch plan', 'document', PRIYA, 2), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300), item('Interview notes', 'document', LENA, 120, itemId('Research')), item('Pricing page copy', 'document', LENA, 26)]
+      items: [
+        item('Launch plan', 'document', PRIYA, 2), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
+        item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
+        item('Pricing page copy', 'document', LENA, 26, { restricted: true }),
+        item('Old roadmap', 'document', PRIYA, 900, { trashed: { hoursAgo: 20, by: PRIYA } }),
+        item('Launch plan, first draft', 'document', ART, 260, { trashed: { hoursAgo: 70, by: ART } })
+      ]
     },
-    { id: 'ws-design', name: 'Design', role: 'edit', people: 4, items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)] }
+    { id: 'ws-design', name: 'Design', role: 'edit', people: 4, items: [item('Onboarding flow', 'board', AIKO, 50), item('Empty states', 'document', KOFI, 8)] },
+    {
+      id: 'ws-handbook', name: 'Company handbook', role: 'read', people: 38,
+      items: [item('Holidays', 'document', NADIA, 700, reading), item('Expenses', 'document', NADIA, 1300, reading), item('Working from home', 'document', NADIA, 2100, reading)]
+    }
   ];
+}
+/** What the documents say, by their IDs. */
+function pages(): Record<string, Page> {
+  const named: [string, Page][] = [
+    ['Launch plan', LAUNCH_PLAN], ['Launch checklist', LAUNCH_CHECKLIST], ['Interview notes', INTERVIEWS], ['Competitor notes', COMPETITORS],
+    ['Pricing page copy', PRICING_COPY], ['Old roadmap', OLD_ROADMAP], ['Launch plan, first draft', FIRST_DRAFT], ['Empty states', EMPTY_STATES],
+    ['Holidays', HOLIDAYS], ['Expenses', EXPENSES], ['Working from home', WORKING_FROM_HOME]
+  ];
+  return Object.fromEntries(named.map(([name, page]) => [itemId(name), page]));
+}
+/** The launch plan reaches a designer outside the company and someone from sales; the pricing copy is closed to the workspace. */
+function shares(): Record<string, ShareEntry[]> {
+  const entry = (id: string, person: Person, role: DocumentRole, daysAgo: number): ShareEntry => ({ id, kind: 'email', person, role, since: iso(-daysAgo, 10, 0) });
+  return {
+    [itemId('Launch plan')]: [entry('share-jonas', JONAS, 'read', 6), entry('share-diego', DIEGO, 'edit', 2)],
+    [itemId('Pricing page copy')]: [entry('share-maya', MAYA, 'edit', 3)]
+  };
 }
 
 /** The canvas's busy Wednesday afternoon, at 16:12. */
@@ -52,7 +92,8 @@ function busy(): World {
   for (const n of notes) if (n.id === 'n2') n.additions = standupAdditions();
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), rings: [], writing: null
+    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(),
+    rings: [], writing: null
   };
 }
 
@@ -118,7 +159,7 @@ function onTheirOwn(): World {
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
     meetings: [], calendar: connected([]), credits: CREDITS, documents: { source: 'sample', workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
-    workspaces: [], rings: [], writing: null
+    workspaces: [], pages: {}, shares: {}, rings: [], writing: null
   };
 }
 
@@ -131,7 +172,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, rings: [], writing: null
       },
       opening: { tourSeen: false }
     })
@@ -163,6 +204,22 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
   'signed-out': {
     title: 'Signed out', about: 'Nobody is signed in on this browser: the welcome page. Microsoft or single sign-on signs Art in, to the busy afternoon.',
     make: () => ({ world: { ...busy(), session: null }, opening: {} })
+  },
+  unsaved: {
+    title: 'Edits that didn’t save',
+    about: 'The busy afternoon, after Alcove wouldn’t take some of what Art wrote: his last edits to the pricing copy, more interview notes than one document holds, and a line in the handbook, which he can only read now.',
+    make: () => {
+      const w = busy();
+      const refuse = (name: string, why: Refused['why'], words: string[]) => {
+        const id = itemId(name);
+        const page = w.pages[id];
+        if (page) w.pages[id] = { ...page, refused: { why, words } };
+      };
+      refuse('Pricing page copy', 'rejected', ['Every seat gets 300 free minutes a month.']);
+      refuse('Interview notes', 'too-large', ['Interview 6, the whole transcript, pasted from the recording.']);
+      refuse('Expenses', 'read-only', ['Trains over four hours can be first class.']);
+      return { world: w, opening: {} };
+    }
   }
 };
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);
@@ -174,7 +231,8 @@ function checked(w: World): World {
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
     ['credits', CreditBalanceSchema.safeParse(w.credits)], ['documents', DocumentLibrarySchema.safeParse(w.documents)], ['workspaces', WorkspaceTreeSchema.array().safeParse(w.workspaces)],
-    ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())]
+    ['rings', IncomingRingSchema.array().safeParse(w.rings)], ['personal', PersonalEntrySchema.array().safeParse(Object.values(w.personal).flat())],
+    ['shares', ShareEntrySchema.array().safeParse(Object.values(w.shares).flat())]
   ] as const;
   const bad = checks.flatMap(([what, r]) => (r.success ? [] : [`${what}: ${r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`]));
   if (bad.length) throw new Error(`The demo world doesn’t fit the contract. ${bad.join(' · ')}`);

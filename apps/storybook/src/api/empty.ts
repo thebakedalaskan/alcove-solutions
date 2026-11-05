@@ -5,7 +5,7 @@ import { PREFS, WELCOME_CREDITS, type Opening, type World } from '../world';
 
 export const EMPTY_WORLD = (): World => ({
   session: null, prefs: PREFS, team: null, notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS,
-  documents: { source: 'none', workspaces: [] }, workspaces: [], rings: [], writing: null
+  documents: { source: 'none', workspaces: [] }, workspaces: [], pages: {}, shares: {}, rings: [], writing: null
 });
 
 /** 16:12 on the demo day, a connection, and answers in a moment. */
