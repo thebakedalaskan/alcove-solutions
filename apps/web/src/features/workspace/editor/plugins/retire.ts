@@ -11,9 +11,10 @@
  * - Words someone was typing as the block left stay safe where they are. Only their author folds them into the block they
  *   were meant for, so it happens once, and that's only tidying: nothing is lost if it never happens.
  * - If two people move one block, two elements end up with one ID. Every browser retires the same one, unless someone has
- *   typed in it since: then it stays too.
+ *   typed in it since: then it stays too. A browser opening a document does the same, in case both left first.
+ * - What this browser deleted that someone copied as they moved the block is deleted again, once it can be matched exactly.
  */
-import { KEPT_ATTRS, newBlockId, retire, settleUndone } from '@alcove/api/retire';
+import { holdsNothing, KEPT_ATTRS, newBlockId, retire, settleUndone } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
@@ -272,6 +273,18 @@ function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; keeper: Y.Xm
 /** Writes that only tidy up, so they're no step of anyone's to undo, and don't take away what could be redone. */
 const TIDYING = Symbol('tidying');
 
+/** What this browser deleted that someone's copy of the block has: `deleted` if that was the whole block. */
+interface Cut { words: CopiedWords; attrs: readonly string[]; copy: Y.XmlElement; deleted: boolean }
+
+/** What's left to do after a change: words to gather, blocks that came, undos to settle, and what this browser deleted that a copy brought back. */
+interface Tidying {
+  strays: readonly StrayWords[];
+  arrived: readonly string[];
+  unnamed: readonly Y.XmlElement[];
+  redone: readonly Y.XmlElement[];
+  cuts: readonly Cut[];
+}
+
 /** y-prosemirror's record of which node each element is, cleared for what's inside a block about to change under it. */
 function forget(binding: SyncBinding, type: Y.XmlElement): void {
   for (const child of type.toArray()) {
@@ -351,27 +364,33 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       const sync = syncOf(view.state);
       if (!sync) return {};
       const { doc, binding, type: fragment } = sync;
-      let done: readonly Leaving[] = [];
 
       /* Writing here, after the fact, can wait until the change that needs it is over: y-prosemirror keeps track of the selection between them. */
-      const tidy = (strays: readonly StrayWords[], arrived: readonly string[], unnamed: readonly Y.XmlElement[], redone: readonly Y.XmlElement[]) => {
+      const tidy = ({ strays, arrived, unnamed, redone, cuts }: Tidying) => {
         queueMicrotask(() => {
           if (view.isDestroyed || rt.readOnly || rt.halted) return;
           const here = blockAt(view.state.selection.$head)?.node;
           let landed: { id: string; offset: number } | null = null;
           const copies = doubles(fragment);
-          if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0) {
+          if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0 || cuts.length > 0) {
+            const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
             doc.transact(() => {
               /* First, so words gathered below go into the copy that stays. */
               for (const copy of copies) settleCopies(copy.element, copy.keeper, copy.id, newBlockId());
               for (const stray of strays) {
                 const into = elementOf(fragment, stray.target);
-                const offset = into ? gatherWords(stray, into.element) : null;
+                const offset = into ? gatherWords(stray, into.element, undo) : null;
                 if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
               for (const element of unnamed) settleUndone(element);
               /* And what a redo puts back is on the page again, even a blank line. */
               for (const element of redone) element.removeAttribute('gone');
+              /* A block deleted here that someone moved first stays deleted, with whatever they'd have kept of it. */
+              for (const { words, attrs, copy, deleted } of cuts) {
+                cutWords(words);
+                for (const key of attrs) copy.removeAttribute(key);
+                if (deleted && holdsNothing(copy)) retire(copy, newBlockId(), '');
+              }
             }, TIDYING);
           }
           if (landed) {
@@ -392,17 +411,25 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
         const arrived: string[] = [];
         const unnamed: Y.XmlElement[] = [];
         const redone: Y.XmlElement[] = [];
+        const cuts: Cut[] = [];
         tr.changed.forEach((keys, type) => {
           if (!(type instanceof Y.XmlElement) || type.parent !== fragment) return;
           if (undone && keys.has('id') && type.getAttribute('id') === undefined) unnamed.push(type);
           if (tr.origin instanceof Y.UndoManager && tr.origin.redoing && keys.has('id') && !keys.has('gone') && type.getAttribute('gone') !== undefined) redone.push(type);
           if (!keys.has('gone')) return;
+          /* All of this has to be read now: what the change deleted is gone when it ends. */
+          const moved = tr.local ? null : movedIn(type, tr);
+          const copy = moved ? elementOf(fragment, moved.target)?.element : undefined;
+          /* A block this browser moved itself still has its words, in its own copy: only what it deleted has to follow someone else's. */
+          const words = moved && copy && !moved.was ? wordsToCut(type, copy, moved, tr) : null;
+          const attrs = copy && words ? attrsToCut(type, copy, tr) : [];
+          const deleted = moved?.was === '' && copy !== undefined && isNewIn(copy, tr);
+          if (copy && words && (words.length > 0 || attrs.length > 0 || deleted)) cuts.push({ words, attrs, copy, deleted });
           const gone: unknown = type.getAttribute('gone');
           if (typeof gone !== 'string' || gone === '') return;
-          /* All of this has to be read now: what the change deleted is gone when it ends. */
-          const stray = strayWords(type, tr, doc.clientID);
-          if (stray) strays.push(stray);
           const into = elementOf(fragment, gone)?.element;
+          const stray = strayWords(type, into, tr, doc.clientID);
+          if (stray) strays.push(stray);
           const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
           if (!tr.local && into) {
             if (undo) followUndo(undo, type, into, tr, doc.clientID);
