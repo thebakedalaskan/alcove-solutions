@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type ISODate, type InstantCallInput, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type ISODate, type InstantCallInput, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -37,6 +37,7 @@ export const qk = {
   trust: ['trust'] as const,
   workspaces: ['workspaces'] as const,
   workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  mentions: ['workspaces', 'mentions'] as const,
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
 
@@ -123,6 +124,8 @@ export const q = {
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
   /** Who's in a workspace, for anyone in it. */
   workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** What you've been tagged in and haven't seen, anywhere. */
+  mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
   documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
 };
@@ -544,6 +547,10 @@ export function useItemChanges(workspaceId: string, pass?: string | undefined) {
     restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as) }),
     deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id) })
   };
+}
+/** Tells someone they were tagged. `pass`: someone in a call. */
+export function useMention(workspaceId: string, pass?: string | undefined) {
+  return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
 }
 /** Who has a document: adding someone, taking them off, and closing it to the workspace. */
 export function useDocumentShare(workspaceId: string, documentId: string) {

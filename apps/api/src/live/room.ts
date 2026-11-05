@@ -177,6 +177,9 @@ export class Room {
       const key = `${n.person.id}:${n.connection}`;
       if (n.gone) { this.here.delete(key); continue; }
       const { email, principals, gone: _, ...rest } = n;
+      // Whoever moved last comes last, so of someone's windows the one they're using can be told from one left open.
+      const was = this.here.get(key);
+      if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing)) this.here.delete(key);
       this.here.set(key, { ...rest, who: { email: email ?? undefined, principals: principals.map((p) => unb64u(p)) }, until });
     }
     this.expire();

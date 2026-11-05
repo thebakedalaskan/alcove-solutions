@@ -58,7 +58,7 @@ export interface CommentDraft {
   block: string;
   rect: Rect;
   /** Marks the words and starts the thread with its first message. Returns the thread's ID. */
-  send: (message: { by: string; name: string; text: string }) => string;
+  send: (message: { by: string; name: string; text: string; tags?: { id: string; name: string }[] | undefined }) => string;
   cancel: () => void;
 }
 
@@ -206,6 +206,8 @@ export interface EditorHandle {
   /** Opens `/` or `@` at the caret, for a phone's keyboard bar. */
   openSlash: () => void;
   openMention: () => void;
+  /** Tag someone in this document: their name on the last line, or a new one, with the caret after it. */
+  tag: (person: Person) => void;
   /** Bold, italic and so on, for a phone's keyboard bar. */
   toggleMark: (mark: 'bold' | 'italic' | 'strike' | 'inlineCode' | 'highlight') => void;
   /** Turns the block the caret is in into another kind, for a phone's keyboard bar. */

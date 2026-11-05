@@ -2,22 +2,26 @@
  * A document beside the list: its head, the bars that say how things stand, and the editor, which loads when a document
  * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place.
  */
-import { errorMessage, firstName, type DocSession, type DocStatus, type WorkspaceItem } from '@alcove/api';
-import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFullBar, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsPop } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { errorMessage, firstName, type DocSession, type DocStatus, type Person, type WorkspaceItem } from '@alcove/api';
+import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsFollowBar, WsFullBar, WsGoneBar, WsMentionPrompt, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsPopover, WsReadOnlyBar, WsScroll, WsTemplates, Button, wsToast, type WsFace, type WsPop } from '@alcove/ui';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLive, useNow, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
-import { agoLabel, shortDay } from '~/lib/time';
+import { agoLabel } from '~/lib/time';
 import { focusRow } from './actions';
+import type { CommentOpen } from './Comments';
 import { useWs, type Ws } from './context';
 import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
-import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
+import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
+import { PersonCard } from './People';
+import { facesIn } from './presence';
 import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
+import { tagRect, useTags } from './tags';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
+
+const Comments = lazy(() => import('./Comments'));
 
 const dlog = log.child({ component: 'workspace' });
 
@@ -48,23 +52,15 @@ function useSession(ws: Ws, documentId: string) {
   return opened;
 }
 
-/** The dates `@` offers: today, tomorrow and the next Friday. */
-function dateChoices(now: number): { label: string; date: string }[] {
-  const today = new Date(now);
-  const day = (add: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + add);
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const friday = day(((12 - today.getDay()) % 7) || 7);
-  return [{ label: 'Today', date: iso(day(0)) }, { label: 'Tomorrow', date: iso(day(1)) }, { label: shortDay(friday), date: iso(friday) }];
-}
-
 function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; session: DocSession; status: DocStatus }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   const now = useNow(60_000);
-  const inWorkspace = ws.sent.role !== null;
-  const people = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: inWorkspace }).data;
-  const persons = useMemo(() => (people ?? []).map((p) => p.person), [people]);
-  /* A caret goes by what someone's known by here, which is how they're listed among who's here. */
-  const faces = useMemo(() => [...persons, ...ws.here.map((h) => h.person)], [persons, ws.here]);
+  const { sections, faces: tagged, tagged: onTagged, ask, answer, notNow } = useTags(ws, item, now);
+  /* Whose face goes on a caret, a tag or a comment: people here last, who may know more about themselves than the list does. */
+  const faces = useMemo(() => [...tagged, ...ws.here.map((h) => h.person)], [tagged, ws.here]);
+  const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
+  const [comment, setComment] = useState<CommentOpen | null>(null);
+  const [named, setNamed] = useState<{ person: Person; rect: Rect } | null>(null);
   const readOnly = item.role !== 'edit' || item.trashedAt !== null || status.trashed || status.role === 'read' || status.refused === 'read-only' || status.refused === 'trashed';
   const madeHere = useRef(ws.justMade.current === item.id);
   useEffect(() => { if (madeHere.current) ws.justMade.current = null; }, [ws.justMade]);
@@ -102,17 +98,29 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
   }, [editor, block]);
 
   const others = useMemo(() => documentsIn(ws.tree).filter((d) => d.id !== item.id && d.role === 'edit'), [ws.tree, item.id]);
-  const onMention: EditorProps['onMention'] = (query, { docsOnly }) => {
-    const words = query.toLowerCase();
-    const has = (s: string) => s.toLowerCase().includes(words);
-    const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
-    if (docsOnly) return [{ title: 'Documents', items: documents }];
-    const out: MentionSection[] = [
-      { title: ws.spaceName, items: persons.filter((p) => p.email !== ws.me?.email && has(p.name)).slice(0, 6).map((person) => ({ kind: 'person', person })) },
-      { title: 'Documents', items: documents },
-      { title: 'Dates', items: dateChoices(now).filter((d) => has(d.label)).map((d) => ({ kind: 'date', ...d })) }
-    ];
-    return out;
+
+  /* Going where someone goes, to the same line. Nothing glows: it's not somewhere you asked to land. */
+  const followed = ws.following?.document === item.id ? ws.following.block : null;
+  useEffect(() => {
+    if (!editor || !followed) return;
+    let tries = 0, frame = 0;
+    const land = () => {
+      if (editor.blockJSON(followed)) { editor.scrollToBlock(followed, { smooth: true }); return; }
+      if (++tries < 60) frame = requestAnimationFrame(land);
+    };
+    land();
+    return () => cancelAnimationFrame(frame);
+  }, [editor, followed]);
+
+  /* Tag from a card: only where you can write. */
+  useEffect(() => {
+    if (!editor) return;
+    ws.page.current = { canTag: !readOnly, tag: editor.tag };
+    return () => { ws.page.current = null; };
+  }, [ws.page, editor, readOnly]);
+  const openPerson: EditorProps['onOpenPerson'] = (id, rect) => {
+    const person = ws.others.find((o) => o.person.id === id)?.person;
+    if (person) setNamed({ person, rect });
   };
   const toast = useCallback((t: EditorToast) => {
     const { run, label } = t;
@@ -173,6 +181,8 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
    * handles. From there, or with no handles to go to, it goes to the document's row, where the list's keys work again.
    */
   const leave = (e: KeyboardEvent) => {
+    /* Typing stops following: you stay where you are. */
+    if (e.key !== 'Escape' && !['Shift', 'Meta', 'Control', 'Alt'].includes(e.key)) ws.stopFollowing();
     if (e.key !== 'Escape' || !(e.target instanceof HTMLElement)) return;
     if (!e.target.isContentEditable) focusRow(item.id);
     else requestAnimationFrame(() => { if (document.activeElement === document.body) focusRow(item.id); });
@@ -184,13 +194,32 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
         <Suspense>
           <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
-            onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
+            onMention={sections} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
+            onOpenPerson={openPerson} onTagged={(person, block, rect) => { void onTagged(person, block, tagRect(person.id, block, rect)); }}
+            onComment={readOnly || !ws.self ? undefined : (draft) => setComment({ kind: 'draft', draft })} onOpenThread={(id, rect) => setComment({ kind: 'thread', id, rect })}
+            onPresence={(p) => ws.present({ document: item.id, ...p })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}
             moveTargets={() => others.map((d) => ({ id: d.id, name: nameOf(d) }))} onMoveBlock={moveBlock} blockDrop={blockDrop}
             byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={`Edited ${agoLabel(item.editedAt, now)}`} /> : undefined}
             whenBlank={readOnly ? undefined : <WsTemplates templates={TEMPLATES} onPick={pick} />} />
         </Suspense>
+        {comment && (
+          <Suspense>
+            <Comments doc={session.doc} open={comment} onOpen={setComment} self={ws.self} people={byId} canWrite={!readOnly} hidden={ask !== null}
+              sections={sections} onTagged={(person, block, rect) => { void onTagged(person, block, rect); }} say={ws.say} />
+          </Suspense>
+        )}
+        {ask && (
+          <WsPopover open at={ask.rect} label={`Share ${nameOf(item)}`} onOpenChange={(to) => { if (!to) notNow(); }}>
+            <WsMentionPrompt person={ask.person} document={nameOf(item)} onEdit={() => answer('edit')} onRead={() => answer('read')} onNotNow={notNow} />
+          </WsPopover>
+        )}
+        {named && (
+          <WsPopover open at={() => new DOMRect(named.rect.left, named.rect.top, named.rect.width, named.rect.height)} label={named.person.name} onOpenChange={(to) => { if (!to) setNamed(null); }}>
+            <PersonCard person={named.person} onDone={() => setNamed(null)} />
+          </WsPopover>
+        )}
       </WsPage>
     </WsFade>
   );
@@ -216,6 +245,8 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
   const status = useLive(session);
   const [more, setMore] = useState<'menu' | 'move' | null>(null);
   const [share, setShare] = useState(false);
+  /** Whose face on the head was pressed. */
+  const [card, setCard] = useState<string | null>(null);
   const member = ws.sent.role !== null;
   const canShare = member && item.role === 'edit';
   const changing = ws.canChange && item.role === 'edit' && item.trashedAt === null;
@@ -256,16 +287,22 @@ function Opened({ ws, item, opened }: { ws: Ws; item: WorkspaceItem; opened: { s
     )
   };
   const who = item.trashedBy ? firstName(item.trashedBy) : 'Someone';
+  const faces = facesIn(ws.here, item.id).map((person): WsFace => ({
+    person, card: { open: card === person.id, onOpenChange: (to) => setCard(to ? person.id : null), content: card === person.id ? <PersonCard person={person} onDone={() => setCard(null)} /> : null }
+  }));
+  /* Scrolling or pressing the page stops following: you stay where you are. */
+  const stayHere = () => ws.stopFollowing();
   return (
     <WsDoc>
-      <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList}
+      <WsDocHead crumbs={crumbsOf(ws, item)} save={offline ? 'offline' : ready ? status.status : 'quiet'} onToggleList={ws.toggleList} faces={faces}
         share={canShare ? { open: share, onOpenChange: setShare, content: <ShareSheet item={item} /> } : undefined} more={morePop}
         zen={ws.call?.zen?.on} onZen={ws.call?.zen?.onToggle} />
+      <WsFollowBar following={ws.following} onStop={() => ws.stopFollowing()} />
       <WsOfflineBar show={offline && ready} />
       <WsFullBar show={status.refused === 'too-large'} />
       <WsGoneBar who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} />
       <WsReadOnlyBar show={!trashed && (item.role !== 'edit' || status.role === 'read' || status.refused === 'read-only')} organizer={item.by ? firstName(item.by.name) : 'whoever shared it'} />
-      {ready ? <WsScroll><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
+      {ready ? <WsScroll onWheel={stayHere} onTouchMove={stayHere} onPointerDown={stayHere}><Page ws={ws} item={item} session={session} status={status} /></WsScroll> : offline && <WsOfflineEmpty />}
     </WsDoc>
   );
 }

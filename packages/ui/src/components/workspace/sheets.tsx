@@ -11,11 +11,12 @@ import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 
 /**
  * Someone's card, from their tile, their face or their name in a line. `where` is the document they're in, in words:
- * pass "A document you can’t open" or "Not in the workspace" when that's so. `onGo` is left out when you can't go there.
+ * pass "A document you can’t open" or "Not in the workspace" when that's so. `onGo` is left out when you can't go there,
+ * and `onTag` when you can't write in what's open.
  */
 export function WsPersonCard({ person, where, followed = false, onFollow, onStop, onGo, onTag }: {
   person: AvatarPerson; where: string; followed?: boolean | undefined;
-  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag: () => void;
+  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag?: (() => void) | undefined;
 }) {
   const first = firstName(person);
   return (
@@ -25,7 +26,7 @@ export function WsPersonCard({ person, where, followed = false, onFollow, onStop
         ? <Button size="sm" onClick={onStop}>Stop following</Button>
         : <Button variant="primary" size="sm" onClick={onFollow}><Icon name="navigate" size={15} />Follow {first}</Button>}
       {onGo && <button type="button" className="wm-r" onClick={onGo}><Icon name="locate" size={16} /><span className="t"><span className="l">Go to where {first} is</span></span></button>}
-      <button type="button" className="wm-r" onClick={onTag}><Icon name="at" size={16} /><span className="t"><span className="l">Tag {first} in this document</span></span></button>
+      {onTag && <button type="button" className="wm-r" onClick={onTag}><Icon name="at" size={16} /><span className="t"><span className="l">Tag {first} in this document</span></span></button>}
     </div>
   );
 }
@@ -45,36 +46,107 @@ export function WsMentionPrompt({ person, document, onEdit, onRead, onNotNow }: 
   );
 }
 
-/** A field and its send button, as a comment has them. Enter sends. */
-function CommentField({ label, placeholder, value, onChange, onSend, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; autoFocus?: boolean | undefined }) {
+/** One thing `@` offers in a comment. `words` is what goes in the text. */
+export interface WsTagChoice { key: string; label: string; person?: AvatarPerson | undefined; icon?: IconName | undefined; sub?: string | undefined; words: string }
+/** A headed part of that list. */
+export interface WsTagSection { title: string; choices: WsTagChoice[] }
+/** What `@` in a comment needs: what it offers for what's been typed after it, and what to do once something's picked. */
+export interface WsTagging { sections: (query: string) => WsTagSection[]; onPick: (choice: WsTagChoice) => void }
+
+/** The `@word` the caret is at the end of, as the editor finds it. */
+function tagAt(value: string, caret: number): { from: number; query: string } | null {
+  const hit = /(?:^|\s)@([^\s@]{0,18})$/.exec(value.slice(0, caret));
+  const query = hit?.[1];
+  return query === undefined ? null : { from: caret - query.length - 1, query };
+}
+
+/** A field and its send button, as a comment has them. Enter sends, and `@` opens a list above the line, in the same box. */
+function CommentField({ label, placeholder, value, onChange, onSend, tagging, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined; autoFocus?: boolean | undefined }) {
+  const field = useRef<HTMLInputElement>(null);
+  const [caret, setCaret] = useState(0);
+  const [index, setIndex] = useState(0);
+  const [closed, setClosed] = useState<number | null>(null);
+  const tag = tagging ? tagAt(value, caret) : null;
+  const shown = tag && tag.from !== closed ? tag : null;
+  const sections = shown && tagging ? tagging.sections(shown.query).filter((s) => s.choices.length > 0) : [];
+  const choices = sections.flatMap((s) => s.choices);
+  const open = shown !== null;
+  const take = (c: WsTagChoice | undefined) => {
+    if (!c || !shown) return;
+    const at = shown.from + c.words.length + 2;
+    onChange(`${value.slice(0, shown.from)}@${c.words} ${value.slice(caret)}`);
+    setCaret(at);
+    tagging?.onPick(c);
+    requestAnimationFrame(() => { field.current?.focus(); field.current?.setSelectionRange(at, at); });
+  };
+  const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (open && choices.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault();
+      setIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
+    } else if (open && choices.length > 0 && (e.key === 'Enter' || e.key === 'Tab')) {
+      e.preventDefault();
+      take(choices[index]);
+    } else if (open && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setClosed(shown.from);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onSend();
+    }
+  };
+  const moved = (e: { currentTarget: HTMLInputElement }) => setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length);
   return <>
-    <input className="wm-in" type="text" placeholder={placeholder} aria-label={label} value={value} autoFocus={autoFocus} onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onSend(); } }} />
+    <input ref={field} className="wm-in" type="text" placeholder={placeholder} aria-label={label} aria-expanded={open} value={value} autoFocus={autoFocus}
+      onChange={(e) => { onChange(e.target.value); setIndex(0); moved(e); }} onSelect={moved} onKeyDown={keys} />
     <button type="button" className="ws-send" aria-label="Send" onClick={onSend}><Icon name="sendLine" size={15} /></button>
+    {open && (
+      <div className="wv-tags wm-list" role="listbox" aria-label="People and dates">
+        {choices.length === 0 && <p className="wm-x">Nobody called “{shown.query}”.</p>}
+        {sections.map((s) => [
+          <div key={s.title} className="wm-h">{s.title}</div>,
+          ...s.choices.map((c) => (
+            <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}>
+              {c.person && <Avatar person={c.person} size={24} />}
+              {c.icon && <Icon name={c.icon} size={16} />}
+              <span className="t"><span className="l">{c.label}</span>{c.sub && <small>{c.sub}</small>}</span>
+            </button>
+          ))
+        ])}
+      </div>
+    )}
   </>;
 }
 
+/** A tag in a comment: the words as they were written, marked like a tag in a line. */
+export function WsTagWords({ children }: { children: ReactNode }) {
+  return <span className="wn-w">{children}</span>;
+}
+
 /** A new comment on selected words. `person` is who's writing it. */
-export function WsCommentCompose({ quote, person, value, onChange, onSend }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void }) {
+export function WsCommentCompose({ quote, person, value, onChange, onSend, tagging }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined }) {
   return (
     <div className="wv-cmt">
       <div className="q"><span className="ac-clamp-2">{quote}</span></div>
-      <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} autoFocus /></div>
+      <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>
     </div>
   );
 }
 
 /** One message in a thread. `name` is their first name. */
-export interface WsComment { id: string; person: AvatarPerson; name: string; text: string }
+export interface WsComment { id: string; person: AvatarPerson; name: string; text: ReactNode }
 
-/** A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms. */
-export function WsCommentThread({ quote, messages, value, onChange, onSend, onResolve }: {
-  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend: () => void; onResolve: () => void;
+/**
+ * A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms.
+ * Someone who can only read gets the thread and nothing to press: leave out `onSend` and `onResolve`.
+ */
+export function WsCommentThread({ quote, messages, value = '', onChange, onSend, onResolve, tagging }: {
+  quote: string; messages: WsComment[]; value?: string | undefined; onChange?: ((v: string) => void) | undefined; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined; tagging?: WsTagging | undefined;
 }) {
   const move = useMove();
   return (
     <div className="wv-cmt">
-      <div className="wv-th"><span className="q1">{quote}</span><Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button></div>
+      <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>
       <AnimatePresence initial={false}>
         {messages.map((m) => (
           <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
@@ -82,7 +154,7 @@ export function WsCommentThread({ quote, messages, value, onChange, onSend, onRe
           </motion.div>
         ))}
       </AnimatePresence>
-      <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>
+      {onSend && onChange && <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>}
     </div>
   );
 }

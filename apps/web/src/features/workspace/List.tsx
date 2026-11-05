@@ -10,6 +10,8 @@ import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
 import { focusRow } from './actions';
 import { useWs } from './context';
 import type { RowDrag } from './drag';
+import { PersonCard } from './People';
+import { facesIn } from './presence';
 import { PeopleSheet } from './Sheets';
 import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
 
@@ -51,6 +53,8 @@ export function List({ drags }: { drags: ListDrag }) {
   /** Plus: at the top of the list (null), or on a folder. */
   const [adding, setAdding] = useState<string | null | undefined>(undefined);
   const [naming, setNaming] = useState<'new' | 'rename' | null>(null);
+  /** The row whose faces were pressed. */
+  const [card, setCard] = useState<string | null>(null);
   const create = useCreateWorkspace();
   const renameSpace = useRenameWorkspace();
   const picker = useHead(setNaming);
@@ -146,8 +150,11 @@ export function List({ drags }: { drags: ListDrag }) {
           onCancel={() => { ws.setRenaming(null); focusRow(item.id); }} onCommit={(name) => { ws.setRenaming(null); actions.rename(item.id, name); focusRow(item.id); }} />
       );
     }
+    const faces = folder ? [] : facesIn(ws.here, item.id);
+    const first = faces[0];
     return (
-      <WsRow key={item.id} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open}
+      <WsRow key={item.id} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open} faces={faces}
+        facesCard={first && { open: card === item.id, onOpenChange: (to) => setCard(to ? item.id : null), content: card === item.id ? <PersonCard person={first} onDone={() => setCard(null)} /> : null }}
         current={ws.at.kind === 'document' && ws.at.id === item.id} flash={ws.glowing.has(item.id)}
         into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || ws.blockInto === item.id} ghosted={drag?.id === item.id}
         onOpen={() => openRow(item)} onTwist={folder ? () => ws.setOpen(item.id, !open) : undefined}

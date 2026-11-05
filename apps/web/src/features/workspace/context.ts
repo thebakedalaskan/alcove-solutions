@@ -1,8 +1,10 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
-import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree } from '@alcove/api';
+import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
+import type { Following, StopFollowing } from './follow';
+import type { Someone } from './presence';
 import type { Tree } from './tree';
 
 /**
@@ -59,6 +61,9 @@ export interface TreeActions {
 /** A folder being made, named in the list before it exists. */
 export interface FolderDraft { parent: string | null }
 
+/** The page, for what's outside it: tagging someone from their card. */
+export interface OpenPage { canTag: boolean; tag: (person: Person) => void }
+
 export interface Ws {
   mode: WorkspaceProps['mode'];
   workspaceId: string;
@@ -66,8 +71,16 @@ export interface Ws {
   call: WorkspaceCall | undefined;
   /** The tree as the stream last sent it. */
   sent: WorkspaceTree;
-  /** Who's in the workspace now. */
+  /** Who's in the workspace now, a connection each. */
   here: readonly WorkspaceHere[];
+  /** Everyone else here, each once. */
+  others: readonly Someone[];
+  /** Says where this browser is. */
+  present: (where: WorkspaceWhere) => void;
+  /** Who you're following, if anyone. */
+  following: Following | null;
+  follow: (person: string) => void;
+  stopFollowing: (how?: StopFollowing) => void;
   /** Everything in it, with what's on its way laid over. */
   items: readonly WorkspaceItem[];
   tree: Tree;
@@ -77,6 +90,8 @@ export interface Ws {
   /** The signed-in account, if there is one: a guest in a call has none. */
   owner: string | null;
   me: Person | null;
+  /** You, as this workspace knows you: what a comment or a tag goes by. */
+  self: Person | null;
   actions: TreeActions;
   say: (toast: WsToastData) => void;
   /** Whether someone can add to the tree, move things in it and send them to Trash. */
@@ -101,6 +116,7 @@ export interface Ws {
   justMade: RefObject<string | null>;
   /** The document open on the page, so naming it in the list reaches its title. */
   openDoc: RefObject<{ id: string; doc: Doc } | null>;
+  page: RefObject<OpenPage | null>;
 }
 
 export const WsContext = createContext<Ws | null>(null);
