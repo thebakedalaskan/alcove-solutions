@@ -95,16 +95,16 @@ export const openCount = (inbox: Inbox, notes: readonly NoteSummary[], now: numb
 
 /**
  * When a follow-up is due, from its words, counted from when they were said: the latest change to the due
- * date, or else the call. "tomorrow" said yesterday is today; "next week" said last Friday is this week.
+ * date, when someone added it, or else the call. "tomorrow" said yesterday is today; "next week" said last Friday is this week.
  * A day ("Friday", "Nov 5", "EOD") is that day. A span ("next week", "in two weeks", "end of March") is due
  * at its end and keeps its words, as the chip shows them. Words with no date in them ("ASAP", "later")
  * stay as words.
  */
 export type Due = { kind: 'day'; at: Date; words?: string | undefined } | { kind: 'words'; text: string };
 
-/** When the due words were said: the latest change to them, or else the call. */
+/** When the due words were said: the latest change to them, when someone added the follow-up with them, or else the call. */
 export function dueFrom(a: Pick<OpenAction, 'changes' | 'noteStartedAt'>): string {
-  return [...a.changes].reverse().find((c) => c.what === 'due')?.at ?? a.noteStartedAt;
+  return [...a.changes].reverse().find((c) => c.what === 'due' || c.what === 'proposed')?.at ?? a.noteStartedAt;
 }
 
 const DAY_NAMES = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;

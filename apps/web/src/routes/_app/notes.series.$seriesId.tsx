@@ -1,9 +1,10 @@
-import { errorCode, errorMessage, firstName, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type Series } from '@alcove/api';
+import { errorCode, errorMessage, firstName, mayChangeAction, mayDecide, minutesLabel, type CarriedAction, type CarriedDecision, type CarriedQuestion, type DecisionPatch, type Series } from '@alcove/api';
 import { ArchThumb, Button, Card, Check, Chip, EmptyState, GoneArch, Icon, IconButton, SealedBadge, buttonClass, coverFor, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { AskBar, Section } from '~/features/notes/parts';
+import { useNoteReader } from '~/features/notes/entries';
+import { AskBar, Section, notDecided } from '~/features/notes/parts';
 import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
 import { useCallFlow } from '~/features/shell/context';
 import { api } from '~/lib/api';
@@ -44,10 +45,14 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const action = useUpdateAction();
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
   const from = new Map(s.notes.map((n) => [n.id, n]));
-  const decide = (d: CarriedDecision, state: CarriedDecision['state']) => decision.mutate({ noteId: d.noteId, decisionId: d.id, patch: { state } }, { onError: failed });
+  const readerAs = useNoteReader();
+  /** Who the reader is to the call something came from: the series is one organizer's, but each call's notes reached people their own way. */
+  const reader = (x: { noteId: string }) => readerAs(s.isOrganizer ? 'organizer' : from.get(x.noteId)?.received?.role ?? 'shared');
+  const change = (d: CarriedDecision, patch: DecisionPatch) => decision.mutate({ noteId: d.noteId, decisionId: d.id, patch }, { onError: failed });
+  const decide = (d: CarriedDecision, state: CarriedDecision['state']) => change(d, state === 'confirmed' ? { state, seen: { text: d.text } } : { state });
   const answer = (x: CarriedQuestion) => question.mutate({ noteId: x.noteId, questionId: x.id, patch: { state: 'answered' } }, { onSuccess: () => toast('Marked answered', { ms: 2200 }), onError: failed });
   const tick = (a: CarriedAction, done: boolean) => action.mutate({ noteId: a.noteId, actionId: a.id, patch: { done } }, { onSuccess: () => { if (done) toast('Marked done', { ms: 2200 }); }, onError: failed });
-  const takeOn = (a: CarriedAction) => action.mutate({ noteId: a.noteId, actionId: a.id, patch: { takeOn: true } }, { onSuccess: () => toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }), onError: failed });
+  const takeOn = (a: CarriedAction) => action.mutate({ noteId: a.noteId, actionId: a.id, patch: { takeOn: true, seen: { text: a.text, due: a.due ?? null } } }, { onSuccess: () => toast('It’s yours. Everyone with the notes sees that.', { icon: 'check' }), onError: failed });
   const mine = (a: CarriedAction) => !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me });
 
   const confirmed = s.decisions.filter((d) => d.state === 'confirmed');
@@ -63,8 +68,8 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
   const who = s.isOrganizer ? 'Your series' : `${firstName(s.organizer.name)}’s series`;
   const row = (d: CarriedDecision, actions: ReactNode) => <CarriedDecisionRow key={d.id} d={d} note={from.get(d.noteId)} me={me} actions={actions} />;
   const followUp = (a: CarriedAction) => (
-    <CarriedActionRow key={a.id} a={a} note={from.get(a.noteId)} me={me} check={<Check checked={a.done} onChange={(on) => tick(a, on)} label={`${a.done ? 'Mark not done' : 'Mark done'}: ${a.text}`} />}
-      actions={mine(a) && !a.takenOn && !a.done ? <button type="button" className="lk" onClick={() => takeOn(a)}>Take it on</button> : undefined} />
+    <CarriedActionRow key={a.id} a={a} note={from.get(a.noteId)} me={me} check={<Check checked={a.done} disabled={!mayChangeAction(a, reader(a))} onChange={(on) => tick(a, on)} label={`${a.done ? 'Mark not done' : 'Mark done'}: ${a.text}`} />}
+      actions={mine(a) && !a.takenOn && !a.done ? <button type="button" className="lk" onClick={() => takeOn(a)}>I’ll do it</button> : undefined} />
   );
 
   return (
@@ -87,16 +92,19 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
           ) : (
             <>
               {s.decisions.length > 0 && (
-                <Section title="Decided" count={proposed.length ? `${proposed.length} to confirm` : confirmed.length || undefined} style={{ '--d': 2 }}>
+                <Section title="Decisions" count={proposed.length ? `${proposed.length} to confirm` : confirmed.length || undefined} style={{ '--d': 2 }}>
                   <div className="carry-list">
-                    {confirmed.map((d) => row(d, <button type="button" className="lk on-hover" onClick={() => decide(d, 'superseded')}>It no longer holds</button>))}
+                    {confirmed.map((d) => row(d, mayDecide(d, 'superseded', reader(d)) ? <button type="button" className="lk on-hover" onClick={() => decide(d, 'superseded')}>It no longer holds</button> : undefined))}
                     {proposed.length > 0 && <div className="grp">Not confirmed yet</div>}
-                    {proposed.map((d) => row(d, <>
-                      <button type="button" className="lk" onClick={() => decide(d, 'confirmed')}>Confirm</button>
-                      <button type="button" className="lk quiet" onClick={() => decide(d, 'rejected')}>It wasn’t decided</button>
-                    </>))}
+                    {proposed.map((d) => {
+                      const no = notDecided(d, reader(d));
+                      return row(d, <>
+                        {mayDecide(d, 'confirmed', reader(d)) && <button type="button" className="lk" onClick={() => decide(d, 'confirmed')}>Confirm</button>}
+                        {no && <button type="button" className="lk quiet" onClick={() => change(d, no)}>It wasn’t decided</button>}
+                      </>);
+                    })}
                     {superseded.length > 0 && <div className="grp">No longer holds</div>}
-                    {superseded.map((d) => row(d, <button type="button" className="lk on-hover" onClick={() => decide(d, 'confirmed')}>It still holds</button>))}
+                    {superseded.map((d) => row(d, mayDecide(d, 'confirmed', reader(d)) ? <button type="button" className="lk on-hover" onClick={() => decide(d, 'confirmed')}>It still holds</button> : undefined))}
                   </div>
                 </Section>
               )}

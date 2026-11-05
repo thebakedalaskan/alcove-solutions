@@ -24,6 +24,9 @@ export interface Correcting {
 /** Bookmarking a line for yourself: which are bookmarked, and bookmarking one or taking it off. Only you see them. */
 export interface LineMarks { has(lineId: string): boolean; toggle(line: TranscriptLine): void }
 
+/** Starts proposing a decision or a follow-up from a line of the transcript. */
+export type FromLine = (kind: 'decision' | 'follow-up', line: TranscriptLine) => void;
+
 /**
  * How many of these lines were corrected after the notes read them (`Note.writtenAt`), so writing them again would
  * change something: any lines the notes were written from count the same way.
@@ -62,8 +65,8 @@ function changeLine(c: Change, me: string | undefined): string {
  * One line of a written transcript. `more`: the same speaker as the line before, so their name isn't said again (a
  * speaker in doubt always is). `mark`: where a link to a moment lands.
  */
-export function LineRow({ line, more, mark, time, me, correct, marks }: {
-  line: TranscriptLine; more: boolean; mark: { id?: string; className?: string }; time: ReactNode; me: string | undefined; correct?: Correcting | undefined; marks?: LineMarks | undefined;
+export function LineRow({ line, more, mark, time, me, correct, fromLine, marks }: {
+  line: TranscriptLine; more: boolean; mark: { id?: string; className?: string }; time: ReactNode; me: string | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined;
 }) {
   const [editing, setEditing] = useState(false);
   const pen = useRef<HTMLButtonElement>(null);
@@ -90,11 +93,25 @@ export function LineRow({ line, more, mark, time, me, correct, marks }: {
             </Tooltip>
           )}
           {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="ln-pen" onClick={() => setEditing(true)} />}
+          {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
           {marks && <IconButton icon={marks.has(line.id) ? 'bookmarked' : 'bookmark'} label={marks.has(line.id) ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className={cn('ln-pen ln-mark', marks.has(line.id) && 'is-on')} onClick={() => marks.toggle(line)} />}
         </>
       )}>
       {line.unsure?.words ? <Unsure of="words">{line.text}</Unsure> : line.text}
     </SpokenLine>
+  );
+}
+
+/** Something the notes missed, started from where it was said: it points at this line. */
+function FromThisLine({ line, fromLine }: { line: TranscriptLine; fromLine: FromLine }) {
+  const [open, setOpen] = useState(false);
+  const go = (kind: 'decision' | 'follow-up') => { setOpen(false); fromLine(kind, line); };
+  return (
+    <Popover open={open} onOpenChange={setOpen} align="start" label="Add to the notes from this line" className="ln-add-pop"
+      anchor={<IconButton icon="plus" label="Add to the notes from this line" size={15} className="ln-pen" />}>
+      <button type="button" className="ac-pop-item" onClick={() => go('decision')}><Icon name="badgeCheck" size={18} /><span><b>Propose a decision</b></span></button>
+      <button type="button" className="ac-pop-item" onClick={() => go('follow-up')}><Icon name="userCheck" size={18} /><span><b>Add a follow-up</b></span></button>
+    </Popover>
   );
 }
 
