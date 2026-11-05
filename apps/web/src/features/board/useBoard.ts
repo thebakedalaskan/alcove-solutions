@@ -8,15 +8,16 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
+  BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
   type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import type * as Y from 'yjs';
+import { typing } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
-import { STICKY, nextSpot } from './editing';
+import { STICKY, holdKeys, nextSpot } from './editing';
 import { MOUNT_ALL, NO_GUIDES, everything, reachHolds, reachOf, sameIds, type Guide } from './selection';
 
 const log = rootLog.child({ component: 'board' });
@@ -107,6 +108,8 @@ export class Board implements LiveStore<BoardState> {
   tell: (text: string) => void = () => undefined;
   /** Told when following stops from this side: a scroll, a zoom, Esc. */
   onFollow: ((id: string | null) => void) | undefined;
+  /** Writes in a word still being composed. The field being typed in fills this in. */
+  flushTyping: (() => void) | null = null;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -167,7 +170,7 @@ export class Board implements LiveStore<BoardState> {
     this.settleNear();
     return () => {
       // A board can close with a blank new sticky open, which shouldn't stay behind for everyone.
-      this.finishEdit();
+      this.editTaken();
       size.disconnect();
       stopNear();
       stopDoc();
@@ -194,7 +197,7 @@ export class Board implements LiveStore<BoardState> {
     if (mode === this.mode) return;
     this.mode = mode;
     if (this.canEdit) return;
-    this.finishEdit();
+    this.editTaken();
     this.set({ sel: [], tool: 'select' });
   }
 
@@ -225,7 +228,7 @@ export class Board implements LiveStore<BoardState> {
     if (arrived.length && arrived.length <= POP_AT_ONCE) patch.landed = new Set([...landed, ...arrived.map((o) => o.id)]);
     this.set(patch);
     if (patch.landed && this.sheet) this.later('landed', tokenMs(this.sheet, '--duration-2') * 2, () => this.set({ landed: NOTHING }));
-    if (edit && !view.byId.has(edit)) this.finishEdit();
+    if (edit && !view.byId.has(edit)) this.editTaken();
     if (this.look.mini) this.fitAll(false);
     this.settleNear();
   };
@@ -377,6 +380,7 @@ export class Board implements LiveStore<BoardState> {
   finishEdit(): void {
     const { edit } = this.state;
     if (!edit) return;
+    this.flushTyping?.();
     const text = objectText(this.doc, edit);
     const blank = this.fresh === edit && text !== null && !text.toString().trim();
     this.fresh = null;
@@ -390,11 +394,21 @@ export class Board implements LiveStore<BoardState> {
     this.read();
   }
 
-  /** Tab: finishes this one and starts the next beside it, in the same colour. */
+  /** Typing ended without this person asking. They may not know yet, so what they type next waits, or it would go to the call. */
+  private editTaken(): void {
+    if (this.state.edit && typing(document.activeElement) && this.sheet?.contains(document.activeElement)) holdKeys(() => this.focusSheet());
+    this.finishEdit();
+  }
+
+  /** Tab: finishes this one and starts the next beside it, in the same colour. With no room for it, this one stays open. */
   nextSticky(): void {
     const { edit, view } = this.state;
     const o = edit ? view.byId.get(edit) : undefined;
     if (!o || !hasBox(o)) return;
+    if (this.doc.getMap<unknown>(BOARD_OBJECTS).size >= BOARD_LIMITS.objects) {
+      this.refuse();
+      return;
+    }
     const { x, y } = nextSpot(view, o);
     const colour = o.k === 'note' ? o.c : o.k === 'shape' && o.c ? o.c : undefined;
     this.finishEdit();
@@ -402,7 +416,7 @@ export class Board implements LiveStore<BoardState> {
   }
 
   focusSheet(): void {
-    this.sheet?.focus({ preventScroll: true });
+    if (!this.look.mini) this.sheet?.focus({ preventScroll: true });
   }
 
   /* ---------- the camera ---------- */

@@ -14,6 +14,8 @@ import type { Board } from './useBoard';
 export const STICKY = 150;
 /** The gap Tab leaves between one sticky and the next. */
 const NEXT_GAP = 20;
+/** How long after the last key someone has stopped typing into nothing. */
+const KEYS_STOP_MS = 1200;
 
 interface TextChange {
   start: number;
@@ -63,9 +65,9 @@ function carriedBy(place: number, delta: TextDelta): number {
  * or a dead key does, the browser owns the field: writing to it would break the word. So what others type meanwhile
  * waits, and the finished word goes in where it now belongs.
  */
-export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown): () => void {
+export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown): { flush: () => void; stop: () => void } {
   const doc = text.doc;
-  if (!doc) return () => undefined;
+  if (!doc) return { flush: () => undefined, stop: () => undefined };
   let shown = text.toString(), composing = false, mine = false;
   let missed: TextDelta[] = [];
   el.value = shown;
@@ -93,16 +95,25 @@ export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown)
     shown = el.value;
     write(change);
   };
-  const composeStart = (): void => { composing = true; };
+  const composeStart = (): void => {
+    composing = true;
+    // The word replaces what's selected, so that goes now, as it does in the field. Whatever someone types there meanwhile then stays.
+    const { selectionStart: from, selectionEnd: to } = el;
+    if (from === to) return;
+    write({ start: from, remove: to - from, insert: '' });
+    shown = shown.slice(0, from) + shown.slice(to);
+  };
   const composeEnd = (): void => {
     composing = false;
     const change = difference(shown, el.value, el.selectionStart);
     const start = missed.reduce(carriedBy, change.start);
+    const end = missed.reduce(carriedBy, change.start + change.remove);
     missed = [];
-    write({ ...change, start });
+    write({ start, remove: end - start, insert: change.insert });
     const caret = start + change.insert.length;
     show(caret, caret);
   };
+  const flush = (): void => { if (composing) composeEnd(); };
   const changed = (event: Y.YTextEvent): void => {
     if (mine) return;
     if (composing) missed.push(event.delta);
@@ -113,12 +124,58 @@ export function bindText(el: HTMLTextAreaElement, text: Y.Text, origin: unknown)
   el.addEventListener('compositionstart', composeStart);
   el.addEventListener('compositionend', composeEnd);
   text.observe(changed);
-  return () => {
-    el.removeEventListener('input', typed);
-    el.removeEventListener('compositionstart', composeStart);
-    el.removeEventListener('compositionend', composeEnd);
-    text.unobserve(changed);
+  return {
+    flush,
+    stop() {
+      flush();
+      el.removeEventListener('input', typed);
+      el.removeEventListener('compositionstart', composeStart);
+      el.removeEventListener('compositionend', composeEnd);
+      text.unobserve(changed);
+    }
   };
+}
+
+/**
+ * Somewhere for keys to go when a field closes under someone still typing, who can't have noticed yet. Focus would drop to
+ * the page, where M, V and C are the call's, so the rest of a word could turn their microphone on. The sheet won't do, because
+ * those keys pass through it. So focus waits in a hidden field, which the call leaves alone, until the keys stop or something
+ * is pressed. It's on the page rather than the board, because the board may be what's closing.
+ */
+export function holdKeys(then: () => void): void {
+  const el = document.createElement('textarea');
+  const listening = new AbortController();
+  const { signal } = listening;
+  let wait: ReturnType<typeof setTimeout> | undefined;
+  const stop = (): void => {
+    clearTimeout(wait);
+    listening.abort();
+    el.remove();
+  };
+  const done = (): void => {
+    then();
+    stop();
+  };
+  const carryOn = (): void => {
+    clearTimeout(wait);
+    wait = setTimeout(done, KEYS_STOP_MS);
+  };
+  el.className = 'sr-only';
+  el.tabIndex = -1;
+  el.setAttribute('aria-label', 'The sticky you were typing in has closed');
+  el.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') done();
+    else carryOn();
+  }, { signal });
+  // As with a field, switching windows leaves it active. Anything else taking focus means it's no longer needed.
+  el.addEventListener('blur', () => { if (document.activeElement !== el) stop(); }, { signal });
+  addEventListener('pointerdown', stop, { capture: true, signal });
+  document.body.append(el);
+  el.focus({ preventScroll: true });
+  carryOn();
 }
 
 /** The textarea for one object, focused with the caret at the end, as it opens. */
@@ -127,7 +184,8 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
   useLayoutEffect(() => {
     const el = ref.current, text = objectText(board.doc, id);
     if (!el || !text) return undefined;
-    const stop = bindText(el, text, board.origin);
+    const { flush, stop } = bindText(el, text, board.origin);
+    board.flushTyping = flush;
     const key = (e: KeyboardEvent): void => {
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
@@ -149,6 +207,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
     el.setSelectionRange(el.value.length, el.value.length);
     el.scrollTop = el.scrollHeight;
     return () => {
+      board.flushTyping = null;
       stop();
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
