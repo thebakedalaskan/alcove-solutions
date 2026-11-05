@@ -566,7 +566,7 @@ export async function readDocument<N extends keyof Reads>(w: Held, documentId: s
  * runs in the transaction that writes it, for what must still hold by then. Refused in Trash, like an edit.
  *
  * It's written only as Yjs clients the log hasn't had (`requireNewClients`). One that finds a client taken by then is worked out
- * again on the document as it now stands, `holding`'s part taken back with it, up to three times: so an operation written as
+ * again on the document as it now stands, `holding`'s part taken back with it, in three tries at most: so an operation written as
  * a fixed client, a board's template, lands once however many ask for it at the same moment, and asking again changes nothing.
  */
 export async function writeDocument<N extends keyof Edits>(

@@ -75,7 +75,7 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   object ID. Anything else thrown becomes an `InternalError` whose cause is the original.
 - A change the server makes to a document that finds a Yjs client it was written as taken by then is taken back with its
   transaction as a `ClientTakenError`, and worked out again, with a debug line (`server change worked out again`) giving the
-  document's ID, what the change was and which try. It reaches whoever asked only when that happens three times ("This
+  document's ID, what the change was and which try. It reaches whoever asked only when all three tries find one ("This
   document is changing too fast to change from here. Try again."). One that could never get past it, written as one of the
   server's own clients the log already had, is a `ConflictError` at once ("This document has had this change already, so it
   can’t have it again."). A browser's update written as one of the server's clients is refused as `server-client`

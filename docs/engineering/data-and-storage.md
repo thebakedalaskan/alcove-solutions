@@ -217,7 +217,7 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   goes through `writeDocument`, or `restoreVersion` to put a version back, and both write it only as Yjs clients the log
   hasn't had, asked under the row's lock in the transaction that appends it (`requireNewClients`): two updates that say
   different things under one client and clock would leave browsers disagreeing for good, and nothing would tell anyone. A
-  change that finds a client of its taken by then is worked out again on what's there now, up to three times, then `409`
+  change that finds a client of its taken by then is worked out again on what's there now, in three tries at most, then `409`
   (`ClientTakenError`): a random client gets past that at once, and a fixed one finds what was written as it, which is how a
   template lands once. A fixed client the log had already when the change was worked out, in a row that won't open or from
   before a version took a board's place, would be the same every time, so that's refused for good, at once. The server's own
