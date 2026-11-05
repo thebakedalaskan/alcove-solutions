@@ -1,0 +1,97 @@
+/*
+ * NEAR Intents 1Click as a deposit provider. A quote whose recipient (and refund target) is the treasury's Intents
+ * account gives a one-off deposit address on the chain the person picked; whatever arrives there is swapped into USDC
+ * on NEAR in the treasury's Intents balance. Only the stablecoins on the allowlist, and only while 1Click lists them.
+ * Nothing about a deposit goes in a log line or an error: failures carry the HTTP status only.
+ */
+import { z } from 'zod';
+import { toJson } from '../crypto';
+import { UnavailableError } from '../errors';
+import type { DepositProvider, DepositRoute, OpenedDeposit } from './provider';
+
+/** USDC on NEAR: every payment ends as this, in the treasury's Intents balance. */
+const NEAR_USDC = 'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
+/**
+ * The routes Alcove takes, keyed by 1Click asset ID (from /v0/tokens, checked 5 November 2026): USD stablecoins on
+ * chains that don't need a memo. Ethereum's minimum is higher for its gas.
+ */
+const ALLOWLIST: Record<string, { chain: string; chainName: string; token: 'USDC' | 'USDT'; minimumUsd: bigint }> = {
+  'nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1': { chain: 'near', chainName: 'NEAR', token: 'USDC', minimumUsd: 5n },
+  'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near': { chain: 'eth', chainName: 'Ethereum', token: 'USDC', minimumUsd: 20n },
+  'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near': { chain: 'base', chainName: 'Base', token: 'USDC', minimumUsd: 5n },
+  'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near': { chain: 'arb', chainName: 'Arbitrum', token: 'USDC', minimumUsd: 5n },
+  'nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near': { chain: 'sol', chainName: 'Solana', token: 'USDC', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L': { chain: 'pol', chainName: 'Polygon', token: 'USDC', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:56_2w93GqMcEmQFDru84j3HZZWt557r': { chain: 'bsc', chainName: 'BNB Chain', token: 'USDC', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:10_A2ewyUyDp6qsue1jqZsGypkCxRJ': { chain: 'op', chainName: 'Optimism', token: 'USDC', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:43114_3atVJH3r5c4GqiSYmg9fECvjc47o': { chain: 'avax', chainName: 'Avalanche', token: 'USDC', minimumUsd: 5n },
+  'nep141:usdt.tether-token.near': { chain: 'near', chainName: 'NEAR', token: 'USDT', minimumUsd: 5n },
+  'nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near': { chain: 'eth', chainName: 'Ethereum', token: 'USDT', minimumUsd: 20n },
+  'nep141:sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near': { chain: 'sol', chainName: 'Solana', token: 'USDT', minimumUsd: 5n },
+  'nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near': { chain: 'tron', chainName: 'Tron', token: 'USDT', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:137_3hpYoaLtt8MP1Z2GH1U473DMRKgr': { chain: 'pol', chainName: 'Polygon', token: 'USDT', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:56_2CMMyVTGZkeyNZTSvS5sarzfir6g': { chain: 'bsc', chainName: 'BNB Chain', token: 'USDT', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:10_359RPSJVdTxwTJT9TyGssr2rFoWo': { chain: 'op', chainName: 'Optimism', token: 'USDT', minimumUsd: 5n },
+  'nep245:v2_1.omni.hot.tg:43114_372BeH7ENZieCaabwkbWkBiTTgXp': { chain: 'avax', chainName: 'Avalanche', token: 'USDT', minimumUsd: 5n }
+};
+const TOKENS_FOR_MS = 10 * 60_000;
+const TIMEOUT_MS = 15_000;
+const DEADLINE_MS = 24 * 3_600_000;
+
+const TokensSchema = z.array(z.object({ assetId: z.string(), decimals: z.number().int().min(0).max(36) }));
+const QuoteResponseSchema = z.object({
+  quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().min(1).optional(), deadline: z.string().datetime() })
+});
+
+const unavailable = (context: Record<string, string | number>) =>
+  new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context } });
+
+export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string }): DepositProvider {
+  let tokens: { routes: DepositRoute[]; until: number } | null = null;
+
+  /** One request to 1Click, its JSON body parsed with `schema`. Anything but a 2xx answer that parses is unavailable. */
+  async function call<S extends z.ZodType>(schema: S, method: 'GET' | 'POST', path: string, body?: unknown): Promise<{ data: z.infer<S>; raw: unknown }> {
+    // Errors name the endpoint, never its query, which can name a deposit.
+    const endpoint = path.split('?')[0] ?? '';
+    let res: Response;
+    try {
+      res = await fetch(`${o.baseUrl}${path}`, {
+        method,
+        headers: { 'X-API-Key': o.apiKey, 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        body: body === undefined ? null : JSON.stringify(body),
+        signal: AbortSignal.timeout(TIMEOUT_MS)
+      });
+    } catch (e) {
+      throw unavailable({ endpoint, error: e instanceof Error ? e.name : 'unknown' });
+    }
+    if (!res.ok) throw unavailable({ endpoint, status: res.status });
+    const raw: unknown = await res.json().catch(() => null);
+    const parsed = schema.safeParse(raw);
+    if (!parsed.success) throw unavailable({ endpoint, status: res.status, error: 'unexpected-response' });
+    return { data: parsed.data, raw };
+  }
+
+  return {
+    name: 'oneclick',
+    async routes() {
+      if (tokens && tokens.until > Date.now()) return tokens.routes;
+      const { data } = await call(TokensSchema, 'GET', '/v0/tokens');
+      const routes = data.flatMap((t): DepositRoute[] => {
+        const a = ALLOWLIST[t.assetId];
+        if (!a) return [];
+        return [{ id: t.assetId, provider: 'oneclick', chain: a.chain, chainName: a.chainName, token: a.token, decimals: t.decimals, minimum: a.minimumUsd * 10n ** BigInt(t.decimals) }];
+      });
+      tokens = { routes, until: Date.now() + TOKENS_FOR_MS };
+      return routes;
+    },
+    async open(route): Promise<OpenedDeposit> {
+      const { data, raw } = await call(QuoteResponseSchema, 'POST', '/v0/quote', {
+        dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100,
+        originAsset: route.id, depositType: 'ORIGIN_CHAIN', destinationAsset: NEAR_USDC, amount: route.minimum.toString(),
+        refundTo: o.treasury, refundType: 'INTENTS', recipient: o.treasury, recipientType: 'INTENTS',
+        deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
+      });
+      return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo ?? null, expiresAt: data.quote.deadline, minimum: route.minimum, quote: toJson(raw) };
+    }
+  };
+}

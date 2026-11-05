@@ -8,6 +8,15 @@ import { bytea, exec, maybeOne, type Db } from '../db';
 
 export const PER_MINUTE = 25;
 export const WELCOME_CREDITS = 10_000;
+/**
+ * Credits per USD by what one payment is worth, in micro-USD: the bigger the payment, the better the rate. Each tier
+ * matches an old pack: 10,000 for 10 USD, 50,000 for 45 USD, 100,000 for 80 USD.
+ */
+export const TIERS: readonly { fromMicroUsd: bigint; creditsPerUsd: { num: bigint; den: bigint } }[] = [
+  { fromMicroUsd: 0n, creditsPerUsd: { num: 1000n, den: 1n } },
+  { fromMicroUsd: 45_000_000n, creditsPerUsd: { num: 10_000n, den: 9n } },
+  { fromMicroUsd: 80_000_000n, creditsPerUsd: { num: 1250n, den: 1n } }
+];
 /** Every change to the balance, kept with it so charges can be explained. */
 const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), amount: z.number() });
 const State = z.object({ balance: z.number(), history: z.array(Entry) });

@@ -2481,11 +2481,15 @@ describe('deleting an account', () => {
     const sharedWith = await noteFrom(ann);
     await ann.api.notes.share(sharedWith, { emails: [lena.email] });
     await b.api.notes.share(sharedWith, { emails: [kofi.session.user.email] });
+    // She opened a top-up to add credits.
+    const [route] = (await b.api.credits.routes()).routes;
+    if (!route) throw new Error('1Click offers no way to pay');
+    await b.api.credits.startTopUp(route.id);
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'deposits', 'identities', 'items', 'note_access', 'object_gc', 'operations', 'owners', 'recording_pieces',
       'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));

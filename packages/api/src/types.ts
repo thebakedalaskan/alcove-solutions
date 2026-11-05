@@ -843,3 +843,27 @@ export const CreditBalanceSchema = z.object({
   perMinute: z.number()
 });
 export type CreditBalance = z.infer<typeof CreditBalanceSchema>;
+
+/** A way to pay for credits: a stablecoin on one chain. */
+export const TopUpRouteSchema = z.object({
+  id: z.string(), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
+  /** The least that can be sent, in tokens, as a decimal string ("5"). */
+  minimum: z.string()
+});
+export type TopUpRoute = z.infer<typeof TopUpRouteSchema>;
+/** From how much one payment is worth (USD, as a decimal string), how many credits each USD of it buys. */
+export const CreditTierSchema = z.object({ from: z.string(), creditsPerUsd: z.number() });
+export const TopUpRoutesSchema = z.object({ routes: z.array(TopUpRouteSchema), tiers: z.array(CreditTierSchema) });
+export type TopUpRoutes = z.infer<typeof TopUpRoutesSchema>;
+export const TopUpStateSchema = z.enum(['waiting', 'arriving', 'short', 'credited', 'held', 'failed', 'expired']);
+export type TopUpState = z.infer<typeof TopUpStateSchema>;
+/** One payment for credits: where to send it, and what has happened to it so far. */
+export const TopUpSchema = z.object({
+  id: IDSchema, route: TopUpRouteSchema,
+  /** Only while money can still be sent to it (`waiting`, `short`); null once the top-up has moved on. */
+  address: z.string().nullable(), memo: z.string().nullable(),
+  expiresAt: ISODateSchema, state: TopUpStateSchema,
+  /** Once credited or held: what arrived, in tokens as a decimal string, and the credits it added (0 if held). */
+  received: z.object({ amount: z.string(), credits: z.number().int() }).nullable()
+});
+export type TopUp = z.infer<typeof TopUpSchema>;

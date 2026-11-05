@@ -25,6 +25,7 @@ import * as audioMod from './modules/audio';
 import * as billing from './modules/billing';
 import * as calendar from './modules/calendar';
 import * as calls from './modules/calls';
+import * as deposits from './modules/deposits';
 import * as meetings from './modules/meetings';
 import * as moves from './modules/moves';
 import * as notes from './modules/notes';
@@ -668,6 +669,10 @@ export function createApp(d: Deps) {
 
   /* credits */
   app.get('/v1/credits', async (c) => c.json(await billing.balance(d, c.get('owner').ownerId)));
+  app.get('/v1/credits/routes', async (c) => c.json(await deposits.routes(d)));
+  app.post('/v1/credits/top-ups', async (c) => c.json(await deposits.start(d, c.get('owner').ownerId, (await body(c, z.object({ routeId: z.string().min(1).max(200) }))).routeId)));
+  app.get('/v1/credits/top-ups/:id', async (c) => c.json(await deposits.get(d, c.get('owner').ownerId, c.req.param('id'))));
+  app.get('/v1/credits/top-ups', async (c) => c.json(await deposits.list(d, c.get('owner').ownerId)));
 
   return app;
 }

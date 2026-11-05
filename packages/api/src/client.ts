@@ -3,7 +3,7 @@ import type { CallMoveIn } from './moves';
 import type { ActionPatch, ClientLogEntry, DecisionPatch, DemoProvider, LinePatch, QuestionPatch } from './wire';
 import type {
   AnswerPart, Attestation, Calendar, CreditBalance, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox, PersonSuggestion,
-  Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team
+  Preferences, Series, SeriesAnswerPart, Session, SignInResult, Team, TopUp, TopUpRoutes
 } from './types';
 
 /** A partial update: any field may be missing or explicitly undefined. */
@@ -155,6 +155,14 @@ export interface AlcoveApi {
   };
   credits: {
     balance(): Promise<CreditBalance>;
+    /** The ways to pay for credits right now, and how many credits a USD buys at each size of payment. */
+    routes(): Promise<TopUpRoutes>;
+    /** Opens a top-up on one of those routes: an address to send to, for one payment. */
+    startTopUp(routeId: string): Promise<TopUp>;
+    /** A top-up as it stands now. */
+    topUp(id: ID): Promise<TopUp>;
+    /** Top-ups still open, and the last 10 finished, newest first. */
+    topUps(): Promise<TopUp[]>;
   };
   trust: {
     /** What the API is running on, attested inside a TEE, for a nonce of 32 random bytes in hex. */

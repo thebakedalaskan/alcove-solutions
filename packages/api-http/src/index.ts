@@ -7,7 +7,7 @@ import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
   NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
   SeriesAnswerPartSchema, SeriesSchema,
-  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
+  RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
 } from '@alcove/api';
@@ -259,7 +259,11 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     },
     credits: {
-      balance: () => req(CreditBalanceSchema, 'GET', '/credits')
+      balance: () => req(CreditBalanceSchema, 'GET', '/credits'),
+      routes: () => req(TopUpRoutesSchema, 'GET', '/credits/routes'),
+      startTopUp: (routeId) => req(TopUpSchema, 'POST', '/credits/top-ups', { routeId }),
+      topUp: (id) => req(TopUpSchema, 'GET', `/credits/top-ups/${encodeURIComponent(id)}`),
+      topUps: () => req(z.array(TopUpSchema), 'GET', '/credits/top-ups')
     },
     trust: {
       attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)
