@@ -162,8 +162,9 @@ send to anyone".
 
 1. **Start now** creates the call and goes to the organizer's lobby, with anyone picked already there to ring. Night
    floods out from the card that was pressed. If the call can't be made, the modal stays and says why.
-2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. Back
-   goes the other way, and everything chosen so far stays. No window ever opens over another.
+2. **Schedule for later** stays in the same modal and asks one thing at a time: **Who**, **When**, **Details**. With
+   someone already picked it starts at **When**. Back goes the other way, and everything chosen so far stays. No window
+   ever opens over another.
 3. **Who** is one field. Typing finds people in the company directory, people from past calls, groups, and the whole
    company ("Everyone at Vandelay"; without a directory, "Everyone you meet at Harbourline"); on your own it's the
    people you've met and any address. Pasting a list of addresses reads it at once: commas, semicolons, spaces and
@@ -680,39 +681,62 @@ a piece that reaches Alcove late, or twice, still lands where it was recorded, o
 
 ## 10. Team
 
-**Team** shows your company and who in it uses Alcove: the company directory where there is one (the demo
-directory today), otherwise the people at your work email domain you have calls or calendar meetings with. A
-personal address (gmail.com, outlook.com, icloud.com and the like) has no team.
+**Team** is your company, standing on the horizon: the company directory where there is one (the demo directory
+today), otherwise the people at your work email domain you have calls or calendar meetings with. A personal address
+(gmail.com, outlook.com, icloud.com and the like) has no team, so it has no Team page: nothing links to it, and its
+address goes to Home.
 
-- **People**: a card for each person on Alcove, you first, then whoever you met most recently, with their
-  title (or address) and **Next call** at a time later today or **Last call** with the day, from your notes.
-  **Start a call** opens Start a call with them already picked; **Notes with** lists the notes you both have
-  (`/notes#with=<address>`: the address stays in the browser, since a fragment is never sent to the web host).
-  The cards can show the colleagues invited, or not on Alcove yet, instead. Eight show before **Show all**.
-- **Not on Alcove yet**: the rest, each with how many calls and calendar meetings you have with them this month.
-  **Invite** (or **Invite all**) opens your own email with an invitation to them (a subject and the link to
-  sign in) and marks them invited; **Remind** opens it again. **Invite people** picks from them the same way,
-  or copies the invite link, which is the address of the page to sign in. Alcove sends no email itself.
-- **Groups**: each with how many people are in it and how many of your calls had any of them. A group opens in
-  place (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least
-  one); **Add people**, from the people picker; **Start a call** with all of them; **Rename**; and
-  **Delete**, which asks once and can be undone for a few seconds. **New group** names one (Enter opens the
-  picker) and fills it; a group half made waits there until you make it or discard it with ×. A name is 1 to 40
-  characters and not one of your other groups'; a group holds up to 50 people, and you can have 30 groups. Groups
-  live in your preferences: only you see them, and only a group's name leaves them, on the notes you share with
-  it. Changes to your preferences (groups, pins, settings) are saved one at a time, in order.
-- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it
-  with Leads", "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from
-  the people who still have each note). Each opens its note.
-- **Your minutes**: the time of notes left and the minutes used this month.
+- **The line**: the company's name in the middle of the sky, and everyone on the horizon in their arch. You stand in
+  the middle, whoever you met most recently beside you, one to each side, and people not on Alcove yet at the ends,
+  in empty arches with their initial. The low sun stands in an empty arch near where it sets, or just past the end of
+  the line. Nine people stand at full size; up to thirteen, everyone gives up a little room and keeps a name; past
+  that the front stays and the rest recede, smaller, nameless and hazier, on the same line, and pointing at someone
+  or reaching them with the keyboard brings them forward with their name. The line holds 34. On a phone it runs off
+  both sides, with you in the middle to start with, and the sun stands in its empty arch and slides with it.
+- **Someone's popover**: pressing an arch opens a popover under it (on a phone, a sheet): their name, their title or
+  address, and one line about the two of you: **Next call** at a time later today, how many meetings are coming up, or
+  **Last call** with the day. **Ring** starts a call and goes straight to the lobby with them picked. **Schedule** opens
+  Start a call at **When**, with them picked. **Notes you both have** lists the latest five in the same popover: each
+  opens its note, and **Open in Notes** lists them all (`/notes#with=<address>`: the address stays in the browser, since
+  a fragment is never sent to the web host). Someone not on Alcove yet has **Invite** in place of Ring, then **Remind**.
+  Your own arch has your address, the groups you're in and **Settings**.
+- **All 33 people**: past thirteen people a second button lists everyone, to search by name or address. Picking
+  someone brings them forward on the line, past the 34 too, and opens their popover.
+- **Invite people**: tick colleagues who aren't on Alcove and haven't been asked (they step up on the line as you do),
+  or type anyone's whole address, which counts as it's typed; a comma, a space, Tab or **Enter** ticks it and clears the
+  line for the next, and **Enter** again finishes. **Invite** opens your own email with an invitation to them (a subject and the link to
+  sign in), and marks the people on your team invited. **Copy link** copies the address of the page to sign in. Alcove
+  sends no email itself.
+- **Not on Alcove yet**: the rest, each with their title and the same line about the two of you, or **Invited**, and in
+  the same place on every row **Invite**, or **Remind**, which opens your email again. **Invite all** asks everyone who
+  hasn't been asked at once. Nobody moves when they're invited. Five show before **Show all**.
+- **Groups**: a tile for each, with its people standing on the tile's bottom edge, how many there are, and how many calls
+  had all of them. The camera starts a call with all of them without opening it. A tile opens in place, across the
+  column (the side panel's groups open it too): its people, each with × to take them out (a group keeps at least one);
+  **Add people**, from anyone you could reach; **Start a call** with all of them; **Rename**; and **Delete**, which asks once
+  and can be undone for a few seconds. **New group** is a tile too: it opens to name one (Enter opens the picker) and fill
+  it, **Create group** takes the filled button once it's ready, and a group half made waits on its tile until you make it
+  or discard it with ×. A name is 1 to 40 characters and not one of your other groups'; a group holds up to 50 people,
+  you can have 30 groups, and eight show before **Show all**. Groups live in your preferences: only you see them, and
+  only a group's name leaves them, on the notes you share with it. Changes to your preferences (groups, pins, settings)
+  are saved one at a time, in order.
+- **Shared with groups**: every share with a group in the notes you have, whoever made it ("Theo shared it with Leads",
+  "You shared it with Product"), newest first; the notes list carries them (`groupShares`, from the people who still
+  have each note). Each opens its note. Five show before **Show all**.
 
-With nobody else at your company on Alcove yet, the page asks you to bring them: you beside empty arches for the
-people you meet most, **Invite people** and **Copy invite link**, then those people, each with **Invite**. A
-personal account shows "Just you, for now", with **Invite people** (an email from your own mail app, with the
-link) and **Copy invite link**, then your groups and the notes shared with groups.
+What the numbers count: a call counts once it has notes, for the people on it who still have them. Someone a note was
+shared with afterwards doesn't count, nor do notes shared with you. Someone who removes a note drops out of that call's
+count, and a call with notes off leaves nothing to count. What's coming up is your Alcove calls and the coming week of
+your calendar, which is as far as Alcove reads it (unless **Show my other meetings on Home** is off), each once.
 
-If the team itself doesn't load, the page says why (or that you're offline), with **Try again**. Your groups and
-notes load beside it: if your groups don't, their card says so, with **Try again**, and the rest of the page works.
+With nobody else at your company on Alcove yet, the page asks you to bring them: **Bring your team to Alcove**, with
+**Invite people** and **Copy invite link**, you beside empty arches for the four people you meet most, then those people,
+each with **Invite**, **Invite everyone**, and how many more there are.
+
+While the team is on its way, empty arches wait on the line beside you, and everyone comes up over the horizon when it
+arrives. If it doesn't load, the page says why (or that you're offline, and it comes back by itself), with **Try again**.
+Your groups and notes load beside it: if your groups don't, their section says so, with **Try again**, and the rest of
+the page works.
 
 ## 11. Settings
 

@@ -7,7 +7,7 @@ import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
 import { Avatar, type AvatarPerson } from './people';
-import { Chip, Meter } from './primitives';
+import { Meter } from './primitives';
 import type { ThemeChoice } from './theme';
 
 /**
@@ -114,40 +114,11 @@ export function TranscriptLine({ person, name, time, children, className, id }: 
 
 /* ---------- Tiles and cards ---------- */
 
-/** A name with no spaces (someone known only by their address) may break after its dots and @, never mid-word. */
-function breakable(text: string): ReactNode {
-  if (/\s/.test(text)) return text;
-  const parts = text.split(/(?<=[.@])/);
-  return parts.map((part, i) => <span key={i}>{part}{i < parts.length - 1 && <wbr />}</span>);
-}
-
-/**
- * Someone on your team: their arch, name, `title` (or their address) and when you last met ("Last call ·
- * today"), with icon buttons at the foot (`actions`: start a call, their notes). `tag` marks the card, as
- * "You". In a grid, every card's actions line up at the bottom.
- */
-export function PersonCard({ person, name, title, last, tag, actions, className }: {
-  person: AvatarPerson; name?: ReactNode; title?: ReactNode; last?: ReactNode; tag?: string | undefined; actions?: ReactNode; className?: string | undefined;
-}) {
-  const shown = name ?? (person.name || person.email || '');
-  return (
-    <div className={cn('ac-person-card', className)}>
-      {tag && <Chip tone="outline" className="tag">{tag}</Chip>}
-      <Avatar person={person} size={64} />
-      <b className="ac-clamp-2">{typeof shown === 'string' ? breakable(shown) : shown}</b>
-      {title !== undefined && <small className="ac-clamp-1">{title}</small>}
-      {last !== undefined && <span className="last">{last}</span>}
-      {actions !== undefined && <div className="acts">{actions}</div>}
-    </div>
-  );
-}
-
 /* ---------- Minutes ---------- */
 
 /**
  * The minutes of notes left, as a card: the time left in the display face, a meter of how much of everything granted is
- * left, and what was used this month (`used`), then `children` (a row, a link). Team and Settings both show it; `id` is
- * where a link to it lands.
+ * left, and what was used this month (`used`), then `children` (a row, a link). `id` is where a link to it lands.
  */
 export function MinutesCard({ id, title, left, share, used, children, className }: {
   id?: string | undefined; title: ReactNode; left: string; share: number; used: ReactNode; children?: ReactNode; className?: string | undefined;
