@@ -104,10 +104,13 @@ Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` 
 
 Cloud Run uses one instance, session affinity, gen2, one CPU, 1 GiB, port 8080, a 300-second timeout and 500
 requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
-The API holds at most 300 of those streams, and 8 for any one account, so the rest are always there for calls.
-A workspace's live stream holds a request too, for as long as it's open: at most 8 for any one person on an instance, with
-no limit across everyone yet, and the API lets go of each one after 280 seconds for the browser to open it again
-(`LIVE_STREAM_MS`; keep it under the timeout). Node gives its heap about half of the container's memory, so 1 GiB is a
+The API holds at most 300 of those streams, and 8 for any one account.
+A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 16 of
+documents for any one person on an instance, and 300 of both together for everyone (`LIVE_STREAMS_MAX`), past which they're
+refused with `503` and browsers try again, and the API lets go of each one after 280 seconds for the browser to open it again
+(`LIVE_STREAM_MS`; keep it under the timeout). Those two limits are counted apart and come to 600 together: 200 tabs
+listening for rings with 300 streams open would take all 500 requests and leave calls none, so lower `LIVE_STREAMS_MAX`
+before an instance gets that busy. Node gives its heap about half of the container's memory, so 1 GiB is a
 heap of about 560 MiB. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
 checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
 connector does, because `LISTEN` doesn't work through a transaction-mode pooler.

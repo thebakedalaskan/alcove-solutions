@@ -36,7 +36,10 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
 | `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
-| `documents` | owner (the workspace), `document_id`, `next_seq`, `updates_since_snapshot`, `bytes_since_snapshot`, created. One row for each document or board in the tree; a folder has none | — |
+| `documents` | owner (the workspace), `document_id`, `next_seq`, `updates_since_snapshot`, `bytes_since_snapshot`, `snapshot_bytes`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), created. One row for each document or board in the tree; a folder has none | — |
+| `document_updates` | owner (the workspace), document, `seq`, created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
+| `document_snapshots` | owner (the workspace), document, `through_seq`. One row a document | `snapshot_ciphertext` (its Yjs state through that seq), `editors_ciphertext` (who has edited it since the last version) |
+| `document_versions` | owner (the workspace), document, `version_id`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept), `state_ciphertext` (its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
@@ -112,6 +115,66 @@ what it made follows. A workspace holds at most 1,000 people, a document is shar
 have made at most 100 workspaces. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
 
+### Documents
+
+What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
+with the same thing. Browsers exchange binary updates through the API, which seals each and keeps it. Only
+`apps/api/src/modules/documentText.ts` knows what's inside one, and it goes by `kind`, so a board says its own words;
+everything else below is the same for anything that holds a Y.Doc. A document's blocks are the root fragment `content`,
+its comment threads the root map `comments`, and the editor's schema decides the rest.
+
+- **Starting.** A new document has its title and first line before anyone opens it: the seed, one fixed Yjs update that
+  browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when the item is made. A browser that
+  can only read never has to write, and two people opening a new document find one title. A board starts with nothing. A
+  copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
+  outside it, one document at a time, with a document's title changed to say what the tree calls the copy.
+- **Updates** are sealed and appended in one transaction, under the workspace's row lock for reading (so nothing lands after
+  someone loses access) and the `documents` row's lock. `seq` comes from `next_seq` under that lock, so rows commit in
+  order, and whoever has read past a `seq` has missed nothing before it. `pg_notify` goes out on commit. Yjs updates can arrive
+  twice and in any order, so a retried request does no harm and nothing keeps a receipt. Each is checked to be an update
+  before it goes in the log: at most 1 MiB, and what every browser will apply.
+- **What's sent to whoever opens it** is a state, not the history: the log goes through a Y.Doc, which keeps only that
+  something was deleted, so a word someone took out isn't sent to the next person who opens the document. That's also why
+  compaction doesn't use `Y.mergeUpdates`, which keeps deleted content. A browser that's been here before says how far it got
+  (`after`) and is sent what it's missing the same way, or nothing at all if nothing changed, or everything if a compaction
+  has passed the point it got to. Whichever it is, it merges.
+- **Compaction.** Past 200 updates or 1 MiB since the last snapshot, the log folds into `document_snapshots` and the rows
+  it covers go. All but the newest update: streams are reading that one. The work happens after the update commits and
+  outside any lock, because what's in the log up to a `seq` never changes; the row's lock is taken only to swap the snapshot
+  in, and only if the snapshot is still the one it started from, so two instances folding at once write one. A failure is
+  logged with its IDs, and the next update tries again: nothing about compaction can fail an update.
+- **Versions.** The first update after ten minutes of editing keeps what was there before it, so a version closes a stretch
+  of work: a whole state, which opens whatever happens to the log afterwards, with who changed the document since the
+  last one. One is kept when a call ends too (`keepVersion`, labelled with the call, for History to group by), unless nothing
+  changed, and before a restore. A document keeps its newest 200, and no more than 64 MiB of them, though always its newest.
+- **Restoring** makes the document what it was, for everyone, as one update like any other. What it says now is kept as a
+  version first. Yjs only moves forward, so going back means writing again what was deleted and deleting what was added:
+  what happened since the version is replayed onto it and undone, which works for anything a Y.Doc holds. Anyone typing at
+  the time merges with it. The tree's name follows the title, because a browser renames only what it types.
+- **Size.** A document's state stops at 16 MiB: past that, updates that add anything are refused (`400 invalid`, and the
+  browser's status says `failed`, `too-large`). Taking things out still works, and compacts at once, so whoever hit the
+  limit can get back under it. Nobody's words are lost: they stay in the browser that typed them.
+- **Reading it on the server.** `readDocument` gives other modules the Y.Doc and `writeDocument` changes one, through the same
+  log, so what the server writes reaches browsers as an update. `documentTodos` and `documentText` read what's in it, and
+  `searchText` streams everything someone can open as blocks of words, one document a line, for searching in their browser.
+  Text is one element, `line`, with a `kind`; the editor retires a block instead of deleting it, so an edit landing in one
+  is never lost, and a retired block (`gone` set) with no words isn't on the page.
+- **Memory.** A Y.Doc takes many times the size of what it's read from, so documents past 256 KiB are read two at a time on
+  an instance, and at most 64 MiB of states can be on their way to browsers at once: past that, opening another is refused
+  with `503` and the browser tries again.
+- **What won't open** stops only itself: search leaves it out, a copy of a folder leaves its copy as it started, and
+  compaction logs it and carries on, each with a warning naming the IDs.
+
+### In a browser
+
+`DocSession` (`packages/api-http`) owns the `Y.Doc` and runs the same in a browser and in Node. Edits gather for 150 ms and go
+one request at a time, the oldest first, as much as fits in one; a retry only ever repeats what the API may not have.
+Nothing typed is let go of until the API has it, and with a `keep` store (the app's is sealed under the device key) that
+survives a reload: what's kept is applied when the session starts and sent when there's a connection. The stream picks up from
+the last `seq` it heard, however it ended, and never moves on from what this browser sent, only from what the stream
+said. A refusal stops sending until what caused it changes: an `access` line saying it can be edited again sends what
+was waiting.
+
 ### Live traffic
 
 Live traffic is NDJSON down and `POST` up: a guest authenticates with a header, which a browser's WebSocket can't send,
@@ -126,16 +189,42 @@ and this way it runs through the same auth, origin check and tests as everything
   and everyone subscribed hears `missed`, because notices sent meanwhile are gone. It needs a direct connection to
   Postgres: `LISTEN` doesn't work through a transaction-mode pooler.
 - **How many.** `hub.admit` counts each person's open streams on each instance, with one limit for each kind of stream: 8
-  of a workspace. The next is refused with `503 unavailable` rather than closing the oldest, so a stream at work is never
-  taken from anyone, and that's decided before anything is read. The browser tries again by itself and gets in when one closes.
+  of a workspace and 16 of documents. Everyone's together stop at 300 an instance (`LIVE_STREAMS_MAX`), because each holds one
+  of the requests an instance can take at once, and rings and calls need them too. The next is refused with `503 unavailable` rather
+  than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
+  browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `access`, when their role changes,
+  just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
   a notice that finds nobody behind stops at that one small query. The read takes the state and what those readers have,
   under keys opened for it and not kept. Each stream then works out what its reader sees, and sends nothing if that's what
   they last saw, which it knows from a hash: a stream holds no tree, because a copy for each is what runs an instance out of
   memory. A slow browser skips to the latest.
+- **A document's stream** (`GET /v1/workspaces/:id/documents/:doc/live?after=<seq>`). First `sync`: what this browser
+  doesn't have as one update, the `seq` that reaches, and what they can do. Then `update`, in order; `awareness`; `access`,
+  when their role changes or it goes to Trash or comes back; `ping`; and `closed`, saying why it's over: `access`, `deleted` or
+  `session`. Up: `POST …/updates` and `POST …/awareness`. A notice is `<document>:<seq>`, and each is read once on each instance,
+  by the document's room, which keeps the lines not everyone has been told. A stream keeps only its place: nothing of
+  the document stays with it once its `sync` is written, so 500 of them cost little. A stream that falls more than 256
+  updates or 1 MiB behind is let go of, and its browser picks up from its last `seq`. Hearing that the hub missed something
+  reads again from there too. Someone who loses a document hears nothing written after that: a change to who has what
+  that was heard first is settled before the update behind it is read.
+- **Carets** (awareness) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
+  under the workspace's key, at most 4 KiB, and every instance passes it on. The server writes who it is over `user` in the
+  state: `{ id, name, callIdentity }`, an `id` that's a keyed hash, the same for that person everywhere in the workspace, and never
+  an address. Nothing a browser says about itself survives that, and a client someone else has been using is refused, so
+  nobody can take over another person's caret. Nothing keeps carets for whoever arrives, so someone arriving says so, and
+  everyone who hears from someone new says where they are.
+- **Presence** is never stored either. Opening a workspace's stream puts a browser here; it says where it is (`POST
+  /v1/workspaces/:id/presence`) when that changes and every 10 seconds, which travels sealed the same way, and every
+  instance keeps what it hears in memory until it's said again. 30 seconds of silence and it's gone (`LIVE_PRESENCE_MS`), or at
+  once when the browser says it's leaving. Someone can only be placed in what they can open, and every change to who has
+  what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
+  it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
+  they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
+  only to people in that call, so a tile can show where someone is. Streams work out who's here at most five times a second.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
   and only people in a call have one. A session or pass that ended, a person out of the call, all end it, within 25 seconds
@@ -244,6 +333,10 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **What's added to the shared notes** (`note_additions`) lasts until it's taken back, the note goes or its author's
   account is deleted. It stays when its author removes the note.
 - **What's in a workspace's Trash** stays 30 days, unless someone deletes it for good first.
+- **A document's log** lasts until it compacts, past 200 updates or 1 MiB; what was deleted goes then. **Its versions** last
+  until the document does, or until newer ones push them out: the newest 200, up to 64 MiB.
+- **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
+  and in the API process's memory.
 - **Seats** in `document_access` last while their call does.
 
 ## Operations

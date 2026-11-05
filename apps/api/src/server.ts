@@ -22,7 +22,7 @@ const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS }) };
+const deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX }) };
 const stopping = new AbortController();
 const app = createApp(deps, stopping.signal);
 

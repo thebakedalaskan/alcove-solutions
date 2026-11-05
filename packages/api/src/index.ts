@@ -11,4 +11,5 @@ export * from './marks';
 export * from './moves';
 export * from './rings';
 export * from './workspaces';
+export * from './workspaceDocuments';
 export * from './workspaceEditor';
