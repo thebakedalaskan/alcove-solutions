@@ -49,8 +49,8 @@ screen. Signing in on another browser doesn't end the first session.
 Beside every page, dark in both themes:
 
 - **Start a call** (or **N**) opens flow 4.
-- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Workspace**, where you
-  write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
+- **Home**, with how many things are waiting on you; **Notes**, with how many notes you have; **Drive**, every workspace,
+  where you write together (flow 12); **Record**, where recording in the room starts (flow 9), with how many recordings on this
   device are waiting to upload; and **Team** (flow 10), with how many people at your company use Alcove, you among them,
   once anyone besides you does. Someone on their own, at a personal address, has no Team page and no groups here.
 - **Up next**, on every page but Home: the next Alcove call today, or the next meeting on your calendar
@@ -79,7 +79,7 @@ its own search, so there's none at the top right, and the shortcut goes to the l
 the shortcut is **Find** (flow 12), and **Search or ask** stays at the top right without it.
 
 On a phone (860 px wide or narrower) a top bar takes its place, with the brand, search (not on Notes), **Start a call** (a plus) and
-you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Workspace** and **Team**
+you (Settings), and a tab bar runs along the bottom: **Home**, **Notes**, **Record** (raised), **Drive** and **Team**
 when you're on one. Offline, the same notice sits under the top bar.
 
 **The palette** is one line over the page. Before anything is typed it lists your five newest notes. Typing
@@ -979,11 +979,13 @@ workspace, one at a time or **Add all three**; Video and File offer films and fi
 land where a line shows, "Drop to add here", and pasted ones under the caret. Several photos make a gallery, one makes a picture
 across the page, a film shows its first frame with **Play**, and anything else is a file that downloads, or opens in a tab when
 the browser can show it. Everyone sees the space a file will take straight away and the ring fill as it uploads, and the
-pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read,
-or one Alcove refuses, says which file and why ("This file is bigger than 512 MiB, the most a file can be.", "This workspace is
-full, so it can't take more files.", "That's all you can upload today. You can upload more tomorrow."), with **Try again** and
-**Delete**, and nothing else in the document changes. Leaving the page doesn't stop an upload, and closing the tab asks first;
-a browser that goes mid-upload leaves its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
+pictures sharpen when it's done; a caption starts as the file's name and is one click to change. A photo the browser can't read
+says which file, with **Add as a file** and **Delete**. One Alcove refuses says which file and why ("This file is bigger than
+512 MiB, the most a file can be.", "This workspace is full, so it can't take more files.", "That's all you can upload today. You
+can upload more tomorrow."), with **Try again** and **Delete**, and nothing else in the document changes. A block that's
+uploading can be cut and pasted in its document, or undone and done again, and the upload goes on into it. Leaving the page doesn't stop
+an upload, and closing the tab asks first, until everything about it has reached Alcove; a browser that goes mid-upload leaves
+its block saying it couldn't, for everyone. A block's **Delete** takes it out and keeps
 the file in the workspace, for older versions and to use again. **Delete the photo for good** (or the video, or the file), in
 the block's menu, asks first, then deletes it from every document that has it, where it says it was deleted, older versions
 too; Alcove refuses that for a file that's also in a document you can only read, and says so. **Upload files** in the list's
