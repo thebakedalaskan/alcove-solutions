@@ -139,7 +139,7 @@ describe('a workspace', () => {
     await ann.api.workspaces.remove(id);
     expect(await code(ann.api.workspaces.get(id))).toBe('not-found');
     expect((await ann.api.workspaces.list()).map((w) => w.id)).toEqual([second.id]);
-    for (const t of ['owners', 'workspaces', 'workspace_members', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
+    for (const t of ['owners', 'workspaces', 'workspace_members', 'workspace_mentions', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
     expect(await code(ann.api.workspaces.remove(id))).toBe('not-found');
   });
 

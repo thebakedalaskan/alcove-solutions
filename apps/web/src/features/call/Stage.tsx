@@ -687,7 +687,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
                   )}
                   {following && !mode && <span className="ic-ton"><Icon name="navigate" size={12} />Following</span>}
                   {!following && !mode && !corner && together.followable.includes(p.id) && (
-                    <button type="button" className="ic-tfl" aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
+                    <button type="button" className="ic-tfl" tabIndex={-1} aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
                   )}
                   <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} organizer={organizer} menu={menuFor(p, corner)} />
                   {sizable && restGroup.includes(p.id) && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p)}><Icon name="resize" size={14} /></span>}

@@ -73,8 +73,10 @@ function CommentField({ label, placeholder, value, onChange, onSend, tagging, au
   const open = shown !== null;
   const take = (c: WsTagChoice | undefined) => {
     if (!c || !shown) return;
-    const at = shown.from + c.words.length + 2;
-    onChange(`${value.slice(0, shown.from)}@${c.words} ${value.slice(caret)}`);
+    /* Only a person keeps the @: a date is just words. */
+    const words = `${c.person ? '@' : ''}${c.words} `;
+    const at = shown.from + words.length;
+    onChange(`${value.slice(0, shown.from)}${words}${value.slice(caret)}`);
     setCaret(at);
     tagging?.onPick(c);
     requestAnimationFrame(() => { field.current?.focus(); field.current?.setSelectionRange(at, at); });

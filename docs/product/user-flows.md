@@ -465,8 +465,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
-the server today, and its screens are being built.
+Opening it, sharing beside it, arranging it, going to just the document and working together work on screen. The rest of this
+list comes from the server today, and its screens are being built.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone

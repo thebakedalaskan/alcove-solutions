@@ -450,6 +450,31 @@ describe('where people are', () => {
     a.close();
   });
 
+  it('puts whoever moved last at the end, so of someone’s windows the one in use can be told from one left open', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const left = await make(ann, id, 'Left open');
+    const using = await make(ann, id, 'In use');
+    const a = ann.api.workspaces.live(id);
+    const one = theo.api.workspaces.live(id);
+    const two = theo.api.workspaces.live(id);
+    await opened(one, 'one window');
+    await opened(two, 'another window');
+    const theirs = () => here(a).filter((x) => x.person.name === theo.name);
+    one.present({ document: left, block: 'b1', typing: false });
+    two.present({ document: using, block: 'b2', typing: false });
+    await until(() => theirs().length === 2 && theirs().every((x) => x.document !== null), 'both windows');
+    one.present({ document: left, block: 'b3', typing: false });
+    await until(() => theirs().at(-1)?.block === 'b3', 'the window that moved to come last');
+    two.present({ document: using, block: 'b4', typing: false });
+    await until(() => theirs().at(-1)?.block === 'b4', 'the other to come last');
+    // Saying the same thing again isn't moving: every window does that every few seconds.
+    await rest(250);
+    expect(theirs().at(-1)?.block).toBe('b4');
+    for (const s of [a, one, two]) s.close();
+  });
+
   it('stops for someone whose access is taken away: they’re gone for everyone, and can’t come back by saying so', async () => {
     const ann = await account();
     const theo = await account();
