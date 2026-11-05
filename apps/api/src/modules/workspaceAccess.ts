@@ -10,12 +10,13 @@
  *
  * Someone with no access gets the same `not-found` for a real ID and a made-up one, wherever they ask.
  */
-import { ItemKindSchema, type DocumentRole, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { ItemKindSchema, type DocumentRole, type Person, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import type pg from 'pg';
 import { z } from 'zod';
 import { readPass } from '../callPass';
 import type { Deps, Owner } from '../context';
-import { blindIndex, id128, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../crypto';
-import { bigintText, bytea, exec, maybeOne, rows, type Db } from '../db';
+import { b64u, blindIndex, id128, mac, openJson, sealJson, stateKey, toJson, type RecordHeader } from '../crypto';
+import { bigintText, bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, notFound } from '../errors';
 import { publish } from '../live/hub';
 import { log } from '../log';
@@ -23,6 +24,7 @@ import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
 import { profile } from './account';
 import { seated, seatOfViewer, viewerOf, type Viewer } from './calls';
+import { personOf, portraitFor } from './portraits';
 
 const xlog = log.child({ component: 'access' });
 
@@ -124,6 +126,17 @@ export const accountReader = (owner: Owner, pass?: string | undefined): Promise<
 /** Who a limit counts: the account, or the person in a call. */
 export const limitKey = (r: Reader): string => r.account?.owner.ownerId ?? r.seat?.viewer.pass.person ?? 'nobody';
 
+/**
+ * Who a reader is to the others in a workspace. `id` is a keyed hash of how access knows them, the same for them on every
+ * connection and for nobody anywhere else, so it can go on a caret that someone outside the workspace sees: an address
+ * can't. The address is in `email`, for `Room.seenBy` to pass on or not.
+ */
+export function personIn(o: Owner, r: Reader): Person {
+  const id = b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), r.principals[0] ?? new Uint8Array(0))).slice(0, 22);
+  const name = r.account?.name ?? r.seat?.name ?? '';
+  return r.email === undefined ? { id, name, email: '', portrait: portraitFor(id) } : { ...personOf(r.email, name), id };
+}
+
 /* ---------- where someone stands in a workspace ---------- */
 
 /** What a reader has in a workspace: their role, and each document given to them beyond it. */
@@ -197,6 +210,28 @@ export async function workspaceFor(d: Deps, who: Who, workspaceId: string, db: D
   const owner = await findOwner(d, row.owner_id, undefined, db);
   if (!owner) throw missing(workspaceId);
   return { ...standing, workspaceId, owner, state: openState(owner, workspaceId, row.state_ciphertext), people: await peopleIn(db, row.owner_id), version: row.version };
+}
+
+/** Saves the state, and says what's in Trash and since when, so maintenance needn't open every workspace to find out. */
+export async function saveState(w: { owner: Owner; workspaceId: string; state: WorkspaceState }, db: Db): Promise<void> {
+  const since = Object.values(w.state.items).flatMap((i) => (i.trashedAt ? [i.trashedAt] : [])).sort()[0] ?? null;
+  await exec(db, 'UPDATE workspaces SET state_ciphertext = $2, trash_since = $3, version = version + 1 WHERE owner_id = $1', [w.owner.ownerId, sealState(w.owner, w.workspaceId, w.state), since]);
+}
+/**
+ * One change to a workspace: under its row lock, with this reader's access as it stands under that lock. `fn` puts what
+ * it changes in `w.state`. Every stream looks again once the transaction commits.
+ */
+export function change<T>(d: Deps, who: Who, workspaceId: string, fn: (w: Workspace, c: pg.PoolClient) => T | Promise<T>): Promise<T> {
+  return tx(d.pool, async (c) => {
+    const w = await workspaceFor(d, who, workspaceId, c, 'change');
+    const before = w.state;
+    const out = await fn(w, c);
+    // A change to who has what moves the version on as a change to the tree does: it's how a stream knows it's behind.
+    if (w.state !== before) await saveState(w, c);
+    else await exec(c, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [w.owner.ownerId]);
+    await publish(c, workspaceId, TREE_NOTICE);
+    return out;
+  });
 }
 
 /* ---------- what they can do there ---------- */
