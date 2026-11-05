@@ -154,7 +154,7 @@ export function BoardTyping({ board, id, label }: { board: Board; id: string; la
       el.removeEventListener('blur', blur);
     };
   }, [board, id]);
-  return <BoardEdit ref={ref} aria-label={label} maxLength={BOARD_LIMITS.text} />;
+  return <BoardEdit ref={ref} label={label} maxLength={BOARD_LIMITS.text} />;
 }
 
 /** Where Tab puts the next sticky: to the right, or at the start of the next row when the frame it's in runs out. */
