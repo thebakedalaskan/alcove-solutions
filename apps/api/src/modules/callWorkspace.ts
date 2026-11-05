@@ -16,10 +16,10 @@ import { tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
 import type { Hub } from '../live/hub';
 import { log } from '../log';
-import { findItem, getItem, type Loaded } from '../vault';
+import { findItem, type Loaded } from '../vault';
 import { profile, updateProfile } from './account';
 import { seatOfViewer, type Viewer } from './calls';
-import { stopped, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
+import { stopped, type AgendaDraft, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
 import { isFollowUp, type Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
 import { placeOf, placesOf, type Joined, type Placing } from './places';
@@ -584,24 +584,41 @@ export async function planAgenda(o: Owner, meeting: Loaded<MeetingManifest>): Pr
   const open = await readDocument(w, last.documentId, 'openTodos', { kind: kindOf(item) });
   return { workspaceId, last: last.documentId, title: `Agenda · ${dayOf(startsAt, await zoneOf(o, seriesId) ?? 'UTC')}`, open };
 }
+/** How long whoever's making the next agenda has it, before someone else opening Workspace takes it on. */
+const AGENDA_CLAIM_MS = 2 * 60_000;
+/** Someone's making the next agenda now, so nobody else starts. */
+export const makingAgenda = (w: CallSpace, now: number): boolean => w.agendaDraft !== null && w.agendaDraft.until > now;
 /**
- * Makes it, in the caller's transaction, which holds the call's row, so however many people open Workspace at once there's
- * one. Undefined when it isn't to be made after all, the organizer's access asked again under the workspace's row. It's
- * filled in once this commits (`fillAgenda`).
+ * The call's state once someone opening Workspace takes on making the next agenda, under the call's row, so however many open
+ * it at once one of them makes it. A draft from a try that didn't work is the one made again, so there's never a second.
+ * With none to make, it's looked for: nobody looks again.
  */
-export async function claimAgenda(o: Owner, c: Db, meetingId: string, plan: AgendaPlan): Promise<HeldWorkspace & { documentId: string } | undefined> {
-  const m = await getItem(o, c, 'meeting', meetingId, MeetingManifest, 'That meeting');
-  if (m.manifest.agenda) return undefined;
-  const w = await organizerCarries(o, plan.workspaceId, plan.last, c, 'change');
-  if (!w) return undefined;
-  const documentId = await addBeside(w, c, plan.last, plan.title);
-  const brought = broughtId(plan.workspaceId, documentId);
-  await updateManifest(o, c, meetingId, (x) => ({
-    ...x, agenda: { workspaceId: plan.workspaceId, documentId }, documents: [brought, ...x.documents.filter((d) => d !== broughtId(plan.workspaceId, plan.last))].slice(0, MAX_BROUGHT)
-  }));
-  return { ...w, documentId };
+export function claimAgenda(w: CallSpace, plan: AgendaPlan | undefined, now: number): { space: CallSpace; draft: AgendaDraft | undefined } {
+  if (!plan) return { space: { ...w, agendaLooked: true, agendaDraft: null }, draft: undefined };
+  const documentId = w.agendaDraft?.workspaceId === plan.workspaceId ? w.agendaDraft.documentId : id128();
+  const draft = { workspaceId: plan.workspaceId, documentId, until: now + AGENDA_CLAIM_MS };
+  return { space: { ...w, agendaDraft: draft }, draft };
 }
+/** The next agenda, made and opened for the server to fill in. */
+export type MadeAgenda = HeldWorkspace & { documentId: string };
+/**
+ * Makes the next agenda as the draft says, unless it's there already, in a transaction of its own under the workspace's row,
+ * with the organizer's access asked again there. Nothing of the call is held. Undefined when it isn't to be made after all.
+ */
+export async function makeAgenda(o: Owner, plan: AgendaPlan, draft: AgendaDraft): Promise<MadeAgenda | undefined> {
+  return tx(o.pool, async (c) => {
+    const w = await organizerCarries(o, plan.workspaceId, plan.last, c, 'change');
+    if (!w) return undefined;
+    if (w.state.items[draft.documentId]) return trashOf(w.state, draft.documentId) ? undefined : { ...w, documentId: draft.documentId };
+    await addBeside(w, c, plan.last, plan.title, draft.documentId);
+    return { ...w, documentId: draft.documentId };
+  });
+}
+/** The meeting once its agenda is filled in: it names it, and it takes the last one's place among what's brought. */
+export const withAgenda = (m: MeetingManifest, plan: AgendaPlan, documentId: string): MeetingManifest => (m.agenda ? m : {
+  ...m, agenda: { workspaceId: plan.workspaceId, documentId }, documents: [broughtId(plan.workspaceId, documentId), ...m.documents.filter((d) => d !== broughtId(plan.workspaceId, plan.last))].slice(0, MAX_BROUGHT)
+});
 /** Fills in an agenda once it's there, through the log like anything else: whoever has it open sees it arrive. */
-export async function fillAgenda(made: HeldWorkspace & { documentId: string }, plan: AgendaPlan, callId: string): Promise<void> {
+export async function fillAgenda(made: MadeAgenda, plan: AgendaPlan, callId: string): Promise<void> {
   await writeDocument(made, made.documentId, 'writeAgenda', { title: plan.title, open: plan.open }, { callId });
 }

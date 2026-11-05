@@ -169,12 +169,13 @@ function writeAtStart(el: Y.XmlElement, text: string): void {
 
 /**
  * Fills in a new document as the next call's agenda: the Agenda template, holding what was left open. Its first line is the
- * one every document starts with, so it's kept and turned into the first heading.
+ * one every document starts with, so it's kept and turned into the first heading. One that's filled in already is left as
+ * it is, so trying again after a fill that landed and wasn't said to changes nothing.
  */
 export function writeAgenda(doc: Y.Doc, title: string, open: Run[][]): void {
   const fragment = doc.getXmlFragment(DOC_FRAGMENT);
   const [head, first] = blocksOf(doc);
-  if (head?.nodeName !== 'title' || !first) return;
+  if (head?.nodeName !== 'title' || !first || readsAsAgenda(doc, 'document')) return;
   writeAtStart(head, title);
   setAttr(first, 'kind', 'heading');
   setAttr(first, 'level', 2);

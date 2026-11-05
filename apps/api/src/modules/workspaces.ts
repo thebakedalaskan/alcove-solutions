@@ -379,13 +379,13 @@ export async function moveItem(d: Deps, reader: Reader, workspaceId: string, ite
 /**
  * A document the server makes beside another, in the caller's transaction, which holds the workspace's row: in the same
  * folder, just after it, for the same people. What the other is restricted to, this is restricted to, so nothing carried
- * over from it reaches anyone new; seats ended with their call. It starts from the seed: what it says is written after.
+ * over from it reaches anyone new; seats ended with their call. It starts from the seed: what it says is written after. `id`,
+ * when what's making it has settled on one already.
  */
-export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: string): Promise<string> {
+export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: string, id: string = id128()): Promise<string> {
   const from = w.state.items[like];
   if (!from) throw notFound('That document', { workspaceId: w.workspaceId, documentId: like });
   if (Object.keys(w.state.items).length >= MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId } });
-  const id = id128();
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
     kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy
