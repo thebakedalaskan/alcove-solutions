@@ -855,10 +855,12 @@ describe('live transcript and written notes', () => {
     expect(note.transcript?.map((l) => l.text)).toEqual(['We agreed to move the launch to the 18th.', 'Kofi will send the new screens by Wednesday.', 'Priya checks the numbers.', 'That is everything for today.']);
     expect(note.summary).toBe('Heard 4 lines. It ended on: That is everything for today.');
     // What the notes heard is proposed, and follow-ups only suggest who: nobody is committed by the notes.
-    expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', changes: [] }]);
+    const lineOf = (said: string) => note.transcript?.find((l) => l.text.startsWith(said))?.id;
+    const backedBy = (said: string) => ({ lines: [lineOf(said)], against: [], evidence: { flags: [], moments: [expect.objectContaining({ kind: 'line', id: lineOf(said), against: false, corrected: false })] } });
+    expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', disputes: [], changes: [], ...backedBy('We agreed') }]);
     expect(note.actions).toEqual([{
       id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
-      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: []
+      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], ...backedBy('Kofi will')
     }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
@@ -1075,7 +1077,7 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: [{ text: 'We decided to keep the darker header.', at: 4, state: 'proposed' }] });
     expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
-    expect(note.actions).toEqual([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
+    expect(note.actions).toMatchObject([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
   it('notes are written in the chosen language and length', async () => {
@@ -1651,34 +1653,37 @@ describe('confirming what the notes say', () => {
     const guest = await account(guestEmail);
     const who = (n: { changes: { by: { email: string }; what: string; before?: string | undefined }[] }) => n.changes.map((c) => [c.by.email, c.what, c.before ?? null]);
 
-    // Anyone with the notes confirms a decision, rewords it, says it wasn't decided after all, or reopens it.
-    note = await guest.api.notes.updateDecision(noteId, decision, { state: 'confirmed' });
+    // Anyone invited confirms a decision. New words put it back to proposed: what they confirmed was the words before.
+    note = await guest.api.notes.updateDecision(noteId, decision, { state: 'confirmed', seen: { text: 'We agreed to move the launch to the 18th.' } });
     expect(note.decisions[0]?.state).toBe('confirmed');
     note = await org.api.notes.updateDecision(noteId, decision, { text: 'The launch moves to the 18th.' });
+    expect(note.decisions[0]?.state).toBe('proposed');
     note = await org.api.notes.updateDecision(noteId, decision, { state: 'rejected' });
-    note = await guest.api.notes.updateDecision(noteId, decision, { state: 'proposed' });
+    note = await org.api.notes.updateDecision(noteId, decision, { state: 'proposed' });
     expect(note.decisions[0]).toMatchObject({ text: 'The launch moves to the 18th.', state: 'proposed' });
     expect(who(note.decisions[0] ?? { changes: [] })).toEqual([
-      [guestEmail, 'confirmed', null], [org.session.user.email, 'reworded', 'We agreed to move the launch to the 18th.'],
-      [org.session.user.email, 'rejected', null], [guestEmail, 'reopened', null]
+      [guestEmail, 'confirmed', null], [org.session.user.email, 'reworded', 'We agreed to move the launch to the 18th.'], [org.session.user.email, 'reopened', null],
+      [org.session.user.email, 'rejected', null], [org.session.user.email, 'reopened', null]
     ]);
     // Asking for what's already so changes nothing.
-    expect(who((await guest.api.notes.updateDecision(noteId, decision, { state: 'proposed' })).decisions[0] ?? { changes: [] })).toHaveLength(4);
+    expect(who((await guest.api.notes.updateDecision(noteId, decision, { state: 'proposed' })).decisions[0] ?? { changes: [] })).toHaveLength(5);
 
     // The notes only suggest who does what: only that person can take it on.
-    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true }).catch((e: unknown) => e))).toBe('forbidden');
-    note = await guest.api.notes.updateAction(noteId, action, { takeOn: true });
+    const seen = { text: 'Send the new screens by Wednesday', due: 'Wednesday' };
+    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true, seen }).catch((e: unknown) => e))).toBe('forbidden');
+    note = await guest.api.notes.updateAction(noteId, action, { takeOn: true, seen });
     expect(note.actions[0]).toMatchObject({ takenOn: true, owner: { person: { email: guestEmail } } });
     // Taking it over yourself is taking it on; it can only go to someone who has the notes.
-    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, due: 'Friday' });
+    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, due: 'Friday', seen });
     expect(note.actions[0]).toMatchObject({ takenOn: true, owner: { person: { email: org.session.user.email } }, due: 'Friday' });
     expect(code(await org.api.notes.updateAction(noteId, action, { owner: unique('outsider') }).catch((e: unknown) => e))).toBe('invalid');
     // Given to someone else, it waits for them to say yes.
     note = await org.api.notes.updateAction(noteId, action, { owner: guestEmail });
     expect(note.actions[0]).toMatchObject({ takenOn: false, owner: { person: { email: guestEmail } } });
-    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true }).catch((e: unknown) => e))).toBe('forbidden');
-    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, text: 'Send the final screens', done: true });
-    note = await guest.api.notes.updateAction(noteId, action, { owner: null, due: null });
+    const dated = { ...seen, due: 'Friday' };
+    expect(code(await org.api.notes.updateAction(noteId, action, { takeOn: true, seen: dated }).catch((e: unknown) => e))).toBe('forbidden');
+    note = await org.api.notes.updateAction(noteId, action, { owner: org.session.user.email, text: 'Send the final screens', done: true, seen: dated });
+    note = await org.api.notes.updateAction(noteId, action, { owner: null, due: null });
     expect(note.actions[0]).toMatchObject({ text: 'Send the final screens', takenOn: false, done: true });
     expect(note.actions[0]?.owner).toBeUndefined();
     expect(note.actions[0]?.due).toBeUndefined();
@@ -1686,16 +1691,17 @@ describe('confirming what the notes say', () => {
       [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
       [org.session.user.email, 'reassigned', org.session.user.name],
       [org.session.user.email, 'reworded', 'Send the new screens by Wednesday'], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'done', null],
-      [guestEmail, 'reassigned', org.session.user.name], [guestEmail, 'due', 'Friday']
+      [org.session.user.email, 'declined', org.session.user.name], [org.session.user.email, 'due', 'Friday']
     ]);
 
     // Nobody without the notes can touch them, nothing that isn't there can be changed, and a note being written waits.
     const stranger = await account();
-    expect(code(await stranger.api.notes.updateDecision(noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('not-found');
+    const confirming = { state: 'confirmed', seen: { text: 'The launch moves to the 18th.' } } as const;
+    expect(code(await stranger.api.notes.updateDecision(noteId, decision, confirming).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await stranger.api.notes.updateAction(noteId, action, { done: false }).catch((e: unknown) => e))).toBe('not-found');
     expect(code(await org.api.notes.updateAction(noteId, 'AAAAAAAAAAAAAAAAAAAAAA', { done: true }).catch((e: unknown) => e))).toBe('not-found');
     const rec = await org.api.recordings.start({ title: 'Still going' });
-    expect(code(await org.api.notes.updateDecision(rec.getSnapshot().noteId, decision, { state: 'confirmed' }).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await org.api.notes.updateDecision(rec.getSnapshot().noteId, decision, confirming).catch((e: unknown) => e))).toBe('conflict');
     await rec.discard();
   });
 });
@@ -1731,13 +1737,13 @@ describe('the inbox', () => {
     }
 
     // Confirming it removes it for both; a follow-up that is done leaves.
-    await guest.api.notes.updateDecision(second.noteId, second.decision, { state: 'confirmed' });
+    await guest.api.notes.updateDecision(second.noteId, second.decision, { state: 'confirmed', seen: { text: 'We agreed to keep the beta small.' } });
     for (const reader of [org, guest]) expect((await reader.api.notes.inbox()).decisions.map((d) => d.noteId)).toEqual([first.noteId]);
     await guest.api.notes.updateAction(second.noteId, second.action, { done: true });
     expect((await guest.api.notes.inbox()).followUps.map((a) => a.noteId)).toEqual([first.noteId]);
 
     // A note you removed, or never had, isn't in your inbox; a stranger's inbox is empty.
-    await guest.api.notes.updateDecision(first.noteId, first.decision, { state: 'confirmed' });
+    await guest.api.notes.updateDecision(first.noteId, first.decision, { state: 'confirmed', seen: { text: 'We agreed to move the launch to the 18th.' } });
     await guest.api.notes.delete(first.noteId);
     expect(await guest.api.notes.inbox()).toEqual({ followUps: [], decisions: [] });
     expect(await (await account()).api.notes.inbox()).toEqual({ followUps: [], decisions: [] });
@@ -2205,9 +2211,11 @@ describe('who has the notes', () => {
 
     // Everything someone given the notes can change, each with an operation ID, as the app sends it.
     const edits: [string, string, unknown][] = [
-      ['PATCH', `decisions/${note.decisions[0]?.id ?? ''}`, { state: 'confirmed' }],
+      ['PATCH', `decisions/${note.decisions[0]?.id ?? ''}`, { state: 'confirmed', seen: { text: note.decisions[0]?.text ?? '' } }],
       ['PATCH', `questions/${note.questions[0]?.id ?? ''}`, { state: 'answered' }],
       ['PATCH', `actions/${note.actions[0]?.id ?? ''}`, { done: true }],
+      ['POST', 'decisions', { text: 'Ship it behind a flag.' }],
+      ['POST', 'actions', { text: 'Tell the press' }],
       ['POST', 'share', { emails: [unique('later')] }]
     ];
     const ops = edits.map(() => Buffer.from(randomBytes(16)).toString('base64url'));
@@ -2220,9 +2228,12 @@ describe('who has the notes', () => {
       expect(r.status).toBe(200);
       expect(await r.text()).toContain('Receipt canary');
     }
-    // They set what they say, so a retry changes nothing.
-    expect((await send(0)).status).toBe(200);
-    expect((await org.api.notes.get(noteId)).decisions[0]?.changes.map((c) => c.what)).toEqual(['confirmed']);
+    // They set what they say, so a retry changes nothing, and the same words proposed again add nothing.
+    for (const i of [0, 3, 4]) expect((await send(i)).status).toBe(200);
+    const settled = await org.api.notes.get(noteId);
+    expect(settled.decisions.find((d) => d.id === note.decisions[0]?.id)?.changes.map((c) => c.what)).toEqual(['confirmed']);
+    expect(settled.decisions.filter((d) => d.text === 'Ship it behind a flag.')).toHaveLength(1);
+    expect(settled.actions.filter((a) => a.text === 'Tell the press')).toHaveLength(1);
 
     // Deleted: retrying any of them finds no note, rather than a copy of it, and no receipt kept the note anywhere.
     await org.api.notes.delete(noteId);
@@ -2825,11 +2836,25 @@ describe('privacy at rest', () => {
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
     const ended = await call.leave();
     await written(c.api, ended?.pendingNoteId ?? '');
-    expect((await c.api.notes.get(ended?.pendingNoteId ?? '')).rooms.map((r) => r.transcript.map((l) => l.text))).toEqual([['CANARY-ROOMTALK the merger moves to Monday.'], []]);
+    const settledNote = await c.api.notes.get(ended?.pendingNoteId ?? '');
+    expect(settledNote.rooms.map((r) => r.transcript.map((l) => l.text))).toEqual([['CANARY-ROOMTALK the merger moves to Monday.'], []]);
     const own = (await c.api.notes.personal(ended?.pendingNoteId ?? '').add({ kind: 'answer', question: 'CANARY-OWN-ASKED who signs?', answer: 'CANARY-OWN-ANSWER Priya signs.', points: [] })).entries[0];
     const addition = await c.api.notes.previewAddition(ended?.pendingNoteId ?? '', own?.id ?? '');
     expect(addition.text).toBe('CANARY-OWN-WORDS for nobody else');
     await c.api.notes.addToShared(ended?.pendingNoteId ?? '', own?.id ?? '', { text: 'CANARY-ADDED to the notes', seal: addition.seal });
+    // What people add to the notes and say about them is sealed with the rest: proposed, reworded, disputed, dated and handed on,
+    // in the call's part and a room's, and so is every wording it had.
+    await c.api.notes.proposeDecision(settledNote.id, { text: 'CANARY-PROPOSAL the merger needs a vote.' });
+    await invitee.api.notes.proposeDecision(settledNote.id, { text: 'CANARY-ROOMPROPOSAL the merger needs a board.', room: settledNote.rooms[0]?.id });
+    const proposed = await c.api.notes.proposeAction(settledNote.id, { text: 'CANARY-FOLLOWUP brief the board', owner: scribeEmail, due: 'CANARY-DUE end of March' });
+    const vote = proposed.decisions.find((d) => d.text.startsWith('CANARY-PROPOSAL'))?.id ?? '';
+    const brief = proposed.actions.find((a) => a.text.startsWith('CANARY-FOLLOWUP'))?.id ?? '';
+    await invitee.api.notes.updateDecision(settledNote.id, vote, { dispute: true });
+    await c.api.notes.updateDecision(settledNote.id, vote, { text: 'CANARY-REWORD the merger needs two votes.' });
+    await invitee.api.notes.updateAction(settledNote.id, brief, { takeOn: true, seen: { text: 'CANARY-FOLLOWUP brief the board', due: 'CANARY-DUE end of March' } });
+    await invitee.api.notes.updateAction(settledNote.id, brief, { text: 'CANARY-REWORD brief the whole board', due: 'CANARY-DUE next quarter' });
+    await invitee.api.notes.updateAction(settledNote.id, brief, { owner: null });
+    expect((await invitee.api.notes.get(settledNote.id)).decisions.find((d) => d.id === vote)?.disputes).toHaveLength(1);
     const rec = await c.api.recordings.start({ title: 'Room' });
     rec.rename('CANARY-ROOM title');
     await rec.transcribe(speech('CANARY-SPEECH in the room.', 0, 0));
@@ -2903,7 +2928,8 @@ describe('privacy at rest', () => {
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
       'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
-      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED'
+      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
+      'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
