@@ -403,7 +403,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   ([Data and storage › Workspaces](data-and-storage.md#workspaces)).
 - **Shared.** `document_access` opens one document for anyone, at `edit` or `read`. Someone outside the workspace sees that
   document alone: no folders (its `parent` reads null), no name or head count for the workspace, and no address of anyone.
-  People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`.
+  People in a workspace who can edit a document say who it's shared with; someone outside it can't, even with `edit`, and a seat
+  gives no say: someone who can only edit through a seat works on it in the call and can't share it.
   One request gives it to up to 100 people, all of them or none, as does one call to `grant` on the server, to any number. An entry for an address lasts until
   it's removed. An entry for a seat ends with the call: it's deleted when the call ends or that person is taken out of
   it, the pass stops opening it the moment either happens, and maintenance sweeps up any left by a process that stopped.

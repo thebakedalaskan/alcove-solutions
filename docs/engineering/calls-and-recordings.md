@@ -1120,11 +1120,14 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   workspace, and it's by them. A call adds to a workspace only while its organizer can edit there, as it only ever took one
   they could: past that it's `409`, and the organizer can choose another. Those invited get `edit` by email, so it stays theirs
   through the note, and anyone else here who can't edit it a seat: everyone in the call works on it, so someone the workspace
-  lets read it gets one too. Someone on the invite because they were let in from the link, or rung, has a seat instead, as taking
-  them out takes them off the invite and a seat goes with them. When the call ends, whoever's on the invite and still has their
-  seat gets the board by email. Someone taken out of the call stays on the invite if they were invited from the start. They
-  aren't given what's opened after they went, and what they had before they keep, as they keep the note. A call can let
-  everyone into 50 boards, the ones it made included.
+  lets read it gets one too. An address it went to never gets a seat as well, and neither does anyone with an entry on it: what
+  someone does to an entry stands, so an address taken back stays taken back, from a new tab too, and one set to `read` stays `read`.
+  Someone on the invite because they were let in from the link, or rung, has a seat instead, as taking them out takes them off the
+  invite and a seat goes with them. When the call ends they keep the board by email, at the role their seats have, if every seat
+  it knows of theirs is still there, and an entry someone gave their address stays as it is. Someone taken out of the call stays
+  on the invite if they were invited from the start. While they're out they aren't given what's opened, and what they had before
+  they keep, as they keep the note. Back in the call, a board made from then on goes to their address, and one made while they
+  were out is a seat, for that call. A call can let everyone into 50 boards, the ones it made included.
 - **Filling one from its template** is `fillBoard`, which does nothing yet: it waits for `@alcove/board`. A new board starts
   empty whichever template is asked for, and the template is stored nowhere.
 - **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing
@@ -1139,7 +1142,8 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   boards the call made too, whether they're open or not. Upkeep calls it as well, for anyone a crash left without their seat.
   Each board is done on its own, so one that can't take anyone more stops nothing else. Each remembers who it's been worked out
   for, so a seat taken back in Share stays taken back, through a reload and through anyone else being let in, until someone
-  chooses `letIn` again. Whoever let people in is asked about again each time, so once they can't share it nobody new gets a
+  chooses `letIn` again. A new tab with no earlier pass is a new person with a new seat, so someone added during the call can get
+  a seat back that way for the rest of it, and nothing lasting comes of that. Whoever let people in is asked about again each time, so once they can't share it nobody new gets a
   seat in their name. A board the call made is given on the call's word, so that stops, and nothing turns into an email entry
   when the call ends, once the board is restricted or the organizer can't edit in its workspace. Someone who may share it can
   still let people in, on their own word. `letIn: false` changes nothing about anyone: whoever can't open it sees a board they

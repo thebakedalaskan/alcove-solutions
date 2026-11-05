@@ -58,7 +58,8 @@ export type OpenBoard = z.infer<typeof OpenBoard>;
  * A board the call lets everyone into, whether it's open or not: a policy, not a list, so anyone let into the call later gets
  * a seat too. `by` is whoever decided that, whose right to share it is asked again each time; null for a board the call made,
  * which is the call's to give while it isn't restricted and the organizer can edit there. `seen` is the seats it's been worked
- * out for: nobody is asked about twice, so someone it's been taken back from stays out.
+ * out for, and on a board the call made the addresses it went to: nobody is asked about twice, so someone it's been taken back
+ * from stays out.
  */
 const BoardLetIn = z.object({ workspaceId: z.string(), documentId: z.string(), by: Controller.nullable(), seen: z.array(z.string()) });
 export type BoardLetIn = z.infer<typeof BoardLetIn>;

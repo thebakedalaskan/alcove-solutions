@@ -876,7 +876,7 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
     const known = await workspaceFor(d, reader, workspaceId);
     if (reader.account && (known.role === 'admin' || known.role === 'edit')) await noteOpened(reader.account.owner, workspaceId);
     const room = roomFor(d, workspaceId);
-    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants }, known.version, release, reader.seat?.callId ?? null);
+    const stream = new TreeStream(d, room, credentials, { email: reader.email, principals: reader.principals }, treeFor(reader, known), { role: known.role, grants: known.grants, lasting: known.lasting }, known.version, release, reader.seat?.callId ?? null);
     room.join(stream);
     try {
       await room.ready;
