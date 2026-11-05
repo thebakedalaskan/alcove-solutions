@@ -219,7 +219,9 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   time or memory, closes it, so a poll can't keep a worker on one however many people are polling. A worker that only says a
   job failed closes nothing: a compaction that won't pass a row it can't read is one, and the document opens without that row. Its versions still read, and restoring one replaces what won't open
   and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
-  document that may only be slow.
+  document that may only be slow. What the server does to it for itself, reading, writing, compacting and searching it, costs
+  no worker while it's closed, and a job of those that runs out of time or memory closes it too. One that fails closes
+  nothing: a fold won't go past a row it can't read, and the document still opens without that row.
 
 ### What gets into a document
 
