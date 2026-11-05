@@ -86,9 +86,13 @@ function sameBlocks(a: PMNode, b: PMNode): boolean {
   return true;
 }
 
+/** What's left in a block once it's retired: what it's made of, and whatever this release can't read. */
 const emptied = (node: PMNode): Fragment => {
   const parts: PMNode[] = [];
-  if (!node.inlineContent) node.forEach((part) => { parts.push(part.type.create(part.attrs, emptied(part))); });
+  node.forEach((part) => {
+    if (part.type === schema.nodes.unsupportedInline) parts.push(part);
+    else if (!node.inlineContent) parts.push(part.type.create(part.attrs, emptied(part)));
+  });
   return Fragment.fromArray(parts);
 };
 

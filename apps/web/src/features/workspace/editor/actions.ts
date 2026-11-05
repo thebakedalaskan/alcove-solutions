@@ -15,7 +15,7 @@ import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import { newBlockId } from './names';
 import { retire, seenIn } from './retire';
-import { hasBlockId, safeHref, schema } from './schema';
+import { blockFromJSON, hasBlockId, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -231,6 +231,9 @@ export function movingBlock(state: EditorState, id: string): MovingBlock | null 
   return { id, block, label: blockLabel(ref.node) };
 }
 
+/** What another document could take. A block from a newer Alcove can't be written out from here, so it stays where it can't be damaged. */
+export const canLeave = (block: BlockJSON): boolean => block.type !== 'unsupported';
+
 /**
  * A block on its way to another document, as it is now, and what to call once it's safely there. Only what went with it
  * leaves: whatever is typed in it while it's on its way stays here, on the page.
@@ -239,7 +242,7 @@ export function departure(rt: EditorRuntime, id: string): { moving: MovingBlock;
   const view = editing(rt);
   const sync = view ? syncOf(view.state) : null;
   const moving = view ? movingBlock(view.state, id) : null;
-  if (!sync || !moving) return null;
+  if (!sync || !moving || !canLeave(moving.block)) return null;
   const seen = seenIn(sync.doc);
   return {
     moving,
@@ -326,7 +329,7 @@ function insertSpan(state: EditorState, at: InsertAt): { from: number; to: numbe
 export function insertBlocks(rt: EditorRuntime, blocks: BlockJSON[], at: InsertAt, options: { focus?: boolean | undefined; flash?: boolean | undefined; appear?: boolean | undefined } = {}): string[] {
   const view = editing(rt);
   if (!view || blocks.length === 0) return [];
-  const nodes = blocks.map((b) => withFreshId(schema.nodeFromJSON(b)));
+  const nodes = blocks.map((b) => withFreshId(blockFromJSON(b)));
   const { from, to } = insertSpan(view.state, at);
   const tr = view.state.tr.replaceWith(from, to, nodes);
   const size = Fragment.fromArray(nodes).size;
@@ -440,7 +443,7 @@ export function askAboutSelection(rt: EditorRuntime): void {
     replace: (blocks) => {
       const live = editing(rt);
       if (!live) return;
-      const nodes = blocks.map((b) => withFreshId(schema.nodeFromJSON(b)));
+      const nodes = blocks.map((b) => withFreshId(blockFromJSON(b)));
       const range = wordsNow(live.state, words);
       /* The words have gone, so there's nothing to replace: the answer goes under the block they were in. */
       if (range) live.dispatch(live.state.tr.replaceWith(range.from, range.to, nodes));

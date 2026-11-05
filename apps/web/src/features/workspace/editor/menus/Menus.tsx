@@ -209,10 +209,11 @@ function blockRows(rt: EditorRuntime, block: string, rect: Rect): Row[] {
   if (kind) out.push({ kind: 'turn', current: kind, pick: (next) => { rt.menu.set(null); turnInto(rt, block, next); } }, { kind: 'sep' });
   out.push(...tableRows(rt, block));
   if (rt.props.onComment && kind) out.push({ kind: 'item', key: 'comment', icon: 'comment', label: 'Comment', run: () => commentOnBlock(rt, block) });
-  out.push({ kind: 'item', key: 'dup', icon: 'copy', label: 'Duplicate', run: () => { rt.menu.set(null); duplicateBlock(rt, block); } });
+  const known = ref.node.type !== schema.nodes.unsupported;
+  if (known) out.push({ kind: 'item', key: 'dup', icon: 'copy', label: 'Duplicate', run: () => { rt.menu.set(null); duplicateBlock(rt, block); } });
   const copyLink = rt.props.onCopyBlockLink;
   if (copyLink) out.push({ kind: 'item', key: 'link', icon: 'link', label: 'Copy link', run: () => { rt.menu.set(null); copyLink(block); } });
-  if (rt.props.moveTargets && rt.props.onMoveBlock) out.push({ kind: 'item', key: 'move', icon: 'folderInput', label: 'Move to…', run: () => rt.menu.set({ kind: 'move', block, rect }) });
+  if (known && rt.props.moveTargets && rt.props.onMoveBlock) out.push({ kind: 'item', key: 'move', icon: 'folderInput', label: 'Move to…', run: () => rt.menu.set({ kind: 'move', block, rect }) });
   out.push({ kind: 'sep' }, { kind: 'item', key: 'delete', icon: 'trash', label: 'Delete', className: 'is-caution', run: () => deleteFromMenu(rt, block) });
   return out;
 }

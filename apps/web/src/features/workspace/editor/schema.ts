@@ -7,13 +7,18 @@
  * same names and attributes, so changing a name or an attribute's meaning is a change to stored data.
  */
 import { Fragment, Schema, type Attrs, type DOMOutputSpec, type Mark, type MarkSpec, type MarkType, type Node as PMNode, type NodeSpec, type NodeType, type TagParseRule } from 'prosemirror-model';
+import { BlockAttrsSchema } from '@alcove/api';
 import { tableNodes } from 'prosemirror-tables';
+import { log } from '~/lib/log';
+import type { BlockJSON } from './types';
+
+const elog = log.child({ component: 'editor-schema' });
 
 type NodeName =
   | 'doc' | 'title' | 'line' | 'toggle' | 'toggleSummary' | 'toggleBody'
   | 'divider' | 'code' | 'table' | 'table_row' | 'table_cell' | 'table_header' | 'gallery' | 'file' | 'video' | 'doclink' | 'live' | 'moment'
-  | 'unsupported' | 'text' | 'hardBreak' | 'mention' | 'dateChip' | 'docref';
-type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment' | 'unsupportedMark';
+  | 'unsupported' | 'unsupportedInline' | 'text' | 'hardBreak' | 'mention' | 'dateChip' | 'docref';
+type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment';
 
 /** Lists go no deeper than this. */
 export const MAX_INDENT = 2;
@@ -62,9 +67,14 @@ function wholeBlock(name: string): readonly TagParseRule[] {
     priority: 60,
     getAttrs: (el) => {
       try {
-        const attrs: unknown = JSON.parse(el.getAttribute('data-attrs') ?? '{}');
-        return isRecord(attrs) ? attrs : false;
-      } catch { return false; }
+        const attrs = BlockAttrsSchema.parse(JSON.parse(el.getAttribute('data-attrs') ?? '{}'));
+        learnAttrs(schema.nodes[name], attrs);
+        return attrs;
+      } catch (err) {
+        /* Anyone's page can put anything on the clipboard: this just isn't that block. */
+        elog.info('a pasted block’s attributes can’t be read, so it’s pasted as what it says', { err, block: name });
+        return false;
+      }
     }
   }];
 }
@@ -145,6 +155,8 @@ const nodes: Record<NodeName, NodeSpec> = {
   },
   /* A block from a newer Alcove. Kept as it is, because a browser that can't read a block must never delete it. */
   unsupported: { group: 'block', atom: true, attrs: { ...block, name: { default: '' } }, toDOM: () => ['p'] },
+  /* The same inside a line. */
+  unsupportedInline: { inline: true, group: 'inline', atom: true, attrs: { name: { default: '' } }, toDOM: () => ['span'] },
 
   text: { group: 'inline' },
   hardBreak: { inline: true, group: 'inline', selectable: false, linebreakReplacement: true, parseDOM: [{ tag: 'br' }], toDOM: () => ['br'] },
@@ -193,29 +205,87 @@ const marks: Record<MarkName, MarkSpec> = {
   },
   highlight: { parseDOM: [{ tag: 'mark' }], toDOM: () => ['mark', { class: 'whl' }, 0] },
   /* Words a thread hangs on. It can overlap another thread. Nothing parses it, so a pasted copy never reopens a thread. */
-  comment: { attrs: { id: { default: '' } }, excludes: '', inclusive: false, toDOM: (mark) => ['mark', { class: 'wc', 'data-c': textOf(mark.attrs['id']) ?? '' }, 0] },
-  /* A mark from a newer Alcove: the words stay, and the styling just doesn't show here. */
-  unsupportedMark: { toDOM: () => ['span', 0] }
+  comment: { attrs: { id: { default: '' } }, excludes: '', inclusive: false, toDOM: (mark) => ['mark', { class: 'wc', 'data-c': textOf(mark.attrs['id']) ?? '' }, 0] }
 };
 
+/**
+ * Lets a type carry an attribute it wasn't written with. ProseMirror drops what a type doesn't declare, and y-prosemirror
+ * then removes it from the element, for everyone, on the next edit.
+ */
+export function learnAttrs(type: NodeType | MarkType | undefined, attrs: Attrs | null | undefined): void {
+  const known: unknown = type ? Reflect.get(type, 'attrs') : null;
+  if (!attrs || !isRecord(known)) return;
+  for (const name of Object.keys(attrs)) if (!(name in known)) known[name] = { hasDefault: true, default: null, isRequired: false };
+}
+
+/** A mark this release doesn't know, with the name it came with: y-prosemirror writes back a mark by its type's name. */
+function learnMark(schema: Schema, name: string): MarkType {
+  const type = new Schema({ nodes: { doc: { content: 'text*' }, text: {} }, marks: { kept: { excludes: '', inclusive: false, toDOM: () => ['span', 0] } } }).marks['kept'];
+  if (!type) throw new RangeError('A schema made with a mark has that mark');
+  /* After the marks this release knows, whichever order they were met in. */
+  Object.assign(type, { name, rank: Object.keys(schema.marks).length });
+  Object.assign(schema.marks, { [name]: type });
+  return type;
+}
+
+/** What took the place of a stand-in once it turned out to be inside a line. */
+const inlineStandIns = new WeakMap<PMNode, PMNode>();
+
+/** The node to hold for one made from an element: what's in the document, if that's since changed. */
+export const inDocument = (node: PMNode): PMNode => inlineStandIns.get(node) ?? node;
+
 /*
- * y-prosemirror deletes, for everyone, any element or text it can't make a node or mark from. A tab left open across a
- * deploy must not do that to what the release after it adds, so an unknown block becomes `unsupported`, and words with
- * an unknown mark stay as words.
+ * y-prosemirror deletes, for everyone, any element or text it can't make a node or mark from, and removes from an element
+ * whatever its node doesn't carry. A tab left open across a deploy must not do that to what the release after it adds. So
+ * nothing read from a document is ever refused here: what isn't known is carried as it came. An unknown block becomes
+ * `unsupported`, and one that doesn't fit where it is does too. An unknown tag can't be told from a block until the line
+ * around it is made, so that's when it becomes `unsupportedInline`. Unknown marks and attributes are learned as they're met.
  */
 class BlockSchema extends Schema<NodeName, MarkName> {
+  private standIn(name: string, attrs: Attrs | null | undefined): PMNode {
+    return super.node('unsupported', { id: attrs?.['id'] ?? null, gone: attrs?.['gone'] ?? null, name });
+  }
+
   override node(type: string | NodeType, attrs?: Attrs | null, content?: Fragment | PMNode | readonly PMNode[], marks?: readonly Mark[]): PMNode {
-    if (typeof type === 'string' && !Object.hasOwn(this.nodes, type)) return super.node('unsupported', { id: attrs?.['id'] ?? null, gone: attrs?.['gone'] ?? null, name: type });
-    return super.node(type, attrs, content, marks);
+    if (typeof type !== 'string') return super.node(type, attrs, content, marks);
+    const known = this.nodes[type];
+    if (!known) return this.standIn(type, attrs);
+    learnAttrs(known, attrs);
+    try {
+      return super.node(known, attrs, known.inlineContent && Array.isArray(content) ? content.map((child: PMNode) => this.inline(child)) : content, marks);
+    } catch (err) {
+      elog.warn('a block doesn’t fit where it is, so it’s left as it is', { err, block: type });
+      return this.standIn(type, attrs);
+    }
+  }
+
+  private inline(node: PMNode): PMNode {
+    if (node.type !== this.nodes.unsupported) return node;
+    const made = inlineStandIns.get(node) ?? this.nodes.unsupportedInline.create({ name: node.attrs['name'] });
+    inlineStandIns.set(node, made);
+    return made;
   }
 
   override mark(type: string | MarkType, attrs?: Attrs | null): Mark {
-    if (typeof type === 'string' && !Object.hasOwn(this.marks, type)) return super.mark('unsupportedMark');
-    return super.mark(type, attrs);
+    const known = typeof type === 'string' ? this.marks[type] ?? learnMark(this, type) : type;
+    learnAttrs(known, attrs);
+    return known.create(attrs);
+  }
+
+  /* Text that isn't text, from a release that embeds things in a line: y-prosemirror would delete all the words around it. */
+  override text(text: string, marks?: readonly Mark[] | null): PMNode {
+    const words: unknown = text;
+    return super.text(typeof words === 'string' && words !== '' ? words : '￼', marks);
   }
 }
 
 export const schema = new BlockSchema({ nodes, marks });
+
+/** A block from its JSON, keeping what this release doesn't know about it. */
+export function blockFromJSON(json: BlockJSON): PMNode {
+  learnAttrs(schema.nodes[json.type], json.attrs);
+  return schema.nodeFromJSON(json);
+}
 
 /* -------- reading attributes: what's in a document came from other people's browsers, so nothing is taken on trust */
 export const textOf = (v: unknown): string | null => (typeof v === 'string' ? v : null);

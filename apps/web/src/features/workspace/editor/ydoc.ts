@@ -10,13 +10,23 @@ import { initProseMirrorDoc, updateYFragment, ySyncPluginKey, type absolutePosit
 import * as Y from 'yjs';
 import { FRAGMENT, newBlockId } from './names';
 import { retire } from './retire';
-import { schema } from './schema';
+import { blockFromJSON, inDocument, schema } from './schema';
 import type { BlockJSON } from './types';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 
 /** y-prosemirror's record of which node each element is. */
 type ProsemirrorMapping = Parameters<typeof absolutePositionToRelativePosition>[2];
+
+type YType = ProsemirrorMapping extends Map<infer K, unknown> ? K : never;
+
+/** The same record, answering with what's in the document for a tag from a newer Alcove (see `BlockSchema`), so y-prosemirror knows it as the same element. */
+export class NodeRecord extends Map<YType, PMNode | PMNode[]> {
+  override get(key: YType): PMNode | PMNode[] | undefined {
+    const node = super.get(key);
+    return node === undefined || Array.isArray(node) ? node : inDocument(node);
+  }
+}
 
 /** How y-prosemirror follows the fragment. */
 export type FollowChange = (events: Y.YEvent<Y.XmlFragment>[], tr: Y.Transaction) => void;
@@ -50,7 +60,7 @@ export function appendBlocks(doc: Y.Doc, blocks: readonly BlockJSON[]): string[]
   if (fragment.length === 0) throw new Error('A document holds its first line from the moment it’s made, so this one hasn’t synced yet.');
   const { doc: current, meta } = initProseMirrorDoc(fragment, schema);
   const ids = blocks.map(() => newBlockId());
-  const added = blocks.map((b, i) => { const node = schema.nodeFromJSON(b); return node.type.create({ ...node.attrs, id: ids[i] ?? null, gone: null }, node.content, node.marks); });
+  const added = blocks.map((b, i) => { const node = blockFromJSON(b); return node.type.create({ ...node.attrs, id: ids[i] ?? null, gone: null }, node.content, node.marks); });
   updateYFragment(doc, fragment, current.copy(current.content.append(Fragment.fromArray(added))), meta);
   return ids;
 }

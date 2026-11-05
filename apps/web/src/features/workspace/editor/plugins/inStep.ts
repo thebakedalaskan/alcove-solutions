@@ -11,9 +11,10 @@ import { syncOf, type FollowChange } from '../ydoc';
 
 const elog = log.child({ component: 'editor' });
 
-export function keepInStep(rt: EditorRuntime, view: EditorView): void {
+/** Starts looking after the view. Returns what draws it again from its document. */
+export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   const sync = syncOf(view.state);
-  if (!sync) return;
+  if (!sync) return () => undefined;
   const { binding, type: fragment } = sync;
   const follow = binding._observeFunction;
   const write = binding._prosemirrorChanged.bind(binding);
@@ -21,7 +22,8 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): void {
   const redraw = () => {
     try {
       binding._forceRerender();
-      rt.halted = false;
+      /* Nothing in the document yet means nothing has been synced: writing would make a second title. */
+      rt.halted = fragment.length === 0;
     } catch (err) {
       elog.error('the page can’t be drawn from its document, so it stops writing', { err, blocks: fragment.length });
       if (!rt.halted) rt.props.onToast?.({ icon: 'alert', text: 'This page stopped following changes. Reload to keep editing.' });
@@ -43,4 +45,5 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): void {
   fragment.observeDeep(guarded);
   binding._observeFunction = guarded;
   binding._prosemirrorChanged = (doc) => { if (!rt.readOnly && !rt.halted) write(doc); };
+  return redraw;
 }

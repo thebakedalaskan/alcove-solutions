@@ -35,7 +35,7 @@ import { EditorRuntime, type ThreadView } from './runtime';
 import { newBlockId } from './names';
 import { safeHref, schema, TEXT_NODES, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
-import { contentOf } from './ydoc';
+import { contentOf, NodeRecord } from './ydoc';
 
 const elog = log.child({ component: 'editor' });
 
@@ -88,7 +88,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
   const plugins: Plugin[] = [
     /* Before ySyncPlugin: a block's element is retired just before y-prosemirror writes the rest of the change. */
     retirePlugin(rt),
-    ySyncPlugin(fragment, fits ? { mapping: start.mapping } : {}),
+    ySyncPlugin(fragment, { mapping: new NodeRecord(start.mapping) }),
     yUndoPlugin({ undoManager: undoManagerFor(fragment) }),
     caretsPlugin(rt, awareness),
     tables(rt),
@@ -140,7 +140,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
       return false;
     }
   });
-  keepInStep(rt, view);
+  const redraw = keepInStep(rt, view);
+  if (!fits) redraw();
   return view;
 }
 

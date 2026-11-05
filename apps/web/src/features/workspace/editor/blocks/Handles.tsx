@@ -7,7 +7,7 @@
 import { Avatar, Icon, cn } from '@alcove/ui';
 import type { EditorView } from 'prosemirror-view';
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { addBelow, departure, movingBlock } from '../actions';
+import { addBelow, canLeave, departure, movingBlock } from '../actions';
 import { allBlocks, findBlock, scrollerOf } from '../commands';
 import { useStore } from '../menus/Menus';
 import { decorChange } from '../plugins/decor';
@@ -54,7 +54,7 @@ function useDrag(rt: EditorRuntime) {
 
     const place = (point: Point) => {
       at = point;
-      const outside = rt.props.blockDrop?.over(point, moving) === true;
+      const outside = canLeave(moving.block) && rt.props.blockDrop?.over(point, moving) === true;
       if (wasOutside && !outside) rt.props.blockDrop?.leave();
       wasOutside = outside;
       const pane = (scroller ?? rt.root)?.getBoundingClientRect();

@@ -458,6 +458,12 @@ export function nodeViews(rt: EditorRuntime): Record<string, NodeViewConstructor
     divider: onPage((node, _, __, decorations) => new DividerBlock(node, rt, decorations)),
     table: onPage((node, _, __, decorations) => new TableBlock(node, rt, decorations)),
     gallery: atom, file: atom, video: atom, doclink: atom, live: atom, moment: atom, unsupported: atom,
+    unsupportedInline: () => {
+      const dom = solid(el('span', 'wdt'));
+      dom.title = 'This needs a newer Alcove. Reload to see it.';
+      dom.append(iconNode('alert'));
+      return { dom };
+    },
     mention: (node) => new MentionChip(node, rt),
     dateChip: (node) => dateChip(node),
     docref: (node) => new DocumentChip(node, rt)

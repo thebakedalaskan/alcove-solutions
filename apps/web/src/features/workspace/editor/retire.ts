@@ -13,7 +13,9 @@
  */
 import * as Y from 'yjs';
 
-/** What a block is made of, as opposed to what's in it. Anything else inside a block is a tag in its text. */
+/** The tags in a line's text, which go with the words. Anything else inside a block is what it's made of, or from a newer Alcove, and stays: someone may be typing in it. */
+const TAGS: ReadonlySet<string> = new Set(['hardBreak', 'mention', 'dateChip', 'docref']);
+/** What a block is made of, whose attributes it needs to stay what it is. */
 const STRUCTURE: ReadonlySet<string> = new Set(['toggleSummary', 'toggleBody', 'table_row', 'table_cell', 'table_header']);
 
 /** What a retired block keeps, so words that reach it later look as they did when they were written. No file names, and nothing else anyone said. */
@@ -40,14 +42,23 @@ function emptyText(text: Y.XmlText, seen: Seen | undefined): void {
   for (const run of runs.reverse()) text.delete(run.at, run.length);
 }
 
+function emptyAttrs(element: Y.XmlElement, seen: Seen | undefined): void {
+  for (const key of Object.keys(element.getAttributes())) {
+    const item = element._map.get(key);
+    if (!KEPT_ATTRS.has(key) && item && isSeen(item, seen)) element.removeAttribute(key);
+  }
+}
+
 /** Takes out everything in `type` that's been seen. The texts stay: someone may be typing in them. */
 function empty(type: Y.XmlElement, seen: Seen | undefined): void {
   const children = type.toArray();
   for (let i = children.length - 1; i >= 0; i -= 1) {
     const child = children[i];
     if (child instanceof Y.XmlText) emptyText(child, seen);
-    else if (child instanceof Y.XmlElement && STRUCTURE.has(child.nodeName)) empty(child, seen);
-    else if (child?._item && isSeen(child._item, seen)) type.delete(i, 1);
+    else if (child instanceof Y.XmlElement && !TAGS.has(child.nodeName)) {
+      empty(child, seen);
+      if (!STRUCTURE.has(child.nodeName)) emptyAttrs(child, seen);
+    } else if (child?._item && isSeen(child._item, seen)) type.delete(i, 1);
   }
 }
 
@@ -57,10 +68,7 @@ function empty(type: Y.XmlElement, seen: Seen | undefined): void {
  */
 export function retire(element: Y.XmlElement, id: string, target: string, seen?: Seen): void {
   empty(element, seen);
-  for (const key of Object.keys(element.getAttributes())) {
-    const item = element._map.get(key);
-    if (!KEPT_ATTRS.has(key) && item && isSeen(item, seen)) element.removeAttribute(key);
-  }
+  emptyAttrs(element, seen);
   element.setAttribute('id', id);
   element.setAttribute('gone', target);
 }
