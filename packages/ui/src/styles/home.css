@@ -7,7 +7,8 @@
 .main:has(> .main-in > .hm) .main-in { max-width: none; }
 .main:has(> .main-in > .hm) .main-top { max-width: calc(1480px + 2 * var(--page-x)); }
 .main:has(> .main-in > .hm) .top-acts { top: 30px; right: var(--page-x); }
-.main:has(> .main-in > .hm) .main-offline { padding: 30px var(--page-x) 0 max(72px, var(--page-x)); }
+/* The notice's region is always there; only with something to say does it take room above the sky. */
+.main:has(> .main-in > .hm) .main-offline:not(:empty) { padding: 30px var(--page-x) 0 max(72px, var(--page-x)); }
 .main-in.enter > .hm { animation: ac-fade var(--duration-3) var(--ease-out) both; }
 .hm-in { position: relative; max-width: calc(1480px + 2 * var(--page-x)); margin: 0 auto; padding: 30px var(--page-x) 72px; }
 .hm-in > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
