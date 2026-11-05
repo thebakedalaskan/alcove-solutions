@@ -195,6 +195,9 @@ export const evidenceOf = (refs: number[], lines: { id: string; said: number }[]
 /** Whether a line was said within someone's time in the call. */
 export const readable = (here: Open[] | null, said: number | undefined): boolean => here === null || (said !== undefined && inside(here, said));
 
+/** Whether everything said between `from` and `to` was said within one of someone's stretches in the call. */
+export const covers = (here: Open[] | null, from: number, to: number): boolean => here === null || here.some((x) => x.from <= from && (x.to === null || to <= x.to));
+
 /** What the model is told it's reading, so it can say "while you were away" when that's what it was. */
 export function describe(range: CatchUpRange, whileHere: boolean): string {
   const what = range.kind === 'recent' ? `the last ${range.minutes} minute${range.minutes === 1 ? '' : 's'}`

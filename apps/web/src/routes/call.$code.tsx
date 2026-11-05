@@ -22,7 +22,6 @@ import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
 import { FromLastTime } from '~/features/call/FromLastTime';
 import { YoursView, useOwnInCall } from '~/features/call/Yours';
-import { useLiveNotes } from '~/features/call/liveNotes';
 import { ShareMarks } from '~/features/call/marks';
 import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
@@ -891,7 +890,9 @@ function InCall({ session }: { session: CallSession }) {
   /* ---------- catching up and asking: for you alone, with the moments behind each answer, and a way back to live ---------- */
   const cu = useCatchingUp(session, { panel, showing, setPanel: (v) => { setPop(null); setPanel(v); }, narrow: phone, everOn: state.notes.everOn, room: roomName });
   const catchUp = () => { setPop(null); cu.catchUp(); };
-  const liveNotes = useLiveNotes(session, state.transcript.at(-1)?.id, on && live, showing.includes('notes'));
+  // Showing the notes is what keeps them up to date, for everyone in this part of the call.
+  const watchingNotes = notesAreOn(capHere.mode) && live && showing.includes('notes');
+  useEffect(() => (watchingNotes ? session.watchNotes() : undefined), [session, watchingNotes]);
   /* Your own notes: for someone with an account in the call, and for nobody else's eyes. */
   const own = useOwnInCall(session, { role: state.role, noteId: state.notes.noteId, showing: showing.includes('yours'), line: state.transcript.at(-1)?.id, place: state.capture.room?.id ?? null, onOpen: () => { cu.settle(); openPanel('yours'); } });
   // What carries over is your account's, not the call's: a guest has none, and everyone else reads only their own.
@@ -1235,7 +1236,7 @@ function InCall({ session }: { session: CallSession }) {
   const [front, setFront] = useState<Leaf | null>(null);
   const setApart = panels.apart || panels.people !== 'tiles';
   const surfaces = { ws: false, board: false };
-  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0 };
+  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
   // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
@@ -1287,8 +1288,8 @@ function InCall({ session }: { session: CallSession }) {
     : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />);
   const panelBody = (v: PanelView) => {
     switch (v) {
-      case 'notes': return <NotesView state={state} live={liveNotes} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!liveNotes.notes} />} onSeek={cu.open} onTranscript={() => openPanel('transcript')} />;
+      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
+        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { session.tickFollowUp(id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
       case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />

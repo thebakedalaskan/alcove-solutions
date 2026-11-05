@@ -1,9 +1,10 @@
 /*
  * Catching up during a call (docs: Notes and inference › Catching up during a call): which stretch of the call to
  * read, what a catch-up or an answer says and the moments behind it, and how complete and current it is. For the
- * person asking alone: nothing here goes into the call's state, and nothing is kept. Times are seconds since the
- * call started (stretches with nothing captured are the call's `CaptureGap`s, by time of day); the app shows every
- * time as a time of day.
+ * person asking alone: nothing of that goes into the call's state, and nothing is kept. The call's shared live notes,
+ * which everyone in a part of the call reads, are a catch-up on all of it that is kept (`LiveNotes`). Times are seconds
+ * since the call started (stretches with nothing captured are the call's `CaptureGap`s, by time of day); the app shows
+ * every time as a time of day.
  */
 import { z } from './zod';
 import { CaptureGapSchema, IDSchema, TranscriptLineSchema } from './types';
@@ -92,6 +93,33 @@ export const CatchUpSchema = z.object({
   read: CatchUpReadSchema
 });
 export type CatchUp = z.infer<typeof CatchUpSchema>;
+
+/**
+ * Something to do in a call's shared live notes. `id` stays with it from one refresh to the next, however the notes
+ * model rewords it, for as long as the notes model says it's the same item; `done` is the same for everyone reading these
+ * notes (CallAction `follow-up`).
+ */
+export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean() });
+export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;
+
+/**
+ * A call's live notes (docs: Notes and inference › Live notes): kept sealed on the server for each part of the call and
+ * refreshed at most every 30 seconds while someone is watching (CallSession.watchNotes), in one run for everyone who can
+ * read the same lines. As a catch-up on the whole of that part of the call, with its follow-ups tickable.
+ */
+export const LiveNotesSchema = z.object({
+  /**
+   * Null until the first are written. Everyone who may read everything said in the part of the call reads one set. Anyone
+   * who may not (a guest with the link who wasn't here for all of it, someone who came late into a breakout room) gets
+   * notes written only from what they may read: `read.whileHere` says so, and they can't be ticked.
+   */
+  notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
+  /** They're being refreshed now. */
+  writing: z.boolean(),
+  /** Says the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */
+  error: z.string().nullable()
+});
+export type LiveNotes = z.infer<typeof LiveNotesSchema>;
 
 /** An answer to a question about a call so far, for the person who asked, with the moments it comes from. */
 export const CallAnswerSchema = z.object({ text: z.string(), evidence: z.array(EvidenceSchema), read: CatchUpReadSchema });

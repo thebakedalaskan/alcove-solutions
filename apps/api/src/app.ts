@@ -69,7 +69,7 @@ const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
  */
 const NO_RECEIPT = [
   /^\/v1\/calendar\/busy$/,
-  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate)$/,
+  /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
   /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
@@ -139,6 +139,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const askNotesLimiter = rateLimit(10, 60_000);
   /** Saying whether others may point at what you share, per person in a call: each change makes every browser fetch the call again. */
   const othersPointLimiter = rateLimit(20, 60_000);
+  /** Ticking follow-ups, per person in a call: the same. */
+  const followUpLimiter = rateLimit(60, 60_000);
+  /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, for each view of each part of the call. */
+  const notesWatchLimiter = rateLimit(120, 60_000);
   /**
    * Moving to another device: new codes per person in a call; opening links per client address (codes are 128-bit, so
    * this only keeps it calm); and the new device checking on its move, at most twice a second, per client address. Each
@@ -441,15 +445,16 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   app.get('/v1/live/calls/:id', async (c) => c.json(await calls.state(c.get('viewer'), c.req.param('id'))));
   app.post('/v1/live/calls/:id/actions', async (c) => {
     const a = await body(c, CallActionSchema);
-    // A raised hand, an ask for notes and whether others may point at your share are anyone's in the call; keeping the
-    // call running is whoever hosts'; the rest is the organizer's.
-    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point') calls.requireIn(c.get('viewer'), a.type);
+    // A raised hand, an ask for notes, whether others may point at your share and ticking a follow-up are anyone's in the
+    // call (calls.act says who gets the notes); keeping the call running is whoever hosts'; the rest is the organizer's.
+    if (a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up') calls.requireIn(c.get('viewer'), a.type);
     else if (HOST_ACTIONS.has(a.type)) hostOnly(c);
     else organizerOnly(c);
     // Each ask reaches the organizer, so nobody can keep asking.
     if (a.type === 'request-notes') askNotesLimiter(c.get('viewer').pass.person, 'request-notes');
     if (a.type === 'others-point') othersPointLimiter(c.get('viewer').pass.person, 'others-point');
     if (a.type === 'ring') ringLimiter(c.get('viewer').organizer.ownerId, 'ring');
+    if (a.type === 'follow-up') followUpLimiter(c.get('viewer').pass.person, 'follow-up');
     return c.json(await calls.act(c.get('viewer'), c.req.param('id'), a));
   });
   /*
@@ -555,6 +560,18 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     askLimiter(o.ownerId, 'ask-earlier');
     const { question, timeZone } = await body(c, SeriesAskBodySchema);
     return c.json(await calls.askEarlier(v, c.req.param('id'), o, question, timeZone));
+  });
+
+  /*
+   * The call's shared live notes: they come with the call. This says someone is looking at them, which is what keeps
+   * them up to date: a look that finds them due refreshes them and answers once that's done, for everyone in that part
+   * of the call, and any other look at the same time answers at once.
+   */
+  app.post('/v1/live/calls/:id/notes/watch', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'live-notes');
+    notesWatchLimiter(v.pass.identity, 'live-notes');
+    return c.json({ refreshed: await calls.watchNotes(v, c.req.param('id')) });
   });
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
     const v = c.get('viewer');
