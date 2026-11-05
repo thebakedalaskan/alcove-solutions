@@ -12,6 +12,10 @@
 @property --dot { syntax: "<length>"; inherits: false; initial-value: 24px; }
 @property --dx { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --dy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+/* The same for a pointer, which moves ten times a second: inherited, each move would restyle everything in its face too. */
+@property --bcx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --bcy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --iz { syntax: "<number>"; inherits: false; initial-value: 1; }
 
 /* ---------------------------------------------------------------- the board and its rail */
 /* The board sits on the stage like anything else that's shared. Its tools are the call's dock, turned on its side, just off the sheet. */
@@ -160,7 +164,7 @@
 /* Everyone's pointer: their face and name, and a glow on whoever is talking. `--iz` undoes the camera's zoom, so a pointer stays one size. It's written on their layer alone: changing a custom property restyles an element's children, and the world's children are everything on the board. */
 .bd-pts { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 /* Updates come ten times a second, so a pointer goes at an even speed for a little longer than the gap between two: it's still moving when the next arrives, even a late one. An ease would start from rest at each. Its size isn't eased with its place, because that has to keep step with the board, at once or with its glide. */
-.bc { position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; translate: var(--bcx, 0) var(--bcy, 0); scale: var(--iz, 1); transform-origin: 0 0; transition: translate var(--bd-point) linear; }
+.bc { --iz: inherit; position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; translate: var(--bcx, 0) var(--bcy, 0); scale: var(--iz, 1); transform-origin: 0 0; transition: translate var(--bd-point) linear; }
 .bd.is-glide .bc { transition: translate var(--bd-point) linear, scale var(--duration-3) var(--ease-in-out); }
 .bc .ac-ptag { height: 24px; font-size: 12px; transition: box-shadow var(--duration-2) var(--ease-out); }
 .bc .ac-ptag .n { display: inline-flex; align-items: center; gap: 5px; }
