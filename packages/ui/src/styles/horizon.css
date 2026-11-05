@@ -1,0 +1,197 @@
+/*
+ * The evening behind every page. The sky and the sea meet at --hz, which a page sets; the sun, its glow and its light on
+ * the water stand at --hz-sun-x from the middle, which a page can move. Classes: dusk a page on it, hz- the scene.
+ */
+.dusk { --hz: 320px; position: relative; isolation: isolate; min-height: 100vh; min-height: 100dvh; }
+.main:has(> .main-in > .dusk) { padding: 0; }
+.main:has(> .main-in > .dusk) .main-in { max-width: none; }
+.main:has(> .main-in > .dusk) .main-top { max-width: calc(1480px + 2 * var(--page-x)); }
+.main:has(> .main-in > .dusk) .top-acts { top: 30px; right: var(--page-x); }
+/* The notice's region is always there; only with something to say does it take room above the sky. */
+.main:has(> .main-in > .dusk) .main-offline:not(:empty) { padding: 30px var(--page-x) 0 max(72px, var(--page-x)); }
+.main-in.enter > .dusk { animation: ac-fade var(--duration-3) var(--ease-out) both; }
+.dusk-in { position: relative; max-width: calc(1480px + 2 * var(--page-x)); margin: 0 auto; padding: 30px var(--page-x) 72px; }
+.dusk-in > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
+@media (max-width: 860px) {
+  .main:has(> .main-in > .dusk) { padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px)); }
+  .dusk { min-height: 0; }
+  .dusk-in { padding: 6px 20px 28px; }
+}
+
+/* ------------------------------------------------------------ the colours of each moment */
+.hz {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.872 0.042 275) 58%, oklch(0.916 0.051 9.412) 100%);
+  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275) 0%, oklch(0.825 0.055 252.105) 46%, oklch(0.816 0.058 251.316) 100%);
+  --hz-sun: oklch(0.92 0.1 78); --hz-glow: oklch(0.93 0.08 45 / 0.55); --hz-rim: oklch(0.9 0.09 60);
+  --hz-cloud: oklch(0.86 0.04 330); --hz-chop: oklch(0.8 0.062 250);
+  --hz-near: oklch(0.86 0.1 66); --hz-far: oklch(0.76 0.09 10);
+  --hz-shape: oklch(0.42 0.07 262); --hz-leaper: oklch(0.5 0.1 250); --hz-star: oklch(0.965 0.012 85);
+  --hz-sun-x: 0px; --hz-sun-r: 48px; --hz-glow-w: 1520px; --hz-glow-h: 460px;
+  position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none;
+}
+.dark .hz {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.307 0.067 270.769) 58%, oklch(0.445 0.085 317.368) 100%);
+  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408) 0%, oklch(0.24 0.052 258) 46%, oklch(0.205 0.046 258) 100%);
+  --hz-sun: oklch(0.86 0.085 74); --hz-glow: oklch(0.66 0.12 22 / 0.55); --hz-rim: oklch(0.8 0.1 50);
+  --hz-cloud: oklch(0.343 0.07 285.385); --hz-chop: oklch(0.835 0.022 250);
+  --hz-near: oklch(0.84 0.09 72); --hz-far: oklch(0.58 0.09 355);
+  --hz-shape: oklch(0.17 0.04 262); --hz-leaper: oklch(0.78 0.08 62);
+}
+.hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.869 0.043 270) 58%, oklch(0.912 0.047 355.294) 100%); --hz-sun-x: -300px; --hz-sun-r: 40px; }
+.dark .hz[data-moment="team"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.292 0.066 264.923) 58%, oklch(0.402 0.076 305.789) 100%); }
+.hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.863 0.044 260) 58%, oklch(0.902 0.038 327.059) 100%); --hz-glow-w: 980px; --hz-glow-h: 150px; }
+.dark .hz[data-moment="notes"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.28 0.064 261.529) 58%, oklch(0.351 0.07 288.308) 100%); }
+.hz[data-moment="note"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.847 0.049 253.947) 58%, oklch(0.878 0.041 285) 100%); --hz-glow-w: 760px; --hz-glow-h: 90px; }
+.dark .hz[data-moment="note"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.272 0.062 260.824) 58%, oklch(0.307 0.067 270.769) 100%); }
+.hz[data-moment="settings"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.841 0.05 253.421) 58%, oklch(0.866 0.044 265) 100%); --hz-glow-w: 620px; --hz-glow-h: 70px; }
+.dark .hz[data-moment="settings"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.264 0.059 260.118) 58%, oklch(0.282 0.065 261.765) 100%); }
+/* Record is the night in both themes, its sun the dark disc of the recorder with the last of the light around its rim. */
+.hz[data-moment="record"], .dark .hz[data-moment="record"] {
+  --hz-sky: linear-gradient(to bottom in oklch, oklch(0.205 0.046 258) 0%, oklch(0.24 0.052 258) 55%, oklch(0.274 0.063 261.059) 100%);
+  --hz-sea: linear-gradient(to bottom in oklch, oklch(0.29 0.058 262.163) 0%, oklch(0.24 0.052 258) 46%, oklch(0.205 0.046 258) 100%);
+  --hz-sun: oklch(0.205 0.046 258); --hz-glow: oklch(0.5 0.11 340 / 0.3); --hz-rim: oklch(0.82 0.08 62);
+  --hz-cloud: oklch(0.343 0.07 285.385); --hz-chop: oklch(0.835 0.022 250);
+  --hz-near: oklch(0.8 0.05 60); --hz-far: oklch(0.45 0.06 340);
+  --hz-shape: oklch(0.14 0.035 262); --hz-leaper: oklch(0.8 0.05 60); --hz-sun-r: 58px;
+}
+.hz[data-moment="record"] .hz-sun { box-shadow: inset 0 0 0 1.5px var(--hz-rim), 0 0 26px -6px var(--hz-rim); }
+
+/* ------------------------------------------------------------ the scene */
+.hz i { position: absolute; display: block; }
+.hz svg { display: block; overflow: visible; }
+.hz-sky { position: absolute; inset: 0 0 auto; height: var(--hz); background: var(--hz-sky); }
+.hz-sea { position: absolute; inset: var(--hz) 0 0; background: var(--hz-sea); }
+.hz-up { position: absolute; inset: 0 0 auto; height: var(--hz); overflow: hidden; }
+.hz-at, .hz-light { position: absolute; left: 50%; top: var(--hz); width: 0; height: 0; }
+.hz-light { left: calc(50% + var(--hz-sun-x)); }
+
+.hz-glow { left: calc(var(--hz-glow-w) / -2); top: calc(var(--hz-glow-h) / -2); width: var(--hz-glow-w); height: var(--hz-glow-h); background: radial-gradient(closest-side, var(--hz-glow), transparent); animation: hz-breathe 11s ease-in-out infinite; }
+.hz-sun { left: calc(-1 * var(--hz-sun-r)); top: calc(-1 * var(--hz-sun-r)); width: calc(2 * var(--hz-sun-r)); height: calc(2 * var(--hz-sun-r)); border-radius: 50%; background: var(--hz-sun); animation: hz-rise 1.5s cubic-bezier(.16, .8, .24, 1) backwards; transition: transform .6s var(--ease-out); }
+.hz-cloud { height: 3px; border-radius: 2px; background: var(--hz-cloud); animation: hz-cloud 70s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -22s); }
+.hz-rim { left: -560px; width: 1120px; height: 1.5px; background: linear-gradient(to right, transparent, var(--hz-rim), transparent); }
+.hz-chop { position: absolute; inset: 0; animation: hz-drift 13s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -4.6s); }
+.hz-chop i { height: 1.6px; border-radius: 1px; background: var(--hz-chop); }
+.hz-glint { height: 2.6px; opacity: var(--o); }
+.hz-glint::before { content: ""; position: absolute; inset: 0; border-radius: 2px; background: color-mix(in oklch, var(--hz-near), var(--hz-far) calc(var(--far) * 100%)); animation: hz-glint var(--every) ease-in-out var(--after) infinite; }
+
+/* Stars come out in the dark; by day they aren't there to see. */
+.hz-star { visibility: hidden; opacity: var(--o); }
+.dark .hz-star, .hz[data-moment="record"] .hz-star { visibility: visible; }
+.hz-star::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--hz-star); animation: hz-twinkle var(--every) ease-in-out var(--after) infinite; }
+
+/* A cloud rests where it's drawn, and otherwise crosses the sky on the wind, starting from about there. */
+.hz-puff { position: absolute; left: 0; right: 0; height: 0; animation: hz-wind var(--takes) linear calc(var(--x) / -100 * var(--takes)) infinite; }
+.hz-puff > div { position: absolute; top: 0; }
+.hz-puff i { height: 3px; border-radius: 2px; background: color-mix(in oklch, var(--hz-cloud), var(--hz-rim) calc(var(--lit) * 22%)); opacity: .62; }
+
+@keyframes hz-rise { from { transform: translateY(34px); } }
+@keyframes hz-breathe { 50% { opacity: .82; transform: scale(1.03); } }
+@keyframes hz-cloud { to { transform: translateX(44px); } }
+@keyframes hz-drift { from { transform: translateX(-9px); } to { transform: translateX(9px); } }
+@keyframes hz-wind { from { transform: translateX(calc(-1% * var(--x) - 360px)); } to { transform: translateX(calc(100% - 1% * var(--x) + 10px)); } }
+/* Several uneven pulses in one long cycle: it looks as restless as short cycles, and the browser wakes a tenth as often. */
+@keyframes hz-glint {
+  6% { opacity: .35; transform: scaleX(.72); } 12% { opacity: 1; transform: none; }
+  19% { opacity: .6; transform: scaleX(.86); } 26% { opacity: 1; transform: none; }
+  32% { opacity: .4; transform: scaleX(.76); } 39% { opacity: 1; transform: none; }
+  47% { opacity: .7; transform: scaleX(.9); } 54% { opacity: 1; transform: none; }
+  61% { opacity: .35; transform: scaleX(.72); } 68% { opacity: 1; transform: none; }
+  76% { opacity: .55; transform: scaleX(.82); } 84% { opacity: 1; transform: none; }
+  92% { opacity: .45; transform: scaleX(.78); }
+}
+@keyframes hz-twinkle {
+  9% { opacity: .5; } 17% { opacity: 1; } 31% { opacity: .35; } 42% { opacity: 1; }
+  58% { opacity: .6; } 66% { opacity: 1; } 83% { opacity: .4; } 93% { opacity: 1; }
+}
+
+/* ------------------------------------------------------------ what passes through */
+.hz-fly, .hz-sail { position: absolute; left: 0; right: 0; height: 0; animation: hz-across linear both; }
+.hz-fly.is-left, .hz-sail.is-left { animation-name: hz-back; }
+@keyframes hz-across { from { transform: translateX(-140px); } to { transform: translateX(calc(100% + 100px)); } }
+@keyframes hz-back { from { transform: translateX(calc(100% + 100px)); } to { transform: translateX(-140px); } }
+
+/* Gulls beat their wings a few times and glide, rising and falling a little on the way. */
+.hz-fly.is-left .hz-glide { scale: -1 1; }
+.hz-glide { position: absolute; animation: hz-glide 26s ease-in-out infinite; }
+.hz-gull { position: absolute; aspect-ratio: 2 / 1; }
+.hz-gull svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: var(--hz-shape); opacity: 0; animation: hz-pose-1 6s var(--after) infinite; }
+.hz-gull svg.is-0 { animation-name: hz-pose-0; }
+.hz-gull svg.is-2 { animation-name: hz-pose-2; }
+@keyframes hz-glide { 0%, 100% { transform: translateY(0); } 13% { transform: translateY(-6px); } 29% { transform: translateY(5px); } 44% { transform: translateY(-4px); } 62% { transform: translateY(7px); } 81% { transform: translateY(-5px); } }
+/* Up, level, down, level, four times over, and then a long glide. */
+@keyframes hz-pose-0 { 0%, 1.99% { opacity: 1; } 2%, 7.99% { opacity: 0; } 8%, 9.99% { opacity: 1; } 10%, 15.99% { opacity: 0; } 16%, 17.99% { opacity: 1; } 18%, 23.99% { opacity: 0; } 24%, 25.99% { opacity: 1; } 26%, 100% { opacity: 0; } }
+@keyframes hz-pose-1 { 0%, 1.99% { opacity: 0; } 2%, 3.99% { opacity: 1; } 4%, 5.99% { opacity: 0; } 6%, 7.99% { opacity: 1; } 8%, 9.99% { opacity: 0; } 10%, 11.99% { opacity: 1; } 12%, 13.99% { opacity: 0; } 14%, 15.99% { opacity: 1; } 16%, 17.99% { opacity: 0; } 18%, 19.99% { opacity: 1; } 20%, 21.99% { opacity: 0; } 22%, 23.99% { opacity: 1; } 24%, 25.99% { opacity: 0; } 26%, 27.99% { opacity: 1; } 28%, 29.99% { opacity: 0; } 30%, 100% { opacity: 1; } }
+@keyframes hz-pose-2 { 0%, 3.99% { opacity: 0; } 4%, 5.99% { opacity: 1; } 6%, 11.99% { opacity: 0; } 12%, 13.99% { opacity: 1; } 14%, 19.99% { opacity: 0; } 20%, 21.99% { opacity: 1; } 22%, 27.99% { opacity: 0; } 28%, 29.99% { opacity: 1; } 30%, 100% { opacity: 0; } }
+
+/* A boat keeps to the horizon, in front of the sun when it gets there, with a light aboard after dark. */
+.hz-sail { --cw: 40px; top: var(--hz); }
+.hz-craft { position: absolute; left: 0; bottom: -7px; transform-origin: 50% 90%; animation: hz-bob 46s ease-in-out infinite; }
+.hz-boat { width: 100%; height: 100%; fill: var(--hz-shape); }
+.hz-lamp { visibility: hidden; width: 3px; height: 3px; border-radius: 50%; background: var(--hz-near); }
+.dark .hz-lamp, .hz[data-moment="record"] .hz-lamp { visibility: visible; }
+.hz-funnel { position: absolute; width: 6px; height: 6px; }
+.hz-smoke { left: 0; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--hz-shape); opacity: 0; animation: hz-smoke 13s ease-out infinite; }
+.hz-smoke.is-2 { animation-delay: -4.3s; }
+.hz-smoke.is-3 { animation-delay: -8.6s; }
+@keyframes hz-smoke { 0% { opacity: .42; transform: translate(0, 0) scale(.7); } 100% { opacity: 0; transform: translate(-46px, -16px) scale(1.7); } }
+.hz-wake { left: calc(var(--cw) * .2); top: 10px; width: calc(var(--cw) * .65); height: 2px; border-radius: 1px; background: var(--hz-shape); opacity: .34; }
+.hz-wake.is-2 { left: calc(var(--cw) * .3); top: 16px; width: calc(var(--cw) * .42); opacity: .22; }
+.hz-wake.is-3 { left: calc(var(--cw) * .4); top: 22px; width: calc(var(--cw) * .22); opacity: .13; }
+/* Far out, on the pages with a short sky. */
+.hz[data-moment="notes"] .hz-sail, .hz[data-moment="settings"] .hz-sail { --small: .62; }
+.hz-sail:not(.is-left) .hz-craft { scale: var(--small, 1); }
+.hz-sail.is-left .hz-craft { scale: calc(-1 * var(--small, 1)) var(--small, 1); }
+@keyframes hz-bob { 0%, 100% { transform: rotate(0); } 7% { transform: rotate(-1.4deg); } 19% { transform: rotate(1.2deg); } 31% { transform: rotate(-1deg); } 44% { transform: rotate(1.5deg); } 58% { transform: rotate(-1.3deg); } 71% { transform: rotate(1deg); } 86% { transform: rotate(-1.1deg); } }
+
+/* A balloon in the corner: the edge out and back is one curve, and the climb is another. */
+.hz-peek { position: absolute; right: -34px; top: calc(var(--hz) * .66); width: 26px; height: 0; animation: hz-peek linear both; }
+.hz-climb { position: absolute; animation: hz-climb linear both; }
+.hz-balloon { position: absolute; width: 26px; fill: var(--hz-shape); }
+.hz-gore { fill: var(--hz-near); opacity: .78; }
+.hz-rope { fill: none; stroke: var(--hz-shape); stroke-width: .9; }
+@keyframes hz-peek { 0% { transform: translateX(0); animation-timing-function: cubic-bezier(.25, .6, .4, 1); } 50% { transform: translateX(calc(-1 * min(170px, 24vw))); animation-timing-function: cubic-bezier(.6, 0, .75, .4); } 100% { transform: translateX(0); } }
+@keyframes hz-climb { to { transform: translateY(calc(var(--hz) * -.46)); } }
+
+/* Leaping: over and back in, with a ring on the water at each end. */
+.hz-leap { position: absolute; width: 0; height: 0; }
+.hz-leap.is-back { scale: -1 1; }
+.hz-jump { --takes: 1.7s; --reach: 44px; --high: -34px; --w: 20px; --spin: 52deg; --late: 0s; --ring: 32px; position: absolute; width: 0; height: 0; }
+.hz-jump.is-dolphin { --takes: 2.3s; --reach: 62px; --high: -20px; --w: 30px; --spin: 34deg; }
+.hz-jump.is-minnow { --takes: 1.15s; --reach: 24px; --high: -17px; --w: 11px; --ring: 14px; }
+.hz-jump.is-flyer { --takes: 2.7s; --reach: 170px; --high: -16px; --w: 28px; --spin: 7deg; }
+.hz-jump.is-marlin { --takes: 2.1s; --reach: 66px; --high: -46px; --w: 40px; --spin: 58deg; --ring: 46px; }
+.hz-along { position: absolute; animation: hz-along var(--takes) linear var(--late) both; }
+.hz-arc { position: absolute; animation: hz-arc var(--takes) var(--late) both; }
+.hz-leaper { position: absolute; left: calc(var(--w) / -2); top: -6px; width: var(--w); fill: var(--hz-leaper); animation: hz-turn var(--takes) linear var(--late) both; }
+.is-dolphin .hz-leaper, .is-marlin .hz-leaper { fill: var(--hz-shape); }
+.hz-ring { left: calc(var(--ring, 32px) / -2); top: 0; width: var(--ring, 32px); height: 2px; border-radius: 1px; background: var(--hz-leaper); opacity: 0; animation: hz-ring 1s ease-out var(--late, 0s) both; }
+.is-dolphin .hz-ring, .is-marlin .hz-ring { background: var(--hz-chop); }
+.hz-ring.is-late { left: calc(var(--reach, 0px) - var(--ring, 32px) / 2); animation-delay: calc(var(--late, 0s) + var(--takes, 1.7s) * .86); }
+@keyframes hz-along { to { transform: translateX(var(--reach)); } }
+@keyframes hz-arc {
+  0% { transform: translateY(0); opacity: 0; animation-timing-function: cubic-bezier(.2, .7, .4, 1); }
+  10% { opacity: 1; }
+  50% { transform: translateY(var(--high)); animation-timing-function: cubic-bezier(.6, 0, .8, .3); }
+  90% { opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+@keyframes hz-turn { from { transform: rotate(calc(-1 * var(--spin))); } to { transform: rotate(var(--spin)); } }
+@keyframes hz-ring { 0% { opacity: .75; transform: scaleX(.25); } 100% { opacity: 0; transform: scaleX(1.5); } }
+
+/* A whale's tail rises out of the water, which the top edge of this box stands for, and slips back under. */
+.hz-whale { --ring: 44px; --takes: 5s; position: absolute; width: 0; height: 0; }
+.hz-sound { position: absolute; left: -19px; top: -26px; width: 38px; height: 26px; overflow: hidden; }
+.hz-tail { position: absolute; left: 0; top: 0; width: 38px; fill: var(--hz-shape); animation: hz-tail 5s ease-in-out both; }
+.hz-whale .hz-ring { background: var(--hz-chop); }
+.hz-whale .hz-ring.is-late { left: calc(var(--ring) / -2); animation-delay: 3.6s; }
+@keyframes hz-tail { 0% { transform: translateY(100%); } 34%, 62% { transform: translateY(0); } 100% { transform: translateY(100%); } }
+
+/* A shooting star, only ever seen in the dark. */
+.hz-shoot { width: 104px; height: 1.5px; border-radius: 1px; visibility: hidden; background: linear-gradient(to right, transparent, var(--hz-star)); opacity: 0; animation: hz-shoot 1.1s cubic-bezier(.3, .1, .4, 1) both; }
+.hz-shoot.is-back { scale: -1 1; }
+.dark .hz-shoot, .hz[data-moment="record"] .hz-shoot { visibility: visible; }
+@keyframes hz-shoot {
+  0% { opacity: 0; transform: rotate(16deg) translateX(0) scaleX(.3); }
+  18% { opacity: .9; }
+  100% { opacity: 0; transform: rotate(16deg) translateX(210px) scaleX(1); }
+}

@@ -154,7 +154,7 @@ Read `docs/engineering/logging-and-errors.md`.
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
-  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Horizon` (the sunset behind Home), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `Select` (a listbox), `Tabs`,
   `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another), and
   `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
@@ -177,7 +177,7 @@ Read `docs/engineering/logging-and-errors.md`.
   `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
   `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
-  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`, its sunset's with `hz-`); the Team page in
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); Home in `styles/home.css` (`hm-`); the Team page in
   `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
   start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
@@ -191,8 +191,8 @@ Read `docs/engineering/logging-and-errors.md`.
   rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
 - `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
-  shadow, one per view. It's navy by day and cream by night, so it never glows against the page; the side panel
-  is dark in both themes, so its button is cream on both. The warmth lives in `sun-text` and `sun-soft`.
+  shadow, one per view. It's navy by day and cream by night, so it never glows against the page. The side panel's
+  Start a call is tinted, so the page's own action is the one filled button in view. The warmth lives in `sun-text` and `sun-soft`.
   `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
   information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
 - Type: Newsreader (`font-display`) for page-level headings only, Hanken Grotesk for everything you read
