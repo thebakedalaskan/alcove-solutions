@@ -16,6 +16,8 @@ import { openDocument } from './session';
 const klog = log.child({ component: 'workspace-keep' });
 /** How long one document gets before it waits for next time. */
 const WAIT_MS = 20_000;
+/** How long what's kept for a document gets to be read into its session, for a copy of it. */
+const LOAD_MS = 3_000;
 
 /** Resolves once Alcove has everything from `session`, or it can't, or it's been long enough. */
 function sent(session: DocSession): Promise<void> {
@@ -29,6 +31,40 @@ function sent(session: DocSession): Promise<void> {
     }
     check();
   });
+}
+
+/** Resolves once what's kept for a document is in its session, so `unsentCopy` holds it, or it's all reached Alcove. */
+function loaded(session: DocSession): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, LOAD_MS);
+    const off = session.subscribe(check);
+    function done() { clearTimeout(timer); off(); resolve(); }
+    function check() {
+      const s = session.getSnapshot();
+      if (s.unsent || s.closed || (s.status === 'saved' && s.role !== null)) done();
+    }
+    check();
+  });
+}
+
+/**
+ * Everything this account wrote in this browser that Alcove hasn't got, as plain text, a document after another: for
+ * someone signing out, who'd lose it. Only their own words: nothing else of any document comes with it. Opening each one
+ * sends what can go meanwhile, which then isn't in it.
+ */
+export async function unsentText(owner: string): Promise<string> {
+  const texts: string[] = [];
+  for (const { workspace, document } of await keptDocuments(owner)) {
+    const session = await openDocument(workspace, document, owner, undefined);
+    try {
+      await loaded(session);
+      const text = session.unsentCopy().text.trim();
+      if (text) texts.push(text);
+    } finally {
+      session.close();
+    }
+  }
+  return texts.join('\n\n');
 }
 
 /** Whether what's kept for a document can't get there by itself: not a moment's trouble, which the next try gets past. */
