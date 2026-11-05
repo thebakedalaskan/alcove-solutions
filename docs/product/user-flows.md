@@ -227,6 +227,11 @@ confidential compute, who gets them, and what won't be kept ("The transcript is 
 "The recording is deleted when the call ends."). Never anyone's name or anything said. A call set up to join muted
 starts your microphone and camera off, and says so.
 
+When the call is in a series and you're signed in with earlier notes from it, **From last time** sits under the way
+in: one of each of what's decided, still open and handed out, each with where it comes from, how many more there are,
+and **All of it**, the series, in a new tab so the camera here stays on. It comes from the notes you have, so it isn't
+the same for everyone. Someone newly invited and a guest with the link see nothing, not even that there's a series.
+
 - **The organizer** gets the lobby, which rises in two beats: until the call has started they can rename it (the
   pencil; Enter or clicking away saves, Escape puts it back) and turn notes on or off, and a change that can't be
   saved says so and goes back. Once it's live both are read-only. On a team, a call started just now shows arches of
@@ -359,6 +364,15 @@ dock at the bottom.
   keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
   breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
+- **From last time**, at the top of Notes when the call is in a series and you have earlier notes from it: for you
+  alone, from those notes. What's decided, what's still open and for how long, and the follow-ups (who took them on,
+  who they're only suggested for), three of each, then what was settled since the last call. Each has its call and
+  moment, a breakout room's with its room, and opens in a new tab, so the call carries on. It's open until the call has
+  notes of its own, then folds away. A later call that seems to have replaced or answered something says so.
+  **Everything from these calls** opens the series. Before a series has notes, it says so.
+- **Earlier calls**, in **Ask**, beside **This call**: ask across the calls you have notes from, such as why something was
+  chosen. Each answer says which calls it comes from, and opens them in a new tab. Only you see it, and nothing of it
+  is kept. It waits while notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
 - **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, who is
   ringing and how they answered, and who is invited and not here; the organizer can ring anyone in the last two).
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
@@ -556,10 +570,16 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
   and notes setting, at the same time of day a week on (still the same time when the clocks change in
   between), on the calendar; **Change** in the confirmation moves it or cancels it.
 - The series page shows what carries over from the calls you have notes from: decisions (confirmed, not
-  confirmed yet, and no longer holding), questions still open, and follow-ups taken on, not taken on yet and
-  done since the last call, each with the call and moment it came from. Things can be settled there, and
+  confirmed yet, and no longer holding), questions still open and answered since the last call, and follow-ups taken
+  on, not taken on yet and done since the last call, each with the call and moment it came from, breakout rooms'
+  with their room. Things can be settled there, and
   questions asked across the calls, with answers that cite the calls and moments they come from, by the
-  days you saw them on. Someone invited to only some of the calls sees only those. It shows the newest 24
+  days you saw them on. When a later call seems to have replaced a decision, it says which and offers **It no longer
+  holds** or **It still holds**; when one seems to have answered a question, **It was answered** or **It’s still open**.
+  Saying **It still holds** or **It’s still open** shows who said so, with **Undo**, and writing that call's notes
+  again doesn't change it, though a further call can suggest it again. A decision's is for the organizer and whoever
+  confirmed it, and a question's for anyone with both calls' notes. Only someone with both sees any of this, and
+  nothing changes until someone says so. Someone invited to only some of the calls sees only those. It shows the newest 24
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.

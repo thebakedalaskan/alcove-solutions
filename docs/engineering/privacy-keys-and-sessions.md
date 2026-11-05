@@ -350,6 +350,13 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   the one note when asking about a note, the notes sent when asking across all your notes): if any went
   meanwhile, the answer isn't sent (`409 conflict`). A series ID that comes from a request is treated like a
   note ID: anyone with no notes from it gets `404 not-found`, and only the organizer sees its next call.
+  The same goes in a call and at its pre-join: what carries over comes from the notes the account signed in has, found
+  by the call's link, so being invited to the call, or in it, adds nothing; a guest has no account, so nothing to read
+  (`401 unauthenticated`), and someone with no notes from the series gets `null`, the same as for a call outside one.
+  A source's link opens the note through this same check. A later call's `revisits` are read from the later note and
+  only for items of notes the reader has, so what a later call did shows only to someone with both notes now
+  ([Notes and inference › Series](notes-and-inference.md#series)). Personal material never comes into any of it: only a
+  note's own decisions, questions, follow-ups, summary and transcript are read, the call's and its breakout rooms'.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes your own `note_access` row, which also takes you off the list of who has it, and your own
   notes on it; sharing with you again gives the note back, and nothing else. Deleting your account does both, for
@@ -368,11 +375,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   commitment of method, path and exact body bytes, plus the JSON response sealed under the operation-result
   key. A retry gets the same response; a different request under the same ID is `409 conflict`. Receipts may
   hold copies of responses, so they are purged after 24 hours and whenever the owner deletes a note or cancels
-  a meeting, or a transcript their call didn't keep goes. Note search, asking (about a note, across your notes, a call so far or a series), catching up,
+  a meeting, or a transcript their call didn't keep goes. Note search, asking (about a note, across your notes, a call so far or a series, during a call too), catching up,
   caption translations, reading who's busy, audio pieces and transcript clips keep no receipt: searching, asking,
   translating and reading who's busy only read, pieces and clips are already idempotent by their place in the
   recording, and their answers carry the live transcript, which shouldn't be copied into receipts. Nor do proposing or changing a note's decisions, open
-  questions, follow-ups and transcript lines, having it written again, or sharing it: anyone who has the note can make them, and each answers with the
+  questions, follow-ups and transcript lines, saying the notes got a later call wrong, having it written again, or sharing it: anyone who has the note can make them, and each answers with the
   whole note, so a receipt kept under someone it was given to would outlive the organizer deleting it. Each
   sets an explicit state (confirmed, answered, done, these words proposed, these addresses added), so a retry changes nothing anyway.
   Answering a ring keeps none, for the same reason, and because a receipt's clear method and time would say an
@@ -389,7 +396,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   Shared-screen frames: 24 a minute per person in a call, and
   30 a minute for saying a share ended. Asking for notes in a call: 10 a minute per person. Saying whether others may
   point at what you share: 20 a minute per person. Questions and catch-ups (about a note, across your notes, a call so far or a
-  series): 20 a minute per account, together (during a call, per connection to it). Opening a moment of a call's
+  series): 20 a minute per account, together (during a call, per connection to it, and asking about earlier calls per
+  account). What carries over into a call: 60 a minute per account. Opening a moment of a call's
   live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen
   with `signin=busy` instead. The counters live in each API process.
@@ -502,7 +510,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Keyed hashes | Equal hashes show the same person. Joining `note_access` to `identities` shows which accounts received which notes from which organizers, and whether by invitation or by sharing. For addresses without an account it still shows the same address receiving several notes. `note_additions.author_index` shows which additions are the same person's, across notes and organizers. It matches no other column, but comparing the notes those additions are on with `note_access` can narrow down who it is. `call_rings` joins to nothing but itself: the same hash in two rows is the same address rung twice, and its rows last as long as the call. `meeting_access` shows how many people are invited to each call that isn't over, whether each has answered (never what), and the same address on several organizers' calls; its hashes have their own purpose, so it can't be joined to `identities` or `note_access` without `KMASTER`. |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, and a shared screen one each time it changes (at most every 4 seconds) |
 | Ciphertext lengths | Not padded, so title, guest list, transcript, clip and own-notes lengths leak approximately. An answer to an invitation is padded: its length would say which of three words it is |
-| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, with their dates (in the asker's time zone), decisions, open questions and follow-ups. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
+| NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: for notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, their breakout rooms' too, with their dates (in the asker's time zone), decisions, open questions and follow-ups; comparing a call with earlier ones in its series, what those left standing (the organizer's notes: decisions and open questions), with this call's decisions and transcripts. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
 | NEAR AI's gateway and operators | Alcove's API key on attestation requests, which models are verified when, the size and timing of every sealed request, and the server's address; never the content, the request's parameters or the key inside the seal. A deployment NEAR AI chooses to run in an attested VM on a measured dstack image passes. |
 | Intel and NVIDIA | Intel's certification service: which platform (FMSPC) each quote came from, when Alcove verifies. NVIDIA's attestation service: each model's GPU evidence (certificates and measurements). No content. |
 | Google | For Google accounts, each sign-in. With the calendar connected, every scheduled call's title, time, guests, join link and whether notes are on, as an ordinary calendar event that Google sends to the guests, and whose availability is asked for when finding a time, by address. |
@@ -598,7 +606,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   that call goes, and with the account. Its recurring event goes from Google then too, once, so everyone hears once.
   Deleting an account withdraws the events of every series with a call still to come; what's only in the past stays
   there, as a call that's been held does. What carries over is never stored, so a deleted or removed note leaves
-  every series at once, with nothing derived from it left behind.
+  every series at once, with nothing derived from it left behind. What a later call came back to is kept in that call's
+  sealed note, as random IDs and a moment: it says nothing of what the earlier call said, it's deleted with the later
+  note, and once the earlier note has gone it's never shown.
 - **Google access** stays in the account's `connection` item until it's disconnected or the account is deleted.
   Either way Alcove asks Google to revoke the grant, best effort, so the refresh token stops working there too.
   Withdrawing Alcove's access at Google removes the refresh token the next time Alcove tries to use it.
