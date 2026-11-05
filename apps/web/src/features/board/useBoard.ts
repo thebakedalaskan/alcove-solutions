@@ -99,9 +99,11 @@ const SETTLE_MS = 20;
 
 type UndoStep = Y.UndoManager['undoStack'][number];
 
-/** Whether a step would bring back something that was deleted. */
+/** Whether a step would bring back something that was deleted. An object that has been undone and redone has older items under its id, and the step may name one of those. */
 function restores(doc: Y.Doc, step: UndoStep): boolean {
-  for (const item of doc.getMap<unknown>(BOARD_OBJECTS)._map.values()) if (Y.isDeleted(step.deletions, item.id)) return true;
+  for (const latest of doc.getMap<unknown>(BOARD_OBJECTS)._map.values()) {
+    for (let item: Y.Item | null = latest; item; item = item.left) if (Y.isDeleted(step.deletions, item.id)) return true;
+  }
   return false;
 }
 
@@ -123,6 +125,8 @@ export class Board implements LiveStore<BoardState> {
   private stepping = false;
   /** A sticky made by this edit, which goes again if nothing's written on it. */
   private fresh: string | null = null;
+  /** Whether the camera has been put anywhere yet, which waits until the sheet has a size. */
+  private framed = false;
   private frame = 0;
   private readonly waits = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly listeners = new Set<() => void>();
@@ -188,9 +192,10 @@ export class Board implements LiveStore<BoardState> {
   }
 
   private measure(sheet: HTMLElement): void {
-    const first = !this.camera.width;
     this.camera.resize(sheet.offsetWidth, sheet.offsetHeight);
-    if (this.camera.width && (first || this.look.mini)) this.fitAll(false);
+    if (!this.camera.width || (this.framed && !this.look.mini)) return;
+    this.framed = true;
+    this.fitAll(false);
   }
 
   setMode(mode: BoardMode): void {
@@ -230,6 +235,7 @@ export class Board implements LiveStore<BoardState> {
     if (patch.landed && this.sheet) this.later('landed', tokenMs(this.sheet, '--duration-2') * 2, () => this.set({ landed: NOTHING }));
     if (edit && !view.byId.has(edit)) this.finishEdit();
     if (this.look.mini) this.fitAll(false);
+    this.settleNear();
   };
 
   /* ---------- undo ---------- */
@@ -288,8 +294,14 @@ export class Board implements LiveStore<BoardState> {
     const step = stack.at(-1);
     const was = undo.ignoreRemoteMapChanges;
     undo.ignoreRemoteMapChanges = was || (!!step && restores(this.doc, step));
-    this.settle(go);
-    undo.ignoreRemoteMapChanges = was;
+    try {
+      this.settle(go);
+    } catch (err) {
+      // Yjs can follow an item it has already collected, and throw part way. What went back stays back, and the board carries on.
+      log.error('undo failed', { err });
+    } finally {
+      undo.ignoreRemoteMapChanges = was;
+    }
     this.set({ sel: [] });
   }
 
@@ -418,11 +430,14 @@ export class Board implements LiveStore<BoardState> {
   /** Eases the camera somewhere. What it passes on the way stays mounted until it gets there. */
   glideTo(cam: Camera): void {
     const { sheet } = this;
+    if (!sheet) {
+      this.camera.set(cam);
+      return;
+    }
     this.set({ glide: true });
     this.camera.set(cam);
     const { near } = this.state;
     if (near) this.set({ near: bounds([near, reachOf(this.camera.visible())]) });
-    if (!sheet) return;
     this.later('glide', tokenMs(sheet, '--duration-3') + SETTLE_MS, () => {
       this.set({ glide: false });
       this.settleNear();
@@ -435,6 +450,7 @@ export class Board implements LiveStore<BoardState> {
   }
 
   fitAll(glide = true): void {
+    if (!this.camera.width) return;
     const boxes = this.state.view.objects.filter(hasBox);
     const cam = this.camera.fitting(boxes.length ? bounds(boxes) : BLANK, this.look.bar ? undefined : BARE_PAD);
     if (glide) this.glideTo(cam);

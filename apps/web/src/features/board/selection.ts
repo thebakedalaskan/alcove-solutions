@@ -65,7 +65,8 @@ export function selectionRing(boxes: readonly Box[], { x, y, z }: Camera): Box {
 
 /** What a move can line up with: objects first and then frames, as the canvas looks, and nothing that's travelling. Past 500, only what's near. */
 export function snapTargets(view: BoardView, near: Box | null, travelling: ReadonlySet<string>): PlacedObject[] {
-  const targets = view.objects.filter(hasBox).filter((o) => !travelling.has(o.id) && o.k !== 'ink' && !(o.k === 'text' && o.size === 'heading') && (!near || touches(o, near)));
+  const reach = view.objects.length > MOUNT_ALL ? near : null;
+  const targets = view.objects.filter(hasBox).filter((o) => !travelling.has(o.id) && o.k !== 'ink' && !(o.k === 'text' && o.size === 'heading') && (!reach || touches(o, reach)));
   return [...targets.filter((o) => o.k !== 'frame'), ...targets.filter((o) => o.k === 'frame')];
 }
 
@@ -112,11 +113,11 @@ function lineBox(view: BoardView, o: LineObject): Box {
 }
 
 /**
- * What to mount: everything, until a board passes 500 objects, and after that what's near and what's selected, which
- * includes what's being typed in. Until the sheet has been measured nothing is near, so a big board doesn't mount all of
- * itself first.
+ * What to mount: everything, until a board passes 500 objects, and after that what's near and what's being typed in. What's
+ * selected needn't be: moving it goes through the doc, and its ring comes from the view. Until the sheet has been measured
+ * nothing is near, so a big board doesn't mount all of itself first.
  */
-export function mounted(view: BoardView, near: Box | null, keep: ReadonlySet<string>): readonly BoardObject[] {
+export function mounted(view: BoardView, near: Box | null, typing: string | null): readonly BoardObject[] {
   if (view.objects.length <= MOUNT_ALL) return view.objects;
-  return view.objects.filter((o) => keep.has(o.id) || (near !== null && touches(o.k === 'line' ? lineBox(view, o) : o, near)));
+  return view.objects.filter((o) => o.id === typing || (near !== null && touches(o.k === 'line' ? lineBox(view, o) : o, near)));
 }

@@ -241,9 +241,9 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     try { sheet.setPointerCapture(e.pointerId); } catch { /* It lifted before the capture, so its up has already been seen. */ }
   }, { signal });
 
-  // The press that opened a sticky mustn't then focus the sheet, which would close it again. A press in the sticky is the field's own.
+  // The press that opened a sticky mustn't then focus the sheet, which would close it again. Anything over the sheet keeps its own focus, and with it the field's closing.
   sheet.addEventListener('mousedown', (e) => {
-    if (board.getSnapshot().edit && !(e.target instanceof Element && e.target.closest('.bo-edit'))) e.preventDefault();
+    if (board.getSnapshot().edit && !(e.target instanceof Element && e.target.closest(OVER_THE_SHEET))) e.preventDefault();
   }, { signal });
 
   sheet.addEventListener('pointermove', (e) => {

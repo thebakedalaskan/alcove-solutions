@@ -128,7 +128,7 @@ const Objects = memo(function Objects({ board }: { board: Board }) {
   const landed = useBoardState(board, (s) => s.landed);
   const settling = useBoardState(board, (s) => s.settling);
   const picked = useMemo(() => new Set(sel), [sel]);
-  const shown = useMemo(() => mounted(view, near, picked), [view, near, picked]);
+  const shown = useMemo(() => mounted(view, near, edit), [view, near, edit]);
   const held = useMemo(() => heldCounts(view), [view]);
 
   const frames: ReactNode[] = [], lines: ReactNode[] = [], objects: ReactNode[] = [];
