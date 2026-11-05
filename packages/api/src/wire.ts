@@ -3,6 +3,7 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
+import { BoardNewSchema, BoardSavedSchema } from './callBoards';
 import { PlayMediaSchema, PlayPositionSchema, PresentKindSchema, PresentSectionSchema } from './callWorkspace';
 import { CaptureDevicePartSchema } from './capture';
 import { CallPlaceSchema } from './live';
@@ -38,7 +39,7 @@ export const ShareInputSchema = z.object({
 });
 
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
-export const CallActionSchema = z.discriminatedUnion('type', [
+const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notes'), on: z.boolean() }),
   /** The organizer holds every kind of capture, while notes are on, until they resume. */
   z.object({ type: z.literal('pause') }),
@@ -114,8 +115,12 @@ export const CallActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('play-pause'), positionMs: PlayPositionSchema }),
   z.object({ type: z.literal('play-resume') }),
   z.object({ type: z.literal('play-seek'), positionMs: PlayPositionSchema }),
-  z.object({ type: z.literal('play-stop') })
+  z.object({ type: z.literal('play-stop') }),
+  /** Whoever opened the board open here, or the organizer: it closes for everyone there, and nothing is deleted. */
+  z.object({ type: z.literal('board-close') })
 ]);
+/** Anyone invited opens a board for the part of the call they're in, a new one or a saved one. Two shapes of one action, so they sit beside the union that tells actions apart by `type`. */
+export const CallActionSchema = z.union([CallStepSchema, BoardNewSchema.extend({ type: z.literal('board-open') }), BoardSavedSchema.extend({ type: z.literal('board-open') })]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 
 /*
