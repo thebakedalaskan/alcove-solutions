@@ -251,6 +251,8 @@
 .tr .ac-line.here::before { content: ""; position: absolute; left: -4px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--horizon); }
 .tr .tr-key { padding-bottom: 10px; }
 /* Correcting a line: the pencil shows on hover or focus (always on touch screens), and the line becomes its own editor. */
+/* What someone can do with a line, together, so a narrow screen doesn't leave one of them on a line of its own. */
+.ln-tools { display: inline-flex; align-items: center; vertical-align: -1px; }
 .ln-pen { width: 28px; height: 28px; margin: -6px 0 -8px 6px; vertical-align: -1px; opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1), color var(--duration-1); }
 .ln:hover .ln-pen, .ln:focus-within .ln-pen { opacity: 1; }
 @media (hover: none) { .ln-pen { opacity: 1; } }

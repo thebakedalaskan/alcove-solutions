@@ -92,9 +92,11 @@ export function LineRow({ line, more, mark, time, me, correct, fromLine, marks }
               <span tabIndex={0} className="ln-fixed"><Icon name="history" size={12} />Corrected<span className="sr-only">: {history.at(-1)}</span></span>
             </Tooltip>
           )}
-          {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="ln-pen" onClick={() => setEditing(true)} />}
-          {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
-          {marks && <IconButton icon={marks.has(line.id) ? 'bookmarked' : 'bookmark'} label={marks.has(line.id) ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className={cn('ln-pen ln-mark', marks.has(line.id) && 'is-on')} onClick={() => marks.toggle(line)} />}
+          <span className="ln-tools">
+            {correct?.can(line) && <IconButton ref={pen} icon="pen" label="Correct this line" size={15} className="ln-pen" onClick={() => setEditing(true)} />}
+            {fromLine && <FromThisLine line={line} fromLine={fromLine} />}
+            {marks && <IconButton icon={marks.has(line.id) ? 'bookmarked' : 'bookmark'} label={marks.has(line.id) ? 'Remove your bookmark' : 'Bookmark this line, for you alone'} size={15} className={cn('ln-pen ln-mark', marks.has(line.id) && 'is-on')} onClick={() => marks.toggle(line)} />}
+          </span>
         </>
       )}>
       {line.unsure?.words ? <Unsure of="words">{line.text}</Unsure> : line.text}
