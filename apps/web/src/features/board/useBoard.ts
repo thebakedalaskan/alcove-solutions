@@ -8,12 +8,12 @@
  */
 import type { LiveStore } from '@alcove/api';
 import {
-  BOARD_OBJECTS, addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, removeObjects,
-  type BoardView, type Box, type Camera, type Pad, type StickyColour
+  addObject, bounds, colourIn, duplicateObjects, frameAt, hasBox, makeUndo, objectText, observeBoard, readBoard, redoStep, removeObjects, undoStep,
+  type BoardView, type Box, type Camera, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardTool } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, nextSpot } from './editing';
@@ -96,16 +96,6 @@ const POP_AT_ONCE = 24;
 const NEAR_EVERY_MS = 100;
 /** A moment past the transition's own end. */
 const SETTLE_MS = 20;
-
-type UndoStep = Y.UndoManager['undoStack'][number];
-
-/** Whether a step would bring back something that was deleted. An object that has been undone and redone has older items under its id, and the step may name one of those. */
-function restores(doc: Y.Doc, step: UndoStep): boolean {
-  for (const latest of doc.getMap<unknown>(BOARD_OBJECTS)._map.values()) {
-    for (let item: Y.Item | null = latest; item; item = item.left) if (Y.isDeleted(step.deletions, item.id)) return true;
-  }
-  return false;
-}
 
 export class Board implements LiveStore<BoardState> {
   readonly doc: Y.Doc;
@@ -265,17 +255,18 @@ export class Board implements LiveStore<BoardState> {
   }
 
   /** Makes a change whose objects then travel to their new places together, in place of jumping. */
-  settle(change: () => void): void {
+  settle<T>(change: () => T): T {
     const before = this.state.view;
-    change();
+    const result = change();
     this.read();
     const moved = this.state.view.objects.flatMap((o) => {
       const was = before.byId.get(o.id);
       return was && hasBox(was) && hasBox(o) && (was.x !== o.x || was.y !== o.y) ? [o.id] : [];
     });
-    if (!moved.length || !this.sheet) return;
+    if (!moved.length || !this.sheet) return result;
     this.set({ settling: new Set(moved) });
     this.later('settling', tokenMs(this.sheet, '--bd-glide') + SETTLE_MS, () => this.set({ settling: NOTHING }));
+    return result;
   }
 
   /** One change on its own, as one undo, however soon it follows the last one. */
@@ -286,36 +277,23 @@ export class Board implements LiveStore<BoardState> {
     if (!within) this.endStep();
   }
 
-  /**
-   * Goes a step back or forward. A value someone else wrote over this person's normally stays, which is what makes undo
-   * yours alone. Bringing an object back is different. Someone changing a field at the moment it was deleted would count as
-   * that, the field wouldn't return, and the object would fail to parse and be gone for everyone. So it comes back whole,
-   * as it was deleted: deleting wins over a change made at the same moment, and nothing else is in a step like this.
-   */
-  private travel(undo: Y.UndoManager, stack: readonly UndoStep[], go: () => void): void {
-    const step = stack.at(-1);
-    const was = undo.ignoreRemoteMapChanges;
-    undo.ignoreRemoteMapChanges = was || (!!step && restores(this.doc, step));
-    try {
-      this.settle(go);
-    } catch (err) {
-      // Yjs can follow an item it has already collected, and throw part way. What went back stays back, and the board carries on.
-      log.error('undo failed', { err });
-    } finally {
-      undo.ignoreRemoteMapChanges = was;
-    }
+  /** Goes a step back or forward. If Yjs can't finish one, what went back stays back and the board carries on. A step that came to nothing tells no one, so the buttons are always brought up to date here. */
+  private travel(step: (undo: Y.UndoManager) => StepResult): void {
+    const undo = this.undoManager;
+    if (!undo || this.stepping) return;
+    const result = this.settle(() => step(undo));
+    if (!result.ok) log.error('undo failed', { err: result.error });
+    this.stacks();
     this.set({ sel: [] });
   }
 
   /** Takes back this person's last change, and only theirs, whatever anyone else has done since. */
   undo(): void {
-    const undo = this.undoManager;
-    if (undo && !this.stepping) this.travel(undo, undo.undoStack, () => undo.undo());
+    this.travel(undoStep);
   }
 
   redo(): void {
-    const undo = this.undoManager;
-    if (undo && !this.stepping) this.travel(undo, undo.redoStack, () => undo.redo());
+    this.travel(redoStep);
   }
 
   /* ---------- selection and tools ---------- */
