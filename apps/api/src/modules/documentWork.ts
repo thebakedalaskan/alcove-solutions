@@ -9,7 +9,7 @@
  *
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
-import { DOC_FRAGMENT, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
+import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
 import { itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
@@ -349,12 +349,14 @@ function copy(i: SealedLog & { name: string | null }) {
 /**
  * Someone's words from another document, as this one's first state (`saveCopy`). It's judged as anything from a browser is,
  * and goes through a Y.Doc, so what's kept is a state proved to open, holding nothing that waits for what never came, whose
- * title says what the tree calls it.
+ * title says what the tree calls it. A document's goes on top of the seed, which the new one already holds: words rescued
+ * from a document that never opened here come without it, and its title is where the name goes.
  */
-function adopt(i: { state: Uint8Array; items: number; name: string | null }) {
+function adopt(i: { state: Uint8Array; items: number; kind: ContentKind; name: string | null }) {
   const { seen, why } = inspect(i.state, browserCaps(i.items));
   if (!seen) return { why };
   const doc = new Y.Doc();
+  if (i.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, i.state);
   doc.store.pendingStructs = null;
   doc.store.pendingDs = null;
@@ -385,7 +387,7 @@ export const DOC_TASKS = {
   searchLine: task(SealedLog.extend({ id: z.string(), itemKind: ItemKindSchema, name: z.string(), kind: Kind }), z.object({ line: Bytes, found: Found }), searchLine),
   edit: task(SealedLog.extend({ op: EditName, args: z.unknown() }), z.object({ value: z.unknown(), update: Bytes.nullable(), seen: SeenSchema.nullable(), found: Found }), edit),
   copy: task(SealedLog.extend({ name: z.string().nullable() }), z.object({ state: Bytes, shape: Shape, seen: SeenSchema, found: Found }), copy),
-  adopt: task(z.object({ state: Bytes, items: z.number(), name: z.string().nullable() }), z.object({ why: z.string().optional(), made: z.object({ state: Bytes, shape: Shape, seen: SeenSchema }).optional() }), adopt),
+  adopt: task(z.object({ state: Bytes, items: z.number(), kind: Kind, name: z.string().nullable() }), z.object({ why: z.string().optional(), made: z.object({ state: Bytes, shape: Shape, seen: SeenSchema }).optional() }), adopt),
   inspect: task(z.object({ update: Bytes, items: z.number() }), z.object({ seen: SeenSchema.optional(), why: z.string().optional() }), (i) => inspect(i.update, browserCaps(i.items))),
   seal: task(z.object({ at: AtSchema, key: Bytes, seq: z.number(), by: EditorSchema.nullable(), update: Bytes }), z.object({ sealed: Bytes }), (i) => ({ sealed: sealUpdate(i.at, i.key, i.seq, i.by, i.update) })),
   lines: task(z.object({ at: AtSchema, key: Bytes, rows: z.array(SealedRow) }), z.object({ lines: z.array(z.object({ seq: z.number(), bytes: z.number(), text: z.string() })) }), linesOf),

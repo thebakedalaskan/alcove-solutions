@@ -3322,6 +3322,37 @@ describe('a refusal', () => {
     expect(store.kept).toEqual([]);
   });
 
+  it('gives back a line written offline in a document deleted before it came back, in the tab and after a reload', async () => {
+    const { ann, bob, id, doc } = await together();
+    const store = keepStore();
+    const link = network(bob);
+    const b = await open(link.browser, id, doc, { keep: store.keep });
+    line(b).insert(0, 'Online first.');
+    await saved(b);
+    link.drop();
+    line(b).insert(line(b).length, ' Written offline.');
+    await until(() => store.kept.length > 0, 'it to be kept');
+    await ann.api.workspaces.items.trash(id, doc);
+    await ann.api.workspaces.items.deleteForever(id, doc);
+    // In the tab, it's all on the page, with nowhere to go.
+    link.back();
+    await until(() => b.getSnapshot().closed !== null, 'it to end');
+    expect(b.localCopy().text).toContain('Online first. Written offline.');
+    b.close();
+    // After a reload nothing it was written on comes from Alcove, so Yjs has nowhere to put it at all.
+    const again = await bob.api.workspaces.document(id, doc, { keep: store.keep });
+    await until(() => again.getSnapshot().closed !== null, 'it to end again');
+    expect(again.getSnapshot().unsent).toBe(true);
+    expect(store.kept.length).toBeGreaterThan(0);
+    const copy = again.localCopy();
+    expect(copy.text).toContain('Written offline.');
+    const made = await bob.api.workspaces.saveCopy(id, { kind: 'document', name: 'From the train', parent: null, state: copy.state });
+    const fresh = await open(bob, id, made.id);
+    expect(body(fresh)).toContain('Written offline.');
+    expect(title(fresh).toString()).toBe('From the train');
+    again.close();
+  });
+
   it('won’t take a copy over a document someone has written to', async () => {
     const { ann, id, doc } = await together();
     await sendUpdate(ann, id, doc, anUpdate('Already here'));

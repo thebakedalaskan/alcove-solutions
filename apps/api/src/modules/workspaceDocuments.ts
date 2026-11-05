@@ -422,7 +422,7 @@ export async function adoptState(d: Deps, reader: Reader, workspaceId: string, d
     const state = new Uint8Array(await body());
     if (!state.length) throw new ValidationError('That update is empty.', { context: { workspaceId, documentId } });
     if (state.length > MAX_DOC_BYTES) throw tooLong(asked, documentId, state.length, 0);
-    const { made, why } = await d.docs.run('adopt', { state, items: capsFor(d).items, name: item.kind === 'document' && item.name ? item.name : null }, { big: state.length > BIG_DOC_BYTES, bytes: state.length, who: limitKey(reader) }).catch((e: unknown) => {
+    const { made, why } = await d.docs.run('adopt', { state, items: capsFor(d).items, kind: kindOf(item), name: item.kind === 'document' && item.name ? item.name : null }, { big: state.length > BIG_DOC_BYTES, bytes: state.length, who: limitKey(reader) }).catch((e: unknown) => {
       throw e instanceof DocFailure && e.reason === 'failed' ? refuseUpdate(workspaceId, documentId, 'unreadable', state.length) : e;
     });
     if (!made) throw refuseUpdate(workspaceId, documentId, why ?? 'unknown', state.length);
