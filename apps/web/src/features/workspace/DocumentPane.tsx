@@ -3,7 +3,7 @@
  * first opens and mounts once the document's first sync is in. Someone who loses a document mid-sentence is told so in place,
  * and whatever they wrote that didn't reach Alcove stays theirs to copy, save as a new document, or let go.
  */
-import { errorMessage, firstName, type WorkspaceItem } from '@alcove/api';
+import { errorMessage, firstName, type DocSession, type DocStatus, type WorkspaceItem } from '@alcove/api';
 import { WsCantOpen, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsFade, WsGoneBar, WsMovePicker, WsOfflineBar, WsOfflineEmpty, WsPage, WsReadOnlyBar, WsScroll, WsTemplates, WsUnavailable, WsUnsavedBar, Button, wsToast, type WsPop, type WsSave, type WsUnsaved } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
@@ -17,7 +17,7 @@ import { Editor } from './editor/lazy';
 import { TEMPLATES } from './editor/templates';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MentionItem, MentionSection, MovingBlock, Point } from './editor/types';
 import { Rescue, type CopyTo } from './Rescue';
-import { openDocument, withDocument, type DocSession, type DocStatus } from './session';
+import { openDocument, withDocument } from './session';
 import { ShareSheet } from './Sheets';
 import { documentsIn, foldersAbove, foldersFor, nameFrom, nameOf } from './tree';
 
@@ -191,7 +191,7 @@ function Page({ ws, item, session, status }: { ws: Ws; item: WorkspaceItem; sess
     <WsFade id={item.id}>
       <WsPage onKeyDown={leave}>
         <Suspense>
-          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} size={session.size} readOnly={readOnly} titleHint={item.name} people={faces}
+          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={onMention} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast}

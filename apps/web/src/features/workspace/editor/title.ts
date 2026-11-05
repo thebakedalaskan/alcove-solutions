@@ -1,6 +1,6 @@
 /*
- * A document's title, on the Yjs side, for what changes it from outside the page: naming it in the list, starting it from a
- * template, or saving someone's words as a copy. It's the first element of the fragment, so an open editor follows like it
+ * A document's title, on the Yjs side, for what changes it from outside the page: naming it in the list, or starting it from
+ * a template, and for naming a copy of someone's words. It's the first element of the fragment, so an open editor follows like it
  * follows anyone's typing. Only Yjs, no ProseMirror: import it dynamically, so it stays out of the app until a document opens.
  */
 import * as Y from 'yjs';
@@ -46,14 +46,4 @@ export function titleIn(state: Uint8Array): string {
   const title = titleOf(doc);
   doc.destroy();
   return title;
-}
-
-/** A document's state as it would be with its title saying `name`: for a copy of someone's words. */
-export function retitled(state: Uint8Array, name: string): Uint8Array {
-  const doc = new Y.Doc();
-  Y.applyUpdate(doc, state);
-  setTitle(doc, name);
-  const out = Y.encodeStateAsUpdate(doc);
-  doc.destroy();
-  return out;
 }
