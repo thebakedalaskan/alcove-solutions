@@ -1,6 +1,6 @@
 /* Presenting, playing a video for everyone, and a document's history. */
 import { AnimatePresence, motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { Icon } from '../icon';
 import { Faces, type AvatarPerson } from '../people';
@@ -85,25 +85,55 @@ export function WsPlayBar({ playing, onToggle, onStop, onVolume }: { playing: Ws
   );
 }
 
-/** A version of a document: during a call, by someone, when it began. */
-export interface WsVersion { id: string; name: string; sub: string; at: string }
+/** A version of a document: during a call, by someone, when it began. `fixed`: it's only saying so, and there's nothing to open. */
+export interface WsVersion { id: string; name: string; sub: string; at: string; fixed?: boolean | undefined }
+
+/** What Restore asks first, when it would change the page under someone. */
+export interface WsRestoreAsk { text: string; onRestore: () => void; onKeep: () => void }
 
 /**
- * History, beside the page: versions grouped by call, newest first. Pressing one shows it. Restore shows on anything but
- * the first, which is now.
+ * History, beside the page: versions grouped by call, newest first. Pressing one shows it, and Up and Down move through them.
+ * Restore shows on anything but the first, which is now: leave `onRestore` out for someone who can only read. `ask` takes
+ * its place while it's asking. `note` says what's here when there's nothing to go back to.
  */
-export function WsHistory({ versions, selected, onSelect, onRestore, onClose }: { versions: WsVersion[]; selected: string; onSelect: (id: string) => void; onRestore: () => void; onClose: () => void }) {
+export function WsHistory({ versions, selected, onSelect, onRestore, restoring = false, ask, note, onClose }: {
+  versions: WsVersion[]; selected: string; onSelect: (id: string) => void; onRestore?: (() => void) | undefined; restoring?: boolean | undefined;
+  ask?: WsRestoreAsk | null | undefined; note?: string | undefined; onClose: () => void;
+}) {
+  const list = useRef<HTMLDivElement>(null);
+  /* The keyboard comes here as it opens, so Up, Down and Esc work straight away. */
+  useEffect(() => { list.current?.querySelector<HTMLElement>('.is-cur')?.focus({ preventScroll: true }); }, []);
+  const keys = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const rows = versions.filter((v) => !v.fixed);
+    const next = rows[rows.findIndex((v) => v.id === selected) + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    onSelect(next.id);
+    e.currentTarget.querySelector<HTMLElement>(`[data-version="${CSS.escape(next.id)}"]`)?.focus();
+  };
+  const row = (v: WsVersion) => <><span className="m"><b>{v.name}</b><small>{v.sub}</small></span><span className="ac-time">{v.at}</span></>;
+  const past = versions[0] !== undefined && selected !== versions[0].id;
   return (
     <aside className="wh" aria-label="History">
       <div className="wh-h"><b>History</b><IconButton icon="x" size={16} className="wd-ib" label="Close history" onClick={onClose} /></div>
-      <div className="wh-l">
-        {versions.map((v) => (
-          <button key={v.id} type="button" className={cn('wh-r', v.id === selected && 'is-cur')} aria-pressed={v.id === selected} onClick={() => onSelect(v.id)}>
-            <span className="m"><b>{v.name}</b><small>{v.sub}</small></span><span className="ac-time">{v.at}</span>
-          </button>
-        ))}
+      <div ref={list} className="wh-l" onKeyDown={keys}>
+        {versions.map((v) => (v.fixed ? <div key={v.id} className="wh-r is-fixed">{row(v)}</div> : (
+          <button key={v.id} type="button" data-version={v.id} className={cn('wh-r', v.id === selected && 'is-cur')} aria-pressed={v.id === selected} onClick={() => onSelect(v.id)}>{row(v)}</button>
+        )))}
+        {note && <p className="wh-n">{note}</p>}
       </div>
-      {versions[0] && selected !== versions[0].id && <div className="wh-f"><Button size="sm" onClick={onRestore}>Restore this version</Button></div>}
+      {past && onRestore && (
+        <div className="wh-f">
+          {ask ? <>
+            <p>{ask.text}</p>
+            <div className="ac">
+              <Button size="sm" loading={restoring} onClick={ask.onRestore}>Restore for everyone</Button>
+              <Button variant="quiet" size="sm" disabled={restoring} onClick={ask.onKeep}>Not yet</Button>
+            </div>
+          </> : <Button size="sm" loading={restoring} onClick={onRestore}>Restore this version</Button>}
+        </div>
+      )}
     </aside>
   );
 }

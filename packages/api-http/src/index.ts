@@ -109,18 +109,23 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     // A line can be a whole document, so what's come so far is looked through once, not again with every piece that arrives.
     let pieces: string[] = [];
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      let from = 0;
-      for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
-        pieces.push(value.slice(from, i));
-        const line = pieces.join('').trim();
-        pieces = [];
-        from = i + 1;
-        if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        let from = 0;
+        for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
+          pieces.push(value.slice(from, i));
+          const line = pieces.join('').trim();
+          pieces = [];
+          from = i + 1;
+          if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+        }
+        if (from < value.length) pieces.push(value.slice(from));
       }
-      if (from < value.length) pieces.push(value.slice(from));
+    } finally {
+      // Whoever was reading may have stopped early, and the API lets go of a stream once nobody's there.
+      reader.cancel().catch(() => undefined);
     }
   }
   /** Every stream of rings this client has open, so an answer leaves them all at once. */

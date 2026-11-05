@@ -33,6 +33,7 @@ export const wsToast = {
   resolved: (onReopen: () => void) => say('check', 'Comment resolved', { label: 'Reopen', onClick: onReopen }),
   addedTo: (document: string, onGo: () => void) => say('check', `Added to ${document}`, { label: 'Go there', onClick: onGo }),
   restoredVersion: (when: string, onUndo: () => void) => say('history', `Restored the version from ${when}`, { label: 'Undo', onClick: onUndo }),
+  restoredBy: (first: string, when: string, onHistory: () => void): WsToastData => ({ icon: 'history', text: `${first} restored the version from ${when}`, action: { label: 'History', onClick: onHistory }, ms: 9000 }),
   restored: () => say('history', 'Restored. Everyone sees it again.'),
   deleted: (name: string) => say('trash', `${name} deleted for good`),
   failed: (text: string) => say('alert', text),

@@ -128,6 +128,11 @@ export function WsReadOnlyBar({ show, organizer }: { show: boolean; organizer: s
   return <Bar show={show} className="wd-ro"><Icon name="eye" size={14} /><span>You can read this. Ask {organizer} to edit.</span></Bar>;
 }
 
+/** What's on the page is a version from History, and nothing can be changed here. `when`: "on Tue 3 Nov". */
+export function WsVersionBar({ when }: { when: string | null }) {
+  return <Bar show={when !== null} className="wd-ro"><Icon name="history" size={14} /><span>You’re reading this as it was {when}. Nothing changes unless you restore it.</span></Bar>;
+}
+
 /** What scrolls under the head and the bars. Scrolling stops following, so pass `onWheel`. */
 export const WsScroll = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function WsScroll({ className, ...rest }, ref) {
   return <div ref={ref} className={cn('wd-scroll', className)} {...rest} />;
