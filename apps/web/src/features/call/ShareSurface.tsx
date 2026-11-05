@@ -121,11 +121,13 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
     const win = el.ownerDocument.defaultView ?? window;
     const read = () => look.measure({ w: el.clientWidth, h: el.clientHeight }, { w: v.videoWidth, h: v.videoHeight });
     read();
-    const ro = new win.ResizeObserver(read);
+    // A new size redraws the view, so it waits for the window's next frame: inside the observer's own turn, the browser reports a loop.
+    let frame = 0;
+    const ro = new win.ResizeObserver(() => { win.cancelAnimationFrame(frame); frame = win.requestAnimationFrame(read); });
     ro.observe(el);
     v.addEventListener('resize', read);
     v.addEventListener('loadedmetadata', read);
-    return () => { ro.disconnect(); v.removeEventListener('resize', read); v.removeEventListener('loadedmetadata', read); };
+    return () => { win.cancelAnimationFrame(frame); ro.disconnect(); v.removeEventListener('resize', read); v.removeEventListener('loadedmetadata', read); };
   }, [look]);
 
   /* The held picture, drawn once it's ready. Until then the one before stays, so nothing flashes. */
