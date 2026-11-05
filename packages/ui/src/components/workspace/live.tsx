@@ -23,34 +23,40 @@ function Written({ children }: { children: ReactNode }) {
 /** Sending something into the document you were last in. `target` is its name, and without `put` the arrows don't show. */
 export interface WsPut { target: string; onPut: (id: string) => void }
 
-function Put({ id, verb, put }: { id: string; verb: 'Add to' | 'Quote in'; put: WsPut }) {
-  const label = `${verb} ${put.target}`;
-  return <button type="button" className="ws-put" aria-label={label} title={label} onClick={() => put.onPut(id)}><Icon name="cornerRight" size={14} /></button>;
+/** The arrow beside a line that sends it into a document. `target` is what the document's called. */
+export function WsPutArrow({ verb, target, onPut }: { verb: 'Add to' | 'Quote in'; target: string; onPut: () => void }) {
+  const label = `${verb} ${target}`;
+  return <button type="button" className="ws-put" aria-label={label} title={label} onClick={onPut}><Icon name="cornerRight" size={14} /></button>;
 }
+const Put = ({ id, verb, put }: { id: string; verb: 'Add to' | 'Quote in'; put: WsPut }) => <WsPutArrow verb={verb} target={put.target} onPut={() => put.onPut(id)} />;
 
 /** Something decided in the call. `at`: when, as the time of day. */
 export interface WsDecision { id: string; text: string; at: string }
 
 /** A to-do from this call, said out loud or written in a document. */
 export interface WsFollowUp {
-  id: string; text: string; done: boolean; person: AvatarPerson;
+  id: string; text: string; done: boolean;
+  /** Who it's for, when anyone said. */
+  person: AvatarPerson | null;
   /** Their first name. */
   name: string;
   /** When it's due, in words: Today, Fri 6 Nov, No date. */
   due: string;
-  /** Where it came from: Said at 14:12, Launch plan, Said at 14:16 · Agenda · 5 Nov. */
+  /** Where it came from: Said at 14:12, Launch plan, Said at 14:16 · Agenda · 5 Nov, Added by hand. */
   source: string;
   /** Opens the line it came from, when it came from a document. */
   onSource?: (() => void) | undefined;
+  /** Someone who can read this and not change it sees the box and can't press it. */
+  locked?: boolean | undefined;
 }
 
 function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick: (id: string) => void; sourced?: boolean | undefined }) {
   const move = useMove();
   return (
     <motion.div className={cn('wl-todo', row.done && 'is-done')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
-      <button type="button" className="wb-box" role="checkbox" aria-checked={row.done} aria-label="Done" onClick={() => onTick(row.id)}><Icon name="check" size={13} /></button>
+      <button type="button" className="wb-box" role="checkbox" aria-checked={row.done} aria-label="Done" disabled={row.locked} onClick={() => onTick(row.id)}><Icon name="check" size={13} /></button>
       <span className="wl-tx">{row.text}{sourced && (row.onSource ? <button type="button" className="src" onClick={row.onSource}>{row.source}</button> : <span className="src">{row.source}</span>)}</span>
-      <span className="who"><Avatar person={row.person} size={18} /><span>{row.name}</span></span>
+      {row.person && <span className="who"><Avatar person={row.person} size={18} /><span>{row.name}</span></span>}
       <span className="wl-due">{row.due}</span>
     </motion.div>
   );
@@ -59,15 +65,17 @@ function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick
 /**
  * Notes, written as people talk: the summary, what's been decided (a time opens the transcript there, an arrow sends the
  * line into a document), and the first follow-ups with a way to all of them. `allFollowUps` is how many are still open.
+ * `notice` says what's holding the notes back, when something is.
  */
-export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, onTime, onTick, onAll }: {
-  summary: string; decided: WsDecision[]; followUps: WsFollowUp[]; allFollowUps: number; put?: WsPut | undefined;
+export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, notice, onTime, onTick, onAll }: {
+  summary: string; decided: WsDecision[]; followUps: WsFollowUp[]; allFollowUps: number; put?: WsPut | undefined; notice?: ReactNode;
   onTime: (id: string) => void; onTick: (id: string) => void; onAll: () => void;
 }) {
   const move = useMove();
   return (
     <LivePage title="Notes">
       <p className="wl-s">Written as people talk, in confidential compute.</p>
+      {notice}
       {summary && <p className="wl-sum">{summary}</p>}
       <div className="wl-h"><span className="ac-eyebrow">Decided</span></div>
       <Written>
@@ -89,26 +97,30 @@ export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, on
 
 /**
  * Follow-ups: everything to do from this call. `mine` filters to yours; `rows` are the ones to show, and the counts are
- * how many there are either way. `draft`, `onDraft` and `onAdd` are the line at the end; Enter adds it.
+ * how many there are either way. `draft`, `onDraft` and `onAdd` are the line at the end, and Enter adds it. Left out for
+ * someone who can't add one. `notice` says what's holding the notes back.
  */
-export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, onTick, draft, onDraft, onAdd }: {
-  mine: boolean; onMine: (mine: boolean) => void; everyoneCount: number; mineCount: number; rows: WsFollowUp[];
-  onTick: (id: string) => void; draft: string; onDraft: (text: string) => void; onAdd: () => void;
+export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, notice, onTick, draft, onDraft, onAdd }: {
+  mine: boolean; onMine: (mine: boolean) => void; everyoneCount: number; mineCount: number; rows: WsFollowUp[]; notice?: ReactNode;
+  onTick: (id: string) => void; draft: string; onDraft: (text: string) => void; onAdd?: (() => void) | undefined;
 }) {
   return (
     <LivePage title="Follow-ups">
       <p className="wl-s">Everything to do from this call, said out loud or written in a document.</p>
+      {notice}
       <div className="wl-seg" role="group" aria-label="Whose">
         <button type="button" aria-pressed={!mine} onClick={() => onMine(false)}>Everyone <span>{everyoneCount}</span></button>
         <button type="button" aria-pressed={mine} onClick={() => onMine(true)}>Mine <span>{mineCount}</span></button>
       </div>
       <Written>{rows.map((f) => <FollowUpRow key={f.id} row={f} onTick={onTick} sourced />)}</Written>
       {rows.length === 0 && <p className="wl-s">{mine ? 'Nothing with your name on it yet.' : 'Nothing to do yet.'}</p>}
-      <div className="wl-add">
-        <Icon name="plus" size={16} />
-        <input type="text" placeholder="Add a follow-up" aria-label="Add a follow-up" value={draft} onChange={(e) => onDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onAdd(); } }} />
-      </div>
+      {onAdd && (
+        <div className="wl-add">
+          <Icon name="plus" size={16} />
+          <input type="text" placeholder="Add a follow-up" aria-label="Add a follow-up" value={draft} maxLength={300} onChange={(e) => onDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); onAdd(); } }} />
+        </div>
+      )}
     </LivePage>
   );
 }
@@ -117,17 +129,19 @@ export function WsFollowUps({ mine, onMine, everyoneCount, mineCount, rows, onTi
 export interface WsSaid { id: string; person: AvatarPerson; name: string; at: string; text: string; flash?: boolean | undefined }
 
 /**
- * Transcript: the whole call so far, with what's being said right now (`now`) at the end. An arrow on a line quotes it
- * into a document. `lines` are the ones that match `query`.
+ * Transcript: the whole call so far, with who's talking right now (`now`) at the end, and their words once they're
+ * written. An arrow on a line quotes it into a document. `lines` are the ones that match `query`. `notice` says what's
+ * holding the transcript back. Each line carries `data-line`, so what opens it here can bring it into view.
  */
-export function WsTranscript({ query, onQuery, lines, now, put }: { query: string; onQuery: (q: string) => void; lines: WsSaid[]; now?: Omit<WsSaid, 'id' | 'at'> | null | undefined; put?: WsPut | undefined }) {
+export function WsTranscript({ query, onQuery, lines, now, put, notice }: { query: string; onQuery: (q: string) => void; lines: WsSaid[]; now?: (Omit<WsSaid, 'id' | 'at' | 'text'> & { text?: string | undefined }) | null | undefined; put?: WsPut | undefined; notice?: ReactNode }) {
   const move = useMove();
   return (
     <LivePage title="Transcript">
       <label className="wl-find"><Icon name="search" size={15} /><input type="text" placeholder="Find in the transcript" aria-label="Find in the transcript" value={query} onChange={(e) => onQuery(e.target.value)} /></label>
+      {notice}
       <Written>
         {lines.map((l) => (
-          <motion.div key={l.id} className={cn('wl-line', l.flash && 'is-flash')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
+          <motion.div key={l.id} data-line={l.id} className={cn('wl-line', l.flash && 'is-flash')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
             <Avatar person={l.person} size={24} />
             <div className="c"><span className="w"><b>{l.name}</b><span className="ac-time">{l.at}</span></span><p>{l.text}</p></div>
             {put && <Put id={l.id} verb="Quote in" put={put} />}
@@ -138,7 +152,7 @@ export function WsTranscript({ query, onQuery, lines, now, put }: { query: strin
       {now && (
         <div className="wl-line is-now">
           <Avatar person={now.person} size={24} />
-          <div className="c"><span className="w"><b>{now.name}</b><Dots className="ws-dots" /></span><p>{now.text}</p></div>
+          <div className="c"><span className="w"><b>{now.name}</b><Dots className="ws-dots" /></span>{now.text && <p>{now.text}</p>}</div>
         </div>
       )}
     </LivePage>
@@ -147,15 +161,17 @@ export function WsTranscript({ query, onQuery, lines, now, put }: { query: strin
 
 /**
  * Notes, Follow-ups and Transcript on a call with notes off: they stay in the list and say why they're empty. Only the
- * organizer can turn notes on, so they get `onTurnOn` and everyone else `onAsk`. `organizer` is their first name.
+ * organizer can turn notes on, so they get `onTurnOn` and everyone else `onAsk`. `organizer` is their first name. Someone
+ * who has asked is told so, and `onTakeBack` takes it back.
  */
-export function WsNotesOff({ organizer, onTurnOn, onAsk }: { organizer: string; onTurnOn?: (() => void) | undefined; onAsk?: (() => void) | undefined }) {
+export function WsNotesOff({ organizer, onTurnOn, onAsk, onTakeBack }: { organizer: string; onTurnOn?: (() => void) | undefined; onAsk?: (() => void) | undefined; onTakeBack?: (() => void) | undefined }) {
   return (
     <div className="wl">
       <EmptyState className="wd-none" title="Notes are off" art={<WsArch />} action={onTurnOn
         ? <Button variant="primary" size="sm" onClick={onTurnOn}>Turn notes on</Button>
-        : onAsk && <Button variant="primary" size="sm" onClick={onAsk}><Icon name="hand" size={15} />Ask {organizer} for notes</Button>}>
-        Nothing from this call is being written down. Your documents work as usual.
+        : onTakeBack ? <Button variant="quiet" size="sm" onClick={onTakeBack}>Take it back</Button>
+          : onAsk && <Button variant="primary" size="sm" onClick={onAsk}><Icon name="hand" size={15} />Ask {organizer} for notes</Button>}>
+        {onTakeBack ? `You asked ${organizer} for notes. Your documents work as usual.` : 'Nothing from this call is being written down. Your documents work as usual.'}
       </EmptyState>
     </div>
   );
