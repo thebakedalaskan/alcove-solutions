@@ -16,7 +16,7 @@ export const BOARD_COMMENTS = 'comments';
 export const BOARD_LIMITS = { objects: 5000, points: 2000, text: 4000, minSide: 16, maxSide: 8000 } as const;
 /** How far from the origin anything can sit. Finite isn't enough: no camera can fit a box 1e308 wide. */
 export const BOARD_REACH = 1_000_000;
-/** The most rows, or columns, in a table, so reading one stays bounded whatever a peer wrote. */
+/** The most rows, or columns, in a table. A write refuses more; a read keeps the first ones, as two people can pass this together. */
 export const TABLE_MAX = 50;
 
 export const STICKY_COLOURS = ['butter', 'peach', 'rose', 'lilac', 'sky', 'mist'] as const;
@@ -69,11 +69,8 @@ const InkSchema = z.object({
 });
 const ImageSchema = z.object({ k: z.literal('image'), ...Placed, media: OutsideIdSchema });
 const ShotSchema = z.object({ k: z.literal('shot'), ...Placed, media: OutsideIdSchema, caption: TextSchema });
-/** `cells` are keyed by `cellKey`, and their text counts together towards the limit on an object's text. */
-const TableSchema = z.object({
-  k: z.literal('table'), ...Placed, rows: TableLinesSchema, cols: TableLinesSchema,
-  cells: z.record(z.string(), z.string()).refine((cells) => Object.values(cells).reduce((n, text) => n + text.length, 0) <= BOARD_LIMITS.text)
-});
+/** `cells` are sparse, keyed by `cellKey`: a cell is there from its first write, and one that isn't reads as empty. The limit on text is each cell's. */
+const TableSchema = z.object({ k: z.literal('table'), ...Placed, rows: TableLinesSchema, cols: TableLinesSchema, cells: z.record(z.string(), TextSchema) });
 const NodeSchema = z.object({ k: z.literal('node'), ...Placed, parent: IdOrNoneSchema, t: TextSchema });
 /** A card pointing at a workspace item. Only its id: a stored name would reach people who can't open the item. */
 const LinkSchema = z.object({ k: z.literal('link'), ...Placed, item: OutsideIdSchema });
@@ -122,10 +119,10 @@ export const cellKey = (row: string, col: string): string => `${row}:${col}`;
 /** The layer an object draws in: frames, then lines, then everything else. */
 export const layerOf = (k: BoardObject['k']): number => (k === 'frame' ? 0 : k === 'line' ? 1 : 2);
 
-/** Text cut to a limit. Never between a surrogate pair: half of one encodes differently, and browsers would disagree. */
-export function cut(text: string, limit: number = BOARD_LIMITS.text): string {
-  if (text.length <= limit) return text;
-  const kept = text.slice(0, limit);
+/** Text cut to the limit. Never between a surrogate pair: half of one encodes differently, and browsers would disagree. */
+export function cut(text: string): string {
+  if (text.length <= BOARD_LIMITS.text) return text;
+  const kept = text.slice(0, BOARD_LIMITS.text);
   return /[\uD800-\uDBFF]$/.test(kept) ? kept.slice(0, -1) : kept;
 }
 

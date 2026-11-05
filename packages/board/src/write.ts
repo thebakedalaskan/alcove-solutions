@@ -2,8 +2,9 @@
  * Every change to a board, each one a single `doc.transact` under the caller's origin, so even something as big
  * as Sort into themes is one undo. A write brings what it's given inside the limits, or refuses it, and checks
  * the result with the schema `readBoard` uses, so nothing written here is left out for anyone. Text people are
- * typing doesn't come through here: that's the object's Y.Text, from `objectText`, and the surface keeps it inside
- * the limit. Only two browsers merging can pass it, which is why `readBoard` cuts text rather than leaving it out.
+ * typing doesn't come through here: that's the object's Y.Text, from `objectText`, and the surface keeps each one
+ * inside the limit. Two browsers merging can still pass it, which is why `readBoard` cuts text rather than leaving it
+ * out.
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt, holds } from './geometry';
@@ -76,7 +77,12 @@ function put(objects: Y.Map<unknown>, o: BoardObject): void {
   }
   if (o.k === 'table') {
     const cells = new Y.Map<Y.Text>();
-    for (const row of o.rows) for (const col of o.cols) cells.set(cellKey(row.id, col.id), new Y.Text(o.cells[cellKey(row.id, col.id)] ?? ''));
+    for (const row of o.rows) {
+      for (const col of o.cols) {
+        const text = o.cells[cellKey(row.id, col.id)];
+        if (text) cells.set(cellKey(row.id, col.id), new Y.Text(text));
+      }
+    }
     m.set('rows', Y.Array.from(o.rows));
     m.set('cols', Y.Array.from(o.cols));
     m.set('cells', cells);
@@ -466,6 +472,8 @@ function tableOf(objects: Y.Map<unknown>, id: string): { rows: Y.Array<unknown>;
   return m?.get('k') === 'table' && rows instanceof Y.Array && cols instanceof Y.Array && cells ? { rows, cols, cells } : null;
 }
 
+const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
+
 function lineIds(lines: Y.Array<unknown>): (string | null)[] {
   return lines.toArray().map((line) => {
     const parsed = TableLineSchema.safeParse(line);
@@ -473,16 +481,13 @@ function lineIds(lines: Y.Array<unknown>): (string | null)[] {
   });
 }
 
-/** Adds a row or column at `index`, with its cells, and returns its id, or null past `TABLE_MAX`. */
+/** Adds a row or column at `index` and returns its id, or null past `TABLE_MAX`. Its cells come to be as they're written. */
 export function addTableLine(doc: Y.Doc, id: string, axis: TableAxis, index: number, size: number, origin: unknown): string | null {
   return writing<string | null>(doc, origin, null, (objects) => {
     const table = tableOf(objects, id);
     if (!table || table[axis].length >= TABLE_MAX || !Number.isFinite(size) || !Number.isFinite(index)) return null;
     const line = newId();
     table[axis].insert(between(0, table[axis].length, Math.round(index)), [{ id: line, size: side(size) }]);
-    for (const other of lineIds(table[axis === 'rows' ? 'cols' : 'rows'])) {
-      if (other) table.cells.set(axis === 'rows' ? cellKey(line, other) : cellKey(other, line), new Y.Text());
-    }
     return line;
   });
 }
@@ -497,9 +502,7 @@ export function removeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: s
     if (!table) return;
     const ids = lineIds(table[axis]);
     for (let i = ids.length - 1; i >= 0; i -= 1) if (ids[i] === line) table[axis].delete(i);
-    for (const key of [...table.cells.keys()]) {
-      if (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`)) table.cells.delete(key);
-    }
+    for (const key of [...table.cells.keys()]) if (inLine(key, axis, line)) table.cells.delete(key);
   });
 }
 
@@ -514,7 +517,10 @@ export function sizeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: str
   });
 }
 
-/** A cell's Y.Text to type in. One row and one column added at the same moment leave a cell neither made: this makes it. */
+/**
+ * A cell's Y.Text to type in, made on its first write. Two people making one cell at the same moment is the cost of
+ * cells being sparse: a Y.Map key has one winner, so one person's words in that cell are lost. Once it exists, words merge.
+ */
 export function tableCell(doc: Y.Doc, id: string, row: string, col: string, origin: unknown): Y.Text | null {
   return writing<Y.Text | null>(doc, origin, null, (objects) => {
     const table = tableOf(objects, id);
