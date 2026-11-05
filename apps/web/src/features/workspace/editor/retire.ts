@@ -113,6 +113,77 @@ function textHolder(element: Y.XmlElement): Y.XmlElement | null {
   return first instanceof Y.XmlElement ? first : null;
 }
 
+/** Nothing in it that anyone said. */
+export function holdsNothing(type: Y.XmlFragment): boolean {
+  if (type instanceof Y.XmlElement && Object.keys(type.getAttributes()).some((key) => key.startsWith('cap:'))) return false;
+  return type.toArray().every((child) => (child instanceof Y.XmlText ? child.length === 0 : !(child instanceof Y.XmlElement) || holdsNothing(child)));
+}
+
+/** What holds text directly. */
+const LINES: ReadonlySet<string> = new Set(['line', 'code', 'toggleSummary', 'toggleBody']);
+
+/**
+ * What undo may delete. Undoing a block's arrival takes out what's in it and leaves the element, for the same reason nothing
+ * else deletes one: someone may be writing in it. It goes the way of any retired block (`retirePlugin`). Only the parts
+ * of a table can go, because undoing an added row has to take the row away, and only if nobody's words are in them.
+ */
+export function undoMayDelete(item: Y.Item, fragment: Y.XmlFragment): boolean {
+  if (!(item.content instanceof Y.ContentType)) return true;
+  const type: unknown = item.content.type;
+  const parent: unknown = item.parent;
+  if (type instanceof Y.XmlText) return !(parent instanceof Y.XmlElement && LINES.has(parent.nodeName)) && type.length === 0;
+  if (!(type instanceof Y.XmlElement) || TAGS.has(type.nodeName)) return true;
+  if (parent === fragment || LINES.has(type.nodeName)) return false;
+  return holdsNothing(type);
+}
+
+/** A stretch of text, by who wrote it, and how far into its block it starts. */
+interface Run { client: number; clock: number; length: number; at: number }
+
+function runsOf(type: Y.XmlElement, counts: (item: Y.Item) => boolean): { runs: Run[]; text: string } {
+  const runs: Run[] = [];
+  let text = '';
+  for (const child of type.toArray()) {
+    if (!(child instanceof Y.XmlText)) { text += OBJECT; continue; }
+    for (let item = child._start; item !== null; item = item.right) {
+      if (!(item.content instanceof Y.ContentString) || !counts(item)) continue;
+      runs.push({ client: item.id.client, clock: item.id.clock, length: item.length, at: text.length });
+      text += item.content.str;
+    }
+  }
+  return { runs, text };
+}
+
+/**
+ * Someone else retired a block this browser typed in, and copied the words somewhere else, as new text of theirs. Undo here
+ * remembers the words it typed, which have just gone, so it would skip them and take back something older instead. This
+ * tells it where those words are now. Read from the change that did it (`tr`), while what it deleted can still be read.
+ */
+export function followUndo(manager: Y.UndoManager, element: Y.XmlElement, into: Y.XmlElement, tr: Y.Transaction, client: number): void {
+  const holder = textHolder(into);
+  if (!holder) return;
+  const was = runsOf(element, (item) => item.deleted && Y.isDeleted(tr.deleteSet, item.id));
+  const now = runsOf(holder, (item) => !item.deleted);
+  const base = now.text.indexOf(was.text);
+  if (base < 0 || was.text === '') return;
+  for (const step of manager.undoStack) {
+    for (const typed of [...(step.insertions.clients.get(client) ?? [])]) {
+      for (const run of was.runs) {
+        const start = Math.max(typed.clock, run.clock), end = Math.min(typed.clock + typed.len, run.clock + run.length);
+        if (run.client !== client || start >= end) continue;
+        const first = base + run.at + start - run.clock, last = first + end - start;
+        for (const there of now.runs) {
+          const from = Math.max(first, there.at), to = Math.min(last, there.at + there.length);
+          if (from >= to) continue;
+          const list = step.insertions.clients.get(there.client) ?? [];
+          list.push({ clock: there.clock + from - there.at, len: to - from });
+          step.insertions.clients.set(there.client, list);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Puts stray words into the block they were meant for and takes them out of where they landed, in one step, so they're in
  * exactly one place. It only ever writes text into something that holds text. If there's nowhere for them it does nothing,

@@ -18,7 +18,7 @@ import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { allBlocks, blockAt, findBlock } from '../commands';
 import { newBlockId } from '../names';
-import { gatherWords, KEPT_ATTRS, retire, strayWords, type StrayWords } from '../retire';
+import { followUndo, gatherWords, holdsNothing, KEPT_ATTRS, retire, strayWords, type StrayWords } from '../retire';
 import type { EditorRuntime } from '../runtime';
 import { blockIdOf, isGone, schema, textAttr } from '../schema';
 import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
@@ -197,8 +197,11 @@ function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; id: string }
   return out;
 }
 
-/** Elements with no ID. An undo takes back the ID of a block it can't take back, because someone else's words are in it. */
-const nameless = (fragment: Y.XmlFragment): Y.XmlElement[] => fragment.toArray().slice(1).flatMap((child) => (child instanceof Y.XmlElement && child.getAttribute('id') === undefined && child.getAttribute('name') === undefined ? [child] : []));
+/** Elements with no ID: an undo took back a block's arrival, and leaves the element (see `undoMayDelete`). */
+const nameless = (fragment: Y.XmlFragment): Y.XmlElement[] => fragment.toArray().slice(1).flatMap((child) => (child instanceof Y.XmlElement && child.getAttribute('id') === undefined ? [child] : []));
+
+/** Writes that only tidy up, so they're no step of anyone's to undo, and don't take away what could be redone. */
+const TIDYING = Symbol('tidying');
 
 /** y-prosemirror's record of which node each element is, cleared for what's inside a block about to change under it. */
 function forget(binding: SyncBinding, type: Y.XmlElement): void {
@@ -264,24 +267,29 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
       let done: readonly Leaving[] = [];
 
       /* Writing here, after the fact, can wait until the change that needs it is over: y-prosemirror keeps track of the selection between them. */
-      const tidy = (strays: readonly StrayWords[], arrived: readonly string[], undone: boolean) => {
+      const tidy = (strays: readonly StrayWords[], arrived: readonly string[], undone: boolean, redone: readonly Y.XmlElement[]) => {
         queueMicrotask(() => {
           if (view.isDestroyed || rt.readOnly || rt.halted) return;
-          const caret = view.state.selection.$head;
-          const was = blockAt(caret);
+          const here = blockAt(view.state.selection.$head)?.node;
           let landed: { id: string; offset: number } | null = null;
           const copies = doubles(fragment);
           const unnamed = undone ? nameless(fragment) : [];
-          if (strays.length > 0 || copies.length > 0 || unnamed.length > 0) {
+          if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0) {
             doc.transact(() => {
               for (const stray of strays) {
                 const into = elementOf(fragment, stray.target);
                 const offset = into ? gatherWords(stray, into.element) : null;
-                if (offset !== null && was?.node.textContent === stray.words) landed = { id: stray.target, offset };
+                if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
               }
               for (const copy of copies) retire(copy.element, newBlockId(), copy.id);
-              for (const element of unnamed) element.setAttribute('id', newBlockId());
-            }, ySyncPluginKey);
+              /* What an undo took out left its element behind: on the page only if someone's words are in it. */
+              for (const element of unnamed) {
+                element.setAttribute('id', newBlockId());
+                if (holdsNothing(element)) element.setAttribute('gone', '');
+              }
+              /* And what a redo puts back is on the page again, even a blank line. */
+              for (const element of redone) element.removeAttribute('gone');
+            }, TIDYING);
           }
           if (landed) {
             const { id, offset }: { id: string; offset: number } = landed;
@@ -299,17 +307,25 @@ export function retirePlugin(rt: EditorRuntime): Plugin {
         if (rt.readOnly || rt.halted || (tr.local && !undone)) return;
         const strays: StrayWords[] = [];
         const arrived: string[] = [];
+        const redone: Y.XmlElement[] = [];
         tr.changed.forEach((keys, type) => {
-          if (!(type instanceof Y.XmlElement) || !keys.has('gone') || type.parent !== fragment) return;
+          if (!(type instanceof Y.XmlElement) || type.parent !== fragment) return;
+          if (tr.origin instanceof Y.UndoManager && tr.origin.redoing && keys.has('id') && !keys.has('gone') && type.getAttribute('gone') !== undefined) redone.push(type);
+          if (!keys.has('gone')) return;
           const gone: unknown = type.getAttribute('gone');
           if (typeof gone !== 'string' || gone === '') return;
           /* All of this has to be read now: what the change deleted is gone when it ends. */
           const stray = strayWords(type, tr, doc.clientID);
           if (stray) strays.push(stray);
-          if (!tr.local && elementOf(fragment, gone)?.element.nodeName === type.nodeName) arrived.push(gone);
+          const into = elementOf(fragment, gone)?.element;
+          const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
+          if (!tr.local && into) {
+            if (undo) followUndo(undo, type, into, tr, doc.clientID);
+            if (into.nodeName === type.nodeName) arrived.push(gone);
+          }
         });
         const touched: ReadonlyMap<unknown, unknown> = tr.changed;
-        if (undone || strays.length > 0 || arrived.length > 0 || touched.has(fragment)) tidy(strays, arrived, undone);
+        if (undone || strays.length > 0 || arrived.length > 0 || touched.has(fragment)) tidy(strays, arrived, undone, redone);
       };
 
       doc.on('afterTransaction', after);

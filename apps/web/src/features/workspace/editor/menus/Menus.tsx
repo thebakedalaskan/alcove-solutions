@@ -6,7 +6,7 @@
 import { Avatar, Icon, cn, type IconName } from '@alcove/ui';
 import { toggleMark } from 'prosemirror-commands';
 import { addColumn, addRow, removeColumn, removeRow, TableMap, type TableRect } from 'prosemirror-tables';
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
@@ -47,7 +47,7 @@ function useMoved(): number {
 }
 
 /** Sits against `anchor`, below it unless there's no room, always inside the window. */
-function Popover({ anchor, className, label, children, onMeasure }: { anchor: Rect; className: string; label?: string | undefined; children: ReactNode; onMeasure?: (() => void) | undefined }) {
+function Popover({ anchor, className, label, role = 'menu', id, children, onMeasure }: { anchor: Rect; className: string; label?: string | undefined; role?: string | undefined; id?: string | undefined; children: ReactNode; onMeasure?: (() => void) | undefined }) {
   const box = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
@@ -61,7 +61,7 @@ function Popover({ anchor, className, label, children, onMeasure }: { anchor: Re
   }, [anchor.left, anchor.top, anchor.bottom, onMeasure, children]);
   return (
     /* Unseen while it's measured, but not `hidden`: what's inside may need focus straight away. */
-    <div ref={box} className={cn('ws-pop', className)} role="menu" aria-label={label} style={at ?? { opacity: 0 }} onMouseDown={(e) => e.preventDefault()}>
+    <div ref={box} id={id} className={cn('ws-pop', className)} role={role} aria-label={label} style={at ?? { opacity: 0 }} onMouseDown={(e) => e.preventDefault()}>
       {children}
     </div>
   );
@@ -75,12 +75,29 @@ function TurnRow({ current, pick }: { current: BlockKind | null; pick: (kind: Bl
   );
 }
 
-/** A list you can move through with the arrow keys. `reset` starts it over when what it lists changes. */
-function ListMenu({ rows, anchor, className, start, reset, caret, onClose }: { rows: Row[]; anchor: Rect; className: string; start: number; reset: string; caret: boolean; onClose: () => void }) {
+/**
+ * A list you can move through with the arrow keys. `reset` starts it over when what it lists changes. A list at the `caret`
+ * is one focus never enters, so the text says which row is active, for screen readers, and a live region says what it is.
+ */
+function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onClose }: { rt: EditorRuntime; rows: Row[]; anchor: Rect; className: string; label: string; start: number; reset: string; caret: boolean; onClose: () => void }) {
   const [index, setIndex] = useState(start);
   const list = useRef<HTMLDivElement>(null);
   const items = rows.filter(isItem);
+  const name = useId();
+  const rowId = (r: Item) => `${name}-${r.key}`;
   useEffect(() => setIndex(start), [reset, start]);
+
+  const active = items[index];
+  const activeId = active ? rowId(active) : null;
+  useEffect(() => {
+    const text = rt.view?.dom;
+    if (!caret || !text) return;
+    text.setAttribute('aria-controls', name);
+    text.setAttribute('aria-expanded', 'true');
+    if (activeId) text.setAttribute('aria-activedescendant', activeId);
+    else text.removeAttribute('aria-activedescendant');
+    return () => { for (const a of ['aria-controls', 'aria-expanded', 'aria-activedescendant']) text.removeAttribute(a); };
+  }, [rt, caret, name, activeId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -115,9 +132,10 @@ function ListMenu({ rows, anchor, className, start, reset, caret, onClose }: { r
     else if (on.offsetTop + on.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = on.offsetTop + on.offsetHeight - box.clientHeight + 6;
   }, [index]);
 
-  const selected = items[index];
+  const selected = active;
   return (
-    <Popover anchor={anchor} className={cn('wm', className)}>
+    <Popover anchor={anchor} className={cn('wm', className)} id={name} label={label} role={caret ? 'listbox' : 'menu'}>
+      {caret && <span className="sr-only" role="status" aria-live="polite">{selected?.label}</span>}
       <div ref={list} className="wm-list">
         {rows.map((r, i) => {
           if (r.kind === 'head') return <div key={`head-${i}`} className="wm-h">{r.label}</div>;
@@ -125,7 +143,7 @@ function ListMenu({ rows, anchor, className, start, reset, caret, onClose }: { r
           if (r.kind === 'text') return <p key={`text-${i}`} className="wm-x">{r.label}</p>;
           if (r.kind === 'turn') return <TurnRow key="turn" current={r.current} pick={r.pick} />;
           return (
-            <button key={r.key} type="button" role="menuitem" className={cn('wm-r', r === selected && 'is-sel', r.className)} onClick={r.run}>
+            <button key={r.key} id={rowId(r)} type="button" role={caret ? 'option' : 'menuitem'} aria-selected={caret ? r === selected : undefined} className={cn('wm-r', r === selected && 'is-sel', r.className)} onClick={r.run}>
               {r.face && <Avatar person={r.face} size={24} />}
               {r.icon && <Icon name={r.icon} size={16} />}
               <span className="t"><span className="l">{r.label}</span>{r.sub && <small>{r.sub}</small>}</span>
@@ -201,12 +219,15 @@ function tableRows(rt: EditorRuntime, block: string): Row[] {
   ];
 }
 
-function blockRows(rt: EditorRuntime, block: string, rect: Rect): Row[] {
+function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boolean): Row[] {
   const ref = rt.view ? findBlock(rt.view.state.doc, block) : null;
   if (!ref) return [];
   const kind = kindOf(ref.node);
   const out: Row[] = [];
-  if (kind) out.push({ kind: 'turn', current: kind, pick: (next) => { rt.menu.set(null); turnInto(rt, block, next); } }, { kind: 'sep' });
+  const turn = (next: BlockKind) => { rt.menu.set(null); turnInto(rt, block, next); };
+  /* The row of kinds is for a pointer. From the keyboard they're rows like the rest. */
+  if (kind && keyboard) out.push(...TURN.filter((t) => t.kind !== kind).map((t): Row => ({ kind: 'item', key: `turn-${t.kind}`, icon: t.icon, label: `Turn into ${t.label.toLowerCase()}`, run: () => turn(t.kind) })), { kind: 'sep' });
+  else if (kind) out.push({ kind: 'turn', current: kind, pick: turn }, { kind: 'sep' });
   out.push(...tableRows(rt, block));
   if (rt.props.onComment && kind) out.push({ kind: 'item', key: 'comment', icon: 'comment', label: 'Comment', run: () => commentOnBlock(rt, block) });
   const known = ref.node.type !== schema.nodes.unsupported;
@@ -301,29 +322,31 @@ function OpenList({ rt, menu }: { rt: EditorRuntime; menu: OpenMenu }) {
   const close = () => {
     if (menu.kind === 'slash' || menu.kind === 'mention') rt.dismissed = menu.from;
     rt.menu.set(null);
+    /* Someone without a pointer goes back to the text, not to a handle that may have gone. */
+    if (menu.kind === 'block' && menu.keyboard) rt.view?.focus();
   };
   switch (menu.kind) {
     case 'slash': {
       const anchor = caretRect(rt, menu.to);
-      return anchor && <ListMenu rows={slashRows(rt, menu)} anchor={anchor} className="is-slash" start={0} reset={menu.query} caret onClose={close} />;
+      return anchor && <ListMenu rt={rt} rows={slashRows(rt, menu)} anchor={anchor} className="is-slash" label="Blocks" start={0} reset={menu.query} caret onClose={close} />;
     }
     case 'mention': {
       const anchor = caretRect(rt, menu.to);
-      return anchor && <ListMenu rows={mentionRows(rt, menu.query, false, (item) => pickMention(rt, menu, item))} anchor={anchor} className="is-mention" start={0} reset={menu.query} caret onClose={close} />;
+      return anchor && <ListMenu rt={rt} rows={mentionRows(rt, menu.query, false, (item) => pickMention(rt, menu, item))} anchor={anchor} className="is-mention" label="People, documents and dates" start={0} reset={menu.query} caret onClose={close} />;
     }
     case 'documents': {
       const anchor = blockRect(rt, menu.block);
       const pick = (item: MentionItem) => { if (item.kind === 'document') pickDocument(rt, menu.block, item.id); };
-      return anchor && <ListMenu rows={mentionRows(rt, '', true, pick)} anchor={anchor} className="is-mention" start={0} reset="" caret onClose={close} />;
+      return anchor && <ListMenu rt={rt} rows={mentionRows(rt, '', true, pick)} anchor={anchor} className="is-mention" label="Documents" start={0} reset="" caret onClose={close} />;
     }
     case 'moment': {
       const anchor = blockRect(rt, menu.block);
-      return anchor && <ListMenu rows={momentRows(rt, menu.block)} anchor={anchor} className="is-moment" start={0} reset="" caret={false} onClose={close} />;
+      return anchor && <ListMenu rt={rt} rows={momentRows(rt, menu.block)} anchor={anchor} className="is-moment" label="Quote what was said" start={0} reset="" caret={false} onClose={close} />;
     }
     case 'block':
-      return <ListMenu rows={blockRows(rt, menu.block, menu.rect)} anchor={menu.rect} className="is-block" start={-1} reset={menu.block} caret={false} onClose={close} />;
+      return <ListMenu rt={rt} rows={blockRows(rt, menu.block, menu.rect, menu.keyboard === true)} anchor={menu.rect} className="is-block" label="Block" start={menu.keyboard ? 0 : -1} reset={menu.block} caret={false} onClose={close} />;
     case 'move':
-      return <ListMenu rows={moveRows(rt, menu.block)} anchor={menu.rect} className="is-block" start={-1} reset={menu.block} caret={false} onClose={close} />;
+      return <ListMenu rt={rt} rows={moveRows(rt, menu.block)} anchor={menu.rect} className="is-block" label="Move this block to" start={0} reset={menu.block} caret={false} onClose={close} />;
     case 'link':
       return <LinkField rt={rt} menu={menu} />;
     default:

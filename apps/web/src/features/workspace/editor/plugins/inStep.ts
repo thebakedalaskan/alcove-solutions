@@ -44,6 +44,15 @@ export function keepInStep(rt: EditorRuntime, view: EditorView): () => void {
   fragment.unobserveDeep(follow);
   fragment.observeDeep(guarded);
   binding._observeFunction = guarded;
-  binding._prosemirrorChanged = (doc) => { if (!rt.readOnly && !rt.halted) write(doc); };
+  binding._prosemirrorChanged = (doc) => {
+    if (rt.readOnly || rt.halted) return;
+    try {
+      write(doc);
+    } catch (err) {
+      elog.error('a change here couldn’t be written to the document, so the page is drawn from it again', { err, blocks: fragment.length });
+      /* After y-prosemirror has let go: it's in the middle of writing. */
+      queueMicrotask(redraw);
+    }
+  };
   return redraw;
 }

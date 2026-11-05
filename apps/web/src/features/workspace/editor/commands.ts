@@ -245,6 +245,11 @@ export const enter: Command = (state, dispatch, view) => {
   const line = $c.parent;
   const here = blockAt($c);
   if (!here) return false;
+  /* What's left isn't a line to split: a selection that ended in a table leaves the caret in a cell. */
+  if (!sel.empty && $c.depth !== 1) {
+    dispatch(tr.scrollIntoView());
+    return true;
+  }
 
   /* --- on its own line is a divider. */
   if (sel.empty && isPlainLine(line) && line.textContent === '---' && line.childCount === 1) {

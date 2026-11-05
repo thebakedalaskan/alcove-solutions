@@ -60,7 +60,8 @@ export type OpenMenu =
   /** Link to a document: documents only, with nothing to take out of the line. */
   | { kind: 'documents'; block: string }
   | { kind: 'moment'; block: string }
-  | { kind: 'block'; block: string; rect: Rect }
+  /** `keyboard`: opened without a pointer, so everything in it can be reached with the arrow keys. */
+  | { kind: 'block'; block: string; rect: Rect; keyboard?: boolean | undefined }
   | { kind: 'move'; block: string; rect: Rect }
   /** Link: the words are held, so the link lands on them whatever happens around them while the field is open. */
   | { kind: 'link'; words: HeldWords; href: string; rect: Rect };

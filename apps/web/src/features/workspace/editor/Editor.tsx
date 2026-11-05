@@ -14,7 +14,7 @@ import { EditorView } from 'prosemirror-view';
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
-import { defaultDeleteFilter, initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
+import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
@@ -33,7 +33,8 @@ import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
 import { newBlockId } from './names';
-import { safeHref, schema, TEXT_NODES, textAttr } from './schema';
+import { undoMayDelete } from './retire';
+import { safeHref, schema, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
 
@@ -43,14 +44,14 @@ const SCROLL_MARGIN = 110;
 const SCROLL_TIME = 420;
 
 /**
- * y-prosemirror's own, but undo may put back an attribute someone else has changed since. Without that, undoing the delete of
- * a block someone else moved can't give it its ID back, and the block and its copy can't be told to be the same block.
+ * y-prosemirror's own, with two differences. Undo leaves elements in place, as everything here does. And it may put back an
+ * attribute someone else has changed since: without that, undoing the delete of a block someone else moved can't give it
+ * its ID back, and the block and its copy can't be told to be the same block.
  */
 function undoManagerFor(fragment: Y.XmlFragment): Y.UndoManager {
-  const kept = new Set(TEXT_NODES);
   return new Y.UndoManager(fragment, {
     trackedOrigins: new Set([ySyncPluginKey]),
-    deleteFilter: (item) => defaultDeleteFilter(item, kept),
+    deleteFilter: (item) => undoMayDelete(item, fragment),
     captureTransaction: (tr) => tr.meta.get('addToHistory') !== false,
     ignoreRemoteMapChanges: true
   });
@@ -126,6 +127,8 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
       }
       return false;
     },
+    /* A link opens from `handleClick`, once. Left alone, the browser would open it as well for someone who can only read. */
+    handleDOMEvents: { click: (_, event) => { if (event.target instanceof Element && event.target.closest('a[href]')) event.preventDefault(); return false; } },
     handleClick(_, __, event) {
       if (!(event.target instanceof Element)) return false;
       const link = event.target.closest('a[href]');

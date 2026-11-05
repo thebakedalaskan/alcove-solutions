@@ -124,7 +124,7 @@ export interface EditorToast { icon: IconName; text: string; label?: string | un
 export interface EditorPresence { block: string | null; typing: boolean }
 
 export interface EditorProps {
-  /** Mount once the first sync is in, or on a new document: an empty document starts from the same seed in every browser. */
+  /** Mount once the first sync is in: every document holds its title and first line from the moment the server makes it. */
   doc: Doc;
   /** Each state may hold `user: { id, name }`; `id` is looked up in `people` for the face. */
   awareness: Awareness;

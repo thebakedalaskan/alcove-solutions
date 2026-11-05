@@ -4,7 +4,7 @@ import { InputRule } from 'prosemirror-inputrules';
 import type { Attrs } from 'prosemirror-model';
 import { TextSelection, type Command } from 'prosemirror-state';
 import { redoCommand, undoCommand } from 'y-prosemirror';
-import { nudgeBlock, openLinkField, startComment } from './actions';
+import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
 import { backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import type { EditorRuntime } from './runtime';
 import { newBlockId } from './names';
@@ -20,7 +20,7 @@ const always = (command: Command): Command => (state, dispatch, view) => { comma
 export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
   Enter: enter,
   'Shift-Enter': lineBreak,
-  'Mod-Enter': exitCode,
+  'Mod-Enter': (state, dispatch, view) => tickLine(rt) || exitCode(state, dispatch, view),
   Backspace: backspace,
   Delete: deleteForward,
   Tab: indent(1),
@@ -34,6 +34,9 @@ export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
   /* With nothing selected, ⌘K is the call's Find anything. */
   'Mod-k': () => openLinkField(rt),
   'Mod-Shift-m': () => startComment(rt),
+  'Mod-/': () => openBlockMenu(rt),
+  /* Tab is indent here, so this is the way out for someone without a pointer. Menus take Esc first. */
+  Escape: () => leaveText(rt),
   'Mod-z': always(undoCommand),
   'Mod-Shift-z': always(redoCommand),
   'Mod-y': always(redoCommand),

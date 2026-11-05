@@ -173,9 +173,16 @@ export function Handles({ rt, root }: { rt: EditorRuntime; root: HTMLElement | n
   return (
     <>
       {!rt.readOnly && at && id && (
-        <div className={cn('wb-gut', hover && !drag && 'is-on')} style={{ top: at.top, left: at.left }} onMouseDown={(e) => e.preventDefault()}>
+        <div
+          className={cn('wb-gut', hover && !drag && 'is-on')} style={{ top: at.top, left: at.left }} onMouseDown={(e) => e.preventDefault()}
+          onBlur={(e) => { if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) rt.hover.set(null); }}
+        >
           <button type="button" className="wb-add" aria-label="Add a block" onClick={() => addBelow(rt, id)}><Icon name="plus" size={15} /></button>
-          <button type="button" className="wb-grip" aria-label="Drag to move, click for options" onPointerDown={(e) => start(e, id)}><Icon name="grip" size={15} /></button>
+          <button
+            type="button" className="wb-grip" aria-label="Drag to move, click for options" onPointerDown={(e) => start(e, id)}
+            /* A press of a key arrives as a click with no pointer behind it. */
+            onClick={(e) => { if (e.detail === 0) rt.menu.set({ kind: 'block', block: id, rect: e.currentTarget.getBoundingClientRect(), keyboard: true }); }}
+          ><Icon name="grip" size={15} /></button>
         </div>
       )}
       {drag && drag.line !== null && <span className="wb-line" style={{ top: drag.line }} />}

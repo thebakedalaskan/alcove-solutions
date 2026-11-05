@@ -6,6 +6,7 @@ import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import { TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import type * as Y from 'yjs';
 import { blockAt, blockLabel, caretInto, findBlock, isBlank, makeBlock, placeBlocks, selectedBlock, turnBlock, allBlocks, type BlockRef } from './commands';
 import { startThread } from './comments';
 import type { SlashId } from './menus/rows';
@@ -14,7 +15,7 @@ import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import { newBlockId } from './names';
 import { retire, seenIn } from './retire';
-import { blockFromJSON, captionKey, hasBlockId, learnAttrs, safeHref, schema } from './schema';
+import { blockFromJSON, captionKey, hasBlockId, learnAttrs, lineKind, safeHref, schema } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -211,15 +212,67 @@ export function removeBlock(rt: EditorRuntime, id: string): void {
   view.dispatch(view.state.tr.delete(ref.pos, ref.pos + ref.node.nodeSize));
 }
 
-/** Delete, in a block's menu: gone at once, with a moment to take it back. */
+/** Delete, in a block's menu: gone at once, with a moment to take it back. The toast takes back this, whatever's been typed since. */
 export function deleteFromMenu(rt: EditorRuntime, id: string): void {
-  const view = rt.view;
-  removeBlock(rt, id);
+  const view = editing(rt);
   rt.menu.set(null);
   if (!view) return;
-  const manager = yUndoPluginKey.getState(view.state)?.undoManager;
+  const manager: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
   manager?.stopCapturing();
-  rt.props.onToast?.({ icon: 'trash', text: 'Block deleted', label: 'Undo', run: () => { manager?.undo(); } });
+  removeBlock(rt, id);
+  manager?.stopCapturing();
+  const step = manager?.undoStack.at(-1);
+  rt.props.onToast?.({
+    icon: 'trash', text: 'Block deleted', label: 'Undo',
+    run: () => {
+      const at = step ? manager?.undoStack.indexOf(step) ?? -1 : -1;
+      if (!manager || !step || at < 0) return;
+      manager.undoStack.splice(at, 1);
+      manager.undoStack.push(step);
+      manager.undo();
+    }
+  });
+}
+
+/** A block's menu, from the keyboard: on the block the caret is in. */
+export function openBlockMenu(rt: EditorRuntime): boolean {
+  const view = editing(rt);
+  const ref = view ? selectedBlock(view.state) : null;
+  const dom = view && ref ? view.nodeDOM(ref.pos) : null;
+  if (!ref?.id || !(dom instanceof Element)) return false;
+  rt.menu.set({ kind: 'block', block: ref.id, rect: dom.getBoundingClientRect(), keyboard: true });
+  return true;
+}
+
+/** Ticks the checklist line the caret is in, or doesn't, for what doesn't have one. */
+export const tickLine = (rt: EditorRuntime): boolean => {
+  const view = editing(rt);
+  const ref = view ? selectedBlock(view.state) : null;
+  if (!view || !ref || lineKind(ref.node) !== 'todo') return false;
+  view.dispatch(view.state.tr.setNodeAttribute(ref.pos, 'done', ref.node.attrs['done'] === true ? null : true));
+  return true;
+};
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Esc: out of the text, to whatever comes after it, because Tab here is indent. That's the handles beside the block the
+ * caret is in, so they can be reached without a pointer, then everything after the page.
+ */
+export function leaveText(rt: EditorRuntime): boolean {
+  const view = rt.view;
+  if (!view) return false;
+  const block = selectedBlock(view.state)?.id;
+  if (block && !rt.readOnly) rt.hover.set(block);
+  /* The handles are there once React has drawn them. */
+  requestAnimationFrame(() => {
+    for (const el of view.dom.ownerDocument.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+      const after = (view.dom.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      if (after && !view.dom.contains(el) && el.getClientRects().length > 0) { el.focus(); return; }
+    }
+    view.dom.blur();
+  });
+  return true;
 }
 
 /** A block as plain data, and what it's called. */

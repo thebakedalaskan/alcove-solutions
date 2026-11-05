@@ -68,7 +68,8 @@ function wholeBlock(name: string): readonly TagParseRule[] {
     getAttrs: (el) => {
       try {
         const attrs = BlockAttrsSchema.parse(JSON.parse(el.getAttribute('data-attrs') ?? '{}'));
-        learnAttrs(schema.nodes[name], attrs);
+        /* Any page can put this on the clipboard, so only what a block is known to carry is kept. */
+        learnAttrs(schema.nodes[name], Object.fromEntries(Object.entries(attrs).filter(([key, value]) => key.startsWith('cap:') && typeof value === 'string')));
         return attrs;
       } catch (err) {
         /* Anyone's page can put anything on the clipboard: this just isn't that block. */
@@ -319,9 +320,6 @@ export function safeHref(href: unknown): string | null {
 /** What Enter makes after these, what Tab can indent, and what a list line is. */
 const LIST_KINDS: ReadonlySet<string | null> = new Set(['bullet', 'numbered', 'todo']);
 export const isListLine = (node: PMNode): boolean => LIST_KINDS.has(lineKind(node));
-/** The blocks whose text someone could be typing in: they're kept when an undo would otherwise remove them under someone else's words. */
-export const TEXT_NODES: ReadonlySet<string> = new Set(['line', 'code', 'toggleSummary', 'toggleBody', 'table_cell', 'table_header', 'title']);
-
 /**
  * A block that gets an ID: everything but the title, and `unsupported`. That one has to stay exactly as it came. Giving
  * it an ID would make it differ from its element, and y-prosemirror would replace the element it can't read with it.
