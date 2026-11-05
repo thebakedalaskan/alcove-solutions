@@ -68,6 +68,7 @@ const EnvSchema = z.object({
   ONECLICK_API_KEY: optional,
   /** The NEAR account whose Intents balance receives every top-up, and every refund. */
   TREASURY_INTENTS_ACCOUNT: optional,
+  /** 1Click's API. Tests point it at their stand-in. */
   ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),

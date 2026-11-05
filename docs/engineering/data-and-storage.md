@@ -30,6 +30,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
+| `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -55,6 +56,12 @@ Every save writes a full new revision with a fresh `Krecord` and compare-and-set
 (`409 conflict` if someone else saved first). Reads decrypt the head revision; listing decrypts every live
 item of a kind. Earlier revisions stay until the item is deleted: correcting a transcript line or changing a
 decision never erases what was there before.
+
+A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
+under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
+route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the provider's whole signed quote,
+and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
+and the provider's reference ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)).
 
 ## Writes, reads and deletes
 
@@ -95,6 +102,9 @@ decision never erases what was there before.
 - **Deleting** is physical, whether it's a note, a meeting or a whole account: rows, receipts and objects
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
+- **Top-ups** are inserted `waiting` when opened and change state only under a row lock, crediting the balance in
+  the same transaction; a final state never changes again. The watcher claims due ones with a one-minute lease
+  (`check_after`) and sets the next check by age.
 - **Credits used this month** are summed from the sealed billing history when the balance is read
   (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).
 

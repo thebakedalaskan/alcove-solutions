@@ -24,7 +24,7 @@ This is the concrete implementation register for the MVP. Engineering pages use 
 
 `I01` selects **NEAR AI Cloud**, `@nearai/inference-sdk` **0.2.1**, source commit `8c66d8e2fdea4e99b277201a9ea5e05ea8295ff1`. Initial `I01M` model candidate: `z-ai/glm-5.3-flash`. Use the stock prepared E2EE helper, a buffered response and an in-memory response-decryption closure. Actual supported model/parameters/pricing and encrypted response route must be checked at build. See [Source evidence](source-evidence.md) for the exact public exports, API contracts and proof limits.
 
-`C01` selects **Phala Cloud Intel TDX / dstack** for the confidential API and a separate confidential meeting VM. `P01` selects **Confidential Intents via NEAR Intents 1Click**, with one exact configured same-asset private route. These are accepted provider trust boundaries. Their supported interfaces still need correct implementation and actual integration evidence.
+`C01` selects **Phala Cloud Intel TDX / dstack** for the confidential API and a separate confidential meeting VM. `P01` selects **NEAR Intents 1Click** for credit top-ups ([1Click as built](#1click-as-built)). These are accepted provider trust boundaries. Their supported interfaces still need correct implementation and actual integration evidence.
 
 ## Meeting and speech stack
 
@@ -50,24 +50,47 @@ The meeting VM runs the ordinary browser, isolated audio daemon, native recorder
 | C01 deploy tooling | `phala` 1.1.22; `@phala/cloud` 0.4.0 | [CLI publisher record](https://registry.npmjs.org/phala/1.1.22), [SDK publisher record](https://registry.npmjs.org/@phala%2fcloud/0.4.0). CLI executable is `phala`; SDK and in-guest dstack SDK have different responsibilities. |
 | Build containers | Docker Buildx 0.38.1 and BuildKit 0.34.1 | [Buildx release](https://github.com/docker/buildx/releases/tag/v0.38.1), [BuildKit release](https://github.com/moby/buildkit/releases/tag/v0.34.1). Lock actual driver, base-image, frontend and builder digests. |
 
-`P01` build candidates are `@defuse-protocol/one-click-sdk-typescript@0.1.26` and `@defuse-protocol/intents-sdk@0.94.0`. The route origin is `https://1click.chaindefuser.com`. `WAL01` selects Sender's desktop browser extension through Wallet Selector 10.1.4 at source commit `b532bcd7bacbe3027f7392b3ac8eb002ddacc19d`, using the native app's temporary loopback bridge and exact `signMessage` payload. Package/API, wallet-signing return checks and final outcome contracts are in [Source evidence](source-evidence.md); actual selected wallet/route compatibility remains Not run.
+`WAL01` selects Sender's desktop browser extension through Wallet Selector 10.1.4 at source commit `b532bcd7bacbe3027f7392b3ac8eb002ddacc19d`, using the native app's temporary loopback bridge and exact `signMessage` payload. Package/API, wallet-signing return checks and final outcome contracts are in [Source evidence](source-evidence.md); actual selected wallet/route compatibility remains Not run.
+
+### 1Click as built
+
+Credit top-ups call 1Click's REST API directly (`apps/api/src/payments/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
+(default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT from
+partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless the key and
+`TREASURY_INTENTS_ACCOUNT` are set.
+
+- `GET /v0/tokens`: intersected with the allowlist of USDC and USDT asset IDs (checked 5 November 2026), cached for
+  10 minutes.
+- `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit at or above the minimum is swapped in full),
+  `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` its minimum in the token's smallest unit,
+  `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
+  `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
+  `deadline` 24 hours ahead, `dry: false`. The whole response, signature included, is kept sealed for disputes.
+- `GET /v0/status?depositAddress=…` (and `depositMemo`): the status, and on `SUCCESS` or `REFUNDED` the
+  `swapDetails` (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited.
+- **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
+  5 minutes until 24 hours after its address expires; a minute after an error.
+- **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one
+  1Click adds 0.25%), paid by the person out of what reaches the treasury. Withdrawing from the Intents balance costs
+  a flat 0.004615 USDC each time, so the treasury withdraws in batches
+  ([Payments and usage › Treasury runbook](../engineering/payments-and-usage.md#treasury-runbook)).
 
 ## Setup order and required configuration
 
 | Step | Configure and record | Completion evidence |
 | --- | --- | --- |
 | 1. Reference desktop | macOS 15+ arm64 reference machine; actual Rust, Xcode, native bridge, key-store, bundled UI and signing configuration | Installed artifact digest and tested desktop/tool tuple |
-| 2. Provider accounts | C01 confidential-compute account; I01 supplier account and manually funded usable capacity; P01 partner/merchant authentication and supported wallet route | Access check without exposing secrets; confirmed supplier capacity and selected payment route |
+| 2. Provider accounts | C01 confidential-compute account; I01 supplier account and manually funded usable capacity; P01 partner key and the treasury's NEAR Intents account | Access check without exposing secrets; confirmed supplier capacity and the treasury account |
 | 3. Build lock | Workspace/package/native lockfiles, base-image references, model revisions, actual digests and immutable API/meeting images | Successful builds and dependency/native/model manifest |
 | 4. Ciphertext stores | Private D01 database and O01 bucket; scoped credentials; daily backup with seven-day retention | Write/read/conditional/delete/restore checks; no public bucket or content logging |
 | 5. C01 deployment | API and meeting application IDs, accepted OS/node/instance configuration, measurements, verified channel/key binding, distinct service-seal paths | Actual attestation and permitted secret bootstrap; invalid evidence rejected |
 | 6. Sign-in and keys | Google and Microsoft OAuth clients and the OIDC SSO configuration; `KMASTER` released only to the attested API VM | Verified sign-in, session expiry, cross-owner and ciphertext tests |
 | 7. I01 route | Canonical model ID, approved endpoint, SDK/source integrity, request/receipt handling, supplier funding and deadlines | Actual protected request, cited usable answer and truthful expense/verification state |
-| 8. P01 pack | Actual catalog asset ID/decimals, input atomic amount, merchant recipient/refund identities, pack price/credits, quote expiry, fees and wallet bridge | Real supported SUCCESS outcome linked to original purchase; once-only credit and retry checks |
+| 8. P01 top-ups | `ONECLICK_API_KEY` and `TREASURY_INTENTS_ACCOUNT`; the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only credit and retry checks |
 | 9. Meet route | Guest-enabled meeting permission, visible attendee name, actual browser/media egress, frozen source selectors and local speech image | Host-admitted actual remote audio, stop/leave, timed encrypted transcript and import |
 | 10. Release rehearsal | The linked engineering acceptance checklist and MVP task dependencies | Real purchase → documents → paid chat → actual meeting → cross-source answer → private receipt/storage inspection |
 
-The reference pack is 10.00 units of the selected asset for 10,000 service credits. Resolve its actual token ID and decimal precision from the supported catalog; the number is not an invented token contract or a guaranteed dollar peg. Merchant receipts and retail credits remain separate from supplier funding.
+Credits are bought at the tiers in [Payments and usage › Pricing](../engineering/payments-and-usage.md#pricing): 10 USDC buys 10,000 credits. Retail credits remain separate from supplier funding.
 
 Secrets belong in native protected storage or the verified confidential bootstrap/service seal. Never paste provider credentials, wallet material, content or private accounting into Notion, build arguments, ordinary environment files or logs. Exact deployment, native cryptography, media build and provider recipes are in [Source evidence](source-evidence.md).
 

@@ -175,9 +175,71 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
   });
 }
 
-/** Checks the deposits that are due and records what their providers say. Claims nothing yet. */
-export function watch(_d: Deps): Promise<{ checked: number; credited: number }> {
-  return Promise.resolve({ checked: 0, credited: 0 });
+/** How many due deposits one watcher pass takes on. */
+const WATCH_BATCH = 20;
+const Due = z.object({ owner_id: z.string(), deposit_id: z.string(), state: TopUpStateSchema, record_ciphertext: bytea, created_at: timestamp, given_up: z.boolean() });
+
+/**
+ * Past `give_up_at`, with no provider call: still waiting, nothing came and it has expired; still arriving or short,
+ * something is stuck, so it fails with an error log and reaches support instead of being checked forever.
+ */
+function giveUp(d: Deps, ownerId: string, depositId: string, provider: string): Promise<TopUpState | undefined> {
+  return tx(d.pool, async (c) => {
+    const r = await maybeOne(c, z.object({ state: TopUpStateSchema }), 'SELECT state FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+    if (!r || !isOpen(r.state)) return r?.state;
+    const state: TopUpState = r.state === 'waiting' ? 'expired' : 'failed';
+    await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
+    if (state === 'failed') dlog.error('top-up failed', { depositId, provider, was: r.state });
+    else dlog.info('top-up expired', { depositId, provider });
+    return state;
+  });
+}
+
+/**
+ * One pass of the watcher (server.ts runs it every 5 seconds). It claims up to 20 due deposits in one statement,
+ * pushing each one's next check 60 seconds ahead as a lease, so another API instance's pass skips them. Each is then
+ * given up on past `give_up_at`, or checked with its provider and the answer applied, and its next check set by its
+ * age: every 10 seconds for 15 minutes, every minute until 2 hours, then every 5 minutes until `give_up_at`. When the
+ * provider can't answer, the state stays (logged at warn) and it's asked again in a minute.
+ */
+export async function watch(d: Deps): Promise<{ checked: number; credited: number }> {
+  const all = depositProviders(d.cfg);
+  if (!all) return { checked: 0, credited: 0 };
+  const due = await rows(d.pool, Due, `
+    UPDATE deposits SET check_after = now() + interval '60 seconds'
+    WHERE (owner_id, deposit_id) IN (
+      SELECT owner_id, deposit_id FROM deposits WHERE state IN ('waiting','arriving','short') AND check_after <= now()
+      ORDER BY check_after LIMIT $1 FOR UPDATE SKIP LOCKED)
+    RETURNING owner_id, deposit_id, state, record_ciphertext, created_at, give_up_at <= now() AS given_up`, [WATCH_BATCH]);
+  const done = await Promise.all(due.map(async (r): Promise<TopUpState | undefined> => {
+    const depositId = r.deposit_id;
+    try {
+      if (!isOpen(r.state)) return r.state;
+      const rec = record(d, r.owner_id, r);
+      const provider = rec.route.provider;
+      if (r.given_up) return await giveUp(d, r.owner_id, depositId, provider);
+      let check: DepositCheck;
+      try {
+        check = await all[provider].check(opened(rec), r.state);
+      } catch (e) {
+        dlog.warn('top-up check failed', { depositId, provider, err: e });
+        await exec(d.pool, "UPDATE deposits SET check_after = now() + interval '60 seconds' WHERE owner_id = $1 AND deposit_id = $2", [r.owner_id, depositId]);
+        return r.state;
+      }
+      const state = await apply(d, r.owner_id, depositId, check);
+      await exec(d.pool, `
+        UPDATE deposits SET check_after = LEAST(give_up_at, now() + CASE
+          WHEN now() - created_at < interval '15 minutes' THEN interval '10 seconds'
+          WHEN now() - created_at < interval '2 hours' THEN interval '60 seconds'
+          ELSE interval '5 minutes' END)
+        WHERE owner_id = $1 AND deposit_id = $2`, [r.owner_id, depositId]);
+      return state;
+    } catch (e) {
+      dlog.error('top-up not watched', { depositId, err: e });
+      return undefined;
+    }
+  }));
+  return { checked: due.length, credited: done.filter((s) => s === 'credited').length };
 }
 
 /** Top-ups still open, and the last 10 finished, newest first. */
