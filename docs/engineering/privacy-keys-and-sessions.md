@@ -272,10 +272,11 @@ purpose `invite`.
 - **How far it reaches.** Anyone can invite any address, so what lands on someone's Home is bounded: Upcoming lists
   other people's calls only for the next 90 days, though a call further out can still be opened and answered, and an
   account makes at most 30 calls a minute, however it makes them.
-- **What someone invited sees:** the call as the organizer scheduled it, the organizer, and how everyone has
-  answered, as counts. Up to 25 people invited they see who, with their addresses; past that, only how many. They
-  don't get the call's note, its calendar link, or a series' own link, unless the call is on a calendar, whose
-  invitation carries that link. They see how a series repeats; the rest of the series is its organizer's.
+- **What someone invited sees:** the call as the organizer scheduled it, the organizer, how everyone has answered, as
+  counts, and what was [brought to it](#brought-to-a-call). Up to 25 people invited they see who, with their addresses;
+  past that, only how many. They don't get the call's note, its calendar link, or a series' own link, unless the call is
+  on a calendar, whose invitation carries that link. They see how a series repeats; the rest of the series is its
+  organizer's.
 - **Answering** (`POST /v1/meetings/:id/answer`) seals the answer into the person's row under the organizer's keys,
   bound to that call and that person's hash, so it can't be moved to another row. It's padded, so all three answers
   are the same length. It keeps no receipt: the response is the organizer's call, which a receipt under the person
@@ -445,6 +446,29 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   ([Data and storage › Live traffic](data-and-storage.md#live-traffic)), and each stream looks again. A change that's being
   made is checked under the workspace's lock, so nothing gets in after someone is taken out.
 
+### Brought to a call
+
+`modules/documents.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
+
+- **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
+  workspace, as each tree shows it to them, without folders or what's in Trash. A workspace with nothing to bring isn't
+  listed. Someone outside a workspace who was given something sees that, with no name for the workspace. A seat in a call
+  adds nothing: it ends with the call, and the call being brought to is another one.
+- **On a call**, everyone who can read it is told each document's kind and whose it is, by first name, and its name only
+  if they can open it, worked out on every read. That's the one thing anyone is told about something they can't open, and
+  the organizer is the one telling them: they could reach it when they brought it. It opens nothing, and it's a first name
+  and never an address, the same whether its maker is still in the workspace or has deleted their account. Something
+  nobody in particular made says nobody's name.
+- **Refusals.** An ID in a request is only ever compared with the organizer's library. It reaches no workspace, so a
+  made-up one, a real one they can't open, a folder and something in Trash are all refused alike (`400 invalid`), in the
+  same time, and nothing anyone guessed gets onto a call, where it would say whose it is.
+- **Losing something.** A document the organizer loses after bringing it stays on the call, with no name for them either,
+  until they take it off: it doesn't stop them changing the call, and they can't bring it back once it's off, or to another
+  call. Something in Trash or gone isn't listed for anyone, and restored, it's back. A workspace that can't be read leaves
+  its documents off the call and is logged by its ID, and the call opens as usual.
+- **Guests** see none of it: a call pass reaches no library and no meeting, and neither a call's state nor its card says
+  what was brought. What a guest can read of a workspace is what's shared with their seat.
+
 ## Requests
 
 - **Origin and content type.** Every state-changing request under `/v1` must carry `Origin: WEB_ORIGIN`
@@ -470,7 +494,8 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   (`401 unauthenticated`).
   What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
   every one of those answers is only an ID or a yes: a receipt filed under someone in a workspace outlives whatever it
-  was about, so it can't hold a name. What a guest in a call can reach of a workspace keeps none: renaming an item,
+  was about, so it can't hold a name. A call's answer does hold the names of what was brought to it, so its receipt keeps
+  the call without them: a retry gets `documents` empty, and the next read has them. What a guest in a call can reach of a workspace keeps none: renaming an item,
   which happens as a title is typed, restoring one, and reading. Each sets an explicit state, and a guest has no account
   to file a receipt under. Nor does anything about a document's content: an update that arrives twice changes nothing,
   and a receipt would hold a copy of it.
@@ -487,7 +512,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
   series): 20 a minute per account, together (during a call, per connection to it, and asking about earlier calls per
   account). What carries over into a call: 60 a minute per account. Opening a moment of a call's
   live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Changes to a workspace's tree and people: 600 a
-  minute per person, opening its stream 120, making a workspace 20 per account and reading your list of them 120. Document
+  minute per person, opening its stream 120, making a workspace 20 per account, and reading your list of them, your library or changing what a call brings 120 together, since each opens every workspace you're in. Document
   updates: 1,200 a minute per person, and 64 MiB of them; carets 1,800; saying where you are 600; opening a document's stream
   240; reading a version 60; reading everything you can open for search 12. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen

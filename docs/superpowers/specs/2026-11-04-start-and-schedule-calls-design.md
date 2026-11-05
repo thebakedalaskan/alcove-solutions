@@ -65,8 +65,6 @@ The canvas shows where this is going. The app shows only what works, so these wa
 
 - **Questions with votes** on big calls. They need their own end-to-end encrypted message model. Big calls get join muted
   now; guests already wait to be let in.
-- **Documents for real accounts.** Workspaces are #81. Demo accounts get a sample catalog; everyone else gets a designed
-  empty state.
 - **Other people's working hours and time zones.** "09:00 for Sam" on the canvas needs a zone Alcove doesn't have, so
   suggestions use the organizer's 9 to 17.
 - **Ringing someone with no Alcove tab open.** That needs web push (#88). Until then the ring ends unanswered, and
