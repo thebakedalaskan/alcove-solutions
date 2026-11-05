@@ -49,7 +49,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
-| Device key | 256-bit AES-GCM, made in the browser the first time a room recording is kept there (`crypto.subtle.generateKey`, not extractable) | That browser's IndexedDB (`alcove-offline`), never sent anywhere; seals what [this device keeps](#on-this-device) and is deleted with the last of it |
+| Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, and the first time an edit, is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding the recordings' database never has to give way to the edits' | That browser's IndexedDB (`alcove-offline`, `alcove-edits`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
@@ -584,6 +584,14 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   recording ID), and Alcove's refusal message if it gave one. The key can't be exported, but it sits in the same
   browser profile as what it seals: this protects against reading the files, not against someone using that
   browser profile signed in as the account.
+- **Edits waiting to reach Alcove** (IndexedDB `alcove-edits`, `KeptEditSchema`): each Yjs update a document's session
+  hasn't had confirmed, sealed with AES-GCM under the [device key](#key-inventory), a fresh 12-byte IV each, with the
+  account, workspace, document and order bound in as additional data. In the clear: those IDs, the order and the size.
+  It's deleted once Alcove has the update, and signing out, or deleting the account, on this browser deletes what's kept
+  for it, and the key with the last of anyone's.
+- **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
+  the workspace and documents last open and of the folders left open, and whether the list is hidden. Nothing readable.
+  Signing out, or deleting the account, on this browser deletes it.
 - **Which notifications have shown** (`localStorage` `alcove.notified.<ownerId>`, `NotifiedStoredSchema`): a key of
   each one's kind and IDs and when it showed, for a day, with no titles, names or text. Signing out, or deleting the
   account, on this browser deletes all of them, and closes the notifications still showing, so no title stays in
