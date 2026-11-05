@@ -150,7 +150,7 @@ export interface BoardBarProps {
 export function BoardBar({ name, seal = 'Sealed', sealIcon = 'sealed', zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
   onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
   return (
-    <div className={cn('bd-head', faded && 'is-faded', className)}>
+    <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       <button type="button" className="nm" title="Rename, move or copy this board" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>
       {seal && <button type="button" className="sv" title="Sealed. Alcove can’t read this board." onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
       <span className="sp" />
