@@ -227,25 +227,32 @@ describe('top-ups', () => {
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', address: addr(t) });
   });
 
-  it('expires a deposit nothing arrived at, and fails one stuck arriving', async () => {
+  it('asks 1Click once more at the deadline: credits a late payment, expires an empty one, fails a stuck one', async () => {
     const { api } = await account();
     const quiet = await api.credits.startTopUp(BASE_USDC);
     const stuck = await api.credits.startTopUp(BASE_USDC);
+    const late = await api.credits.startTopUp(BASE_USDC);
+    const sealed = await api.credits.startTopUp(BASE_USDC);
     h.oneclick.set(addr(stuck), 'PROCESSING');
     expect(await api.credits.topUp(stuck.id)).toMatchObject({ state: 'arriving', address: null });
-    const asked = h.oneclick.apiKeys.length;
+    h.oneclick.set(addr(late), 'SUCCESS', { depositedAmount: '12000000', amountOut: '12000000', intentHashes: ['hw12'] });
+    // A record that no longer opens can't be asked about: it fails rather than being retried for ever.
+    await h.pool.query("UPDATE deposits SET record_ciphertext = '\\x00' WHERE deposit_id = $1", [sealed.id]);
     const from = h.logs.length;
-    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = ANY($1)", [[quiet.id, stuck.id]]);
-    await dueOnly(quiet.id, stuck.id);
-    expect(await watch(h.deps)).toEqual({ checked: 2, credited: 0 });
-    expect(h.oneclick.apiKeys.length).toBe(asked);
+    const ids = [quiet.id, stuck.id, late.id, sealed.id];
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = ANY($1)", [ids]);
+    await dueOnly(...ids);
+    expect(await watch(h.deps)).toEqual({ checked: 4, credited: 1 });
     expect(await api.credits.topUp(quiet.id)).toMatchObject({ state: 'expired', address: null, received: null });
     expect(await api.credits.topUp(stuck.id)).toMatchObject({ state: 'failed', address: null, received: null });
+    expect(await api.credits.topUp(late.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '12', credits: 12_000 } });
+    expect((await h.pool.query<{ state: string }>('SELECT state FROM deposits WHERE deposit_id = $1', [sealed.id])).rows[0]?.state).toBe('failed');
     const lines = logsSince(from);
     expect(lines.some((l) => l.level === 50 && l.line.includes(stuck.id))).toBe(true);
+    expect(lines.some((l) => l.level === 50 && l.line.includes(sealed.id))).toBe(true);
     expect(lines.some((l) => l.level === 50 && l.line.includes(quiet.id))).toBe(false);
     expect(lines.filter((l) => l.line.includes('canary-deposit-address'))).toEqual([]);
-    expect((await api.credits.balance()).balance).toBe(10_000);
+    expect((await api.credits.balance()).balance).toBe(10_000 + 12_000);
   });
 
   it('keeps checking when 1Click is down', async () => {

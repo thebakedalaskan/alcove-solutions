@@ -69,7 +69,7 @@ partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. To
 - `GET /v0/status?depositAddress=…` (and `depositMemo`): the status, and on `SUCCESS` or `REFUNDED` the
   `swapDetails` (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
-  5 minutes until 24 hours after its address expires; a minute after an error.
+  5 minutes until 24 hours after its address expires, when it's asked a last time; a minute after an error.
 - **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one
   1Click adds 0.25%), paid by the person out of what reaches the treasury. Withdrawing from the Intents balance costs
   a flat 0.004615 USDC each time, so the treasury withdraws in batches

@@ -30,7 +30,7 @@ So 10 USDC buys 10,000 credits, 45 buys about 50,000 and 80 about 100,000, less 
 | Top-up routes (`GET /v1/credits/routes`) | Working. USDC on NEAR, Ethereum, Base, Arbitrum, Solana, Polygon, BNB Chain, Optimism and Avalanche, and USDT on NEAR, Ethereum, Solana, Tron, Polygon, BNB Chain, Optimism and Avalanche, while 1Click lists them, with the tiers. A server without `ONECLICK_API_KEY` and `TREASURY_INTENTS_ACCOUNT` answers `unavailable` on every top-up endpoint |
 | Opening a top-up (`POST /v1/credits/top-ups`) | Working. A 1Click quote paying the treasury gives a one-off deposit address on the route's chain, open for 24 hours; the deposit is kept sealed under `Kservice` (`deposits`, record kind `deposit`) |
 | Crediting a top-up | Working. On `SUCCESS` or `REFUNDED`, what reached the treasury (the USDC out, plus a refund of at least 1 USD) is credited at the tier's rate, in the transaction that marks the deposit `credited`, under its row lock: once, however many checks race. Nothing creditable is `held`; `FAILED` is `failed`, logged at error |
-| Watching top-ups | Working. The API checks every open deposit with 1Click (no webhook): every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes. Opening a top-up in the app also checks it, at most every 5 s. 24 hours after its address expires, a deposit nothing reached is `expired`, and one still arriving is `failed` |
+| Watching top-ups | Working. The API checks every open deposit with 1Click (no webhook): every 10 s for 15 minutes, every minute until 2 hours, then every 5 minutes. Opening a top-up in the app also checks it, at most every 5 s. 24 hours after its address expires, 1Click is asked once more: a finished swap is credited as usual, a deposit nothing reached is `expired`, and one still arriving (or whose record no longer opens) is `failed` |
 | Adding credits in the app | Not built |
 
 ## Design to implement
@@ -55,9 +55,10 @@ So 10 USDC buys 10,000 credits, 45 buys about 50,000 and 80 about 100,000, less 
    can still be sent to it (`waiting`, `short`). An address is for one payment.
 3. **Watching.** The watcher (`watch` in `modules/deposits.ts`, run every 5 s from `server.ts`, one pass at a time)
    claims up to 20 due deposits with `FOR UPDATE SKIP LOCKED`, pushing their next check a minute ahead so another
-   API instance skips them, then asks 1Click's `/v0/status` about each and records the answer. `GET /v1/credits/top-ups/:id`
+   API instance skips them, then asks 1Click's `/v0/status` about each, 4 at a time, and records the answer. `GET /v1/credits/top-ups/:id`
    checks the same way. 1Click being down leaves a deposit as it was, logged at warn, and it's asked again in a
-   minute. An unknown status is logged at warn and the deposit stays open.
+   minute. An unknown status is logged at warn and the deposit stays open. At the deadline (24 h after the address
+   expires) 1Click is asked a last time; anything but a finished swap gives up on the deposit (below).
 4. **Credit.** When the swap settles, the deposit's state and the balance change in one transaction with the
    deposit row locked (then the billing row), so a deposit credits at most once. The history entry reads
    "Credits added, 25 USDC".
@@ -69,8 +70,8 @@ So 10 USDC buys 10,000 credits, 45 buys about 50,000 and 80 about 100,000, less 
 | `INCOMPLETE_DEPOSIT` | `short` | keep watching |
 | `SUCCESS`, `REFUNDED` | `credited`, or `held` when nothing creditable arrived (a refund under 1 USD) | done |
 | `FAILED` | `failed` | done; logged at error |
-| none 24 h after the address expires | `expired` | done |
-| still `arriving` or `short` then | `failed` | done; logged at error |
+| none at the last check, 24 h after the address expires (or 1Click can't answer it) | `expired` | done |
+| still `arriving` or `short` then, or the deposit's record no longer opens | `failed` | done; logged at error |
 
 Logs about a deposit carry its ID, provider, states, counts and durations, never the address, amounts, hashes or
 the quote. Deleting an account deletes its deposits; a payment still on its way reaches the treasury and is
