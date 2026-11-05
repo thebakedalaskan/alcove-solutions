@@ -185,7 +185,14 @@
 .dec.superseded .t, .dec.ques.answered .t { color: var(--ink-3); }
 .dec-s, .act-s { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
 .dec.confirmed .dec-s { color: var(--ink-2); }
-.dec-s .ac-i { margin-right: -7px; color: var(--sun-text); }
+.dec-s > .ac-i { margin-right: -7px; color: var(--sun-text); }
+/* Where a decision stands, in words as well as colour: dashed until someone agrees, solid once they have. */
+.dec-state { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid transparent; border-radius: 7px; font: 600 12px/1 var(--font-sans); white-space: nowrap; color: var(--ink-3); }
+.dec.proposed .dec-state { border: 1px dashed var(--line-control); }
+.dec.confirmed .dec-state { background: var(--sun-soft); color: var(--sun-text); }
+.dec.rejected .dec-state, .dec.superseded .dec-state { background: var(--sunk); }
+.dec-hint { font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.dec-a { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 14px; min-height: 22px; }
 .lk { font: 600 13px/1.45 var(--font-sans); color: var(--sun-text); border-radius: 6px; }
 .lk:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lk.quiet { color: var(--ink-3); }
@@ -197,9 +204,38 @@
 .act-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; padding: 6px 12px 8px; }
 .act-field label { grid-column: 1 / -1; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
 .act-field .ac-input { height: 36px; font-size: 14px; }
-.act-hist { display: grid; gap: 6px; padding: 4px 12px 10px; margin: 0; list-style: none; }
-.act-hist li { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-2); }
-.act-hist .ac-mono { flex: none; font-size: 11.5px; color: var(--ink-3); }
+.act-note { padding: 6px 12px 8px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.due.maybe { color: var(--ink-3); font-style: italic; }
+.ac-check:disabled { opacity: .45; cursor: default; }
+/* What every entry shares: what backs it, what to be careful of, and who changed it. */
+.ent-said { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--sunk); color: var(--ink-2); font: 500 12px/1 var(--font-sans); white-space: nowrap; transition: box-shadow var(--duration-1), color var(--duration-1); }
+.ent-said:hover { box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink); }
+.ent-flag { display: inline-flex; align-items: center; gap: 5px; min-height: 22px; padding: 3px 8px; border-radius: 7px; background: var(--caution-soft); color: var(--caution); font: 500 12px/1.25 var(--font-sans); overflow-wrap: anywhere; }
+.ent-flag .ac-i { flex: none; margin: 0; color: currentColor; }
+.ent-icon { width: 26px; height: 26px; margin: -2px 0; }
+.ent-pop { width: 340px; max-width: calc(100vw - 32px); max-height: min(420px, 70vh); overflow-y: auto; }
+.ent-ms { display: grid; gap: 12px; padding: 8px 10px 10px; margin: 0; list-style: none; }
+.ent-m { display: grid; gap: 3px; min-width: 0; font-size: 14px; line-height: 1.45; color: var(--ink); }
+.ent-m .who { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); }
+.ent-m .who b { font: 600 13px/1.3 var(--font-sans); }
+.ent-m .who .ac-i { flex: none; }
+.ent-m p { overflow-wrap: anywhere; text-wrap: pretty; }
+.ent-m small { font-size: 12.5px; color: var(--ink-3); }
+.ent-m.against small { color: var(--caution); }
+.ent-m.against { padding-left: 10px; box-shadow: inset 2px 0 0 var(--caution); }
+.ent-hist { display: grid; gap: 10px; padding: 6px 12px 10px; margin: 0; list-style: none; }
+.ent-hist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.ent-hist .ac-mono { font-size: 11.5px; line-height: 18px; color: var(--ink-3); white-space: nowrap; }
+.ent-hist .was, .ent-hist small { grid-column: 1 / -1; color: var(--ink-3); overflow-wrap: anywhere; }
+.ent-hist small { font-size: 12px; }
+.ent-add { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin-top: 6px; border-radius: 6px; font: 600 13px/1.45 var(--font-sans); color: var(--ink-3); transition: color var(--duration-1); }
+.ent-add:hover { color: var(--ink); }
+.ent-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px 12px; align-items: center; margin-top: 10px; padding-top: 12px; border-top: 1px solid var(--line); animation: ent-in var(--duration-2) var(--ease-out) both; }
+.ent-form .ac-input { height: 38px; font-size: 15px; }
+.ent-form p { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+@keyframes ent-in { from { opacity: 0; transform: translateY(4px); } }
+.sec-none { padding: 12px 0 2px; border-top: 1px solid var(--line); font-size: 15px; color: var(--ink-3); }
+.ln-add-pop { width: 240px; }
 .tr-toggle .ac-i { transition: transform var(--duration-2) var(--ease-out); }
 .tr-toggle[aria-expanded="true"] .ac-i { transform: rotate(180deg); }
 .tr { display: grid; }
@@ -355,6 +391,10 @@
   .act { grid-template-columns: 20px minmax(0, 1fr) 36px; row-gap: 8px; }
   .act .act-more { grid-column: 3; grid-row: 1; }
   .act .act-who, .act .due { grid-column: 2; justify-self: start; text-align: left; min-width: 0; }
+  .act .act-who { flex-wrap: wrap; }
+  .act .due:empty { display: none; }
+  .ent-form { grid-template-columns: minmax(0, 1fr) auto; }
+  .ent-form .ac-input { grid-column: 1 / -1; }
   .confirm { grid-template-columns: 1fr; }
   /* Above the tab bar there's no room for an ask bar that stays: it waits at the end of the note. */
   .ask { position: static; }

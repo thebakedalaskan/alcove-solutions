@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch } from '@alcove/api';
+import { errorCode, type ActionPatch, type ActionProposal, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch } from '@alcove/api';
 import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
@@ -260,13 +260,36 @@ function changed(qc: QueryClient, n: { id: string }) {
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.allSeries });
 }
-/** A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. */
+/**
+ * A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. One that changed since it
+ * was read refused what was asked of it, so it's read again, and the person sees what it says now.
+ */
 const gone = (qc: QueryClient, e: unknown) => {
-  if (errorCode(e) !== 'not-found') return;
+  const code = errorCode(e);
+  if (code === 'conflict') for (const queryKey of [qk.notes, qk.allSeries]) void qc.invalidateQueries({ queryKey });
+  if (code !== 'not-found') return;
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.inbox });
 };
-/** Confirms, rejects, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
+/** Adds a decision the notes didn't hear, in the reader's words; the answer is the note as it is now. */
+export function useProposeDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: DecisionProposal }) => api.notes.proposeDecision(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Adds a follow-up the notes didn't hear; the answer is the note as it is now. */
+export function useProposeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: ActionProposal }) => api.notes.proposeAction(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Confirms, rejects, disputes, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
 export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
@@ -283,7 +306,7 @@ export function useUpdateQuestion() {
     onSuccess: (n) => changed(qc, n)
   });
 }
-/** Takes on, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
+/** Takes on, turns down, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
 export function useUpdateAction() {
   const qc = useQueryClient();
   return useMutation({
