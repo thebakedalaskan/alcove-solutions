@@ -50,6 +50,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
+| `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
@@ -383,8 +384,9 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   invalid`, with how big one can be, "This file is bigger than 512 MiB, the most a file can be.", because only the server
   knows; a full workspace with `409 conflict`, "This workspace is full, so it can’t take more files."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A limit of zero refuses everything with
-  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, so
-  it survives a restart; a guest's is in the API's memory, by the person their pass names, because they have no account. A piece
+  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
+  a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
+  instance counts the same day, and a restart forgets nothing. A piece
   that takes a workspace or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
 - **Reuse.** `attach` puts a file in another document of the workspace, for someone who can edit that document and can
   already reach the file, and a copy of a document has what the original has, in the transaction that makes it. It's still one
@@ -624,8 +626,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   and in the API process's memory.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
   included, and an upload nobody finished for a day. A limit going down never deletes one.
-- **`media_upload_days`** keeps today and yesterday: upkeep deletes anything older, and it goes with its account. A guest's count
-  is in the API's memory, for the day.
+- **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
+  rows also go with the account.
 - **`service_limits`** keeps a value until someone changes or deletes it.
 - **Seats** in `document_access` last while their call does.
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the

@@ -50,10 +50,20 @@ CREATE TABLE service_limits (
 );
 
 -- What each account uploaded to workspaces each day (UTC), in bytes, for the limit on a day. It goes with the account, and
--- maintenance keeps today and yesterday. A guest has no account, so theirs is in the API's memory.
+-- maintenance keeps today and yesterday. A guest's is in media_guest_upload_days.
 CREATE TABLE media_upload_days (
   owner_id alcove_owner_id NOT NULL REFERENCES owners(owner_id) ON DELETE CASCADE,
   day date NOT NULL,
   bytes bigint NOT NULL CHECK (bytes >= 0),
   PRIMARY KEY (owner_id, day)
+);
+
+-- The same for a guest in a call, who has no account: by `guest_index`, a blind index of the person their pass names
+-- (docs: Privacy › Blind indexes), so every instance counts the same day and a restart doesn't forget it. It can't be
+-- matched to a call, a seat or a name. Maintenance keeps today and yesterday.
+CREATE TABLE media_guest_upload_days (
+  guest_index bytea NOT NULL,
+  day date NOT NULL,
+  bytes bigint NOT NULL CHECK (bytes >= 0),
+  PRIMARY KEY (guest_index, day)
 );

@@ -14,9 +14,12 @@ import { connect } from 'node:net';
 import { performance } from 'node:perf_hooks';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { readPass } from './callPass';
+import { blindIndex } from './crypto';
 import { LIMITS } from './limits';
 import { maintain } from './maintenance';
 import { MEDIA_LIMITS } from './modules/media';
+import { masterKey } from './owners';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.
@@ -1065,6 +1068,36 @@ describe('guests in a call', () => {
     for (const o of objects) expect(await stored(o)).toBe(false);
     expect(await storedBytes(owner)).toBe(0);
     expect(await queued(owner)).toBe(0);
+  });
+
+  it('have their day counted in the database by nothing that names them, so another instance or a restart counts it', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const agenda = await make(org, id, 'document', 'Agenda');
+    const { host, guests } = await callWith(org, ['Sam Guest']);
+    const [sam] = guests;
+    if (!sam) throw new Error('nobody joined');
+    await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }], 'edit', { pass: host.ticket.pass });
+    // Under a blind index of the person their pass names, never the pass, the person, the call or a name.
+    const index = blindIndex(masterKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
+    const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
+    const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
+    await setLimit('media.account_day_bytes', 3 * MiB);
+    await send(sam.api, 2 * MiB);
+    expect(await days()).toEqual([[ago(0), 2 * MiB]]);
+    // Another process, as after a restart, counts what this one did, because it reads it from the database every time.
+    const second = await h.secondServer();
+    try {
+      const again = createHttpApi({ baseUrl: second.baseUrl, fetch: sam.fetch });
+      expect(await refusal(send(again, 2 * MiB))).toEqual(TODAYS);
+      await h.pool.query('DELETE FROM media_guest_upload_days WHERE guest_index = $1', [index]);
+      await send(again, 2 * MiB);
+    } finally { await second.close(); }
+    // Upkeep keeps today and yesterday, and nothing older.
+    await h.pool.query('INSERT INTO media_guest_upload_days (guest_index, day, bytes) VALUES ($1, $2, 1), ($1, $3, 1)', [index, ago(1), ago(2)]);
+    await maintain(h.deps, { uploadAgeMs: ALREADY });
+    expect((await days()).map(([d]) => d)).toEqual([ago(1), ago(0)]);
   });
 
   it('can’t delete a picture for good through their seat, so it stays where it’s reused, and the organizer still can', async () => {
