@@ -579,8 +579,11 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   It's deleted once Alcove has the update, and signing out, or deleting the account, on this browser deletes what's kept
   for it, and the key with the last of anyone's.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
-  the workspace and documents last open and of the folders left open, and whether the list is hidden. Nothing readable.
-  Signing out, or deleting the account, on this browser deletes it.
+  the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
+  hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.
+- **What Find looks through** is in the tab's memory and nowhere else: the words of what you can open, for this session
+  ([In a browser](data-and-storage.md#in-a-browser)). Signing out or in lets go of it, and so does losing what it's from.
+  What's typed into Find never leaves the browser.
 - **Which notifications have shown** (`localStorage` `alcove.notified.<ownerId>`, `NotifiedStoredSchema`): a key of
   each one's kind and IDs and when it showed, for a day, with no titles, names or text. Signing out, or deleting the
   account, on this browser deletes all of them, and closes the notifications still showing, so no title stays in

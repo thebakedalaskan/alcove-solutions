@@ -53,7 +53,7 @@ function Shell() {
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
-      // Something on the page took it, like ⌘K with words selected in a document.
+      // Something on the page took it: ⌘K with words selected in a document, or anywhere on a workspace's page, is that page's.
       if (e.defaultPrevented) return;
       if (withMod(e) && e.key.toLowerCase() === 'k') {
         e.preventDefault();

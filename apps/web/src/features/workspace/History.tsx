@@ -64,20 +64,36 @@ function noteOf(notes: readonly NoteSummary[], from: string, to: string): NoteSu
 
 interface RowsFor { versions: readonly DocVersionSummary[]; item: WorkspaceItem; me: Person | null; here: string[]; notes: readonly NoteSummary[]; call: { id: string; startedAt: string } | undefined; now: number }
 
+interface Stretch { key: string; kept: DocVersionSummary[] }
+const dayKey = (v: DocVersionSummary) => `day:${new Date(v.at).toDateString()}`;
+
+/**
+ * Versions as stretches of work. The first edit of a call that keeps a version keeps what was there before it, so the oldest
+ * a call has is what the document said going in: it's the work before the call, and the way back to it.
+ */
+function stretchesOf(versions: readonly DocVersionSummary[]): Stretch[] {
+  const out: Stretch[] = [];
+  const add = (key: string, v: DocVersionSummary) => {
+    const last = out.at(-1);
+    if (last?.key === key) last.kept.push(v);
+    else out.push({ key, kept: [v] });
+  };
+  versions.forEach((v, i) => {
+    const older = versions[i + 1];
+    const goingIn = v.callId !== null && v.reason === 'edits' && older?.callId !== v.callId;
+    add(v.reason === 'restore' ? `restore:${v.id}` : v.callId && !goingIn ? `call:${v.callId}` : dayKey(v), v);
+  });
+  return out;
+}
+
 /**
  * The list, newest first: now, then a stretch of work a row. A call's versions are one row, what's kept before a restore
  * one each, and everything else one a day, so a long morning's writing doesn't fill the list. A row shows the newest it holds.
  */
 function rowsOf({ versions, item, me, here, notes, call, now }: RowsFor): Row[] {
-  const stretches: { key: string; kept: DocVersionSummary[] }[] = [];
-  for (const v of versions) {
-    const key = v.reason === 'restore' ? `restore:${v.id}` : v.callId ? `call:${v.callId}` : `day:${new Date(v.at).toDateString()}`;
-    const last = stretches.at(-1);
-    if (last?.key === key) last.kept.push(v);
-    else stretches.push({ key, kept: [v] });
-  }
+  const stretches = stretchesOf(versions);
   const rows: Row[] = [{ id: NOW, name: 'Now', sub: here.length ? `${joined(here)} and you` : 'You', at: hm(new Date(now)), version: null, before: null, from: null }];
-  stretches.forEach(({ kept }, i) => {
+  stretches.forEach(({ key, kept }, i) => {
     const newest = kept[0];
     const oldest = kept.at(-1);
     if (!newest || !oldest) return;
@@ -85,9 +101,9 @@ function rowsOf({ versions, item, me, here, notes, call, now }: RowsFor): Row[] 
     const base = { version: newest.id, id: newest.id, before: stretches[i + 1]?.kept[0]?.id ?? null, from: newest.at, at: columnDay(newest.at) };
     if (newest.reason === 'restore') {
       rows.push({ ...base, name: 'Before restoring', sub: `${shortDay(new Date(newest.at))} · ${hm(newest.at)}` });
-    } else if (newest.callId && newest.callId === call?.id) {
+    } else if (key.startsWith('call:') && newest.callId === call?.id) {
       rows.push({ ...base, name: 'During this call', sub: `Started at ${hm(call.startedAt)}${counted(names)}`, at: 'Today' });
-    } else if (newest.callId) {
+    } else if (key.startsWith('call:')) {
       rows.push({ ...base, name: noteOf(notes, oldest.at, newest.at)?.title ?? 'During a call', sub: `${shortDay(new Date(newest.at))}${counted(names)}` });
     } else {
       rows.push({ ...base, name: possessive(names), sub: shortDay(new Date(newest.at)) });

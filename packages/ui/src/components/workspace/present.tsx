@@ -101,16 +101,20 @@ export function WsHistory({ versions, selected, onSelect, onRestore, restoring =
   ask?: WsRestoreAsk | null | undefined; note?: string | undefined; onClose: () => void;
 }) {
   const list = useRef<HTMLDivElement>(null);
-  /* The keyboard comes here as it opens, so Up, Down and Esc work straight away. */
-  useEffect(() => { list.current?.querySelector<HTMLElement>('.is-cur')?.focus({ preventScroll: true }); }, []);
+  const opened = useRef(false);
+  /* The keyboard comes here as it opens, so Up, Down and Esc work straight away, and stays on what's chosen. */
+  useEffect(() => {
+    const box = list.current;
+    if (opened.current && !box?.contains(document.activeElement)) return;
+    opened.current = true;
+    box?.querySelector<HTMLElement>('.is-cur')?.focus({ preventScroll: true });
+  }, [selected]);
   const keys = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
     const rows = versions.filter((v) => !v.fixed);
     const next = rows[rows.findIndex((v) => v.id === selected) + (e.key === 'ArrowDown' ? 1 : -1)];
-    if (!next) return;
-    onSelect(next.id);
-    e.currentTarget.querySelector<HTMLElement>(`[data-version="${CSS.escape(next.id)}"]`)?.focus();
+    if (next) onSelect(next.id);
   };
   const row = (v: WsVersion) => <><span className="m"><b>{v.name}</b><small>{v.sub}</small></span><span className="ac-time">{v.at}</span></>;
   const past = versions[0] !== undefined && selected !== versions[0].id;
@@ -119,7 +123,7 @@ export function WsHistory({ versions, selected, onSelect, onRestore, restoring =
       <div className="wh-h"><b>History</b><IconButton icon="x" size={16} className="wd-ib" label="Close history" onClick={onClose} /></div>
       <div ref={list} className="wh-l" onKeyDown={keys}>
         {versions.map((v) => (v.fixed ? <div key={v.id} className="wh-r is-fixed">{row(v)}</div> : (
-          <button key={v.id} type="button" data-version={v.id} className={cn('wh-r', v.id === selected && 'is-cur')} aria-pressed={v.id === selected} onClick={() => onSelect(v.id)}>{row(v)}</button>
+          <button key={v.id} type="button" className={cn('wh-r', v.id === selected && 'is-cur')} aria-pressed={v.id === selected} onClick={() => onSelect(v.id)}>{row(v)}</button>
         )))}
         {note && <p className="wh-n">{note}</p>}
       </div>
