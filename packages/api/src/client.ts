@@ -5,7 +5,7 @@ import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
 import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
-  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteKind, NoteSummary, NotesSetting, Inbox,
+  AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteFound, NoteKind, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
 } from './types';
 
@@ -146,7 +146,11 @@ export interface AlcoveApi {
     start(input?: RoomRecordingInput): Promise<RoomRecording>;
   };
   notes: {
-    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteSummary[]>;
+    /**
+     * Every note you have, newest first, or the ones a search finds (`searchOf` says how `text` is read). A found note
+     * says what was said that matched, from what you may read of it.
+     */
+    list(query?: { kind?: NoteKind | undefined; text?: string | undefined }): Promise<NoteFound[]>;
     get(id: ID): Promise<Note>;
     progress(id: ID): AsyncIterable<NoteProgress>;
     /** URL that streams one decrypted audio segment to a signed-in browser. */

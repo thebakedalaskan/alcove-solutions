@@ -1,5 +1,6 @@
-import { firstName, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
+import { firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
 import { sameEmail, someNames } from '~/lib/people';
+import { noteWhen } from '~/lib/time';
 
 /** What a note's row says under its title. */
 export function noteMeta(n: NoteSummary): string {
@@ -29,4 +30,19 @@ export function roleLine(r: Recipient, me: string | undefined): string {
 export function peopleLine(people: Person[], me: string | undefined): string {
   const mine = (p: Person) => !!me && sameEmail(p, { email: me });
   return someNames([...people.filter(mine).map((p) => ({ ...p, name: 'You' })), ...people.filter((p) => !mine(p))]);
+}
+
+/** A note as plain text, for pasting somewhere else. */
+export function noteAsText(n: Note): string {
+  const about = (a: ActionItem) => [a.owner ? `${a.owner.name}${a.takenOn ? '' : ', not taken on yet'}` : '', a.due && !a.takenOn ? `suggested for ${a.due}` : a.due].filter((x): x is string => !!x).join(', ');
+  // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
+  const decided = n.decisions.filter((d) => d.state !== 'rejected');
+  const open = n.questions.filter((x) => x.state === 'open');
+  return [
+    n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
+    ...(decided.length ? ['', 'Decisions', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
+    ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
+    ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : []),
+    ...(n.additions.some((a) => a.text) ? ['', 'Added by people', ...n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)] : [])
+  ].join('\n');
 }
