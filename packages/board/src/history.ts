@@ -47,7 +47,10 @@ interface Root {
   others: Map<string, number>;
   /** Under `id/part`, what `others` was when someone else last brought back a row, column or cell. A cell goes under its words too: new words typed in an empty cell haven't brought back the old ones. */
   back: Map<string, number>;
-  /** Under `id/part`, what `others` was when someone else last wrote in a cell, or a cell of a row or column. */
+  /**
+   * Under `id/line`, what `others` was when someone else last wrote in a cell of that row or column, even if what they wrote has gone again,
+   * or lost the merge. Under `id/cell`, when they last typed in that cell, or made it and it stayed.
+   */
   wrote: Map<string, number>;
 }
 
@@ -98,14 +101,22 @@ function touched(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): Set<stri
   return ids;
 }
 
-/** The cells a transaction wrote in, as an id and a key, even if they had gone again by the time it reached this browser. A cell going with its row is no write. */
-function cellsWritten(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): [string, string][] {
-  const cells: [string, string][] = [];
+/**
+ * The cells a transaction wrote in, as an id and a key, and whether what it wrote is still there. A cell that someone made and that went
+ * again before it reached this browser, or that lost the merge to another, is written but not there. A cell going with its row is no write.
+ */
+function cellsWritten(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): [string, string, boolean][] {
+  const cells: [string, string, boolean][] = [];
   for (const event of events) {
     const [id, field, key] = event.path;
     if (typeof id !== 'string' || field !== 'cells') continue;
-    if (typeof key === 'string') cells.push([id, key]);
-    else if (event instanceof Y.YMapEvent) for (const cell of event.keysChanged) if (typeof cell === 'string' && event.keys.get(cell)?.action !== 'delete') cells.push([id, cell]);
+    if (typeof key === 'string') cells.push([id, key, true]);
+    else if (event instanceof Y.YMapEvent) {
+      for (const cell of event.keysChanged) {
+        const action = event.keys.get(cell)?.action;
+        if (typeof cell === 'string' && action !== 'delete') cells.push([id, cell, action !== undefined]);
+      }
+    }
   }
   return cells;
 }
@@ -126,16 +137,18 @@ function rewrite(text: Y.Text, words: string): void {
 
 /**
  * Each cell of a table is a field of its own. One that went with its row is made again, unless someone else has since brought back
- * those words, or written there and it has gone again: then what's in the cell is in a newer undo than this one.
+ * those words, or typed there while that row was away and it has gone again: then what's in the cell is in a newer undo than this one.
+ * If someone else's undo has since put back an older copy of it, which all of these words still hold, they go back over it.
  */
 function cellsBack(cells: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, since: Since): void {
   const was = recordOf(before['cells']), left = recordOf(after['cells']), held = recordOf(now['cells']);
   const lines = new Set(partsOf(after)), here = new Set(partsOf(now));
   for (const key of new Set([...Object.keys(was), ...Object.keys(left)])) {
-    const words = wordsOf(was[key]), mine = wordsOf(left[key]);
-    const spent = !mine && (since.back(`${key}${words}`) || (since.wrote(key) && key.split(':').some((line) => !lines.has(line) && !here.has(line))));
-    if (words === mine || since.away.has(key) || wordsOf(held[key]) !== mine || spent) continue;
-    const cell = cells.get(key);
+    const words = wordsOf(was[key]), mine = wordsOf(left[key]), there = wordsOf(held[key]), cell = cells.get(key);
+    const taken = key.split(':').filter((line) => !lines.has(line)), away = taken.some((line) => !here.has(line));
+    const spent = !mine && (since.back(`${key}${words}`) || (since.wrote(key) && away && !(cell instanceof Y.Text)));
+    const older = taken.length > 0 && since.back(`${key}${there}`) && words.includes(there) && difference(there, words, 0).remove === 0;
+    if (words === mine || since.away.has(key) || (there !== mine && !older) || spent) continue;
     if (cell instanceof Y.Text) rewrite(cell, words);
     else cells.set(key, new Y.Text(words));
   }
@@ -272,7 +285,9 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
         at.others.set(id, others);
         for (const part of partsOf(after)) if (!had.has(part)) at.back.set(`${id}/${String(part)}${wordsOf(cells[String(part)])}`, others);
       }
-      if (!mine) for (const [id, key] of cellsWritten(events)) for (const part of [key, ...key.split(':')]) at.wrote.set(`${id}/${part}`, at.others.get(id) ?? 0);
+      if (!mine) {
+        for (const [id, key, there] of cellsWritten(events)) for (const part of there ? [key, ...key.split(':')] : key.split(':')) at.wrote.set(`${id}/${part}`, at.others.get(id) ?? 0);
+      }
     };
     at.map.forEach((value, id) => {
       const copy = copyOf(value);
