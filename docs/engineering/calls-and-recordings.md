@@ -1019,8 +1019,8 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
   counts as working on it. Access is checked again under the workspace's row in the transaction that writes it.
 - **What was worked on.** An update sent with a call's pass says it's from that call (`reader.seat`). The first from each
-  person on each document goes into the call's sealed state (`worked`), under the call's row and once only, so typing never
-  waits on it, and a failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
+  person on each document goes into the call's sealed state (`worked`), under the call's row and once only: that first
+  update waits on it, and everything typed after doesn't. A failure costs only the record. When the call ends, its note gets the list (`workedOn`: IDs, `kind` and
   who) in the transaction that ends it, and the call lets go of it. Once the room has gone, with nobody waiting, each document
   keeps a version with reason `call`, filed under the call: a worker can take as long as it has on each, and nothing about
   the call's end depends on it, so a failure is logged and costs only that version. A call with notes off has nowhere to keep the list, so only the versions remain. Each person reading
