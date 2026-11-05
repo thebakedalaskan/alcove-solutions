@@ -72,6 +72,10 @@
 .bd-svg path.ink.c-horizon { stroke: var(--horizon); }
 .bd-svg path.ink.is-sel { stroke: var(--horizon); }
 .bd-svg path.ink.is-marker { stroke-width: 12; opacity: .28; }
+/* What takes a press on a line or a stroke: wider than what's drawn, and one width at any zoom. A highlighter's own width counts too, for when it's the wider of the two. */
+.bd-svg path.bd-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; pointer-events: stroke; }
+.bd-svg path.ink[data-id] { pointer-events: stroke; }
+.bd.is-mini .bd-svg path { pointer-events: none; }
 
 /* ---------------------------------------------------------------- frames */
 .bf { position: absolute; border-radius: 32px 32px 18px 18px; background: var(--bf-fill); box-shadow: inset 0 0 0 1px var(--bf-ring), var(--bf-lift); }
@@ -81,6 +85,8 @@
 /* A title can run a little past its frame, as "What happened" does in a room, and still stop short of the next one. */
 .bf-h { position: absolute; left: 8px; bottom: 100%; max-width: calc(100% + 12px); margin-bottom: 8px; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; font: 450 25px/1.1 var(--font-display); letter-spacing: -.016em; font-variation-settings: 'opsz' 26; color: var(--ink); }
 .bf-h .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A frame is picked by its title, so one left blank keeps a faint one to press. */
+.bf-h .t:empty::before { content: "Frame"; color: var(--ink-3); }
 .bf-h .sub { flex: none; font: 500 14px/1 var(--font-mono); letter-spacing: 0; color: var(--ink-3); }
 /* Typing a title: in the title's own type and place, on one line, across all the room a title can take. */
 .bf-h:has(.bo-edit) { width: calc(100% + 12px); }
@@ -145,10 +151,14 @@
 
 /* Typing in an object */
 .bo-edit { position: absolute; left: 14px; right: 14px; top: 14px; bottom: 26px; width: calc(100% - 28px); height: calc(100% - 40px); padding: 0; border: 0; resize: none; outline: none; background: transparent; color: inherit; font: 500 15.5px/1.32 var(--font-sans); letter-spacing: -.005em; user-select: text; -webkit-user-select: text; }
-.bo.k-text .bo-edit { left: 0; top: 0; width: 100%; height: 100%; font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; }
+.bo.k-text .bo-edit { font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; }
 .bo.k-label .bo-edit { left: 0; top: 0; width: 100%; height: 100%; font: 600 16px/1.2 var(--font-sans); letter-spacing: -.008em; color: var(--ink-2); }
 .bo.k-text.is-body .bo-edit { font: 400 15px/1.4 var(--font-sans); color: var(--ink-2); }
-.bo.k-shape .bo-edit { left: 10%; right: 10%; top: 30%; width: 80%; height: 50%; text-align: center; }
+.bo.k-shape .bo-edit { font: 500 15.5px/1.28 var(--font-sans); letter-spacing: 0; text-align: center; }
+/* Text and shapes sit in the middle of their box, so the editor lies exactly over the words it hides, however many lines they run to, and nothing moves as typing starts. */
+.bo.is-live-edit:is(.k-text, .k-shape) { display: grid; grid-template-columns: minmax(0, 1fr); justify-content: stretch; align-content: center; }
+.bo.is-live-edit:is(.k-text, .k-shape) > :is(.bo-t, .bo-edit) { grid-area: 1 / 1; }
+.bo.is-live-edit:is(.k-text, .k-shape) .bo-edit { position: relative; inset: 0; width: 100%; height: 100%; overflow: hidden; }
 
 /* A comment: a pin with their face on it, and what they said */
 .bo-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }

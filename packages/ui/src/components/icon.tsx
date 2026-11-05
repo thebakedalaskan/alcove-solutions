@@ -1,5 +1,5 @@
 import {
-  ALargeSmall, AudioWaveform, ChevronLeft, Diamond, Frame, Group, LayoutTemplate, Map as MapIcon, MessageCircle, MoveUpRight, Redo2, Shapes, Spline, StickyNote, Vote, Workflow,
+  ALargeSmall, AudioWaveform, BringToFront, ChevronLeft, Diamond, Frame, Group, LayoutTemplate, Map as MapIcon, MessageCircle, MoveUpRight, Redo2, SendToBack, Shapes, Spline, StickyNote, Vote, Workflow,
   ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, Calendar, Check, ChevronDown, ChevronRight, Circle, Clock, Copy, DoorOpen, Ellipsis, Hand,
   House, KeyRound, Languages, LayoutGrid, Link, Lock, LogOut, Mail, MessageCircleQuestion, MessageSquare, Mic, MicOff, MonitorUp,
   NotebookText, PanelsTopLeft, Pause, Pencil, PhoneOff, Pin, PinOff, Plane, Play, Plus, Radio, Repeat, Search, Send, Server, Share, ShieldCheck,
@@ -20,7 +20,7 @@ const ICONS = {
   stickyNote: StickyNote, shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
   spline: Spline, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, map: MapIcon, 
   workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform, 
-  chevronLeft: ChevronLeft,
+  chevronLeft: ChevronLeft, bringToFront: BringToFront, sendToBack: SendToBack,
   plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
   screen: MonitorUp, chat: MessageSquare, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
   check: Check, x: X, right: ArrowRight, left: ArrowLeft, down: ChevronDown, chevron: ChevronRight, link: Link, copy: Copy,

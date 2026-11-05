@@ -88,15 +88,15 @@ export function BoardLines({ children }: { children?: ReactNode }) {
   return <svg className="bd-svg" aria-hidden="true">{children}</svg>;
 }
 
-/** A line, with its arrowhead. `draft`: the one being drawn, as dots. */
-export const BoardLine = memo(function BoardLine({ d, head, selected = false, draft = false }: { d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined }) {
+/** A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as dots. */
+export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined }) {
   const state = cn(selected && 'is-sel', draft && 'is-draft');
-  return <><path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
+  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
 });
 
-/** A stroke of the pen. `marker` is the highlighter: wide, and see-through. */
-export const BoardStroke = memo(function BoardStroke({ d, colour = 'horizon', marker = false, selected = false }: { d: string; colour?: 'horizon' | 'sun' | 'rose' | undefined; marker?: boolean | undefined; selected?: boolean | undefined }) {
-  return <path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} d={d} />;
+/** A stroke of the pen. `marker` is the highlighter: wide, and see-through. `id` lets it be pressed, as `BoardLine`'s does. */
+export const BoardStroke = memo(function BoardStroke({ id, d, colour = 'horizon', marker = false, selected = false }: { id?: string | undefined; d: string; colour?: 'horizon' | 'sun' | 'rose' | undefined; marker?: boolean | undefined; selected?: boolean | undefined }) {
+  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} data-id={id} d={d} /></>;
 });
 
 /* ---------- The rail and the bar ---------- */
@@ -300,42 +300,55 @@ export function BoardFlyout(props: BoardFlyoutProps) {
 export interface BoardSelectionBarProps {
   /** Where it sits on the sheet, in screen pixels: `x` is its middle. */
   x: number; y: number;
-  /** How many are selected. Above one, it offers Sort into themes and Tidy. */
+  /** The sheet's width. The bar stays on the sheet, however near its edge the selection is. */
+  room?: number | undefined;
+  /** How many are selected. Above one, it says so. */
   count?: number | undefined;
+  /** What it says they are. */
+  things?: string | undefined;
   /** The colour shown. `null` for what has none, such as a picture of a screen. */
   colour?: BoardColour | null | undefined;
   textSize?: boolean | undefined;
   /** The row of colours under the bar is open. */
   picking?: boolean | undefined;
+  /** How a selected line runs, to change it. */
+  lineStyle?: BoardLineStyle | undefined;
   onColour: () => void; onPick: (colour: BoardColour) => void;
-  onTextSize?: (() => void) | undefined; onLine: () => void; onDuplicate: () => void; onDelete: () => void; onMore: () => void;
+  onTextSize?: (() => void) | undefined; onLineStyle?: ((style: BoardLineStyle) => void) | undefined;
+  /** A line starts from one thing, so it goes without this, and so does anything that can't be copied. */
+  onLine?: (() => void) | undefined; onDuplicate?: (() => void) | undefined;
+  onDelete: () => void; onMore: () => void;
+  /** Each shows only if given: nothing else here is offered that can't be done. */
   onSort?: (() => void) | undefined; onTidy?: (() => void) | undefined;
   className?: string | undefined;
 }
 
+/** Centres something on `x`, and keeps it `gap` inside a sheet `room` wide. */
+const centredOn = (x: number, room: number | undefined, gap = 8): string => (room === undefined ? '-50% 0' : `clamp(${gap - x}px, -50%, calc(${room - gap - x}px - 100%)) 0`);
+
 /** A small bar that only appears on what you've picked, with its row of colours under it. */
-export function BoardSelectionBar({ x, y, count = 1, colour, textSize = false, picking = false, onColour, onPick, onTextSize, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, className }: BoardSelectionBarProps) {
+export function BoardSelectionBar({ x, y, room, count = 1, things = 'stickies', colour, textSize = false, picking = false, lineStyle, onColour, onPick, onTextSize, onLineStyle, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, className }: BoardSelectionBarProps) {
   return (
     <>
-      <div className={cn('bx', className)} style={{ left: x, top: y, translate: '-50% 0' }} role="toolbar" aria-label="Selected">
-        {count > 1 && (
+      <div className={cn('bx', className)} style={{ left: x, top: y, translate: centredOn(x, room) }} role="toolbar" aria-label="Selected">
+        {count > 1 && <><span className="n">{count} {things}</span><span className="bd-sep" /></>}
+        {count > 1 && (onSort || onTidy) && (
           <>
-            <span className="n">{count} stickies</span>
-            <span className="bd-sep" />
-            <button type="button" className="wide" title="Written in confidential compute" onClick={onSort}><Icon name="group" size={17} />Sort into themes</button>
-            <button type="button" className="wide" onClick={onTidy}><Icon name="grid" size={16} />Tidy</button>
+            {onSort && <button type="button" className="wide" title="Written in confidential compute" onClick={onSort}><Icon name="group" size={17} />Sort into themes</button>}
+            {onTidy && <button type="button" className="wide" onClick={onTidy}><Icon name="grid" size={16} />Tidy</button>}
             <span className="bd-sep" />
           </>
         )}
+        {lineStyle && LINES.map((l) => <IconButton key={l.id} className="bt" icon={l.icon} size={17} label={l.label} aria-pressed={lineStyle === l.id} onClick={() => onLineStyle?.(l.id)} />)}
         {colour && <button type="button" className={cn('sw', `c-${colour}`)} aria-label="Colour" title="Colour" onClick={onColour}><i /></button>}
         {textSize && <IconButton className="bt" icon="textSize" size={18} label="Text size" onClick={onTextSize} />}
-        <IconButton className="bt" icon="line" size={17} label="Draw a line from this" onClick={onLine} />
-        <IconButton className="bt" icon="copy" size={17} label="Duplicate" title="Duplicate · ⌘D" onClick={onDuplicate} />
+        {onLine && <IconButton className="bt" icon="line" size={17} label="Draw a line from this" onClick={onLine} />}
+        {onDuplicate && <IconButton className="bt" icon="copy" size={17} label="Duplicate" title="Duplicate · ⌘D" onClick={onDuplicate} />}
         <IconButton className="bt" icon="trash" size={17} label="Delete" onClick={onDelete} />
         <IconButton className="bt" icon="more" size={18} label="More" onClick={onMore} />
       </div>
       {picking && (
-        <div className="bx-sw" style={{ left: x, top: y + 48, translate: '-50% 0' }}>
+        <div className="bx-sw" style={{ left: x, top: y + 48, translate: centredOn(x, room) }}>
           {BOARD_COLOURS.map((c) => <button key={c} type="button" className={`c-${c}`} aria-label={colourName(c)} title={colourName(c)} aria-pressed={colour === c} onClick={() => onPick(c)}><i className="swatch" /></button>)}
         </div>
       )}
