@@ -1425,8 +1425,8 @@ describe('host controls', () => {
     // Removed people ask again: their old pass doesn't let them straight back in.
     expect(back.crypto.getSnapshot().status).toBe('waiting');
     await host.leave();
-    // Once it's over, only the organizer can still read the call.
-    expect(code(await back.refresh().catch((e: unknown) => e))).toBe('conflict');
+    // Once it's over, only the organizer can still read the call. Asked as a browser would: `back` may have heard it's over, and stopped asking.
+    expect((await asMember(back, 'GET', '')).status).toBe(409);
   });
 
   it('never tells a guest anyone’s email address', async () => {
