@@ -102,6 +102,8 @@ function type(t: Tab, id: string, words: string, field = 't'): void {
   if (!text) throw new Error(`there's no text to type in on ${id}`);
   t.doc.transact(() => text.insert(text.length, words), t.me);
 }
+/** Who a comment in these tests is from, as the page writes it. */
+const SAYS = { by: '', name: 'Priya' };
 const words = (t: { doc: Y.Doc }, id: string, field = 't') => objectText(t.doc, id, field)?.toString() ?? '';
 function boxOf(t: { doc: Y.Doc }, id: string): Box {
   const o = view(t).byId.get(id);
@@ -454,7 +456,7 @@ describe('undo', () => {
     type(a, note, ', and Ann added this');
     const other = sticky(t, 'The other end', 400, 0);
     const line = add(t, { k: 'line', style: 'straight', from: { on: note, side: 'r' }, to: { on: other, side: 'l' } });
-    const thread = addThread(t.doc, note, 'A comment on it', t.me);
+    const thread = addThread(t.doc, note, 'A comment on it', SAYS, t.me);
     const grid = table(t, [['Owner', 'Due'], ['Priya', 'Friday']], { x: 0, y: 400 });
     await saved(a);
     await saved(t);
@@ -918,7 +920,7 @@ describe('copies and versions', () => {
     add(a, { k: 'shape', x: 0, y: 700, w: 170, h: 76, s: 'pill', c: 'butter', t: 'Start' });
     add(a, { k: 'text', x: 300, y: 700, w: 300, h: 40, size: 'heading', t: 'A heading' });
     add(a, { k: 'link', x: 700, y: 900, w: 240, h: 64, item: madeUp() });
-    addThread(a.doc, inside, 'Is this the right order?', a.me);
+    addThread(a.doc, inside, 'Is this the right order?', SAYS, a.me);
     await saved(a);
     await agree([a, t], 'Ann’s half to reach Theo');
     const outside = sticky(t, 'Outside it', 800, 0, 'rose');
@@ -970,7 +972,7 @@ describe('copies and versions', () => {
     const typedCell = objectText(a.doc, grid, Object.keys(cellsOf(a, grid))[0] ?? '');
     if (!typedCell) throw new Error('no cell to type in');
     a.doc.transact(() => typedCell.insert(typedCell.length, ' (changed)'), a.me);
-    addThread(t.doc, inside, 'A comment since', t.me);
+    addThread(t.doc, inside, 'A comment since', SAYS, t.me);
     await saved(a);
     await saved(t);
     await agree([a, t], 'the changes to reach both');
@@ -1108,7 +1110,7 @@ describe('search', () => {
     add(a, { k: 'shot', x: 800, y: 200, w: 320, h: 200, media: 'media0002', caption: 'The login screen' });
     add(a, { k: 'node', x: 0, y: 700, w: 160, h: 60, parent: '', t: 'Root idea' });
     table(a, [['Owner', 'Priya']], { x: 400, y: 700 });
-    addThread(a.doc, holder, 'A comment isn’t on the board', a.me);
+    addThread(a.doc, holder, 'A comment isn’t on the board', SAYS, a.me);
     await saved(a);
     const secret = await make(ann, id, 'Secret board');
     const s = await open(ann, id, secret);
@@ -1300,7 +1302,7 @@ describe('what’s kept', () => {
       add(t, { k: 'shot', x: 800, y: 1200, w: 320, h: 200, media: 'media0003', caption: 'CANARY-BOARD-CAPTION' });
       add(a, { k: 'shape', x: 0, y: 1600, w: 170, h: 76, s: 'rect', c: '', t: 'CANARY-BOARD-SHAPE' });
       add(a, { k: 'node', x: 300, y: 1600, w: 160, h: 60, parent: '', t: 'CANARY-BOARD-NODE' });
-      addThread(t.doc, note, 'CANARY-BOARD-COMMENT', t.me);
+      addThread(t.doc, note, 'CANARY-BOARD-COMMENT', SAYS, t.me);
       a.s.awareness.setLocalStateField('edit', note);
       await saved(a);
       await saved(t);

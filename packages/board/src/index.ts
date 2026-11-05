@@ -4,20 +4,20 @@
  * from the workspace, so it can run in a browser and on the server alike.
  */
 export {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardIdSchema, BoardObjectSchema, INK_COLOURS, LINE_SIDES, LINE_STYLES, LineEndSchema, SHAPE_KINDS, STICKY_COLOURS, TABLE_MAX,
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardAuthorSchema, BoardIdSchema, BoardObjectSchema, BoardReplySchema, INK_COLOURS, LINE_SIDES, LINE_STYLES, LineEndSchema, SHAPE_KINDS, STICKY_COLOURS, TABLE_MAX,
   cellKey, hasBox, isAttached, layerOf, newId
 } from './shape';
 export type {
-  BoardObject, BoardView, Box, FrameObject, ImageObject, InkColour, InkObject, LineEnd, LineObject, LineSide, LineStyle, LinkObject, NewObject, NodeObject, NoteObject, PlacedObject,
+  BoardAuthor, BoardObject, BoardReply, BoardThread, BoardView, Box, FrameObject, ImageObject, InkColour, InkObject, LineEnd, LineObject, LineSide, LineStyle, LinkObject, NewObject, NodeObject, NoteObject, PlacedObject,
   ShapeKind, ShapeObject, ShotObject, StickyColour, TableLine, TableObject, TextObject
 } from './shape';
-export { objectText, observeBoard, readBoard } from './read';
+export { objectText, observeBoard, observeComments, readBoard, readThreads } from './read';
 export { bounds, centre, colourIn, contains, fit, frameAt, hit, holds, inside } from './geometry';
 export type { Camera, Pad } from './geometry';
 export { freeRoute, route, shapePath, sides } from './routes';
 export type { Route } from './routes';
 export {
-  addObject, addReply, addTableLine, addThread, afterMove, afterResize, applyThemes, duplicateObjects, moveObjects, removeObjects, removeTableLine, resizeObject, setObjects, sitsIn, sizeTableLine, stackObjects, tableCell, tidyObjects
+  addObject, addReply, addTableLine, addThread, afterMove, afterResize, applyThemes, duplicateObjects, moveObjects, removeObjects, removeTableLine, resizeObject, resolveThread, setObjects, sitsIn, sizeTableLine, stackObjects, tableCell, tidyObjects
 } from './write';
 export type { Move, ObjectPatch, TableAxis } from './write';
 export { makeHistory } from './history';
