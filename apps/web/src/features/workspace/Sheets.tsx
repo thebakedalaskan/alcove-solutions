@@ -16,14 +16,20 @@ const ROLE_WORDS: Record<WorkspaceRole, string> = { admin: 'Admin', edit: 'Can e
 /** What goes under a name: their address, unless their address is all there is, and that's the name. */
 const addressUnder = (p: Person) => (p.email === p.name ? '' : p.email);
 
-/** Who the field finds, leaving out `known`. As you type, the first match is what Enter adds; an address nobody knows adds itself. */
+/**
+ * Who the field finds, leaving out `known`. Only a search for exactly what's in the field now finds anyone: one for what was
+ * there a moment ago, or one still settling, found someone else. Enter adds the first of them; with none, an address adds
+ * itself, and anything else waits.
+ */
 function useAdding(known: (p: Person) => boolean, add: (person: Pick<Person, 'name' | 'email'>) => void) {
   const [query, setQuery] = useState('');
-  const term = useSettled(query.trim(), 160);
-  const found = useQuery({ ...q.people(term), enabled: term.length > 0 }).data ?? [];
-  const shown: PersonSuggestion[] = term ? found.filter((s) => !known(s.person)).slice(0, 4) : [];
+  const typed = query.trim();
+  const term = useSettled(typed, 160);
+  const search = useQuery({ ...q.people(term), enabled: term.length > 0 });
+  const found = term.length > 0 && term === typed && !search.isPlaceholderData ? search.data : undefined;
+  const shown: PersonSuggestion[] = (found ?? []).filter((s) => !known(s.person)).slice(0, 4);
   const take = (person: Pick<Person, 'name' | 'email'>) => { setQuery(''); add(person); };
-  const typed = query.trim().toLowerCase();
+  const address = typed.toLowerCase();
   return {
     query, setQuery,
     matches: shown.map((s): WsShareMatch => ({ id: s.person.id, person: s.person, sub: addressUnder(s.person), onAdd: () => take(s.person) })),
@@ -31,7 +37,7 @@ function useAdding(known: (p: Person) => boolean, add: (person: Pick<Person, 'na
     onAdd: () => {
       const first = shown[0];
       if (first) take(first.person);
-      else if (EMAIL.test(typed)) take({ name: typed, email: typed });
+      else if (EMAIL.test(address)) take({ name: address, email: address });
     }
   };
 }
