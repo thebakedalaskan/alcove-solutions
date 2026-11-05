@@ -438,9 +438,14 @@ function commentMark(rt: EditorRuntime): MarkViewConstructor {
   };
 }
 
-/** A block that has left the page: as little as ProseMirror will take, since a document can gather a lot of these. */
+/**
+ * A block that has left the page: as little as ProseMirror will take, since a document can gather a lot of these. It's
+ * flat rather than `display: none`, which browsers walk through one by one every time a selection is placed beside a run of
+ * them. A caret that gets into one doesn't stay (`keepCaretOnPage`).
+ */
 function goneBlock(node: PMNode): NodeView {
   const dom = el('div', 'wb is-gone');
+  dom.setAttribute('aria-hidden', 'true');
   return { dom, contentDOM: node.isLeaf ? null : dom, update: (next) => next.type === node.type && isGone(next), ignoreMutation: () => true };
 }
 

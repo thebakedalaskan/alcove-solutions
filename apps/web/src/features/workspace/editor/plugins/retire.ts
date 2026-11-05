@@ -130,12 +130,21 @@ function keepBlocks(tr: Transaction, transactions: readonly Transaction[], befor
   const out: Leaving[] = [];
   let cursor = after.child(0).nodeSize;
   let above: PMNode | null = null;
+  /* What goes back between two blocks that stayed, in one step: one each would make deleting a long stretch take for ever. */
+  let run: PMNode[] = [];
+  const putBack = () => {
+    const nodes = Fragment.fromArray(run);
+    if (nodes.size > 0) tr.insert(cursor, nodes);
+    cursor += nodes.size;
+    run = [];
+  };
   before.doc.forEach((node, pos, index) => {
     if (index === 0) return;
     const id = blockIdOf(node);
     const same = id ? byId.get(id) : undefined;
     const stays = here.get(node) ?? (same?.node.type === node.type ? same?.pos : id === null ? outlives(transactions, pos) : null);
     if (stays !== undefined && stays !== null) {
+      putBack();
       above = after.nodeAt(stays);
       cursor = tr.mapping.map(stays) + (above?.nodeSize ?? 0);
       return;
@@ -144,24 +153,26 @@ function keepBlocks(tr: Transaction, transactions: readonly Transaction[], befor
     const found = element instanceof Y.XmlElement && sync.binding.mapping.get(element) === node ? element : id ? elementOf(sync.type, id)?.element : undefined;
     if (!found) return;
     /* Already off the page: it only has to stay in the document. */
-    if (isGone(node)) { tr.insert(cursor, node); cursor += node.nodeSize; return; }
+    if (isGone(node)) { run.push(node); return; }
     /* It changed into something else that kept its ID, or it was joined to the block above: its words are at the end of that. */
     const joined: PMNode | null = above;
     const target = same ? id : node.textContent !== '' && joined?.textContent.endsWith(node.textContent) ? blockIdOf(joined) : null;
     const left = standIn(node, newBlockId(), target ?? '');
-    tr.insert(cursor, left);
-    cursor += left.nodeSize;
+    run.push(left);
     out.push({ element: found, node: left });
   });
+  putBack();
   return out;
 }
 
-/** The nearest place for a caret that can't stay in the block at `index`. */
-function beside(doc: PMNode, index: number): Selection {
+/** The nearest place for a caret that can't stay in the block at `index`: on the way it was going. */
+function beside(doc: PMNode, index: number, upwards: boolean): Selection {
   const blocks = allBlocks(doc);
-  const next = blocks.find((b) => b.index > index) ?? blocks.at(-1);
-  if (next) return Selection.near(doc.resolve(next.node.isAtom ? next.pos : next.pos + 1), 1);
-  return TextSelection.create(doc, doc.child(0).nodeSize - 1);
+  const after = blocks.find((b) => b.index > index), before = blocks.filter((b) => b.index < index).at(-1);
+  const next = upwards ? before ?? after : after ?? before;
+  if (!next) return TextSelection.create(doc, doc.child(0).nodeSize - 1);
+  if (next.node.isAtom) return NodeSelection.create(doc, next.pos);
+  return next === before ? Selection.near(doc.resolve(next.pos + next.node.nodeSize - 1), -1) : Selection.near(doc.resolve(next.pos + 1), 1);
 }
 
 /** A caret in a block that's left the page goes where its words went, the same way from their end, or else beside it. */
@@ -169,12 +180,15 @@ function keepCaretOnPage(tr: Transaction, before: EditorState): void {
   const sel = tr.selection;
   const inside = sel instanceof NodeSelection && sel.$from.depth === 0 ? { node: sel.node, index: sel.$from.index(0) } : blockAt(sel.$head);
   if (!inside || !isGone(inside.node)) return;
+  const { $head } = before.selection;
+  /* Its own arrow key took it there, across a block's edge, or the block left the page under it. */
+  const walked = inside.node === blockAt($head)?.node ? false : before.doc.eq(tr.doc);
+  if (walked) { tr.setSelection(beside(tr.doc, inside.index, sel.head < $head.pos)); return; }
   const target = textAttr(inside.node, 'gone');
   const to = target ? findBlock(tr.doc, target) : null;
-  if (!to) { tr.setSelection(beside(tr.doc, inside.index)); return; }
+  if (!to) { tr.setSelection(beside(tr.doc, inside.index, false)); return; }
   const line = to.node.type === schema.nodes.toggle ? to.node.child(0) : to.node;
-  if (!line.isTextblock) { tr.setSelection(beside(tr.doc, to.index - 1)); return; }
-  const { $head } = before.selection;
+  if (!line.isTextblock) { tr.setSelection(beside(tr.doc, to.index - 1, false)); return; }
   const fromEnd = $head.parent.content.size - $head.parentOffset;
   tr.setSelection(TextSelection.create(tr.doc, to.pos + (line === to.node ? 1 : 2) + Math.max(0, line.content.size - fromEnd)));
 }

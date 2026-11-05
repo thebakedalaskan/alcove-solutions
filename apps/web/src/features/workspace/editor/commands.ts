@@ -370,6 +370,29 @@ export const deleteForward: Command = (state, dispatch) => {
   return true;
 };
 
+/* -------- arrows */
+/**
+ * An arrow key across what isn't on the page. Left to it, the browser stops at blocks with no height and ProseMirror finds
+ * them in the document: from the edge of a block, this goes straight to the next one that's there.
+ */
+export const arrow = (dir: 1 | -1, edge: 'up' | 'down' | 'forward' | 'backward'): Command => (state, dispatch, view) => {
+  const { doc, selection: sel } = state;
+  const whole = sel instanceof NodeSelection && sel.$from.depth === 0;
+  if (!whole && (!(sel instanceof TextSelection) || !sel.empty || !view?.endOfTextblock(edge))) return false;
+  const { $head } = sel;
+  /* Inside a toggle or a table there may be more of the block to go through. */
+  if (!whole && $head.depth > 1 && ($head.depth > 2 || $head.index(1) !== (dir > 0 ? $head.node(1).childCount - 1 : 0))) return false;
+  const index = whole ? sel.$from.index(0) : $head.index(0);
+  const next = dir > 0 ? blockAfter(doc, index) : blockBefore(doc, index);
+  const nextIndex = next?.index ?? (dir < 0 ? 0 : index + 1);
+  if (nextIndex === index || Math.abs(nextIndex - index) === 1) return false;
+  if (dispatch) {
+    const inside = next ? (dir > 0 ? next.pos + 1 : next.pos + next.node.nodeSize - 1) : doc.child(0).nodeSize - 1;
+    dispatch(state.tr.setSelection(next?.node.isAtom ? NodeSelection.create(doc, next.pos) : Selection.near(doc.resolve(inside), dir)).scrollIntoView());
+  }
+  return true;
+};
+
 /* -------- Tab */
 export const indent = (dir: 1 | -1): Command => (state, dispatch, view) => {
   if (isInTable(state)) return nextCell(dir)(state, dispatch, view);

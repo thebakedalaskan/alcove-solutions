@@ -5,7 +5,7 @@ import type { Attrs } from 'prosemirror-model';
 import { TextSelection, type Command } from 'prosemirror-state';
 import { redoCommand, undoCommand } from 'y-prosemirror';
 import { leaveText, nudgeBlock, openBlockMenu, openLinkField, startComment, tickLine } from './actions';
-import { backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
+import { arrow, backspace, blockAt, deleteForward, enter, indent, lineBreak, selectAll, turnBlock } from './commands';
 import type { EditorRuntime } from './runtime';
 import { newBlockId } from './names';
 import { isPlainLine, schema } from './schema';
@@ -23,6 +23,10 @@ export const editorKeys = (rt: EditorRuntime): Record<string, Command> => ({
   'Mod-Enter': (state, dispatch, view) => tickLine(rt) || exitCode(state, dispatch, view),
   Backspace: backspace,
   Delete: deleteForward,
+  ArrowUp: arrow(-1, 'up'),
+  ArrowDown: arrow(1, 'down'),
+  ArrowLeft: arrow(-1, 'backward'),
+  ArrowRight: arrow(1, 'forward'),
   Tab: indent(1),
   'Shift-Tab': indent(-1),
   'Mod-a': selectAll,
