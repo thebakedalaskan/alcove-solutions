@@ -31,6 +31,7 @@ import { blockIds, fromSync } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
+import { readingPlugin } from './plugins/reading';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type ThreadView } from './runtime';
@@ -116,6 +117,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     dropCursor({ class: 'ws-dropcaret', color: false, width: 2 }),
     blockIds,
     decorPlugin(rt),
+    readingPlugin(rt),
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });
@@ -315,8 +317,8 @@ export default function Editor(props: EditorProps) {
     return observeThreads(doc, update);
   }, [rt, doc]);
 
-  /* Who can edit decides what the page is, and names change under a tag. */
-  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint]);
+  /* Who can edit decides what the page is, and so does the section being presented. Names change under a tag. */
+  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint, props.section]);
   useEffect(() => { rt.names.set(rt.names.get() + 1); });
 
   /* Files from the desktop land between blocks, wherever the page is under the pointer. */
