@@ -43,14 +43,20 @@ export function settleFrame(board: Board, id: string): void {
   raiseHeld(board, [id]);
 }
 
+/** Where frames stood before they were raised. It's this browser's memory, so it lasts while the board is open here, and a frame someone else takes out stays where it was raised to. */
+const places = new WeakMap<Board, Map<string, number>>();
+
 /**
  * Frames draw in `at` order, so one held in another has to be above it: under it, its title would be covered, and a frame is
  * only picked by its title. What's added there goes by the same order, to the one on top. This goes through the frames named and
- * what they hold, in the undo step that moved them. A frame in a frame isn't a slide, so no slide changes place.
+ * what they hold, in the undo step that moved them. A frame in a frame isn't a slide, so raising it moves no slide, and when it
+ * leaves and is a slide again it goes back to the place it had.
  */
 export function raiseHeld(board: Board, ids: readonly string[]): void {
   const { view } = board.getSnapshot();
   const named = new Set(ids);
+  const known = places.get(board) ?? new Map<string, number>();
+  places.set(board, known);
   const ats = new Map(view.frames.map((f) => [f.id, f.at]));
   const inside = new Map<string, FrameObject[]>();
   for (const f of view.frames) {
@@ -60,10 +66,12 @@ export function raiseHeld(board: Board, ids: readonly string[]): void {
   }
   const waiting = view.frames.filter((f) => named.has(f.id));
   for (let f = waiting.pop(); f; f = waiting.pop()) {
-    const holder = ats.get(f.f);
-    if (holder !== undefined && (ats.get(f.id) ?? f.at) <= holder) {
-      ats.set(f.id, holder + 1);
-      setObjects(board.doc, [f.id], { at: holder + 1 }, board.origin);
+    const holder = ats.get(f.f), at = ats.get(f.id) ?? f.at, place = known.get(f.id);
+    const next = holder === undefined ? place ?? at : Math.max(at, holder + 1);
+    if (holder !== undefined && next !== at && place === undefined) known.set(f.id, at);
+    if (next !== at) {
+      ats.set(f.id, next);
+      setObjects(board.doc, [f.id], { at: next }, board.origin);
     }
     waiting.push(...(inside.get(f.id) ?? []));
   }

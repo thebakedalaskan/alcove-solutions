@@ -52,6 +52,7 @@ export class BoardCameraStore implements LiveStore<Camera> {
     this.sheet = sheet;
     this.world = world;
     moveBoardCamera(sheet, world, this.cam);
+    this.rest();
     return () => {
       this.sheet = null;
       this.world = null;

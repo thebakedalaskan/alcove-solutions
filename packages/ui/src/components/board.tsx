@@ -105,7 +105,7 @@ export const BoardLine = memo(function BoardLine({ id, d, head, selected = false
 
 /** A stroke of the pen. `marker` is the highlighter: wide, and see-through. `id` lets it be pressed, as `BoardLine`'s does. */
 export const BoardStroke = memo(function BoardStroke({ id, d, colour = 'horizon', marker = false, selected = false }: { id?: string | undefined; d: string; colour?: 'horizon' | 'sun' | 'rose' | undefined; marker?: boolean | undefined; selected?: boolean | undefined }) {
-  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} d={d} /></>;
+  return <>{id && <path className={cn('bd-hit', marker && 'is-marker')} data-id={id} d={d} />}<path className={cn('ink', `c-${colour}`, marker && 'is-marker', selected && 'is-sel')} d={d} /></>;
 });
 
 /* ---------- The rail and the bar ---------- */

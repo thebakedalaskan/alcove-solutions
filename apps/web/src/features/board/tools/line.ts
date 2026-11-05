@@ -50,7 +50,7 @@ export function dotsOn(b: Box, { x, y, z }: Camera): BoardDot[] {
   ];
 }
 
-/** What a line can end on, and what shows dots as the pointer nears it: a frame is space to work in, a stroke is a mark, and a heading is a label. A line can still start from any of them that's been picked, from its dots. */
+/** What a line can end on, and what shows dots as the pointer nears it: a frame is space to work in, a stroke is a mark, and a heading is a label. A line can still start from either a frame or a heading, from its dots, once it's been picked. */
 const joinable = (o: BoardObject): o is PlacedObject => hasBox(o) && o.k !== 'frame' && o.k !== 'ink' && !(o.k === 'text' && o.size === 'heading');
 
 /** How far a point is from a box, and nothing if it's inside. */
