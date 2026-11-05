@@ -463,6 +463,32 @@ Calls are for groups: invited people join with their accounts, anyone else with 
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
 ([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
+### The call's workspace
+
+Everything here comes from the server today; the screens for it are being built.
+
+1. **Opening Workspace** settles which one the call uses, the first time anyone does: the one the call was scheduled with,
+   else the organizer's most recently used, else a new one in their name. Everyone sees the same one, late or back from a
+   reload.
+2. **Only the organizer changes it**, to a workspace they can edit in. One question says who can't open it, and
+   nobody is interrupted: they stay in the call and see that it's private. **New workspace** makes one with just them in it.
+3. **Someone who can't open it** is told it's private, and nothing else: no names, no folders, nobody's whereabouts. They can
+   **Ask** the organizer, who shares one document, to read or edit, or says not now. It opens by itself, and it ends
+   with the call, or from Share.
+4. **Follow-ups** are what the notes heard and the to-dos with a person and a date in the documents worked on in this
+   call, each for whoever can open it. Ticking one ticks it in the document. With notes off they come from documents alone, and
+   say so.
+5. **Present** shows a document one section at a time. Whoever started it or the organizer moves it on and stops it, and
+   nobody's access changes: someone who can't open it is told it's on, not what it is. Your own notes beside it are
+   yours alone.
+6. **Play for everyone** plays a video in a document at the same moment for everyone who can open it, late joiners too.
+   Losing the document, a new workspace, another room or the call ending stops it, and the video stays where it is.
+7. **After the call**, the note says what was worked on and by whom, for each person only what they can open, and each
+   document keeps a version of how the call left it. **The next call in a series** finds a new agenda beside the last one,
+   holding only what was left open.
+8. **Make this shorter** and **Turn this into a checklist** work on what's selected, in confidential compute, for anyone who
+   can edit the document. Nothing is kept.
+
 ## 7. End the call and get the notes
 
 1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
