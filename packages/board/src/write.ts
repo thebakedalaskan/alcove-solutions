@@ -2,8 +2,8 @@
  * Every change to a board, each one a single `doc.transact` under the caller's origin, so even something as big
  * as Sort into themes is one undo. A write brings what it's given inside the limits, or refuses it, and checks
  * the result with the schema `readBoard` uses, so nothing written here is left out for anyone. Text people are
- * typing doesn't come through here: that's the object's Y.Text, from `objectText`. So the limit holds for one
- * browser, and only gives way when two merge, which is why `readBoard` cuts text rather than leaving it out.
+ * typing doesn't come through here: that's the object's Y.Text, from `objectText`, and the surface keeps it inside
+ * the limit. Only two browsers merging can pass it, which is why `readBoard` cuts text rather than leaving it out.
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt } from './geometry';
