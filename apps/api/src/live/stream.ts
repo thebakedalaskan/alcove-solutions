@@ -19,15 +19,18 @@ const sameness = (who: Who): string => who.principals.map(b64u).join();
 
 /** How much goes to a browser at a time. */
 const PIECE_BYTES = 64 * 1024;
+/** The slowest a browser can take something big, in bytes a millisecond: 128 KiB a second. Slower than that, it's let go of, and opens again from where it got to. */
+const SLOWEST = 128 * 1024 / 1000;
 /**
  * Writes to a browser, a piece at a time. A write is over when the connection has it, not the browser, so all of it at once
  * would be in the connection's hands for as long as nobody reads. In pieces, each goes when the last has left, so what isn't
- * read stays with whoever's counting it. False if a piece isn't taken within `lateMs`, or the reader's gone. What's big
- * as text is base64, so a piece can end anywhere.
+ * read stays with whoever's counting it. False if a piece isn't taken within `lateMs`, if the whole of it isn't taken at a
+ * pace a browser can keep, or the reader's gone. What's big as text is base64, so a piece can end anywhere.
  */
 export async function inPieces(out: StreamingApi, what: string | Uint8Array, lateMs: number): Promise<boolean> {
+  const by = Date.now() + lateMs + what.length / SLOWEST;
   for (let at = 0; at === 0 || at < what.length; at += PIECE_BYTES) {
-    if (out.aborted) return false;
+    if (out.aborted || Date.now() > by) return false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), lateMs); });
     const piece = typeof what === 'string' ? what.slice(at, at + PIECE_BYTES) : what.subarray(at, at + PIECE_BYTES);

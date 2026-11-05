@@ -66,8 +66,10 @@ export interface Inspected {
    * a deleted thing keeping its place: that's how blocks leave a page, and leaving has to work however full a document is.
    */
   content: number;
-  /** How much it deletes, as Yjs counts it, which may be something already gone: this only ever excuses what a full document takes. */
+  /** How much it deletes, as Yjs counts it, which may be something already gone. */
   deleted: number;
+  /** Where its deletes start, in its bytes. */
+  dsFrom: number;
 }
 export type Inspection = { seen: Inspected; why?: undefined } | { seen?: undefined; why: Refusal };
 
@@ -293,6 +295,7 @@ function read(update: Uint8Array, caps: Caps): Inspection {
   const deletes = new Map<number, number>();
   let ranges = 0;
   let deletedLength = 0;
+  const dsFrom = d.pos;
   const deleted = decoding.readVarUint(d);
   if (deleted > left(d)) return refused('unreadable');
   for (let i = 0; i < deleted; i++) {
@@ -314,7 +317,7 @@ function read(update: Uint8Array, caps: Caps): Inspection {
   return {
     seen: {
       blocks: readings.map((r) => ({ client: r.client, from: r.from, to: r.reached })), needs: [...settled.needs], deletes: [...deletes], items, nesting: settled.nesting,
-      content: readings.reduce((n, r) => n + r.content, 0), deleted: deletedLength
+      content: readings.reduce((n, r) => n + r.content, 0), deleted: deletedLength, dsFrom
     }
   };
 }

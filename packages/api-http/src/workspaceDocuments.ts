@@ -5,21 +5,22 @@
  * updates can arrive twice and in any order, so a retry never does harm and there's nothing to reconcile.
  *
  * Nothing typed is let go of until the API has it, or until someone chooses to. A refusal never does: what's refused stays
- * here and in `keep`, through reloads, until it goes or someone takes it out with `localCopy`.
+ * here and in `keep`, through reloads, until it goes or someone takes it out with `unsentCopy`.
  *
  * A refused update can't hold up what's behind it. A client's clocks have to reach the API in order, so anything written as
  * the same client is stuck behind it: this document moves to a new client, and what's written from then on goes as usual,
  * unless it builds on what's stuck. It only moves so many times, as a client costs the API a row: after that what's written
- * waits with the rest. What's stuck is worked out afresh from time to time. Yjs lets go of what's been deleted, so once a
- * paste is undone or cut down, what's left of it is small. Whatever's been deleted of what the API has goes on its own
- * meanwhile, as that's how a full document gets room.
+ * waits with the rest. What's stuck is worked out afresh from time to time, and always goes whole: a change is never split,
+ * so a move can't arrive as a delete. Yjs lets go of what's been deleted, so once a paste is undone or cut down, what's left
+ * of it is small, and at the limit anything that doesn't add to the page goes.
  *
  * This module holds Yjs, and loads with the first document someone opens.
  */
 import {
-  AlcoveApiError, DOC_FRAGMENT, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocLiveEvent, type DocLocalCopy, type DocRefusal, type DocSession, type DocSize, type DocStatus, type KeptUpdates
+  AlcoveApiError, DOC_FRAGMENT, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocCopyToken, type DocLiveEvent, type DocRefusal, type DocSession,
+  type DocSize, type DocStatus, type DocUnsentCopy, type KeptUpdates
 } from '@alcove/api';
-import { TAGS, isGone, itemsOnPage, newBlockId } from '@alcove/api/retire';
+import { TAGS, itemsOnPage } from '@alcove/api/retire';
 import * as encoding from 'lib0/encoding';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -53,9 +54,47 @@ export interface DocTransport {
   awareness(update: string, keepalive: boolean): Promise<unknown>;
 }
 
-/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one. `stuck`: it's waiting on something other than the connection. */
-interface Unsent { update: Uint8Array; kept: Promise<number | null> | null; stuck: boolean; clients: Set<number>; items: number }
+/** An edit Alcove doesn't have yet, and its place in `keep`, if it has one, once that's known. `stuck`: it's waiting on something other than the connection. */
+interface Unsent { update: Uint8Array; kept: Promise<number | null> | null; key: number | null; stuck: boolean; clients: Set<number>; items: number }
 type Ending = { over: DocClosed } | 'ended' | 'failed';
+type Struct = ReturnType<typeof Y.decodeUpdate>['structs'][number];
+type Deletes = ReturnType<typeof Y.createDeleteSet>;
+
+/** What of a delete set reaches past what Alcove has: deletes of what's new. */
+function deletesPast(ds: Deletes, known: Map<number, number>): Deletes {
+  const out = Y.createDeleteSet();
+  for (const [client, ranges] of ds.clients) {
+    const reach = known.get(client) ?? 0;
+    const past = ranges.flatMap(({ clock, len }) => (clock + len > reach ? [{ clock: Math.max(clock, reach), len: clock + len - Math.max(clock, reach) }] : []));
+    if (past.length) out.clients.set(client, past);
+  }
+  return out;
+}
+/** An update of these structs, one client at a time in clock order as `decodeUpdate` gives them, and these deletes. */
+function encodeUpdate(structs: Struct[], ds: Deletes): Uint8Array {
+  const encoder = new Y.UpdateEncoderV1();
+  const byClient = new Map<number, Struct[]>();
+  for (const s of structs) {
+    const list = byClient.get(s.id.client);
+    if (list) list.push(s);
+    else byClient.set(s.id.client, [s]);
+  }
+  encoding.writeVarUint(encoder.restEncoder, byClient.size);
+  for (const [client, list] of byClient) {
+    encoding.writeVarUint(encoder.restEncoder, list.length);
+    encoder.writeClient(client);
+    encoding.writeVarUint(encoder.restEncoder, list[0]?.id.clock ?? 0);
+    for (const s of list) s.write(encoder, 0);
+  }
+  encoding.writeVarUint(encoder.restEncoder, ds.clients.size);
+  for (const [client, ranges] of ds.clients) {
+    encoder.resetDsCurVal();
+    encoding.writeVarUint(encoder.restEncoder, client);
+    encoding.writeVarUint(encoder.restEncoder, ranges.length);
+    for (const { clock, len } of ranges) { encoder.writeDsClock(clock); encoder.writeDsLen(len); }
+  }
+  return encoder.toUint8Array();
+}
 
 /** What's in an update, as a request counts it. */
 function shapeOf(update: Uint8Array): Pick<Unsent, 'clients' | 'items'> {
@@ -63,30 +102,68 @@ function shapeOf(update: Uint8Array): Pick<Unsent, 'clients' | 'items'> {
   return { clients: new Set(structs.map((s) => s.id.client)), items: structs.length };
 }
 
-/** The words in a line, or anything else that holds them. */
-function wordsIn(type: Y.XmlFragment): string {
-  return type.toArray().map((child) => {
-    if (child instanceof Y.XmlText) {
-      let words = '';
-      for (let item = child._start; item; item = item.right) if (!item.deleted && item.content instanceof Y.ContentString) words += item.content.str;
-      return words;
-    }
-    if (!(child instanceof Y.XmlElement)) return '';
-    if (child.nodeName === 'hardBreak') return '\n';
-    if (TAGS.has(child.nodeName)) return String(child.getAttribute('name') ?? child.getAttribute('date') ?? '');
-    return `${wordsIn(child)}\n`;
-  }).join('');
+/** The clocks of what's unsent, by writer: `[from, to)`. */
+type Ranges = Map<number, [number, number][]>;
+/** What of a run of clocks, starting at `clock`, is unsent: as offsets into it. */
+function unsentIn(mine: Ranges, client: number, clock: number, length: number): [number, number][] {
+  return (mine.get(client) ?? []).flatMap(([from, to]) => {
+    const start = Math.max(from, clock);
+    const end = Math.min(to, clock + length);
+    return start < end ? [[start - clock, end - clock] satisfies [number, number]] : [];
+  });
 }
-/** What's on a page as plain text, a line to a block, for someone to take with them. */
-const pageText = (doc: Y.Doc): string => doc.getXmlFragment(DOC_FRAGMENT).toArray().flatMap((block) => {
-  const words = block instanceof Y.XmlElement && !isGone(block) ? wordsIn(block).trim() : '';
-  return words ? [words] : [];
-}).join('\n');
-/** Words Yjs is holding that it has nowhere to put, because what they were built on isn't here. */
-function wordsWaiting(doc: Y.Doc): string {
+/** The unsent words of one string item, which Yjs may have merged with words that went. */
+function unsentWords(item: Y.Item, mine: Ranges): string {
+  if (item.deleted || !(item.content instanceof Y.ContentString)) return '';
+  const { str } = item.content;
+  return unsentIn(mine, item.id.client, item.id.clock, item.length).map(([a, b]) => str.slice(a, b)).join('');
+}
+const isUnsent = (item: Y.Item | null, mine: Ranges): boolean => item !== null && !item.deleted && unsentIn(mine, item.id.client, item.id.clock, 1).length > 0;
+/** Unsent words in what's given, a paragraph to each line, in the order they're on the page. Mentions and dates go as what they say. */
+function paragraphsOf<E>(type: Y.AbstractType<E>, mine: Ranges, out: string[]): void {
+  let line = '';
+  const flush = () => { if (line.trim()) out.push(line.trim()); line = ''; };
+  if (type instanceof Y.XmlFragment) {
+    for (const child of type.toArray()) {
+      if (child instanceof Y.XmlText) {
+        for (let item = child._start; item; item = item.right) line += unsentWords(item, mine);
+      } else if (child instanceof Y.XmlElement && child.nodeName === 'hardBreak') {
+        if (isUnsent(child._item, mine)) line += '\n';
+      } else if (child instanceof Y.XmlElement && TAGS.has(child.nodeName)) {
+        if (isUnsent(child._item, mine)) line += String(child.getAttribute('name') ?? child.getAttribute('date') ?? '');
+      } else if (child instanceof Y.XmlElement) {
+        flush();
+        paragraphsOf(child, mine, out);
+      }
+    }
+    flush();
+    return;
+  }
+  for (let item = type._start; item; item = item.right) {
+    if (item.deleted) continue;
+    line += unsentWords(item, mine);
+    if (item.content instanceof Y.ContentType) { flush(); paragraphsOf(item.content.type, mine, out); }
+  }
+  flush();
+  for (const item of type._map.values()) if (!item.deleted && item.content instanceof Y.ContentType) paragraphsOf(item.content.type, mine, out);
+}
+/** Unsent words Yjs is holding with nowhere to put them, because what they were built on isn't here: a paragraph to each run of them. */
+function wordsWaiting(doc: Y.Doc, mine: Ranges): string[] {
   const pending = doc.store.pendingStructs;
-  if (!pending) return '';
-  return Y.decodeUpdateV2(pending.update).structs.flatMap((s) => (s instanceof Y.Item && s.content instanceof Y.ContentString ? [s.content.str] : [])).join('');
+  if (!pending) return [];
+  const out: string[] = [];
+  let run = '';
+  let next: { client: number; clock: number } | null = null;
+  for (const s of Y.decodeUpdateV2(pending.update).structs) {
+    if (!(s instanceof Y.Item)) continue;
+    const words = unsentWords(s, mine);
+    if (!words) continue;
+    if (next && (next.client !== s.id.client || next.clock !== s.id.clock) && run.trim()) { out.push(run.trim()); run = ''; }
+    run += words;
+    next = { client: s.id.client, clock: s.id.clock + s.length };
+  }
+  if (run.trim()) out.push(run.trim());
+  return out;
 }
 
 export class HttpDocSession implements DocSession {
@@ -119,8 +196,8 @@ export class HttpDocSession implements DocSession {
   private moves = 0;
   /** How long until what's stuck is tried again, after this try. */
   private stuckWait = STUCK_AGAIN_MS;
-  /** What was last said of what's been deleted, so it isn't said again. */
-  private deletesSent: Uint8Array | null = null;
+  /** What each copy held, so letting go of it lets go of that and nothing else. */
+  private readonly copies = new WeakMap<DocCopyToken, ReadonlySet<Unsent>>();
   /** Why the stream last failed, for `ready`. */
   private settleFailure: unknown;
 
@@ -174,32 +251,40 @@ export class HttpDocSession implements DocSession {
     void this.send().finally(() => this.doc.destroy());
   };
 
-  /** Everything in this document as it stands here, unsent or not, and whatever's here that has nowhere to go. A scratch document, so nothing it does touches this one. */
-  localCopy = (): DocLocalCopy => {
-    const scratch = new Y.Doc();
-    Y.applyUpdate(scratch, Y.encodeStateAsUpdate(this.doc));
-    const waiting = wordsWaiting(scratch);
-    scratch.store.pendingStructs = null;
-    scratch.store.pendingDs = null;
-    if (waiting) {
-      const block = new Y.XmlElement('line');
-      block.setAttribute('id', newBlockId());
-      const page = scratch.getXmlFragment(DOC_FRAGMENT);
-      page.insert(page.length, [block]);
-      block.insert(0, [new Y.XmlText(waiting)]);
+  /**
+   * The words this browser wrote that Alcove hasn't taken, and nothing else: the clocks every waiting update brings, read off
+   * the page in order, then off what Yjs is holding with nowhere to put it. Its token remembers what was waiting, all of which
+   * the copy holds the words of.
+   */
+  unsentCopy = (): DocUnsentCopy => {
+    this.cut();
+    const mine: Ranges = new Map();
+    for (const u of this.unsent) {
+      const { from, to } = Y.parseUpdateMeta(u.update);
+      for (const [client, end] of to) {
+        const range: [number, number] = [from.get(client) ?? 0, end];
+        mine.set(client, [...(mine.get(client) ?? []), range]);
+      }
     }
-    const copy = { text: pageText(scratch), state: Y.encodeStateAsUpdate(scratch) };
-    scratch.destroy();
-    return copy;
+    const paragraphs: string[] = [];
+    paragraphsOf(this.doc.getXmlFragment(DOC_FRAGMENT), mine, paragraphs);
+    for (const [name, type] of this.doc.share) if (name !== DOC_FRAGMENT) paragraphsOf(type, mine, paragraphs);
+    const text = [...paragraphs, ...wordsWaiting(this.doc, mine)].join('\n');
+    const token: DocCopyToken = { vector: Y.encodeStateVector(this.doc), keys: this.unsent.flatMap((u) => (u.key === null ? [] : [u.key])) };
+    this.copies.set(token, new Set(this.unsent));
+    return { text, token };
   };
   size = (): DocSize => ({ bytes: Y.encodeStateAsUpdate(this.doc).length, items: itemsOnPage(this.doc) });
-  /** The one thing that forgets what Alcove doesn't have, for someone who chose to. */
-  discardUnsaved = async (): Promise<void> => {
-    this.cut();
-    clearTimeout(this.stuckTry);
-    const letGo = this.unsent.splice(0);
+  /**
+   * The one thing that forgets what Alcove doesn't have, for someone who chose to: what a copy holds that can't reach this
+   * document. This one still holds it, so it closes, for it to be opened again from what Alcove has, with what's still kept.
+   */
+  discardUnsaved = async (token: DocCopyToken): Promise<void> => {
+    const held = this.copies.get(token);
+    const over = this.view.closed !== null;
+    const letGo = held ? this.unsent.filter((u) => held.has(u) && (u.stuck || over)) : [];
+    this.unsent = this.unsent.filter((u) => !letGo.includes(u));
     await this.forget(letGo);
-    this.publish();
     this.close();
   };
 
@@ -241,7 +326,9 @@ export class HttpDocSession implements DocSession {
     const update = this.fresh.length === 1 && this.fresh[0] ? this.fresh[0] : Y.mergeUpdates(this.fresh);
     this.fresh = [];
     const shape = shapeOf(update);
-    this.unsent.push({ update, kept: this.keep ? this.keep.add(update, Date.now()).catch(() => null) : null, stuck: [...shape.clients].some((c) => this.stuckClients.has(c)), ...shape });
+    const entry: Unsent = { update, kept: null, key: null, stuck: [...shape.clients].some((c) => this.stuckClients.has(c)), ...shape };
+    entry.kept = this.keep ? this.keep.add(update, Date.now()).then((key) => { entry.key = key; return key; }, () => null) : null;
+    this.unsent.push(entry);
   }
   /** As much as fits in one request, the oldest first, and always at least one. */
   private nextBatch(): Unsent[] {
@@ -358,53 +445,25 @@ export class HttpDocSession implements DocSession {
   }
   /**
    * Everything Alcove doesn't have, worked out from what's here now, in a document of its own: nothing here is keeping what
-   * was deleted for undo there, so whatever's been taken out is sent as the small thing it now is.
+   * was deleted for undo there, so whatever's been taken out is sent as the small thing it now is. Of what's deleted, only
+   * what Alcove may not have: what's waiting deleted, and what's new and gone already. All that's ever been deleted is what
+   * Yjs would send, which says nothing new, and would cost a row every time.
    */
   private composed(): Uint8Array {
     const scratch = new Y.Doc();
     Y.applyUpdate(scratch, Y.encodeStateAsUpdate(this.doc));
     scratch.store.pendingStructs = null;
     scratch.store.pendingDs = null;
-    const update = Y.encodeStateAsUpdate(scratch, this.knownToAlcove());
+    const known = this.knownToAlcove();
+    const { structs, ds } = Y.decodeUpdate(Y.encodeStateAsUpdate(scratch, known));
     scratch.destroy();
-    return update;
+    const waiting = this.placed(this.unsent).map((u) => Y.decodeUpdate(u.update).ds);
+    return encodeUpdate(structs, Y.mergeDeleteSets([deletesPast(ds, Y.decodeStateVector(known)), ...waiting]));
   }
   /** Which of what's waiting is in this document: anything else Yjs has nowhere to put, and nothing worked out from here holds it. */
   private placed(waiting: Unsent[]): Unsent[] {
     const here = Y.decodeStateVector(Y.encodeStateVector(this.doc));
     return waiting.filter((u) => [...Y.parseUpdateMeta(u.update).to].every(([client, clock]) => (here.get(client) ?? 0) >= clock));
-  }
-  /** Everything deleted here of what Alcove has, as an update with nothing else in it. Null if that's nothing, or nothing new. */
-  private deletesKnown(): Uint8Array | null {
-    const known = Y.decodeStateVector(this.knownToAlcove());
-    const clients = [...Y.createDeleteSetFromStructStore(this.doc.store).clients].flatMap(([client, deleted]) => {
-      const reach = known.get(client) ?? 0;
-      const ranges = deleted.flatMap(({ clock, len }) => (clock < reach ? [{ clock, len: Math.min(len, reach - clock) }] : []));
-      return ranges.length ? [{ client, ranges }] : [];
-    });
-    if (!clients.length) return null;
-    const e = encoding.createEncoder();
-    encoding.writeVarUint(e, 0);
-    encoding.writeVarUint(e, clients.length);
-    for (const { client, ranges } of clients) {
-      encoding.writeVarUint(e, client);
-      encoding.writeVarUint(e, ranges.length);
-      for (const { clock, len } of ranges) { encoding.writeVarUint(e, clock); encoding.writeVarUint(e, len); }
-    }
-    const update = encoding.toUint8Array(e);
-    const sent = this.deletesSent;
-    return sent && sent.length === update.length && sent.every((b, i) => b === update[i]) ? null : update;
-  }
-  /** What's refused is too much, so what's been deleted goes without it: that's how there comes to be room, and it can't go any other way while it's behind what's stuck. */
-  private async sendDeletes(): Promise<void> {
-    const deletes = this.deletesKnown();
-    if (!deletes) return;
-    try {
-      await this.net.update(deletes);
-      this.deletesSent = deletes;
-    } catch {
-      /* It's said again next time. */
-    }
   }
   private laterStuck(): number {
     const ms = this.stuckWait;
@@ -417,7 +476,6 @@ export class HttpDocSession implements DocSession {
     if (code === 'too-large') {
       this.tooMuch = true;
       this.rejected = false;
-      await this.sendDeletes();
       return this.laterStuck();
     }
     if (code === 'invalid') {
@@ -437,11 +495,10 @@ export class HttpDocSession implements DocSession {
     const waiting = this.placed(this.unsent);
     if (update.length > MAX_DOC_UPDATE_BYTES) {
       this.tooMuch = true;
-      await this.sendDeletes();
       return this.laterStuck();
     }
     try {
-      // Nothing new, and nothing gone: what was stuck isn't anywhere in this document any more.
+      // Nothing new, and nothing gone: what was stuck isn't anywhere in this document any more, or is somewhere Yjs can't place it, which nothing sent from here would change.
       if (Y.parseUpdateMeta(update).to.size || Y.decodeUpdate(update).ds.clients.size) await this.net.update(update);
     } catch (e) {
       return this.stuckFailed(e);
@@ -581,7 +638,7 @@ export class HttpDocSession implements DocSession {
       try {
         for (const k of await this.keep.load()) {
           Y.applyUpdate(this.doc, k.update, HEARD);
-          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key), stuck: false, ...shapeOf(k.update) });
+          this.unsent.push({ update: k.update, kept: Promise.resolve(k.key), key: k.key, stuck: false, ...shapeOf(k.update) });
         }
       } catch {
         /* What's kept can't be read here: this session has nothing of it to send, and it's kept all the same. */

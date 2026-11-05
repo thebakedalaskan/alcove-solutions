@@ -290,7 +290,7 @@ export interface AlcoveApi {
      */
     document(id: ID, documentId: ID, opts?: DocSessionOptions): Promise<DocSession>;
     /**
-     * Makes a new document or board of what `DocSession.localCopy` gave, for words that couldn't reach the one they were
+     * Makes a new document or board of a state, such as one made of what `DocSession.unsentCopy` gave, for words that couldn't reach the one they were
      * written in. Made like any other, by anyone who can make one, and nothing's left behind if it can't be.
      */
     saveCopy(id: ID, input: ItemInput & { state: Uint8Array }): Promise<{ id: ID }>;
