@@ -4,16 +4,17 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
-  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonalNotesSchema, PersonSuggestionSchema, PreferencesSchema, PromotionPreviewSchema, RecordingStopResultSchema, REQUEST_ID_HEADER,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, ScreenFrameReceiptSchema,
+  NoteSummarySchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type PersonalApi, type RecordingAction, type RoomRecording,
+  type AlcoveApi, type AudioPiece, type BreakoutPlan, type CallAction, type ChangeScope, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip
 } from '@alcove/api';
 import { MlsError, MlsKeys, groupName, newIdentity, type MlsGroup } from './mls';
 import type { KeyPackage } from 'ts-mls';
 import { HttpMoveIn, HttpMoveOut, type MoveInTransport } from './moves';
+import { HttpRings } from './rings';
 import { z } from 'zod';
 
 export interface HttpOptions {
@@ -31,6 +32,11 @@ export interface HttpOptions {
   callKeySwitchMs?: number | undefined;
   /** How often the host's browser moves the call's keys on when nobody comes or goes, in ms (default 10 minutes). */
   callRekeyMs?: number | undefined;
+  /**
+   * How long a stream of rings may say nothing before it's given up on, in ms (default 50 s: the server says something
+   * every 20). A laptop waking up can hold a connection that's dead without knowing it. Tests go faster.
+   */
+  ringSilenceMs?: number | undefined;
 }
 export interface ClientEvent {
   level: 'debug' | 'info' | 'warn' | 'error';
@@ -58,14 +64,16 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     }
     return r.data;
   };
-  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}, keepalive = false): Promise<Response> {
+  async function send(method: string, path: string, body?: BodyInit | null, headers: Record<string, string> = {}, keepalive = false, signal?: AbortSignal | undefined): Promise<Response> {
     const mutating = method !== 'GET';
     const where = { method, path: safePath(path) };
     const t0 = Date.now();
     let res: Response;
     try {
-      res = await f(base + path, { method, credentials: 'include', keepalive, headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null });
+      res = await f(base + path, { method, credentials: 'include', keepalive, headers: { ...(mutating ? { [OPERATION_HEADER]: opId() } : {}), ...headers }, body: body ?? null, ...(signal ? { signal } : {}) });
     } catch (cause) {
+      // Whoever asked gave up on it: nothing went wrong.
+      if (signal?.aborted) throw cause;
       emit('warn', 'request could not reach the API', { ...where, ms: Date.now() - t0, error: cause instanceof Error ? cause.name : 'unknown' });
       throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { ...where, cause });
     }
@@ -87,8 +95,8 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const res = await send(method, path, body === undefined ? null : JSON.stringify(body), { ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...extra }, keepalive);
     return parse(schema, await res.json(), `response from ${method} ${path}`);
   }
-  async function* ndjson<S extends z.ZodType>(schema: S, path: string): AsyncIterable<z.infer<S>> {
-    const res = await send('GET', path);
+  async function* ndjson<S extends z.ZodType>(schema: S, path: string, signal?: AbortSignal | undefined): AsyncIterable<z.infer<S>> {
+    const res = await send('GET', path, null, {}, false, signal);
     if (!res.body) throw new AlcoveApiError('unknown', 'Empty stream.');
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = '';
@@ -104,6 +112,10 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       }
     }
   }
+  /** Every stream of rings this client has open, so an answer leaves them all at once. */
+  const ringing = new Set<HttpRings>();
+  /** A change to a call in a series says how far it reaches in the query. */
+  const inScope = (opts: { scope?: ChangeScope | undefined } | undefined) => (opts?.scope ? `?scope=${opts.scope}` : '');
   /** Where a piece or clip starts in its segment, in the milliseconds the headers carry. */
   const atMs = (at: number) => String(Math.round(at * 1000));
   const audio = (path: string, piece: AudioPiece, extra: Record<string, string> = {}) => send('POST', path, piece.data, {
@@ -198,12 +210,15 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       get: (id) => req(MeetingSchema, 'GET', `/meetings/${encodeURIComponent(id)}`),
       byCode: (code) => req(MeetingSchema.nullable(), 'GET', `/calls/${encodeURIComponent(code)}/meeting`),
       create: (input) => req(MeetingSchema, 'POST', '/meetings', input),
-      update: (id, input) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}`, input),
-      cancel: async (id) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}`); },
+      update: (id, input, opts) => req(MeetingSchema, 'PATCH', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`, input),
+      cancel: async (id, opts) => { await req(z.unknown(), 'DELETE', `/meetings/${encodeURIComponent(id)}${inScope(opts)}`); },
+      answer: (id, answer) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/answer`, { answer }),
       scheduleNext: (id, startsAt) => req(MeetingSchema, 'POST', `/meetings/${encodeURIComponent(id)}/next`, { startsAt })
     },
     calendar: {
       get: () => req(CalendarSchema, 'GET', '/calendar'),
+      // Addresses go in the body so they never appear in URLs or access logs.
+      busy: (emails, range) => req(BusySchema, 'POST', '/calendar/busy', { emails, ...range, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
       connectUrl: () => `${base}/auth/google?consent=1`,
       disconnect: () => req(CalendarSchema, 'DELETE', '/calendar'),
       adopt: (eventId, notes) => req(MeetingSchema, 'POST', `/calendar/events/${encodeURIComponent(eventId)}/adopt`, notes ? { notes } : {})
@@ -211,6 +226,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     calls: {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
+      pick: (code, at) => req(CallCardSchema, 'POST', `/calls/${encodeURIComponent(code)}/pick`, { at }),
       join: async (code, opts) => {
         // This connection's identity and MLS keys are made here; key packages are all the API gets.
         const identity = newIdentity();
@@ -224,6 +240,20 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         return new HttpMoveIn(opened.claim, opened.move, moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context));
       },
       resumeMove: async (claim) => new HttpMoveIn(claim, await moving.status(claim), moving, connect, { pollMs: movePollMs }, (level, msg, context) => emit(level, msg, context))
+    },
+    rings: {
+      live: () => {
+        const rings: HttpRings = new HttpRings((signal) => ndjson(RingsSnapshotSchema, '/rings', signal), o.ringSilenceMs ?? 50_000, emit, () => { ringing.delete(rings); });
+        ringing.add(rings);
+        return rings;
+      },
+      answer: async (id, reply) => {
+        await req(z.object({ answered: z.literal(true) }), 'POST', `/rings/${encodeURIComponent(id)}/answer`, { reply });
+        for (const r of ringing) r.answeredHere(id);
+      }
+    },
+    documents: {
+      list: () => req(DocumentLibrarySchema, 'GET', '/documents')
     },
     recordings: {
       start: async (input) => new HttpRecording(await req(RoomRecordingStateSchema, 'POST', '/recordings', input ?? {}), {
@@ -892,6 +922,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   };
   admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
+  ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
   /* What the call captures: pause and resume are the organizer's; anyone else asks for notes. Each resolves once the server has done it. */
   pause = async () => { this.take(await this.t.act(this.state.callId, { type: 'pause' })); };
@@ -906,6 +937,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   /** They're disconnected at once; the host's browser then takes them out of their group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
+  stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
   setHand = (up: boolean) => this.act({ type: 'hand', up });
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };

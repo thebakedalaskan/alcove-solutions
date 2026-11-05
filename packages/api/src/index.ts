@@ -8,3 +8,4 @@ export * from './format';
 export * from './wire';
 export * from './marks';
 export * from './moves';
+export * from './rings';

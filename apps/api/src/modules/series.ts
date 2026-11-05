@@ -2,7 +2,8 @@
  * Series (docs: notes-and-inference › Series): calls that follow on from each other, and what
  * carries over between them. A series is a random ID in its organizer's meetings, sealed with the
  * rest of each manifest; every occurrence of one recurring Google Calendar event held in Alcove
- * shares one, and so does a call scheduled as the next one.
+ * shares one, and so does a call scheduled as the next one. Calls scheduled to repeat share the ID of
+ * their series' own item (./repeats.ts).
  *
  * What carries over (confirmed decisions, open questions, follow-ups) is read from the notes the
  * person asking has, each time they ask: the organizer's own, or the ones given to them by
@@ -21,8 +22,9 @@ import { listItems, type Loaded } from '../vault';
 import { me } from './account';
 import { DOUBT, fenced, oneLine } from './drafting';
 import { all as allMeetings, toMeeting, type MeetingManifest } from './meetings';
-import { NoteManifest, goneSince, myEmail, receivedBy, seriesOf, sharedWithMe, type Located } from './notes';
+import { NoteManifest, asRead, goneSince, myEmail, receivedBy, seriesOf, sharedWithMe, type Located } from './notes';
 import { personOf } from './portraits';
+import { repeatOf } from './repeats';
 
 const slog = log.child({ component: 'series' });
 
@@ -104,10 +106,11 @@ export async function get(o: Owner, seriesId: string): Promise<Series> {
   });
   const older = found.length - sources.length;
   slog.debug('series read', { seriesId, organizer: isOrganizer, notes: notes.length, older, decisions: decisions.length, questions: questions.length, actions: actions.length });
+  const repeat = isOrganizer ? await repeatOf(o, seriesId) : undefined;
   return {
     id: seriesId, title: next?.manifest.title ?? first?.note.manifest.title ?? latest?.manifest.title ?? 'Untitled call',
     organizer, isOrganizer, ...(next ? { next: await toMeeting(o, next) } : {}),
-    recurring: own.some((m) => !!m.manifest.recurringEventId), notes, older, decisions, questions, actions
+    recurring: own.some((m) => !!m.manifest.recurringEventId), ...(repeat ? { repeat } : {}), notes, older, decisions, questions, actions
   };
 }
 
@@ -185,7 +188,7 @@ const Reply = z.object({
 export async function ask(o: Owner, seriesId: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]> {
   const { sources, own } = await find(o, seriesId);
   if (!own.length && !sources.length) throw notFound('That series', { seriesId });
-  const read = sources.filter((s) => s.note.manifest.status === 'ready' && (s.note.manifest.summary || s.note.manifest.transcript?.length)).slice(0, MAX_CALLS);
+  const read = sources.filter((s) => s.note.manifest.status === 'ready' && (s.note.manifest.summary || asRead(s).transcript?.length)).slice(0, MAX_CALLS);
   if (!read.length) throw new ConflictError('There are no written notes in this series to ask about yet.', { context: { seriesId } });
   const t0 = performance.now();
   const organizer = await me(read[0]?.owner ?? o);
@@ -193,10 +196,10 @@ export async function ask(o: Owner, seriesId: string, question: string, timeZone
   // What each call's notes say always goes in; transcripts fill what's left, newest call first.
   let room = MAX_CHARS - blocks.reduce((n, b) => n + b.length + 2, 0);
   const calls = read.map((s, i) => {
-    const lines = s.note.manifest.transcript ?? [];
+    const lines = asRead(s).transcript ?? [];
     const text = lines.length && room > 200 ? transcriptText(lines, room) : '';
     room -= text.length + 1;
-    return `${blocks[i] ?? ''}\nTranscript:\n${text ? fenced(text) : lines.length ? '(left out: the transcripts before it filled the space)' : '(nothing was transcribed)'}`;
+    return `${blocks[i] ?? ''}\nTranscript:\n${text ? fenced(text) : lines.length ? '(left out: the transcripts before it filled the space)' : s.note.manifest.keep.transcript ? '(nothing was transcribed)' : '(deleted once the notes were written)'}`;
   });
   const asker = await me(o);
   const reply = Reply.safeParse(await completeJson(o.cfg, [

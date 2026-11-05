@@ -1,7 +1,7 @@
 /*
  * Home: each card does one thing. Up next (with last time's notes, and what carries over when it's in a
  * series), what's waiting on you, your follow-ups, today on a line, asking your notes, and your recent
- * notes. Before your first notes: the line to start your first call, the example note, and your team.
+ * notes. Before your first notes: starting your first call, the example note, and your team.
  */
 import { firstName, type Inbox } from '@alcove/api';
 import { SealedBadge } from '@alcove/ui';
@@ -10,7 +10,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 import { Ask, questionsFrom } from '~/features/home/Ask';
 import { ConnectCalendar, useNotNow } from '~/features/home/Calendar';
-import { aheadOf, ledeOf, seriesIdOf, todayOf } from '~/features/home/day';
+import { aheadOf, isOffered, ledeOf, seriesIdOf, todayOf } from '~/features/home/day';
 import { Example, TeamCard } from '~/features/home/FirstDay';
 import { FollowUps } from '~/features/home/FollowUps';
 import { Recent } from '~/features/home/Recent';
@@ -54,8 +54,9 @@ function Home() {
   const others = prefs?.showOtherMeetings !== false;
   const items = aheadOf(calls, others ? calendar?.events ?? [] : [], now);
   const firstDay = notes.length === 0;
-  // Before your first notes the top of Home starts your first call, until one is scheduled.
-  const next = firstDay ? items.find((a) => a.kind === 'call') : items[0];
+  // Before your first notes the top of Home starts your first call, until one is scheduled. A call waiting for its
+  // guest to pick a time isn't up next: nobody knows when it is.
+  const next = items.find((a) => (firstDay ? a.kind === 'call' : true) && !isOffered(a));
   const series = next && seriesIdOf(next);
   const day = todayOf(notes, items, now);
   const suggested = inbox.followUps.filter((a) => !a.takenOn);
@@ -101,7 +102,7 @@ function Home() {
           </div>
           <div className="hm-stack">
             {calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
-            <Today {...day} me={me} calendar={calendar?.source === 'google' && !calendar.needsAccess && others} composing={!next} now={now} />
+            <Today {...day} me={me} calendar={calendar?.source === 'google' && !calendar.needsAccess && others} starting={!next} now={now} />
             {firstDay ? <TeamCard /> : <Ask questions={questionsFrom(notes, me, now)} />}
           </div>
         </div>

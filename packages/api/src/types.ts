@@ -141,6 +141,88 @@ export type Team = z.infer<typeof TeamSchema>;
 
 export const MeetingStatusSchema = z.enum(['scheduled', 'live', 'ended']);
 export type MeetingStatus = z.infer<typeof MeetingStatusSchema>;
+
+/**
+ * What a call's notes keep, set when it's scheduled. Without the transcript, it's used to write the notes and then
+ * deleted. Without the recording, the audio is deleted when the call ends. `readScreens` has shared screens go into
+ * the notes from the moment notes start, instead of when the organizer turns that on.
+ */
+export const NotesChoicesSchema = z.object({ keepTranscript: z.boolean(), keepRecording: z.boolean(), readScreens: z.boolean() });
+export type NotesChoices = z.infer<typeof NotesChoicesSchema>;
+/** What a call keeps unless it's set otherwise: every call before these choices existed kept all of it. */
+export const DEFAULT_NOTES_CHOICES: NotesChoices = { keepTranscript: true, keepRecording: true, readScreens: false };
+
+/** Whether a time zone's name is one the runtime knows, such as "Europe/London". */
+export function isTimeZone(name: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: name });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A day of the week: 0 is Sunday. */
+export const WeekdaySchema = z.number().int().min(0).max(6);
+/** How a call repeats: on some days every week or two, or on one weekday of each month (`week` -1 is the last one). */
+export const RepeatRuleSchema = z.discriminatedUnion('every', [
+  z.object({ every: z.literal('week'), weeks: z.union([z.literal(1), z.literal(2)]), days: z.array(WeekdaySchema).min(1).max(7) }),
+  z.object({ every: z.literal('month'), week: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]), day: WeekdaySchema })
+]);
+export type RepeatRule = z.infer<typeof RepeatRuleSchema>;
+/** The most calls one repeat can schedule. */
+export const MAX_SERIES_CALLS = 60;
+export const RepeatSchema = z.object({
+  rule: RepeatRuleSchema,
+  /** The last day a call can fall on, as `YYYY-MM-DD` where the organizer is. */
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** Where the organizer is, as an IANA name: the calls keep their clock time there when the clocks change. */
+  timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.')
+});
+export type Repeat = z.infer<typeof RepeatSchema>;
+/**
+ * A repeat as the app sends it, with when each call starts, soonest first, worked out where the organizer is. The
+ * first is the call's own `startsAt`.
+ */
+export const RepeatInputSchema = RepeatSchema.extend({ occurrences: z.array(z.string()).min(1).max(MAX_SERIES_CALLS) });
+export type RepeatInput = z.infer<typeof RepeatInputSchema>;
+/** Changing or cancelling a call in a series: only this call, or this one and every later one. */
+export const ChangeScopeSchema = z.enum(['this', 'following']);
+export type ChangeScope = z.infer<typeof ChangeScopeSchema>;
+
+/** Someone invited, answering whether they're coming. */
+export const RsvpSchema = z.enum(['yes', 'maybe', 'no']);
+export type Rsvp = z.infer<typeof RsvpSchema>;
+/** How everyone invited has answered, and how many haven't. */
+export const RsvpCountsSchema = z.object({ yes: z.number(), maybe: z.number(), no: z.number(), waiting: z.number() });
+export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
+
+/* ---------- documents ---------- */
+
+export const DocumentKindSchema = z.enum(['doc', 'sheet', 'board']);
+export type DocumentKind = z.infer<typeof DocumentKindSchema>;
+/** A document someone can bring to a call. */
+export const DocumentSchema = z.object({
+  id: IDSchema,
+  name: z.string(),
+  kind: DocumentKindSchema,
+  /** Who it belongs to, by first name. */
+  by: z.string(),
+  updatedAt: ISODateSchema
+});
+export type Document = z.infer<typeof DocumentSchema>;
+/** The documents someone can bring: a team's workspaces, or one person's own. `sample` is a demo account's made-up set; `none` is nothing yet. */
+export const DocumentLibrarySchema = z.object({
+  source: z.enum(['sample', 'none']),
+  workspaces: z.array(z.object({ id: IDSchema, name: z.string(), documents: z.array(DocumentSchema) }))
+});
+export type DocumentLibrary = z.infer<typeof DocumentLibrarySchema>;
+/** The most documents a call can bring. */
+export const MAX_CALL_DOCUMENTS = 12;
+/** A document brought to a call. `name` is null for someone who can't open it: they see whose it is and ask them for it. */
+export const CallDocumentSchema = z.object({ id: IDSchema, kind: DocumentKindSchema, by: z.string(), name: z.string().nullable() });
+export type CallDocument = z.infer<typeof CallDocumentSchema>;
+
 export const MeetingSchema = z.object({
   id: IDSchema,
   title: z.string(),
@@ -148,12 +230,28 @@ export const MeetingSchema = z.object({
   endsAt: ISODateSchema,
   organizer: PersonSchema,
   isOrganizer: z.boolean(),
-  /** Everyone invited besides the organizer. When notes are on, they all get them. */
+  /** Everyone invited besides the organizer. When notes are on, they all get them. Someone invited to a big call sees only `guestCount`. */
   guests: z.array(PersonSchema),
+  /** How many people are invited besides the organizer. */
+  guestCount: z.number(),
   notes: NotesSettingSchema,
+  /** What the notes keep. */
+  choices: NotesChoicesSchema,
   /** Short code used in the join link, e.g. `kpw-rnzq-hte`. */
   code: z.string(),
   status: MeetingStatusSchema,
+  /** Started now, not scheduled: it's on nobody's calendar, and isn't listed until someone is in it. */
+  instant: z.boolean(),
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean(),
+  /** What was brought to the call. */
+  documents: z.array(CallDocumentSchema),
+  /** How everyone invited has answered. */
+  rsvps: RsvpCountsSchema,
+  /** Your own answer, when you're invited; null when you haven't answered, and for the organizer. */
+  rsvp: RsvpSchema.nullable(),
+  /** Times offered to a guest, while they haven't picked one: `startsAt` means nothing until they have. */
+  offer: z.object({ times: z.array(ISODateSchema) }).optional(),
   /** Present once the call has happened with notes on. */
   noteId: IDSchema.optional(),
   /** Seconds the call actually lasted, once ended. */
@@ -161,7 +259,11 @@ export const MeetingSchema = z.object({
   /** The call in the organizer's Google Calendar, which sends its invitations. */
   calendarUrl: z.string().url().optional(),
   /** The series it's in: the calls before and after it, whose decisions, open questions and follow-ups carry over. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** How the series repeats, when it was scheduled to. */
+  repeat: RepeatSchema.optional(),
+  /** The series' own link code, when it repeats: it always leads to the call that's on now or next. Its calendar invitation carries this one. */
+  seriesCode: z.string().optional()
 });
 export type Meeting = z.infer<typeof MeetingSchema>;
 
@@ -183,7 +285,9 @@ export const CalendarEventSchema = z.object({
   /** The event in the calendar it came from. */
   calendarUrl: z.string().url(),
   /** Your series this event continues: it's the next occurrence of a recurring event you've held in Alcove. */
-  seriesId: IDSchema.optional()
+  seriesId: IDSchema.optional(),
+  /** The code of the Alcove link on the event: it's someone's Alcove call, which `join` opens. */
+  alcoveCode: z.string().optional()
 });
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>;
 
@@ -197,13 +301,48 @@ export const CalendarSchema = z.object({
 });
 export type Calendar = z.infer<typeof CalendarSchema>;
 
+/** A stretch of time. */
+export const IntervalSchema = z.object({ from: ISODateSchema, to: ISODateSchema });
+export type Interval = z.infer<typeof IntervalSchema>;
+/**
+ * When people are busy. `you` is your own calendar and calls. A person's `busy` is null when their calendar can't be
+ * read: it's private, or they're outside the company. Read when it's asked for and stored nowhere.
+ */
+export const BusySchema = z.object({
+  /** google: from a connected calendar. sample: a demo account's made-up week. none: nothing connected. */
+  source: z.enum(['google', 'sample', 'none']),
+  you: z.array(IntervalSchema),
+  people: z.array(z.object({ email: z.string(), busy: z.array(IntervalSchema).nullable() }))
+});
+export type Busy = z.infer<typeof BusySchema>;
+
+/** The most people one call can invite, besides its organizer. */
+export const MAX_GUESTS = 300;
+
+/*
+ * What `.partial()` makes of this is how a call is changed, so nothing here has a default: a default would come back
+ * as a change on every update.
+ */
 export const MeetingInputSchema = z.object({
   title: z.string(),
   startsAt: ISODateSchema,
   durationMinutes: z.number(),
   /** Email addresses. */
   guests: z.array(z.string()),
-  notes: NotesSettingSchema
+  notes: NotesSettingSchema,
+  /** What the notes keep. Everything, and screens only when turned on, unless it's set. */
+  choices: NotesChoicesSchema.optional(),
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean().optional(),
+  /** Documents brought to the call, by ID. */
+  documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
+  /** Schedules a call for each occurrence, as one series with one link. */
+  repeat: RepeatInputSchema.optional(),
+  /**
+   * Offers these times to a guest instead of settling on one: the call goes on no calendar until someone with its
+   * link picks one (see calls.pick). `startsAt` is the first of them. Can't be combined with `repeat`.
+   */
+  offer: z.array(ISODateSchema).min(2).max(3).optional()
 });
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
 
@@ -530,7 +669,10 @@ export const NoteSchema = NoteSummarySchema.extend({
   gaps: z.array(CaptureGapSchema),
   /** What was on shared screens while screen notes were on, oldest first, each with the stretch of the transcript it belongs to. */
   screens: z.array(ScreenMomentSchema),
-  /** What was said while notes were on. Null while the recording is still going. */
+  /**
+   * What was said while notes were on. Null while the recording is still going. Without `kept.transcript` it's empty
+   * once the notes are written, and until then for everyone but the organizer.
+   */
   transcript: z.array(TranscriptLineSchema).nullable(),
   /** Each breakout room's own section, in the order the rooms closed. Empty for a call without rooms and for room recordings. */
   rooms: z.array(RoomNoteSchema).default([]),
@@ -549,6 +691,8 @@ export const NoteSchema = NoteSummarySchema.extend({
   suggestedQuestions: z.array(z.string()),
   /** Encrypted audio kept for this note; playable through notes.audioUrl. */
   audio: z.array(AudioSegmentSchema),
+  /** What the call was set to keep. Without the transcript it's gone once the notes are written; without the recording, once the call ended. */
+  kept: z.object({ transcript: z.boolean(), recording: z.boolean() }),
   /** The verified private models that transcribed the speech and wrote the notes. Empty when nothing was transcribed. */
   inference: z.array(InferenceEvidenceSchema),
   /** The series its call is in, when it's in one: see series.get. */
@@ -640,6 +784,8 @@ export const SeriesSchema = z.object({
   next: MeetingSchema.optional(),
   /** For the organizer: the series follows a recurring Google Calendar event, so its next call is the next occurrence there. */
   recurring: z.boolean(),
+  /** For the organizer: how the series repeats, when it was scheduled to in Alcove. */
+  repeat: RepeatSchema.optional(),
   /** The calls in the series whose notes you have, newest first: the newest 24 of them. Everything below comes from these alone. */
   notes: z.array(SeriesNoteSchema),
   /** How many older calls in it you also have notes from. They aren't shown, and nothing carries over from them. */

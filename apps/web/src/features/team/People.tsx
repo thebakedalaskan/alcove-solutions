@@ -1,7 +1,7 @@
 /*
  * The people on the Team page: cards for everyone on Alcove (and, filtered, the colleagues invited or not
  * yet), the colleagues not on Alcove yet with Invite, the first-one-here card and the personal-account
- * card. Start a call opens New call with that person in it; Notes with lists the notes you both have.
+ * card. Start a call opens Start a call with that person picked; Notes with lists the notes you both have.
  * Inviting opens your own email with an invitation to them, and marks them invited.
  */
 import { errorMessage, type Person, type PersonSuggestion, type SignInProvider, type Team } from '@alcove/api';
@@ -9,7 +9,7 @@ import { Avatar, Button, Card, Chip, EmptyState, GhostArch, Icon, IconButton, Pe
 import { Link } from '@tanstack/react-router';
 import { useState, type ReactNode } from 'react';
 import { PeoplePicker } from '~/features/people/PeoplePicker';
-import { useOpenComposer } from '~/features/shell/context';
+import { useCallFlow } from '~/features/shell/context';
 import { log } from '~/lib/log';
 import { callName, listNames } from '~/lib/people';
 import { useInviteTeam } from '~/lib/queries';
@@ -147,18 +147,18 @@ export function PeopleGrid({ me, members, meets, inGroups, now }: { me: Person; 
 }
 
 /**
- * Someone on your team: Start a call (New call with them in it), the notes you both have, and while they're
+ * Someone on your team: Start a call (with them picked), the notes you both have, and while they're
  * not on Alcove and not invited, Invite. The notes link names them in the address's fragment, which never
  * leaves the browser, so their address isn't sent to the web host.
  */
 function MemberCard({ member: m, line }: { member: Member; line: string }) {
-  const openComposer = useOpenComposer();
+  const flow = useCallFlow();
   const mark = useMarkInvited();
   const name = callName(m.person);
   return (
     <PersonCard person={m.person} title={m.title ?? (addressOnly(m.person) ? undefined : m.person.email)} last={line}
       actions={<>
-        <IconButton icon="video" size={17} label={`Start a call with ${name}`} aria-haspopup="dialog" onClick={() => openComposer({ people: [m.person] })} />
+        <IconButton icon="video" size={17} label={`Start a call with ${name}`} aria-haspopup="dialog" onClick={() => flow.start({ people: [m.person] })} />
         <Link to="/notes" hash={`with=${encodeURIComponent(m.person.email)}`} className="ac-icon-btn" aria-label={`Notes with ${name}`} title={`Notes with ${name}`}><Icon name="notes" size={17} /></Link>
         {!m.onAlcove && !m.invited && (
           <a href={invitation([m.person])} className="ac-icon-btn" aria-label={`Invite ${name} to Alcove`} title={`Invite ${name}: ${OPENS.toLowerCase()}`} onClick={() => mark([m.person])}>

@@ -1,5 +1,5 @@
 /*
- * The app's building blocks: cards, navigation, the composer line, fields, notes and transcript lines,
+ * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines,
  * note tiles, person cards, the day's timeline, settings, theme previews, the mic level, and what a
  * transcript isn't sure of.
  */
@@ -53,12 +53,15 @@ export function NavItemContent({ icon, label, count }: { icon: IconName; label: 
   return <><Icon name={icon} /><span>{label}</span>{count ? <span className="count">{count}</span> : null}</>;
 }
 
-/** The one line calls are scheduled in. Put an input with className="text" inside, and the action after it. */
+/**
+ * One line to type in, for finding something: the palette's. Put an input with className="text" inside, and the
+ * action after it. Anything that needs more than a line asks one thing at a time in a Modal instead.
+ */
 export function ComposerLine({ icon = 'cal', children, action, className }: { icon?: IconName; children: ReactNode; action?: ReactNode; className?: string | undefined }) {
   return <div className={cn('ac-composer', className)}><Icon name={icon} size={20} />{children}{action}</div>;
 }
 
-/** A labelled text input, for the rare places that need one. Never stack fields into a form in a dialog. */
+/** A labelled text input, for the rare places that need one. A dialog asks one thing at a time: several questions are steps of one modal, not a stack of fields. */
 export const Field = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: ReactNode }>(function Field({ label, hint, id, className, ...rest }, ref) {
   const auto = useId();
   const fid = id ?? auto;
@@ -189,9 +192,10 @@ export function Timeline({ label, children, className }: { label?: string | unde
 /**
  * One call on the timeline: the time (`when`, with its end or length under it), a dot on the line, and the
  * title with who's coming (`people`) and the rest of its line (`meta`: "In 12 min", a chip). `past` dims it;
- * `next` lights it with the sun. Pass the router's Link as `link` and it opens what it links to (its notes).
- * `actions` is a small menu button for the row (change it, copy its link), at its top right; it shows when
- * the row is pointed at or focused, and always on touch screens. A row has a link or actions, not both.
+ * `next` lights it with the sun. Pass the router's Link as `link` and it opens what it links to (its notes),
+ * or a button (empty, with its onClick) and it opens that, such as the call's card.
+ * `actions` is a small menu button for the row (what can be done with a meeting on your calendar), at its top
+ * right; it shows when the row is pointed at or focused, and always on touch screens. A row has a link or actions, not both.
  */
 export function TimelineItem({ when, whenNote, title, people, meta, state, link, actions, className }: {
   when: ReactNode; whenNote?: ReactNode; title: ReactNode; people?: AvatarPerson[] | undefined; meta?: ReactNode;

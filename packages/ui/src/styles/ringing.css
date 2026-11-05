@@ -1,0 +1,169 @@
+/*
+ * Bringing people into a call: the organizer's lobby, the arches to ring from, people waiting on the stage, the card
+ * someone rung sees on any page, someone asking to join, and the page for picking a time. Classes start rg-. Raw colours
+ * appear only on the always-night stage.
+ */
+
+/* What the call runs on, in the corner of every pre-join. On a phone, only its mark. */
+.rg-trust { display: inline-flex; align-items: center; gap: 10px; font: 500 12.5px/1 var(--font-sans); color: var(--stage-ink-2); white-space: nowrap; }
+.rg-trust .ac-i { color: var(--gold); }
+
+/* ---------- the lobby: the organizer's pre-join, rising in two beats ---------- */
+.rg-in { min-width: 0; animation: rg-rise var(--duration-3) var(--ease-out) 120ms both; }
+.rg-in.b { animation-delay: 220ms; }
+.pj-side.rg-side { gap: 20px; }
+.rg-name { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 46px; }
+.pj-side .rg-name h1 { min-width: 0; font-size: 40px; font-variation-settings: 'opsz' 44; }
+.rg-name .ac-icon-btn { color: var(--stage-ink-2); }
+.rg-name .ac-icon-btn:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+.rg-name input { flex: 1; min-width: 0; height: 46px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--stage-ink); box-shadow: 0 2px 0 var(--speak); font: 420 40px/1.06 var(--font-display); letter-spacing: -0.022em; font-variation-settings: 'opsz' 44; }
+.rg-notes { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 12px 14px; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07); }
+.rg-notes > .ac-i { color: var(--gold); }
+.rg-notes b { display: block; font: 600 14px/1.25 var(--font-sans); }
+.rg-notes small { display: block; font-size: 12.5px; line-height: 1.4; color: var(--stage-ink-2); }
+.rg-notes .kept { grid-column: 2 / -1; display: grid; gap: 2px; padding-top: 2px; font-size: 12.5px; line-height: 1.4; color: var(--stage-ink-2); }
+.rg-k { font: 500 13px/18px var(--font-sans); color: var(--stage-ink-2); }
+.rg-arches { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+.rg-arch { position: relative; display: grid; justify-items: center; gap: 6px; width: 58px; min-width: 0; border-radius: 12px; font: 500 12px/1.1 var(--font-sans); color: var(--stage-ink-2); }
+.rg-arch > span:last-child { max-width: 100%; }
+.rg-arch .ring { position: relative; display: block; border-radius: var(--radius-arch) var(--radius-arch) 14px 14px; transition: box-shadow var(--duration-2) var(--ease-out); }
+.rg-arch:hover .ring { box-shadow: 0 0 0 2px var(--stage), 0 0 0 3px rgb(255 255 255 / 0.3); }
+.rg-arch:focus-visible { outline: 2px solid var(--speak); outline-offset: 3px; }
+.rg-arch.on { color: var(--stage-ink); }
+.rg-arch.on .ring { box-shadow: 0 0 0 2px var(--stage), 0 0 0 4px var(--sun); }
+.rg-arch .ac-avatar { box-shadow: none; transition: opacity var(--duration-2) var(--ease-out); }
+.rg-arch.dim .ac-avatar { opacity: .5; }
+.rg-arch.dim.on .ac-avatar { opacity: 1; }
+.rg-arch .tk { position: absolute; right: -5px; bottom: -4px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--sun); color: var(--on-sun); box-shadow: 0 0 0 2px var(--stage); animation: rg-pop var(--duration-2) var(--ease-out) both; }
+.rg-arch.add .ring { display: grid; place-items: center; width: 52px; height: 56px; color: var(--stage-ink-2); outline: 1.5px dashed rgb(255 255 255 / 0.28); outline-offset: -1.5px; transition: color var(--duration-1), outline-color var(--duration-1); }
+.rg-arch.add:hover .ring { box-shadow: none; color: var(--stage-ink); outline-color: rgb(255 255 255 / 0.55); }
+.rg-line { margin-top: 10px; min-height: 20px; font-size: 13.5px; line-height: 1.4; color: var(--stage-ink-2); }
+
+/* A call's link, on a page and on the stage. */
+.rg-link { display: flex; align-items: center; gap: 10px; min-width: 0; height: 50px; padding: 0 6px 0 14px; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink); font: 500 13px/1 var(--font-mono); text-align: left; }
+.rg-link > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-link > button { display: inline-flex; flex: none; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 12px; border-radius: var(--radius-pill); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1); }
+.rg-link > button:hover { background: var(--ground); }
+.rg-link > button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.stage .rg-link { background: rgb(255 255 255 / 0.05); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); }
+.stage .rg-link > button { background: rgb(255 255 255 / 0.1); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12); color: var(--stage-ink); }
+.stage .rg-link > button:hover { background: rgb(255 255 255 / 0.16); }
+.rg-k + .rg-link { margin-top: 10px; }
+.rg-swap { animation: rg-pop var(--duration-1) var(--ease-out) both; }
+
+/* The picker, on the stage. */
+.ac-pop.is-stage .pick-note, .ac-pop.is-stage .pick-row small, .ac-pop.is-stage .pick-empty { color: var(--stage-ink-2); }
+.ac-pop.is-stage .pick-field { background: rgb(255 255 255 / 0.06); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16); }
+.ac-pop.is-stage .pick-field:focus-within { box-shadow: inset 0 0 0 2px var(--speak); }
+.ac-pop.is-stage .pick-field input { color: var(--stage-ink); }
+.ac-pop.is-stage .pick-field input::placeholder { color: var(--stage-ink-2); }
+.ac-pop.is-stage .pick-chip { background: rgb(255 255 255 / 0.1); }
+.ac-pop.is-stage .pick-chip button { color: var(--stage-ink-2); }
+.ac-pop.is-stage .pick-chip button:hover { background: rgb(255 255 255 / 0.14); color: var(--stage-ink); }
+.ac-pop.is-stage .pick-row.on { background: rgb(255 255 255 / 0.08); }
+
+/* ---------- on the stage: people waiting, and who's asking ---------- */
+.rg-garch { --size: 68px; position: relative; display: grid; flex: none; place-items: center; width: var(--size); height: calc(var(--size) * 1.08); }
+.rg-garch > .ac-ghost { position: absolute; inset: 0; width: auto; height: auto; padding: 0; border-color: color-mix(in srgb, var(--speak) 35%, transparent); }
+.rg-garch > .ac-avatar { box-shadow: none; }
+.rg-garch::before, .rg-garch::after { content: ""; position: absolute; inset: -2px; border: 1.5px solid color-mix(in srgb, var(--speak) 55%, transparent); border-radius: var(--radius-arch) var(--radius-arch) calc(var(--size) * .26) calc(var(--size) * .26); pointer-events: none; animation: rg-ripple var(--duration-5) ease-out infinite; }
+.rg-garch::after { animation-delay: calc(var(--duration-5) / 2); }
+.rg-garch.still::before, .rg-garch.still::after { display: none; }
+.rg-wait { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 12px; overflow: hidden; border-radius: var(--radius-md); background: rgb(255 255 255 / 0.02); box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.09); text-align: center; }
+.rg-wait .say { min-width: 0; max-width: 100%; }
+.rg-wait b { display: block; font: 600 15px/1.3 var(--font-sans); color: var(--stage-ink); }
+.rg-wait small { display: block; margin-top: 3px; font: 400 13px/1.3 var(--font-sans); color: var(--stage-ink-2); }
+.rg-reply { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: var(--radius-pill); background: rgb(255 255 255 / 0.08); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); white-space: nowrap; animation: rg-pop var(--duration-2) var(--ease-out) both; }
+.rg-reply .ac-i { color: var(--gold); }
+.rg-again { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.rg-again:hover { background: rgb(255 255 255 / 0.07); color: var(--stage-ink); }
+.rg-again:focus-visible { outline: 2px solid var(--speak); outline-offset: 2px; }
+/* A tile in a strip has room for the arch and a name. */
+@container (max-height: 190px) {
+  .rg-wait { gap: 6px; padding: 6px; }
+  .rg-wait .rg-garch { --size: 44px; }
+  .rg-wait .rg-garch > .ac-avatar { --size: 36px !important; }
+  .rg-wait b { font-size: 12.5px; }
+  .rg-wait small, .rg-wait .rg-again { display: none; }
+  .rg-wait .rg-reply { height: 22px; padding: 0 8px; font-size: 11.5px; }
+}
+@container (max-width: 150px) { .rg-wait .rg-reply { display: none; } }
+/* Someone arriving: the arch they waited in opens into their tile. */
+.rg-opens { animation: rg-open var(--duration-3) var(--ease-out) backwards; }
+@keyframes rg-open { from { clip-path: inset(24% 34% 22% 34% round var(--radius-arch) var(--radius-arch) 18px 18px); } to { clip-path: inset(0 round var(--radius-md)); } }
+
+/* What sits over the stage: asks to join at the top right, the link while you're alone at the bottom left. */
+.rg-knocks { position: absolute; z-index: 9; top: 12px; right: 12px; width: min(340px, calc(100% - 24px)); display: grid; gap: 8px; pointer-events: none; }
+.rg-knock, .rg-more { pointer-events: auto; }
+.rg-knock { display: grid; gap: 12px; padding: 14px; border-radius: var(--radius-lg); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 24px 50px -16px rgb(0 0 0 / 0.8); }
+.rg-knock .top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.rg-knock b { display: block; font: 600 14.5px/1.3 var(--font-sans); color: var(--stage-ink); }
+.rg-knock small { display: block; font-size: 12.5px; line-height: 1.35; color: var(--stage-ink-2); }
+.rg-knock .acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rg-knock .ac-btn { width: 100%; height: 40px; box-shadow: none; }
+.stage .rg-knock .ac-btn.is-secondary { background: transparent; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2); }
+.rg-more { justify-self: end; display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: var(--radius-pill); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); }
+.rg-more:hover { background: var(--stage-tile); }
+.rg-alone { position: absolute; z-index: 8; left: 12px; bottom: 46px; width: min(340px, calc(100% - 24px)); display: grid; gap: 10px; padding: 14px; border-radius: var(--radius-lg); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 18px 36px -14px rgb(0 0 0 / 0.7); }
+.rg-alone b { display: block; font: 600 14.5px/1.3 var(--font-sans); color: var(--stage-ink); }
+.rg-alone p { margin-top: 2px; font-size: 13px; line-height: 1.4; color: var(--stage-ink-2); }
+
+/* ---------- the ring card: on any page, over anything ---------- */
+.rg-rings { position: fixed; z-index: 95; top: max(22px, env(safe-area-inset-top, 0px)); right: max(22px, env(safe-area-inset-right, 0px)); width: min(360px, calc(100vw - 24px)); display: grid; gap: 10px; pointer-events: none; }
+.rg-ringcard { display: grid; gap: 14px; padding: 18px; border-radius: var(--radius-lg); background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); pointer-events: auto; }
+.rg-ringcard .top { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; align-items: center; }
+.rg-ringcard b { display: block; font: 600 16px/1.25 var(--font-sans); }
+.rg-ringcard small { display: block; margin-top: 3px; font-size: 13px; line-height: 1.35; color: var(--ink-3); }
+.rg-ringcard .acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.rg-ringcard .acts .ac-btn { width: 100%; }
+.rg-rav > .ac-ghost { border-color: color-mix(in srgb, var(--horizon) 30%, transparent); }
+.rg-rav::before, .rg-rav::after { border-color: color-mix(in srgb, var(--horizon) 55%, transparent); }
+.rg-replies { display: grid; gap: 2px; overflow: hidden; margin: -3px; padding: 3px; }
+.rg-replies button { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px; border-radius: 10px; font: 500 14px/1 var(--font-sans); text-align: left; transition: background-color var(--duration-1); }
+.rg-replies button:hover { background: var(--sunk); }
+.rg-replies button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.rg-replies .ac-i { color: var(--ink-3); }
+/* Over the night stage it's part of the night. */
+.rg-ringcard.is-night { background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), 0 30px 80px -20px rgb(0 0 0 / 0.9); }
+.rg-ringcard.is-night small, .rg-ringcard.is-night .rg-replies .ac-i { color: var(--stage-ink-2); }
+.rg-ringcard.is-night .ac-btn.is-secondary { background: transparent; color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2); }
+.rg-ringcard.is-night .ac-btn.is-secondary:hover, .rg-ringcard.is-night .rg-replies button:hover { background: rgb(255 255 255 / 0.07); }
+.rg-ringcard.is-night :focus-visible { outline-color: var(--speak); }
+.rg-ringcard.is-night .ac-avatar { background: var(--stage-tile); }
+.rg-ringcard.is-night .ac-avatar .initial { color: var(--stage-ink-2); }
+.rg-ringcard.is-night .rg-rav > .ac-ghost { border-color: color-mix(in srgb, var(--speak) 35%, transparent); }
+.rg-ringcard.is-night .rg-rav::before, .rg-ringcard.is-night .rg-rav::after { border-color: color-mix(in srgb, var(--speak) 55%, transparent); }
+
+/* ---------- picking a time: a public page, in the guest's own theme ---------- */
+.rg-guest { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: linear-gradient(180deg, color-mix(in srgb, var(--dawn-2) 8%, var(--ground)), var(--ground) 60%); color: var(--ink); }
+.rg-gcard { width: min(480px, 100%); min-width: 0; display: grid; justify-items: center; gap: 14px; padding: 34px 34px 28px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); text-align: center; animation: rg-rise var(--duration-3) var(--ease-out) both; }
+.rg-gcard h1 { font: 450 30px/1.12 var(--font-display); letter-spacing: -0.018em; font-variation-settings: 'opsz' 32; }
+.rg-gcard > p { color: var(--ink-2); font-size: 14.5px; line-height: 1.45; }
+.rg-gcard > .ac-btn, .rg-gcard > .rg-link { width: 100%; }
+.rg-times { width: 100%; display: grid; gap: 10px; margin-top: 4px; }
+.rg-time { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px; width: 100%; padding: 13px 14px; border-radius: var(--radius-md); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); text-align: left; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+button.rg-time:hover { box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); }
+button.rg-time:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.rg-time b { display: block; font: 600 17px/1.25 var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.rg-time small { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.rg-time.on { background: var(--sun-soft); box-shadow: inset 0 0 0 1.5px var(--sun); }
+.rg-time.on b { color: var(--sun-text); }
+.rg-time .tk { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--sun); color: var(--on-sun); animation: rg-pop var(--duration-2) var(--ease-out) both; }
+.rg-gcard > .rg-sealed { display: flex; align-items: flex-start; gap: 8px; width: 100%; margin: 2px 0 4px; font-size: 13px; line-height: 1.45; color: var(--ink-3); text-align: left; }
+.rg-sealed .ac-i { flex: none; margin-top: 2px; color: var(--sun-text); }
+.rg-done { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 16px; background: var(--sun-soft); color: var(--sun-text); }
+
+@keyframes rg-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes rg-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+@keyframes rg-ripple { from { transform: scale(1); opacity: .8; } to { transform: scale(1.5); opacity: 0; } }
+
+@media (max-width: 760px) {
+  .rg-trust > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .pj-side .rg-name h1, .rg-name input { font-size: 30px; }
+  .rg-name { min-height: 36px; }
+  .rg-name input { height: 36px; }
+  .rg-rings { top: max(12px, env(safe-area-inset-top, 0px)); right: 12px; left: 12px; width: auto; }
+  .rg-knocks { left: 8px; right: 8px; top: 8px; width: auto; }
+  .rg-alone { left: 8px; right: 8px; bottom: 44px; width: auto; }
+  .rg-gcard { padding: 28px 20px 22px; border-radius: var(--radius-lg); }
+}

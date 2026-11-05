@@ -5,7 +5,7 @@ import { Link, createFileRoute, type ErrorComponentProps } from '@tanstack/react
 import type { ReactNode } from 'react';
 import { AskBar, Section } from '~/features/notes/parts';
 import { CarriedActionRow, CarriedDecisionRow, CarriedQuestionRow, NextOnCalendar, useScheduleNextCall } from '~/features/series/carried';
-import { useOpenComposer } from '~/features/shell/context';
+import { useCallFlow } from '~/features/shell/context';
 import { api } from '~/lib/api';
 import { sameEmail } from '~/lib/people';
 import { q, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
@@ -149,7 +149,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
 
 /** For the organizer: the next call in the series, or a way to schedule it. */
 function NextCall({ s }: { s: Series }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   const next = useScheduleNextCall();
   const latest = s.notes.find((n) => n.meetingId)?.meetingId;
   if (s.next) {
@@ -159,7 +159,7 @@ function NextCall({ s }: { s: Series }) {
         <div className="ser-when"><b>{longDay(new Date(m.startsAt))}</b><span className="ac-mono">{hm(m.startsAt)} to {hm(m.endsAt)}</span></div>
         <div className="ser-acts">
           <Link to="/join/$code" params={{ code: m.code }} className={buttonClass({ size: 'sm' })}><Icon name="video" size={16} />Join</Link>
-          {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" onClick={() => open({ meeting: m })} />}
+          {m.status === 'scheduled' && <IconButton icon="pen" label="Change this call" aria-haspopup="dialog" onClick={() => flow.open(m)} />}
         </div>
       </Card>
     );

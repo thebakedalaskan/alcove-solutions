@@ -284,7 +284,7 @@ describe('signing in with Google', () => {
     await host.leave();
   });
   it('goes to Google and back, believes only what Google signed, and keeps one account per Google account', async () => {
-    // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity and calendar events.
+    // Off to Google with a fresh state, nonce and PKCE challenge, asking for identity, calendar events and free/busy.
     const b = h.browser();
     const start = await b.fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
     expect(start.status).toBe(302);
@@ -292,7 +292,7 @@ describe('signing in with Google', () => {
     expect(to.origin).toBe(h.google.issuer);
     expect(Object.fromEntries(to.searchParams)).toMatchObject({
       client_id: h.google.clientId, redirect_uri: `${h.baseUrl}/v1/auth/google/callback`, response_type: 'code',
-      scope: 'openid email profile https://www.googleapis.com/auth/calendar.events', access_type: 'offline', code_challenge_method: 'S256'
+      scope: 'openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy', access_type: 'offline', code_challenge_method: 'S256'
     });
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
@@ -573,7 +573,7 @@ describe('people and team', () => {
     await art.api.auth.signIn('microsoft');
     const team = await art.api.people.team();
     expect(team).toMatchObject({ name: 'Vandelay Industries', domain: 'vandelay.industries' });
-    expect(team?.members.map((m) => [m.person.name, m.onAlcove, m.invited])).toEqual([['Theo Martin', true, false], ['Kofi Asante', true, false], ['Sam Ortiz', false, false], ['Lena Fischer', false, false]]);
+    expect(team?.members.map((m) => [m.person.name, m.onAlcove, m.invited])).toEqual([['Theo Martin', true, false], ['Kofi Asante', true, false], ['Sam Ortiz', false, false], ['Lena Fischer', false, false], ['Aiko Tanaka', true, false], ['Maya Chen', true, false]]);
     const after = await art.api.people.inviteToTeam(['sam@vandelay.industries', 'lena@vandelay.industries']);
     expect(after.members.filter((m) => m.invited).map((m) => m.person.name)).toEqual(['Sam Ortiz', 'Lena Fischer']);
     expect((await art.api.people.inviteToTeam([' SAM@Vandelay.Industries '])).members.find((m) => m.person.email === 'sam@vandelay.industries')?.invited).toBe(true);
@@ -636,6 +636,11 @@ describe('people and team', () => {
     await gmail.api.meetings.create({ title: 'Friends', startsAt: soon, durationMinutes: 30, guests: ['pal@gmail.com'], notes: 'off' });
     expect(await gmail.api.people.team()).toBeNull();
     expect(code(await gmail.api.people.inviteToTeam(['pal@gmail.com']).catch((e: unknown) => e))).toBe('invalid');
+
+    // A demo account can be someone on their own too: personal.example belongs to nobody.
+    const solo = h.browser();
+    await solo.api.auth.signIn('sso', { email: `solo.${seq++}@personal.example` });
+    expect(await solo.api.people.team()).toBeNull();
     const other = await account(`other.${seq++}@acme.example`);
     expect((await other.api.people.team())?.members).toEqual([]);
   });
@@ -2466,7 +2471,7 @@ describe('deleting an account', () => {
     await rec.stop();
     await until(async () => (await h.pool.query("SELECT 1 FROM content_jobs WHERE owner_id = $1 AND state = 'queued' AND attempt = 1", [ownerId])).rowCount === 1, 'the first attempt to fail');
     // ...and a call still going, with notes on: its audio, the live transcript and a caption in German.
-    const live = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const live = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [kofi.session.user.email] })).code, { mic: true, cam: false });
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
     await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
     expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
@@ -2474,8 +2479,9 @@ describe('deleting an account', () => {
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
     expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
-    // She's moving that call to her phone, whose link nobody has opened yet.
+    // She's moving that call to her phone, whose link nobody has opened yet, and ringing Kofi into it.
     const moving = await live.startMove({ mic: true, cam: false });
+    await live.ring([kofi.session.user.email]);
     // Notes other people gave her: Ann invited her to one call, and shared another note with her, which she shared on with Kofi.
     const invitedTo = await noteFrom(ann, [lena.email]);
     const sharedWith = await noteFrom(ann);
@@ -2489,7 +2495,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'calls', 'content_jobs', 'identities', 'items', 'note_access', 'note_additions', 'object_gc', 'operations', 'owners',
+      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_rings', 'calls', 'content_jobs', 'identities', 'items', 'meeting_access', 'note_access', 'note_additions', 'object_gc', 'operations', 'owners',
       'personal_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
@@ -2758,8 +2764,16 @@ describe('privacy at rest', () => {
     expect(session.user.name).toBe('Canary Person');
     const m = await c.api.meetings.create({ title: 'CANARY-TITLE secret merger', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: ['canary-guest@example.com'], notes: 'on' });
     await c.api.meetings.update(m.id, { title: 'CANARY-EDIT renamed merger' });
+    // A series' item holds its title, how it repeats, where the organizer is and its link, and its calls follow them.
+    const weekOn = (n: number) => new Date(Date.now() + (n * 7 + 1) * 86_400_000).toISOString();
+    const series = await c.api.meetings.create({
+      title: 'CANARY-SERIES-TITLE merger', startsAt: weekOn(0), durationMinutes: 30, guests: ['canary-series-guest@example.com'], notes: 'off',
+      repeat: { rule: { every: 'week', weeks: 1, days: [new Date(weekOn(0)).getUTCDay()] }, until: weekOn(1).slice(0, 10), timeZone: 'Pacific/Apia', occurrences: [weekOn(0), weekOn(1)] }
+    });
+    await c.api.meetings.update(series.id, { title: 'CANARY-SERIES-RENAMED merger' }, { scope: 'following' });
+    expect(series.seriesCode).toMatch(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
     const scribeEmail = 'canary-scribe@canary.example';
-    const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail] });
+    const started = await c.api.calls.startNow({ notes: 'on', guests: [scribeEmail, 'canary-rung@canary.example'] });
     const call = await c.api.calls.join(started.code, { mic: true, cam: true });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
@@ -2799,7 +2813,11 @@ describe('privacy at rest', () => {
     const moveRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_moves x`)).rows[0]?.all ?? '');
     expect(moveRows).not.toBe('');
     move.close();
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows}`;
+    // Ringing someone: whom it's for and what they say are sealed, beside a keyed hash, and the row goes with the call.
+    await call.ring(['canary-rung@canary.example']);
+    const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
+    expect(ringRows).not.toBe('');
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -2825,6 +2843,11 @@ describe('privacy at rest', () => {
     const member = tapped();
     await member.api.auth.signIn('sso', { email: 'canary-member-one@example.com' });
     expect((await member.api.notes.list()).find((n) => n.id === roomNote)?.received).toMatchObject({ role: 'shared', group: 'CANARY-GROUP-launch crew' });
+    // Someone invited saying whether they're coming: their row shows they answered, and never what.
+    const invitation = await c.api.meetings.create({ title: 'CANARY-TITLE invitation', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: members, notes: 'off' });
+    expect((await member.api.meetings.answer(invitation.id, 'maybe')).rsvp).toBe('maybe');
+    const invited = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM meeting_access x`)).rows[0]?.all ?? '');
+    expect(invited).not.toBe('');
     await c.api.notes.list({ text: 'CANARY-SEARCH words' });
     await c.api.people.search('CANARY-PEOPLE query');
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too,
@@ -2863,8 +2886,9 @@ describe('privacy at rest', () => {
       SELECT row_to_json(x)::text FROM recordings x UNION ALL SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL
       SELECT row_to_json(x)::text FROM billing_accounts x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
       SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM note_access x UNION ALL
+      SELECT row_to_json(x)::text FROM meeting_access x UNION ALL
       SELECT row_to_json(x)::text FROM transcript_clips x UNION ALL SELECT row_to_json(x)::text FROM transcript_translations x UNION ALL
-      SELECT row_to_json(x)::text FROM screen_frames x UNION ALL SELECT row_to_json(x)::text FROM personal_notes x UNION ALL
+      SELECT row_to_json(x)::text FROM screen_frames x UNION ALL SELECT row_to_json(x)::text FROM call_rings x UNION ALL SELECT row_to_json(x)::text FROM personal_notes x UNION ALL
       SELECT row_to_json(x)::text FROM note_additions x) q`);
     expect(String(dump.rows[0]?.all ?? '')).toContain('body_ciphertext');
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
@@ -2872,13 +2896,16 @@ describe('privacy at rest', () => {
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
       'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
-      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
+      'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',
       'CANARY-QUESTION', 'CANARY-SERIES-ASK', 'CANARY-ASKED', 'canary-recurring-id', 'canary-theirs-event', 'canary-allday-event', 'canary-missing-event',
-      'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED'
+      'CANARY-SERIES-TITLE', 'CANARY-SERIES-RENAMED', 'canary-series-guest', 'Pacific/Apia', series.seriesCode ?? 'no series link',
+      '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
+    // An answer is one short word, so it has a check of its own, in the only rows that hold one.
+    for (const enc of encodings('maybe')) expect(invited.includes(enc), `an answer as ${enc}`).toBe(false);
 
     // Every object in the bucket, not only the referenced ones.
     for await (const obj of h.objects.list()) {

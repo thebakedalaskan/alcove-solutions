@@ -17,9 +17,8 @@ import { highlight } from '~/features/notes/highlight';
 import { peopleLine, receivedLine } from '~/features/notes/meta';
 import { MomentLink, decisionLine } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
-import { useOpenComposer } from '~/features/shell/context';
-import { fold } from '~/lib/parse';
-import { byEmail, callName, sameEmail, spokenName } from '~/lib/people';
+import { useCallFlow } from '~/features/shell/context';
+import { byEmail, callName, fold, sameEmail, spokenName } from '~/lib/people';
 import { q, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, noteGroup, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
@@ -387,7 +386,7 @@ function WithSomeone({ known, person, button, onPick }: {
 function Nothing({ term, show, person, onClear, onAll, onAnyone }: {
   term: string; show: Show; person: Person | undefined; onClear: () => void; onAll: () => void; onAnyone: () => void;
 }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   const tile = (icon: IconName) => <span className="lib-tile"><Icon name={icon} size={22} /></span>;
   if (term) {
     return (
@@ -419,7 +418,7 @@ function Nothing({ term, show, person, onClear, onAll, onAnyone }: {
     );
   }
   return (
-    <EmptyState title={show === 'call' ? 'No calls with notes yet' : 'No notes yet'} action={<Button size="sm" icon="plus" onClick={() => open()}>New call</Button>}>
+    <EmptyState title={show === 'call' ? 'No calls with notes yet' : 'No notes yet'} action={<Button size="sm" icon="video" onClick={() => flow.start()}>Start a call</Button>}>
       Calls with notes on land here as soon as they end. Everyone invited gets the notes.
     </EmptyState>
   );
@@ -432,13 +431,13 @@ function GhostPair({ person }: { person: Person }) {
 
 /** Before the first notes: what they'll look like, and how to get them. */
 function FirstNotes({ me }: { me: Person | undefined }) {
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   return (
     <>
       <div className="head" style={{ '--d': 0 }}><div><h1>Notes</h1><p className="lede">Calls with notes on, and recordings in the room, land here.</p></div></div>
       <section className="ac-card lib-first" style={{ '--d': 1 }} aria-label="No notes yet">
         <EmptyState className="big left" art={<EmptyArch size={96} />} title="No notes yet"
-          action={<><Button variant="primary" icon="plus" onClick={() => open()}>New call</Button><Link to="/record" className={buttonClass({ variant: 'secondary' })}><Icon name="recordDot" size={18} />Record in the room</Link></>}>
+          action={<><Button variant="primary" icon="video" onClick={() => flow.start()}>Start a call</Button><Link to="/record" className={buttonClass({ variant: 'secondary' })}><Icon name="recordDot" size={18} />Record in the room</Link></>}>
           Your first notes appear here as soon as a call with notes on ends. Everyone invited gets them, and Alcove can’t read them.
         </EmptyState>
         <div className="lib-ex">

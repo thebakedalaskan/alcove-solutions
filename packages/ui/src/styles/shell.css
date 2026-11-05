@@ -2,7 +2,7 @@
  * The frame every screen sits in: the side panel on dusk (256px, sticky, dark in both themes, its middle scrolling
  * when it's long) and the page beside it, under a rounded edge the page scrolls beneath. Search and you sit at the
  * top right of every page. At 860px and narrower a top bar that scrolls with the page and a tab bar fixed at the
- * bottom take their place. The palette, which finds notes and asks them, drops from the top like the composer.
+ * bottom take their place. The palette, which finds notes and asks them, drops from the top.
  */
 .world-in { animation: ac-fade var(--duration-3) var(--ease-out) both; }
 

@@ -1,6 +1,6 @@
-import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, notesAreOn, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
+import { CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorMessage, notesAreOn, type CallAsker, type CallSession, type CallState, type CaptionLanguage, type CaptureMode, type Person, type SelfView } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, Popover, RecDot, Scope, Tooltip, cn, useRaisedToasts, useToast
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -13,7 +13,7 @@ import { useDevices } from '~/features/call/devices';
 import { ScreenFrames } from '~/features/call/frames';
 import { HostSpill, organizerFirst } from '~/features/call/Hosting';
 import { LeaveSheet, type Ended, type NextHost } from '~/features/call/LeaveSheet';
-import { useCopyLink } from '~/features/call/links';
+import { copyUrl, shownUrl, useCopyLink } from '~/features/call/links';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
@@ -32,13 +32,14 @@ import { keepSeen, seenNotices } from '~/features/call/seen';
 import { SharePicker } from '~/features/call/SharePicker';
 import { VideoQuality } from '~/features/call/VideoQuality';
 import { CallEars, canListen } from '~/features/call/speech';
-import { Stage, type StageParticipant, type StageRooms, type StageShare } from '~/features/call/Stage';
+import { Stage, type StageParticipant, type StageRooms, type StageShare, type StageWaiter } from '~/features/call/Stage';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
 import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
 import { volumeTag } from '~/features/call/VolumeControl';
+import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
@@ -360,35 +361,23 @@ function InCall({ session }: { session: CallSession }) {
   }, [state.notices, state.callId, session, toast]);
 
   /*
-   * Someone asking to join: the organizer hears about it once. A guest can be let in from the toast; letting in someone
-   * signed in gives them the notes, so their toast opens People, where their address is. The toast goes as soon as the
-   * ask is answered, wherever that happens (let in or turned away in People, or on another device), when the asker
-   * takes it back or goes, and with the call. A press that still comes too late lets nobody in, and says why.
+   * Someone asking to join: a card drops in for the organizer and stays until they're answered, wherever that happens
+   * (here, in People, or on another device), or they take it back or go. A press that still comes too late lets nobody
+   * in, and says why.
    */
-  const asked = useRef(new Set<string>());
-  const askToasts = useRef(new Map<string, () => void>());
-  useEffect(() => {
-    if (!hosting) return;
-    const asking = new Set(state.waiting.map((w) => w.id));
-    for (const [id, close] of askToasts.current) if (!asking.has(id)) { close(); askToasts.current.delete(id); }
-    for (const w of state.waiting) {
-      if (asked.current.has(w.id)) continue;
-      asked.current.add(w.id);
-      const letIn = () => {
-        const now = session.getSnapshot();
-        if (now.waiting.some((x) => x.id === w.id)) { void session.admit(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); return; }
-        toast(now.participants.some((p) => p.id === w.id) ? `${w.person.name} is already in the call.` : `${w.person.name} isn’t asking to join any more.`, { icon: 'people' });
-      };
-      const action = w.person.email ? { label: 'Review', onClick: () => setPanel('people') } : { label: 'Let in', onClick: letIn };
-      askToasts.current.set(w.id, toast(`${w.person.name} is asking to join`, { icon: 'people', ms: 12_000, action }));
+  const [answering, setAnswering] = useState<string | null>(null);
+  const answerAsk = (w: CallAsker, decide: (id: string) => Promise<void>) => {
+    const now = session.getSnapshot();
+    if (!now.waiting.some((x) => x.id === w.id)) {
+      toast(now.participants.some((p) => p.id === w.id) ? `${w.person.name} is already in the call.` : `${w.person.name} isn’t asking to join any more.`, { icon: 'people' });
+      return;
     }
-  }, [state.waiting, hosting, session, toast]);
-  useEffect(() => {
-    const open = askToasts.current;
-    return () => { for (const close of open.values()) close(); };
-  }, []);
-  /* Letting someone signed in in from the link adds them to the invite: the organizer reads who's invited again when someone with an account is here and not on it yet. */
-  const uninvited = organizer && told.participants.some((p) => !p.isOrganizer && p.person.email && !(meeting?.guests ?? []).some((g) => sameEmail(g, p.person)));
+    setAnswering(w.id);
+    decide(w.id).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })).finally(() => setAnswering(null));
+  };
+  /* Letting someone signed in in from the link, or ringing them, adds them to the invite: the organizer reads who's invited again when someone is here, or rung, and not on it yet. */
+  const onTheInvite = (who: { email: string }) => (meeting?.guests ?? []).some((g) => sameEmail(g, who));
+  const uninvited = organizer && (told.participants.some((p) => !p.isOrganizer && p.person.email && !onTheInvite(p.person)) || told.ringing.some((r) => !onTheInvite(r.person)));
   useEffect(() => { if (uninvited) void qc.invalidateQueries({ queryKey: qk.byCode(state.code) }); }, [uninvited, state.code, qc]);
 
   /* This device's keys fell out of step: joining again (a reload) puts it back in, without anyone letting it in. */
@@ -959,7 +948,7 @@ function InCall({ session }: { session: CallSession }) {
       const r = await session.leave();
       rec?.discard();
       over.current = true;
-      guard.release();
+      if (r) guard.release();
       forgetLayout();
       // Ending the call deletes its room, which disconnects everyone at once; anyone else leaves the room now.
       if (!r) void room.leave();
@@ -970,7 +959,8 @@ function InCall({ session }: { session: CallSession }) {
       if (r) setEnded({ noteId: r.pendingNoteId, duration: r.duration });
       else {
         sessions.call = null;
-        await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
+        // Leaving on the way somewhere, such as to a call that rang, carries on there.
+        if (!guard.proceed()) await navigate({ to: '/join/$code', params: { code: state.code }, replace: true });
         toast('You left the call', { icon: 'leave' });
       }
     } catch (e) {
@@ -1119,7 +1109,26 @@ function InCall({ session }: { session: CallSession }) {
       <span className="tx2">{left <= 30 ? <>Rooms close in <b>{mmss(left)}</b>. Everyone comes back to the main room.</> : <>You’re in <b>{roomName ?? 'the main room'}</b> · everyone comes back in {mmss(left)}</>}</span>
     </div>
   )));
-  const alone = others.length === 0 && !open && (
+  /*
+   * People the organizer rang: each waits on the stage while it's worth watching, and stays in People. Nobody else is
+   * rung by accident: on your own there's nobody to ring, and the link stays to hand instead.
+   */
+  const team = useQuery({ ...q.team(), enabled: organizer });
+  const rung = organizer ? state.ringing : [];
+  const answers = useRef(new Map<string, number>());
+  const now = Date.now();
+  const ring = (p: Person) => { session.ring([p.email]).catch((e: unknown) => { clog.warn('ringing failed', { err: e }); toast(`Couldn’t ring ${callName(p)}. ${errorMessage(e)}`, { icon: 'x' }); }); };
+  const stopRing = (id: string) => { session.stopRing(id).catch((e: unknown) => { clog.warn('stopping a ring failed', { err: e }); toast(`Couldn’t stop ringing. ${errorMessage(e)}`, { icon: 'x', ms: 6000 }); }); };
+  const waiting: StageWaiter[] = open ? [] : waitingOnStage(rung, answers.current, now).map((r) => {
+    const said = rungWords(r, now);
+    return {
+      id: r.id, person: r.person,
+      tile: <WaitTile person={r.person} title={said.title} detail={said.detail} ringing={r.state === 'ringing'}
+        reply={said.reply && <RingReply icon={said.reply.icon}>{said.reply.text}</RingReply>} action={said.again ? <RingAgain onClick={() => ring(r.person)} /> : undefined} />
+    };
+  });
+  const justYou = organizer && others.length === 0 && !open && team.data !== undefined && !ringable(team.data, me?.person).length;
+  const alone = others.length === 0 && !open && !justYou && !waiting.length && !(organizer && team.isPending) && (
     <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
     </div>
@@ -1193,9 +1202,27 @@ function InCall({ session }: { session: CallSession }) {
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <div ref={mainRef} className="ic-main">
           <motion.div className="ic-stage-box" initial={false} animate={{ width: stageW || '100%' }} transition={reduce ? { duration: 0 } : SLIDE}>
-            <Stage people={onStage} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
+            <Stage people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
               bar={bar} caption={capNode} rooms={stageRooms} place={crypto.place} paused={mode === 'paused'} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
               onShareStarted={shareStarted} onShareStopped={shareStopped} />
+            {hosting && shownPanel !== 'people' && state.waiting.length > 0 && (
+              <div className="rg-knocks">
+                <AnimatePresence initial={false}>
+                  {state.waiting.slice(0, 2).map((w) => (
+                    <KnockCard key={w.id} person={w.person} title={`${w.person.name} asks to join`} busy={answering === w.id}
+                      detail={w.person.email ? <>{w.person.email}{organizer && <><br />Gets the notes once let in</>}</> : 'Guest, by name only'}
+                      onLetIn={() => answerAsk(w, (id) => session.admit(id))} onNotNow={() => answerAsk(w, (id) => session.deny(id))} />
+                  ))}
+                </AnimatePresence>
+                {state.waiting.length > 2 && <button type="button" className="rg-more" onClick={() => openPanel('people')}><Icon name="people" size={15} />{state.waiting.length - 2} more asking</button>}
+              </div>
+            )}
+            {justYou && !cc && (
+              <div className="rg-alone">
+                <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
+                <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
+              </div>
+            )}
           </motion.div>
           <AnimatePresence>
             {shownPanel && (
@@ -1212,7 +1239,8 @@ function InCall({ session }: { session: CallSession }) {
                     catching={cu.catching} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />}
                   {shownPanel === 'chat' && <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
                     here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} onSend={(t) => session.sendChat(t)} />}
-                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} host={host} foot={privacyLine} volumes={volumes}
+                  {shownPanel === 'people' && <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes}
+                    canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
                     notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />}
                   {shownPanel === 'rooms' && (open && me && activity
                     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}

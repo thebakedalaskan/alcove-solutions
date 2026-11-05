@@ -24,8 +24,14 @@ const pgCode = (e: unknown) => (e instanceof Error && 'code' in e && typeof e.co
 
 export type Db = pg.Pool | pg.PoolClient;
 
+/**
+ * A transaction holds its connection until it's done, so everything it reads goes on that connection (`Db`), never the
+ * pool: enough transactions each waiting for a second connection would wait for each other for ever. Nothing waits for a
+ * connection longer than this, so whatever does go wrong comes back as an error.
+ */
+const CONNECTION_WAIT_MS = 10_000;
 export function createPool(url: string): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: 15_000 });
+  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: 15_000, connectionTimeoutMillis: CONNECTION_WAIT_MS });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
   return pool;
 }

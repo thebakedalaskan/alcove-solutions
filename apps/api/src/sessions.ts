@@ -53,6 +53,11 @@ export async function findSession(d: Deps, id: string | undefined): Promise<Sess
   return { hash, ownerId: r.owner_id, provider: r.provider, createdAt: r.created_at, expiresAt: r.expires_at };
 }
 
+/** Whether a session found earlier is still open: nobody has signed out of it, and its account is still here. */
+export async function stillOpen(d: Deps, hash: Uint8Array): Promise<boolean> {
+  return (await maybeOne(d.pool, z.object({ n: z.number() }), 'SELECT 1 AS n FROM sessions WHERE session_hash = $1 AND expires_at > now()', [hash])) !== undefined;
+}
+
 export async function closeSession(d: Deps, s: Session): Promise<void> {
   await exec(d.pool, 'DELETE FROM sessions WHERE session_hash = $1', [s.hash]);
   slog.info('session closed', { ownerId: s.ownerId, reason: 'sign-out', ageH: Math.round((Date.now() - s.createdAt.getTime()) / 3_600_000) });

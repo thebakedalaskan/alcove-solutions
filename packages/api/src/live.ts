@@ -1,7 +1,8 @@
 import { z } from './zod';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import type { CallAnswer, CallMoment, CatchUp, CatchUpRange, CatchUpWindow } from './catchup';
-import { CallCodeSchema, IDSchema, ISODateSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import { CallCodeSchema, IDSchema, ISODateSchema, NotesChoicesSchema, NotesSettingSchema, PersonSchema, SignInProviderSchema, TranscriptLineSchema, type CaptionLanguage } from './types';
+import { RungSchema } from './rings';
 import type { CallMoveOut, MoveMedia } from './moves';
 import type { PersonalApi } from './personal';
 
@@ -28,6 +29,8 @@ export type CallRole = z.infer<typeof CallRoleSchema>;
 export const CallCardSchema = z.object({
   title: z.string(),
   organizerName: z.string(),
+  /** When the call starts. Means nothing while `offer` is open; once someone has picked, it's the time they picked. */
+  startsAt: ISODateSchema,
   /** Someone hosts the call now (the organizer, or someone standing in for them): everyone but the organizer waits until this is true. */
   hostHere: z.boolean(),
   /**
@@ -38,6 +41,12 @@ export const CallCardSchema = z.object({
   locked: z.boolean(),
   /** Notes as the call was scheduled: whether they start when it does. */
   notes: NotesSettingSchema,
+  /** What the notes keep, so people know before they join. */
+  choices: NotesChoicesSchema,
+  /** Everyone joins with their microphone and camera off. */
+  joinMuted: z.boolean(),
+  /** Times offered to pick from, until someone with the link has: no joining meanwhile. How long the call is, in minutes. */
+  offer: z.object({ times: z.array(ISODateSchema), minutes: z.number() }).nullable(),
   /** What's being captured now, without anyone's name; null until the organizer has started the call. */
   capture: CaptureStateSchema.nullable(),
   /** The call is over and nobody has started it again. */
@@ -282,6 +291,8 @@ export const CallStateSchema = z.object({
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
+  /** People the organizer rang who aren't in the call, and how each answered; empty for everyone else. */
+  ringing: z.array(RungSchema),
   /**
    * Connections that left but are still in the call's group for a moment, while the host's browser takes them
    * out: whose they were, and that person's connection now (`now`) when they're still in the call, back from a reload
@@ -468,6 +479,8 @@ export interface CallSession extends LiveStore<CallState> {
   admit(identity: string): Promise<void>;
   /** Whoever hosts: turns someone away. */
   deny(identity: string): Promise<void>;
+  /** Organizer only: rings teammates, or people already invited, by address. Anyone rung is added to the invite; ringing someone again starts over. */
+  ring(emails: string[]): Promise<void>;
   /** Organizer only. Everyone in the call sees the change. Resolves once it's made, so capture can wait for it. */
   setNotes(on: boolean): Promise<void>;
   /**
@@ -546,6 +559,8 @@ export interface CallSession extends LiveStore<CallState> {
   remove(identity: string): Promise<void>;
   /** While locked, nobody new can join except the organizer. */
   lock(on: boolean): Promise<void>;
+  /** Stops ringing someone (their `Rung.id`). A ring that's already over needs no stopping. */
+  stopRing(ringId: string): Promise<void>;
   /** Hides a notice on this screen only. */
   dismissNotice(id: string): void;
   /** Starts moving your place in the call to another device, with your microphone and camera as they are now. */

@@ -19,8 +19,12 @@ export const MAX_FEATURED = 2;
 /** A share's tile is keyed apart from people's (participant IDs), by its sharer's participant ID. */
 export const shareKey = (id: string) => `share:${id}`;
 export const isShareKey = (key: string) => key.startsWith('share:');
+/** Someone rung who isn't here yet takes a tile too, keyed apart from people. */
+export const waitKey = (id: string) => `ring:${id}`;
+export const isWaitKey = (key: string) => key.startsWith('ring:');
 
-export interface StagePerson { id: string; seat: string; isMe: boolean }
+/** Someone on the stage, or (`waiting`) someone rung who isn't in the call: a tile, and nobody to follow or lead with. */
+export interface StagePerson { id: string; seat: string; isMe: boolean; waiting?: boolean | undefined }
 export interface ArrangeInput {
   /** Everyone on the stage, in the call's order. */
   people: StagePerson[];
@@ -54,6 +58,8 @@ export interface Plan {
   auto: boolean;
   /** Your own picture when it isn't in the grid: in a corner, or folded into a small chip there. */
   self: { id: string; corner: StageCorner; folded: boolean } | null;
+  /** You, while nobody else is here and people rung are on their way: you're big, with their arches beside you. */
+  awaiting: string | null;
   /** Every seat in your order, whether they're here now or not: what a move rearranges. */
   order: string[];
 }
@@ -62,7 +68,8 @@ export function arrange(i: ArrangeInput): Plan {
   const { prefs, layout } = i;
   const bySeat = new Map(i.people.map((p) => [p.seat, p]));
   const me = i.people.find((p) => p.isMe) ?? null;
-  const alone = i.people.length <= 1 && i.shares.length === 0;
+  const awaited = i.people.filter((p) => p.waiting).length;
+  const alone = i.people.length - awaited <= 1 && i.shares.length === 0;
   // You leave the grid for a corner once there's someone or something else to see; folded away, always.
   const self = me && prefs.self !== 'grid' && !(alone && prefs.self === 'corner') ? { id: me.id, corner: prefs.corner, folded: prefs.self === 'hidden' } : null;
   // Your order: as you arranged it, then as people first came in, then anyone not counted yet.
@@ -85,7 +92,7 @@ export function arrange(i: ArrangeInput): Plan {
   // but only while you haven't arranged anything, so what you arranged stays put.
   let auto = false;
   if (!leads.length && !featured.length) {
-    const others = people.filter((p) => !p.isMe).map((p) => p.id);
+    const others = people.filter((p) => !p.isMe && !p.waiting).map((p) => p.id);
     const arranged = layout.order.length > 0 || layout.big.length > 0;
     const pick = prefs.mode === 'speaker' ? (i.speaker && here.has(i.speaker) ? i.speaker : others[0] ?? null)
       : prefs.mode === 'auto' && !arranged && i.dominant && here.has(i.dominant) ? i.dominant : null;
@@ -95,7 +102,8 @@ export function arrange(i: ArrangeInput): Plan {
   const shape: Shape = featured.length ? 'side' : prefs.mode !== 'grid' && leads.length && count > 1 ? 'focus' : 'grid';
   const rest = [...tiles, ...people.map((p) => p.id).filter((id) => !leads.includes(id))];
   const big = new Set(shape === 'focus' ? [] : [...leads, ...layout.big.flatMap(idOf)]);
-  return { shape, featured, leads, rest, big, auto, self, order };
+  const awaiting = me && !self && alone && awaited > 0 ? me.id : null;
+  return { shape, featured, leads, rest, big, auto, self, awaiting, order: order.filter((seat) => !bySeat.get(seat)?.waiting) };
 }
 
 /** `full` with the members of a group (`before`, in their old order) put back in their new order, in the same places. */
@@ -302,6 +310,14 @@ function inBox(plan: Plan, b: Box, ratio: number, split: number): Omit<Placed, '
     set(plan.leads, fillGrid(plan.leads.length, b.x, b.y, b.w, mh, portrait ? 0.8 : 1.3, gq));
     plan.rest.forEach((k, n) => slots.set(k, [x0 + n * (fw + gq), yy, fw, fh]));
     return { shape: 'focus', slots, shares, divider: null, split: null };
+  }
+  const you = plan.awaiting;
+  if (you !== null) {
+    const arches = tiles.filter((k) => k !== you);
+    const part = Math.round(((portrait ? b.h : b.w) - GAP) * (portrait ? 0.42 : 0.4));
+    slots.set(you, portrait ? [b.x, b.y, b.w, b.h - part - GAP] : [b.x, b.y, b.w - part - GAP, b.h]);
+    set(arches, portrait ? fillGrid(arches.length, b.x, b.y + b.h - part, b.w, part, 1.1, 8) : fillGrid(arches.length, b.x + b.w - part, b.y, part, b.h, 1.1, GAP));
+    return { shape: 'grid', slots, shares, divider: null, split: null };
   }
   set(tiles, packGrid(tiles.map((k) => (portrait ? 1 : plan.big.has(k) ? 2 : 1)), b.x, b.y, b.w, b.h, portrait ? 1 : 1.45, portrait ? 8 : GAP));
   return { shape: 'grid', slots, shares, divider: null, split: null };

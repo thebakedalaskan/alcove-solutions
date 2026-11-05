@@ -8,7 +8,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useState } from 'react';
 import { clearReturn, returnToCall } from '~/lib/afterSignIn';
-import { isEmail } from '~/lib/parse';
+import { isEmail } from '~/lib/people';
 import { googleSignInUrl, useSignIn } from '~/lib/queries';
 
 export type Busy = DemoProvider | 'google' | null;

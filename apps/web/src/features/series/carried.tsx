@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { MomentLink, decisionLine } from '~/features/notes/parts';
-import { freshCalls, useOpenComposer } from '~/features/shell/context';
+import { freshCalls, useCallFlow } from '~/features/shell/context';
 import { listNames, sameEmail, spokenName } from '~/lib/people';
 import { calendarConnectUrl, q, useScheduleNext } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
@@ -89,12 +89,12 @@ export function NextOnCalendar({ children }: { children: ReactNode }) {
 
 /**
  * Schedules the next call after `meetingId`, at the same clock time a week on, and says when: on the
- * calendar, with who's invited. "Change" opens it in the composer, for another day or time, or to cancel it.
+ * calendar, with who's invited. "Change" opens its card, for another day or time, or to cancel it.
  */
 export function useScheduleNextCall() {
   const next = useScheduleNext();
   const toast = useToast();
-  const open = useOpenComposer();
+  const flow = useCallFlow();
   return {
     pending: next.isPending,
     run: (meetingId: string) => next.mutate({ meetingId }, {
@@ -103,7 +103,7 @@ export function useScheduleNextCall() {
         const where = m.calendarUrl ? 'your Google Calendar' : 'your calendar';
         const n = m.guests.length;
         const who = !n ? '' : m.calendarUrl ? ` ${listNames(m.guests)} ${n > 1 ? 'get invitations' : 'gets an invitation'}.` : ` ${listNames(m.guests)} ${n > 1 ? 'are' : 'is'} invited.`;
-        toast(`On ${where} for ${shortDay(new Date(m.startsAt))}, ${hm(m.startsAt)}.${who}`, { icon: 'cal', ms: 6000, action: { label: 'Change', onClick: () => open({ meeting: m }) } });
+        toast(`On ${where} for ${shortDay(new Date(m.startsAt))}, ${hm(m.startsAt)}.${who}`, { icon: 'cal', ms: 6000, action: { label: 'Change', onClick: () => flow.open(m) } });
       },
       onError: (e) => toast(errorMessage(e), { icon: 'x' })
     })

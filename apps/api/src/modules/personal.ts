@@ -18,7 +18,7 @@ import { id128, openJson, sealJson, sha, stateKey, toJson, utf8 } from '../crypt
 import { bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { ConflictError, ValidationError, notFound } from '../errors';
 import { log } from '../log';
-import { holdAccess, locate, type Located, type NoteManifest } from './notes';
+import { asRead, holdAccess, locate, type Located, type NoteManifest } from './notes';
 
 const plog = log.child({ component: 'personal' });
 
@@ -205,7 +205,7 @@ export async function additionIds(db: Db, noteOwnerId: string, noteId: string): 
 
 /** Reaching your own notes by the note: anyone who has it, however they got it. */
 export const inNote = (o: Owner, l: Located): Place => ({
-  author: o, noteOwnerId: l.owner.ownerId, noteId: l.note.itemId, reader: () => Promise.resolve(noteReader(l.note.manifest)), holdNote: (c) => holdAccess(o, l, c)
+  author: o, noteOwnerId: l.owner.ownerId, noteId: l.note.itemId, reader: () => Promise.resolve(noteReader(asRead(l))), holdNote: (c) => holdAccess(o, l, c)
 });
 export const ofNote = async (o: Owner, noteId: string): Promise<Place> => inNote(o, await locate(o, noteId));
 

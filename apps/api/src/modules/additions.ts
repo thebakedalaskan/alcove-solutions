@@ -22,7 +22,7 @@ import { log } from '../log';
 import { masterKey } from '../owners';
 import { lockItem } from '../vault';
 import { me, profile } from './account';
-import { audienceOf, holdAccess, locate, type Located } from './notes';
+import { asRead, audienceOf, holdAccess, locate, type Located } from './notes';
 import * as personal from './personal';
 import { personOf } from './portraits';
 
@@ -58,7 +58,7 @@ export async function of(l: Located, readerId: string): Promise<NoteAddition[]> 
   const noteId = l.note.itemId;
   const found = await rows(l.owner.pool, Row, 'SELECT addition_id, body_ciphertext FROM note_additions WHERE owner_id = $1 AND note_item_id = $2 ORDER BY added_at, addition_id', [l.owner.ownerId, noteId]);
   if (!found.length) return [];
-  const reader = personal.noteReader(l.note.manifest);
+  const reader = personal.noteReader(asRead(l));
   const organizer = await me(l.owner);
   const person = (by: Stored['by']): Person => (by.id === organizer.id ? organizer : personOf(by.email, by.name));
   return found.map((r) => {
@@ -106,7 +106,7 @@ export async function preview(o: Owner, noteId: string, entryId: string): Promis
   const ctx = { noteId, entryId };
   if (m.status !== 'ready') throw new ConflictError(NOT_WRITTEN, { context: { ...ctx, status: m.status } });
   const entry = await personal.entryOf(o.pool, personal.inNote(o, l), entryId);
-  const reader = personal.noteReader(m);
+  const reader = personal.noteReader(asRead(l));
   const { text, points } = whatGoes(entry, reader, ctx);
   const audience = await audienceOf(l);
   alog.debug('addition previewed', { ...ctx, audience: audience.length, moments: points.length });
@@ -140,7 +140,7 @@ export async function addToShared(o: Owner, noteId: string, entryId: string, bod
     if (entry.shared && (await personal.additionIds(c, owner.ownerId, noteId)).has(entry.shared.additionId)) {
       throw new ConflictError('That’s in the shared notes already. Take it back from them to add it again.', { context: ctx });
     }
-    const { points } = whatGoes(entry, personal.noteReader(m), ctx);
+    const { points } = whatGoes(entry, personal.noteReader(asRead(l)), ctx);
     const people = await audienceOf(l, c);
     // Compared as text, in constant time: it's a keyed hash either way.
     if (!equalBytes(utf8(sealOf(o, noteId, entryId, points, people)), utf8(body.seal))) {

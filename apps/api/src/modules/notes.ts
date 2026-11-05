@@ -21,7 +21,7 @@ import { findOwner, masterKey } from '../owners';
 import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type Loaded } from '../vault';
 import { me, profile, unpin } from './account';
 import * as additions from './additions';
-import { noteObjects, queueDelete, segments } from './audio';
+import { noteObjects, purgeAudio, queueDelete, segments } from './audio';
 import { answer, answerFromNotes, briefOf, type NoteBrief } from './drafting';
 import { MeetingManifest } from './meetings';
 import * as personal from './personal';
@@ -58,6 +58,12 @@ type Sharer = z.infer<typeof Sharer>;
 const SharedWith = z.object({ email: z.string(), by: Sharer, group: z.string().optional(), at: z.string() });
 type SharedWith = z.infer<typeof SharedWith>;
 
+/** What a call's notes keep of what they were written from: without the transcript it's deleted once they're written, and without the recording when the call ends. */
+export const NoteKeep = z.object({ transcript: z.boolean(), recording: z.boolean() });
+export type NoteKeep = z.infer<typeof NoteKeep>;
+/** What a note keeps unless its call was set otherwise: a room recording, and every note from before these choices. */
+const KEEP_ALL: NoteKeep = { transcript: true, recording: true };
+
 export const NoteManifest = z.object({
   kind: NoteKindSchema, title: z.string(), startedAt: z.string(), duration: z.number(),
   meetingId: z.string().optional(), recordingId: z.string(), status: NoteStatusSchema,
@@ -82,7 +88,14 @@ export const NoteManifest = z.object({
   /** Breakout rooms the call held, in seconds into the recording: each time the notes are written, they're among its chapters. */
   breakouts: z.array(HeldRooms),
   /** The verified models that transcribed the speech and wrote the notes, as they were checked. */
-  inference: z.array(InferenceEvidenceSchema)
+  inference: z.array(InferenceEvidenceSchema),
+  /** What the notes keep, as the call was set when they started. */
+  keep: NoteKeep.default(KEEP_ALL),
+  /**
+   * Seconds of audio recorded, saved when the recording stops: what the notes are billed for, whether or not the audio
+   * is kept. Null until then, and on a note stopped before this was saved, whose audio is all still there to count.
+   */
+  recorded: z.number().nullable().default(null)
 });
 export type NoteManifest = z.infer<typeof NoteManifest>;
 /** A note's follow-ups: the call's, then each breakout room's. */
@@ -91,12 +104,12 @@ const actionsOf = (m: NoteManifest): ActionItem[] => [...m.actions, ...m.rooms.f
 const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...m.rooms.flatMap((r) => r.decisions)];
 
 /** A note about to be recorded, starting when its recording does. */
-export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined }): NoteManifest {
+export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined; keep?: NoteKeep | undefined }): NoteManifest {
   return {
     kind: o.kind, title: o.title, startedAt: o.startedAt.toISOString(), duration: 0, recordingId: o.recordingId,
     ...(o.meetingId ? { meetingId: o.meetingId } : {}), invited: o.invited, shared: [],
     status: 'recording', summary: '', decisions: [], questions: [], actions: [], chapters: [], gaps: [], screens: [], transcript: null, rooms: [], suggestedQuestions: [], writtenAt: null,
-    breakouts: [], inference: []
+    breakouts: [], inference: [], keep: o.keep ?? KEEP_ALL, recorded: null
   };
 }
 /** Creates the note item first, then its recording, in one transaction. */
@@ -131,13 +144,16 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
  * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in and what was on
  * shared screens (`shown`, the call's frames as screen moments). Everyone invited gets the note, and it's queued for
- * the notes service (modules/writer.ts), which writes each room's notes too. Runs in the stopping transaction.
+ * the notes service (modules/writer.ts), which writes each room's notes too. Runs in the stopping transaction, once the
+ * recording has stopped. A call set not to keep its recording loses its audio here, after everything worked out from it
+ * (where lines fall, and the seconds billed) is in the note. Returns the objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = []): Promise<void> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
+  const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
-  const all = transcripts.placed(await transcripts.lines(o, db, noteId), await segments(o, recordingId));
+  const all = transcripts.placed(await transcripts.lines(o, db, noteId), audio);
   const heard = all.filter((l) => l.room === undefined);
   // In a call, each line keeps whoever said it; a room recording names nobody.
   const sections: RoomNote[] = rooms.map((r) => ({
@@ -147,6 +163,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
+    recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
     transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
     inference: heardBy
@@ -159,6 +176,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
     rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0)
   });
+  return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }
 
 /** Queues a note's notes for the notes service (modules/writer.ts), for its head revision, in the caller's transaction. */
@@ -177,6 +195,18 @@ export type Located =
   | { owner: Owner; note: Loaded<NoteManifest>; mine: true }
   | { owner: Owner; note: Loaded<NoteManifest>; mine: false; as: string };
 const AccessRow = z.object({ owner_id: z.string(), note_item_id: z.string() });
+
+/**
+ * A note as this person may read it. A transcript that's to be deleted once the notes are written is there to write
+ * them from, for its organizer: everyone else gets the notes, and never reads it, by any path. That goes for the main
+ * room's and every breakout room's, which any of them may still hold while its notes can't be written.
+ */
+export function asRead(l: Located): NoteManifest {
+  const m = l.note.manifest;
+  return l.mine || m.keep.transcript ? m : { ...m, transcript: m.transcript === null ? null : [], rooms: m.rooms.map((r) => ({ ...r, transcript: [] })) };
+}
+/** Whether a note holds anything that was said, in the main room or any breakout room. */
+const said = (m: NoteManifest): boolean => !!m.transcript?.length || m.rooms.some((r) => r.transcript.length > 0);
 
 /** The IDs of every note this person has, their own and ones shared with them, without opening any vault. */
 export async function heldNoteIds(o: Owner): Promise<Set<string>> {
@@ -334,7 +364,7 @@ export async function list(o: Owner, q: { kind?: NoteKind | undefined; text?: st
   const text = q.text?.trim().toLowerCase();
   const all = (await everyNote(o, await myEmail(o)))
     .filter((l) => {
-      const m = l.note.manifest;
+      const m = asRead(l);
       return (!q.kind || m.kind === q.kind) && (!text || `${m.title} ${m.summary} ${(m.transcript ?? []).map((t) => t.text).join(' ')}`.toLowerCase().includes(text));
     });
   all.sort((a, b) => b.note.manifest.startedAt.localeCompare(a.note.manifest.startedAt));
@@ -348,13 +378,14 @@ export async function seriesOf(l: Located): Promise<string | undefined> {
 export async function get(o: Owner, id: string): Promise<Note> {
   const l = await locate(o, id);
   const m = l.note.manifest;
+  const read = asRead(l);
   const organizer = await me(l.owner);
   const who = await recipients(l, organizer);
   const seriesId = await seriesOf(l);
   return {
     ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions: m.decisions, questions: m.questions, actions: m.actions, chapters: m.chapters,
-    gaps: m.gaps, screens: m.screens, transcript: m.transcript, rooms: m.rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
-    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), inference: m.inference, ...(seriesId ? { seriesId } : {})
+    gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms: read.rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
+    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, ...(seriesId ? { seriesId } : {})
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
@@ -378,9 +409,15 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
   const { owner, note } = await locate(o, id);
   const m = note.manifest;
   const stopped = m.status !== 'recording';
-  const seconds = (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
+  const seconds = m.recorded ?? (await segments(owner, m.recordingId)).reduce((s, a) => s + a.seconds, 0);
   // The call's lines and every breakout room's.
   const lines = (m.transcript?.length ?? 0) + m.rooms.reduce((n, r) => n + r.transcript.length, 0);
+  const audio = !seconds && (stopped || m.keep.recording) ? 'No audio was recorded'
+    : m.keep.recording ? `${minutesLabel(seconds)} of audio saved, encrypted`
+      : stopped ? 'The recording was deleted when the call ended' : 'The recording is deleted when the call ends';
+  const transcript = !stopped ? 'Transcribing as it goes'
+    : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}${m.keep.transcript ? '' : ', deleted once the notes are written'}`
+      : !m.keep.transcript && m.writtenAt !== null ? 'The transcript was deleted once the notes were written' : 'Nothing was transcribed';
   // Notes being written again leave the note ready meanwhile: they're done when their job is.
   const job = stopped ? await jobOf(owner, owner.pool, id) : undefined;
   const done = m.status === 'ready' && !job;
@@ -393,25 +430,29 @@ export async function progress(o: Owner, id: string): Promise<NoteProgress> {
     noteId: id, title: m.title, ready: done,
     steps: [
       { label: m.kind === 'room' ? 'Recording stopped' : 'Call ended', done: stopped },
-      { label: seconds ? `${minutesLabel(seconds)} of audio saved, encrypted` : 'No audio was recorded', done: stopped },
-      { label: !stopped ? 'Transcribing as it goes' : lines ? `Transcript of ${lines} ${lines === 1 ? 'line' : 'lines'}` : 'Nothing was transcribed', done: stopped },
+      { label: audio, done: stopped },
+      { label: transcript, done: stopped },
       { label: done ? 'Notes written' : writing, done }
     ]
   };
 }
 
 /**
- * Answers a question about written notes from their transcript and each breakout room's section, for anyone who has
- * them. The answer goes only if they still have the notes once it's written: it may quote them.
+ * Answers a question about written notes from their transcript and each breakout room's section, or from the notes
+ * themselves once a transcript's been deleted, for anyone who has them. The answer goes only if they still have the
+ * notes once it's written: it may quote them.
  */
 export async function ask(o: Owner, id: string, question: string): Promise<AnswerPart[]> {
   const l = await locate(o, id);
   const { owner, note } = l;
   const m = note.manifest;
   if (m.status !== 'ready') throw new ConflictError('You can ask about a call once its notes are written.', { context: { noteId: id, status: m.status } });
-  if (!m.transcript?.length && !m.rooms.some((r) => r.transcript.length)) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
+  const read = asRead(l);
+  if (!said(read) && m.writtenAt === null) {
+    throw new ConflictError(said(m) ? 'These notes aren’t written yet, so there’s nothing to ask about.' : 'Nothing was said while notes were on, so there’s nothing to ask about.', { context: { noteId: id } });
+  }
   const t0 = performance.now();
-  const parts = await answer(o.cfg, id, briefOf(m, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
+  const parts = await answer(o.cfg, id, briefOf(read, await me(owner), m.invited.map((e) => personOf(e))), await me(o), question);
   const ms = Math.round(performance.now() - t0);
   if (await goneSince(o, [l])) {
     throw new ConflictError('These notes were deleted or removed from yours while the answer was being written, so it isn’t shown.', { context: { noteId: id, mine: l.mine, ms } });
@@ -424,13 +465,13 @@ const NOTHING_TO_ASK = 'You don’t have any notes to answer from yet.';
 const NOT_WRITTEN = 'Your notes aren’t written yet. Ask again once they’re ready.';
 /**
  * Answers a question from every note this person has, their own and ones shared with them: the ones
- * written with a transcript (modules/drafting.ts chooses which go). Without any, it says so, and
- * nothing goes to the notes model. The answer goes only if they still have every note it read once
- * it's written: it may quote any of them.
+ * with notes written or a transcript they can read (modules/drafting.ts chooses which go). Without any,
+ * it says so, and nothing goes to the notes model. The answer goes only if they still have every note
+ * it read once it's written: it may quote any of them.
  */
 export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> {
   const all = await everyNote(o, await myEmail(o));
-  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.transcript?.length ?? 0) > 0);
+  const ready = all.filter((l) => l.note.manifest.status === 'ready' && (l.note.manifest.writtenAt !== null || (asRead(l).transcript?.length ?? 0) > 0));
   if (!ready.length) {
     const writing = all.some((l) => l.note.manifest.status !== 'ready');
     nlog.info('asked across notes with nothing to answer from', { notes: all.length, writing });
@@ -443,9 +484,9 @@ export async function askAll(o: Owner, question: string): Promise<AnswerPart[]> 
     people.set(owner.ownerId, p);
     return p;
   };
-  const notes = await Promise.all(ready.map(async ({ owner, note }): Promise<NoteBrief> => {
-    const m = note.manifest;
-    return { id: note.itemId, startedAt: m.startedAt, decisions: m.decisions, actions: m.actions, brief: briefOf(m, await person(owner), m.invited.map((e) => personOf(e))) };
+  const notes = await Promise.all(ready.map(async (l): Promise<NoteBrief> => {
+    const m = asRead(l);
+    return { id: l.note.itemId, startedAt: m.startedAt, decisions: decisionsOf(m), actions: actionsOf(m), brief: briefOf(m, await person(l.owner), m.invited.map((e) => personOf(e))) };
   }));
   const t0 = performance.now();
   const { parts, sent, lines } = await answerFromNotes(o.cfg, notes, await person(o), question);
@@ -692,7 +733,9 @@ export async function rewrite(o: Owner, noteId: string): Promise<Note> {
   if (!l.mine) throw new ForbiddenError('Only the organizer can have the notes written again.', { context: { noteId } });
   if (m.status === 'recording') throw new ConflictError('The notes are written once the recording stops.', { context: { noteId } });
   const roomLines = m.rooms.flatMap((r) => r.transcript);
-  if (!m.transcript?.length && !roomLines.length) throw new ConflictError('Nothing was said while notes were on, so there’s nothing to write from.', { context: { noteId } });
+  if (!m.transcript?.length && !roomLines.length) {
+    throw new ConflictError(m.writtenAt === null ? 'Nothing was said while notes were on, so there’s nothing to write from.' : 'The transcript was deleted once the notes were written, so they can’t be written again.', { context: { noteId } });
+  }
   if (m.status === 'ready') {
     const again = await tx(o.pool, async (c) => {
       // Holding the note while its job is looked for, so two asks at once queue one job.

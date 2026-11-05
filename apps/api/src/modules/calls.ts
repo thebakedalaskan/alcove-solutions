@@ -2,7 +2,7 @@ import {
   CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
   type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
   type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Person,
-  type ScreenFrameReceipt, type Speaker
+  type RingReply, type ScreenFrameReceipt, type Speaker
 } from '@alcove/api';
 import { z } from 'zod';
 import { issuePass, readPass, type CallPass } from '../callPass';
@@ -17,12 +17,14 @@ import * as catchup from './catchup';
 import * as drafting from './drafting';
 import * as personal from './personal';
 import { personOf, portraitFor } from './portraits';
-import { appendPiece, createRecording, segments, setRecordingState, type Piece } from './audio';
+import { appendPiece, createRecording, queueDelete, segments, setRecordingState, type Piece } from './audio';
 import * as capture from './capture';
+import { dropInvites, notesCanGo, syncAccess } from './access';
 import { lookupCode } from './codes';
-import { MeetingManifest, updateManifest } from './meetings';
+import { MeetingManifest, minutesOf, pickTime, updateManifest } from './meetings';
+import { callFor } from './repeats';
 import type { Loaded } from '../vault';
-import { getItem } from '../vault';
+import { findItem, getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } from './notes';
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
 import { mayStandIn, noticesFor, standIns, type HostChange } from './hosting';
@@ -30,6 +32,7 @@ import {
   BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readersAt, relocate,
   type Room
 } from './places';
+import * as rings from './rings';
 import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as transcripts from './transcripts';
@@ -347,7 +350,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {
     return {
-      ...base, participants: [], waiting: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
       host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], notices: []
     };
   }
@@ -372,6 +375,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
     waiting: v.isHost ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    ringing: v.isOrganizer ? await rings.rungIn(o, db, row.meeting_item_id, here.flatMap((j) => (j.email ? [j.email.toLowerCase()] : []))) : [],
     // Connections on their way out of their group (the host's browser takes them out), shown as who they are.
     leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host').map((j) => ({
       id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
@@ -425,8 +429,9 @@ function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'ho
 }
 
 /**
- * Notes on, or resumed, `at` seconds into the call: the first time a note and its recording are created; after that a
- * new segment starts. Anyone who asked for notes has their answer: yes.
+ * Notes on, or resumed, `at` seconds into the call: the first time a note and its recording are created, keeping what
+ * the call was set to keep, with shared screens read from then on if it was set to; after that a new segment starts.
+ * Anyone who asked for notes has their answer: yes.
  */
 async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingManifest>, at: number, by: capture.CaptureChange['by']): Promise<Stored> {
   const asks = capture.answered(s.notes.asks);
@@ -436,10 +441,13 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
     return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment, segmentFrom: at, history: [...s.notes.history, { at, status: 'on', by, segment }], asks, unavailable: [] } };
   }
   const startedAt = new Date();
+  const { keepTranscript, keepRecording, readScreens } = meeting.manifest.choices;
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
-    (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, startedAt, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests }),
+    (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, startedAt, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests, keep: { transcript: keepTranscript, recording: keepRecording } }),
     (nid) => createRecording(o, db, nid, startedAt));
-  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, segmentFrom: at, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
+  const sc = s.notes.screens;
+  const screensNow = readScreens && !sc.on ? { ...sc, on: true, history: [...sc.history, { at, on: true, segment: 0, by }] } : sc;
+  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, segmentFrom: at, screens: screensNow, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
 }
 /**
  * Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. What
@@ -450,17 +458,18 @@ async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingMa
 async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'paused' | 'off'): Promise<Stored> {
   if (s.notes.recordingId && s.notes.status === 'on') await setRecordingState(o, db, s.notes.recordingId, 'paused');
   const sc = s.notes.screens;
-  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false, segment: s.notes.segment }] } : sc;
+  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false, segment: s.notes.segment, by: 'organizer' as const }] } : sc;
   return { ...s, notes: { ...s.notes, status, screens: screensNow, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
 /* ---------- joining by link: for anyone; the organizer's keys are opened with KMASTER ---------- */
 
+/** The call a code leads to: its own, or for a series' code the one that's on now or next. */
 async function meetingFor(d: Deps, code: string) {
   const link = await lookupCode(d, code);
-  if (!link) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
-  const organizer = await openOwner(d, link.ownerId, undefined);
-  const meeting = await getItem(organizer, d.pool, 'meeting', link.meetingId, MeetingManifest, 'That meeting');
+  const organizer = link && await openOwner(d, link.ownerId, undefined);
+  const meeting = organizer && link && (await findItem(organizer, d.pool, 'meeting', link.meetingId, MeetingManifest) ?? await callFor(organizer, link.meetingId));
+  if (!organizer || !meeting) throw new NotFoundError('There’s no call with that code. Check the link and try again.');
   return { organizer, meeting };
 }
 const liveCall = (o: Owner, db: Db, meetingId: string, lock = false) => maybeOne(db, Row,
@@ -471,16 +480,9 @@ const roleOf = (owner: Owner | undefined, email: string | undefined, organizer: 
   owner?.ownerId === organizer.ownerId ? 'host' : email && m.guests.some((g) => g.toLowerCase() === email.toLowerCase()) ? 'invited' : 'guest';
 
 /**
- * Whether a call's notes may go to an account its organizer lets in from the link: a real one, or any when the
- * organizer's own account is a demo one too. Demo sign-ins (Microsoft and single sign-on) check nobody, and
- * Microsoft's is one account everyone trying Alcove shares, so they never get a real organizer's notes this way.
- */
-const notesCanGo = (asker: { sample: boolean }, organizer: { sample: boolean }) => !asker.sample || organizer.sample;
-
-/**
  * What anyone with the link sees before joining: the title and organizer, whether they can come in yet, and what the
  * call captures (nobody's name, nothing that's been said, so they know before they ask); for someone signed in, where
- * they stand; and which ways of signing in get the notes.
+ * they stand; which ways of signing in get the notes; and while the call offers times, the ones still to come.
  */
 export async function card(d: Deps, code: string, owner?: Owner | undefined): Promise<CallCard> {
   const { organizer, meeting } = await meetingFor(d, code);
@@ -495,11 +497,25 @@ export async function card(d: Deps, code: string, owner?: Owner | undefined): Pr
   const standIn = live && hostHere(live) ? s?.people.find((j) => j.identity === s.host && j.role !== 'host') : undefined;
   // Letting someone in adds them to the invite only when the organizer does it: while someone stands in, they'd be a guest.
   const you: CallCard['you'] = role !== 'guest' ? 'invited' : asker && notesCanGo(asker, host) && !standIn ? 'asks' : 'guest';
+  const { offer } = meeting.manifest;
   return {
+    startsAt: meeting.manifest.startsAt,
     title: meeting.manifest.title, organizerName: host.name, hostHere: live ? hostHere(live) : false, standIn: standIn ? (role === 'host' ? { name: standIn.name } : {}) : null, locked: live?.locked ?? false,
-    notes: meeting.manifest.notes, capture: now, ended: !live && meeting.manifest.status === 'ended', you,
+    notes: meeting.manifest.notes, choices: meeting.manifest.choices, joinMuted: meeting.manifest.joinMuted,
+    offer: offer ? { times: offer.times.filter((t) => new Date(t).getTime() > Date.now()), minutes: minutesOf(meeting.manifest) } : null,
+    capture: now, ended: !live && meeting.manifest.status === 'ended', you,
     signInForNotes: host.sample ? ['google', 'microsoft', 'sso'] : ['google']
   };
+}
+
+/**
+ * Settles a call that offers times on one of them, for anyone with its link, signed in or not. The link is what lets
+ * them, as it lets them see the times. It answers with the card, which has no times to pick from any more.
+ */
+export async function pick(d: Deps, code: string, at: string, owner?: Owner | undefined): Promise<CallCard> {
+  const { organizer, meeting } = await meetingFor(d, code);
+  await pickTime(organizer, meeting.itemId, at);
+  return card(d, code, owner);
 }
 
 /** A guest's name as typed, on one line: control characters and line breaks become spaces, and runs of spaces one. */
@@ -514,6 +530,8 @@ const GuestName = z.string().transform((n) => n.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Z
  */
 export async function join(d: Deps, code: string, who: { owner?: Owner | undefined; name?: string | undefined; mic: boolean; cam: boolean; identity: string; keyPackage: string; previous?: string | undefined }): Promise<{ ticket: CallTicket; state: CallState }> {
   const { organizer: o, meeting } = await meetingFor(d, code);
+  // Nobody comes in until someone has picked a time, the organizer included: the call has none yet.
+  if (meeting.manifest.offer) throw new ConflictError('This call doesn’t have a time yet.', { context: { meetingId: meeting.itemId } });
   const asker = who.owner ? await me(who.owner) : undefined;
   const role = roleOf(who.owner, asker?.email, o, meeting.manifest);
   // Only an address the notes may go to comes with an ask: any other signed-in asker is a guest by name.
@@ -718,9 +736,14 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
-      if (meeting.manifest.notes === 'on') s = notice(await startNotes(o, c, s, meeting, 0, 'schedule'), 'Notes are on. Everyone here can see that.');
+      if (meeting.manifest.notes === 'on') {
+        s = await startNotes(o, c, s, meeting, 0, 'schedule');
+        s = notice(s, s.notes.screens.on ? 'Notes are on, and what anyone shares is read for them. Everyone here can see that.' : 'Notes are on. Everyone here can see that.');
+      }
       await save(o, c, callId, s);
-      await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
+      const started = await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
+      // A call that ended, or went past its time, let go of its invite: it's on now, and everyone on it is invited.
+      await syncAccess(o, c, meeting.itemId, started.guests);
       clog.info('call started', { callId, meetingId: meeting.itemId, mic: opts.mic, cam: opts.cam, notes: s.notes.status, noteId: s.notes.noteId, recordingId: s.notes.recordingId });
       return { callId, roomName, replaced: null, row: { host_identity: joined.identity, locked: false }, state: s, admit: 'auto', generation: 0, person: joined.person, hosts: true };
     }
@@ -740,7 +763,7 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
     // and so does their raised hand.
     const last = state.people.findLast((j) => j.role === 'host');
     const host: Joined = { ...joined, person: last?.person ?? joined.person, hand: last?.hand ?? false };
-    const told = standIn ? { change: { kind: 'back' as const, standIn, organizer: joined }, organizer: (await me(o)).name } : undefined;
+    const told = standIn ? { change: { kind: 'back' as const, standIn, organizer: joined }, organizer: (await me(o, c)).name } : undefined;
     const gone = [...(earlier ? [earlier.identity] : []), ...(standIn && standInGone ? [standIn.identity] : [])];
     const { state: s, generation, roomName } = await newGeneration(o, c, live, state, { host, joining: true, gone }, told);
     clog.info(standIn ? 'organizer back, hosting again' : 'organizer rejoined call', { callId: live.call_id, meetingId: meeting.itemId, replaced: Boolean(earlier), segment: s.notes.segment, generation });
@@ -811,6 +834,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     clog.info('host control', { callId, action: a.type, target: a.identity });
     return view(v, o.pool, callId);
   }
+  // Who may be rung is settled before the call's lock is taken: knowing the team can take a calendar read.
+  if (a.type === 'ring') await rings.mayRing(o, (await load(o, o.pool, callId)).row.meeting_item_id, a.emails);
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
@@ -913,6 +938,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     } else if (a.type === 'lock') {
       locked = a.on;
       await exec(c, 'UPDATE calls SET locked = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, locked]);
+    } else if (a.type === 'ring') {
+      // Nobody new can come into a locked call, so nobody is rung into one. Someone already here has no need of a ring.
+      if (locked) throw new ConflictError('This call is locked, so nobody new can join. Unlock it to ring someone.', { context: ctx });
+      const here = new Set(s.people.flatMap((j) => (j.status === 'in' && j.email ? [j.email.toLowerCase()] : [])));
+      await rings.ring(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, a.emails.filter((e) => !here.has(e)));
+    } else if (a.type === 'stop-ring') {
+      await rings.stop(o, c, row.meeting_item_id, a.ringId);
     } else {
       s = await changeCapture(v, c, row, s, a, exact);
     }
@@ -936,6 +968,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   return view(v, o.pool, callId);
 }
 
+/** Someone rung answers: the organizer's browser is told, so their arch shows it. */
+export async function answerRing(who: Owner, ringId: string, reply: RingReply): Promise<void> {
+  const { organizer, meetingId } = await rings.answer(who, ringId, reply);
+  const live = await liveCall(organizer, organizer.pool, meetingId);
+  if (live) await nudge(organizer, live.room_name, live.call_id, { call: true, log: false });
+}
+
 type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'screens' }>;
 /**
  * What the call captures, changed (modules/capture.ts). Only the organizer turns notes on or off, pauses and resumes
@@ -948,8 +987,14 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
   const ctx = { callId: row.call_id, action: a.type, notes: s.notes.status };
   const meeting = () => getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   if (a.type === 'notes') {
-    if (a.on && s.notes.status !== 'on') return notice(await startNotes(o, c, s, await meeting(), at, 'organizer'), 'The organizer turned on notes. Everyone here can see that.');
-    if (!a.on && s.notes.status !== 'off') return notice(await stopNotes(o, c, s, at, 'off'), 'The organizer turned off notes. What was written so far is kept.');
+    if (a.on && s.notes.status !== 'on') {
+      const on = await startNotes(o, c, s, await meeting(), at, 'organizer');
+      return notice(on, on.notes.screens.on ? 'The organizer turned on notes, and what anyone shares is read for them. Everyone here can see that.' : 'The organizer turned on notes. Everyone here can see that.');
+    }
+    if (!a.on && s.notes.status !== 'off') {
+      const { keepTranscript, keepRecording } = (await meeting()).manifest.choices;
+      return notice(await stopNotes(o, c, s, at, 'off'), keepTranscript && keepRecording ? 'The organizer turned off notes. What was written so far is kept.' : 'The organizer turned off notes. What was captured so far still goes into the notes.');
+    }
     return s;
   }
   if (a.type === 'pause') {
@@ -974,7 +1019,7 @@ async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: CaptureAc
     // Frames go into the notes, beside what was said, so they're read only while there are notes to read them into.
     if (a.on && s.notes.status === 'off') throw new ConflictError('Turn on notes first: shared screens are read for the notes.', { context: ctx });
     if (a.on && s.notes.noteId && await screens.full(o, c, s.notes.noteId)) throw new ConflictError(FULL, { context: { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX } });
-    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on, segment: s.notes.segment }] } } };
+    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on, segment: s.notes.segment, by: 'organizer' }] } } };
     return notice(next, a.on ? 'The organizer turned on shared screens in the notes. What anyone shares is read for them.' : 'The organizer turned off shared screens in the notes. What was shared before is kept.');
   }
   if (a.type === 'request-notes') {
@@ -1129,7 +1174,7 @@ async function screensFull(o: Owner, callId: string): Promise<void> {
     const { row, state } = await load(o, c, callId, true);
     const sc = state.notes.screens;
     if (row.state !== 'live' || !sc.on) return null;
-    const off: Stored = { ...state, notes: { ...state.notes, screens: { ...sc, on: false, history: [...sc.history, { at: tenthsIn(row.started_at), on: false, segment: state.notes.segment }] } } };
+    const off: Stored = { ...state, notes: { ...state.notes, screens: { ...sc, on: false, history: [...sc.history, { at: tenthsIn(row.started_at), on: false, segment: state.notes.segment, by: 'organizer' }] } } };
     await save(o, c, callId, notice(off, 'Shared screens are off: the notes have kept as many as they can for this call. What was shared is kept.'));
     return { room: row.room_name };
   });
@@ -1305,6 +1350,8 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     }
     // Taken out: out of that group, and nothing more. Leaving the call is the API's to say, not a commit's.
     for (const id of b.removed) s = withPerson(s, id, (j) => (j.group === b.group ? { ...j, group: null } : j));
+    // Nobody in the call needs ringing: the ring goes the moment they're let in, so an arch becomes a tile with no gap.
+    await rings.arrived(o, c, row.meeting_item_id, b.added.flatMap((id) => { const email = people.get(id)?.email; return email ? [email] : []; }));
     // Signed in and let in by the organizer, who saw who it was (they asked; nobody let in without asking counts):
     // added to the invite, so they get the notes like everyone invited. Only the organizer adds anyone to their invite:
     // whoever someone standing in lets in is in the call as a guest, without the notes. An address comes with an ask
@@ -1677,10 +1724,12 @@ export async function personalIn(v: Viewer, callId: string, session: () => Promi
 
 /**
  * Ends the call for everyone: the recording stops, the transcript moves into the note, the note goes to
- * everyone invited, and the LiveKit room goes. The organizer leaving, a webhook and upkeep all end it here.
+ * everyone invited, and the LiveKit room goes. A call set not to keep its recording deletes it here, once the note
+ * has what it worked out from it. The organizer leaving, a webhook and upkeep all end it here.
  */
 async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): Promise<CallEndResult | null> {
   let room: string | null = null;
+  let audio: string[] = [];
   const end = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     // Upkeep decided from an earlier read; the organizer may have come back since.
@@ -1696,8 +1745,11 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, relocate(state, closed, Date.now(), row.mls_seq)) : closed;
     if (row.state === 'live') {
       await save(o, c, callId, s);
-      // The MLS log only matters while the call runs.
+      // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
+      await rings.clear(o, c, row.meeting_item_id);
+      // Who's invited lasts as long as the call does. Its note has its own list.
+      await dropInvites(o, c, [row.meeting_item_id]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
       if (s.notes.noteId) {
         // Ending while the host's browser is out of the call (it never came back): nothing was captured since it left.
@@ -1705,11 +1757,11 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
         const offline = gone !== null && gone < duration ? [...s.notes.offline, { from: gone, to: duration, segment: s.notes.segment }] : s.notes.offline;
         const recorded = (at: number) => capture.recorded(s.notes.history, offline, at, duration);
         const held = s.breakouts.held.map((h) => ({ rooms: h.rooms.map((r) => ({ id: r.id, name: r.name, emails: r.emails })), from: recorded(h.from), to: recorded(h.to) }));
-        const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId) : [];
+        const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId, c) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
         const gaps = capture.gapsOf(s.notes.history, offline, row.started_at, segs, duration);
         // And what was on shared screens, each frame where it was shown and for how long, its presenter named as the call names speakers.
-        const organizer = await me(o);
+        const organizer = await me(o, c);
         const speakerOf = speakersIn(s, organizer);
         const shown = screens.moments(await screens.framesOf(o, c, s.notes.noteId), {
           history: s.notes.history, offline, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
@@ -1724,7 +1776,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
           gaps: capture.roomGaps(s.notes.history, offline, r.pauses, h.from, row.started_at, h.to, h.to)
         })));
-        await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms);
+        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
@@ -1732,6 +1784,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
   });
   if (!end) return null;
+  await queueDelete(o, audio);
   // Nor do moves to other devices. Deleted once the call has ended, so a move coming in at that moment never waits on it.
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
@@ -1786,7 +1839,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null): Pro
       throw new ConflictError(to === null ? 'Nobody else here can host. End the call for everyone instead.' : 'They can’t host right now. Choose someone else, or end the call.',
         { context: { ...ctx, why: 'not eligible', chosen: to !== null } });
     }
-    const organizer = (await me(o)).name;
+    const organizer = (await me(o, c)).name;
     const { state: after, generation } = await newGeneration(o, c, row, s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
     return { room: row.room_name };
@@ -1972,7 +2025,7 @@ async function standInFor(d: Deps, c: LiveCall, connected: ReadonlySet<string>, 
     const from = s.people.find((j) => j.identity === s.host);
     const next = standIns(s, new Set(s.host ? [s.host] : []), connected)[0];
     if (!next) return { result: 'nobody' as const, room: null };
-    const told = from ? { change: { kind: 'dropped' as const, from, to: next }, organizer: (await me(o)).name } : undefined;
+    const told = from ? { change: { kind: 'dropped' as const, from, to: next }, organizer: (await me(o, tc)).name } : undefined;
     const { generation, state: after } = await newGeneration(o, tc, row, s, { host: next, joining: false, gone: from ? [from.identity] : [] }, told);
     clog.info('host gone; someone else hosts', { callId: c.call_id, generation, from: from?.role === 'host' ? 'organizer' : 'stand-in', segment: after.notes.segment, notes: after.notes.status });
     return { result: 'handed' as const, room: row.room_name };

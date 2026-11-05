@@ -3,6 +3,7 @@
  * NAV or TABS (and, for a count, a line in useCounts). `tour` is the hook the tour of Home finds a place
  * by (features/onboarding/Tour.tsx).
  */
+import type { Team } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { uploads } from '~/features/record/uploads';
@@ -28,13 +29,16 @@ export function useCounts(): Record<Counter, number | undefined> {
 }
 
 export interface NavPlace { to: Place; icon: IconName; label: string; count?: Counter | undefined; tour?: string | undefined }
-/** The side panel's places, under New call. */
+/** The side panel's places, under Start a call. */
 export const NAV: readonly NavPlace[] = [
   { to: '/home', icon: 'home', label: 'Home' },
   { to: '/notes', icon: 'notes', label: 'Notes', count: 'notes' },
   { to: '/record', icon: 'recordDot', label: 'Record', count: 'record', tour: 'room' },
   { to: '/team', icon: 'people', label: 'Team', count: 'team' }
 ];
+
+/** The places someone has: on your own there's no Team page. Until that's known they're all there, so nothing appears late. */
+export const places = <P extends { to: Place }>(all: readonly P[], team: Team | null | undefined): readonly P[] => (team === null ? all.filter((p) => p.to !== '/team') : all);
 
 export interface Tab { to: Place; icon: IconName; label: string; raised?: boolean | undefined; tour?: string | undefined }
 /** The phone's tab bar, with Record in the middle. `raised` is Record's button, which stands up out of the bar. */

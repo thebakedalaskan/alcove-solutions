@@ -1,5 +1,5 @@
 import { Dialog as RDialog, Popover as RPopover, Tooltip as RTooltip } from 'radix-ui';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 
@@ -149,7 +149,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
     else if (e.key === 'Tab') setOpen(false);
     else if (printable(e)) to = match(e.key, i);
     else return;
-    /* Handled here: the page's own shortcuts (N for a new call) mustn't see it. Escape is left to the popover. */
+    /* Handled here: the page's own shortcuts (N to start a call) mustn't see it. Escape is left to the popover. */
     e.preventDefault();
     e.stopPropagation();
     if (to !== undefined) focusAt(to);
@@ -192,23 +192,25 @@ export function Select<T extends string>({ value, onChange, options, label, icon
 const focusedElement = (): HTMLElement | null =>
   typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
 
-/**
- * A single sheet that drops from the top: one input, never a stack of forms. Closing it puts focus back
- * where it was when it opened, since a shortcut can open it from anywhere, with no button to go back to.
- */
-export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+/** What has focus when something opens, to go back to when it closes: a shortcut can open it from anywhere, with no button to return to. */
+function useFocusBack(open: boolean) {
   const [shown, setShown] = useState(open);
-  const [back, setBack] = useState<HTMLElement | null>(null);
+  const [back, setBack] = useState<HTMLElement | null>(() => (open ? focusedElement() : null));
   if (open !== shown) {
     setShown(open);
     if (open) setBack(focusedElement());
   }
+  return (e: Event) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } };
+}
+
+/** A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was. */
+export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+  const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)}
-          onCloseAutoFocus={(e) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } }}>
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onCloseAutoFocus={focusBack}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>
@@ -231,20 +233,28 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
 
 /**
  * A modal over the page: centred for a choice that needs room (what to share), or rising from the
- * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil.
+ * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil. Something with
+ * several questions asks them one at a time inside the one modal: no window ever opens over another.
+ * Closing it puts focus back where it was when it opened, since a shortcut can open it from anywhere;
+ * `onCloseFocus` puts it somewhere else instead, when what it came from has gone (return true once it has).
+ * Focus starts on the first thing to press, or with `focusSelf` on the modal, for one that's mostly to read.
  */
-export function Modal({ open, onOpenChange, label, children, placement = 'center', className }: {
+export const Modal = forwardRef<HTMLDivElement, {
   open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; placement?: 'center' | 'bottom'; className?: string | undefined;
-}) {
+  onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined;
+}>(function Modal({ open, onOpenChange, label, children, placement = 'center', className, onCloseFocus, focusSelf = false }, ref) {
+  const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}>
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}
+          onOpenAutoFocus={focusSelf ? (e) => { e.preventDefault(); if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus(); } : undefined}
+          onCloseAutoFocus={(e) => { if (onCloseFocus?.()) e.preventDefault(); else focusBack(e); }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>
       </RDialog.Portal>
     </RDialog.Root>
   );
-}
+});

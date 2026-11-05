@@ -30,8 +30,8 @@ function slidesFor(o: { next: Meeting | undefined; firstDay: boolean; calendar: 
   const drafts: Draft[] = [];
   const add = (d: Draft) => { if (d.target()) drafts.push(d); };
   add({
-    id: 'schedule', called: 'notes', title: 'Schedule in one line', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
-    text: `Press New call${keys ? ', or N,' : ''} and type the call the way you’d say it. Alcove finds the time and invites the people${o.calendar ? ', and puts it on your calendar' : ''}.`
+    id: 'schedule', called: 'notes', title: 'Start or schedule a call', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
+    text: `Press Start a call${keys ? ', or N,' : ''} to go now, or schedule it for later: who, when, then the details. Alcove suggests the times${o.calendar ? ' and puts it on your calendar' : ''}.`
   });
   const notesOn = hook('notes');
   add(notesOn()
@@ -48,7 +48,7 @@ function slidesFor(o: { next: Meeting | undefined; firstDay: boolean; calendar: 
   add({ id: 'sealed', called: 'privacy', title: 'Your notes stay yours', art: <ArtSeal />, prefer: ['left', 'below'], target: hook('sealed'), text: 'Notes are written in confidential compute, sealed hardware that Alcove can’t open. Only the people invited can read them.' });
   add({
     id: 'ready', called: 'where to start', title: 'You’re ready', art: <ArtSun />, prefer: ['right', 'below', 'left'], target: hook('new-call'),
-    text: `Start a call now, or describe one to schedule it.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`
+    text: `Start a call now, or schedule one for later.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`
   });
   return drafts.map((d, i) => {
     const after = drafts[i + 1];
@@ -74,7 +74,7 @@ export function TourHost() {
     // Home settles in first.
     const t = setTimeout(() => {
       const now = Date.now();
-      const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
+      const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now && !m.offer).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
       const s = slidesFor({ next, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
       arrival.tourTaken();
       if (s.length) setSlides(s);

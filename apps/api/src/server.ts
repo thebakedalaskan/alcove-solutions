@@ -22,7 +22,8 @@ const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
 const deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
-const app = createApp(deps);
+const stopping = new AbortController();
+const app = createApp(deps, stopping.signal);
 
 const mlog = log.child({ component: 'maintenance' });
 const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
@@ -39,6 +40,7 @@ const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_H
 function shutdown(signal: string) {
   slog.info('shutting down', { signal });
   clearInterval(timer);
+  stopping.abort();
   server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); });
   setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
 }
