@@ -111,7 +111,6 @@ export class BoardPresenceStore {
     const stopPointer = board.watchPointer(this.pointerMoved);
     const stopCamera = board.camera.subscribe(this.changed);
     const stopBoard = board.subscribe(this.boardChanged);
-    const stopFollowing = this.following.attach(sheet);
     const size = new ResizeObserver(() => {
       this.changed();
       this.following.refit();
@@ -120,6 +119,7 @@ export class BoardPresenceStore {
     sheet.addEventListener('input', this.keyed);
     awareness.on('change', this.heardChange);
     this.heardChange({ added: [...awareness.getStates().keys()], updated: [], removed: [] });
+    const stopFollowing = this.following.attach(sheet);
     this.changed();
     return () => {
       awareness.off('change', this.heardChange);
@@ -254,7 +254,7 @@ export class BoardPresenceStore {
   }
 
   /** Works out what's on the sheet, and tells whoever draws it only if that's different. */
-  private refresh = (): void => {
+  private refresh(): void {
     const time = performance.now();
     // Your own pointer isn't drawn, and that goes for one in another window too.
     const me = this.clients.get(this.awareness.clientID)?.id;
@@ -282,7 +282,7 @@ export class BoardPresenceStore {
     if (drawn) this.pointers = pointers;
     if (marked) this.editing = editing;
     if (drawn || marked) for (const listener of this.listeners) listener();
-  };
+  }
 }
 
 /** Everything about who else is here, for one surface. A tile is a picture of the board, so it says nothing and shows nobody. */

@@ -13,9 +13,10 @@ import type { Board } from './useBoard';
 
 /**
  * How quickly the camera catches up, in ms. It eases towards a point that eases towards their view, so its speed changes
- * smoothly from one update to the next. A steady pan trails by twice this, and a jump takes about the board's glide.
+ * smoothly from one update to the next. A steady pan trails by about 150 ms, near what a pointer does, so whoever you're
+ * following stays still on your sheet, and a jump across the board lands in about half a second.
  */
-const EASE_MS = 70;
+const EASE_MS = 60;
 /** Close enough to stop: half a pixel, and a zoom no one could see the difference in. */
 const NEAR_PX = 0.5;
 const NEAR_ZOOM = 0.0005;
@@ -87,6 +88,7 @@ export class BoardFollowing {
       this.halt();
       this.who = null;
       this.home = null;
+      this.board.stopFollow();
     };
   }
 
