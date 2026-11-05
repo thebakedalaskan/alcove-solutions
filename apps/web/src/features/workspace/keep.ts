@@ -127,16 +127,19 @@ export function keptUpdates(owner: string, workspace: string, document: string):
   };
 }
 
-/** The documents `owner` has edits waiting in, for sending them. */
+/** The documents `owner` has edits waiting in, for sending them: the one first written in first. */
 export async function keptDocuments(owner: string): Promise<{ workspace: string; document: string }[]> {
   if (!canKeepEdits() || signedOut(owner)) return [];
   const rows = listOf(await ask((await db()).transaction(EDITS).objectStore(EDITS).getAll(inAccount(owner))));
-  const found = new Map<string, { workspace: string; document: string }>();
+  const found = new Map<string, { workspace: string; document: string; at: number }>();
   for (const row of rows) {
     const edit = KeptEditSchema.safeParse(row);
-    if (edit.success) found.set(`${edit.data.workspace}/${edit.data.document}`, { workspace: edit.data.workspace, document: edit.data.document });
+    if (!edit.success) continue;
+    const { workspace, document, at } = edit.data;
+    const seen = found.get(`${workspace}/${document}`);
+    if (!seen || at < seen.at) found.set(`${workspace}/${document}`, { workspace, document, at });
   }
-  return [...found.values()];
+  return [...found.values()].sort((a, b) => a.at - b.at).map(({ workspace, document }) => ({ workspace, document }));
 }
 
 /** Signing out or deleting the account here: everything kept for `owner` goes, and with nobody's left, the key too. */
