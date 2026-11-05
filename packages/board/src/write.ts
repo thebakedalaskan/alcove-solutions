@@ -2,13 +2,14 @@
  * Every change to a board, each one a single `doc.transact` under the caller's origin, so even something as big
  * as Sort into themes is one undo. A write brings what it's given inside the limits, or refuses it, and checks
  * the result with the schema `readBoard` uses, so nothing written here is left out for anyone. Text people are
- * typing doesn't come through here: that's the object's Y.Text, from `objectText`.
+ * typing doesn't come through here: that's the object's Y.Text, from `objectText`. So the limit holds for one
+ * browser, and only gives way when two merge, which is why `readBoard` cuts text rather than leaving it out.
  */
 import * as Y from 'yjs';
 import { bounds, centre, contains, frameAt } from './geometry';
 import { mapOf, readBoard, rootMap, same } from './read';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, hasBox, isAttached, layerOf, newId,
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_REACH, BoardObjectSchema, LineEndSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
   type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type PlacedObject, type ShapeKind, type StickyColour
 } from './shape';
 
@@ -52,12 +53,6 @@ export const BESIDE = 40;
 const between = (min: number, max: number, n: number): number => Math.min(max, Math.max(min, n));
 const reach = (n: number): number => between(-BOARD_REACH, BOARD_REACH, n);
 const side = (n: number): number => between(BOARD_LIMITS.minSide, BOARD_LIMITS.maxSide, n);
-
-/** Text cut to the limit. Never between a surrogate pair: half of one encodes differently, and browsers would disagree. */
-function cut(text: string): string {
-  const kept = text.slice(0, BOARD_LIMITS.text);
-  return /[\uD800-\uDBFF]$/.test(kept) ? kept.slice(0, -1) : kept;
-}
 
 function limited(key: string, value: unknown): unknown {
   if (typeof value === 'number' && (key === 'x' || key === 'y')) return reach(value);

@@ -3,9 +3,13 @@
  * parses, and one bad object mustn't take a board down for everyone: what doesn't parse is left out. What
  * comes back holds together for the code that draws it: `f` names a frame on the board or nothing, frames
  * nest without going round in circles, and every line's attached ends are there to attach to.
+ *
+ * Text is the exception to leaving out. Two people typing apart can merge past the limit, which no write can
+ * stop, and a sticky mustn't vanish over that. So a read cuts the text and keeps the object, and the Y.Text
+ * stays whole: nothing is lost, and editing still shows all of it.
  */
 import * as Y from 'yjs';
-import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BoardObjectSchema, TableLinesSchema, cellKey, hasBox, isAttached, layerOf, type BoardObject, type BoardView, type FrameObject, type LineEnd } from './shape';
+import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BoardObjectSchema, TableLinesSchema, cellKey, cut, hasBox, isAttached, layerOf, type BoardObject, type BoardView, type FrameObject, type LineEnd } from './shape';
 
 /** A root as a map, or null if this browser already opened it as something else, where `getMap` would throw. */
 export function rootMap(doc: Y.Doc, name: string): Y.Map<unknown> | null {
@@ -15,7 +19,7 @@ export function rootMap(doc: Y.Doc, name: string): Y.Map<unknown> | null {
 }
 
 export const mapOf = (value: unknown): Y.Map<unknown> | null => (value instanceof Y.Map ? value : null);
-const textOf = (value: unknown): string | undefined => (value instanceof Y.Text ? value.toString() : undefined);
+const textOf = (value: unknown, limit?: number): string | undefined => (value instanceof Y.Text ? cut(value.toString(), limit) : undefined);
 
 /** Whether two plain values hold the same thing. */
 export function same(a: unknown, b: unknown): boolean {
@@ -42,26 +46,31 @@ function linesOf(value: unknown): unknown[] | undefined {
   });
 }
 
-/** A table's rows, columns and cells as plain values. A cell nobody has made yet is empty. */
+/**
+ * A table's rows, columns and cells as plain values. A cell nobody has made yet is empty. The limit is the object's,
+ * so the cells share it in reading order, and one past where it's spent reads empty while its Y.Text keeps its words.
+ */
 function tableFields(m: Y.Map<unknown>): { rows?: unknown; cols?: unknown; cells?: unknown } {
   const rows = TableLinesSchema.safeParse(linesOf(m.get('rows')));
   const cols = TableLinesSchema.safeParse(linesOf(m.get('cols')));
   const stored = mapOf(m.get('cells'));
   if (!rows.success || !cols.success || !stored) return {};
   const cells: Record<string, string> = {};
+  let room: number = BOARD_LIMITS.text;
   for (const row of rows.data) {
     for (const col of cols.data) {
       const key = cellKey(row.id, col.id);
       const cell = stored.get(key);
-      const text = cell === undefined ? '' : textOf(cell);
+      const text = cell === undefined ? '' : textOf(cell, room);
       if (text === undefined) return {};
       cells[key] = text;
+      room -= text.length;
     }
   }
   return { rows: rows.data, cols: cols.data, cells };
 }
 
-/** Everything an object holds as plain values. A `t` that isn't a Y.Text reads as missing, so it won't parse. */
+/** Everything an object holds as plain values, its text cut to fit. A `t` that isn't a Y.Text reads as missing, so it won't parse. */
 function plainOf(id: string, m: Y.Map<unknown>): Record<string, unknown> {
   const fields = { ...Object.fromEntries(m.entries()), id, t: textOf(m.get('t')), title: textOf(m.get('title')) };
   return m.get('k') === 'table' ? { ...fields, rows: undefined, cols: undefined, cells: undefined, ...tableFields(m) } : fields;

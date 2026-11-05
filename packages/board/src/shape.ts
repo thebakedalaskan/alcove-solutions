@@ -122,6 +122,13 @@ export const cellKey = (row: string, col: string): string => `${row}:${col}`;
 /** The layer an object draws in: frames, then lines, then everything else. */
 export const layerOf = (k: BoardObject['k']): number => (k === 'frame' ? 0 : k === 'line' ? 1 : 2);
 
+/** Text cut to a limit. Never between a surrogate pair: half of one encodes differently, and browsers would disagree. */
+export function cut(text: string, limit: number = BOARD_LIMITS.text): string {
+  if (text.length <= limit) return text;
+  const kept = text.slice(0, limit);
+  return /[\uD800-\uDBFF]$/.test(kept) ? kept.slice(0, -1) : kept;
+}
+
 const ID_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 /** A new id: 12 random base64url characters. 64 divides 256, so masking a byte keeps every character equally likely. */
