@@ -1,8 +1,10 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type Group, type ISODate, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series } from '@alcove/api';
+import { errorCode, firstName, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type ISODate, type InstantCallInput, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type RingReply, type Rsvp, type PersonalInput, type PersonalNotes, type PromoteBody, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
 import { queryOptions, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
+import { forgetEdits } from '~/features/workspace/keep';
+import { forgetPlaces } from '~/features/workspace/places';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
@@ -32,7 +34,10 @@ export const qk = {
   series: (id: string) => ['series', id] as const,
   callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
-  trust: ['trust'] as const
+  trust: ['trust'] as const,
+  workspaces: ['workspaces'] as const,
+  workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const
 };
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
@@ -113,7 +118,13 @@ export const q = {
     queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
   }),
   /** What you can bring to a call. */
-  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false })
+  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
+  /** Your workspaces, read again each time the name at the top of the list is pressed. */
+  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
+  /** Who's in a workspace, for anyone in it. */
+  workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
+  documentShare: (id: string, documentId: string) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId), staleTime: 0 })
 };
 
 /**
@@ -148,7 +159,9 @@ async function forgetHere(qc: QueryClient) {
   await forgetNotified();
   const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
+  forgetPlaces(owner);
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
+  try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
 }
 export function useSignOut() {
   const qc = useQueryClient();
@@ -481,4 +494,76 @@ export function usePickTime(code: string) {
     mutationFn: (at: string) => api.calls.pick(code, at),
     onError: (e) => (errorCode(e) === 'conflict' ? qc.invalidateQueries({ queryKey: qk.card(code) }) : undefined)
   });
+}
+
+/* ---------- workspaces ---------- */
+
+/** What someone's first workspace is called, until they rename it. */
+const firstWorkspaceName = (name: string) => `${firstName(name) || 'My'}’s workspace`;
+
+/**
+ * The workspace to open: the one `remembered`, if it's still yours, or your first, or a new one in your name for someone
+ * who has none. Two tabs opening at once make one between them.
+ */
+export async function workspaceToOpen(qc: QueryClient, remembered: string | null, name: string): Promise<string> {
+  const pick = async () => {
+    const all = await qc.fetchQuery({ ...q.workspaces(), staleTime: 0 });
+    return all.find((w) => w.id === remembered)?.id ?? all.find((w) => w.role !== null)?.id ?? all[0]?.id ?? null;
+  };
+  const have = await pick();
+  if (have) return have;
+  const make = async () => {
+    const again = await pick();
+    if (again) return again;
+    const { id } = await api.workspaces.create(firstWorkspaceName(name));
+    await qc.invalidateQueries({ queryKey: qk.workspaces, exact: true });
+    return id;
+  };
+  return 'locks' in navigator ? navigator.locks.request('alcove-first-workspace', make) : make();
+}
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (name: string) => api.workspaces.create(name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+export function useRenameWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+/** Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. `pass`: a guest's. */
+export function useItemChanges(workspaceId: string, pass?: string | undefined) {
+  const w = api.workspaces;
+  const as = pass ? { pass } : undefined;
+  return {
+    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input) }),
+    // One at a time, so what's typed last is what's kept.
+    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as) }),
+    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to) }),
+    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id) }),
+    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id) }),
+    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as) }),
+    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id) })
+  };
+}
+/** Who has a document: adding someone, taking them off, and closing it to the workspace. */
+export function useDocumentShare(workspaceId: string, documentId: string) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
+  const s = api.workspaces.share;
+  return {
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
+    restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
+  };
+}
+/** Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. */
+export function useWorkspacePeople(workspaceId: string) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.workspacePeople(workspaceId) });
+  const w = api.workspaces;
+  return {
+    add: useMutation({ mutationFn: (v: { email: string; role: WorkspaceRole }) => w.addPerson(workspaceId, v.email, v.role), onSuccess: reread }),
+    setRole: useMutation({ mutationFn: (v: { id: string; role: WorkspaceRole }) => w.setRole(workspaceId, v.id, v.role), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: reread })
+  };
 }

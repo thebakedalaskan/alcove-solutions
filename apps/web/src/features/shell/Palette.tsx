@@ -9,11 +9,12 @@ import { MAX_PINS, errorMessage, firstName, type AnswerPart, type NoteSummary } 
 import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AnswerView, useAnswer, type Cite } from '~/features/notes/answer';
 import { highlight } from '~/features/notes/highlight';
 import { noteMeta } from '~/features/notes/meta';
 import { api } from '~/lib/api';
+import { useSettled } from '~/lib/live';
 import { q, usePins } from '~/lib/queries';
 import { noteDay, position } from '~/lib/time';
 import type { PaletteStart } from './context';
@@ -30,13 +31,6 @@ export function Palette({ open, onOpenChange, start }: { open: boolean; onOpenCh
       {start.mode === 'pin' ? <PinNotes onClose={close} /> : <Find onClose={close} />}
     </Sheet>
   );
-}
-
-/** `value`, once it has stayed the same for `ms`: a search waits for a pause in typing. */
-function useSettled<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return settled;
 }
 
 /** A note in the palette: its sky, its title with what matched marked, when it was and what it holds. */

@@ -1,6 +1,6 @@
 import type { CallParticipant, CallSession, CallState, LiveStore } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { LocalMedia } from '~/features/call/media';
 import type { StageRecording } from '~/features/record/stage';
 
@@ -16,6 +16,23 @@ const onConnection = (changed: () => void) => {
 };
 /** Whether this browser has a connection. Offline, recording still works (when it's on in Settings); everything else waits for it. */
 export const useOnline = (): boolean => useSyncExternalStore(onConnection, onLine, () => true);
+
+/** Whether a media query matches, such as the phone's width, following it as the window changes. */
+export function useMedia(query: string): boolean {
+  const subscribe = useCallback((changed: () => void) => {
+    const m = matchMedia(query);
+    m.addEventListener('change', changed);
+    return () => m.removeEventListener('change', changed);
+  }, [query]);
+  return useSyncExternalStore(subscribe, () => matchMedia(query).matches, () => false);
+}
+
+/** `value`, once it has stayed the same for `ms`: a search waits for a pause in typing. */
+export function useSettled<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setSettled(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return settled;
+}
 
 /** The time now, refreshed every `every` milliseconds, for "in 12 min" and the like. */
 export function useNow(every = 30_000): number {
