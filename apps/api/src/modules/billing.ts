@@ -8,22 +8,37 @@ import { bytea, exec, maybeOne, type Db } from '../db';
 
 export const PER_MINUTE = 25;
 export const WELCOME_CREDITS = 10_000;
+/** A rate in credits per USD, kept as a fraction so 10,000/9 is exact. */
+export interface Rate { num: bigint; den: bigint }
 /**
- * Credits per USD by what one payment is worth, in micro-USD: the bigger the payment, the better the rate. Each tier
- * matches an old pack: 10,000 for 10 USD, 50,000 for 45 USD, 100,000 for 80 USD.
+ * Credits per USD by how many credits one top-up buys: the more credits, the better the rate. 10,000 credits cost
+ * 10 USD, 50,000 cost 45 USD and 100,000 cost 80 USD; an amount in between takes the rate of the tier it's in.
  */
-export const TIERS: readonly { fromMicroUsd: bigint; creditsPerUsd: { num: bigint; den: bigint } }[] = [
-  { fromMicroUsd: 0n, creditsPerUsd: { num: 1000n, den: 1n } },
-  { fromMicroUsd: 45_000_000n, creditsPerUsd: { num: 10_000n, den: 9n } },
-  { fromMicroUsd: 80_000_000n, creditsPerUsd: { num: 1250n, den: 1n } }
+export const TIERS: readonly { fromCredits: number; creditsPerUsd: Rate }[] = [
+  { fromCredits: 0, creditsPerUsd: { num: 1000n, den: 1n } },
+  { fromCredits: 50_000, creditsPerUsd: { num: 10_000n, den: 9n } },
+  { fromCredits: 100_000, creditsPerUsd: { num: 1250n, den: 1n } }
 ];
+/** The rate for buying `credits`: the tier it falls in. */
+export const rateFor = (credits: number): Rate => TIERS.reduce((best, t) => (credits >= t.fromCredits ? t : best)).creditsPerUsd;
+/** What `credits` cost, in micro-USD, rounded up: 10,000 → 10 USD, 50,000 → 45 USD, 46,000 → 46 USD. */
+export function priceFor(credits: number): bigint {
+  const r = rateFor(credits);
+  const top = BigInt(credits) * 1_000_000n * r.den;
+  return (top + r.num - 1n) / r.num;
+}
+/** Credits `microUsd` buys at `rate`, rounded down to whole credits. */
+export const creditsAt = (microUsd: bigint, rate: Rate): number => Number((microUsd * rate.num) / (rate.den * 1_000_000n));
 /**
- * The credits a payment adds: the tier is picked from what was sent, its rate applied to what was credited (what
- * reached the treasury), rounded down to whole credits.
+ * Credits for money that came without a price agreed for it (a payment too small to swap, or refunded): the most
+ * credits it buys at a tier it reaches. 45 USD → 50,000; 46 USD → 51,111; 30 USD → 30,000.
  */
-export function creditsFor(sentMicroUsd: bigint, creditedMicroUsd: bigint): number {
-  const tier = TIERS.reduce((best, t) => (sentMicroUsd >= t.fromMicroUsd ? t : best));
-  return Number((creditedMicroUsd * tier.creditsPerUsd.num) / (tier.creditsPerUsd.den * 1_000_000n));
+export function creditsForUsd(microUsd: bigint): number {
+  for (const t of [...TIERS].reverse()) {
+    const c = creditsAt(microUsd, t.creditsPerUsd);
+    if (c >= t.fromCredits) return c;
+  }
+  return 0;
 }
 /** Every change to the balance, kept with it so charges can be explained. */
 const Entry = z.object({ id: z.string(), at: z.string(), label: z.string(), amount: z.number() });

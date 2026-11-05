@@ -59,8 +59,9 @@ decision never erases what was there before.
 
 A credit top-up is a sealed `deposit` record, header `{ v: 1, kind: 'deposit', ownerId, depositId, keyVersion: '1' }`,
 under `Kservice`'s accounting key like the billing state, so the watcher opens it without anyone signed in: the
-route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the provider's whole signed quote,
-and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
+route (chain, token, decimals, minimum), the deposit address and memo, the expiry, the amount asked and the quote's
+`minAmountIn` (token units), the credits promised and the rate they were priced at, the provider's whole signed quote,
+what the provider last said arrived while it was open (micro-USD), and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
 and the provider's reference, and whether its deadline was already pushed back once because the provider couldn't
 answer (`extended`, false in records written before it existed) ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)).
 

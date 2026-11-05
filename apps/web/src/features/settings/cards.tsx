@@ -248,7 +248,7 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
             <li key={t.id}>
               <button type="button" className="set-conn" onClick={() => setSheet({ open: true, topUpId: t.id })}>
                 <span className="mark"><Icon name="coins" size={20} /></span>
-                <span className="txt"><b>{routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
+                <span className="txt"><b>{t.asked.amount} {routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
                 <Icon name="chevron" size={18} />
               </button>
             </li>

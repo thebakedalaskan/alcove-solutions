@@ -157,8 +157,8 @@ export interface AlcoveApi {
     balance(): Promise<CreditBalance>;
     /** The ways to pay for credits right now, and how many credits a USD buys at each size of payment. */
     routes(): Promise<TopUpRoutes>;
-    /** Opens a top-up on one of those routes: an address to send to, for one payment. */
-    startTopUp(routeId: string): Promise<TopUp>;
+    /** Opens a top-up for `credits` on one of those routes: the amount to send, and an address for that one payment. */
+    startTopUp(routeId: string, credits: number): Promise<TopUp>;
     /** A top-up as it stands now. */
     topUp(id: ID): Promise<TopUp>;
     /** Top-ups still open, and the last 10 finished, newest first. */

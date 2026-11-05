@@ -261,7 +261,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     credits: {
       balance: () => req(CreditBalanceSchema, 'GET', '/credits'),
       routes: () => req(TopUpRoutesSchema, 'GET', '/credits/routes'),
-      startTopUp: (routeId) => req(TopUpSchema, 'POST', '/credits/top-ups', { routeId }),
+      startTopUp: (routeId, credits) => req(TopUpSchema, 'POST', '/credits/top-ups', { routeId, credits }),
       topUp: (id) => req(TopUpSchema, 'GET', `/credits/top-ups/${encodeURIComponent(id)}`),
       topUps: () => req(z.array(TopUpSchema), 'GET', '/credits/top-ups')
     },

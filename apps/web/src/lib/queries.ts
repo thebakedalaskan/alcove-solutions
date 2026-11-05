@@ -255,7 +255,7 @@ export function useInviteTeam() {
 export function useStartTopUp() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (routeId: string) => api.credits.startTopUp(routeId),
+    mutationFn: ({ routeId, credits }: { routeId: string; credits: number }) => api.credits.startTopUp(routeId, credits),
     onSuccess: (t) => { qc.setQueryData(q.topUp(t.id).queryKey, t); void qc.invalidateQueries({ queryKey: qk.topUps }); }
   });
 }

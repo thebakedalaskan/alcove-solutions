@@ -42,13 +42,16 @@ const TIMEOUT_MS = 15_000;
 const DEADLINE_MS = 24 * 3_600_000;
 
 const TokensSchema = z.array(z.object({ assetId: z.string(), decimals: z.number().int().min(0).max(36) }));
+const units = z.string().regex(/^\d+$/);
+/** A quote: where to send, until when, what to send and the least that 1Click still swaps (the token's smallest unit). */
 const QuoteResponseSchema = z.object({
-  quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().nullish(), deadline: z.string().datetime() })
+  quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().nullish(), deadline: z.string().datetime(), amountIn: units, minAmountIn: units })
 });
 
-/** What /v0/status says about a deposit. Its swap details are read only once the swap is done. */
+/** What /v0/status says about a deposit. Its swap details are read for what was sent so far, and once the swap is done. */
 const StatusSchema = z.object({ status: z.string(), swapDetails: z.unknown() });
-const units = z.string().regex(/^\d+$/);
+/** What an unfinished swap says arrived so far, when it says. */
+const seen = z.object({ depositedAmount: units.nullish() });
 /**
  * A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead.
  * A swap that succeeded must say what came out, a refunded one what was refunded; only the other may be missing (0).
@@ -104,20 +107,28 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
       tokens = { routes, until: Date.now() + TOKENS_FOR_MS };
       return routes;
     },
-    async open(route): Promise<OpenedDeposit> {
+    async open(route, amount): Promise<OpenedDeposit> {
       const { data, raw } = await call(QuoteResponseSchema, 'POST', '/v0/quote', {
         dry: false, swapType: 'FLEX_INPUT', slippageTolerance: 100,
-        originAsset: route.id, depositType: 'ORIGIN_CHAIN', destinationAsset: NEAR_USDC, amount: route.minimum.toString(),
+        originAsset: route.id, depositType: 'ORIGIN_CHAIN', destinationAsset: NEAR_USDC, amount: amount.toString(),
         refundTo: o.treasury, refundType: 'INTENTS', recipient: o.treasury, recipientType: 'INTENTS',
         deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
       });
-      return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo || null, expiresAt: data.quote.deadline, minimum: route.minimum, quote: toJson(raw) };
+      // The person is told to send exactly what was asked for: a quote for anything else isn't one to hand out.
+      const amountIn = BigInt(data.quote.amountIn);
+      const minAmountIn = BigInt(data.quote.minAmountIn);
+      if (amountIn !== amount || minAmountIn > amountIn) throw unavailable({ endpoint: '/v0/quote', error: 'unexpected-quote' });
+      return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo || null, expiresAt: data.quote.deadline, amountIn, minAmountIn, quote: toJson(raw) };
     },
-    async check(deposit, was): Promise<DepositCheck> {
+    async check(deposit): Promise<DepositCheck> {
       const query = new URLSearchParams({ depositAddress: deposit.address, ...(deposit.memo === null ? {} : { depositMemo: deposit.memo }) });
       const { data } = await call(StatusSchema, 'GET', `/v0/status?${query.toString()}`);
       const progress = IN_PROGRESS.get(data.status);
-      if (progress) return { state: progress };
+      if (progress) {
+        const sent = seen.safeParse(data.swapDetails);
+        const deposited = sent.success && sent.data.depositedAmount ? BigInt(sent.data.depositedAmount) : 0n;
+        return deposited > 0n ? { state: progress, sentMicroUsd: toMicroUsd(deposited, deposit.route.decimals) } : { state: progress };
+      }
       if (data.status === 'FAILED') return { state: 'failed', reason: 'FAILED' };
       if (data.status === 'SUCCESS' || data.status === 'REFUNDED') {
         const s = SETTLED[data.status].safeParse(data.swapDetails);
@@ -134,9 +145,9 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
         olog.warn('unreadable finished swap', { provider: 'oneclick', status: data.status });
         return { state: 'arriving' };
       }
-      // A status this code doesn't know: keep watching, and say so.
+      // A status this code doesn't know: say so, and let the caller decide (it keeps watching until the deadline).
       olog.warn('unreadable deposit status', { provider: 'oneclick', status: data.status.slice(0, 40) });
-      return { state: was };
+      return { state: 'unknown' };
     }
   };
 }

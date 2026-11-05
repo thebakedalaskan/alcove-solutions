@@ -11,9 +11,10 @@ import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { conflict, DatabaseError, invalid, notFound, NotFoundError, UnavailableError } from '../errors';
 import { log } from '../log';
 import {
-  depositProviders, formatUnits, type DepositCheck, type DepositProviderName, type DepositProvider, type DepositRoute, type OpenDepositState, type OpenedDeposit
+  depositProviders, formatUnits, fromMicroUsd, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName, type DepositProvider, type DepositRoute,
+  type OpenDepositState
 } from '../payments/provider';
-import { TIERS, credit, creditsFor } from './billing';
+import { PER_MINUTE, TIERS, credit, creditsAt, creditsForUsd, priceFor, rateFor, type Rate } from './billing';
 
 const dlog = log.child({ component: 'deposits' });
 /** IDs are 22 characters of base64url; anything else names nothing. */
@@ -26,13 +27,15 @@ const MAX_WAITING = 5;
 const CHECK_EVERY_MS = 5_000;
 /** A refund below this, in micro-USD, isn't credited: the deposit is held instead. */
 const REFUND_FLOOR = 1_000_000n;
+/** Amounts of credits the app offers first. */
+const PRESETS = [10_000, 50_000, 100_000];
 const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
 const isOpen = (s: TopUpState): s is OpenDepositState => s === 'waiting' || s === 'arriving' || s === 'short';
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
 
-/** What a deposit is, sealed. Amounts are in the token's smallest unit, as integer strings. */
+/** What a deposit is, sealed. Token amounts are in the token's smallest unit, as integer strings. */
 export const DepositRecord = z.object({
   route: z.object({
     id: z.string(), provider: z.literal('oneclick'), chain: z.string(), chainName: z.string(), token: z.enum(['USDC', 'USDT']),
@@ -41,9 +44,16 @@ export const DepositRecord = z.object({
   address: z.string(),
   memo: z.string().nullable(),
   expiresAt: z.string(),
-  minimum: units,
+  /** What the person was asked to send, and the least the provider still swaps (its quote's `minAmountIn`). */
+  asked: units,
+  minAmountIn: units,
+  /** The credits promised for sending `asked`, and the rate they were priced at (credits per USD), which excess earns. */
+  credits: z.number().int(),
+  rate: z.object({ num: units, den: units }),
   /** The provider's whole quote response, signature included, kept for disputes. */
   quote: z.unknown(),
+  /** What the provider last said arrived, while the deposit was still open (micro-USD), or null before it said. */
+  seenMicroUsd: units.nullable(),
   /**
    * Once settled: what was sent, what reached the treasury as USDC and what was refunded to it instead (micro-USD,
    * integer strings), the credits it added (0 when held), and the provider's name for the settlement.
@@ -61,18 +71,20 @@ function providers(d: Deps): DepositProvider[] {
   if (!p) throw new UnavailableError('Adding credits isn’t available on this server.');
   return Object.values(p);
 }
+/** The fewest credits a route takes: what its minimum buys. */
+const minimumCredits = (r: { minimum: bigint | string; decimals: number }) => creditsForUsd(toMicroUsd(BigInt(r.minimum), r.decimals));
 const toRoute = (r: DepositRecord['route'] | DepositRoute) => ({
-  id: r.id, chain: r.chain, chainName: r.chainName, token: r.token, minimum: formatUnits(BigInt(r.minimum), r.decimals)
+  id: r.id, chain: r.chain, chainName: r.chainName, token: r.token, minimum: formatUnits(BigInt(r.minimum), r.decimals), minimumCredits: minimumCredits(r)
 });
-/** A deposit as the person sees it. Its address is shown only while money can still be sent to it. */
+/** A deposit as the person sees it. Its address is shown only while a payment is awaited: one payment per address. */
 function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp {
-  const sendable = state === 'waiting' || state === 'short';
+  const waiting = state === 'waiting';
+  const sent = r.settled?.sentMicroUsd ?? r.seenMicroUsd;
   return {
-    id: depositId, route: toRoute(r.route), address: sendable ? r.address : null, memo: sendable ? r.memo : null,
+    id: depositId, route: toRoute(r.route), address: waiting ? r.address : null, memo: waiting ? r.memo : null,
     expiresAt: r.expiresAt, state,
-    received: r.settled
-      ? { amount: formatUnits(BigInt(r.settled.outMicroUsd) + BigInt(r.settled.refundedMicroUsd), 6), credits: r.settled.credits }
-      : null
+    asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals), credits: r.credits },
+    received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), credits: r.settled ? r.settled.credits : null }
   };
 }
 
@@ -80,25 +92,40 @@ export async function routes(d: Deps): Promise<TopUpRoutes> {
   const all = (await Promise.all(providers(d).map((p) => p.routes()))).flat();
   return {
     routes: all.map(toRoute),
-    tiers: TIERS.map((t) => ({ from: formatUnits(t.fromMicroUsd, 6), creditsPerUsd: Number(t.creditsPerUsd.num) / Number(t.creditsPerUsd.den) }))
+    tiers: TIERS.map((t) => ({ fromCredits: t.fromCredits, creditsPerUsd: Number(t.creditsPerUsd.num) / Number(t.creditsPerUsd.den) })),
+    presets: PRESETS,
+    perMinute: PER_MINUTE
   };
 }
 
-/** Opens a top-up on a route: the provider quotes an address paying the treasury, and the deposit is kept sealed. */
-export async function start(d: Deps, ownerId: string, routeId: string): Promise<TopUp> {
+const count = new Intl.NumberFormat('en-US');
+/**
+ * Opens a top-up for `credits` on a route: the provider quotes an address paying the treasury for exactly their price,
+ * and the deposit is kept sealed with what was asked for and promised.
+ */
+export async function start(d: Deps, ownerId: string, routeId: string, credits: number): Promise<TopUp> {
   const all = providers(d);
-  const waiting = await maybeOne(d.pool, z.object({ n: z.number().int() }), "SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1 AND state = 'waiting'", [ownerId]);
+  // Only top-ups whose address can still be paid count: an expired one is just watched for a late payment.
+  const waiting = await maybeOne(d.pool, z.object({ n: z.number().int() }),
+    "SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1 AND state = 'waiting' AND give_up_at > now() + interval '24 hours'", [ownerId]);
   if ((waiting?.n ?? 0) >= MAX_WAITING) {
     throw conflict(`You already have ${MAX_WAITING} top-ups waiting for a payment. Use one of those, or wait for them to expire.`, { reason: 'too-many-waiting', waiting: waiting?.n ?? 0 });
   }
   const found = (await Promise.all(all.map(async (p) => ({ p, route: (await p.routes()).find((r) => r.id === routeId) })))).find((x) => x.route);
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
-  const opened = await found.p.open(found.route);
+  const least = minimumCredits(found.route);
+  if (credits < least) {
+    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${count.format(least)} credits.`, { reason: 'below-minimum', credits, least });
+  }
+  const rate = rateFor(credits);
+  const opened = await found.p.open(found.route, fromMicroUsd(priceFor(credits), found.route.decimals));
   const depositId = id128();
   const record: DepositRecord = {
     route: { ...opened.route, minimum: opened.route.minimum.toString() },
-    address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt, minimum: opened.minimum.toString(), quote: opened.quote,
-    settled: null, extended: false
+    address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt,
+    asked: opened.amountIn.toString(), minAmountIn: opened.minAmountIn.toString(), credits,
+    rate: { num: rate.num.toString(), den: rate.den.toString() },
+    quote: opened.quote, seenMicroUsd: null, settled: null, extended: false
   };
   const giveUpAt = new Date(Date.parse(opened.expiresAt) + GIVE_UP_AFTER_MS);
   try {
@@ -116,11 +143,8 @@ export async function start(d: Deps, ownerId: string, routeId: string): Promise<
 const Row = z.object({ deposit_id: z.string(), state: TopUpStateSchema, record_ciphertext: bytea, created_at: timestamp });
 const record = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => openJson(key(d), header(ownerId, r.deposit_id), r.record_ciphertext, DepositRecord);
 const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.deposit_id, record(d, ownerId, r), r.state);
-/** The deposit as its provider handed it out. */
-const opened = (r: DepositRecord): OpenedDeposit => ({
-  route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo, expiresAt: r.expiresAt,
-  minimum: BigInt(r.minimum), quote: toJson(r.quote)
-});
+/** Where the deposit is paid, to ask its provider about it. */
+const addressOf = (r: DepositRecord): DepositAddress => ({ route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo });
 
 const Checked = Row.extend({ checked_at: timestamp.nullable() });
 const find = (db: Db, ownerId: string, depositId: string) => ID128.test(depositId)
@@ -138,7 +162,7 @@ export async function get(d: Deps, ownerId: string, depositId: string): Promise<
   if (!p) return toTopUp(depositId, rec, r.state);
   let check: DepositCheck;
   try {
-    check = await p.check(opened(rec), r.state);
+    check = await p.check(addressOf(rec));
   } catch (e) {
     dlog.warn('top-up check failed', { depositId, provider: p.name, err: e });
     return toTopUp(depositId, rec, r.state);
@@ -150,10 +174,34 @@ export async function get(d: Deps, ownerId: string, depositId: string): Promise<
 }
 
 /**
+ * Credits for `sentMicroUsd` that was swapped on a deposit that asked for `rec.asked`, all at face value of what was
+ * sent: at least what was asked, the promised credits plus the excess at the rate they were priced at; within the
+ * provider's band (from `minAmountIn`), exactly the promised credits; below it, what the money buys by itself.
+ */
+function creditsForSwap(rec: DepositRecord, sentMicroUsd: bigint): number {
+  const asked = toMicroUsd(BigInt(rec.asked), rec.route.decimals);
+  const rate: Rate = { num: BigInt(rec.rate.num), den: BigInt(rec.rate.den) };
+  if (sentMicroUsd >= asked) return rec.credits + creditsAt(sentMicroUsd - asked, rate);
+  if (sentMicroUsd >= toMicroUsd(BigInt(rec.minAmountIn), rec.route.decimals)) return rec.credits;
+  return creditsForUsd(sentMicroUsd);
+}
+/**
+ * Credits for a settled deposit. A swap that went through follows `creditsForSwap`. A refund (the provider didn't
+ * swap, or swapped only part) is credited for what it buys by itself when it's at least 1 USD; a part that was swapped
+ * alongside it follows `creditsForSwap` on what was sent less what was refunded.
+ */
+function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state: 'settled' }>): number {
+  if (s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
+  const refund = s.refundedMicroUsd >= REFUND_FLOOR ? creditsForUsd(s.refundedMicroUsd) : 0;
+  const swapped = s.sentMicroUsd > s.refundedMicroUsd ? s.sentMicroUsd - s.refundedMicroUsd : 0n;
+  return refund + (s.outMicroUsd > 0n && swapped > 0n ? creditsForSwap(rec, swapped) : 0);
+}
+
+/**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
  * however many watchers and requests race on it: a final state is never changed again, and `arriving` never goes back
- * to `waiting`. A settled deposit credits the tier's rate on what reached the treasury (the USDC out, plus a refund of
- * at least 1 USD), or is held when that comes to no credits.
+ * to `waiting`. A settled deposit credits by `creditsForSettled`, or is held when that comes to no credits. A status
+ * the provider doesn't explain leaves the deposit as it is.
  */
 export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
   return tx(d.pool, async (c) => {
@@ -162,20 +210,19 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
     if (!isOpen(r.state)) return r.state;
     const rec = record(d, ownerId, r);
     const provider = rec.route.provider;
+    const save = (state: TopUpState, next: DepositRecord) => exec(c, 'UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4 WHERE owner_id = $1 AND deposit_id = $2',
+      [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
     if (check.state === 'settled') {
-      const refundCounted = check.refundedMicroUsd >= REFUND_FLOOR ? check.refundedMicroUsd : 0n;
-      const credits = creditsFor(check.sentMicroUsd, check.outMicroUsd + refundCounted);
+      const credits = creditsForSettled(rec, check);
       const state: TopUpState = credits > 0 ? 'credited' : 'held';
       if (credits > 0) await credit(d, c, ownerId, { amount: credits, label: `Credits added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}` });
-      const next: DepositRecord = {
+      await save(state, {
         ...rec,
         settled: {
           sentMicroUsd: check.sentMicroUsd.toString(), outMicroUsd: check.outMicroUsd.toString(), refundedMicroUsd: check.refundedMicroUsd.toString(),
           credits, providerRef: check.providerRef
         }
-      };
-      await exec(c, 'UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4 WHERE owner_id = $1 AND deposit_id = $2',
-        [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
+      });
       dlog.info('top-up settled', { depositId, provider, state });
       return state;
     }
@@ -184,9 +231,15 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
       dlog.error('top-up failed', { depositId, provider });
       return 'failed';
     }
+    if (check.state === 'unknown') {
+      await exec(c, 'UPDATE deposits SET checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+      return r.state;
+    }
     // A payment once seen stays seen: a stale answer never shows the address again.
-    const state = r.state === 'arriving' && check.state === 'waiting' ? 'arriving' : check.state;
-    await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
+    const state = r.state !== 'waiting' && check.state === 'waiting' ? r.state : check.state;
+    const seen = check.sentMicroUsd?.toString() ?? rec.seenMicroUsd;
+    if (seen !== rec.seenMicroUsd) await save(state, { ...rec, seenMicroUsd: seen });
+    else await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
     if (state !== r.state) dlog.info('top-up moved', { depositId, provider, state });
     return state;
   });
@@ -213,11 +266,12 @@ async function atMost<T, R>(n: number, items: readonly T[], fn: (item: T) => Pro
 
 /**
  * Gives up on a deposit past `give_up_at`. `seen` is what the provider said at the last check ('unreadable' when the
- * record no longer opens, null when the provider couldn't answer). Waiting by both the row and the last check, nothing
- * came and it has expired; arriving or short by either, or its record no longer opening, something is wrong, so it
- * fails with an error log and reaches support instead of being checked for ever.
+ * record no longer opens, 'unknown' for a status Alcove doesn't know, null when the provider couldn't answer). Waiting
+ * by both the row and the last check, nothing came and it has expired; arriving or short by either, a status nobody
+ * knows, or its record no longer opening, something is wrong, so it fails with an error log and reaches support
+ * instead of being checked for ever.
  */
-function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: OpenDepositState | 'unreadable' | null): Promise<TopUpState | undefined> {
+function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: OpenDepositState | 'unknown' | 'unreadable' | null): Promise<TopUpState | undefined> {
   return tx(d.pool, async (c) => {
     const r = await maybeOne(c, z.object({ state: TopUpStateSchema }), 'SELECT state FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
     if (!r || !isOpen(r.state)) return r?.state;
@@ -231,7 +285,7 @@ function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositPr
 }
 
 /**
- * The provider couldn't answer at `give_up_at`: watch 6 hours more, once, recorded in the sealed record so the next
+ * The provider couldn't answer at `give_up_at`: watch 6 hours more from now, once, recorded in the sealed record so the next
  * time it gives up. False when it was pushed back before (or the deposit has moved on).
  */
 function extend(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName): Promise<boolean> {
@@ -240,7 +294,7 @@ function extend(d: Deps, ownerId: string, depositId: string, provider: DepositPr
     if (!r || !isOpen(r.state)) return false;
     const rec = record(d, ownerId, r);
     if (rec.extended) return false;
-    await exec(c, "UPDATE deposits SET give_up_at = give_up_at + interval '6 hours', check_after = now() + interval '60 seconds', record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, extended: true }))]);
+    await exec(c, "UPDATE deposits SET give_up_at = now() + interval '6 hours', check_after = now() + interval '60 seconds', record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, extended: true }))]);
     dlog.warn('top-up watched 6 hours more, its provider didn’t answer', { depositId, provider, state: r.state });
     return true;
   });
@@ -277,7 +331,7 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
       }
       let check: DepositCheck;
       try {
-        check = await all[provider].check(opened(rec), r.state);
+        check = await all[provider].check(addressOf(rec));
       } catch (e) {
         dlog.warn('top-up check failed', { depositId, provider, err: e });
         if (r.given_up) {

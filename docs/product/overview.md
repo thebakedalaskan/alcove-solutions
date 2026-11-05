@@ -56,5 +56,5 @@ Alcove's thesis: confidential transcription and notes belong inside a privacy-fi
 | Notes for everyone invited, sharing by email | Working |
 | Notes from shared screens | Working: frames from the presenter's own browser, sealed, read by the verified notes model after the call, linked to the transcript and referred to by the notes and answers. Catch-up during the call doesn't read screens yet |
 | Browser notifications | Working while Alcove is open in a tab, shown through the app's service worker. Nothing is pushed when no tab is open |
-| Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first, and USDC top-ups aren't connected |
+| Credits and payments | Notes are charged 25 credits a minute when they're written; nothing checks the balance first. Credits are bought with USDC or USDT through NEAR Intents 1Click: choose how many (with volume discounts), send exactly their price to a one-off address, and they're added when it arrives |
 | Confidential compute (TEE, attestation, master key release) | Required before real users; see [Privacy › Production requirements](../engineering/privacy-keys-and-sessions.md#production-requirements) |

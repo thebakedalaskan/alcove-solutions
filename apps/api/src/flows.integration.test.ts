@@ -2484,7 +2484,7 @@ describe('deleting an account', () => {
     // She opened a top-up to add credits.
     const [route] = (await b.api.credits.routes()).routes;
     if (!route) throw new Error('1Click offers no way to pay');
-    await b.api.credits.startTopUp(route.id);
+    await b.api.credits.startTopUp(route.id, route.minimumCredits);
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
@@ -2850,7 +2850,7 @@ describe('privacy at rest', () => {
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
     // A top-up paid and credited: its deposit address, the settlement's hash and the history label stay sealed.
-    const topUp = await c.api.credits.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near');
+    const topUp = await c.api.credits.startTopUp('nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', 25_000);
     expect(topUp.address).toContain('canary-deposit-address');
     h.oneclick.set(topUp.address ?? '', 'SUCCESS', { depositedAmount: '25000000', amountOut: '25000000', intentHashes: ['canary-intent-hash'] });
     expect((await c.api.credits.topUp(topUp.id)).state).toBe('credited');

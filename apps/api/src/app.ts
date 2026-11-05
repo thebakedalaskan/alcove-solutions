@@ -1,6 +1,6 @@
 import {
   ActionPatchSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallHandOffBodySchema, CallJoinBodySchema, CallLeaveBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS,
-  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema,
+  LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RoomRecordingInputSchema, SeriesAskBodySchema, ShareInputSchema, StartTopUpBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction
 } from '@alcove/api';
 import { Hono, type Context } from 'hono';
@@ -674,7 +674,8 @@ export function createApp(d: Deps) {
   app.get('/v1/credits/routes', async (c) => c.json(await deposits.routes(d)));
   app.post('/v1/credits/top-ups', async (c) => {
     topUpLimiter(c.get('owner').ownerId, 'top-up');
-    return c.json(await deposits.start(d, c.get('owner').ownerId, (await body(c, z.object({ routeId: z.string().min(1).max(200) }))).routeId));
+    const { routeId, credits } = await body(c, StartTopUpBodySchema);
+    return c.json(await deposits.start(d, c.get('owner').ownerId, routeId, credits));
   });
   app.get('/v1/credits/top-ups/:id', async (c) => c.json(await deposits.get(d, c.get('owner').ownerId, c.req.param('id'))));
   app.get('/v1/credits/top-ups', async (c) => c.json(await deposits.list(d, c.get('owner').ownerId)));

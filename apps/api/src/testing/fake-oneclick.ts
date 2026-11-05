@@ -1,8 +1,9 @@
 /*
  * A stand-in for NEAR Intents 1Click, for integration tests: the tokens it swaps (/v0/tokens), quotes that hand out
  * a deposit address (/v0/quote), and what has happened to a deposit (/v0/status), in 1Click's own shapes. Every quote
- * request and API key is kept, so tests can check what Alcove asked for. A deposit reports PENDING_DEPOSIT until a
- * test moves it on with `set`, and the whole service can be made to refuse everything, as when 1Click is down.
+ * request and API key is kept, so tests can check what Alcove asked for. A quote's `minAmountIn` is 99% of what it
+ * asks for. A deposit reports PENDING_DEPOSIT until a test moves it on with `set` (which can also say what was deposited
+ * so far, as 1Click does on INCOMPLETE_DEPOSIT), and the whole service can be made to refuse everything, as when 1Click is down.
  */
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -96,7 +97,8 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
       signature: `ed25519:${randomBytes(32).toString('hex')}`,
       quoteRequest: q,
       quote: {
-        depositAddress, amountIn: q.amount, amountInFormatted: amountUsd, amountInUsd: amountUsd, minAmountIn: q.amount,
+        // 1Click's band: it still swaps a deposit down to 99% of what the quote asked for.
+        depositAddress, amountIn: q.amount, amountInFormatted: amountUsd, amountInUsd: amountUsd, minAmountIn: ((BigInt(q.amount) * 99n) / 100n).toString(),
         amountOut: q.amount, amountOutFormatted: amountUsd, amountOutUsd: amountUsd, minAmountOut: q.amount,
         deadline: q.deadline, timeWhenInactive: q.deadline, timeEstimate: 20
       }

@@ -61,19 +61,22 @@ partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. To
 
 - `GET /v0/tokens`: intersected with the allowlist of USDC and USDT asset IDs (checked 5 November 2026), cached for
   10 minutes.
-- `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit at or above the minimum is swapped in full),
-  `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` its minimum in the token's smallest unit,
+- `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
+  `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the price of the credits chosen in the
+  token's smallest unit (the response's `amountIn` must equal it; `amountIn` and `minAmountIn` are kept),
   `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
   `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
   `deadline` 24 hours ahead, `dry: false`. The whole response, signature included, is kept sealed for disputes.
-- `GET /v0/status?depositAddress=…` (and `depositMemo`): the status, and on `SUCCESS` or `REFUNDED` the
-  `swapDetails` (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited.
+- `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
+  it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
+  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited. A status Alcove doesn't know
+  keeps the deposit as it is until the deadline, where it fails.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
   5 minutes until 24 hours after its address expires, when it's asked a last time (6 hours later, once, if it
   can't answer then); a minute after an error. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as
   still arriving. A quote's `depositMemo` may be missing, null or empty: all mean no memo.
 - **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one
-  1Click adds 0.25%), paid by the person out of what reaches the treasury. Withdrawing from the Intents balance costs
+  1Click adds 0.25%), taken out of what reaches the treasury; Alcove absorbs it, crediting by what was sent. Withdrawing from the Intents balance costs
   a flat 0.004615 USDC each time, so the treasury withdraws in batches
   ([Payments and usage › Treasury runbook](../engineering/payments-and-usage.md#treasury-runbook)).
 
