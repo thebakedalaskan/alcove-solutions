@@ -189,6 +189,11 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
   is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
   a retired block still holding something reads like any other.
+- **What comes from a call** is a document's own content, written by a browser in the call, so it's sealed and versioned like
+  anything else. A `live` block holds the lines it shows, with `call`, the call that fills it in: a later call leaves it alone, and
+  after its call it's a block like any other. A `moment` is a quote: who said it, the words, `at` (an ISO time, which each reader
+  reads in their own zone), `line`, its transcript line, and `note`, the note it can be heard from. Neither holds a key to anything:
+  whether someone can hear a quote is whether they can read that note.
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its

@@ -465,8 +465,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-Opening it, sharing beside it, arranging it and going to just the document work on screen. The rest of this list comes from
-the server today, and its screens are being built.
+Opening it, sharing beside it, arranging it, going to just the document, and the call's notes, follow-ups and transcript work on
+screen. The rest of this list comes from the server today, and its screens are being built.
 
 1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
    column, and the workspace rises in. The count on the button is what's been brought to this call. The first time anyone
@@ -497,9 +497,26 @@ the server today, and its screens are being built.
 3. **Someone who can't open it** is told it's private, and nothing else: no names, no folders, nobody's whereabouts. They can
    **Ask** the organizer, who shares one document, to read or edit, or says not now. It opens by itself, and it ends
    with the call, or from Share.
-4. **Follow-ups** are what the notes heard and the to-dos with a person and a date in the documents worked on in this
-   call, each for whoever can open it. Ticking one ticks it in the document. With notes off they come from documents alone, and
-   say so.
+4. **Notes, Follow-ups and Transcript** are always at the top of the list, for everyone in the call, whether or not they can open
+   the workspace, and the count is what's still to do. They fill in as people talk. With notes off they go quiet and say why they're
+   empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
+   says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
+   that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
+   open beside the document from the button on their row, as side panels you can pull out to sit anywhere, and **Open in the
+   workspace** in the Notes panel goes the other way.
+   - **Follow-ups** are what the notes heard, what people added, and the to-dos with a person and a date in the documents worked on
+     in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone and ticks the line in
+     its document, and where it came from opens that line. **Add a follow-up** adds one of your own, which anyone can tick and which
+     goes into the note. A guest with the link reads what's written for them and doesn't tick or add. With notes off they come from
+     documents alone, and say so.
+   - **Sending to a document:** the arrow on a line sends it to the document you were last in, if you can edit it: something decided
+     as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
+     transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
+     opens it. With no document to send to, there are no arrows.
+   - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
+     and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
+     notes off they say so.
+   - **Hear it** on a quote plays that moment, for anyone with the notes, once the note exists.
 5. **Present** shows a document one section at a time. Whoever started it or the organizer moves it on and stops it, and
    nobody's access changes: someone who can't open it is told it's on, not what it is. Your own notes beside it are
    yours alone.

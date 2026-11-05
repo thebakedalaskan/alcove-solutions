@@ -1013,7 +1013,9 @@ A call uses one workspace ([Data and storage › Workspaces](data-and-storage.md
 - **Follow-ups.** `GET /v1/live/calls/:id/follow-ups` is the live notes' follow-ups as this person reads them, what people
   added by hand ([Notes and inference › Adding a follow-up](notes-and-inference.md#adding-a-follow-up)), plus every
   to-do with a mention and a date in the documents worked on in this call, for whoever can open each, with `notes` saying
-  what the notes are doing there. With notes off they come from documents alone, and say so. It reads documents, so it isn't
+  what the notes are doing there. A to-do's words are its line's, without tags side by side at the end of it, which say who and
+  when; a tag in the middle of a sentence stays part of it, with a date as a day. With notes off they come from documents alone,
+  and say so. It reads documents, so it isn't
   part of reading the call: `CallSession.watchFollowUps` reads it every few seconds while something shows it. `POST` to the
   same path ticks a to-do with `writeDocument`, as a server-made update that sets the block's own `done`, as the editor does,
   so a tick there and a tick in the document are one thing. It needs `edit`, in a document worked on in this call, and it
@@ -1190,6 +1192,40 @@ share picker, the leave sheet and the device pickers.
   says goes through the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken
   up some other way. The list is the panels' to give way, so the call tells it (`WorkspaceCall.list`): one that gave way comes
   over the page (`peek`), one you put away comes back.
+- **The call's own pages** (`features/workspace/live`). The call gives the workspace one object for the whole call (`LiveCall`, from
+  `useLiveCall`): the session, who's talking (a store of its own, so the screen draws nothing for it), and what to do when
+  something asks for a panel or a toast goes there. `LiveRows` are Notes, Follow-ups and Transcript at the top of the list, quiet
+  with notes off, and `LivePage` draws each from `CallState` as it stands, so nothing is kept in step. Where you are can be one of
+  them (`WorkspacePlace` `live`), like a document. Someone who can't open the workspace has the same rows and pages: `OutsideSpace`
+  puts them around the private state, with no tree, and the arrows go because there's no document to send to. With nothing to show
+  and notes off a page is `WsNotesOff`; with something to show, a `Notice` says what's holding the notes back. Notes and Follow-ups
+  watch the notes while they show; the transcript comes with the call. A row's button shows the `notes` or `transcript` tab
+  through `Panels` (`LiveCall.beside`), and the Notes tab's **Open in the workspace** goes the other way. At the end of the transcript
+  is whoever's talking, you included, with no words: a line is written once its clip is heard.
+- **Follow-ups on the page** (`useFollowUps`) put what the call holds beside `CallSession.followUps`. A line in a document with the
+  same words as something said or added, for the same person if both say who, is that follow-up: one row, done if either is.
+  Ticking the row ticks both, and so does the Notes tab's box (`tickEverywhere`), which finds the line from the last time the list
+  read it. The box in the document ticks the line alone: the row reads done, and the Notes tab doesn't. **Mine** goes by name for
+  what's said, and by tag for what's written.
+- **Sending from the call** (`useSending`). Arrows on the pages and panels send to the last document you were in while you can edit
+  it (`LivePut`, which the side panels get through `LiveCall.onPut`). With that document open it goes in at the end, over a blank last
+  line, and scrolls there and glows; closed, or with a phone's panel over it (`LiveCall.covered`), it goes in the same way and a toast
+  says so. With another open, it goes in through `withDocument` and a toast goes there. A day the notes put in words becomes a date
+  tag when it can be read as one (`dates.ts`), and otherwise stays words. Who it tags is who's in the call by that name, by their
+  address, as a workspace knows people (`asInDocuments`), or else someone in the workspace by that name.
+- **From the call in `/`** (`useEditorCall`). A `live` block is written by browsers in the call that can edit the document, with
+  nothing but the notes to go on, so a dozen mustn't fight. What's written is the same in every browser (`liveLinesOf`: moments and
+  words as they were said, read in each reader's time when drawn), and writing what's already there writes nothing, so all that's
+  left is taking turns: each waits for its place among the call's identities, 600 ms a place and 12 places at most, and by then the
+  block says it already. A browser writes only when its own notes change, never because the block did, so one that's a moment behind
+  can't undo one that's ahead, and it never writes an empty list over lines. Only someone reading the notes everyone shares writes
+  (`writesLiveBlocks`): not a guest, in a breakout room, or with notes of their own. A block holds the call it belongs to, so a later
+  call leaves it alone, and it only fills in while someone in the call who can edit has its document open. A block in a document
+  counts as watching the notes.
+- **Hear it** (`HearIt.tsx`) is the `Editor`'s `hear`, drawn on a quote once it names a note. It reads the note as the note's own page
+  does, so someone without it never sees the button and nothing complains, and finds the line in the note's transcript by its ID. It
+  plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A note that kept no
+  recording or no transcript has nothing to hear.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
   panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc is taken in the
@@ -1324,9 +1360,9 @@ share picker, the leave sheet and the device pickers.
   everyone who can read the same lines in that part of the call. While the tab is open and notes are on where you are,
   the browser says it's watching (`CallSession.watchNotes`), which is what keeps them up to date at most every 30 seconds,
   in one run however many are watching. Someone reading the notes everyone shares, who gets the notes, can tick a
-  follow-up (`tickFollowUp`), and it's done for everyone. A guest sees no box, and someone with notes of their own, written
-  from what they may read, sees no box and is told so
-  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
+  follow-up (`tickFollowUp`), and it's done for everyone, and can add one (`addFollowUp`). A guest sees no box, and someone with
+  notes of their own, written from what they may read, sees no box and is told so
+  ([Notes and inference › Live notes](notes-and-inference.md#live-notes)). Each row's arrow sends it to a document.
 - **Catching up** (`CatchUp.tsx`, `catchingUp.ts`) is for the person asking alone. **Catch up** in the top bar and
   the More menu opens the Ask view on what they most likely missed (their recent time away, what was said before
   they joined late, or the last five minutes). In the Ask view a chip says what's read and opens a menu: the last 5
