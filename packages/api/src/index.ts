@@ -14,3 +14,4 @@ export * from './rings';
 export * from './workspaces';
 export * from './workspaceDocuments';
 export * from './workspaceEditor';
+export * from './media';

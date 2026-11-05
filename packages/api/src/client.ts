@@ -1,4 +1,5 @@
 import type { CallCard, CallSession, LiveStore, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
+import type { MediaPictureOptions, MediaUploadOptions, WorkspaceMedia } from './media';
 import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
@@ -280,6 +281,46 @@ export interface AlcoveApi {
       remove(id: ID, documentId: ID, entryId: ID): Promise<void>;
       /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
       restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
+    };
+    /**
+     * Files in a workspace's documents and boards. A file is reached through a document that has it: whoever can open
+     * that document can read it, and nobody else. Taking a block out of a document leaves the file there, for a version or
+     * for reuse: it goes when every document that has it is deleted for good, or when someone deletes it (`remove`).
+     */
+    media: {
+      /**
+       * Keeps a file in a document, for anyone who can edit it, a piece at a time. A piece that fails is tried again, and
+       * through a lost connection or a busy server it keeps trying for minutes, so what's stored isn't lost to a Wi-Fi
+       * handover. Pictures, video and audio are shown in place; anything else is served as a download. At most 512 MiB. If
+       * it fails for good it rejects and leaves nothing behind.
+       */
+      upload(id: ID, documentId: ID, file: File, opts?: MediaUploadOptions): Promise<WorkspaceMedia>;
+      /**
+       * Where to read a file through a document, for an `<img>`, a player or a download: it answers `Range`, and lasts 12
+       * hours. It says only who's asking and is no reason to let them: each request looks again, so someone who loses the
+       * document gets `not-found`, however good the URL. Someone signed in reads it only with their own session; for a
+       * guest the URL is all there is, so never log one or put one anywhere it could be read. For a player or a download:
+       * a picture goes through `picture`. A read can be refused for a moment when too many are going on.
+       */
+      url(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<string>;
+      /**
+       * A picture, for an `<img>`, as an object URL: everything a board or a document shows goes through this, so a whole
+       * call opening the same board at once all see it. A browser reads a few at a time, and one the server's too busy for
+       * tries again, for minutes, until it's read or `signal` stops it. `not-found` is at once, and means it's been removed.
+       * The URL is yours: call `URL.revokeObjectURL` when the picture leaves the page, or its bytes stay in the browser's
+       * memory. Video and audio stay on `url`, which a player can read by range.
+       */
+      picture(id: ID, documentId: ID, mediaId: ID, opts?: MediaPictureOptions): Promise<string>;
+      /** Reuses a file you can reach in another document of the same workspace, for anyone who can edit that one. */
+      attach(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
+      /** Every file you can reach in a workspace, the newest first, each with the documents you can reach it through. */
+      list(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceMedia[]>;
+      /**
+       * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit a
+       * document that has it, and every other document they can open that has it, or it's `forbidden`. Older versions and
+       * any other document that had it get `not-found` from then on, which is the app's cue to show it as removed.
+       */
+      remove(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     };
     /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
     live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
