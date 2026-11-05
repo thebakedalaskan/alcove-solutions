@@ -55,7 +55,7 @@ export function useCallArea() {
 
 /** Where the horizon is, in the call's area: the ground under the dock, and how far it runs before the dock begins. */
 export function useHorizon(area: RefObject<HTMLDivElement | null>, bar: RefObject<HTMLElement | null>, size: Size): Horizon {
-  const [h, setH] = useState<Horizon>({ dock: 0, base: 0, top: 0, left: 0 });
+  const [h, setH] = useState<Horizon>({ dock: 0, dockEnd: 0, base: 0, top: 0, left: 0 });
   useLayoutEffect(() => {
     const a = area.current;
     const b = bar.current;
@@ -64,8 +64,8 @@ export function useHorizon(area: RefObject<HTMLDivElement | null>, bar: RefObjec
     const read = () => {
       const top = a.getBoundingClientRect();
       const dockBox = dock.getBoundingClientRect();
-      const next = { dock: Math.round(dockBox.left - top.left), base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
-      setH((was) => (was.dock === next.dock && was.base === next.base && was.top === next.top && was.left === next.left ? was : next));
+      const next = { dock: Math.round(dockBox.left - top.left), dockEnd: Math.round(dockBox.right - top.left), base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
+      setH((was) => (was.dock === next.dock && was.dockEnd === next.dockEnd && was.base === next.base && was.top === next.top && was.left === next.left ? was : next));
     };
     read();
     const ro = new ResizeObserver(read);

@@ -77,6 +77,8 @@ export interface StageShare {
 }
 /** Someone rung who isn't in the call, waiting in a tile of their own: who, and what the tile shows. */
 export interface StageWaiter { id: string; person: Person; tile: ReactNode }
+/** About how wide "Aiko raised a hand" is. */
+const HZ_WORDS = 150;
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
 /**
@@ -532,6 +534,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   const loudOne = people.find((p) => p.hand) ?? people.find(talking);
   const onHorizon = !!panels && panels.mode === 'hidden';
   const ground = onHorizon ? [...L.slots.entries()].filter(([k]) => !L.off.has(k)).reduce((x, [, r]) => Math.max(x, r[0] + r[2]), 0) : 0;
+  // The line saying so stands beside them, or past the dock when there's no room this side of it.
+  const hzAt = !panels ? null : ground + 28 + HZ_WORDS < panels.horizon.dock ? ground + 28 : panels.horizon.dockEnd + 16 + HZ_WORDS < w ? panels.horizon.dockEnd + 16 : null;
   const peopleBar = L.people && canMove && !narrow && (panels ? panels.mode !== 'hidden' : plan.shape === 'side') && L.slots.size > 0;
   const folded = panels?.mode === 'arches';
   return (
@@ -709,8 +713,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
           <button type="button" className="b" aria-label="Hide people" title="Hide people (⇧P)" aria-keyshortcuts="Shift+P" onClick={() => onPeopleMode('hidden')}><Icon name="eyeOff" size={14} /></button>
         </div>
       )}
-      {onHorizon && panels && loudOne && ground + 28 + 150 < panels.horizon.dock && (
-        <span className="ic-hz" style={{ left: ground + 28, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
+      {onHorizon && panels && loudOne && hzAt !== null && (
+        <span className="ic-hz" style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
       )}
       {seenLooks.popped && popped && (() => {
         const s = ordered.find((x) => x.id === popped);
