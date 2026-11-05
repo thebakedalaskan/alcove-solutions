@@ -1548,7 +1548,7 @@ describe('the live stream', () => {
     const address = proxy.address();
     const port = address && typeof address === 'object' ? (address satisfies AddressInfo).port : 0;
     const hubUrl = `postgres://${db.username}:${db.password}@127.0.0.1:${port}${db.pathname}`;
-    const second = await h.secondServer({ HUB_CHECK_MS: 50, HUB_TIMEOUT_MS: 100 }, { hubUrl });
+    const second = await h.secondServer({ HUB_CHECK_MS: 50, HUB_TIMEOUT_MS: 100 }, undefined, undefined, hubUrl);
     const there = createHttpApi({ baseUrl: second.baseUrl, fetch: ann.fetch });
     const live = there.workspaces.live(id);
     try {
