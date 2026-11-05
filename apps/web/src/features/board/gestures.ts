@@ -61,9 +61,9 @@ function pressedId(board: Board, target: Element): string | null {
 }
 
 function panGesture(board: Board, start: SheetPoint): Gesture {
-  const from = board.camera.getSnapshot();
   board.stopFollow();
   board.stopGlide();
+  const from = board.camera.getSnapshot();
   board.set({ panning: true });
   const stop = (): void => board.set({ panning: false });
   return {
@@ -175,9 +175,9 @@ function pinchGesture(board: Board, a: ClientPoint, b: ClientPoint): (a: ClientP
   const { camera } = board;
   const middle = (p: ClientPoint, q: ClientPoint): SheetPoint => camera.point({ clientX: (p.clientX + q.clientX) / 2, clientY: (p.clientY + q.clientY) / 2 });
   const apart = (p: ClientPoint, q: ClientPoint): number => Math.hypot(p.clientX - q.clientX, p.clientY - q.clientY) || 1;
-  const { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b);
   board.stopFollow();
   board.stopGlide();
+  const { z } = camera.getSnapshot(), wide = apart(a, b), start = middle(a, b);
   return (p, q) => {
     const now = middle(p, q);
     camera.set(camera.holding(start, now.sx, now.sy, z * apart(p, q) / wide));
@@ -279,6 +279,8 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
 
   sheet.addEventListener('gesturestart', (e) => {
     e.preventDefault();
+    board.stopFollow();
+    board.stopGlide();
     const clientX: unknown = Reflect.get(e, 'clientX'), clientY: unknown = Reflect.get(e, 'clientY');
     if (typeof clientX === 'number' && typeof clientY === 'number') safariPinch = { z: camera.getSnapshot().z, at: camera.point({ clientX, clientY }) };
   }, { signal });
@@ -286,8 +288,6 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     e.preventDefault();
     const scale: unknown = Reflect.get(e, 'scale');
     if (!safariPinch || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
-    board.stopFollow();
-    board.stopGlide();
     camera.set(camera.holding(safariPinch.at, safariPinch.at.sx, safariPinch.at.sy, safariPinch.z * scale));
   }, { signal });
   sheet.addEventListener('gestureend', (e) => {

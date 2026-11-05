@@ -14,9 +14,9 @@ import {
 import { forwardRef, memo, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type * as Y from 'yjs';
-import type { BoardPlace } from './camera';
 import { BoardTyping } from './editing';
 import { watchSheet } from './gestures';
+import { BoardPointers, FollowingPill, useBoardPresence, useOthersEditing, type BoardPresenceStore } from './presence';
 import { endBox, mounted, placed, selectionRing } from './selection';
 import { BOARD_LOOKS, useBoard, useBoardState, type Board, type BoardMode } from './useBoard';
 
@@ -28,15 +28,17 @@ export interface BoardPerson {
   name: string;
   /** The colour of their pointer and of the ring round a view that's theirs. */
   colour: string;
+  /** Their browsers on this board's awareness. Awareness doesn't say whose a browser is: the server does, and this is how it gets here. */
+  clients: readonly number[];
 }
 
 /** What the world around a board can ask of it. */
 export interface BoardHandle {
   /** Shows everything on the board. */
   fit(): void;
-  /** Goes to where someone is looking: the board point in the middle of their sheet, and their zoom. */
-  goTo(view: BoardPlace): void;
-  /** Follows someone by their call identity, or stops. */
+  /** Goes once to where someone is looking, by their call identity, with the glide. */
+  goTo(id: string): void;
+  /** Follows someone by their call identity, or stops and goes back to where this person was. */
   follow(id: string | null): void;
   /** Fills the sheet with a frame. */
   focusFrame(id: string): void;
@@ -52,7 +54,7 @@ export interface BoardHandlers {
   onMore?: (() => void) | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
-  /** Following stopped from this side: a scroll, a zoom or Esc. */
+  /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
   onFollow?: ((id: string | null) => void) | undefined;
 }
 
@@ -106,8 +108,8 @@ function heldCounts(view: BoardView): Map<string, number> {
   return held;
 }
 
-function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boolean, glide: boolean, editing: boolean): ReactNode {
-  const base = { id: o.id, x: o.x, y: o.y, w: o.w, h: o.h, selected, pop, glide };
+function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boolean, glide: boolean, editing: boolean, other: string | undefined): ReactNode {
+  const base = { id: o.id, x: o.x, y: o.y, w: o.w, h: o.h, selected, pop, glide, other };
   const typing = (label: string): ReactNode => (editing ? <BoardTyping board={board} id={o.id} label={label} /> : undefined);
   switch (o.k) {
     case 'note': return <BoardSticky key={o.id} {...base} colour={o.c} size={o.size} text={o.t} editor={typing('Edit this sticky')} />;
@@ -120,13 +122,14 @@ function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boole
 }
 
 /** Everything on the board, in the order it stacks: frames, then lines and ink in one drawing, then objects. */
-const Objects = memo(function Objects({ board }: { board: Board }) {
+const Objects = memo(function Objects({ board, presence }: { board: Board; presence: BoardPresenceStore }) {
   const view = useBoardState(board, (s) => s.view);
   const near = useBoardState(board, (s) => s.near);
   const sel = useBoardState(board, (s) => s.sel);
   const edit = useBoardState(board, (s) => s.edit);
   const landed = useBoardState(board, (s) => s.landed);
   const settling = useBoardState(board, (s) => s.settling);
+  const others = useOthersEditing(presence);
   const picked = useMemo(() => new Set(sel), [sel]);
   const shown = useMemo(() => mounted(view, near, edit), [view, near, edit]);
   const held = useMemo(() => heldCounts(view), [view]);
@@ -142,7 +145,7 @@ const Objects = memo(function Objects({ board }: { board: Board }) {
     } else if (o.k === 'ink') {
       lines.push(<BoardStroke key={o.id} d={strokePath(o)} colour={o.c} marker={o.tool === 'marker'} selected={picked.has(o.id)} />);
     } else {
-      objects.push(drawObject(o, board, picked.has(o.id), landed.has(o.id), settling.has(o.id), edit === o.id));
+      objects.push(drawObject(o, board, picked.has(o.id), landed.has(o.id), settling.has(o.id), edit === o.id, others.get(o.id)));
     }
   }
   return <>{frames}<BoardLines>{lines}</BoardLines>{objects}</>;
@@ -192,9 +195,10 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
   const zoom = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
   const canUndo = useBoardState(board, (s) => s.canUndo);
   const canRedo = useBoardState(board, (s) => s.canRedo);
+  const following = useBoardState(board, (s) => s.following !== null);
   const { name = '', seal, sealIcon, mode, acts = mode === 'call', onName, onSeal, onTimer, onVote, onPresent, onMore } = surface;
   return (
-    <BoardBar name={name} seal={seal} sealIcon={sealIcon} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={board.canEdit} acts={acts}
+    <BoardBar name={name} seal={seal} sealIcon={sealIcon} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={board.canEdit} acts={acts && !following}
       onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => undefined}
       onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={onMore} />
@@ -202,7 +206,7 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, mode, people = NO_PEOPLE, fresh = false, night = false, name, onCall, onFollow, className } = props;
+  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, night = false, name, onCall, onFollow, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -231,22 +235,24 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
       stopBoard();
     };
   }, [board]);
+  const presence = useBoardPresence(board, awareness, sheet, people, look.mini);
   useImperativeHandle(ref, () => ({
     fit: () => board.showEverything(),
-    goTo: (view) => board.goTo(view),
+    goTo: (id) => presence.following.goTo(id),
     follow: (id) => board.follow(id),
     focusFrame: (id) => board.focusFrame(id)
-  }), [board]);
+  }), [board, presence]);
 
   return (
     <BoardLayout page={look.page} phone={look.phone} className={className}>
       {look.rail && <BoardRail tool={tool} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => undefined} />}
       <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} night={night} follow={people.find((p) => p.id === following)?.colour}
         tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
-        <BoardWorld ref={world}><Objects board={board} /></BoardWorld>
+        <BoardWorld ref={world} pointers={<BoardPointers presence={presence} talking={talking} />}><Objects board={board} presence={presence} /></BoardWorld>
         {!look.mini && <Over board={board} />}
         {look.edit && <Blank board={board} />}
         {look.bar && <Bar board={board} surface={props} />}
+        <FollowingPill board={board} people={people} />
       </BoardSheet>
       {look.page && !look.phone && <BoardPageActions people={faces} onCall={() => onCall?.()} />}
     </BoardLayout>
