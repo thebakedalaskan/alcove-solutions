@@ -5,7 +5,7 @@
  * that nothing readable is left anywhere. The real API over HTTP via @alcove/api-http, real Postgres, the object store,
  * the local LiveKit server, and the stand-in NEAR AI, which can reword what it wrote before.
  */
-import { AlcoveApiError, type AudioPiece, type CallSession, type CallState, type LiveFollowUp, type LiveNotes, type Note, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AudioPiece, type CallSession, type CallState, type LiveFollowUp, type LiveNotes, type Note, type TranscriptClip } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { maintain } from './maintenance';
@@ -1011,6 +1011,35 @@ describe('into the note', () => {
     const again = await org.api.notes.get(note.id);
     expect(again.actions.filter((a) => a.done).map((a) => a.text)).toEqual(expect.arrayContaining([WORDED, PLANTS]));
     expect(again.actions.filter((a) => a.done)).toHaveLength(3);
+  });
+
+  it('finds what was ticked in notes that keep no transcript, from the lines the same save takes away', async () => {
+    const org = await account();
+    const email = unique('kofi');
+    const { code: c } = await org.api.meetings.create({
+      title: 'Supplier review', startsAt: new Date(Date.now() + 3_600_000).toISOString(), durationMinutes: 30, guests: [email], notes: 'on', choices: { ...DEFAULT_NOTES_CHOICES, keepTranscript: false }
+    });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const kofi = await (await account(email)).api.calls.join(c, { mic: true, cam: false });
+    await inGroup(kofi);
+    for (const at of [0, 1, 2, 3]) await host.appendAudio(piece(audioBytes('no-transcript'), 0, at));
+    await say(host, DECK);
+    const stop = kofi.watchNotes();
+    const seen = await notesOf(kofi);
+    stop();
+    await kofi.tickFollowUp(followUp(seen.next, DECK).id, true);
+
+    // Worded so that only the line behind it says it's the same thing.
+    const WORDED = 'Legal gets the deck from Kofi by Friday';
+    h.near.reword(DECK, WORDED);
+    const ended = await host.leave();
+    const note = await written(org.api, ended?.pendingNoteId);
+    h.near.reword(DECK, null);
+    expect(note.actions.map((a) => [a.text, a.done])).toEqual([[WORDED, true]]);
+    expect(note.transcript).toEqual([]);
+    const o = await openOwner(h.deps, org.session.ownerId, undefined);
+    expect((await getItem(o, h.pool, 'note', note.id, NoteManifest, 'Those notes')).manifest.ticked).toEqual([]);
   });
 
   it('marks nothing else done when the notes leave out what was ticked', async () => {

@@ -1609,7 +1609,7 @@ returns; a tick never moving to another follow-up with most of its words, anothe
 number or another person's; IDs kept in text without spaces; the newest 20 of a long call kept, and a ticked older one;
 refusals (made-up IDs, another call's, the same organizer's other call, someone asking to join, an ended call, and someone
 invited who came in with rooms open, to notes that read what was said before they came); what was ticked done in the note, reworded or not, and added when the notes don't list it, with who ticked it, through writing the
-notes again, and waiting for notes that couldn't be written; nothing else marked done when the notes leave out what was
+notes again, in notes that keep no transcript, from the lines the same save takes away, and waiting for notes that couldn't be written; nothing else marked done when the notes leave out what was
 ticked; the moment deciding for notes in French, and only when it's the one candidate; text without spaces in the note;
 notes off and paused sending nothing to the notes model with what was written readable and ticks still counting; a note
 stored before ticks were kept, and a call with no row yet; a note that can't be deleted while its call is live; the rows
