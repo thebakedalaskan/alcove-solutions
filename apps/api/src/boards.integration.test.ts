@@ -6,10 +6,12 @@
  * and nothing of what's on it anywhere but with the people who can open it.
  */
 import {
-  AlcoveApiError, DOC_UPDATE_TYPE, DocLiveEventSchema, SERVER_CLIENT, isServerClient, type BoardTemplate, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type WorkspaceRole
+  AlcoveApiError, DOC_UPDATE_TYPE, DocLiveEventSchema, SERVER_CLIENT, isServerClient, type BoardTemplate, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type KeptUpdate,
+  type KeptUpdates, type WorkspaceRole
 } from '@alcove/api';
 import {
-  addObject, addThread, duplicateObjects, hasBox, makeHistory, moveObjects, newId, objectText, readBoard, removeObjects, route, setObjects, tableCell, type Box, type NewObject, type StickyColour
+  addObject, addReply, addThread, boardText, duplicateObjects, hasBox, makeHistory, moveObjects, newId, objectText, readBoard, readThreads, removeObjects, resolveThread, route, setObjects, tableCell,
+  type Box, type NewObject, type StickyColour
 } from '@alcove/board';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
@@ -1357,3 +1359,190 @@ async function objectCount(): Promise<number> {
   for await (const obj of h.objects.list()) if (obj.id) n++;
   return n;
 }
+
+describe('a board’s own page', () => {
+  /** Who someone is in a workspace, as the workspace's stream says it: what the server stamps on their pointer, and what a comment keeps. */
+  async function whoIn(who: Account, id: string): Promise<{ by: string; name: string }> {
+    const live = who.api.workspaces.live(id);
+    try {
+      await until(() => live.getSnapshot().here.some((h) => h.isMe), 'the stream to say who they are');
+      const me = live.getSnapshot().here.find((h) => h.isMe)?.person;
+      return { by: me?.id ?? '', name: me?.name ?? '' };
+    } finally {
+      live.close();
+    }
+  }
+  /** Comments aren't anyone's change to the board: the page writes them under an origin of their own. */
+  const COMMENTS = { comments: true };
+  /** A browser's connection, which drops and comes back. */
+  function network(who: Account) {
+    let down = false;
+    const open = new Set<AbortController>();
+    const net: typeof fetch = async (input, init) => {
+      if (down) throw new TypeError('The network is down.');
+      const stop = new AbortController();
+      open.add(stop);
+      const signal = init?.signal ? AbortSignal.any([init.signal, stop.signal]) : stop.signal;
+      return who.fetch(input, { ...init, signal });
+    };
+    return { browser: h.browser({ fetch: net }), drop: () => { down = true; for (const s of open) s.abort(); open.clear(); }, back: () => { down = false; } };
+  }
+  /** What a browser keeps until Alcove has it, here across reloads, as the app keeps it on the device. */
+  function keepStore() {
+    let next = 1;
+    const kept: KeptUpdate[] = [];
+    const keep: KeptUpdates = {
+      load: async () => [...kept],
+      add: async (update, at) => { const key = next++; kept.push({ key, update, at }); return key; },
+      remove: async (keys) => { for (const key of keys) { const at = kept.findIndex((k) => k.key === key); if (at >= 0) kept.splice(at, 1); } }
+    };
+    return { keep, kept };
+  }
+
+  it('makes a board from the list that opens blank where it was asked, and reaches everyone in the workspace at once, renamed and all', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const folder = await make(ann, id, 'Retros', 'folder');
+    const theirs = theo.api.workspaces.live(id);
+    try {
+      // New board, in a folder's plus: Untitled board, there.
+      const { id: board } = await ann.api.workspaces.items.create(id, { kind: 'board', name: 'Untitled board', parent: folder });
+      await until(() => theirs.getSnapshot().tree?.items.some((i) => i.id === board && i.kind === 'board' && i.parent === folder && i.name === 'Untitled board') ?? false, 'Theo’s list to have it');
+      const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+      // Nothing on it, and nothing a document starts with: nobody has written to it at all.
+      expect(Y.decodeStateVector(Y.encodeStateVector(a.doc)).size).toBe(0);
+      expect(view(t).objects).toEqual([]);
+      sticky(a, 'The first sticky', 0, 0);
+      await saved(a);
+      await agree([a, t], 'Theo to see the first sticky');
+      // Renamed in place, under its name: everyone's list and bar follow.
+      await ann.api.workspaces.items.rename(id, board, 'Launch retro');
+      await until(() => theirs.getSnapshot().tree?.items.find((i) => i.id === board)?.name === 'Launch retro', 'the new name to reach Theo');
+    } finally {
+      theirs.close();
+    }
+  });
+
+  it('shares a board beyond the workspace to add to, or only to look at, and that person has that board and nothing else', async () => {
+    const ann = await account();
+    const theo = await account();
+    const una = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Launch retro');
+    await make(ann, id, 'Plan', 'document');
+    const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+
+    // Who can add to it: Una, from outside the workspace.
+    await ann.api.workspaces.share.set(id, board, [{ email: una.email }], 'edit');
+    expect((await una.api.workspaces.get(id)).items.map((i) => [i.id, i.kind])).toEqual([[board, 'board']]);
+    const u = await open(una, id, board);
+    expect(u.s.getSnapshot()).toMatchObject({ role: 'edit', closed: null });
+    const hers = sticky(u, 'From outside the workspace', 0, 0);
+    await saved(u);
+    await agree([a, t, u], 'everyone to have Una’s sticky');
+
+    // Only to look at: she's told at once, and what she adds anyway is refused, for her alone.
+    await ann.api.workspaces.share.set(id, board, [{ email: una.email }], 'read');
+    await until(() => u.s.getSnapshot().role === 'read', 'Una to be told she can only look');
+    const refused = sticky(u, 'Not for the board', 300, 0);
+    await until(() => u.s.getSnapshot().refused === 'read-only', 'what Una added to be refused');
+    sticky(a, 'Ann goes on', 600, 0);
+    await saved(a);
+    await agree([a, t], 'Ann and Theo to agree');
+    expect(view(a).byId.has(refused)).toBe(false);
+    expect(view(t).byId.has(hers)).toBe(true);
+    // Opened again, it's the board as everyone else has it, to look at.
+    const again = await open(una, id, board);
+    expect(again.s.getSnapshot()).toMatchObject({ role: 'read', status: 'saved' });
+    expect(shown(again)).toBe(shown(a));
+  });
+
+  it('keeps comments with who wrote them, off the board: replies, resolving, nobody’s undo, and going and coming back with their sticky', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Launch retro');
+    const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+    const [annIs, theoIs] = await Promise.all([whoIn(ann, id), whoIn(theo, id)]);
+    expect(annIs.by).not.toBe('');
+    const ah = makeHistory(a.doc, a.me), th = makeHistory(t.doc, t.me);
+    const note = sticky(a, 'Nobody owned the status page', 0, 0, 'rose');
+    await saved(a);
+    await agree([a, t], 'Theo to see the sticky');
+
+    // Theo asks on it, and Ann answers: each message says who wrote it, as their workspace knows them.
+    const thread = addThread(t.doc, note, 'Who looks after it once we’ve launched?', theoIs, COMMENTS);
+    await saved(t);
+    await until(() => readThreads(a.doc, view(a)).length === 1, 'Ann to see the comment');
+    addReply(a.doc, thread, 'Maya does, from Monday.', annIs, COMMENTS);
+    await saved(a);
+    await until(() => (readThreads(t.doc, view(t))[0]?.replies.length ?? 0) === 2, 'Theo to see the reply');
+    expect(readThreads(t.doc, view(t)).map((th2) => ({ on: th2.on, resolved: th2.resolved, said: th2.replies.map((r) => [r.by, r.name, r.text]) }))).toEqual([{
+      on: note, resolved: false, said: [[theoIs.by, theoIs.name, 'Who looks after it once we’ve launched?'], [annIs.by, annIs.name, 'Maya does, from Monday.']]
+    }]);
+    // A comment is nobody's change to the board: Theo has nothing to undo, and Ann's undo is her sticky's.
+    expect(th.undo()).toEqual({ ok: true, changed: false });
+    moveObjects(a.doc, [{ id: note, x: 200, y: 0 }], a.me);
+    expect(ah.undo()).toEqual({ ok: true, changed: true });
+    await saved(a);
+    await agree([a, t], 'the undo to reach Theo');
+    expect(view(t).byId.get(note)).toMatchObject({ x: 0, y: 0 });
+    expect(readThreads(t.doc, view(t))[0]?.replies.length).toBe(2);
+
+    // It isn't on the board: it isn't in what the board says.
+    expect(boardText(a.doc)).toContain('Nobody owned the status page');
+    expect(boardText(a.doc)).not.toContain('Maya does');
+
+    // The sticky goes, and its comments with it; Ann's undo brings both back.
+    removeObjects(a.doc, [note], a.me);
+    await saved(a);
+    await until(() => readThreads(t.doc, view(t)).length === 0, 'the comments to go with the sticky');
+    expect(ah.undo()).toEqual({ ok: true, changed: true });
+    await saved(a);
+    await until(() => (readThreads(t.doc, view(t))[0]?.replies.length ?? 0) === 2, 'the comments to come back with it');
+
+    // Resolved, it stays, and stops showing; opened again, it's still there, resolved, for both.
+    resolveThread(t.doc, thread, true, COMMENTS);
+    await saved(t);
+    await until(() => readThreads(a.doc, view(a))[0]?.resolved === true, 'Ann to see it resolved');
+    a.s.close();
+    t.s.close();
+    const later = await open(ann, id, board);
+    expect(readThreads(later.doc, view(later)).map((th2) => [th2.id, th2.resolved, th2.replies.length])).toEqual([[thread, true, 2]]);
+  });
+
+  it('keeps what’s added with no connection on the device, through a reload, and sends it once when it’s back', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const board = await make(ann, id, 'Launch retro');
+    const t = await open(theo, id, board);
+    const { keep, kept } = keepStore();
+    const net = network(ann);
+    const first = await open(net.browser, id, board, { keep });
+    sticky(first, 'Before the train', 0, 0);
+    await saved(first);
+    expect(kept).toEqual([]);
+
+    // Reconnecting: Ann keeps going, and what she adds is kept here.
+    net.drop();
+    await until(() => first.s.getSnapshot().status === 'offline', 'the board to say Reconnecting');
+    const one = sticky(first, 'Added on the train', 200, 0);
+    await until(() => kept.length > 0, 'the sticky to be kept here');
+    type(first, one, ', with no signal');
+    await until(() => kept.length > 1, 'the words to be kept too');
+    // The tab goes, with nothing sent.
+    first.s.close();
+    await rest(50);
+    expect(view(t).byId.has(one)).toBe(false);
+
+    // Back, in a new tab: it goes by itself, once, and nothing is left kept.
+    net.back();
+    const second = await open(net.browser, id, board, { keep });
+    await saved(second);
+    await agree([second, t], 'Theo to have what Ann added on the train');
+    expect(view(t).objects.filter((o) => o.k === 'note').map((o) => (o.k === 'note' ? o.t : ''))).toEqual(['Before the train', 'Added on the train, with no signal']);
+    await until(() => kept.length === 0, 'what was kept to go once Alcove has it');
+  });
+});
