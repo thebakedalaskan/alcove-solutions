@@ -20,16 +20,17 @@ import { bigintText, bytea, exec, maybeOne, rows, tx, type Db } from '../db';
 import { AppError, AuthError, ConflictError, ForbiddenError, ValidationError, notFound } from '../errors';
 import { publish, type Hub } from '../live/hub';
 import { log } from '../log';
+import type { MediaToken } from '../mediaToken';
 import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
 import { profile } from './account';
-import { seated, seatOfViewer, viewerOf, type Viewer } from './calls';
+import { inSeat, seated, seatOfViewer, viewerOf, type Viewer } from './calls';
 import { personOf, portraitFor } from './portraits';
 
 const xlog = log.child({ component: 'access' });
 
 /** IDs are 22 characters of base64url; anything else names nothing. */
-const ID128 = /^[A-Za-z0-9_-]{22}$/;
+export const ID128 = /^[A-Za-z0-9_-]{22}$/;
 export const isItemId = (id: string): boolean => ID128.test(id);
 /** The notice that the tree, or who can open what, changed: every stream of the workspace looks again. */
 export const TREE_NOTICE = 'tree';
@@ -126,6 +127,20 @@ export async function readerOf(d: Deps, who: Credentials): Promise<Reader> {
 export const accountReader = (owner: Owner, pass?: string | undefined): Promise<Reader> => reader(owner, owner, pass);
 /** Who a limit counts: the account, or the person in a call. */
 export const limitKey = (r: Reader): string => r.account?.owner.ownerId ?? r.seat?.viewer.pass.person ?? 'nobody';
+/**
+ * Who a file's URL says is asking, for a request that can't send a pass: an `<img>` or a player brings its cookie and the
+ * URL, and nothing else. An account counts only with its own session, so a URL is nothing in anyone else's browser, and
+ * stops when the session does. A seat counts while someone's let in to it and its call is going on, as a pass does.
+ * Neither: nobody.
+ */
+export async function whoNamed(d: Deps, named: Pick<MediaToken, 'account' | 'seat'>, sessionId: string | undefined): Promise<Who | undefined> {
+  const session = named.account === null ? undefined : await findSession(d, sessionId);
+  const owner = session && session.ownerId === named.account ? await findOwner(d, session.ownerId, session) : undefined;
+  const me = owner && await profile(owner);
+  const seat = named.seat && (await inSeat(d, named.seat)) ? named.seat : undefined;
+  if (!me && !seat) return undefined;
+  return { email: me?.email, principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])] };
+}
 
 /**
  * Who a reader is to the others in a workspace. `id` is a keyed hash of how access knows them, the same for them on every

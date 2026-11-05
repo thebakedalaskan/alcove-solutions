@@ -24,6 +24,7 @@ import { create as createMeeting, findUpcoming } from './meetings';
 import { deleteOwnNote, heldNoteIds } from './notes';
 import { photoUrl } from './photos';
 import { portraitFor } from './portraits';
+import { collect } from './media';
 import { eventsToWithdraw } from './repeats';
 import { forget as forgetRings } from './rings';
 import { forgetAccount, moveAddress } from './workspaces';
@@ -162,7 +163,8 @@ const REVOKE_MS = 3_000;
  * address, on the same condition, and what its calls gave people's seats in workspaces; and the account's row, which takes its own notes on anyone's notes, sign-in identity, sessions, profile (pins and groups with it),
  * Google connection, receipts, notes jobs and credits with it. Then the LiveKit rooms of its calls still
  * going are closed, which takes everyone in them out, as ending a call does; the audio and shared-screen
- * objects are deleted, and any the store refuses are queued in object_gc for maintenance. Notes it shared on
+ * objects, and those of any file that went from a workspace, are deleted, and any the store refuses wait in object_gc
+ * for maintenance. Notes it shared on
  * stay with whoever has them: nothing is written into anyone else's vault (docs: privacy-keys-and-sessions › Deletion).
  */
 export async function deleteAccount(o: Owner): Promise<void> {
@@ -217,8 +219,9 @@ export async function deleteAccount(o: Owner): Promise<void> {
   forgetAccess(o.ownerId);
   // Closing a call's room takes everyone out of it, which is how their browsers learn the call is over.
   for (const room of gone.rooms) await o.livekit.deleteRoom(room).catch((e: unknown) => alog.warn('call room not closed', { ownerId: o.ownerId, err: e }));
-  // The audio and screens first: a slow Google mustn't hold them up.
+  // The audio, screens and workspaces' files first: a slow Google mustn't hold them up.
   await queueDelete(o, gone.objects);
+  await collect(o, gone.workspaces.owners);
   await revokeGrant(o, refreshToken, AbortSignal.timeout(REVOKE_MS));
   alog.info('account deleted', {
     ownerId: o.ownerId, calendarCancelled: calendar.cancelled, calendarKept: calendar.kept, calendarNotCancelled: calendar.notCancelled,
