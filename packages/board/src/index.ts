@@ -24,5 +24,5 @@ export { TEMPLATES, fillTemplate } from './templates';
 export type { TemplateName } from './templates';
 export { boardFollowUps, boardText } from './text';
 export { landBoards } from './land';
-export { BoardPresenceSchema, NO_PRESENCE } from './presence';
+export { BOARD_VIEW_WIDTH, BoardPresenceSchema, NO_PRESENCE } from './presence';
 export type { BoardPresence } from './presence';
