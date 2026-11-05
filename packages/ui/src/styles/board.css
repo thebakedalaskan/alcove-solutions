@@ -190,7 +190,8 @@
 .bd-head .sp { flex: 1; min-width: 8px; }
 .bd-head .nm { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 7px; border-radius: 9px; font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); white-space: nowrap; }
 .bd-head .nm:hover { background: var(--sunk); }
-.bd-head .nm span { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+/* Room below the line for descenders, without touching the line: a taller line would lift the name a pixel. */
+.bd-head .nm span { min-width: 0; margin: -3px 0; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; }
 .bd-head .nm .ac-i { flex: none; color: var(--ink-3); }
 .bd-head .sv { flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 75px; height: 34px; padding: 0 9px 0 6px; border-radius: 9px; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
 .bd-head .sv:hover { background: var(--sunk); color: var(--ink-2); }
