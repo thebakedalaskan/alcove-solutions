@@ -8,7 +8,7 @@
  * time would stutter and trail, so the camera eases towards the latest one a frame at a time, and stops when it gets there.
  */
 import { BOARD_VIEW_WIDTH, type BoardPresence } from '@alcove/board';
-import { overlayOpen, typing } from '~/lib/keys';
+import { editable, overlayOpen } from '~/lib/keys';
 import type { BoardPlace } from './camera';
 import type { Board } from './useBoard';
 
@@ -90,7 +90,7 @@ export class BoardFollowing {
     const stopBoard = this.board.subscribe(this.boardChanged);
     // A menu on someone's tile starts this, so the keyboard can well be somewhere else. Inside the sheet, the board's own keys see Esc.
     const escape = (e: KeyboardEvent): void => {
-      if (e.key !== 'Escape' || !this.who || typing(e.target) || overlayOpen()) return;
+      if (e.key !== 'Escape' || !this.who || editable(e.target) || overlayOpen()) return;
       if (e.target instanceof Node && sheet.contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();

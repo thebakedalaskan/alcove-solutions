@@ -1,10 +1,12 @@
 /*
  * The board's keys. M, V and C stay the call's, in every mode, so nobody turns their camera off by reaching for a tool.
- * That's why Select is Esc. Everything here sleeps while someone types in a sticky, so letters are letters. A key the board
- * acted on goes no further, so the call and the app don't act on it too, and anything else is left for them.
+ * That's why Select is Esc. Nothing here takes a key going into a field, such as a sticky being typed in, and a single key
+ * also sleeps for a moment after one did (`typing`), so the rest of a sentence never makes or deletes anything. Escape and
+ * the ⌘ keys never type, so ⌘Z straight after Esc is the board's undo. A key the board acted on goes no further, so the call
+ * and the app don't act on it too, and anything else is left for them.
  */
 import type { BoardTool } from '@alcove/ui';
-import { typing, withShortcutKey } from '~/lib/keys';
+import { editable, typing, withShortcutKey } from '~/lib/keys';
 import type { Board } from './useBoard';
 
 interface BoardKey {
@@ -57,10 +59,11 @@ const keyFor = (k: string, mod: boolean): BoardKey | undefined => {
 const onControl = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('button, a');
 
 export function keyDown(board: Board, e: KeyboardEvent): void {
-  if (typing(e.target) || e.altKey) return;
+  if (editable(e.target) || e.altKey) return;
   const mod = withShortcutKey(e);
   if (!mod && (e.metaKey || e.ctrlKey)) return;
   const k = e.key.toLowerCase();
+  if (!mod && k !== 'escape' && typing(e.target)) return;
   if (!mod && CALL_KEYS.has(k)) return;
   if (k === ' ' && !mod) {
     if (onControl(e.target)) return;

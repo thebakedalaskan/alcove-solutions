@@ -14,7 +14,7 @@ import {
 import type { BoardMoreItem, BoardTool, ToastOptions } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import type * as Y from 'yjs';
-import { typing } from '~/lib/keys';
+import { editable } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, holdKeys, nextSpot, textField } from './editing';
@@ -488,7 +488,7 @@ export class Board implements LiveStore<BoardState> {
 
   /** Typing ended without this person asking. They may not know yet, so what they type next waits, or it would go to the call. */
   private editTaken(): void {
-    if (this.state.edit && typing(document.activeElement) && this.sheet?.contains(document.activeElement)) holdKeys(() => this.focusSheet());
+    if (this.state.edit && editable(document.activeElement) && this.sheet?.contains(document.activeElement)) holdKeys(() => this.focusSheet());
     this.finishEdit();
   }
 

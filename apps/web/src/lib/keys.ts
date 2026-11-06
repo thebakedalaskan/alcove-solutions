@@ -16,7 +16,7 @@ export const shortcut = (key: string): string => (mac ? `⌘${key}` : `Ctrl ${ke
 export const ariaShortcut = (key: string): string => `${mac ? 'Meta' : 'Control'}+${key}`;
 
 /** Something keys type into: a field, a select or editable text. */
-const editable = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+export const editable = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
 
 /**
  * How long single-key shortcuts sleep after a key goes into something editable. Whoever's typing keeps typing for a moment
