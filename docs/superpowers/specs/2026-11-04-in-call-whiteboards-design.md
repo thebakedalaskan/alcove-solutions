@@ -48,7 +48,8 @@ Three roots.
 - `objects`, a `Y.Map` of id to `Y.Map`, one per object. Ids are 12 random base64url characters from the browser.
 - `places`, one shared `Y.Array` of `{ k, x, y, w, h, f, n }`: where each object with a box is, and `f`, the frame it's in. Each browser keeps
   its own run in it, as the Yjs client it is: a write puts the places it changes, as one block, right after the last entry that client wrote (a
-  client's first write starts its run at the start of the list), and deletes the entries they replace. Of an object's entries, the one with the
+  browser's first write goes at the end; after its client changes, which happens when Alcove refuses an update, its new run starts at the
+  start of the list, clear of what it wrote before), and deletes the entries they replace. Of an object's entries, the one with the
   highest `n` wins, and a write's `n` is one more than the place it replaces, so a move made after another wins wherever it sits; of two
   written at once from the same place, with the same `n`, the later entry in the list wins. Two kinds of entry are never deleted: one this
   release can't read, which may be a later release's, and a browser's own from before its client changed, which happens when Alcove refuses
