@@ -13,7 +13,7 @@ import {
   CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
-  CircleOff, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones
+  CircleOff, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus
 } from 'lucide-react';
 import { cn } from '../cn';
 
@@ -24,7 +24,7 @@ const ICONS = {
   workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform,
   chevronLeft: ChevronLeft, bringToFront: BringToFront, sendToBack: SendToBack,
   moment: AudioLines, plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
-  screen: MonitorUp, chat: MessageSquare, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
+  screen: MonitorUp, chat: MessageSquare, react: SmilePlus, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
   check: Check, x: X, right: ArrowRight, left: ArrowLeft, down: ChevronDown, chevron: ChevronRight, link: Link, copy: Copy,
   cal: Calendar, clock: Clock, lock: Lock, key: KeyRound, trash: Trash2, more: Ellipsis, play: Play, speaker: Volume2,
   ask: MessageCircleQuestion, share: Share, send: Send, room: Radio, server: Server, hand: Hand, mail: Mail,

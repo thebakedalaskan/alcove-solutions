@@ -4,7 +4,7 @@
  * yours is the browser's made-up camera when you turn it on.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, chats, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
+import { at, chats, reacts, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
 import { inCall, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';
@@ -29,9 +29,11 @@ export const TwoOfYou = inCall({
 });
 export const TwoOfYouPhone = phone(TwoOfYou);
 
+const RELEASE_NOTES = 'The release notes are in the launch folder, for anyone who wants them.';
+
 /**
  * People come and go at Priya's check-in: Aiko comes in, Kofi says he has to drop off and leaves, Maya comes in muted,
- * unmutes to ask what she missed, and Aiko posts in chat (its button in the dock says there's something new).
+ * unmutes to ask what she missed, and Aiko posts in chat (its button in the dock says there's something new). Priya and Maya react to her line, and Aiko adds a thumbs up.
  */
 export const ComingAndGoing = inCall({
   scenario: 'busy', call: CHECK_IN,
@@ -44,7 +46,10 @@ export const ComingAndGoing = inCall({
       ...at(11, joins(MAYA, { mic: false })),
       ...at(14, unmutes(MAYA)),
       ...at(14.4, says(MAYA, 'Sorry I’m late. Did I miss the help article?')),
-      ...at(19, chats(AIKO, 'The release notes are in the launch folder, for anyone who wants them.'))
+      ...at(19, chats(AIKO, RELEASE_NOTES)),
+      ...at(22, reacts(PRIYA, RELEASE_NOTES, 'thumbs-up')),
+      ...at(23.5, reacts(MAYA, RELEASE_NOTES, 'heart')),
+      ...at(25, reacts(AIKO, RELEASE_NOTES, 'thumbs-up'))
     ]
   }
 });

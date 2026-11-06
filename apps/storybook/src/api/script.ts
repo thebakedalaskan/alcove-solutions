@@ -9,7 +9,7 @@
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallPage, type CaptureMode, type CapturePart,
+  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
   type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -65,6 +65,8 @@ export type Beat =
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
   | { do: 'chat'; who: Person; text: string }
+  /** Someone reacts to the latest chat message with this text. */
+  | { do: 'react'; who: Person; text: string; reaction: CallReaction }
   /** Someone asks to join: signed in (their address shows), or by name only. */
   | { do: 'knock'; who: Person; byName?: boolean | undefined }
   | { do: 'ask-for-notes'; who: Person }
@@ -186,6 +188,7 @@ export const lowersHand = (who: Person): Beat => ({ do: 'hand', who, up: false }
 export const shares = (who: Person, screen: Screen): Beat => ({ do: 'share', who, screen });
 export const stopsSharing = (who: Person): Beat => ({ do: 'stop-sharing', who });
 export const chats = (who: Person, text: string): Beat => ({ do: 'chat', who, text });
+export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
 export const run = (what: () => void): Beat => ({ do: 'run', what });

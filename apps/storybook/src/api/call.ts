@@ -10,8 +10,8 @@
  * and its timer and vote.
  */
 import {
-  AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
-  type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
+  AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
@@ -57,6 +57,7 @@ class Crypto extends Pushed<CallCrypto> {}
 
 /** How you came to the call: what the call says you are, and whether you ask to be let in first. */
 export interface Arrival { role: CallRole; asking: boolean; name?: string | undefined }
+
 
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   readonly ticket: CallTicket;
@@ -174,7 +175,13 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
       case 'chat': {
         const p = this.find(b.who);
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: Date.now(), place: c.place }] }));
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: Date.now(), place: c.place, sending: false, reactions: [] }] }));
+        return;
+      }
+      case 'react': {
+        const p = this.find(b.who);
+        const message = this.crypto.getSnapshot().chat.findLast((m) => m.text === b.text);
+        if (p && message) this.crypto.update((c) => ({ ...c, chat: withReaction(c.chat, message.id, message.place, b.reaction, p.id, true) }));
         return;
       }
       case 'knock': {
@@ -707,7 +714,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   refresh(): Promise<void> { return Promise.resolve(); }
   sendChat(text: string): Promise<void> {
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: Date.now(), place: c.place }] }));
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: Date.now(), place: c.place, sending: false, reactions: [] }] }));
+    return Promise.resolve();
+  }
+  /** Yours on a message, on or off: the same rules as the real call's. */
+  react(messageId: string, reaction: CallReaction, on: boolean): Promise<void> {
+    try { reactionTarget(this.crypto.getSnapshot(), this.crypto.getSnapshot().place, messageId); }
+    catch (e) { return Promise.reject(e); }
+    this.crypto.update((c) => ({ ...c, chat: withReaction(c.chat, messageId, c.place, reaction, this.me.id, on) }));
     return Promise.resolve();
   }
   /** Data between browsers goes nowhere here: nobody else's browser is in the call. */

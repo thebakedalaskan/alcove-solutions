@@ -1115,7 +1115,7 @@ export function InCall({ session }: { session: CallSession }) {
         catching={cu.catching} draft={drafts.current.ask} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
       case 'chat': return <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
-        here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} />;
+        here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} place={crypto.place} me={session.ticket.identity} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} onReact={(id, r, on) => session.react(id, r, on)} />;
       case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
         canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
         notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />;

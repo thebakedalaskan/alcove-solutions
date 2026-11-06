@@ -5,6 +5,7 @@
  */
 
 .ac-i { flex: none; display: inline-block; vertical-align: middle; }
+.ac-emoji { display: inline-block; flex: none; vertical-align: middle; }
 .ac-eyebrow { font: 500 13px/18px var(--font-sans); color: var(--ink-3); }
 .ac-time { font: 500 13px/16px var(--font-sans); font-variant-numeric: tabular-nums; }
 /* Figures that line up, inside another style: keeps the size around it. */
@@ -360,6 +361,25 @@
 .ac-pop.is-stage .ac-option[aria-selected="true"] > .ac-i { color: var(--sun); }
 .ac-pop.is-stage .ac-option > .ac-i.lead { color: var(--stage-ink-2); }
 .ac-tip { z-index: 80; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ink); color: var(--ground); font: 600 12px/1.2 var(--font-sans); box-shadow: var(--shadow-2); animation: ac-pop-in 160ms var(--ease-out) both; }
+/* Reactions under a message: an emoji and how many, yours in the sun's warmth (never its fill), the picker over it. */
+.ac-reacts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; }
+.ac-react { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px 0 7px; border: 0; border-radius: var(--radius-pill); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; cursor: pointer; animation: ac-react-in var(--duration-2) var(--ease-out) both; transition: background-color var(--duration-1), box-shadow var(--duration-1), color var(--duration-1); }
+.ac-react:hover { background: var(--sunk); color: var(--ink); }
+.ac-react.is-mine { background: var(--sun-soft); box-shadow: inset 0 0 0 1px var(--sun-text); color: var(--sun-text); }
+.ac-react.is-mine:hover { background: color-mix(in oklch, var(--sun-soft), var(--sun-text) 10%); }
+.ac-react[aria-disabled="true"] { cursor: default; }
+.ac-react:focus-visible, .ac-react-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-react-add.ac-icon-btn { width: 28px; height: 28px; color: var(--ink-3); }
+.ac-react-add.is-small.ac-icon-btn { width: 26px; height: 26px; }
+.ac-react-add.ac-icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-react-tip { display: inline-flex; align-items: center; gap: 6px; }
+.ac-pop.ac-react-pop { min-width: 0; padding: 6px; }
+.ac-react-pick { display: grid; grid-template-columns: repeat(8, 36px); gap: 2px; }
+.ac-react-opt { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: pointer; transition: background-color var(--duration-1), transform var(--duration-1) var(--ease-out); }
+.ac-react-opt:hover { background: var(--sunk); transform: scale(1.12); }
+.ac-react-opt.is-mine { background: var(--sun-soft); }
+@media (max-width: 400px) { .ac-react-pick { grid-template-columns: repeat(4, 40px); } .ac-react-opt { width: 40px; height: 40px; } }
+@keyframes ac-react-in { from { opacity: 0; transform: scale(.85); } }
 
 /* ---- EmptyState ---- */
 .ac-empty { display: grid; justify-items: center; gap: 10px; padding: 28px 16px 22px; text-align: center; }

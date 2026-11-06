@@ -14,9 +14,17 @@ import { type CallEndResult, type CallState, type CallTicket } from './state';
 import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './workspace';
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
- * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it.
+ * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
+ * yours that isn't in the log yet, so nobody can react to it.
  */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number; place: string }
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number; place: string; sending: boolean; reactions: CallChatReaction[] }
+
+/** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
+export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
+export type CallReaction = z.infer<typeof CallReactionSchema>;
+export const CALL_REACTIONS = CallReactionSchema.options;
+/** One emoji on a chat message, and who reacted with it (identities, in the order they did), first-reacted first. */
+export interface CallChatReaction { reaction: CallReaction; by: string[] }
 
 
 /** The longest chat message in a call, in characters. */
@@ -112,6 +120,11 @@ export interface CallSession extends LiveStore<CallState> {
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
   /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
   sendChat(text: string): Promise<void>;
+  /**
+   * Adds (`on`) or takes back your reaction to a chat message (by its ID, once it's in the log), encrypted like chat
+   * for everyone in the group of the part of the call you're in.
+   */
+  react(messageId: string, reaction: CallReaction, on: boolean): Promise<void>;
   /**
    * Seals data this browser sends straight to the others in the call through LiveKit (pointers and marks on shared
    * screens): AES-GCM under a key derived from its own media key for the epoch it sends in, bound to `topic` and to who

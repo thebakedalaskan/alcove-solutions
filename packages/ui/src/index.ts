@@ -1,6 +1,8 @@
 import './css-vars';
 export { cn } from './cn';
 export * from './components/icon';
+export * from './components/emoji';
+export * from './components/reactions';
 export * from './components/brand';
 export * from './components/people';
 export * from './components/pick';

@@ -300,6 +300,17 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   posts into a room they're not in. The sender comes from MLS (the message's sender leaf and signature), not from
   the text. A message that can't be sent after a few tries, or whose sender moved before it went out, is taken
   back, and the sender is told. Messages are at most 4,000 characters.
+- **Reactions** are a second kind of payload inside the same MLS application message as chat, so the API sees
+  nothing new: the same relay, the same sender check, and the same rate limit as a chat message. A reaction names a
+  message by its place in the log, `generation:seq`, and an emoji (one of eight, by name; the wire never carries a
+  glyph), and says whether it's added or taken back. Each person's reaction is a toggle: the same emoji twice from
+  one person is one reaction, and taking back one they never added changes nothing. Because the target is the log
+  ID, you can only react once your own message is in the log. Each browser folds the toggles into the message as it
+  reads them, in the order they came, and an emoji with nobody left on it goes away. Someone who comes in later
+  can't read earlier chat, so a reaction to a message this browser never had is ignored. A reaction only counts on a message of
+  the part of the call it was sent in: after moving to a breakout room you can't react to the main room's messages
+  still on screen, and a reaction read in one room never lands on another's. One that can't be sent
+  after a few tries is taken back, and the person is told.
 - **Data between browsers** (pointers and marks on shared screens) goes through LiveKit, not the API, sealed by the
   sender's session with a key derived from its own media key for the epoch, in its part of the call's group
   (`CallSession.sealData`), and opened with the media key of whoever LiveKit says sent it (`openData`). It's read only
@@ -1697,6 +1708,10 @@ share picker, the leave sheet and the device pickers.
   a message goes ("Message Design") while rooms are open. It's off until the browser holds its part's keys (and
   while it's moving), takes up to 4,000 characters, says when there was chat here it can't read, and gives back a
   message that couldn't be sent.
+  Under a message, `Reactions` shows each emoji with how many used it, yours marked; pressing one adds yours or takes
+  it back, and its tooltip lists who reacted. Hovering a message (or focusing it) shows `ReactionAdd`. Your own
+  message can't be reacted to until it has gone out (`sending`). If a reaction can't be sent it's reverted and the toast
+  says "Your reaction wasn't sent. Try again." The stand-in call in Storybook folds reactions the same way (`react`).
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
 - **Panels** (`panels.ts`, pure; `PanelHost.tsx` draws them) are how the call shares the screen. Everything you can
   look at has a place in a small tree of rows and columns that only you can see: the stage, the people, a seat for

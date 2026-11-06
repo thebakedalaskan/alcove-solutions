@@ -1,9 +1,9 @@
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
-import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
+import { type ChatPayload, groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentKind, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentKind, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -157,8 +157,11 @@ export class HttpCall extends Live<CallState> implements CallSession {
   /** A refused commit waits before the next one, longer each time, so a refusal can never turn into a loop. */
   private commitAfter = 0;
   private refusals = 0;
-  /** Chat waiting to go out (it's encrypted in the sync loop, so nothing else touches the keys meanwhile), and chat sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all. */
-  private outbox: { local: string; text: string; at: number; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
+  /**
+   * Chat and reactions waiting to go out (encrypted in the sync loop, so nothing else touches the keys meanwhile), and
+   * what was sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all.
+   */
+  private outbox: { local: string; payload: ChatPayload; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
   private sent = new Map<string, string>();
   private media: CallMediaKeys | null = null;
   private running: Promise<void> | null = null;
@@ -488,7 +491,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
       this.sent.delete(body);
       const s = this.crypto.getSnapshot();
       const mine = s.chat.find((m) => m.id === local);
-      if (mine) this.patch({ chat: [...s.chat.filter((m) => m.id !== local), { ...mine, id }] });
+      if (mine) this.patch({ chat: [...s.chat.filter((m) => m.id !== local), { ...mine, id, sending: false }] });
+      // A reaction of this browser's own is already shown.
       return;
     }
     const h = this.groups.get(place);
@@ -496,7 +500,11 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const m = await h.group.decrypt(body);
     if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
-      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at, place }] });
+      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at, place, sending: false, reactions: [] }] });
+    } else if (m.kind === 'react') {
+      // Only to a message of the part of the call it was sent in: one this browser never had (sent before it came in), or
+      // one from another part, changes nothing here.
+      this.patch({ chat: withReaction(this.crypto.getSnapshot().chat, m.target, place, m.reaction, m.from, m.on) });
     } else if (m.kind === 'before') {
       this.missedHere = true;
     } else this.emit('debug', 'a chat message couldn’t be read', { seq });
@@ -580,7 +588,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
         continue;
       }
       if (!m.sealed || m.sealed.generation !== this.generation) {
-        try { m.sealed = { ...(await h.group.encrypt(m.text, m.at)), generation: this.generation }; }
+        try { m.sealed = { ...(await h.group.encrypt(m.payload)), generation: this.generation }; }
         catch { this.unsend(m.local); continue; }
       }
       this.sent.set(m.sealed.message, m.local);
@@ -600,9 +608,16 @@ export class HttpCall extends Live<CallState> implements CallSession {
     }
   }
   private unsend(local: string) {
-    this.outbox = this.outbox.filter((m) => m.local !== local);
+    const m = this.outbox.find((o) => o.local === local);
+    this.outbox = this.outbox.filter((o) => o.local !== local);
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: s.chat.filter((m) => m.id !== local) });
+    if (m && 'react' in m.payload) {
+      const r = m.payload.react;
+      this.patch({ chat: withReaction(s.chat, r.target, m.place, r.reaction, this.ticket.identity, !r.on) });
+      this.notify('Your reaction wasn’t sent. Try again.');
+      return;
+    }
+    this.patch({ chat: s.chat.filter((c) => c.id !== local) });
     this.notify('Your message wasn’t sent. Try again.');
   }
 
@@ -680,8 +695,17 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed, place: this.place }] });
-    this.outbox.push({ local, text: t, at: this.state.elapsed, place: this.place, tries: 0, sealed: null });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed, place: this.place, sending: true, reactions: [] }] });
+    this.outbox.push({ local, payload: { text: t, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
+    await this.sync();
+  };
+  react = async (messageId: string, reaction: CallReaction, on: boolean) => {
+    const s = this.crypto.getSnapshot();
+    const target = reactionTarget(s, this.place, messageId);
+    const mine = target.reactions.find((r) => r.reaction === reaction)?.by.includes(this.ticket.identity) ?? false;
+    if (mine === on) return;
+    this.patch({ chat: withReaction(s.chat, messageId, this.place, reaction, this.ticket.identity, on) });
+    this.outbox.push({ local: `react:${b64u(randomBytes(6))}`, payload: { react: { target: messageId, reaction, on }, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
     await this.sync();
   };
   /** Data keys, one per media key (each sender's, each epoch), made once. */
