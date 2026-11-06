@@ -40,7 +40,7 @@ import { FromLastTime } from '~/features/call/notes/FromLastTime';
 import { Yours, useOwnInCall } from '~/features/call/notes/Yours';
 import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing';
 import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
-import { ChatView, NotesMenu, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
+import { ChatView, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
 import { KeysSheet } from '~/features/call/layout/KeysSheet';
 import { sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
@@ -91,6 +91,8 @@ const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (mode ===
 /** Takes away the toast that said why this tab left the call: it isn't true any more once the tab joins again. */
 let leftToast: (() => void) | null = null;
 
+/** What More holds, as its button says. */
+const MORE_SAYS = 'More: captions, catch up, rooms, devices';
 /** Notes' tabs, as places your side can be. */
 const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'transcript' || p === 'ask';
 
@@ -1138,10 +1140,9 @@ export function InCall({ session }: { session: CallSession }) {
         <>
           <SideHead title="Notes" sub="This call, in the workspace" onClose={sideClose}>
             <Tooltip label="Open the workspace on these notes, just for you" side="bottom">
-              <button type="button" className={buttonClass({ variant: 'secondary', size: 'xs' })} onClick={openNotesPage}><Icon name="folderOpen" size={15} />Open</button>
+              <button type="button" className={buttonClass({ variant: 'secondary', size: 'xs' })} aria-label="Open the workspace on these notes" onClick={openNotesPage}><Icon name="folderOpen" size={15} />Open</button>
             </Tooltip>
             {own.enabled && <IconButton icon="bookmark" label="Mark this moment, only you" title="Mark this moment · B" aria-keyshortcuts="B" onClick={() => own.mark()} />}
-            <NotesMenu state={state} controls={controls} />
           </SideHead>
           <NotesTabs tab={notesTab} onTab={(t) => { cu.settle(); setNotesTab(t); }} />
           <SideBody view={notesTab}>{notesTabBody(notesTab)}</SideBody>
@@ -1345,12 +1346,12 @@ export function InCall({ session }: { session: CallSession }) {
       {phone && (
         <>
           <CallMoreGrid>
-            {(canStartBoard || board.open) && <CallMoreTile icon="presentation" word="Board" label={board.open ? (board.hidden ? 'Show the board' : 'Hide the board for you') : 'Open a board'} aria-pressed={board.shown} onClick={pressBoard} />}
+            {(canStartBoard || board.open) && <CallMoreTile icon="presentation" word="Board" aria-pressed={board.shown} onClick={pressBoard} />}
             <CallMoreTile icon="folderOpen" word="Workspace" label={!work.open && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} aria-pressed={work.open} badge={work.open ? 0 : broughtHere}
               onClick={() => { setPop(null); work.act.toggle(); }} />
             <CallMoreTile icon="notesPen" word="Notes" onClick={() => openSide('notes')} />
             <CallMoreTile icon="chat" word="Chat" label={unread ? `Chat, ${unread} new` : 'Chat'} badge={unread} onClick={() => openSide('chat')} />
-            <CallMoreTile icon="people" word="People" label={hosting && state.waiting.length ? `People, ${state.waiting.length} asking to join` : 'People'} badge={hosting ? state.waiting.length : 0} onClick={() => openSide('people')} />
+            <CallMoreTile icon="people" word="People" label={hosting && state.waiting.length ? `People in this call. ${state.waiting.length} asking to join` : 'People in this call'} badge={hosting ? state.waiting.length : 0} onClick={() => openSide('people')} />
           </CallMoreGrid>
           <div className="ic-msep" />
           {moreRow('hand', handLabel, () => { setPop(null); setHand(!me?.hand); }, { pressed: !!me?.hand })}
@@ -1448,9 +1449,9 @@ export function InCall({ session }: { session: CallSession }) {
                 on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
             )}
             <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'view' ? 'Your view' : 'More'}
-              tip={phone ? undefined : 'More: captions, catch up, rooms, devices'}
+              tip={phone ? undefined : MORE_SAYS}
               className={cn(pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : pop === 'board' ? 'bl' : 'ic-menu ic-morepop', phone && 'is-sheet')}
-              anchor={<DockButton icon="more" label={phone && unread ? `More: ${unread} new in Chat` : 'More'} title={undefined} data-more="" on={moreOpen} badge={phone && side.view !== 'chat' ? unread : 0} />}>
+              anchor={<DockButton icon="more" label={!phone ? MORE_SAYS : unread ? `More: ${unread} new in Chat` : 'More: board, workspace, notes, chat, people'} title={undefined} data-more="" on={moreOpen} badge={phone ? unread : 0} />}>
               {moreBody}
             </Popover>
             {!phone && <DockSeparator />}

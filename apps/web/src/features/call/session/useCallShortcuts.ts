@@ -31,7 +31,7 @@ export const CALL_KEYS: CallKey[] = [
   { id: 'people', keys: ['⇧P'], what: 'Hide the people, or bring them back' },
   { id: 'find', keys: [shortcut('K')], what: 'Find in the workspace' },
   { id: 'zen', keys: [shortcut('⇧F')], what: 'Just the document, and back' },
-  { id: 'escape', keys: ['Esc'], what: 'Close what’s open, then unpin everyone, then close your side' }
+  { id: 'escape', keys: ['Esc'], what: 'Close a menu, unpin everyone, then put your side away' }
 ];
 /** On a tile you've reached with Tab, or with the arrow keys from another. */
 export const TILE_KEYS: { keys: string[]; what: string }[] = [

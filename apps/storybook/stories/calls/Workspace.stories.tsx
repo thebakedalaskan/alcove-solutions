@@ -9,7 +9,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { asksToSee, at, goesTo, leaves, movesPresenting, opensPage, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
-import { inCall, phone, type InCall, type StoryCall } from '../../src/call';
+import { inCall, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
@@ -30,11 +30,9 @@ const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
  */
 const TALK = { since: 100, earlier: REVIEW_TALK.slice(0, 7), talk: { lines: REVIEW_TALK.slice(7), from: 3, every: 5 }, summary: REVIEW_SUMMARY };
 
-/** Opens the workspace from the dock. */
-async function openWorkspace({ canvas, userEvent, step }: Step): Promise<void> {
-  await step('Press Workspace in the dock. The first time, the call settles its home', async () => {
-    await userEvent.click(await canvas.findByRole('button', { name: /^Workspace/ }, { timeout: 10000 }));
-  });
+/** Opens the workspace: Workspace at the top right, or in More on a phone. The first time, the call settles its home. */
+async function openWorkspace(c: Step): Promise<void> {
+  await reach('Workspace')(c);
 }
 /** Opens one of the call's own pages from its folder. */
 const openPage = (name: string): Play => async (c) => {

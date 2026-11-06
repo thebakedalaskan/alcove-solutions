@@ -35,11 +35,11 @@ export const ThreeSharing = inCall({
   script: { here: [{ who: PRIYA, sharing: CHECKLIST }, { who: KOFI, sharing: EMPTY_STATES }, { who: AIKO }], cues: [...at(6, shares(AIKO, RELEASE)), ...at(30, stopsSharing(AIKO))] }
 });
 
-/** You share a tab: the picker, then the browser's (here, a drawn slide), and the bar that says what you're sharing. */
+/** You share a tab: the picker, then the browser's (here, a drawn slide), and the bar that says what you're sharing. Share in the dock says Presenting meanwhile. */
 export const YouShare = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: [{ who: PRIYA }, { who: KOFI }, { who: AIKO }] } }, {
   play: async ({ canvas, userEvent, step }) => {
     await step('Press Share in the dock: the picker asks what to share', async () => {
-      await userEvent.click(await canvas.findByRole('button', { name: 'Share a tab, window or screen' }, { timeout: 10000 }));
+      await userEvent.click(await canvas.findByRole('button', { name: 'Share' }, { timeout: 10000 }));
     });
     await step('Choose a tab. The browser asks which one, and the call shows it a moment later', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Choose a tab' }, { timeout: 5000 }));

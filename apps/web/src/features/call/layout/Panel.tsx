@@ -10,7 +10,7 @@ import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsk
 import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/ringing/RingWords';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
@@ -138,10 +138,9 @@ const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right no
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
 /**
- * Notes' ⋯: the organizer's Pause, Resume and Turn off (or Turn on), or anyone else's Ask for notes, as the notes stand where
- * you are.
+ * Notes' ⋯, beside the sign it changes: the organizer's Pause, Resume and Turn off (or Turn on), or anyone else's Ask for notes.
  */
-export function NotesMenu({ state, controls }: { state: CallState; controls: CaptureControls }) {
+function NotesMenu({ state, controls }: { state: CallState; controls: CaptureControls }) {
   const c = state.capture;
   const on = notesAreOn(c.mode);
   const paused = c.mode === 'paused';
@@ -206,6 +205,7 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
         <div className="ic-nh">
           <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
           <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+          <NotesMenu state={state} controls={controls} />
         </div>
         {carried}
         {on && state.isHost && !host && c.room && (
@@ -455,6 +455,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)) && !ringing.some((r) => sameEmail(r.person, g)));
   const now = Date.now();
+  const roomsSaid = useId();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const decide = (id: string, f: (id: string) => Promise<void>) => {
@@ -482,9 +483,9 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
         )}
         {notesAsks}
         {rooms && (
-          <button type="button" className="ic-roomsrow" onClick={rooms.onOpen}>
+          <button type="button" className="ic-roomsrow" aria-label="Breakout rooms" aria-describedby={roomsSaid} onClick={rooms.onOpen}>
             <Icon name="door" size={20} />
-            <span className="min-w-0"><b>Breakout rooms</b><small>{rooms.open ? 'Rooms are open' : 'Split the call into rooms for a while'}</small></span>
+            <span className="min-w-0"><b>Breakout rooms</b><small id={roomsSaid}>{rooms.open ? 'Rooms are open' : 'Split the call into rooms for a while'}</small></span>
             <Icon name="chevron" size={16} />
           </button>
         )}

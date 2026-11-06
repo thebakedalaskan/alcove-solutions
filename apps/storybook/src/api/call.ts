@@ -175,7 +175,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
       case 'chat': {
         const p = this.find(b.who);
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: Date.now(), place: c.place, sending: false, reactions: [] }] }));
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
         return;
       }
       case 'react': {
@@ -714,7 +714,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   refresh(): Promise<void> { return Promise.resolve(); }
   sendChat(text: string): Promise<void> {
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: Date.now(), place: c.place, sending: false, reactions: [] }] }));
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
     return Promise.resolve();
   }
   /** Yours on a message, on or off: the same rules as the real call's. */

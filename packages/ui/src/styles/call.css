@@ -181,7 +181,7 @@
 .ic-yb.is-faces .ac-faces .ac-avatar { --ring: color-mix(in srgb, var(--stage-ink) 5%, var(--stage)); }
 .ic-yb.is-faces:hover .ac-faces .ac-avatar { --ring: color-mix(in srgb, var(--stage-ink) 11%, var(--stage)); }
 .ic-yb.is-faces.is-on .ac-faces .ac-avatar { --ring: color-mix(in srgb, var(--stage-sun) 16%, var(--stage)); }
-.ic-yb.is-faces .ask { position: absolute; top: -3px; right: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--speak); color: var(--stage); font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 0 2px var(--stage); }
+.ic-yb.is-faces .ask { position: absolute; top: -7px; right: -7px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--speak); color: var(--stage); font: 700 11px/18px var(--font-sans); text-align: center; box-shadow: 0 0 0 2px var(--stage); }
 /* What's showing, when there isn't room for all of it at once. */
 .ic-swap { flex: 0 1 auto; display: inline-flex; gap: 2px; min-width: 0; margin: 0 auto; padding: 3px; border-radius: 11px; background: rgb(255 255 255 / 0.08); }
 .ic-swap button { min-width: 0; height: 30px; padding: 0 11px; overflow: hidden; border-radius: 8px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); text-overflow: ellipsis; white-space: nowrap; }
@@ -574,7 +574,8 @@
 /* How the notes stand, first in the notes: the sign as everyone sees it, and what that means here. */
 .ic-nh { display: flex; align-items: center; gap: 10px; padding: 0 20px 4px; }
 .ic-nh .ac-notes-sign, .ic-nh .ac-capture-sign { flex: none; height: 26px; padding: 0 10px 0 9px; font-size: 12px; }
-.ic-nh .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+.ic-nh .m { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
+.ic-nh .ac-icon-btn { flex: none; width: 32px; height: 32px; margin-right: -8px; border-radius: 50%; color: var(--ink-2); }
 /* Yours, at the foot of the notes: only you see it. */
 .ic-own { display: grid; gap: 4px; margin: 0 20px; padding: 14px 0 20px; border-top: 1px solid var(--line); }
 .ic-own .ic-sh { margin-bottom: 2px; }
@@ -912,24 +913,22 @@
 .ic-leave .next-host .pick > :first-child { margin-top: 6px; }
 .ic-leave .next-host .ic-opt { height: 40px; }
 
-/* Narrower windows: the top bar keeps its controls and drops their words, widest first. */
+/* Narrower windows: the top bar keeps its controls and drops their words, widest first. Their names stay for a screen reader. */
 @media (max-width: 1100px) {
   .ic-top { gap: 10px; }
   .ic-top .end { gap: 10px; }
-  .ic-viewbtn .vt { display: none; }
   .ic-share .pk-note { display: none; }
 }
 @media (max-width: 1040px) {
   .ic-swap button { padding: 0 8px; font-size: 12.5px; }
 }
-@media (max-width: 940px) {
+@media (max-width: 960px) {
+  .ic-viewbtn .vt, .ic-yb .yl, .ic-yb.is-faces .n { display: none; }
   .ic-yb.has-word { padding: 0 10px; }
-  .ic-yb .yl, .ic-yb.is-faces .n { display: none; }
 }
 @media (max-width: 760px) {
   .ic-top { height: 60px; }
   .ic-top .clock, .ic-top .vr.v1 { display: none; }
-  .ic-yb.is-faces .ac-faces .ac-avatar:nth-child(n+3), .ic-yb.is-faces .ac-faces .more { display: none; }
   .ic-rs { display: none; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

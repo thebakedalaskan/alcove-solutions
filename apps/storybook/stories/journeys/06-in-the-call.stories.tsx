@@ -6,7 +6,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { at, knocks } from '../../src/api/script';
-import { inCall } from '../../src/call';
+import { MORE, inCall, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, DIEGO, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
 import { LAPTOP, LATER, SOON } from './play';
@@ -77,9 +77,10 @@ export const AskForNotes: PageStory = {
     scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-jny' },
     script: { here: [{ who: KOFI }, { who: AIKO }, { who: MAYA }], notes: 'off', talk: { lines: CHECK_IN_TALK }, summary: CHECK_IN_SUMMARY, cues: at(9, { do: 'notes', mode: 'on' }) }
   }, { globals: LAPTOP }),
-  play: async ({ userEvent, step }) => {
-    await step('At Priya’s check-in, notes are off. Anyone can ask for them', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Notes' }, LATER));
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await step('At Priya’s check-in, notes are off. Anyone can ask for them, from Notes at the top right', async () => {
+      await reach('Notes')(c);
       await userEvent.click(await screen.findByRole('button', { name: 'Ask for notes' }, SOON));
     });
     await step('Everyone sees who asked, and Priya turns them on', async () => {
@@ -95,8 +96,9 @@ export const CatchUp: PageStory = {
     script: { here: REVIEWERS, since: 7 * 60, earlier: REVIEW_TALK.slice(0, 9), talk: { lines: REVIEW_TALK.slice(9) }, summary: REVIEW_SUMMARY }
   }, { globals: LAPTOP }),
   play: async ({ userEvent, step }) => {
-    await step('Joined seven minutes late. Catch up reads what you most likely missed, for you alone', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Catch up' }, LATER));
+    await step('Joined seven minutes late. Catch up, in More, reads what you most likely missed, for you alone', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'Catch up on what you missed' }, SOON));
     });
     await step('What was decided, suggested and left open, each with the times it was said', async () => {
       await screen.findAllByText(/Every empty list gets one line and the empty arch/, {}, LATER);

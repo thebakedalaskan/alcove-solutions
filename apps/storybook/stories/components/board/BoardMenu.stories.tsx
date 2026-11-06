@@ -1,10 +1,10 @@
 /*
- * BoardMenu: the dock's Board button opens it, rising from the button. A new board from Blank, Retro, Ideas or Flow, and the
+ * BoardMenu: Board, at the top right of the call, opens it under itself. A new board from Blank, Retro, Ideas or Flow, and the
  * team's recent boards from the workspace. If some people here can't open a saved board, whoever opens it decides first:
- * let them in for this call, or open it without them. In a breakout room a new board is only for that room. Press the Board
- * button to close it and open it again.
+ * let them in for this call, or open it without them. In a breakout room a new board is only for that room. Press Board
+ * to close it and open it again.
  */
-import { BoardMenu, BoardMenuThumb, CallDock, DockButton, DockLeave, DockSeparator } from '@alcove/ui';
+import { BoardMenu, BoardMenuThumb, CallTopButton, CallTopGroup, CallTopRule } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import '../../../src/board.css';
@@ -24,23 +24,21 @@ const meta = {
   subcomponents: { BoardMenuThumb },
   ...onStage,
   args: {
-    open: true, inRoom: false, recents: RECENTS, anchor: <DockButton icon="presentation" label="Board" />,
+    open: true, inRoom: false, recents: RECENTS, anchor: <CallTopButton icon="presentation" word="Board" label="Board" on />,
     onOpenChange: did('onOpenChange'), onTemplate: did('onTemplate'), onRecent: did('onRecent')
   },
   argTypes: { anchor: { control: false }, recents: { control: false }, access: { control: false } },
   render: function Render(args) {
     const [, update] = useArgs<typeof args>();
     return (
-      <div className="sbb-dock">
-        <CallDock>
-          <DockButton icon="mic" label="Mute" />
-          <DockButton icon="video" label="Camera" />
+      <div className="sbb-top">
+        <CallTopGroup label="Just for you">
           <BoardMenu {...args} onOpenChange={(open) => { args.onOpenChange(open); update({ open }); }} />
-          <DockButton icon="chat" label="Chat" />
-          <DockButton icon="more" label="More" />
-          <DockSeparator />
-          <DockLeave />
-        </CallDock>
+          <CallTopButton icon="folderOpen" word="Workspace" label="Workspace" />
+          <CallTopRule />
+          <CallTopButton icon="notesPen" word="Notes" label="Notes" />
+          <CallTopButton icon="chat" word="Chat" label="Chat" />
+        </CallTopGroup>
       </div>
     );
   }

@@ -10,7 +10,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { at, clearsVote, closesBoard, endsVote, opensBoard, shares, startsTimer, startsVote, type CallScript, type Cue, type Present } from '../../src/api/script';
-import { inCall, light, phone } from '../../src/call';
+import { MORE, inCall, light, phone } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { RETRO, filledAfter, retroWith } from './boards';
 import { AIKO, CHECKLIST, KOFI, PRIYA, REVIEW, REVIEW_TALK } from './talk';
@@ -29,21 +29,21 @@ const review = (cues: Cue[], board: CallScript['board'] = RETRO, more: Omit<Page
 
 /* ---------- on the stage ---------- */
 
-/** The Board menu, from Board in the dock or O: a new board from a template, or one your team already has, with where it's from. */
+/** The Board menu, from Board at the top right or O: a new board from a template, or one your team already has, with where it's from. */
 export const TheBoardMenu = review([], RETRO, {
   play: async ({ canvas, userEvent, step }) => {
-    await step('Press Board, beside Share in the dock', async () => {
+    await step('Press Board, at the top right', async () => {
       await userEvent.click(await canvas.findByRole('button', { name: 'Board' }, LATER));
     });
   }
 });
-/** On a phone, Board is in More, beside Share, and Open a board shows the same menu there. */
+/** On a phone, Board is at the top of More, and shows the same menu there. */
 export const TheBoardMenuPhone: PageStory = {
   ...phone(TheBoardMenu),
   play: (async ({ userEvent, step }) => {
-    await step('Press More, then Open a board', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: /^More: .*notes, settings$/ }, LATER));
-      await userEvent.click(await screen.findByRole('button', { name: 'Open a board' }, SOON));
+    await step('Press More, then Board', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'Board' }, SOON));
     });
   }) satisfies Play
 };
@@ -71,23 +71,24 @@ export const TheSeal = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), {
   }
 });
 
-/** Hidden for you alone: Board in the dock drops it to a live tile among the faces. Nobody else's view changes. */
+/** Hidden for you alone: Board at the top right, lit while the board's on your stage, drops it to a live tile among the faces. Nobody else's view changes. */
 export const HiddenForYou = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), {
   play: async ({ canvas, userEvent, step }) => {
-    await step('Press Board in the dock: the board drops to a live tile among the faces, for you alone', async () => {
-      await userEvent.click(await canvas.findByRole('button', { name: 'Hide the board for you' }, LATER));
+    await step('Press Board, at the top right: the board drops to a live tile among the faces, for you alone', async () => {
+      await canvas.findByRole('button', { name: 'Design review' }, LATER);
+      await userEvent.click(await canvas.findByRole('button', { name: 'Board', pressed: true }, LATER));
     });
   }
 });
-/** On a phone, Board is in More, beside Share. */
+/** On a phone, Board is at the top of More. */
 export const HiddenForYouPhone: PageStory = {
   ...phone(HiddenForYou),
   play: (async ({ userEvent, step }) => {
-    await step('Press More, then Hide the board: it drops to a live tile, for you alone', async () => {
+    await step('Press More, then Board: it drops to a live tile, for you alone', async () => {
       await screen.findByRole('button', { name: 'Design review' }, LATER);
       // The dock's More, not the board's own beside its tools.
-      await userEvent.click(await screen.findByRole('button', { name: /^More: .*notes, settings$/ }, LATER));
-      await userEvent.click(await screen.findByRole('button', { name: /^Hide the board/ }, SOON));
+      await userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'Board' }, SOON));
     });
   }) satisfies Play
 };

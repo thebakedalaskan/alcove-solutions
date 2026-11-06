@@ -5,7 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { at, line } from '../../src/api/script';
-import { inCall, phone, press } from '../../src/call';
+import { MORE, inCall, phone, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { AIKO, CHECK_IN, KOFI, MAYA, PRIYA, REVIEW } from './talk';
 
@@ -13,16 +13,21 @@ const meta = { title: 'Calls/Breakout rooms', ...pages } satisfies Meta<PageArgs
 export default meta;
 
 const REVIEWERS = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
-/** The organizer sets rooms up: how many, how long, and who goes where (drag people between them). */
-export const SettingUp = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: press('Breakout rooms') });
+/**
+ * The organizer sets rooms up in their side, from Breakout rooms in More or in People: how many, how long, and who goes where
+ * (drag people between them).
+ */
+export const SettingUp = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: press(MORE, { then: ['Breakout rooms'] }) });
+/** From People: Breakout rooms sits above who's here, for the organizer. */
+export const SettingUpFromPeople = { ...SettingUp, name: 'Setting up, from People', play: reach('People', { then: ['Breakout rooms'] }) };
 
 /** Rooms open: the organizer's stage shows every room and who's in it, with the shared timer. */
 export const Open = inCall({
   scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS },
   then: (s) => s.openRooms({ rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [AIKO.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } })
-}, { play: press('Breakout rooms') });
-/** On a phone, breakout rooms are under More. */
-export const OpenPhone = { ...phone(Open), play: press('More: chat, notes, settings', { then: ['Breakout rooms'] }) };
+}, { play: press(MORE, { then: ['Breakout rooms'] }) });
+/** On a phone, your side, and the rooms with it, is a sheet over the call. */
+export const OpenPhone = phone(Open);
 
 /**
  * At Priya's check-in, she opens rooms two seconds in: you're in Rollout with Kofi, and talk the dates through. Her message

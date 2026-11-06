@@ -29,7 +29,7 @@ const review = (o: { cues?: Cue[]; here?: Present[]; board?: CallScript['board']
 };
 /** The board's name in its bar: the call's, as a new board is named. */
 const boardName = () => screen.findByRole('button', { name: 'Design review' }, LATER);
-/** Opens the Board menu from the dock and starts a new board from `template`. */
+/** Opens the Board menu from Board at the top right and starts a new board from `template`. */
 async function startFrom(template: 'Blank' | 'Retro' | 'Ideas' | 'Flow', { userEvent }: Parameters<NonNullable<PageStory['play']>>[0]): Promise<void> {
   await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
   await userEvent.click(await screen.findByRole('button', { name: template }, SOON));
@@ -40,7 +40,7 @@ export const StartABoard: PageStory = {
   ...review(),
   play: async (c) => {
     const { userEvent, step } = c;
-    await step('Board sits beside Share in the dock: it puts something in front of everyone. Press it, or O', async () => {
+    await step('Board sits at the top right, beside Workspace. Press it, or O', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
     await step('A small menu rises from it. Blank is one click; boards your team already has are underneath. Press Retro', async () => {
@@ -71,8 +71,8 @@ export const SomeoneElseStartsIt: PageStory = {
     await step('You’re listening to Priya. She opens the launch retro: it rises on your stage too, with one line to say what it is', async () => {
       await boardName();
     });
-    await step('Press Board in your dock: only your view changes. The board drops to a live tile, and the faces get big again', async () => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Hide the board for you' }, SOON));
+    await step('Press Board, at the top right: only your view changes. The board drops to a live tile, and the faces get big again', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Board', pressed: true }, SOON));
     });
     await step('Press the tile: you’re back on the board, where everyone has been working', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Open the board' }, SOON));
