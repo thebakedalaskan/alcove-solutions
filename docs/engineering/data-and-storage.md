@@ -49,6 +49,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
 | `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
+| `workspace_media_previews` | owner, media, object ID, the object's SHA-256 and length. At most one a file, and none for a picture from before previews (0016) | (the object: a sealed small JPEG of the picture) |
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
 | `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
@@ -492,6 +493,15 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   goes. A piece is kept by its place in the file, so sending it again changes nothing. `…/finish` makes the file readable
   once every piece is there; until then nobody can read, list or reuse it. Every piece counts towards the workspace's
   `stored_bytes`, once, however many documents have the file.
+- **A picture's preview.** The browser uploading a photo makes a small JPEG of it, at most 320 pixels on its longer side and
+  128 KiB (`MEDIA_PREVIEW_PIXELS`, `MAX_MEDIA_PREVIEW_BYTES`), and sends it once the photo is finished, to `POST …/media/:media/preview`
+  as `image/jpeg`. It's a `media-preview` binary record, sealed under the file's own key, in one object under a random name, a
+  row in `workspace_media_previews`, and it counts with the file towards `stored_bytes`. Only someone who can edit a document
+  with the file keeps one, only of a finished picture, and only once: the first kept stays. `GET …/preview` reads it for anyone
+  who can read the picture there, and says `204` when it has none. The photo picker draws every photo from its preview; a photo
+  from before previews has none, so the picker reads it whole once, decodes it at the small size and keeps that for as long as
+  the workspace is on screen. A preview goes with its file, its object queued in `object_gc` in the same transaction, and with
+  its workspace. A preview that doesn't get there doesn't fail the upload.
 - **Going wrong.** The client tries a piece again: for up to 5 minutes through a lost connection or a busy server, which
   pass by themselves, picking up as soon as the browser says it's back online, so a Wi-Fi handover doesn't start 500 MiB
   over; and 3 times more after a failure on the server. Past that, or if the browser gives up, it takes back what got there
@@ -536,7 +546,12 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   gets there in a minute, holds no file anywhere, and the page offers Try again. The session closes only once everything it
   wrote has reached Alcove, however long the connection is away, and until then the upload still says it's on and closing the
   tab asks first. As each file is stored its ID goes into the block, and a photo's caption, an attribute of its own
-  (`cap:<id>`), starts as the file's name without its extension. A film's first frame goes first, as a picture of its own
+  (`cap:<id>`), starts as the file's name without its extension. A photo used again from the picker keeps the caption it has
+  elsewhere in the document, and otherwise starts with none. `@` in a caption tags someone as in a comment: the words say
+  `@First`, and who that is goes beside them in `tags:<id>`, a list of `{ id, name }`, so the words are still the caption for
+  anything that reads only `cap:<id>` (search, the notes, copying out, an older release), and a caption from before tags has no
+  list and reads as it always did. A tag counts while its `@First` is still in the words. Whoever's newly tagged is told through
+  `mention`, with the gallery's block, or asked about first if they can't open the document, as for a tag in a line. A film's first frame goes first, as a picture of its own
   named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
   one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
   which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API

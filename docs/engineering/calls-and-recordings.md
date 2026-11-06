@@ -1766,11 +1766,18 @@ share picker, the leave sheet and the device pickers.
   (`writesLiveBlocks`): not a guest, in a breakout room, or with notes of their own. A block holds the call it belongs to, so a later
   call leaves it alone, and it only fills in while someone in the call who can edit has its document open. A block in a document
   counts as watching the notes.
-- **Hear it** (`HearIt.tsx`) is the `Editor`'s `hear`, drawn on a quote once it names a note. It reads the note as the note's own page
-  does, so someone without it never sees the button and nothing complains, and finds the line in the note's transcript by its ID.
-  During the call the note has no transcript yet, so the line is found in the call's own (`CallState.transcript`) while the call is
-  the note's, and the note is read again until its recording has audio. It plays through `usePlayer` (`notes.audioUrl`) until the
-  next line, or for 8 seconds after the last one. A call that keeps no recording has nothing to hear.
+- **Hear it** (`HearIt.tsx`) is the `Editor`'s `hear`, drawn on a quote once it names a note. During the call the quote is from,
+  it's for anyone in the call, guests included, and shows on a line that's in their own live transcript: `GET
+  /v1/live/calls/:id/hear/:note/:line` (`CallSession.hear`, `calls.hear`) answers with that line's own pieces of the recording,
+  whole, and where in them the line starts and how long it lasts (`HEARD_HEADERS`). It takes a line the person may read
+  (`mayRead`: their part of the call, and for a guest with the link only while they were in it, a stay that ended without a word
+  ending when they were last heard from), not one said in a breakout room, and only pieces the person was there for, placed in
+  the call by where they are from the line: a guest who came in or went out part way through a piece doesn't get it. A run that
+  doesn't start the segment is preceded by what its first piece says the recording is (a WebM up to its first Cluster, an MP4 up
+  to its first fragment), with none of that piece's sound. Anything else, a call that doesn't keep its recording included, is
+  `not-found`. Otherwise, and after the call, it reads the note as the note's own page does, so someone without it never sees
+  the button, finds the line in the note's transcript by its ID, and plays through `usePlayer` (`notes.audioUrl`) until the next
+  line, or for 8 seconds after the last one. A call that keeps no recording has nothing to hear.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
   panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc goes in the canvas's

@@ -12,7 +12,7 @@
 import {
   AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
-  type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
+  type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
 import type {
@@ -24,6 +24,7 @@ import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
 import { writeNote } from '../world/build';
+import { quietAudio } from './media';
 import { personAt } from '../world/people';
 import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
@@ -131,7 +132,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
     // What was said before you came, spread over the time the call has been going.
     const earlier = script.earlier ?? [];
-    earlier.forEach((l, i) => this.hear(l, Math.round(((i + 1) / (earlier.length + 1)) * since)));
+    earlier.forEach((l, i) => this.heardLine(l, Math.round(((i + 1) / (earlier.length + 1)) * since)));
     // Joining late, the call's notes have been written already.
     if (this.heard.length) {
       this.notesFor = this.heard.length;
@@ -317,10 +318,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       this.speakingUntil.set(who.id, Date.now() + ms);
       this.after(ms, () => { if (Date.now() >= (this.speakingUntil.get(who.id) ?? 0) - 30) this.them(who.person, (t) => ({ ...t, speaking: false })); });
     }
-    this.hear(l, this.getSnapshot().elapsed);
+    this.heardLine(l, this.getSnapshot().elapsed);
   }
   /** A line into the transcript, if notes are on where it was said and you're there to read it. */
-  private hear(l: Line, at: number): void {
+  private heardLine(l: Line, at: number): void {
     const s = this.getSnapshot();
     const here = s.capture.room ? s.capture.room.mode : s.capture.mode;
     const who = l.who === 'me' ? s.participants.find((p) => p.isMe) : this.find(l.who);
@@ -1194,6 +1195,16 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   translate(lineIds: string[], _language: CaptionLanguage): Promise<CaptionTranslation[]> {
     const lines = this.getSnapshot().transcript;
     return Promise.resolve(lineIds.flatMap((id) => { const l = lines.find((x) => x.id === id); return l ? [{ id, text: l.text }] : []; }));
+  }
+  /**
+   * Hear it, as the call plays it: a line in your own transcript, which is only what you were there for, as a few quiet
+   * seconds of the recording around it. Anything else isn't there, as the API says it.
+   */
+  hear(note: string, line: string): Promise<LineAudio> {
+    const s = this.getSnapshot();
+    const l = s.transcript.find((x) => x.id === line);
+    if (s.notes.noteId !== note || !l || l.room) return Promise.reject(new AlcoveApiError('not-found', 'That moment of the call doesn’t exist, or you don’t have access to it.'));
+    return Promise.resolve({ audio: quietAudio(5), from: 1, seconds: 3 });
   }
   appendAudio(_piece: AudioPiece): Promise<void> { return Promise.resolve(); }
   transcribe(_clip: TranscriptClip, _speaker: string): Promise<void> { return Promise.resolve(); }

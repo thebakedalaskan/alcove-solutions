@@ -9,7 +9,13 @@ import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
+import { blindIndex } from './crypto';
 import { maintain } from './maintenance';
+import { documentText } from './modules/documentText';
+import { workspaceFor } from './modules/workspaceAccess';
+import { readDocument } from './modules/workspaceDocuments';
+import { masterKey } from './owners';
 import { startHarness, type Browser, type Harness } from './testing/harness';
 
 vi.setConfig({ testTimeout: 90_000 });
@@ -344,6 +350,83 @@ describe('a tag', () => {
     } finally {
       await listener.end();
     }
+  });
+});
+
+describe('a tag in a photo’s caption', () => {
+  /** Attributes as y-prosemirror writes them: of any type, though Yjs's types say strings. */
+  const setAttr = (el: Y.XmlElement, name: string, value: unknown) => { Reflect.apply(el.setAttribute, el, [name, value]); };
+  /** Photos, as the editor writes a gallery: its pictures, and each one's caption, and who that tags, as attributes of their own. */
+  async function gallery(who: Account, id: string, doc: string, attrs: Record<string, unknown>) {
+    const s = await who.api.workspaces.document(id, doc);
+    await s.ready;
+    const el = new Y.XmlElement('gallery');
+    for (const [k, v] of Object.entries({ id: 'ga', items: [{ media: 'mediaOne', name: 'harbour.png' }, { media: 'mediaTwo', name: 'dock.png' }], ...attrs })) setAttr(el, k, v);
+    const fragment = s.doc.getXmlFragment('content');
+    fragment.insert(fragment.length, [el]);
+    await until(() => s.getSnapshot().status === 'saved', 'the photos to reach Alcove');
+    s.close();
+  }
+  /** What the server reads the document as saying, as search and the notes read it. */
+  async function said(who: Account, id: string, doc: string) {
+    const w = await workspaceFor(h.deps, { email: who.email, principals: [blindIndex(masterKey(h.deps), 'email', who.email)] }, id);
+    const read = new Y.Doc();
+    Y.applyUpdate(read, await readDocument(w, doc, 'state', {}));
+    return { blocks: documentText(read, 'document').blocks, gallery: read.getXmlFragment('content').toArray().find((el): el is Y.XmlElement => el instanceof Y.XmlElement && el.getAttribute('id') === 'ga') };
+  }
+
+  it('reaches whoever’s tagged as a tag in a line does, and a caption from before tags reads as it always did', async () => {
+    const priya = await account();
+    const art = await account();
+    const id = await workspace(priya, 'Product', [[art, 'edit']]);
+    const plan = await make(priya, id, 'Launch plan');
+    // One caption from before tags, plain words, and one that tags Art: its words say @Art, and who that is is kept beside them.
+    await gallery(priya, id, plan, { 'cap:mediaOne': 'Felixstowe at dawn', 'cap:mediaTwo': `@${art.name.split(' ')[0] ?? art.name} at the dock`, 'tags:mediaTwo': [{ id: 'art-in-workspace', name: art.name }] });
+    const a = art.api.workspaces.live(id);
+    await opened(a, 'Art’s stream');
+    await tag(priya, id, plan, art, 'ga');
+    await until(() => told(a).length === 1, 'Art to hear of the caption');
+    expect(told(a)[0]).toMatchObject({ document: plan, block: 'ga', by: { name: priya.name, email: '' } });
+    a.close();
+    // The server reads both captions as words: the old one exactly as before, and the tag as the words it is.
+    const { blocks, gallery: el } = await said(priya, id, plan);
+    expect(blocks.find((b) => b.id === 'ga')).toEqual({ id: 'ga', type: 'gallery', text: `Felixstowe at dawn @${art.name.split(' ')[0] ?? art.name} at the dock` });
+    expect(el?.getAttribute('cap:mediaOne')).toBe('Felixstowe at dawn');
+    expect(el?.getAttribute('tags:mediaOne')).toBeUndefined();
+    // Nothing of who's tagged, or what the caption says, is in a row: not the document's, and not the tag waiting for Art.
+    expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = $1', [plan])).toBe(1);
+    const rows = JSON.stringify([...(await h.pool.query('SELECT * FROM document_updates WHERE document_id = $1', [plan])).rows, ...(await h.pool.query('SELECT * FROM workspace_mentions WHERE document_id = $1', [plan])).rows]);
+    for (const words of ['Felixstowe', 'at the dock', 'art-in-workspace']) expect(rows.includes(words), words).toBe(false);
+  });
+
+  it('follows the same access rules: nobody who can’t open the document is told, and nobody outside it can tag in it', async () => {
+    const priya = await account();
+    const art = await account();
+    const kofi = await account();
+    const lena = await account();
+    const id = await workspace(priya, 'Product', [[art, 'edit']]);
+    const theirs = await workspace(lena, 'Theirs', [[art, 'edit']]);
+    const plan = await make(priya, id, 'Launch plan');
+    const lenas = await make(lena, theirs, 'Their plan');
+    await gallery(priya, id, plan, { 'cap:mediaOne': '@Kofi on the quay', 'tags:mediaOne': [{ id: 'kofi', name: kofi.name }] });
+    // Kofi isn't in the workspace: the tag is taken, and he hears nothing, now or later, and nobody can tell.
+    expect(await code(tag(priya, id, plan, kofi, 'ga'))).toBe('allowed');
+    expect(await kofi.api.workspaces.mentions()).toEqual([]);
+    // Restricted from Art, a caption tag doesn't reach him either, until it's shared with him.
+    await priya.api.workspaces.share.restrict(id, plan, true);
+    expect(await code(tag(priya, id, plan, art, 'ga'))).toBe('allowed');
+    expect(await art.api.workspaces.mentions()).toEqual([]);
+    await priya.api.workspaces.share.set(id, plan, [{ email: art.email }], 'read');
+    await tag(priya, id, plan, art, 'ga');
+    expect((await art.api.workspaces.mentions()).map((m) => [m.document, m.block])).toEqual([[plan, 'ga']]);
+    // Across owners: Lena can't tag anyone in Priya's document, nor reach it through her own workspace's ID, nor Priya hers.
+    expect(await code(tag(lena, id, plan, art, 'ga'))).toBe('not-found');
+    expect(await code(tag(lena, theirs, plan, art, 'ga'))).toBe('not-found');
+    expect(await code(tag(priya, theirs, lenas, art, 'ga'))).toBe('not-found');
+    expect(await code(tag(priya, id, lenas, art, 'ga'))).toBe('not-found');
+    // Art can read it, so he can't tag anyone in it: tagging is for whoever can edit.
+    expect(await code(tag(art, id, plan, priya, 'ga'))).not.toBe('allowed');
+    expect((await art.api.workspaces.mentions()).map((m) => m.document)).toEqual([plan]);
   });
 });
 

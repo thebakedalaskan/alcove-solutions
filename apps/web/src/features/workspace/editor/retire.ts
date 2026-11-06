@@ -92,7 +92,7 @@ export function strayWords(element: Y.XmlElement, into: Y.XmlElement | undefined
 
 /** What a block says, to tell two copies of it apart. */
 const saying = (element: Y.XmlElement): string => {
-  const captions = Object.entries(element.getAttributes()).filter(([key]) => key.startsWith('cap:')).sort(([a], [b]) => a.localeCompare(b));
+  const captions = Object.entries(element.getAttributes()).filter(([key]) => key.startsWith('cap:') || key.startsWith('tags:')).sort(([a], [b]) => a.localeCompare(b));
   return JSON.stringify([element.toArray().map(String).join(''), captions]);
 };
 

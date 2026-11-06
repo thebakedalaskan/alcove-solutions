@@ -241,6 +241,11 @@ export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
  * long ago it was taken (`age`, in ms), so it's placed where it was on screen even if sending it took a moment.
  */
 export const FRAME_HEADERS = { share: 'x-alcove-share', age: 'x-alcove-age-ms' } as const;
+/**
+ * What comes with a line of a call's recording, beside its audio (`CallSession.hear`): where in the audio the line starts
+ * and how long it lasts, in seconds.
+ */
+export const HEARD_HEADERS = { from: 'x-alcove-heard-from', seconds: 'x-alcove-heard-seconds' } as const;
 /** A frame's JPEG, at most this big. Browsers send them at most 1600 pixels across, which is far smaller. */
 export const MAX_FRAME_BYTES = 1024 * 1024;
 /** How old a frame can say it is when it arrives: older ones are placed as if taken this long ago. */

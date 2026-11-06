@@ -459,6 +459,9 @@ export interface CallCrypto {
 export const CaptionTranslationSchema = z.object({ id: IDSchema, text: z.string() });
 export type CaptionTranslation = z.infer<typeof CaptionTranslationSchema>;
 
+/** A line of a call's recording, to hear: its audio, whole pieces of the recording around it, and where in that the line is (seconds). */
+export interface LineAudio { audio: Blob; from: number; seconds: number }
+
 /** Rooms to open: who goes where (invited people, by email), for how long, and what they have to work on. */
 export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number; board: BreakoutBoard }
 
@@ -550,6 +553,13 @@ export interface CallSession extends LiveStore<CallState> {
   pauseRoom(roomId: string, paused: boolean): Promise<void>;
   /** Live transcript lines in `language`, for you alone. Each line is translated once and kept sealed until the call ends. */
   translate(lineIds: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
+  /**
+   * Hear it, during the call: the recording of one line of its transcript (`line`, in the note `note`), for anyone in the
+   * call, but only a line they may read, said while they were there: a guest with the link never hears what was said while
+   * they were away. `not-found` for anything else, a call that doesn't keep its recording included. After the call it's
+   * the note's audio, for people with the note.
+   */
+  hear(note: string, line: string): Promise<LineAudio>;
   /** Whoever hosts: encrypts and stores one piece of the notes recording. */
   appendAudio(piece: AudioPiece): Promise<void>;
   /**

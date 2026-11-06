@@ -4,15 +4,15 @@
  * so everyone sees it, and everything they can do goes through the Editor's props. A stored picture is read through
  * the media handlers while its block is on the page, and a file that's been deleted for good says so where it was.
  */
-import { Avatar, Button, Icon, IconButton, cn } from '@alcove/ui';
+import { Avatar, Button, Icon, IconButton, WsCaptionField, cn, type WsTagChoice, type WsTagging } from '@alcove/ui';
 import type { Person } from '@alcove/api';
 import { firstName } from '@alcove/api';
 import type { Node as PMNode } from 'prosemirror-model';
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from 'react';
 import { position } from '~/lib/time';
 import { removeBlock, setBlockAttrs, setCaption } from '../actions';
 import type { EditorRuntime } from '../runtime';
-import { captionsOf, numberAttr, textAttr } from '../schema';
+import { captionsOf, numberAttr, textAttr, type CaptionTag } from '../schema';
 import type { MediaHandlers, MediaState, VideoPlay } from '../types';
 import { clockOf, liveWhen } from '../../live/dates';
 import { galleryItems, liveLines, type GalleryItem } from './attrs';
@@ -122,39 +122,85 @@ function Deleted({ what }: { what: 'photo' | 'video' }) {
 const NotLoaded = () => <span className="wb-gone"><Icon name="image" size={18} /><span>This photo didn’t load.</span></span>;
 
 /**
- * A caption is typed in peace and written 300 ms after the last key: it's one field, not a shared line of text. What's
- * still waiting is written if the block is moved or redrawn first. A photo has a caption once it's uploaded.
+ * What `@` offers in a caption, as in a comment: people and dates, and who of those offered was picked, so a caption names
+ * only people someone chose from the list. A caption is words everyone reads, so it can't name a document only some can open.
  */
-function Caption({ value, block, media }: { value: string; block: string | null; media: string | null }) {
+function useCaptionTagging(rt: EditorRuntime): { tagging: WsTagging | undefined; picked: Map<string, Person> } {
+  const onMention = rt.props.onMention;
+  const offered = useRef(new Map<string, Person>());
+  const picked = useRef(new Map<string, Person>());
+  const tagging = useMemo<WsTagging | undefined>(() => (onMention ? {
+    sections: (query) => onMention(query, { docsOnly: false }).flatMap((section) => {
+      const choices = section.items.flatMap((i): WsTagChoice[] => {
+        if (i.kind === 'person') {
+          offered.current.set(i.person.id, i.person);
+          return [{ key: i.person.id, label: i.person.name, person: i.person, sub: i.sub, words: firstName(i.person.name) }];
+        }
+        return i.kind === 'date' ? [{ key: i.date, label: i.label, icon: 'cal', words: i.label }] : [];
+      });
+      return choices.length ? [{ title: section.title, choices }] : [];
+    }),
+    onPick: (c) => { const person = offered.current.get(c.key); if (person) picked.current.set(c.key, person); }
+  } : undefined), [onMention]);
+  return { tagging, picked: picked.current };
+}
+
+/**
+ * A caption is typed in peace and written 300 ms after the last key: it's one field, not a shared line of text. What's
+ * still waiting is written if the block is moved or redrawn first. A photo has a caption once it's uploaded. `@` tags
+ * someone in it as in a comment: who it tags is kept beside its words (`tags:<media>`), and whoever's newly tagged is told,
+ * or asked about first if they can't open the document, once the caption is written.
+ */
+function Caption({ item, block }: { item: GalleryItem; block: string | null }) {
   const rt = useRuntime();
+  const { media, cap: value, tags } = item;
   const [draft, setDraft] = useState<string | null>(null);
+  const field = useRef<HTMLSpanElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const waiting = useRef<string | null>(null);
+  const { tagging, picked } = useCaptionTagging(rt);
+  /** Who the words tag now: whoever it tagged already, and whoever was picked since, while they're still named in it. */
+  const taggedIn = (cap: string): CaptionTag[] => {
+    const named = (p: { name: string }) => cap.includes(`@${firstName(p.name)}`);
+    const kept = tags.filter(named);
+    const fresh = [...picked.values()].filter((p) => named(p) && !kept.some((t) => t.id === p.id));
+    return [...kept, ...fresh.map((p) => ({ id: p.id, name: p.name }))];
+  };
+  const write = (cap: string) => {
+    if (!block || !media) return;
+    const now = taggedIn(cap);
+    const told = [...picked.values()].filter((p) => now.some((t) => t.id === p.id) && !tags.some((t) => t.id === p.id));
+    picked.clear();
+    setCaption(rt, block, media, cap, now);
+    const box = field.current?.getBoundingClientRect();
+    const rect = box ?? null;
+    for (const p of told) rt.props.onTagged?.(p, block, rect);
+  };
+  const latest = useRef(write);
+  latest.current = write;
   useEffect(() => () => {
     clearTimeout(timer.current);
     const cap = waiting.current;
-    if (cap !== null && block && media) queueMicrotask(() => setCaption(rt, block, media, cap));
+    if (cap !== null) queueMicrotask(() => latest.current(cap));
   }, [rt, block, media]);
   if ((rt.readOnly && !value) || !block || !media) return null;
   const commit = (cap: string) => {
     clearTimeout(timer.current);
     waiting.current = null;
     /* Not straight away: the field losing focus can be ProseMirror taking it off the page, in the middle of drawing. */
-    if (cap !== value) queueMicrotask(() => setCaption(rt, block, media, cap));
+    if (cap !== value || picked.size > 0) queueMicrotask(() => latest.current(cap));
   };
   return (
-    <input
-      className="wb-cap" type="text" aria-label="Caption" placeholder="Add a caption" readOnly={rt.readOnly} value={draft ?? value}
-      onChange={(e) => {
-        const cap = e.target.value;
-        setDraft(cap);
-        waiting.current = cap;
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => commit(cap), 300);
-      }}
-      onBlur={() => { if (draft !== null) commit(draft); setDraft(null); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-    />
+    <span ref={field} className="wb-capbox">
+      <WsCaptionField value={draft ?? value} tagged={tags.map((t) => t.name)} readOnly={rt.readOnly} tagging={rt.readOnly ? undefined : tagging}
+        onChange={(cap) => {
+          setDraft(cap);
+          waiting.current = cap;
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => commit(cap), 300);
+        }}
+        onDone={() => { if (draft !== null) commit(draft); setDraft(null); }} />
+    </span>
   );
 }
 
@@ -229,7 +275,7 @@ function Photo({ node, item, getPos }: { node: PMNode; item: GalleryItem; getPos
         {failed && <Failed name={failed.name} block={id} upload={uploadKey(node)} retry={failed.retry} asFile={failed.asFile} />}
         {!rt.readOnly && !bare && <><span className="wb-hand l" aria-hidden="true" onPointerDown={resize} /><span className="wb-hand r" aria-hidden="true" onPointerDown={resize} /></>}
       </div>
-      <Caption value={item.cap} block={id} media={item.media} />
+      <Caption item={item} block={id} />
     </figure>
   );
 }
@@ -246,7 +292,7 @@ function GalleryPhoto({ item, block, upload, index }: { item: GalleryItem; block
           </div>
         )}
       </div>
-      <Caption value={item.cap} block={block} media={item.media} />
+      <Caption item={item} block={block} />
     </figure>
   );
 }

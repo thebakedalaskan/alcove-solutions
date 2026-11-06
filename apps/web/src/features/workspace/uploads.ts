@@ -17,6 +17,7 @@
 import { errorCode, errorMessage, servedType, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { api } from '~/lib/api';
+import { smallJpeg } from './thumbs';
 import { log } from '~/lib/log';
 import type { BlockJSON } from './editor/types';
 import { openDocument } from './session';
@@ -399,10 +400,13 @@ function storedAttrs(job: Job, part: Part, media: WorkspaceMedia): Record<string
   return part === job.poster ? { poster: media.id } : { media: media.id, up: percentOf(job) };
 }
 
-function send(job: Job, part: Part, counts: boolean): Promise<WorkspaceMedia> {
+/** Sends one file. A photo goes with a small preview of itself, made here, for the picker to show it by. */
+async function send(job: Job, part: Part, counts: boolean): Promise<WorkspaceMedia> {
+  const preview = job.kind === 'gallery' && part.width && part.height ? await smallJpeg(part.file, { width: part.width, height: part.height }) : null;
   return api.workspaces.media.upload(job.workspaceId, job.documentId, part.file, {
     pass: job.pass, signal: job.stop.signal,
     ...(part.width && part.height ? { width: part.width, height: part.height } : {}),
+    ...(preview ? { preview } : {}),
     onProgress: ({ sent }) => { part.sent = sent; if (counts) progress(job); }
   });
 }

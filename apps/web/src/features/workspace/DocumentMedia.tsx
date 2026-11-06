@@ -39,12 +39,21 @@ const isFrame = (m: WorkspaceMedia) => isPicture(m) && m.name.endsWith(FRAME_SUF
 const isVideo = (m: WorkspaceMedia) => m.type.startsWith('video/');
 const ACCEPT: Record<MediaPick['kind'], string> = { photo: 'image/*', video: 'video/*', file: '' };
 
-/** A block made of files already stored: what reusing them puts on the page, with a caption to start from. */
-function blockOf(kind: MediaPick['kind'], chosen: readonly WorkspaceMedia[]): BlockJSON | null {
+/** What a photo used again here is captioned already: the caption it has elsewhere in this document, and who that tags. */
+type CaptionOf = EditorHandle['captionOf'];
+
+/**
+ * A block made of files already stored: what reusing them puts on the page. A photo keeps the caption it already has in this
+ * document, tags and all, and otherwise starts with none: its file's name isn't a caption.
+ */
+function blockOf(kind: MediaPick['kind'], chosen: readonly WorkspaceMedia[], captionOf: CaptionOf | undefined): BlockJSON | null {
   const first = chosen[0];
   if (!first) return null;
   if (kind === 'photo') {
-    const captions = Object.fromEntries(chosen.map((m) => [`cap:${m.id}`, stemOf(m.name)]));
+    const captions = Object.fromEntries(chosen.flatMap((m) => {
+      const had = captionOf?.(m.id);
+      return had ? [[`cap:${m.id}`, had.cap], ...(had.tags.length ? [[`tags:${m.id}`, had.tags]] : [])] : [];
+    }));
     return { type: 'gallery', attrs: { items: chosen.map((m) => ({ media: m.id, name: m.name, width: m.width, height: m.height })), ...captions } };
   }
   if (kind === 'video') return { type: 'video', attrs: { media: first.id, title: stemOf(first.name), width: first.width, height: first.height } };
@@ -71,16 +80,15 @@ function useChanges(): Changes {
   }, []);
 }
 
-/** Pictures the picker offers, read for as long as it's open, through a document that has each. */
-function ReusePhotos({ pictures, photos, heading, onChoose, onPick }: {
-  pictures: Pictures; photos: readonly WorkspaceMedia[]; heading: string; onChoose: () => void; onPick: (chosen: WorkspaceMedia[]) => void;
+/**
+ * Pictures the picker offers, each by its small picture, read through a document that has it: never the whole photo, which
+ * a photo from before previews is read as once, and made small. Each is named by its caption here, if it has one.
+ */
+function ReusePhotos({ pictures, photos, heading, captionOf, onChoose, onPick }: {
+  pictures: Pictures; photos: readonly WorkspaceMedia[]; heading: string; captionOf: EditorHandle['captionOf'] | undefined; onChoose: () => void; onPick: (chosen: WorkspaceMedia[]) => void;
 }) {
   useSyncExternalStore(pictures.subscribe, pictures.getSnapshot, pictures.getSnapshot);
-  useEffect(() => {
-    const letGo = photos.flatMap((m) => { const through = m.documents[0]; return through ? [pictures.hold(through, m.id)] : []; });
-    return () => { for (const l of letGo) l(); };
-  }, [pictures, photos]);
-  const shown: WsPhoto[] = photos.map((m) => ({ id: m.id, label: stemOf(m.name), src: m.documents[0] ? pictures.url(m.documents[0], m.id) : undefined }));
+  const shown: WsPhoto[] = photos.map((m) => ({ id: m.id, label: captionOf?.(m.id)?.cap ?? stemOf(m.name), src: m.documents[0] ? pictures.small(m.documents[0], m.id, m.width && m.height ? { width: m.width, height: m.height } : null) : undefined }));
   return (
     <WsUploadPicker heading={heading} photos={shown} onChoose={onChoose}
       onPhoto={(id) => { const m = photos.find((p) => p.id === id); if (m) onPick([m]); }} onAll={() => onPick([...photos])} />
@@ -268,7 +276,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   /** Files already in the workspace, put where the picker was: attached to this document first, so nobody here gets `not-found`. */
   const reuse = async (pick: Picking, chosen: readonly WorkspaceMedia[]) => {
     setPicking(null);
-    const block = blockOf(pick.kind, chosen);
+    const block = blockOf(pick.kind, chosen, now.current.editor?.captionOf);
     if (!block) return;
     try {
       await Promise.all(chosen.filter((m) => !m.documents.includes(documentId)).map((m) => attach(m.id)));
@@ -321,7 +329,7 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
 
   const pickerFor = (pick: Picking) => {
     const reusable = offered(pick.kind);
-    if (pick.kind === 'photo') return <ReusePhotos pictures={pictures} photos={reusable} heading={heading} onChoose={() => choose(pick)} onPick={(m) => { void reuse(pick, m); }} />;
+    if (pick.kind === 'photo') return <ReusePhotos pictures={pictures} photos={reusable} heading={heading} captionOf={now.current.editor?.captionOf} onChoose={() => choose(pick)} onPick={(m) => { void reuse(pick, m); }} />;
     const files: WsStoredFile[] = reusable.map((m) => ({ id: m.id, name: m.name, sub: sizeLabel(m.size), icon: pick.kind === 'video' ? 'film' : 'clip' }));
     return <WsUploadPicker heading={heading} files={files} onChoose={() => choose(pick)} onFile={(id) => { const m = reusable.find((x) => x.id === id); if (m) void reuse(pick, [m]); }} />;
   };

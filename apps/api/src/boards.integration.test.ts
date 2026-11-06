@@ -704,7 +704,7 @@ describe('who can do what', () => {
     const tables = ['documents', 'document_updates', 'document_snapshots', 'document_versions', 'document_version_parts', 'document_clients', 'document_access'];
     for (const table of tables) expect(await count(`SELECT count(*)::int AS n FROM ${table} WHERE document_id = $1`, [board]), table).toBe(0);
     // Its picture goes with it, as nothing else has it: its rows, each of its pieces, and the bytes they were counted as.
-    for (const table of ['workspace_media', 'workspace_media_pieces', 'workspace_media_uses']) expect(await count(`SELECT count(*)::int AS n FROM ${table} WHERE media_id = $1`, [picture.id]), table).toBe(0);
+    for (const table of ['workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']) expect(await count(`SELECT count(*)::int AS n FROM ${table} WHERE media_id = $1`, [picture.id]), table).toBe(0);
     for (const piece of pieces) expect(await stored(piece), piece).toBe(false);
     expect(await code(ann.api.workspaces.media.url(id, board, picture.id))).toBe('not-found');
     // The rest of a board's content is all in rows: the object store is as it was before it, and nothing's waiting to be deleted there.

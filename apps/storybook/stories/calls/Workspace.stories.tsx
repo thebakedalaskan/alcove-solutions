@@ -4,6 +4,7 @@
  * everyone; someone who can open nothing in it, and asking to see it; a follow-up added by hand; and the toasts. Everyone
  * else's browser is the script's: where they are in the workspace, what they present and play, and who asks.
  */
+import type { CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { asksToSee, at, goesTo, leaves, movesPresenting, opensPage, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
@@ -153,6 +154,31 @@ export const Following = inCall(reviewing({ cues: at(10, goesTo(PRIYA, CHECKLIST
   }
 });
 export const FollowingPhone = phone(Following);
+
+/**
+ * Hear it, during the call: what was said a moment ago, quoted into the plan as Quote what was said does, plays from the
+ * call's own recording, for anyone in the call who was there for it, a guest included. After the call, it's for people with
+ * the notes. The quote is the call's newest line, put at the end of the plan as you come in.
+ */
+function quoteTheLatest(session: CallSession): void {
+  const s = session.getSnapshot();
+  const line = s.transcript.at(-1);
+  const page = current().pages[PLAN];
+  if (!line || !s.notes.noteId || !page) return;
+  page.blocks = [...page.blocks.filter((b) => b.type !== 'moment'), {
+    type: 'moment', attrs: { person: line.speaker?.person?.id ?? null, name: line.speaker?.name ?? '', at: new Date(Date.now() - 60_000).toISOString(), text: line.text, line: line.id, note: s.notes.noteId }
+  }];
+}
+const hearIt: Play = async (c) => {
+  await openWorkspace(c);
+  await c.step('Press Hear it on the quote at the end of the plan', async () => {
+    const hear = await c.canvas.findByRole('button', { name: 'Hear it' }, { timeout: 10000 });
+    hear.scrollIntoView({ block: 'center' });
+    await c.userEvent.click(hear);
+  });
+};
+export const HearIt = inCall({ ...reviewing(), then: quoteTheLatest }, { play: hearIt });
+export const HearItPhone = phone(HearIt);
 
 /** Kofi tags you in the launch checklist while you're in the plan: the toast says so, with Go there. */
 export const Tagged = inCall(reviewing({ cues: at(9, tagsYou(KOFI, CHECKLIST_DOC)) }), { play: openWorkspace });
