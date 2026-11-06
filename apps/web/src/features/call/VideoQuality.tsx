@@ -22,7 +22,7 @@ const SEE_SAYS: Record<VideoReceive, string> = {
 
 export function VideoQuality({ media, m }: { media: LocalMedia; m: MediaSnapshot }) {
   // HD where the camera has it: one that tops out lower says so, and that's what's sent.
-  const { most } = cameraSends(m.sendVideo, m.camera?.getVideoTracks()[0]);
+  const { most } = cameraSends(m.sendVideo, m.cam ? media.camSource() : null);
   const sends = most !== null ? `Your camera gives ${most}p at most, so that’s what’s sent.` : SEND_SAYS[m.sendVideo];
   return (
     <div className="ic-vq">

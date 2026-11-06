@@ -9,8 +9,10 @@
  * wanted it; in the call, nothing turns a microphone or camera on by itself: after a gap with none, it waits for
  * its button.
  */
-import { errorCode, errorMessage, type AudioPiece, type VideoReceive, type VideoSend } from '@alcove/api';
+import { errorCode, errorMessage, type AudioPiece, type CameraBackground, type VideoReceive, type VideoSend } from '@alcove/api';
 import { log } from '~/lib/log';
+import { Backdrop, canBackdrop, type Look } from './backdrop';
+import { SCENES, keptPicture } from './backgrounds';
 import { canChooseSpeaker, enumerate, permissions, plainName, readPrefs, rememberDevice, watchPermissions, type Capture, type Permission } from './devices';
 import { canShareScreen, shareProblem, type ShareProblem } from './share';
 
@@ -46,9 +48,9 @@ export interface MediaSnapshot {
   changes: readonly DeviceChange[];
   /** The browser cleans up the microphone (noise suppression). */
   noiseReduction: boolean;
-  /** The camera can blur what's behind you (the browser or system does it), and whether it is. */
-  canBlur: boolean;
-  blur: boolean;
+  /** This browser can show something else behind you on camera (see backdrop.ts), and what shows there now. */
+  canBackground: boolean;
+  background: CameraBackground;
   /** What's being shared: the browser's name for it, and whether it's a tab, a window or a screen. */
   screenLabel: string | null;
   screenSurface: ShareSurface | null;
@@ -87,16 +89,8 @@ export function cameraSends(send: VideoSend, track: MediaStreamTrack | null | un
   const most = Math.min(width, height);
   return send === 'hd' && most > 0 && most < 1080 ? { as: 'standard', most } : { as: send, most: null };
 }
-/** A size and, where the browser can switch it, blur, as one set: each `applyConstraints` replaces the last one whole. */
-const withBlur = (size: MediaTrackConstraints, blur: boolean | null): MediaTrackConstraints => (blur === null ? size : { ...size, advanced: [{ backgroundBlur: blur }] });
 const audioFor = (noiseSuppression: boolean): MediaTrackConstraints => ({ echoCancellation: true, noiseSuppression });
 const deviceOf = (t: MediaStreamTrack | null) => t?.getSettings().deviceId ?? null;
-/** Blur that the browser can switch both ways: a camera that only reports the system's setting can't be changed from here. */
-function blurOf(t: MediaStreamTrack | null): { canBlur: boolean; blur: boolean } {
-  if (!t || typeof t.getCapabilities !== 'function') return { canBlur: false, blur: false };
-  const can = t.getCapabilities().backgroundBlur ?? [];
-  return { canBlur: can.includes(true) && can.includes(false), blur: t.getSettings().backgroundBlur === true };
-}
 /** Browsers name shared tabs and screens by internal IDs; those read as what was chosen instead. */
 function shareLabel(t: MediaStreamTrack, surface: ShareSurface | null): string {
   const internal = /^(web-contents-media-stream|screen|window):/i.test(t.label) || !t.label.trim();
@@ -127,6 +121,13 @@ const QUICK_MS = 300;
 /** A device that's working was allowed, whatever the browser said before (unless it won't say). */
 const granted = (p: Permission): Permission => (p === 'unknown' ? 'unknown' : 'granted');
 
+const NO_BACKGROUND: CameraBackground = { kind: 'none' };
+/**
+ * A camera with its background drawn: the track to show (the camera's own with none), or why there isn't one: media
+ * stopped or the camera was turned off meanwhile (`late`), or the background couldn't be drawn (`failed`, said).
+ */
+type Dressed = MediaStreamTrack | 'late' | 'failed';
+
 interface Opened { audio?: MediaStreamTrack | undefined; video?: MediaStreamTrack | undefined; audioError?: unknown; videoError?: unknown; quick: boolean }
 
 /** A problem fixed since: allowed now (when it was refused or unanswered), or, when none was plugged in, one is. */
@@ -137,12 +138,22 @@ export class LocalMedia {
   private snap: MediaSnapshot = {
     camera: null, screen: null, mic: true, cam: true, micId: null, camId: null, speakerId: null,
     access: { mic: { permission: 'unknown', problem: null }, cam: { permission: 'unknown', problem: null } }, changes: [],
-    noiseReduction: readPrefs().noiseReduction ?? true, canBlur: false, blur: false, screenLabel: null, screenSurface: null,
+    noiseReduction: readPrefs().noiseReduction ?? true, canBackground: false, background: readPrefs().background ?? NO_BACKGROUND, screenLabel: null, screenSurface: null,
     sendVideo: readPrefs().sendVideo ?? 'standard', receiveVideo: readPrefs().receiveVideo ?? 'auto'
   };
   private listeners = new Set<() => void>();
   private audio: MediaStreamTrack | null = null;
   private video: MediaStreamTrack | null = null;
+  /** What the camera shows: the camera's own track, or the one the backdrop draws from it. */
+  private shown: MediaStreamTrack | null = null;
+  private backdrop: Backdrop | null = null;
+  /** A camera still preparing its background: off/leave must stop it before initialization finishes. */
+  private dressing: MediaStreamTrack | null = null;
+  /** A press of Off invalidates pending camera work even if On is pressed again before it finishes. */
+  private cameraGen = 0;
+  /** What's chosen to show behind the camera (what shows can differ: see lookOf), and whose pictures it can be. */
+  private chosen: CameraBackground = readPrefs().background ?? NO_BACKGROUND;
+  private account: string | null = null;
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
@@ -177,7 +188,7 @@ export class LocalMedia {
   subscribe = (l: () => void) => { this.listeners.add(l); return () => { this.listeners.delete(l); }; };
   private set(p: Partial<MediaSnapshot>) { this.snap = { ...this.snap, ...p }; this.listeners.forEach((l) => l()); }
   private rebuild() {
-    const tracks = [this.audio, this.video].filter((t): t is MediaStreamTrack => !!t);
+    const tracks = [this.audio, this.shown].filter((t): t is MediaStreamTrack => !!t);
     this.set({ camera: tracks.length ? new MediaStream(tracks) : null });
   }
   private serial<T>(f: () => Promise<T>): Promise<T> {
@@ -214,11 +225,13 @@ export class LocalMedia {
       const prefs = readPrefs();
       // Pressed while the browser was asking: the latest press decides.
       if (got.video && !this.want.cam) got.video.stop();
+      const shown = got.video && this.want.cam ? await this.dress(gen, got.video) : null;
+      if (this.lateFor(gen, got.audio)) return;
       this.useAudio(got.audio ?? null, this.want.mic);
-      this.useVideo(got.video && this.want.cam ? got.video : null);
+      if (got.video && shown instanceof MediaStreamTrack) this.useVideo(got.video, shown);
+      else this.useVideo(null);
       this.confirmCam();
       this.rebuild();
-      if (prefs.blur) await this.applyBlur(true);
       this.listed = await enumerate().catch(() => []);
       const micId = deviceOf(this.audio);
       const camId = deviceOf(this.video);
@@ -234,7 +247,6 @@ export class LocalMedia {
           mic: { permission: this.audio ? granted(perms.mic) : perms.mic, problem: problem('mic', Boolean(this.audio), 'audioError' in got, got.audioError) },
           cam: { permission: this.video ? granted(perms.cam) : perms.cam, problem: problem('cam', Boolean(this.video), 'videoError' in got, got.videoError) }
         },
-        ...blurOf(this.video),
         ...(missing.length ? { changes: this.changed(micSub ? 'mic' : 'cam', `The ${missing.join(' and ')} you chose before isn’t available, so Alcove is using another.`) } : {})
       });
       mlog.info('devices started', {
@@ -300,11 +312,105 @@ export class LocalMedia {
     if (t) t.enabled = on;
     this.meter();
   }
-  private useVideo(t: MediaStreamTrack | null) {
+  /** Puts `t` in as the camera (or none), showing `shown`: the backdrop's track when a background is drawn, else its own. */
+  private useVideo(t: MediaStreamTrack | null, shown: MediaStreamTrack | null = t) {
     const before = this.video;
     if (before && before !== t) { before.removeEventListener('ended', this.onEnded); before.stop(); }
     this.video = t;
+    this.shown = shown;
     if (t && t !== before) t.addEventListener('ended', this.onEnded);
+    // Nothing drawn any more: the backdrop goes, and its track ends once the call has the one shown now.
+    if (shown === t) this.dropBackdrop();
+  }
+  private dropBackdrop() {
+    const b = this.backdrop;
+    this.backdrop = null;
+    void b?.stop().catch((e: unknown) => mlog.warn('the background didn’t stop', { err: e }));
+  }
+  /** Stop both the input and anything already published before announcing a background failure. */
+  private backgroundFailed(camera: MediaStreamTrack, background: CameraBackground, canBackground: boolean): void {
+    camera.stop();
+    this.dressing?.stop();
+    this.shown?.stop();
+    this.cameraGen++;
+    this.want.cam = false;
+    this.useVideo(null);
+    this.set({ canBackground, background, cam: false, changes: this.changed('cam', 'Your background couldn’t be shown, so your camera is off. Pick another background, or None, then turn your camera on.') });
+    this.rebuild();
+  }
+  /**
+   * What `b` shows, ready for the backdrop, and what that is: a picture of their own only when it's kept here for the
+   * account using the camera. One that isn't (deleted, or another account's) shows blurred, so what's behind them
+   * still doesn't show.
+   */
+  private async lookOf(b: CameraBackground): Promise<{ look: Look | null; shows: CameraBackground }> {
+    const blur = { look: { blur: true }, shows: { kind: 'blur' } } as const;
+    switch (b.kind) {
+      case 'none': return { look: null, shows: b };
+      case 'blur': return blur;
+      case 'scene': {
+        const scene = SCENES.find((s) => s.id === b.id);
+        return scene ? { look: { picture: scene.src }, shows: b } : blur;
+      }
+      case 'custom': {
+        const src = this.account ? await keptPicture(this.account, b.id).catch((e: unknown) => { mlog.warn('a kept background didn’t open', { err: e }); return null; }) : null;
+        return src ? { look: { picture: src }, shows: b } : blur;
+      }
+    }
+  }
+  /**
+   * `camera` with the chosen background drawn behind: its own track with none, else the backdrop's.
+   * One that can't be drawn turns the camera off and says so, rather than show what someone
+   * asked not to; `camera` is let go of then, and when it's `late`.
+   */
+  private async dress(gen: number, camera: MediaStreamTrack): Promise<Dressed> {
+    const cameraGen = this.cameraGen;
+    const chosen = this.chosen;
+    const account = this.account;
+    this.dressing = camera;
+    const late = () => gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || camera.readyState !== 'live';
+    let backdrop: Backdrop | null = null;
+    try {
+      const [{ look, shows }, can] = await Promise.all([this.lookOf(chosen), canBackdrop()]);
+      if (late()) { camera.stop(); return 'late'; }
+      if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
+      if (!look) { this.set({ canBackground: can, background: shows }); return camera; }
+      if (!can) {
+        mlog.warn('the requested background is not supported', { kind: shows.kind });
+        this.backgroundFailed(camera, shows, false);
+        return 'failed';
+      }
+      if (!this.backdrop) {
+        const created = new Backdrop((source, error) => {
+          if (this.backdrop !== created || gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || this.chosen.kind === 'none' || (source !== this.video && source !== this.dressing)) return;
+          mlog.warn('the background stopped drawing', { err: error, kind: this.chosen.kind });
+          this.backgroundFailed(source, this.chosen, true);
+        });
+        this.backdrop = created;
+      }
+      backdrop = this.backdrop;
+      const out = await backdrop.show(camera, look);
+      if (late() || this.backdrop !== backdrop) {
+        camera.stop();
+        if (this.backdrop === backdrop) this.dropBackdrop();
+        return 'late';
+      }
+      if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
+      this.set({ canBackground: true, background: shows });
+      return out;
+    } catch (e) {
+      // An old initialization or processor must never turn off a newer camera or overwrite an intentional Off.
+      if (late() || (backdrop && this.backdrop !== backdrop)) { camera.stop(); return 'late'; }
+      if (chosen !== this.chosen || account !== this.account) {
+        this.dropBackdrop();
+        return await this.dress(gen, camera);
+      }
+      mlog.warn('could not draw the background', { err: e, kind: chosen.kind });
+      this.backgroundFailed(camera, chosen, true);
+      return 'failed';
+    } finally {
+      if (this.dressing === camera) this.dressing = null;
+    }
   }
   /** A device stopped on its own (unplugged, or the browser took it back): note it, and look at once. */
   private onEnded = (e: Event) => {
@@ -336,6 +442,8 @@ export class LocalMedia {
   async setCam(on: boolean): Promise<boolean> {
     this.want.cam = on;
     if (!on) {
+      this.cameraGen++;
+      this.dressing?.stop();
       this.useVideo(null);
       this.set({ cam: false, access: this.snap.access.cam.problem === 'blocked' ? this.snap.access : this.access('cam', { problem: null }) });
       this.rebuild();
@@ -394,10 +502,13 @@ export class LocalMedia {
     }
     // Turned off while the browser was opening it: off it stays, and nothing went wrong.
     if (!this.want.cam) { got.video.stop(); return true; }
-    this.useVideo(got.video);
+    const shown = await this.dress(gen, got.video);
+    if (shown === 'failed') return false;
+    // Turned off while the background was being drawn: off it stays, and nothing went wrong.
+    if (shown === 'late') return gen === this.gen;
+    this.useVideo(got.video, shown);
     this.confirmCam();
-    if (readPrefs().blur) await this.applyBlur(true);
-    this.set({ cam: true, camId: deviceOf(got.video), access: this.access('cam', { permission: granted(perms.cam), problem: null }), ...blurOf(got.video), ...(say ? { changes: this.changed('cam', say) } : {}) });
+    this.set({ cam: true, camId: deviceOf(got.video), access: this.access('cam', { permission: granted(perms.cam), problem: null }), ...(say ? { changes: this.changed('cam', say) } : {}) });
     this.rebuild();
     mlog.info('camera started', { automatic: Boolean(say) });
     return true;
@@ -420,14 +531,14 @@ export class LocalMedia {
   }
   /**
    * The call couldn't send this camera track, and never can (LiveKit's server keeps a failed request under the track's
-   * ID): the same camera is opened again as a new track, at the size and blur in use, if the camera is still on and
+   * ID): the same camera is opened again as a new track, at the size and with the background in use, if the camera is still on and
    * still this one. It never turns a camera on, and says nothing, since nobody pressed anything. The room tries again
    * later if this doesn't work.
    */
   renewCamera(failed: MediaStreamTrack): Promise<void> {
     const gen = this.gen;
     return this.serial(async () => {
-      if (gen !== this.gen || this.video !== failed || !this.want.cam) return;
+      if (gen !== this.gen || (this.video !== failed && this.shown !== failed) || !this.want.cam) return;
       const id = this.snap.camId;
       if (await this.switchCam(gen, id ? { exact: id } : undefined, null, true)) mlog.info('camera opened again to be sent');
     }).catch((e: unknown) => mlog.warn('could not open the camera again to send it', { err: e }));
@@ -494,10 +605,12 @@ export class LocalMedia {
     }
     if (!next || this.lateFor(gen, next)) return false;
     if (!this.want.cam) { next.stop(); return false; }
-    this.useVideo(next);
-    if (this.snap.blur || readPrefs().blur) await this.applyBlur(true);
+    const shown = await this.dress(gen, next);
+    if (shown === 'late') return false;
+    if (shown === 'failed') { this.useVideo(null); this.rebuild(); return false; }
+    this.useVideo(next, shown);
     this.rebuild();
-    this.set({ cam: true, camId: deviceOf(next), access: this.access('cam', { permission: granted(this.snap.access.cam.permission), problem: null }), ...blurOf(next), ...(say ? { changes: this.changed('cam', say(plainName(next.label) || 'another camera')) } : {}) });
+    this.set({ cam: true, camId: deviceOf(next), access: this.access('cam', { permission: granted(this.snap.access.cam.permission), problem: null }), ...(say ? { changes: this.changed('cam', say(plainName(next.label) || 'another camera')) } : {}) });
     mlog.info('camera changed', { automatic: Boolean(say) });
     return true;
   }
@@ -663,11 +776,17 @@ export class LocalMedia {
     await this.serial(async () => {
       const t = this.video;
       if (t?.readyState === 'live') {
-        const blur = blurOf(t).canBlur ? this.snap.blur : null;
-        const want = withBlur(VIDEO[send], blur);
-        const atLeast = withBlur({ ...VIDEO[send], width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } }, blur);
+        const want = VIDEO[send];
+        const atLeast: MediaTrackConstraints = { ...VIDEO[send], width: { min: 1920, ideal: 1920 }, height: { min: 1080, ideal: 1080 } };
         try { await t.applyConstraints(send === 'hd' ? atLeast : want); } catch {
           try { await t.applyConstraints(want); } catch (e) { mlog.warn('could not change the camera’s size', { err: e, send }); }
+        }
+        // A background is drawn at the size the camera had: drawn again at the new one.
+        if (this.backdrop && this.shown !== t) {
+          this.backdrop.resized();
+          const shown = await this.dress(this.gen, t);
+          if (shown === 'failed') { this.useVideo(null); this.rebuild(); }
+          else if (shown !== 'late') { this.useVideo(t, shown); this.rebuild(); }
         }
       }
       this.set({ sendVideo: send });
@@ -681,18 +800,46 @@ export class LocalMedia {
     this.set({ receiveVideo: receive });
     mlog.info('video received changed', { receive });
   }
-  /** Background blur, where the browser can switch it (Chrome with the system's camera effects). */
-  async setBlur(on: boolean): Promise<void> {
-    rememberDevice('blur', on);
-    await this.serial(() => this.applyBlur(on));
-    this.set(blurOf(this.video));
+  /**
+   * What shows behind you on camera, remembered in this browser. With the camera on it changes in place (the call
+   * carries on with it); with it off, it's used when the camera's turned on.
+   */
+  async setBackground(next: CameraBackground): Promise<void> {
+    rememberDevice('background', next);
+    this.chosen = next;
+    if (next.kind !== 'none' && this.video?.readyState === 'live' && this.shown === this.video) {
+      // Stop the published raw track at once. Its enabled clone is only an input until the background is ready.
+      this.useVideo(this.video.clone(), null);
+      this.rebuild();
+    }
+    await this.redress();
+    mlog.info('background changed', { kind: next.kind });
   }
-  /** Blur with the size being sent, as one set: blur alone would drop the size, and the camera could pick its own. */
-  private async applyBlur(on: boolean) {
-    const t = this.video;
-    if (!t || !blurOf(t).canBlur) return;
-    try { await t.applyConstraints(withBlur(VIDEO[this.snap.sendVideo], on)); } catch (e) { mlog.warn('could not change background blur', { err: e, on }); }
+  /**
+   * Whose pictures can show behind the camera: the account signed in here, or null for a guest, who has none. A picture
+   * of theirs chosen before the account was known (it showed blurred till then) shows now.
+   */
+  setAccount(owner: string | null): void {
+    if (owner === this.account) return;
+    this.account = owner;
+    if (this.chosen.kind === 'custom') void this.redress();
   }
+  /** The camera in use with the chosen background drawn again. */
+  private redress(): Promise<void> {
+    const gen = this.gen;
+    return this.serial(async () => {
+      const camera = this.video;
+      if (gen !== this.gen) return;
+      if (!camera || camera.readyState !== 'live') { this.set({ background: this.chosen }); return; }
+      const shown = await this.dress(gen, camera);
+      if (shown === 'late') return;
+      if (shown === 'failed') { this.useVideo(null); this.rebuild(); return; }
+      this.useVideo(camera, shown);
+      this.rebuild();
+    });
+  }
+  /** The camera's own track, for what only it knows (its size): what's shown can be the backdrop's. */
+  camSource(): MediaStreamTrack | null { return this.video; }
   /**
    * Shares a tab, a window or a screen: the browser's own picker opens on that kind and asks which
    * one. Sharing again while sharing swaps what's shared, and a cancelled swap keeps the share as it was.
@@ -787,6 +934,8 @@ export class LocalMedia {
   stop() {
     this.begun = false;
     this.gen++;
+    this.cameraGen++;
+    this.dressing?.stop();
     this.stopWatching?.();
     this.stopWatching = null;
     if (this.soon) clearTimeout(this.soon);
@@ -794,7 +943,8 @@ export class LocalMedia {
     for (const t of [this.audio, this.video]) { t?.removeEventListener('ended', this.onEnded); t?.stop(); }
     this.stopScreen();
     void this.ctx?.close();
-    this.audio = null; this.video = null; this.analyser = null; this.ctx = null; this.source = null;
+    this.audio = null; this.video = null; this.shown = null; this.analyser = null; this.ctx = null; this.source = null;
+    this.dropBackdrop();
     this.set({ camera: null });
   }
 }

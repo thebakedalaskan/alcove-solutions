@@ -5,6 +5,7 @@ import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
+import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
 import { announceSignIn, announceSignOut } from './signedOut';
@@ -90,7 +91,7 @@ export function trustLine(t: Trust | undefined): string {
 }
 
 export const q = {
-  session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
+  session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
@@ -209,7 +210,16 @@ export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { forgetWords(); if (r.session) announceSignIn(r.session.ownerId); qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => {
+      forgetWords();
+      if (r.session) announceSignIn(r.session.ownerId);
+      qc.clear();
+      qc.setQueryData(qk.session, r.session);
+      // Cached sign-in data is fresh for a minute. Read the authenticated session now to reopen the picture fence.
+      if (r.session) void qc.fetchQuery({ ...q.session(), staleTime: 0 }).catch((e: unknown) => {
+        log.child({ component: 'account' }).warn('session could not be refreshed after sign-in', { err: e });
+      });
+    }
   });
 }
 /**
@@ -217,21 +227,31 @@ export function useSignIn() {
  * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, and
  * the words of its workspaces this tab held for Find.
  */
-async function forgetHere(qc: QueryClient, deleted: boolean) {
+async function forgetHere(owner: string | undefined, deleted: boolean) {
   forgetWords();
+  // The mutation captured this account before its request. A session refresh may already have cleared the cache.
+  if (owner) {
+    announceSignOut(owner, deleted);
+    forgetPlaces(owner);
+  }
   await forgetNotified();
-  const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
-  // Every tab hears it first, so none keeps anything more for the account while what's kept is deleted.
-  announceSignOut(owner, deleted);
-  forgetPlaces(owner);
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
+  try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
 export function useSignOut() {
   const qc = useQueryClient();
   // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
-  return useMutation({ networkMode: 'always', mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc, false); qc.clear(); qc.setQueryData(qk.session, null); } });
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async () => {
+      const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+      await api.auth.signOut();
+      return owner;
+    },
+    onSuccess: async (owner) => { await forgetHere(owner, false); qc.clear(); qc.setQueryData(qk.session, null); }
+  });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
@@ -248,8 +268,9 @@ export function useDeleteAccount(onDeleted: () => void) {
       const now = await api.auth.getSession();
       if (!here || now?.ownerId !== here) throw new AlcoveApiError('forbidden', 'Who’s signed in here changed in another tab, so nothing was deleted. Reload this page.');
       await api.account.delete();
+      return here;
     },
-    onSuccess: async () => { await forgetHere(qc, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+    onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
   });
 }
 /*

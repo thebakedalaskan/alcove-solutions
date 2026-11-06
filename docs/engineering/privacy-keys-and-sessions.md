@@ -50,7 +50,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | Media token key | `HKDF(KMASTER, "alcove/media-token/v1")` | Derived per use; signs the token in [a file's URL](#files) |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
-| Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, and the first time an edit, is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding the recordings' database never has to give way to the edits' | That browser's IndexedDB (`alcove-offline`, `alcove-edits`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
+| Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, an edit, or a camera background picture is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding one database never has to give way to another's | That browser's IndexedDB (`alcove-offline`, `alcove-edits`, `alcove-backgrounds`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens, and `board-shot/1`, telling someone a picture of their share went on the board) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
@@ -776,6 +776,18 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   order, the time and the size. It's deleted once Alcove has the update, or when someone chooses **Discard** for it, never
   because a document refused it or went; signing out, or deleting the account, on this browser deletes what's kept for
   it, and the key with the last of anyone's.
+- **Pictures to show behind your camera** (IndexedDB `alcove-backgrounds`, `KeptBackgroundSchema`): each one you add,
+  made into a 1920×1080 JPEG in the browser and sealed with AES-GCM under its own [device key](#key-inventory), a
+  fresh 12-byte IV each, with the account, the picture's ID and when it was added bound in. In the clear: those
+  IDs, the time and the size. They're never sent: only the camera picture with you in front of one reaches a call,
+  end-to-end encrypted like any other. Removing one deletes it; signing out, or deleting the account, on this
+  browser deletes all of the account's, and the key with the last of anyone's. Pending preparation, encryption and
+  decryption are fenced by opaque account tokens and the database's deletion revision: they cannot save a picture or
+  refill its decrypted cache after cleanup, including after another sign-in. The device store retains only opaque
+  revision and access markers after deletion. `alcove.account-state.<ownerId>` in localStorage holds revocation and
+  activation nonces and a signed-out flag, never picture content; unavailable coordination storage leaves pictures
+  closed. A fresh authenticated session can reopen access, while a session response started before revocation cannot.
+  Existing JPEG records, keys and their authenticated headers read unchanged; no database version upgrade is needed.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
   the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
   hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.
