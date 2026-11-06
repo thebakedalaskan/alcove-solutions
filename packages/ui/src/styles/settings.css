@@ -97,7 +97,15 @@
 .set-topup-sum .on { display: flex; align-items: center; gap: var(--space-2); font-size: 13.5px; color: var(--ink-2); }
 .set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
 .set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.set-topup-sum .credits b { font-weight: inherit; color: var(--ink); }
 .set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+/* An address that expired with nothing sent: what it was for, struck through. */
+/* An expired top-up: a line through each number at its digits' middle (16px down the 32px amount, 10px down the
+   17px credits), and the words beside them greyed. */
+.set-topup-sum.is-void .amt, .set-topup-sum.is-void .credits { color: var(--ink-3); }
+.set-topup-sum.is-void .amt b, .set-topup-sum.is-void .credits b { position: relative; }
+.set-topup-sum.is-void .amt b::after, .set-topup-sum.is-void .credits b::after { content: ""; position: absolute; left: -2px; right: -2px; top: 16px; height: 2px; border-radius: 1px; background: var(--ink-3); }
+.set-topup-sum.is-void .credits b::after { top: 10px; }
 .set-topup-scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5); }
 .set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
 .set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
@@ -106,7 +114,6 @@
 .set-topup-dest .h { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .set-topup-dest .h .ac-chip { height: 24px; font-size: 12px; }
 .set-topup-dest .ac-copy-field { padding-block: var(--space-2); }
-.set-topup-f.is-split { justify-content: space-between; }
 .set-topup-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); }
 /* Deleting with a payment on its way: the warning on the step's own caution ground. */
 .set-confirm .ac-notice.is-caution { background: var(--surface); }

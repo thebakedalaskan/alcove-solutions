@@ -271,7 +271,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
   return (
     <>
       <div className="set-topup-body">
-        <div className="set-topup-sum">
+        <div className={`set-topup-sum${t.state === 'expired' || (lapsed && t.state === 'waiting') ? ' is-void' : ''}`}>
           <div>
             <span className="ac-eyebrow">{send.label}</span>
             <p className="amt"><b>{send.amount}</b> {token}</p>
@@ -280,7 +280,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
           </div>
           <div className="get">
             <span className="ac-eyebrow">{done ? 'You got' : 'You get'}</span>
-            <p className="credits">{number.format(credits)} credits{short && ' in total'}</p>
+            <p className="credits"><b>{number.format(credits)}</b> credits{short && ' in total'}</p>
             {hours(credits) && <p className="hrs">{hours(credits)}</p>}
           </div>
         </div>
@@ -304,7 +304,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
           <div className="set-topup-how" role="status">{chip}<p>{next}</p>{ref && <RequestRef id={t.id} />}</div>
         )}
       </div>
-      <div className="set-topup-f is-split">
+      <div className="set-topup-f">
         <Button variant="quiet" onClick={onNew}>Start a new top-up</Button>
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </div>
