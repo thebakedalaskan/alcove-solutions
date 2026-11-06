@@ -159,13 +159,13 @@ export const LiveTile: BoardStory = {
 
 /**
  * On a phone, in a room: faces stay on top and the board fills the rest. Pinch to zoom and drag to look round; + adds a sticky,
- * and drawing stays on bigger screens.
+ * and drawing stays on bigger screens. As in the canvas, Support has five stickies: the sixth is the one the phone adds.
  */
 export const OnAPhone: BoardStory = {
   name: 'On a phone',
   globals: PHONE,
   args: {
-    board: () => roomsBack(), mode: 'phone', name: 'Launch retro', focus: 'Support', others: [{ who: 'lena', at: { x: 856, y: 318 } }], talking: [],
+    board: () => roomsBack({ leaveOut: ['Support2b'] }), mode: 'phone', name: 'Launch retro', focus: 'Support', others: [{ who: 'lena', at: { x: 856, y: 318 } }], talking: [],
     children: (
       <>
         <BoardPill icon="door" title="Support" time="6:40" />

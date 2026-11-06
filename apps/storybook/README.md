@@ -24,7 +24,8 @@ src/api/trouble.ts        a part of Alcove that fails, can't be reached or keeps
 src/api/kept.ts           recordings kept on this device that haven't uploaded, through the app's own way of keeping them
 src/api/move.ts           a call being moved to this device, as /move sees it
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
-src/world/boards.ts       the boards in it, written into in-memory Y.Docs by the board package's own writes
+src/world/boards.ts       the boards in it, written by the board package's own writes: in-memory for board stories, and into
+                          the stand-in's workspaces for the board's page
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
 src/media/screens.ts      what other people share, drawn
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
@@ -206,9 +207,12 @@ export const InTheCall: BoardStory = { name: 'In the call' };
 export const OnItsPage: BoardStory = { name: 'On its page', args: { mode: 'page' } };
 ```
 
-A board in the world is written with the board package's own writes (`fillTemplate`, `addObject`, `applyThemes`), with
-the design canvas's positions, colours and words. What's round the board in the app (the bar's menus, Start a call here)
-says it was pressed in the Actions panel, and what the call puts over the sheet (a pill, a menu) goes in `children`.
+A board in the world is written with the board package's own writes (`fillTemplate`, `addObject`, `applyThemes`,
+`addThread`), with the design canvas's positions, colours and words. Whoever is at the board is `me` (Art unless a story
+says), who comments as the page has them, and only reads in a mode that can't change the board. Sort into themes answers
+after a moment with the canvas's themes, as confidential compute would (`themesFor`), unless a story gives its own `sort`.
+What's round the board in the app (the bar's More, Start a call here) says it was pressed in the Actions panel, and what
+the call puts over the sheet (a pill, a menu) goes in `children`.
 
 ## Add a call story
 

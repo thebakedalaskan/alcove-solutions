@@ -246,16 +246,19 @@ export const ROOMS: readonly { name: string; who: readonly FolkId[]; rows: reado
 ];
 const COLUMNS: readonly StickyColour[] = ['rose', 'peach', 'sky'];
 
-/** When rooms close: each room's board lands on the main one as a frame, named, with who was there. Each frame's id comes back under the room's name. */
-export function roomsBack(): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
+/**
+ * When rooms close: each room's board lands on the main one as a frame, named, with who was there. Each frame's id comes back under
+ * the room's name. `leaveOut` keeps stickies off, by room, row and side (`Support2b`), as the canvas does before one is added.
+ */
+export function roomsBack({ leaveOut = [] }: { leaveOut?: readonly string[] | undefined } = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
   const doc = new Y.Doc();
   const { put, ids } = adding(doc);
   ROOMS.forEach((room, n) => {
     const at: Spot = { x: n * 400, y: 0 };
     put(room.name, frame(room.name, at.x, at.y, 360, 530, '', room.who.map((w) => FOLK[w].name).join(', ')));
     room.rows.forEach(([first, second], k) => {
-      put(`${room.name}${k}a`, note(slot(at, k * 2), COLUMNS[k] ?? 'butter', first));
-      put(`${room.name}${k}b`, note(slot(at, k * 2 + 1), COLUMNS[k] ?? 'butter', second));
+      if (!leaveOut.includes(`${room.name}${k}a`)) put(`${room.name}${k}a`, note(slot(at, k * 2), COLUMNS[k] ?? 'butter', first));
+      if (!leaveOut.includes(`${room.name}${k}b`)) put(`${room.name}${k}b`, note(slot(at, k * 2 + 1), COLUMNS[k] ?? 'butter', second));
     });
   });
   return { doc, ids };
