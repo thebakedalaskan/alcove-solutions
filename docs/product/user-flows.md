@@ -14,8 +14,11 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    Alcove; recording in the room without a connection; and what Alcove can see. Each scene plays while it's on
    screen, and shows a still with reduced motion. Choose **Continue with Google**, **Continue with Microsoft** or
    **Use single sign-on**, at the top or the bottom of the page; single sign-on asks for a work email in place.
-2. **Google** goes to Google's account chooser and consent screen, which also asks for the calendar (events
-   only); unticking it still signs in. If the sign-in doesn't happen (cancelled, too slow, an email Google
+2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
+   only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
+   including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
+   page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
+   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google
    hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
 3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed

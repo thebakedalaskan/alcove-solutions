@@ -1,6 +1,7 @@
 /*
- * Back to a call's join page after signing in with Google from it. Google's way back lands on /ready or /home, so the
- * page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
+ * Back to a call's join page when Google needs the current tab (a blocked popup or no completion channel). With a
+ * popup the join page stays open and clears this on completion. Otherwise Google's way back lands on /ready or /home,
+ * so the page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
  * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
  */
 import { AgentReturnStoredSchema, CallReturnStoredSchema } from '@alcove/api';

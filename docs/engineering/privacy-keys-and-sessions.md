@@ -147,8 +147,14 @@ The hash is deterministic, so equal values show the same person across rows and 
    tolerance. Then it checks the nonce and accepts only `email_verified: true`, because notes are shared by
    email. The identity is `google:<sub>`, the lower-cased email, and Google's name and photo URL. A refusal
    sends the browser to `/welcome?signin=<reason>` (`cancelled`, `expired`, `unverified`, `unavailable`,
-   `busy` or `failed`) and signs nobody in. Someone can untick the calendar on Google's consent screen and
-   still sign in.
+   `busy` or `failed`) and signs nobody in. Welcome opens Google in a popup, keeping the page and its
+   animations running in the original tab. That attempt includes a random UUID `popup` channel; success
+   returns the popup to `/welcome?popup=<id>&next=<path>`, and refusals to
+   `/welcome?popup=<id>&signin=<reason>`. The completion page tells the original tab through a same-origin
+   `BroadcastChannel`, with only the destination or refusal. The original tab verifies its session with
+   the API before leaving Welcome. No tokens or personal information enter the completion URL or channel.
+   A blocked popup falls back to the same-tab redirect, as Calendar's Connect already uses. Someone can
+   untick the calendar on Google's consent screen and still sign in.
 2. **Demo sign-in.** `POST /v1/auth/sign-in` with `{provider, email?}`, where `provider` is `microsoft` or
    `sso`; `demo.ts` turns the request into an identity (Art Vandelay, or `demo:sso:<email>` with a name
    made from the address), marked as a demo (`sample`). Both ways in share one limit: 30 attempts a minute
@@ -213,8 +219,12 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
 - **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
   HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
   HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
-  for consent, and where to land, sealed as a `sign-in-attempt` record, so the browser can neither read nor
-  change it. The callback deletes it whatever the outcome.
+  for consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
+  the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
+  The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
+  callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
+  A second consent pass retains the channel and destination. The callback deletes the cookie whatever
+  the outcome.
 - **The refresh token.** Every Google sign-in saves what Google granted as the account's `connection` item, a
   sealed manifest like any other: the scopes, when, and the refresh token. A new refresh token replaces the
   old one; without one, the old one stays. Google sends a refresh token only the first time someone agrees,

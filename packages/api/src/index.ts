@@ -1,4 +1,5 @@
 export * from './types';
+export * from './googleSignIn';
 export * from './capture';
 export * from './live';
 export * from './catchup';
