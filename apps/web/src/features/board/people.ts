@@ -21,13 +21,16 @@ export function colourOf(id: string): string {
 
 interface Seen { id: string; name: string; clients: number[] }
 
-/** Everyone else's browsers on the board, by who the server says they are. This browser's own state is never stamped back to it. */
-function seenOn(awareness: Awareness): Seen[] {
+/**
+ * Everyone else's browsers on the board, by who the server says they are. This browser's own state is never stamped back to it,
+ * and `me`, what this person is known by, leaves out their other windows: they aren't someone else.
+ */
+function seenOn(awareness: Awareness, me: string | undefined): Seen[] {
   const by = new Map<string, Seen>();
   for (const [client, state] of awareness.getStates()) {
     if (client === awareness.clientID) continue;
     const user = DocCaretStateSchema.safeParse(state).data?.user;
-    if (!user?.id) continue;
+    if (!user?.id || user.id === me) continue;
     const was = by.get(user.id);
     if (was) was.clients.push(client);
     else by.set(user.id, { id: user.id, name: user.name ?? '', clients: [client] });
@@ -40,15 +43,16 @@ const sameSeen = (a: readonly Seen[], b: readonly Seen[]): boolean =>
 
 /**
  * The people on a board with you, each with their face from `face` (what they're known by, and their name), their colour and
- * their browsers. Drawn again only when someone comes or goes.
+ * their browsers. You aren't among them, in this window or another: `me` is what you're known by. Drawn again only when someone
+ * comes or goes.
  */
-export function useBoardPeople(awareness: Awareness, face: (id: string, name: string) => AvatarPerson): BoardPerson[] {
-  const [seen, setSeen] = useState<Seen[]>(() => seenOn(awareness));
+export function useBoardPeople(awareness: Awareness, face: (id: string, name: string) => AvatarPerson, me: string | undefined): BoardPerson[] {
+  const [seen, setSeen] = useState<Seen[]>(() => seenOn(awareness, me));
   useEffect(() => {
-    const read = () => { const now = seenOn(awareness); setSeen((was) => (sameSeen(was, now) ? was : now)); };
+    const read = () => { const now = seenOn(awareness, me); setSeen((was) => (sameSeen(was, now) ? was : now)); };
     read();
     awareness.on('change', read);
     return () => awareness.off('change', read);
-  }, [awareness]);
+  }, [awareness, me]);
   return useMemo(() => seen.map((s): BoardPerson => ({ id: s.id, person: face(s.id, s.name), name: firstName(s.name || 'Someone'), colour: colourOf(s.id), clients: s.clients })), [seen, face]);
 }

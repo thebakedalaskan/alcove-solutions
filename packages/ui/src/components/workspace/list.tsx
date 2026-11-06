@@ -60,9 +60,9 @@ function moveInList(e: KeyboardEvent<HTMLDivElement>) {
  */
 export type WsListEmpty = 'yours' | 'others' | 'shared';
 const EMPTY_WORDS: Record<WsListEmpty, string> = {
-  yours: 'Documents and folders you make show up here.',
-  others: 'Documents and folders show up here once someone makes them.',
-  shared: 'Documents shared with you show up here.'
+  yours: 'Documents, boards and folders you make show up here.',
+  others: 'Documents, boards and folders show up here once someone makes them.',
+  shared: 'Documents and boards shared with you show up here.'
 };
 
 export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, onKeyDown }: {

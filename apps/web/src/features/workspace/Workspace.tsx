@@ -228,7 +228,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return (
       <>
         <WsPane page={page}>
-          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
+          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} what={known.current.get(documentId)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
         </WsPane>
         <WsToasts toasts={toasts} />
       </>
@@ -247,12 +247,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         {at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
-            {/* A board that was open here says it's a board it can't open: a board's own words have nowhere else to go. */}
-            {known.current.get(at.id)?.board
-              ? <WsCantOpen what="board" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
-              : <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
-                copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
-                back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />}
+            {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
+            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
+              copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+              back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
           <WsDoc className="is-bare">

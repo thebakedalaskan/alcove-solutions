@@ -177,15 +177,17 @@ export function WsRescue({ onCopy, onSaveAsNew, saving = false, discard }: {
 
 /**
  * Asks once before letting go of what didn't save. The keyboard starts on keeping it, so Enter twice loses nothing.
- * `gone`: the document can't be opened any more, so there's nothing for it to carry on from.
+ * `gone`: the document can't be opened any more, so there's nothing for it to carry on from. On a board, what goes is every
+ * change made on it, not only words.
  */
-export function WsDiscardAsk({ onDiscard, onKeep, gone = false }: { onDiscard: () => void; onKeep: () => void; gone?: boolean | undefined }) {
+export function WsDiscardAsk({ onDiscard, onKeep, gone = false, what = 'document' }: { onDiscard: () => void; onKeep: () => void; gone?: boolean | undefined; what?: 'document' | 'board' | undefined }) {
   const keep = useRef<HTMLButtonElement>(null);
   useEffect(() => { keep.current?.focus({ preventScroll: true }); }, []);
+  const only = what === 'board' ? 'Your changes on the board, moves and all, are only in this browser, so they go for good.' : 'It’s only in this browser, so it goes for good.';
   return (
     <div className="wv-switch">
       <b>Discard what didn’t save?</b>
-      <p>{gone ? 'It’s only in this browser, so it goes for good.' : 'It’s only in this browser, so it goes for good. The document carries on from what Alcove has.'}</p>
+      <p>{gone ? only : `${only} The ${what} carries on from what Alcove has.`}</p>
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onDiscard}>Discard</Button>
         <Button ref={keep} variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
@@ -264,7 +266,8 @@ const LockedArch = () => <WsArch><path d="M24 44h18v14H24zM28 44v-5a5 5 0 0 1 10
 /** `unsent`: something written in it here didn't reach Alcove, and `action` is what can be done with it (`WsRescue`). */
 export function WsCantOpen({ what, action, unsent = false }: { what: 'document' | 'board' | 'workspace'; action?: ReactNode; unsent?: boolean | undefined }) {
   const gone = what === 'workspace' ? 'It was deleted, or you aren’t in it any more.' : 'It was deleted, or it isn’t shared with you any more.';
-  const next = unsent ? 'What you wrote in it that didn’t reach Alcove is safe in this browser.' : what === 'workspace' ? 'Ask whoever added you.' : 'Ask whoever shared it.';
+  const kept = what === 'board' ? 'What you changed on it that didn’t reach Alcove is safe in this browser.' : 'What you wrote in it that didn’t reach Alcove is safe in this browser.';
+  const next = unsent ? kept : what === 'workspace' ? 'Ask whoever added you.' : 'Ask whoever shared it.';
   return (
     <EmptyState className="wd-none" title={`You can’t open this ${what}`} art={<LockedArch />} action={action}>
       {gone} {next}

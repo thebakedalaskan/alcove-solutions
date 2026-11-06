@@ -25,8 +25,10 @@ export interface CopyTo { workspaceId: string; name: () => string | null; parent
 /** What a new document of someone's words is called, after the one they were written in. */
 const copyName = (from: string | null) => (from ? `Your words from ${from}` : 'Your words');
 
-export function Rescue({ session, say, copyTo, gone = false, copyOnly = false, onLetGo }: {
+export function Rescue({ session, say, what = 'document', copyTo, gone = false, copyOnly = false, onLetGo }: {
   session: DocSession;
+  /** A board's rescue says that Discard drops every change made on it. */
+  what?: 'document' | 'board' | undefined;
   say: (toast: WsToastData) => void;
   copyTo?: CopyTo | undefined;
   /** The document can't be opened any more. */
@@ -67,16 +69,16 @@ export function Rescue({ session, say, copyTo, gone = false, copyOnly = false, o
   };
   return (
     <WsRescue onCopy={copy} onSaveAsNew={saveAsNew} saving={save.isPending}
-      discard={copyOnly ? undefined : { open: asking, onOpenChange: setAsking, content: <WsDiscardAsk gone={gone} onDiscard={discard} onKeep={() => setAsking(false)} /> }} />
+      discard={copyOnly ? undefined : { open: asking, onOpenChange: setAsking, content: <WsDiscardAsk gone={gone} what={what} onDiscard={discard} onKeep={() => setAsking(false)} /> }} />
   );
 }
 
 /**
- * A document that isn't in the list: deleted, taken away, or never there. If this device holds something written in it that
- * didn't reach Alcove, that's offered here, however long ago it was written.
+ * A document or a board that isn't in the list: deleted, taken away, or never there. If this device holds something written in
+ * it that didn't reach Alcove, that's offered here, however long ago it was written. `what` is what it was, so that's what it says.
  */
-export function KeptHere({ workspaceId, documentId, owner, pass, say, copyTo, back }: {
-  workspaceId: string; documentId: string; owner: string | null; pass: string | undefined;
+export function KeptHere({ workspaceId, documentId, what, owner, pass, say, copyTo, back }: {
+  workspaceId: string; documentId: string; what: 'document' | 'board'; owner: string | null; pass: string | undefined;
   say: (toast: WsToastData) => void; copyTo?: CopyTo | undefined;
   /** The way back, when there's nothing kept. */
   back: ReactNode;
@@ -95,12 +97,12 @@ export function KeptHere({ workspaceId, documentId, owner, pass, say, copyTo, ba
     }).catch((e: unknown) => { rlog.warn('couldn’t read what this device kept for a document', { workspaceId, documentId, err: e }); });
     return () => { left = true; held?.close(); setSession(null); };
   }, [workspaceId, documentId, owner, pass, round]);
-  if (!session) return <WsCantOpen what="document" action={back} />;
-  return <KeptIn session={session} say={say} copyTo={copyTo} back={back} onLetGo={() => setRound((r) => r + 1)} />;
+  if (!session) return <WsCantOpen what={what} action={back} />;
+  return <KeptIn session={session} what={what} say={say} copyTo={copyTo} back={back} onLetGo={() => setRound((r) => r + 1)} />;
 }
 
 /** Until its session closes, having found the document can't be opened, the words may still get there: only Copy text till then. */
-function KeptIn({ session, say, copyTo, back, onLetGo }: { session: DocSession; say: (toast: WsToastData) => void; copyTo?: CopyTo | undefined; back: ReactNode; onLetGo: () => void }) {
+function KeptIn({ session, what, say, copyTo, back, onLetGo }: { session: DocSession; what: 'document' | 'board'; say: (toast: WsToastData) => void; copyTo?: CopyTo | undefined; back: ReactNode; onLetGo: () => void }) {
   const { unsent, closed } = useLive(session);
-  return <WsCantOpen what="document" unsent={unsent} action={unsent ? <Rescue session={session} say={say} copyTo={copyTo} gone copyOnly={closed === null} onLetGo={onLetGo} /> : back} />;
+  return <WsCantOpen what={what} unsent={unsent} action={unsent ? <Rescue session={session} say={say} what={what} copyTo={copyTo} gone copyOnly={closed === null} onLetGo={onLetGo} /> : back} />;
 }
