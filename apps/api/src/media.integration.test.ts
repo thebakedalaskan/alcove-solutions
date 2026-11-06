@@ -1937,6 +1937,29 @@ describe('storage limits', () => {
     expect((await json(ann, `${place(id, doc)}/${m}/finish`, {})).status).toBe(200);
   });
 
+  it('refuses a piece before reading it, and reads the rest, so its connection takes the next request', async () => {
+    const ann = await withCookie();
+    const { id, doc } = await planIn(ann);
+    const m = await started(ann, id, doc, 2 * PIECE);
+    await setLimit('media.account_day_bytes', 1);
+    // A browser that has sent all of a piece sends its next request down the same connection once it has its answer.
+    const { hostname, port, host } = new URL(h.baseUrl);
+    const socket = connect({ host: hostname, port: Number(port) });
+    socket.on('error', () => undefined);
+    onTestFinished(() => { socket.destroy(); });
+    const heard: Buffer[] = [];
+    let closed = false;
+    socket.on('data', (chunk: Buffer) => { heard.push(chunk); });
+    socket.on('close', () => { closed = true; });
+    const statuses = () => [...Buffer.concat(heard).toString('latin1').matchAll(/HTTP\/1\.1 (\d{3}) /g)].map((s) => Number(s[1]));
+    socket.write(`POST ${new URL(`${place(id, doc)}/${m}/pieces/0`).pathname} HTTP/1.1\r\nhost: ${host}\r\norigin: ${ORIGIN}\r\ncookie: ${ann.cookie()}\r\ncontent-type: application/octet-stream\r\ncontent-length: ${PIECE}\r\n\r\n`);
+    socket.write(bytesOf(PIECE));
+    await until(() => statuses().length > 0 || closed, 'the piece to be answered');
+    socket.write(`GET /v1/workspaces/${id}/media HTTP/1.1\r\nhost: ${host}\r\ncookie: ${ann.cookie()}\r\n\r\n`);
+    await until(() => statuses().length > 1 || closed, 'the next request to be answered, or its connection to go');
+    expect(statuses()).toEqual([409, 200]);
+  });
+
   it('deletes nothing when a limit goes down: it only refuses what comes next', async () => {
     const ann = await account();
     const { id, doc } = await planIn(ann);

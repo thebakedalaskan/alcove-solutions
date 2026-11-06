@@ -92,7 +92,9 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   never an address, and never the answer, which is sealed so that nothing shows who's coming.
 - An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES`, a shared-screen frame over
   `MAX_FRAME_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
-  before the body is read.
+  before the body is read. Whatever's left of a request answered before all of it arrived is read and dropped once the
+  answer has gone, so its connection can take the next request. A body still arriving half a second later, or past 64 MiB,
+  goes with its connection, as the Node adapter has it.
 - A file's upload logs `upload started` and `upload finished` with its IDs, and its pieces at debug; deleting one logs `file
   deleted`. Deleting one refused because someone can edit its document only through a seat in a call is an ordinary
   refusal: `forbidden` at info, with `why: 'only a seat'`. A piece that's refused after reaching the store logs `piece not
