@@ -11,3 +11,6 @@ dist
 .DS_Store
 gha-creds-*.json
 storybook-static
+
+# The multiclass segmentation model (16 MB), compared in the matte debug view; not committed until it is chosen.
+apps/web/public/mediapipe/selfie_multiclass_256x256.tflite

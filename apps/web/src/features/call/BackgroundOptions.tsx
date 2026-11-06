@@ -3,12 +3,12 @@
  * sealed in this browser for their account (backgrounds.ts); a guest has Alcove's pictures and blur.
  */
 import { errorMessage, type CameraBackground } from '@alcove/api';
-import { BackgroundPicker, Switch, SwitchLine, useToast } from '@alcove/ui';
+import { BackgroundPicker, Segmented, Switch, SwitchLine, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { q } from '~/lib/queries';
 import { BACKGROUND_TYPES, MAX_BACKGROUNDS, SCENES, canKeepBackgrounds, keepPicture, removePicture, useKeptPictures } from './backgrounds';
-import { matteDebug, useMatteDebug, useMatteFlicker } from './matteDebug';
+import { MATTE_MODELS, matteDebug, useMatteDebug, useMatteFlicker, useMatteModel } from './matteDebug';
 import type { LocalMedia, MediaSnapshot } from './media';
 
 const ACCEPT = BACKGROUND_TYPES.join(',');
@@ -58,15 +58,22 @@ const pct = (v: number) => `${(v * 100).toFixed(1)}%`;
 /** Development only: the matte's debug view, and how much each stage moves at the edge while you sit still. */
 function MatteDebugSwitch() {
   const on = useMatteDebug();
+  const model = useMatteModel();
   const f = useMatteFlicker();
   return (
     <>
       <SwitchLine title="Show the matte (debug)" sub="Model · settled · edge · result"
         control={<Switch checked={on} onChange={(v) => matteDebug.set(v)} label="Show the matte (debug)" />} />
       {on && (
-        <p className="hint">
-          {f ? `Edge flicker per frame: model ${pct(f.reading)}, settled ${pct(f.settled)}, drawn ${pct(f.edge)}` : 'Measuring…'}
-        </p>
+        <>
+          <Segmented label="Model" value={model} onChange={(v) => matteDebug.setModel(v)}
+            options={MATTE_MODELS.map((id) => ({ value: id, label: id === 'landscape' ? 'Landscape' : 'Multiclass' }))} />
+          <p className="hint">
+            {f && f.model === model
+              ? `Edge flicker per frame: model ${pct(f.reading)}, settled ${pct(f.settled)}, drawn ${pct(f.edge)} · ${f.msPerFrame.toFixed(1)} ms a frame`
+              : 'Measuring…'}
+          </p>
+        </>
       )}
     </>
   );
