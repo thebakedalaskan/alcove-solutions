@@ -12,7 +12,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { request, type ClientRequest } from 'node:http';
 import { connect } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { z } from 'zod';
 import { readPass } from './callPass';
 import { blindIndex } from './crypto';
@@ -1426,25 +1426,34 @@ describe('what a process takes on at once', () => {
     const m = await who.api.workspaces.media.upload(id, doc, fileOf(bytesOf(2 * PIECE + 1)));
     return { ...who, url: await who.api.workspaces.media.url(id, doc, m.id) };
   }
-  /** The store stops answering, so what's let in stays in, until `open()`. */
+  /** The store stops answering, so what's let in stays in, until `open()`, or the test ends however it ends. */
   function stuckStore() {
     const put = h.deps.objects.put;
     let open = () => {};
     const stuck = new Promise<void>((r) => { open = r; });
     const state = { storing: 0 };
     h.deps.objects.put = async (o, b) => { state.storing++; await stuck; return put(o, b); };
-    return { state, open: () => { open(); h.deps.objects.put = put; } };
+    const unstick = () => { open(); h.deps.objects.put = put; };
+    onTestFinished(unstick);
+    return { state, open: unstick };
   }
 
-  /** The store stops giving anything back, so a read that's let in stays in, with this process the one still working on it, until `open()`. */
+  /**
+   * The store stops giving anything back, so a read that's let in stays in, with this process the one still working on it,
+   * until `open()`, or the test ends however it ends: one that fails leaves nothing stuck for the next.
+   */
   function stuckReads() {
     const get = h.deps.objects.get;
     let open = () => {};
     const stuck = new Promise<void>((r) => { open = r; });
     const state = { reading: 0 };
     h.deps.objects.get = async (o) => { state.reading++; await stuck; return get(o); };
-    return { state, open: () => { open(); h.deps.objects.get = get; } };
+    const unstick = () => { open(); h.deps.objects.get = get; };
+    onTestFinished(unstick);
+    return { state, open: unstick };
   }
+  /** How many reads have had a place since `from`, by the server's own word. */
+  const placed = (from: number) => logsSince(from).filter((l) => l.msg === 'a read has its place').length;
   /** Someone with their session in hand, for a request of their own that says what `fetch` won't. */
   async function withCookie() {
     const browser = cookieFetch(ORIGIN);
@@ -1743,8 +1752,10 @@ describe('what a process takes on at once', () => {
     const newcomer = await reader();
     const first = await reader();
     const second = await reader();
-    // Every place is taken, by reads this process hasn't finished with, so nothing can give way.
+    // Every place is taken, by reads this process hasn't finished with, so nothing can give way. That's once the server
+    // says each has its place, however long their requests take to get there.
     const store = stuckReads();
+    const from = h.logs.length;
     const taken = people.flatMap((p) => Array.from({ length: readingEach }, () => read(p, p.url, 'bytes=0-9')));
     const lined: AbortController[] = [];
     const inLine = (who: { fetch: typeof fetch; url: string }) => {
@@ -1753,6 +1764,7 @@ describe('what a process takes on at once', () => {
       return who.fetch(who.url, { signal: stop.signal, headers: { range: 'bytes=0-0' } }).then((r) => r.status, () => 0);
     };
     try {
+      await until(() => placed(from) >= reading, 'every place to be taken');
       await until(() => store.state.reading >= working, 'every place to be working');
       // Someone new waits, for as long as it says, and is told.
       const began = Date.now();

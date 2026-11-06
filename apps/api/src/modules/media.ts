@@ -627,6 +627,7 @@ export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Respon
     const context = currentLogContext();
     const cut = (why: string) => { withLogContext(context, () => { mlog.info('a read was cut', { workspaceId: t.workspaceId, documentId, mediaId, why }); r.cut(); }); };
     const place = await reading.enter(asker, () => { cut('it stopped, and someone is waiting'); }, r.closed);
+    mlog.debug('a read has its place', { workspaceId: t.workspaceId, documentId, mediaId, waited: place.waited });
     const ends = setTimeout(() => { cut('its time ran out'); }, d.cfg.MEDIA_READ_MS).unref();
     const letGo = () => { clearTimeout(ends); place.leave(); };
     if (r.closed.aborted) { letGo(); throw browserLeft(); }
