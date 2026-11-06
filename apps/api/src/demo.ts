@@ -8,11 +8,10 @@
  * vandelay.industries shares Art's company
  * directory. A demo account's calendar is a day of Alcove calls placed around the moment they sign
  * in, so the app opens on a day that looks real. Nothing here leaves the server: the calls are
- * ordinary sealed meetings in the account's vault. Around them it has a made-up week of busy times
- * and a made-up catalog of documents, both worked out when they're asked for and stored nowhere.
- * Google sign-in is real (../google.ts).
+ * ordinary sealed meetings in the account's vault. Around them it has a made-up week of busy times,
+ * worked out when they're asked for and stored nowhere. Google sign-in is real (../google.ts).
  */
-import { firstName, type CallDocument, type Document, type DocumentKind, type DocumentLibrary, type DemoProvider, type MeetingInput, type PortraitStyle } from '@alcove/api';
+import type { DemoProvider, MeetingInput, PortraitStyle } from '@alcove/api';
 import { createHash } from 'node:crypto';
 import { ValidationError } from './errors';
 import { nameFrom, type Identity } from './identity';
@@ -125,49 +124,4 @@ export function sampleWeek(range: { from: Date; to: Date }, timeZone: string): (
     if (weekday !== 0 && weekday !== 6) days.push({ day, nine: zoned(day, NINE, timeZone).getTime() });
   }
   return (email) => days.flatMap(({ day, nine }) => workday(email.trim().toLowerCase(), day).map((b) => ({ from: nine + b.from * HALF_HOUR, to: nine + b.to * HALF_HOUR })));
-}
-
-/* ---------- a demo account's documents ---------- */
-
-/** A document, with how many hours ago it changed. */
-interface SampleDocument { slug: string; name: string; kind: DocumentKind; hours: number }
-const HOUR = 60 * MIN;
-/** The demo company's workspaces. Anyone at the company can open what's in them. */
-const WORKSPACES: readonly { id: string; name: string; documents: readonly (SampleDocument & { by: string })[] }[] = [
-  {
-    id: 'product', name: 'Product', documents: [
-      { slug: 'launch-plan', name: 'Launch plan', kind: 'doc', by: 'Priya', hours: 2 },
-      { slug: 'launch-checklist', name: 'Launch checklist', kind: 'sheet', by: 'Maya', hours: 5 },
-      { slug: 'pricing-copy', name: 'Pricing page copy', kind: 'doc', by: 'Lena', hours: 26 }
-    ]
-  },
-  { id: 'design', name: 'Design', documents: [{ slug: 'onboarding-flow', name: 'Onboarding flow', kind: 'board', by: 'Aiko', hours: 50 }] }
-];
-/** What someone on their own has. Only they can open them. */
-const OWN: readonly SampleDocument[] = [
-  { slug: 'proposal', name: 'Harbourline proposal', kind: 'doc', hours: 26 },
-  { slug: 'rates', name: 'Rates 2026', kind: 'sheet', hours: 74 },
-  { slug: 'brief', name: 'Project brief template', kind: 'doc', hours: 550 }
-];
-
-const companyId = (slug: string) => `vandelay.${slug}`;
-const ownerTag = (email: string) => createHash('sha256').update(`alcove/demo-documents/v1\n${email.trim().toLowerCase()}`).digest('base64url').slice(0, 16);
-/** Someone's own document's ID says whose it is, under a tag of their address, and how to name them, since a call's documents are read by ID alone. */
-const ownId = (who: { name: string; email: string }, slug: string) => `own.${ownerTag(who.email)}.${slug}.${encodeURIComponent(firstName(who.name))}`;
-const OWN_ID = /^own\.([A-Za-z0-9_-]{16})\.([a-z-]+)\.(.+)$/;
-
-/** What a demo account can bring to a call: the company's workspaces at the company, otherwise their own documents. */
-export function sampleLibrary(who: { name: string; email: string }, now: Date): DocumentLibrary['workspaces'] {
-  const document = (id: string, d: SampleDocument, by: string): Document => ({ id, name: d.name, kind: d.kind, by, updatedAt: new Date(now.getTime() - d.hours * HOUR).toISOString() });
-  if (inCompany(who.email)) return WORKSPACES.map((w) => ({ id: w.id, name: w.name, documents: w.documents.map((d) => document(companyId(d.slug), d, d.by)) }));
-  return [{ id: 'own', name: 'Your documents', documents: OWN.map((d) => document(ownId(who, d.slug), d, firstName(who.name))) }];
-}
-
-/** A document brought to a call, as `viewer` sees it, from its ID alone; null when it's nothing in the catalog (any more). */
-export function sampleDocument(id: string, viewer: { email: string; sample: boolean }): CallDocument | null {
-  const company = WORKSPACES.flatMap((w) => w.documents).find((d) => companyId(d.slug) === id);
-  if (company) return { id, kind: company.kind, by: company.by, name: viewer.sample && inCompany(viewer.email) ? company.name : null };
-  const [, tag, slug, by] = OWN_ID.exec(id) ?? [];
-  const own = OWN.find((d) => d.slug === slug);
-  return own && by ? { id, kind: own.kind, by: decodeURIComponent(by), name: viewer.sample && ownerTag(viewer.email) === tag ? own.name : null } : null;
 }

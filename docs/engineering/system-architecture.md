@@ -89,8 +89,10 @@ which browsers edit together through the API ([Data and storage › Documents](d
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
-   commitment of method, path and body plus the encrypted response; a retry returns the same response,
-   and a different request under the same ID is `409 conflict`. Note search, asking, reading who's busy, catching up, caption
+   commitment of method, path and body plus the encrypted response; a retry returns the same response, except
+   that a call comes back with `documents` empty, because a receipt can't hold a document's name
+   ([Requests](privacy-keys-and-sessions.md#requests)), and a different request under the same ID is
+   `409 conflict`. Note search, asking, reading who's busy, catching up, caption
    translations, audio pieces, transcript clips, proposals and changes to a note's decisions, open questions,
    follow-ups and transcript lines, having its notes written again, sharing a note, answering an invitation and
    answering a ring keep no receipt.
@@ -114,12 +116,12 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Asking | Questions of 1 to 500 characters; 20 a minute per account, about one note or across notes. Across notes, at most 12 notes and 120,000 characters of them are sent, and an answer cites at most six places |
 | Notes job | Three attempts, a 180-second lease, retries 20 and 90 seconds after a failure; at most 120,000 characters of transcript sent |
 | Calendar | Events from an hour ago to a week ahead, at most 100 |
-| Meeting | 5 to 600 minutes, at most 300 people invited; a call started now is set to an hour; two or three times offered; picking one: 30 a minute per client address |
+| Meeting | 5 to 600 minutes, at most 300 people invited and 12 documents brought; a call started now is set to an hour; two or three times offered; picking one: 30 a minute per client address |
 | Call participants | No limit; the organizer, people invited and guests by name. Join tokens last 120 seconds, call passes 12 hours |
 | Note progress stream | One update a second, for at most two minutes |
 | Busy times | At most 31 days and 300 people, 60 reads a minute per account; other people's calendars 50 at a time |
 | Rings | A ring lasts 45 seconds, and 20 people can be rung at once. Each browser tab holds one stream, which delivers within about a second, repeats itself every 20 seconds and ends after 210 to 240 seconds. An account holds at most 8, a process 300. |
-| Workspace | A name of up to 120 characters; at most 5,000 items in its tree, each named in up to 200, and folders 32 deep; 1,000 people; 30 days in Trash; 100 made per account, 20 a minute; the list read 120 times a minute |
+| Workspace | A name of up to 120 characters; at most 5,000 items in its tree, each named in up to 200, and folders 32 deep; 1,000 people; 30 days in Trash; 100 made per account, 20 a minute; the list and the library read 120 times a minute together |
 | Sharing a document | Up to 500 people in all, 100 at a time |
 | Workspace and document streams | 500 open together on each instance, for everyone, and 64 from one client address |
 | Workspace stream | 8 open per person on each instance; a ping every 25 seconds; opened again after 280 seconds; 120 opened a minute per person; 600 changes a minute per person |

@@ -117,7 +117,7 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
           <When draft={draft} change={change} guests={guests} team={!!team} wide={wide} onWide={setWide} back={back} onNext={(picked) => { change({ at: picked }); go('details'); }} />
         )}
         {view === 'details' && at && (
-          <Details draft={draft} change={change} guests={guests} at={draft.offer?.[0] ?? at} invites={invites} team={!!team} back={back} returning={from === 'documents'} saving={schedule.isPending}
+          <Details draft={draft} change={change} guests={guests} at={draft.offer?.[0] ?? at} invites={invites} back={back} returning={from === 'documents'} saving={schedule.isPending}
             onWhen={() => go('when')} onWho={() => go('who')} onDocs={() => go('documents')} onSchedule={save} />
         )}
         {view === 'documents' && (
