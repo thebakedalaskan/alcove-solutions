@@ -317,12 +317,12 @@ const BAR_ITEMS: readonly { id: BoardBarItem; icon: IconName; label: string }[] 
   { id: 'night', icon: 'sun', label: 'Night board' }
 ];
 
-/** The bar's More, under its button: whichever of its items this board was given. */
+/** The bar's More, under its button: whichever of its items this board was given. Picking one gives the keys back to the board. */
 function BarMenu({ board, items }: { board: Board; items: BoardBarItems }) {
   const open = useBoardState(board, (s) => s.barMenu);
   const rows = BAR_ITEMS.flatMap((item) => {
     const run = items[item.id];
-    return run ? [{ icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); } }] : [];
+    return run ? [{ icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }] : [];
   });
   return open && rows.length > 0 ? <BoardPop right={14} top={60} label="More" items={rows} /> : null;
 }
