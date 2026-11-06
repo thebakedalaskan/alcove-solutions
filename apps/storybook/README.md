@@ -26,6 +26,7 @@ src/api/move.ts           a call being moved to this device, as /move sees it
 src/world/                the demo world, in the contract's types: people, notes, calls, the demo clock
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
 src/media/screens.ts      what other people share, drawn
+src/media/film.ts         a video for a document, drawn and recorded in the browser
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
@@ -34,7 +35,7 @@ src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `r
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
-stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, leaving
+stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, its workspace, leaving
 stories/journeys/         one file per section of docs/product/user-flows.md
 ```
 
@@ -222,6 +223,23 @@ story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do:
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
 from another call. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
 stories are always night, and come on a phone too (`phone()`).
+
+The call's workspace is played too. The first time Workspace opens, the call settles its home as the API does: the
+`StoryCall`'s `workspaceId` (chosen when it was scheduled) with the call's folder put at its top, else a new workspace
+named "<call title> · <day>" with the folder in it, which holds the live Notes, Follow-ups and Transcript. Someone who came
+in with the link gets nothing, so it's private to them. The script's `workspace` says what's brought to the call and who's
+in which document; beats move people (`goesTo`), present (`presents`, `movesPresenting`), play a video for everyone
+(`plays`), ask to see it (`asksToSee`) and tag you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
+ask, add a follow-up) changes the call as the server would. `addWalkthrough()` in `talk.ts` puts a document with a film
+in Product, drawn and recorded in the browser (`src/media/film.ts`) the first time it's played.
+
+```tsx
+/** Priya presents the launch plan two seconds in, and leaves four seconds later. */
+export const PresenterLeft = inCall({
+  scenario: 'busy', call: LAUNCH_REVIEW,
+  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, leaves(PRIYA))] }
+});
+```
 
 ## Extend the stand-in
 

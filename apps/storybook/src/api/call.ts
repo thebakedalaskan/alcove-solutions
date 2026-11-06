@@ -4,23 +4,29 @@
  * rung, breakout rooms, and who hosts. LiveKit's side (everyone else's microphones, who's speaking, what they share and
  * your own connection) is `livekit`, which the scripted room (src/media/livekit.ts) plays to the call screen. Every control
  * does to the snapshot what the server would; leaving ends the call for whoever hosts and leaves its note being written.
+ * The call's workspace is played here too: its home, settled the first time Workspace opens, what's brought, presented and
+ * played, who's asking to see it, and where everyone else is in it.
  */
 import {
-  AlcoveApiError, RING_SECONDS, notesAreOn, type BreakoutPlan, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  AlcoveApiError, RING_SECONDS, notesAreOn, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
-import type { BoardCheck, BoardOpen, CallFollowUps, CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentKind } from '@alcove/api';
+import type {
+  BoardCheck, BoardOpen, CallFollowUp, CallFollowUps, CallSeat, CallWorkspace, CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentKind, WorkspaceHere, WorkspaceItem
+} from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { talking } from '../browser';
 import type { Screen } from '../media/screens';
 import { writeNote } from '../world/build';
 import { personAt } from '../world/people';
+import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
 import { captureOf, defaultScript, linkState, part, scriptFor, type Beat, type CallScript, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
+import { hereIn, peopleIn, shareWith, tagYou, treeOf } from './workspaces';
 
 /** A connection's identity in a call: `p_` and 22 characters, as LiveKit's are. */
 const identity = (seed: string) => `p_${seed.replace(/[^A-Za-z0-9]/g, '').padEnd(22, 'x').slice(-22)}`;
@@ -133,7 +139,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   private tick(): void {
     this.change((s) => ({
-      ...s, elapsed: s.elapsed + 1,
+      ...s, elapsed: s.elapsed + 1, workspace: s.workspace.play ? { ...s.workspace, play: { ...s.workspace.play, nowMs: Date.now() } } : s.workspace,
       notes: { ...s.notes, recording: s.capture.mode === 'on' ? { ...s.notes.recording, seconds: s.notes.recording.seconds + 1, pieces: Math.floor((s.notes.recording.seconds + 1) / 5) } : s.notes.recording }
     }));
     // The organizer's browser brings everyone back when the rooms' time is up; in the script, the organizer's isn't yours.
@@ -182,6 +188,23 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'drop': this.livekit.update((r) => ({ ...r, connection: 'ended', endReason: 'error' })); return;
       case 'host-drops': this.hostDrops(); return;
       case 'host-back': this.hostBack(); return;
+      case 'goes-to': {
+        const p = this.find(b.who);
+        if (p) { this.where.set(p.id, { document: b.document, typing: b.typing ?? false, page: b.page ?? null }); this.sayWhere(); }
+        return;
+      }
+      case 'present': this.theyPresent(b.who, b.document, b.section ?? 0); return;
+      case 'move-presenting': this.space((w) => (w.present ? { ...w, present: { ...w.present, section: w.present.id === null ? null : b.section } } : w)); return;
+      case 'stop-presenting': this.space((w) => ({ ...w, present: null })); return;
+      case 'play': this.theyPlay(b.who, b.document, b.media); return;
+      case 'stop-playing': this.space((w) => ({ ...w, play: null })); return;
+      case 'ask-to-see': {
+        const p = this.find(b.who);
+        if (p && this.getSnapshot().isOrganizer) this.space((w) => ({ ...w, asks: [...w.asks, { id: nextId('see'), participantId: p.id, person: p.person, at: new Date().toISOString() }] }));
+        return;
+      }
+      case 'not-now-to-see': this.space((w) => (w.asked === 'asking' ? { ...w, asked: 'declined' } : w)); return;
+      case 'tag-you': this.tagsYou(b.who, b.document, b.block ?? null); return;
       case 'run': b.what(); return;
     }
   }
@@ -219,6 +242,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }));
     this.crypto.update((c) => ({ ...c, members: c.members.filter((m) => m !== x.id), everyone: c.everyone.filter((m) => m !== x.id) }));
     this.livekit.update((r) => { const { [x.id]: _gone, ...rest } = r.people; return { ...r, people: rest }; });
+    // What they presented or played for everyone ends with them, and they're not in the workspace any more.
+    this.space((w) => ({ ...w, present: w.present?.by.seat === x.seat ? null : w.present, play: w.play?.by.seat === x.seat ? null : w.play }));
+    if (this.where.delete(x.id)) this.sayWhere();
     this.hosting();
   }
 
@@ -517,25 +543,214 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   /** Data between browsers goes nowhere here: nobody else's browser is in the call. */
   sealData(_topic: string, payload: Uint8Array): Promise<Uint8Array<ArrayBuffer> | null> { return Promise.resolve(new Uint8Array(payload)); }
   openData(_topic: string, _from: string, sealed: Uint8Array): Promise<Uint8Array | null> { return Promise.resolve(sealed); }
-  /* The call's workspace and boards: Storybook shows the call without them, so each answers and changes nothing. */
+  /* ---------- the call's workspace ---------- */
+
+  /** Where everyone else is in the call's workspace, by their connection: what its stream says of them, the call's own pages included. */
+  private where = new Map<string, { document: string | null; typing: boolean; page: CallPage | null }>();
+  /** The call's home, once it's settled. */
+  private homeId: string | null = null;
+  private followWatchers = 0;
   readonly followUps = new Pushed<CallFollowUps | null>(null);
-  watchFollowUps(): () => void { return () => undefined; }
-  openWorkspace(): Promise<void> { return Promise.resolve(); }
-  previewWorkspace(_workspaceId: string): Promise<CallWorkspaceSwitch> { return Promise.resolve({ name: '', cantOpen: [] }); }
-  setWorkspace(_workspaceId: string): Promise<void> { return Promise.resolve(); }
-  newWorkspace(_name?: string | undefined): Promise<void> { return Promise.resolve(); }
-  bringDocument(_documentId: string, _brought: boolean): Promise<void> { return Promise.resolve(); }
-  askForWorkspace(up: boolean): Promise<void> { this.change((s) => ({ ...s, workspace: { ...s.workspace, asked: up ? 'asking' : 'no' } })); return Promise.resolve(); }
-  grantWorkspaceAsk(_askId: string, _documentId: string, _role: DocumentRole): Promise<void> { return Promise.resolve(); }
-  declineWorkspaceAsk(_askId: string): Promise<void> { return Promise.resolve(); }
-  startPresenting(_kind: PresentKind, _id: string, _section?: number | undefined): Promise<void> { return Promise.resolve(); }
-  movePresenting(_section: number): Promise<void> { return Promise.resolve(); }
-  stopPresenting(): Promise<void> { return Promise.resolve(); }
-  startPlaying(_documentId: string, _mediaId: string, _positionMs?: number | undefined): Promise<void> { return Promise.resolve(); }
-  pausePlaying(_positionMs: number): Promise<void> { return Promise.resolve(); }
-  resumePlaying(): Promise<void> { return Promise.resolve(); }
-  seekPlaying(_positionMs: number): Promise<void> { return Promise.resolve(); }
-  stopPlaying(): Promise<void> { return Promise.resolve(); }
+
+  /** Whoever's showing the call's follow-ups hears every change to the call that changes them. */
+  protected override push(next: CallState): void {
+    super.push(next);
+    if (this.followWatchers > 0) this.tellFollowUps();
+  }
+  private space(change: (w: CallWorkspace) => CallWorkspace): void { this.change((s) => ({ ...s, workspace: change(s.workspace) })); }
+  private get seat(): CallSeat { return { seat: this.me.seat, name: this.me.person.name }; }
+  private seatOf(p: CallParticipant): CallSeat { return { seat: p.seat, name: p.person.name }; }
+  private itemIn(workspaceId: string, id: string): WorkspaceItem | undefined { return treeOf(workspaceId).items.find((i) => i.id === id && i.trashedAt === null); }
+  private organizerOnly(): Promise<void> | null {
+    return this.getSnapshot().isOrganizer ? null : Promise.reject(new AlcoveApiError('forbidden', 'Only the organizer chooses the call’s workspace.'));
+  }
+
+  /**
+   * The first time Workspace opens, the call's home: the meeting's own, with this call's folder put at its top, else a new
+   * workspace named after the call and the day, with the folder in it. The organizer is its admin and everyone invited
+   * edits; someone who came in with the link gets nothing, so it's private to them.
+   */
+  private settleHome(): void {
+    const s = this.getSnapshot();
+    if (this.homeId !== null || s.role === 'guest') return;
+    const w = current();
+    const name = homeName(this.meeting.title, s.startedAt);
+    const now = new Date().toISOString();
+    const folder: WorkspaceItem = {
+      id: nextId('folder').padEnd(22, '0'), kind: 'folder', name, parent: null, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null,
+      restricted: false, role: 'edit', call: { startedAt: s.startedAt, on: true, here: true, noteId: null }
+    };
+    const chosen = this.meeting.workspaceId ? w.workspaces.find((x) => x.id === this.meeting.workspaceId) : undefined;
+    let home: Space;
+    if (chosen) {
+      chosen.items = [folder, ...chosen.items];
+      home = chosen;
+    } else {
+      home = { id: nextId('home'), name, role: s.isOrganizer ? 'admin' : 'edit', people: this.meeting.guests.length + 1, items: [folder], createdAt: now, call: { title: this.meeting.title, at: s.startedAt } };
+      w.workspaces.push(home);
+    }
+    this.homeId = home.id;
+    for (const p of this.script.workspace?.where ?? []) {
+      const x = this.find(p.who);
+      if (x) this.where.set(x.id, { document: p.document, typing: p.typing ?? false, page: p.page ?? null });
+    }
+    const brought = (this.script.workspace?.brought ?? []).flatMap((id) => { const item = this.itemIn(home.id, id); return item ? [this.broughtOf(home.id, item)] : []; });
+    this.space((x) => ({ ...x, documents: brought }));
+    this.view(home.id);
+  }
+  private broughtOf(workspaceId: string, item: WorkspaceItem): CallWorkspace['documents'][number] {
+    return { workspaceId, id: item.id, kind: item.kind, name: item.name, role: item.role };
+  }
+  /** Everyone views `id`: what was presented and played stops, and everyone else is on its list until they open something there. */
+  private view(id: string): void {
+    const was = this.getSnapshot().workspace.id;
+    const tree = treeOf(id);
+    if (was !== null && was !== id) {
+      hereIn(was, []);
+      for (const [k, v] of this.where) this.where.set(k, { ...v, document: v.document !== null && this.itemIn(id, v.document) ? v.document : null });
+    }
+    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, present: null, play: null }));
+    this.sayWhere();
+  }
+  /** Who's where in the workspace everyone views, as its stream says it. */
+  private sayWhere(): void {
+    const id = this.getSnapshot().workspace.id;
+    if (id === null) return;
+    const here = this.getSnapshot().participants.flatMap((p): WorkspaceHere[] => {
+      const at = this.where.get(p.id);
+      if (p.isMe || !at) return [];
+      return [{ person: p.person, connection: `c_${p.id}`, callIdentity: p.id, document: at.document, block: null, typing: at.typing, page: at.page, elsewhere: false, isMe: false }];
+    });
+    hereIn(id, here);
+  }
+  /* Someone else presenting, playing or tagging you in it has opened Workspace, so the home is settled by then. */
+  private theyPresent(who: Person, document: string, section: number): void {
+    this.settleHome();
+    const p = this.find(who);
+    if (!p) return;
+    const id = this.getSnapshot().workspace.id;
+    const item = id === null ? undefined : this.itemIn(id, document);
+    // Someone who can open nothing here is told that something is presented, and by whom, and nothing else.
+    const present: CallWorkspace['present'] = item
+      ? { kind: item.kind === 'board' ? 'board' : 'document', id: document, name: item.name, section, by: this.seatOf(p), mine: false, canControl: this.getSnapshot().isOrganizer }
+      : { kind: null, id: null, name: null, section: null, by: this.seatOf(p), mine: false, canControl: false };
+    this.space((x) => ({ ...x, present }));
+  }
+  private theyPlay(who: Person, documentId: string, mediaId: string): void {
+    this.settleHome();
+    const p = this.find(who);
+    if (!p || this.getSnapshot().workspace.id === null) return;
+    const now = Date.now();
+    this.space((x) => ({ ...x, play: { mediaId, documentId, by: this.seatOf(p), playing: true, positionMs: 0, atMs: now, nowMs: now, mine: false, canControl: this.getSnapshot().isOrganizer } }));
+  }
+  private tagsYou(who: Person, document: string, block: string | null): void {
+    this.settleHome();
+    const id = this.getSnapshot().workspace.id;
+    const item = id === null ? undefined : this.itemIn(id, document);
+    if (id === null || !item) return;
+    tagYou({ id: nextId('tag'), workspaceId: id, document, name: item.name, block, by: { ...who, email: '' }, at: new Date().toISOString() });
+  }
+  /** The call's follow-ups as you may read them: the live notes' and the ones added by hand. */
+  private tellFollowUps(): void {
+    const s = this.getSnapshot();
+    const mode = s.capture.room ? s.capture.room.mode : s.capture.mode;
+    const items: CallFollowUp[] = [
+      ...(s.liveNotes.notes?.next ?? []).map((n): CallFollowUp => ({ ...n, from: 'notes' })),
+      ...s.liveNotes.added.map((a): CallFollowUp => ({ ...a, from: 'added' }))
+    ];
+    const next: CallFollowUps = { items, notes: mode === 'off' ? 'off' : mode === 'paused' ? 'paused' : 'on' };
+    if (JSON.stringify(next) !== JSON.stringify(this.followUps.getSnapshot())) this.followUps.set(next);
+  }
+  watchFollowUps(): () => void {
+    this.followWatchers += 1;
+    this.tellFollowUps();
+    let stopped = false;
+    return () => { if (!stopped) { stopped = true; this.followWatchers -= 1; } };
+  }
+  openWorkspace(): Promise<void> { this.settleHome(); return Promise.resolve(); }
+  previewWorkspace(workspaceId: string): Promise<CallWorkspaceSwitch> {
+    const no = this.organizerOnly();
+    if (no) return no.then(() => ({ name: '', cantOpen: [] }));
+    const tree = treeOf(workspaceId);
+    const members = new Set(peopleIn(workspaceId).map((p) => p.person.email.toLowerCase()));
+    const cantOpen = this.getSnapshot().participants.filter((p) => !p.isMe && (this.guests.has(p.id) || !members.has(p.person.email.toLowerCase()))).map((p) => firstOf(p.person));
+    return Promise.resolve({ name: tree.name ?? '', cantOpen });
+  }
+  setWorkspace(workspaceId: string): Promise<void> {
+    const no = this.organizerOnly();
+    if (no) return no;
+    this.view(workspaceId);
+    return Promise.resolve();
+  }
+  newWorkspace(name?: string | undefined): Promise<void> {
+    const no = this.organizerOnly();
+    if (no) return no;
+    const id = nextId('ws');
+    // Made for the call, as its home is: the organizer and everyone invited, and no guest.
+    current().workspaces.push({
+      id, name: name?.trim() || this.meeting.title, role: 'admin', people: this.meeting.guests.length + 1, items: [], createdAt: new Date().toISOString(),
+      call: { title: this.meeting.title, at: this.getSnapshot().startedAt }
+    });
+    this.view(id);
+    return Promise.resolve();
+  }
+  bringDocument(documentId: string, brought: boolean): Promise<void> {
+    const id = this.getSnapshot().workspace.id;
+    const item = id === null ? undefined : this.itemIn(id, documentId);
+    if (id === null || !item) return Promise.reject(new AlcoveApiError('not-found', 'That isn’t there, or you can’t open it.'));
+    this.space((w) => ({ ...w, documents: [...w.documents.filter((d) => d.id !== documentId), ...(brought ? [this.broughtOf(id, item)] : [])] }));
+    return Promise.resolve();
+  }
+  askForWorkspace(up: boolean): Promise<void> { this.space((w) => ({ ...w, asked: up ? 'asking' : 'no' })); return Promise.resolve(); }
+  /** The organizer opens one document to whoever asked, by their seat in the call. */
+  grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void> {
+    const ask = this.getSnapshot().workspace.asks.find((a) => a.id === askId);
+    const seat = ask ? this.getSnapshot().participants.find((p) => p.id === ask.participantId)?.seat : undefined;
+    if (seat) shareWith(documentId, [{ seat }], role);
+    this.space((w) => ({ ...w, asks: w.asks.filter((a) => a.id !== askId) }));
+    return Promise.resolve();
+  }
+  declineWorkspaceAsk(askId: string): Promise<void> { this.space((w) => ({ ...w, asks: w.asks.filter((a) => a.id !== askId) })); return Promise.resolve(); }
+  startPresenting(kind: PresentKind, id: string, section?: number | undefined): Promise<void> {
+    const w = this.getSnapshot().workspace;
+    const item = w.id === null ? undefined : this.itemIn(w.id, id);
+    if (!item) return Promise.reject(new AlcoveApiError('not-found', 'That isn’t there, or you can’t open it.'));
+    this.space((x) => ({ ...x, present: { kind, id, name: item.name, section: section ?? 0, by: this.seat, mine: true, canControl: true } }));
+    return Promise.resolve();
+  }
+  movePresenting(section: number): Promise<void> {
+    this.space((w) => (w.present ? { ...w, present: { ...w.present, section } } : w));
+    return Promise.resolve();
+  }
+  stopPresenting(): Promise<void> { this.space((w) => ({ ...w, present: null })); return Promise.resolve(); }
+  startPlaying(documentId: string, mediaId: string, positionMs?: number | undefined): Promise<void> {
+    const now = Date.now();
+    this.space((w) => ({ ...w, play: { mediaId, documentId, by: this.seat, playing: true, positionMs: positionMs ?? 0, atMs: now, nowMs: now, mine: true, canControl: true } }));
+    return Promise.resolve();
+  }
+  /** Where what's playing is now, on the server's clock. */
+  private playAt(): number {
+    const p = this.getSnapshot().workspace.play;
+    return p ? p.positionMs + (p.playing ? Date.now() - p.atMs : 0) : 0;
+  }
+  pausePlaying(positionMs: number): Promise<void> {
+    const now = Date.now();
+    this.space((w) => (w.play ? { ...w, play: { ...w.play, playing: false, positionMs, atMs: now, nowMs: now } } : w));
+    return Promise.resolve();
+  }
+  resumePlaying(): Promise<void> {
+    const now = Date.now();
+    const at = this.playAt();
+    this.space((w) => (w.play ? { ...w, play: { ...w.play, playing: true, positionMs: at, atMs: now, nowMs: now } } : w));
+    return Promise.resolve();
+  }
+  seekPlaying(positionMs: number): Promise<void> {
+    const now = Date.now();
+    this.space((w) => (w.play ? { ...w, play: { ...w.play, positionMs, atMs: now, nowMs: now } } : w));
+    return Promise.resolve();
+  }
+  stopPlaying(): Promise<void> { this.space((w) => ({ ...w, play: null })); return Promise.resolve(); }
+  /* The call's boards: Storybook shows the call without them, so each answers and changes nothing. */
   openBoard(_from: BoardOpen): Promise<void> { return Promise.resolve(); }
   closeBoard(): Promise<void> { return Promise.resolve(); }
   boardCheck(_documentId: string): Promise<BoardCheck> { return Promise.resolve({ cannot: [], mayLetIn: true }); }
@@ -716,6 +931,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   closing(): void { this.close(); }
 }
+
+/** What a call's new home and its folder are called: the call, and the day it started, 'Design review · 4 Nov'. */
+const homeName = (title: string, startedAt: string) =>
+  `${title.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Untitled call'} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(startedAt))}`;
 
 /** A moment of the call as the notes write it, '04:12'. */
 const clockOf = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
