@@ -24,7 +24,7 @@
  * however they've framed it, while they see it live.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type CallPeopleMode, type Person, type SelfView, type StageCorner } from '@alcove/api';
-import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, WsPersonCard, WsPopover, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, WsPersonCard, WsPopover, cn, useToast, volumeTag } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -43,7 +43,6 @@ import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
 import type { CallTogether } from '~/features/workspace/context';
 import type { VolumeActions } from './volume';
-import { volumeTag } from './VolumeControl';
 
 export interface StageParticipant {
   id: string;

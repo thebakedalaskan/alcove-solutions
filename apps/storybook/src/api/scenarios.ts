@@ -23,12 +23,13 @@ import {
 import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, standupOwn, walkthrough } from '../world/notes';
 import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
+import { forgetKeptHere } from './kept';
 import { forgetAudio } from './media';
 import { stopLive } from './standin';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -214,7 +215,7 @@ function onTheirOwn(): World {
   ];
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
-    meetings: [], calendar: connected([]), credits: CREDITS, documents: { source: 'sample', workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
+    meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, mentions: [], media: [], rings: [], writing: null
   };
 }
@@ -276,13 +277,17 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
       refuse('Expenses', 'read-only', ['Trains over four hours can be first class.']);
       return { world: w, opening: {} };
     }
+  },
+  'first-sign-in': {
+    title: 'Signing in for the first time', about: 'Nobody is signed in, and Art has no account yet: signing in makes it on screen, opens on his first day, and the tour of Home follows.',
+    make: () => ({ world: { ...SCENARIOS['first-day'].make().world, session: null }, opening: { tourSeen: false } })
   }
 };
 export const SCENARIO_NAMES = Object.keys(SCENARIOS).filter((k): k is ScenarioName => k in SCENARIOS);
 export const isScenario = (v: unknown): v is ScenarioName => typeof v === 'string' && v in SCENARIOS;
 
 /** Checks the world against the contract's own schemas, so a story never shows something the API could never send. */
-function checked(w: World): World {
+export function checked(w: World): World {
   const checks = [
     ['session', SessionSchema.nullable().safeParse(w.session)], ['prefs', PreferencesSchema.safeParse(w.prefs)], ['team', TeamSchema.nullable().safeParse(w.team)],
     ['notes', NoteSchema.array().safeParse(w.notes)], ['meetings', MeetingSchema.array().safeParse(w.meetings)], ['calendar', CalendarSchema.safeParse(w.calendar)],
@@ -328,6 +333,8 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   sessions.media?.stop();
   sessions.media = null;
   sessions.roomTitle = null;
+  // Recordings the last story kept on this device go with it (`remember` deletes them), and Record lists what's here afresh.
+  forgetKeptHere();
   const { world, opening } = SCENARIOS[name].make();
   const o: Opening = { ...QUIET, ...opening, ...over, browser: { ...opening.browser, ...over.browser } };
   setClock(o.now);

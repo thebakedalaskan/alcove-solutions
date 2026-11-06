@@ -1,10 +1,11 @@
-/* The call stage, always night: tiles, the dock and captions. */
+/* The call stage, always night: tiles, the dock, captions, pointers on a share, and how loud someone is for you. */
 import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
 import { Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
+import { IconButton, Scope, Slider } from './primitives';
 
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
 function withAlpha(hex: string, a: number): string {
@@ -127,4 +128,32 @@ export function SharePointer({ person, name, style, className }: { person: Avata
       <PointerTag person={person} name={name} />
     </span>
   );
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/**
+ * How loud one person is for you, from their tile's menu and from People: a slider and a quick mute, for you alone. Only
+ * your own playback changes. Unmuting goes back to the level they had (the caller keeps it). `level` runs from 0 (muted
+ * for you) to 1.
+ */
+export function VolumeControl({ name, level, onChange, onToggle }: { name: string; level: number; onChange: (level: number) => void; onToggle: () => void }) {
+  const muted = level === 0;
+  return (
+    <div className="ic-vol">
+      <div className="ic-vol-h"><span>Volume for you</span><Scope>Only you</Scope></div>
+      <div className="ic-vol-row">
+        <IconButton icon={muted ? 'speakerOff' : level < 0.5 ? 'speakerLow' : 'speaker'} size={17} on={muted}
+          label={muted ? `Unmute ${name} for you` : `Mute ${name} for you`} onClick={onToggle} />
+        <Slider value={level} step={0.05} label={`How loud ${name} is for you`} valueText={muted ? 'Muted for you' : pct(level)} onChange={onChange} />
+        <span className="n">{muted ? 'Off' : pct(level)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** How someone's level reads beside their name: nothing at full volume. */
+export function volumeTag(level: number): string | null {
+  if (level >= 1) return null;
+  return level === 0 ? 'Muted for you' : `${pct(level)} for you`;
 }

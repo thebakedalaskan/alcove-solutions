@@ -4,7 +4,7 @@
  * series a change asks whether it's for this call or this and later calls. Cancelling asks once, in place.
  */
 import { errorMessage, type Calendar, type ChangeScope, type Meeting, type MeetingInput, type NotesChoices, type NotesSetting, type Patch, type Rsvp } from '@alcove/api';
-import { Avatar, Button, EmptyState, Faces, FlowBody, FlowFoot, FlowRow, FlowSteps, FlowView, IconButton, Modal, TimeCard, TimeCardWaiting, buttonClass, cn, useSmoothHeight, useToast } from '@alcove/ui';
+import { Avatar, Button, EmptyState, Faces, FlowBody, FlowFoot, FlowRow, FlowSteps, FlowView, IconButton, Modal, NotesSwitches, ScopeBar, TimeCard, TimeCardWaiting, buttonClass, cn, useSmoothHeight, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -17,7 +17,7 @@ import { useTimes } from './availability';
 import { localWeekday } from './times';
 import { BroughtRow, BringFoot, Documents, docNames } from './Documents';
 import { NOT_REPEATING, guestsOf, repeatInput, tokensFor, type Guests, type Repeating } from './draft';
-import { Failed, NotesSwitches, ScopeBar, useFloodToCall } from './parts';
+import { Failed, useFloodToCall } from './parts';
 import { Who } from './Who';
 import { Length, RepeatRow, Week } from './When';
 import { answersLine, cancelNote, cancelledLine, dayWord, freeLine, notesWord, repeatLineHere, restoredLine, shortTime, timeLine, waitingLine, whenLine } from './words';
@@ -80,6 +80,14 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
   useSmoothHeight(box, `${view}:${widened}`, widened ? 420 : 240);
 
   const step = (v: View) => { setBack(v === 'card'); setFailed(null); setView(v); };
+  /*
+   * Puts a change back. The card has gone by then, and a mutation's own callbacks go with it, so a refusal is said from the
+   * promise. There can be one: a document the organizer has lost and has just taken off can't go back on.
+   */
+  const undo = (input: Patch<MeetingInput>, applied: ChangeScope | undefined) => update.mutateAsync({ id: m.id, input: undoOf(m, input), scope: applied }).catch((e: unknown) => {
+    clog.warn('undoing a change to a call failed', { err: e, meetingId: m.id });
+    toast(`Couldn’t undo that. ${errorMessage(e)}`, { icon: 'x', ms: 6000 });
+  });
   /* Everything saved here is said the same way: what happened, who heard, and Undo while there's one to give. */
   const save = async (input: Patch<MeetingInput>, said: string) => {
     if (update.isPending) return;
@@ -90,7 +98,7 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
       const next = await update.mutateAsync({ id: m.id, input, scope: applied });
       onClose();
       const told = reachesEvent(input) ? toldLine(next, calendar?.source) : '';
-      toast(`${said}${told ? ` ${told}` : ''}`, { icon: 'cal', ms: 6000, action: scope === 'this' && !input.repeat ? { label: 'Undo', onClick: () => update.mutate({ id: m.id, input: undoOf(m, input), scope: applied }) } : undefined });
+      toast(`${said}${told ? ` ${told}` : ''}`, { icon: 'cal', ms: 6000, action: scope === 'this' && !input.repeat ? { label: 'Undo', onClick: () => void undo(input, applied) } : undefined });
     } catch (e) {
       setFailed(e);
     }
@@ -112,7 +120,7 @@ export function CallCard({ open, onClose, meeting, onGone }: { open: boolean; on
         {view === 'documents' && (
           <>
             {steps}
-            <Documents picked={m.documents.map((d) => d.id)} back={false} foot={(_, ids) => (
+            <Documents picked={m.documents.map((d) => d.id)} brought={m.documents} back={false} foot={(_, ids) => (
               <>{scopeBar}{fail}<BringFoot count={ids.length} busy={saving} onBring={() => {
                 const before = m.documents.map((d) => d.id);
                 if (ids.length === before.length && ids.every((id) => before.includes(id))) step('card');
@@ -156,9 +164,10 @@ function Summary({ m, back, me, onClose, onOpen, onCancelled }: { m: Meeting; ba
 
   /*
    * Undo makes a new call with the same details: a new link, and answers from nothing. The card has gone by then, and
-   * a mutation's own callbacks go with it, so what happened is said from the promise.
+   * a mutation's own callbacks go with it, so what happened is said from the promise. A new call brings only what you
+   * can open, which leaves out anything you've lost since.
    */
-  const scheduleAgain = () => restore.mutateAsync({ title: m.title, startsAt: m.startsAt, durationMinutes: minutes, guests: m.guests.map((g) => g.email), notes: m.notes, choices: m.choices, joinMuted: m.joinMuted, documents: m.documents.map((d) => d.id) }).then(
+  const scheduleAgain = () => restore.mutateAsync({ title: m.title, startsAt: m.startsAt, durationMinutes: minutes, guests: m.guests.map((g) => g.email), notes: m.notes, choices: m.choices, joinMuted: m.joinMuted, documents: m.documents.flatMap((d) => (d.name === null ? [] : [d.id])) }).then(
     (next) => { toast(restoredLine(next), { icon: 'cal', ms: 9000, action: { label: 'Copy link', onClick: () => copy(next.code) } }); },
     (e: unknown) => {
       clog.warn('scheduling a cancelled call again failed', { err: e, meetingId: m.id });

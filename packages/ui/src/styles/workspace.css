@@ -178,7 +178,7 @@
 .wv-ask p { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
 .wv-ask b { color: var(--ink); font-weight: 600; }
 .wv-ask .ac, .wv-switch .ac { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.wv-cmt { width: 320px; padding: 10px; display: grid; gap: 8px; }
+.wv-cmt { width: 320px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .wv-cmt .q { padding: 6px 8px; border-radius: 8px; background: var(--hl); font-size: 13px; line-height: 1.35; color: var(--ink-2); }
 .wv-cmt .in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .wv-cmt .in .wm-in { flex: 1; width: 0; }

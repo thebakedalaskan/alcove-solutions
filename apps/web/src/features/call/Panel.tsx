@@ -7,7 +7,7 @@
  * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
 import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
+import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, VolumeControl, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
@@ -22,7 +22,6 @@ import { Moments, callTimes, type CallTimes } from './CatchUp';
 import { CallLines } from './LiveLines';
 import { tabName, useDraft, type Draft } from './PanelHost';
 import type { VolumeActions } from './volume';
-import { VolumeControl } from './VolumeControl';
 
 export type PanelView = CallPanelView;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;

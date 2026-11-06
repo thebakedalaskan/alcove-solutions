@@ -4,10 +4,11 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
+import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
 import { ART, ME_ID } from './people';
 import { iso } from './clock';
@@ -35,6 +36,19 @@ export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined;
 export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
 /** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
 export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
+
+/** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
+export interface MoveSpec {
+  /** 22 letters, digits, `-` or `_`, as a claim is. */
+  claim: string;
+  title: string;
+  organizerName: string;
+  you: MoveIn['you'];
+  /** The microphone and camera as they were on the other device. */
+  media: MoveMedia;
+  /** How long it has left before it runs out, in seconds: none, and it ran out already. */
+  seconds?: number | undefined;
+}
 
 export interface World {
   /** Who's signed in, or nobody. */
@@ -65,6 +79,10 @@ export interface World {
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */
   writing: { id: string; seconds: number; written: () => Note } | null;
+  /** What goes wrong when the app asks for something: a part of Alcove that fails, can't be reached, or keeps it waiting. */
+  trouble?: Troubles | undefined;
+  /** A call being moved to this device, which this browser holds the claim to (/move). */
+  move?: MoveSpec | undefined;
 }
 
 /** How a story's page opens: when on the demo day, what the browser is like, and what it remembers. */

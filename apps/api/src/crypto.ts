@@ -71,6 +71,8 @@ export const ownerRootWrapKey = (kmaster: Uint8Array, ownerId: string): Uint8Arr
 export const ownerWrapKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/owner-wrap/v1');
 /** Key for a mutable encrypted state row (call state, jobs). Derived from Kowner under its own label, scoped to the row. */
 export const stateKey = (root: Uint8Array, ownerId: string, scope: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), `alcove/state/v1/${scope}`);
+/** Names what someone can't open on a call. Nothing is stored under it: a name is worked out each time it's told. */
+export const closedDocumentKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/closed-document/v1');
 export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-commit/v1');
 export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-result/v1');
 /** Proves an unwrapped root is the owner's without storing anything that reveals it. */

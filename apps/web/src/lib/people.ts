@@ -4,6 +4,8 @@ import { firstName, type Person } from '@alcove/api';
 type Named = { name: string; email: string };
 /** Whether this reads as a whole email address. */
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.trim());
+/** What's on a line someone types people into, to match against: a comma or semicolon pasted after an address isn't part of it. */
+export const typedIn = (query: string) => query.trim().replace(/[,;\s]+$/, '').toLowerCase();
 /** Lower case without accents, for matching what's typed against a name. */
 export const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 /** The name in an address, when it starts with one: "jamie.lee@…" is Jamie. */

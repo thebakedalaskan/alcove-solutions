@@ -1,5 +1,5 @@
 /*
- * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, the
+ * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, Show more, the
  * mic level, and what a transcript isn't sure of.
  */
 import { forwardRef, useId, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
@@ -24,7 +24,7 @@ export function Fold({ summary, children, className, open, id }: { summary: Reac
 }
 
 /**
- * The container for one thing on a page: surface, a line edge, shadow-2. A `title` heading with an
+ * The container for one thing on a page: surface and a line edge, no shadow. A `title` heading with an
  * optional `aside` on the right (a count, a link). Don't nest cards; use rows inside.
  */
 export function Card({ title, aside, children, className, style, label }: {
@@ -108,6 +108,20 @@ export function TranscriptLine({ time, person, name, tools, children, className,
       <span className="nd-la">{person && <Avatar person={person} size={24} />}</span>
       <div className="nd-lb">{name && <p className="nd-ln">{name}</p>}<p className="nd-lp">{children}</p></div>
       <div className="nd-lx">{tools}</div>
+    </div>
+  );
+}
+
+/**
+ * "Show 4 more" under a list that's longer than its first few, and "Show fewer" once it's open: a quiet link centred
+ * under the list it opens. Show it only when more than one more would show, so it never says "Show 1 more".
+ */
+export function ShowMore({ all, more, onToggle, className }: { all: boolean; more: number; onToggle: () => void; className?: string | undefined }) {
+  return (
+    <div className={cn('hm-more', className)}>
+      <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
+        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
+      </button>
     </div>
   );
 }

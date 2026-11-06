@@ -281,10 +281,11 @@ purpose `invite`.
 - **How far it reaches.** Anyone can invite any address, so what lands on someone's Home is bounded: Upcoming lists
   other people's calls only for the next 90 days, though a call further out can still be opened and answered, and an
   account makes at most 30 calls a minute, however it makes them.
-- **What someone invited sees:** the call as the organizer scheduled it, the organizer, and how everyone has
-  answered, as counts. Up to 25 people invited they see who, with their addresses; past that, only how many. They
-  don't get the call's note, its calendar link, or a series' own link, unless the call is on a calendar, whose
-  invitation carries that link. They see how a series repeats; the rest of the series is its organizer's.
+- **What someone invited sees:** the call as the organizer scheduled it, the organizer, how everyone has answered, as
+  counts, and what was [brought to it](#brought-to-a-call). Up to 25 people invited they see who, with their addresses;
+  past that, only how many. They don't get the call's note, its calendar link, or a series' own link, unless the call is
+  on a calendar, whose invitation carries that link. They see how a series repeats; the rest of the series is its
+  organizer's.
 - **Answering** (`POST /v1/meetings/:id/answer`) seals the answer into the person's row under the organizer's keys,
   bound to that call and that person's hash, so it can't be moved to another row. It's padded, so all three answers
   are the same length. It keeps no receipt: the response is the organizer's call, which a receipt under the person
@@ -504,6 +505,39 @@ never the request, and every answer says `nosniff` and `no-store`, with a Conten
 opened by itself. Its URL never reaches a log: paths show `/v1/media/:token`, and the [scrubber](logging-and-errors.md#privacy-rules-for-logs)
 takes a token out of anything that quotes a file's URL, a browser's report of a picture that failed among them.
 
+### Brought to a call
+
+`modules/documents.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
+
+- **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
+  workspace, as each tree shows it to them, without folders or what's in Trash. A workspace with nothing to bring isn't
+  listed. Someone outside a workspace who was given something sees that, with no name for the workspace. A seat in a call
+  adds nothing: it ends with the call, and the call being brought to is another one.
+- **On a call**, everyone who can read it is told each document's kind and whose it is, by first name, and its name only
+  if they can open it, worked out on every read. That's the one thing anyone is told about something they can't open, and
+  the organizer is the one telling them: they could reach it when they brought it. It opens nothing, and it's a first name
+  and never an address, the same whether its maker is still in the workspace or has deleted their account. Something
+  nobody in particular made says nobody's name.
+- **What it's called.** The ID a call keeps says which workspace and which item, so only someone who can open it is told
+  that. Anyone else is told a name keyed to them and worked out for that call (`closedDocumentKey`, nothing stored): the
+  same on every read, but no use for telling whether two people, two calls or two entries mean the same thing or the same
+  workspace. An organizer who's lost something they brought sends that name back with the rest of the list, and it means
+  what the call keeps on that call alone. Once someone can open it, they're told the real ID.
+- **Refusals.** An ID in a request is only ever compared with the organizer's library. It reaches no workspace, so a
+  made-up one, a real one they can't open, a folder and something in Trash are all refused alike (`400 invalid`), in the
+  same time, and nothing anyone guessed gets onto a call, where it would say whose it is.
+- **Losing something.** A document the organizer loses after bringing it stays on the call, with no name for them either,
+  until they take it off, and it doesn't stop them changing the call. No request can add it again: not to this call once
+  it's off, and not to any other. But what a call keeps is carried on as it stands, without being checked again: the next
+  call in a series, the calls a repeat adds, and a change to this and later calls all take the list as it is, so a document
+  the organizer has lost can reach later calls in that series. Nobody learns more from that. It's an ID they could reach
+  when they brought it, and on every call each person is told only what this section says, read from the workspace at that
+  moment, so a name still goes only to someone who can open it. Something in Trash or gone isn't listed for anyone, and
+  restored, it's back. A workspace that can't be read leaves its documents off the call and is logged by its ID, and the
+  call opens as usual.
+- **Guests** see none of it: a call pass reaches no library and no meeting, and neither a call's state nor its card says
+  what was brought. What a guest can read of a workspace is what's shared with their seat.
+
 ## Requests
 
 - **Origin and content type.** Every state-changing request under `/v1` must carry `Origin: WEB_ORIGIN`
@@ -530,7 +564,8 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   (`401 unauthenticated`).
   What's for people in a workspace keeps a receipt, because a retry mustn't make a second workspace, item or copy, and
   every one of those answers is only an ID or a yes: a receipt filed under someone in a workspace outlives whatever it
-  was about, so it can't hold a name. What a guest in a call can reach of a workspace keeps none: renaming an item,
+  was about, so it can't hold a name. A call's answer does hold the names of what was brought to it, so its receipt keeps
+  the call without them: a retry gets `documents` empty, and the next read has them. What a guest in a call can reach of a workspace keeps none: renaming an item,
   which happens as a title is typed, restoring one, reading, and everything to do with files. Each sets an explicit state
   or, for a piece of a file, is kept by its place, and a guest has no account to file a receipt under. Nor does anything about
   a document's content: an update that arrives twice changes nothing, and a receipt would hold a copy of it. Starting an upload
@@ -548,8 +583,9 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
   series): 20 a minute per account, together (during a call, per connection to it, and asking about earlier calls per
   account). What carries over into a call: 60 a minute per account. Opening a moment of a call's
   live transcript from a catch-up: 60 a minute per connection to the call. Ringing: 20 a minute per organizer, 30 answers a minute per person, and 30 openings of the stream of rings a minute per account. Changes to a workspace's tree and people: 600 a
-  minute per person, opening its stream 120, making a workspace 20 per account and reading your list of them 120, or the tags
-  waiting for you. Tagging someone, and saying you've heard: 240 a minute per person. Document
+  minute per person, opening its stream 120, making a workspace 20 per account, and reading your list of them, the tags
+  waiting for you, your library or changing what a call brings 120 together, since each opens every workspace you're in.
+  Tagging someone, and saying you've heard: 240 a minute per person. Document
   updates: 1,200 a minute per person, and 64 MiB of them; carets 1,800; saying where you are 600; opening a document's stream
   240; reading a version 60; reading everything you can open for search 12. Pieces of a file: 600 a minute per person, and what a file, a workspace and each person's day can hold, which change without a deploy ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Files read: 240 a minute per person, an account or a seat, counting each URL asked for and each piece opened. Moving to another device: 12 new codes a minute per person; opening a link 30 a minute and checking on a move 240 a minute per client address; and for each move, by its secret's hash, 240 checks and 60 changes a minute. Over a
   limit the answer is `503 unavailable` ("Too many attempts"); Google sign-in returns to the welcome screen

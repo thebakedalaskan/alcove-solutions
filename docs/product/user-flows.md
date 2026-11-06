@@ -188,9 +188,11 @@ send to anyone".
 5. **Details** reads like the finished call. The name is ready to type over, When and Who step back, and notes open
    in place: **Write notes**, and with them **Keep the transcript** (without it, it's used to write the notes and then
    deleted), **Keep the recording** and **Read shared screens**. Past 25 people, **Set up for a big call** is already
-   on, so everyone joins muted. **Documents** steps to your workspace, or your own documents, with a search; a call can
-   bring 12, and anyone who can't open one is told, without seeing its name. The button says what it will do:
-   **Schedule**, **Schedule 4 calls** or **Get the link**.
+   on, so everyone joins muted. **Documents** steps to the documents and boards you can open, by workspace, with a
+   search; what's shared with you from workspaces you aren't in sits under **Shared with you**. With nothing to bring yet
+   it says so, and the call works without. A call can bring 12, and anyone who can't open one is told whose it is, without
+   seeing its name, so they can ask for it. The button says what it will do: **Schedule**, **Schedule 4 calls** or
+   **Get the link**.
 6. Once it's scheduled the modal settles away, the row rises on Home, and a toast says what happened, and only that.
    With Google Calendar connected the call is on it and Google sends the invitations, with **Undo** for a moment. With
    no calendar connected, or with **Put calls I schedule on my calendar** off (Settings), nobody has been told: the
@@ -203,6 +205,8 @@ send to anyone".
      what changed is sent. In a series each change asks **This call** or **This and later calls** before saving; a call
      that doesn't repeat can start repeating from **Change the time**. With a calendar connected everyone gets the
      update. **Undo** puts one call back; a change to later calls has none.
+   - A document in Trash, or deleted, leaves the card for everyone, and comes back if it's restored. One the organizer
+     can't open any more stays on the call, and shows among **Documents** for them to take off.
    - **Cancel this call** asks once, in place. It comes off the calendar and everyone invited is told. **Undo**
      schedules one call again as a new call: a toast says it has a new link, the old one won't work and answers start
      over, and offers **Copy link**; if it can't be done, the toast says that. A call in a series can't rejoin it.

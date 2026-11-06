@@ -22,6 +22,7 @@ import { session as sessionFor, type World } from '../world';
 import { joinCall, type ScriptedCall } from './call';
 import { Pushed, pause } from './live';
 import { audioUrlFor, quietAudio, screenImage } from './media';
+import { ScriptedMove } from './move';
 import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
 import { atTheDoor } from './script';
@@ -85,7 +86,9 @@ function inboxOf(w: World): Inbox {
     for (const a of n.actions) if (!a.done && a.owner?.person?.email === me().email) followUps.push({ ...a, ...from });
     for (const d of n.decisions) {
       const mine = d.changes.some((c) => c.by.email === me().email && (c.what === 'proposed' || c.what === 'disputed'));
-      if (d.state === 'proposed' && !mine) decisions.push({ ...d, ...from });
+      // On your own notes, a confirmed decision someone says wasn't decided is yours to settle.
+      const settle = d.state === 'confirmed' && d.disputes.length > 0 && from.role === 'organizer';
+      if ((d.state === 'proposed' && !mine) || settle) decisions.push({ ...d, ...from });
     }
   }
   return { followUps, decisions };
@@ -192,8 +195,12 @@ function busyFor(w: World, emails: string[], range: { from: string; to: string }
   const inside = (i: Interval) => i.to > range.from && i.from < range.to;
   const mine: Interval[] = [...w.meetings.filter((m) => m.status !== 'ended').map((m) => ({ from: m.startsAt, to: m.endsAt })), ...w.calendar.events.map((e) => ({ from: e.startsAt, to: e.endsAt }))];
   const domain = w.session?.user.email.split('@')[1] ?? '';
+  // With no calendar connected (or Google's access withdrawn) your own calls are all that's known, as the server says.
+  if (w.calendar.source === 'none' || w.calendar.needsAccess) {
+    return { source: 'none', you: w.meetings.filter((m) => m.status !== 'ended').map((m) => ({ from: m.startsAt, to: m.endsAt })).filter(inside), people: emails.map((email) => ({ email, busy: null })) };
+  }
   return {
-    source: w.calendar.source === 'none' ? 'none' : 'sample',
+    source: 'sample',
     you: mine.filter(inside),
     people: emails.map((email) => ({ email, busy: email.endsWith(`@${domain}`) ? days.flatMap((d) => workday(email, d)).filter(inside) : null }))
   };
@@ -253,7 +260,8 @@ export function ringYou(r: IncomingRing): void {
 }
 const calls = new Set<ScriptedCall>();
 const recordings = new Set<ScriptedRecording>();
-/** Whatever the last story left open stops: its calls, its recordings, its rings. */
+const moves = new Set<ScriptedMove>();
+/** Whatever the last story left open stops: its calls, its recordings, its rings, a move on its way. */
 export function stopLive(): void {
   for (const c of calls) c.close();
   calls.clear();
@@ -261,6 +269,8 @@ export function stopLive(): void {
   recordings.clear();
   for (const r of ringing) r.close();
   ringing.clear();
+  for (const m of moves) m.close();
+  moves.clear();
 }
 
 /* ---------- what the API runs on ---------- */
@@ -368,8 +378,9 @@ export const standIn: AlcoveApi = {
     })
   },
   calls: {
+    // As the server makes one: an hour from now, and scheduled until someone joins, so the lobby can ring people.
     startNow: (input?: InstantCallInput) => answer((w) => {
-      const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 30, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault }), instant: true, status: 'live' as const };
+      const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 60, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault }), instant: true };
       w.meetings.push(m);
       return { code: m.code };
     }),
@@ -395,7 +406,16 @@ export const standIn: AlcoveApi = {
       return live;
     },
     openMove: (): Promise<CallMoveIn> => Promise.reject(refused('not-found', 'That link has run out or was used. Make a new one on the other device.')),
-    resumeMove: (): Promise<CallMoveIn> => Promise.reject(refused('not-found', 'That move isn’t there any more. Make a new one on the other device.'))
+    // The move this browser holds the claim to, if the world has one (`move`): the other device's side isn't here.
+    resumeMove: async (claim: string): Promise<CallMoveIn> => {
+      const spec = await answer((w) => {
+        if (w.move?.claim !== claim) throw refused('not-found', 'That move isn’t there any more. Make a new one on the other device.');
+        return w.move;
+      }, 'anyone');
+      const move = new ScriptedMove(spec);
+      moves.add(move);
+      return move;
+    }
   },
   rings: {
     live: () => {

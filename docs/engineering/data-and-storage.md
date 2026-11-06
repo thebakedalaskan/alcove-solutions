@@ -627,9 +627,14 @@ and this way it runs through the same auth, origin check and tests as everything
 - **Busy times** (`POST /v1/calendar/busy`) are read when the app asks, from Google, from the account's own calls,
   or for a demo account from `apps/api/src/demo.ts`, and go nowhere else: no row, no receipt, and in the logs only
   how many ([Privacy › Google sign-in and calendar access](privacy-keys-and-sessions.md#google-sign-in-and-calendar-access)).
-- **Documents** brought to a call are IDs in its meeting manifest, checked against the organizer's own library when it's
-  scheduled, or against what the person bringing one can open in the call. A demo account's library is a catalog in
-  `apps/api/src/demo.ts`, and anyone else's is empty until the library reads workspaces.
+- **Documents** brought to a call are IDs in its meeting manifest, and nothing else about them is kept: a name, whether
+  it's still there and who can open it are read from its workspace each time the call is
+  ([Privacy › Brought to a call](privacy-keys-and-sessions.md#brought-to-a-call)). An item's own ID doesn't say which
+  workspace it's in, so the ID a call keeps names both, `<workspace_id>.<item ID>`, 45 characters; to the wire it's one
+  opaque ID (`IDSchema` puts no limit on an ID). That's only for someone who can open it: anyone else is told a name
+  worked out for them and that call, which nothing stores. A call stored with the old demo catalog's IDs (`vandelay.…`, `own.…`)
+  still opens, with those not listed: they look like nothing else, so they find nothing, and they stay in the manifest
+  until the organizer next changes what's brought.
 - **The workspace a call uses** is in its meeting manifest (`workspaceId`), with its `agenda`, as IDs. What goes on in it
   during the call is in the call's sealed state (`workspace`: who's asking, what's presented and playing, what's been
   worked on and by whom, and the next agenda while it's being made), and goes when the call ends: what was worked on into the note, if there is one, and nowhere else

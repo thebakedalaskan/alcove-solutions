@@ -229,11 +229,11 @@ export const walkthrough: NoteSpec = {
 
 /* ---------- what's yours on a note ---------- */
 
-/** What Priya added to the standup's shared notes from her own. */
+/** What Priya added to the standup's shared notes from her own. Art can remove it: they're his notes. */
 export function standupAdditions(): NoteAddition[] {
   return [{
     id: 'n2-x1', text: 'The outline is in the shared folder. Comments welcome before Friday.', by: PRIYA, at: iso(0, 10, 12),
-    moments: [{ at: mmss('06:20'), line: { id: 'l12', text: 'I’ll write it. Friday at the latest.', speaker: { name: PRIYA.name, person: PRIYA } } }], removable: false
+    moments: [{ at: mmss('06:20'), line: { id: 'l12', text: 'I’ll write it. Friday at the latest.', speaker: { name: PRIYA.name, person: PRIYA } } }], removable: true
   }];
 }
 /** Art's own notes on the standup: a note to himself and a bookmark. */

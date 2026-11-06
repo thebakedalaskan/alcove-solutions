@@ -5,11 +5,11 @@
  */
 import { CallTile } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Box, onStage } from '../../src/component';
-import { INES, KOFI, PRIYA } from '../../src/world/people';
+import { Box, onStage } from '../../../src/component';
+import { INES, KOFI, PRIYA } from '../../../src/world/people';
 
 const meta = {
-  title: 'Components/CallTile',
+  title: 'Components/In a call/CallTile',
   component: CallTile,
   ...onStage,
   args: { person: PRIYA, name: 'Priya Raman', speaking: false, muted: false, hand: false, connecting: false },
@@ -23,7 +23,7 @@ type Story = StoryObj<typeof meta>;
 export const Figure: Story = {};
 export const Speaking: Story = { args: { speaking: true } };
 export const Muted: Story = { args: { person: KOFI, name: 'Kofi Asante', muted: true } };
-export const HandRaised: Story = { args: { person: KOFI, name: 'Kofi Asante', hand: true } };
+export const HandRaised: Story = { name: 'Hand raised', args: { person: KOFI, name: 'Kofi Asante', hand: true } };
 /** In the call, but their keys are still on the way: not the same as a camera that's off. */
 export const Connecting: Story = { args: { connecting: true } };
 /** Someone without a portrait: their arch, with their initial. */

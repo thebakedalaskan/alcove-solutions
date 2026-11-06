@@ -3169,6 +3169,10 @@ describe('privacy at rest', () => {
     // One deleted says no more than one kept.
     const deleted = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([new TextEncoder().encode('CANARY-MEDIA-DELETED bytes')], 'CANARY-MEDIA-GONE.png', { type: 'image/png' }));
     await c.api.workspaces.media.remove(space.id, spaceDoc.id, deleted.id);
+    // Brought to a call, which keeps an ID: its name is in no row and no receipt, whatever the answer said.
+    const library = (await c.api.documents.list()).workspaces.flatMap((w) => w.documents);
+    const bringing = library.find((d) => d.name === 'CANARY-WSRENAMED')?.id ?? '';
+    expect((await c.api.meetings.create({ title: 'CANARY-TITLE brought', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', documents: [bringing] })).documents[0]?.name).toBe('CANARY-WSRENAMED');
     await c.api.workspaces.items.trash(space.id, spaceFolder.id);
     // A refusal says nothing either: not the address, the name, or that anything's there.
     expect(await c.api.workspaces.addPerson(space.id, 'not-an-address-CANARY-WSREFUSED', 'read').catch((e: unknown) => code(e))).toBe('invalid');

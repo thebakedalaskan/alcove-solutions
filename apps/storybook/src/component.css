@@ -6,6 +6,9 @@
 /* The stage is fixed over the whole window in the app; here it stands in the story's frame, edge to edge. */
 .stage.sbc-stage { position: relative; inset: auto; z-index: auto; min-height: 100vh; display: grid; place-items: center; align-content: center; gap: 24px; padding: 40px 24px; }
 
+/* A modal's frame, standing in the page instead of over it. */
+.ac-modal.sbc-modal { position: relative; left: auto; top: auto; transform: none; animation: none; margin: 24px auto; }
+
 /* A popover's surface, standing in the page instead of floating. */
 .sbc-pop { position: relative; display: inline-block; animation: none; vertical-align: top; }
 

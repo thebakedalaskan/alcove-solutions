@@ -3,7 +3,7 @@
  * notes and where they go open in place. The button says what it will do, and the line beside it who will hear about it.
  */
 import type { MeetingInput, Person } from '@alcove/api';
-import { Button, Faces, FlowBody, FlowFoot, FlowRow, Select, Switch, SwitchLine } from '@alcove/ui';
+import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { namesIn } from '~/features/workspace/List';
@@ -12,7 +12,7 @@ import { q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
 import { docNames } from './Documents';
 import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft } from './draft';
-import { Failed, NotesSwitches } from './parts';
+import { Failed } from './parts';
 import { callCount, invitationLine, notesWord, repeatLine, timeLine } from './words';
 
 /** What Schedule does with this draft, for whoever's on it. Only a calendar that takes the call invites anyone. */
@@ -23,11 +23,11 @@ function footLine(draft: Draft, guests: readonly Person[], invites: boolean): st
   return invites ? invitationLine(guests) : 'Nobody’s told until you send them the link.';
 }
 
-export function Details({ draft, change, guests, at, invites, team, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
+export function Details({ draft, change, guests, at, invites, back, returning, saving, onWhen, onWho, onDocs, onSchedule }: {
   draft: Draft; change: (d: Partial<Draft>) => void; guests: Person[]; at: Date;
   /** A calendar will take this call and invite everyone: it decides what can be promised. */
   invites: boolean;
-  team: boolean; back: boolean;
+  back: boolean;
   /** Came back from the documents: focus goes to their row. */
   returning: boolean;
   /** The call is on its way: the rows that step elsewhere wait for the answer. */
@@ -103,7 +103,7 @@ export function Details({ draft, change, guests, at, invites, team, back, return
             </div>
           )}
           <FlowRow id="cf-docs-row" icon="fileText" onClick={onDocs} disabled={saving} title={draft.documents.length ? `${draft.documents.length} ${draft.documents.length === 1 ? 'document' : 'documents'}` : 'Documents'}
-            sub={draft.documents.length ? docNames(draft.documents) : team ? 'Add from a workspace' : 'Add from your documents'} />
+            sub={draft.documents.length ? docNames(draft.documents) : 'Add from a workspace'} />
         </div>
       </FlowBody>
       {failed !== null && <Failed error={failed} />}
