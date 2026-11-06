@@ -73,7 +73,10 @@ refused (401), which makes top-ups unavailable.
   response's `deadline` is the one used), `dry: false`. The whole response, signature included, is kept sealed for disputes.
 - `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
   it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
-  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited. A status Alcove doesn't know
+  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited. `depositedAmount` and
+  `refundedAmount` are read in the token's smallest unit (its `/v0/tokens` decimals, 18 for the BNB Chain stablecoins)
+  and must equal 1Click's own `depositedAmountFormatted` and `refundedAmountFormatted`; if either disagrees nothing is
+  credited, it's logged at error, and the deposit stays `arriving` until it fails at the deadline and reaches support. A status Alcove doesn't know
   keeps the deposit as it is until the deadline, where it fails.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
   5 minutes until 24 hours after its address expires, when it's asked a last time (6 hours later, once, if it

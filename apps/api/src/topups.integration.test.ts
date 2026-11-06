@@ -251,6 +251,25 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 50_000 + 50_000);
   });
 
+  it('credits an 18-decimal refund whose units match 1Click’s own rendering, and credits nothing when they don’t', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BNB_USDC, 50_000);
+    h.oneclick.set(addr(t), 'REFUNDED', {
+      depositedAmount: '30000000000000000000', depositedAmountFormatted: '30.0', amountOut: '0',
+      refundedAmount: '30000000000000000000', refundedAmountFormatted: '30', intentHashes: ['h30']
+    });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', received: { amount: '30', credits: 30_000 } });
+
+    // A refund in units other than the token's (6 decimals on an 18-decimal token) disagrees with "30": not credited.
+    const odd = await api.credits.startTopUp(BNB_USDC, 50_000);
+    h.oneclick.set(addr(odd), 'REFUNDED', {
+      depositedAmount: '30000000000000000000', depositedAmountFormatted: '30', amountOut: '0',
+      refundedAmount: '30000000', refundedAmountFormatted: '30', intentHashes: ['h30b']
+    });
+    expect(await api.credits.topUp(odd.id)).toMatchObject({ state: 'arriving', address: null, received: null });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 30_000);
+  });
+
   it('shows a payment under the band as short, with the address, and credits it as what it buys once refunded', async () => {
     const { api } = await account();
     const t = await api.credits.startTopUp(BASE_USDC, 50_000);

@@ -56,7 +56,23 @@ const seen = z.object({ depositedAmount: units.nullish() });
  * A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead.
  * A swap that succeeded must say what came out, a refunded one what was refunded; only the other may be missing (0).
  */
-const settled = z.object({ depositedAmount: units, amountOut: units.nullish(), refundedAmount: units.nullish(), intentHashes: z.array(z.string().min(1)).min(1) });
+const settled = z.object({
+  depositedAmount: units, amountOut: units.nullish(), refundedAmount: units.nullish(), intentHashes: z.array(z.string().min(1)).min(1),
+  depositedAmountFormatted: z.string().nullish(), refundedAmountFormatted: z.string().nullish()
+});
+/**
+ * Whether an amount in a token's smallest unit says the same as 1Click's own decimal rendering of it ("1500000" and
+ * "1.5" at 6 decimals). 1Click sends both; when they disagree the units aren't what this code assumes (the token's
+ * decimals), so the amount isn't credited. With no rendering to compare, it's taken as it is.
+ */
+function agrees(amount: string, formatted: string | null | undefined, decimals: number): boolean {
+  if (formatted === null || formatted === undefined) return true;
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(formatted);
+  if (!m) return false;
+  const fraction = m[2] ?? '';
+  if (fraction.length > decimals) return false;
+  return BigInt(`${m[1] ?? '0'}${fraction.padEnd(decimals, '0')}`) === BigInt(amount);
+}
 const SETTLED = {
   SUCCESS: settled.extend({ amountOut: units }),
   REFUNDED: settled.extend({ refundedAmount: units })
@@ -144,6 +160,13 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       if (data.status === 'SUCCESS' || data.status === 'REFUNDED') {
         const s = SETTLED[data.status].safeParse(data.swapDetails);
         if (s.success) {
+          const d = deposit.route.decimals;
+          if (!agrees(s.data.depositedAmount, s.data.depositedAmountFormatted, d) || !agrees(s.data.refundedAmount ?? '0', s.data.refundedAmountFormatted, d)) {
+            // Money came, but its amount can't be trusted: nothing is credited, the address isn't shown, and at the
+            // deadline it fails and reaches support.
+            olog.error('finished swap amounts disagree with their formatted values', { provider: 'oneclick', status: data.status });
+            return { state: 'arriving' };
+          }
           return {
             state: 'settled',
             sentMicroUsd: toMicroUsd(BigInt(s.data.depositedAmount), deposit.route.decimals),
