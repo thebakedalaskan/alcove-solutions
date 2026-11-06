@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { hasLive, insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
@@ -186,6 +186,14 @@ function scrollTo(scroller: HTMLElement, top: number, smooth: boolean): void {
   requestAnimationFrame(step);
 }
 
+/** Types `/` or `@` at the caret as someone would, after a space if it follows a word, which is where they open a menu. */
+function typeTrigger(view: EditorView, trigger: '/' | '@'): void {
+  const { $from } = view.state.selection;
+  const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 1), $from.parentOffset, undefined, ' ');
+  view.focus();
+  view.dispatch(view.state.tr.insertText(before === '' || /\s/.test(before) ? trigger : ` ${trigger}`).scrollIntoView());
+}
+
 function makeHandle(rt: EditorRuntime): EditorHandle {
   const put = (run: (view: EditorView) => void) => { const v = rt.view; if (v) run(v); };
   const write = (run: (view: EditorView) => void) => { if (!rt.readOnly) put(run); };
@@ -239,8 +247,8 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
     blockWords: () => (rt.view ? blockWords(rt.view.state.doc) : []),
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
     hasLive: () => hasLive(rt),
-    openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
-    openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
+    openSlash: () => write((view) => typeTrigger(view, '/')),
+    openMention: () => write((view) => typeTrigger(view, '@')),
     tag: (person) => tagAtEnd(rt, person),
     toggleMark: (mark) => write((view) => {
       const { from, to, empty } = view.state.selection;
@@ -252,6 +260,12 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
     turnInto: (kind) => write((view) => {
       const id = selectedBlock(view.state)?.id;
       if (id) turnInto(rt, id, kind);
+    }),
+    addPhotos: () => write((view) => {
+      const block = selectedBlock(view.state)?.id;
+      const at = view.state.selection.from;
+      /* As if `/` had been typed here and Photos picked, with nothing typed to take out again. */
+      if (block) pickSlash(rt, { kind: 'slash', block, from: at, to: at, query: '' }, 'photo');
     })
   };
 }

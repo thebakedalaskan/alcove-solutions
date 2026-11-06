@@ -121,6 +121,9 @@ function useSpeaking(media: LocalMedia, on: boolean): boolean {
 }
 
 /** How wide the window is: on a phone, one thing at a time. */
+/** As wide as the phone's shorter dock goes: the microphone, the camera, the workspace, More and Leave. */
+const SHORT_DOCK_W = 640;
+
 function useWidth() {
   const [w, setW] = useState(() => innerWidth);
   useEffect(() => { const on = () => setW(innerWidth); addEventListener('resize', on); return () => removeEventListener('resize', on); }, []);
@@ -156,7 +159,9 @@ function InCall({ session }: { session: CallSession }) {
   // catching up and asking follow it, and the live transcript is heard only while it says on.
   const capHere = captureHere(state.capture);
   const hearing = capHere.transcript.mode === 'on';
-  const phone = useWidth() < PHONE_W;
+  const width = useWidth();
+  const phone = width < PHONE_W;
+  const short = width <= SHORT_DOCK_W;
   const [pop, setPop] = useState<Pop>(null);
   const [sharePick, setSharePick] = useState(false);
   /** Why the last share didn't start: the picker opens again and says what to do. */
@@ -954,6 +959,13 @@ function InCall({ session }: { session: CallSession }) {
 
   /* Turning on a device that isn't working opens its menu, which says what's wrong and how to fix it. */
   const pressMic = () => { void media.setMic(!media.getSnapshot().mic).then((ok) => { if (!ok) setPop('mic'); }); };
+  const handLabel = me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand';
+  const flipCaptions = () => {
+    const v = !cc;
+    setCc(v);
+    if (!v && pop === 'cc') setPop(null);
+    toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' });
+  };
   const pressCam = () => { void media.setCam(!media.getSnapshot().cam).then((ok) => { if (!ok) setPop('cam'); }); };
 
   /* ---------- keys ---------- */
@@ -973,7 +985,7 @@ function InCall({ session }: { session: CallSession }) {
   const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
   const spaceInvitedKey = JSON.stringify(invited);
   const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
-  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing };
+  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag };
   const zenOffered = !phone && !stageRooms;
   const zenOn = zenOffered && work.zen;
   const latestZen = useRef(zenOn);
@@ -1287,7 +1299,7 @@ function InCall({ session }: { session: CallSession }) {
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
   // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
-  const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
+  const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, turns: phone, apart: setApart && !stageRooms });
   const seats = staged.shareSeats;
   // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
   const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
@@ -1297,15 +1309,18 @@ function InCall({ session }: { session: CallSession }) {
     reveal: () => { work.act.reveal(); if (phone) layout.arrange(closeAll); }, covered: () => phone && showing.length > 0
   });
   const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
+  const chosenKey = layout.layout.shares.filter((c) => c.show === 'big').map((c) => c.id).join(' ');
+  const chosenBig = new Set(chosenKey ? chosenKey.split(' ') : []);
   const wasBig = useRef(new Set(seats.keys()));
   useEffect(() => {
     const here = new Set(shareKey ? shareKey.split(' ') : []);
     const big = new Map(bigKey ? bigKey.split(' ').flatMap((kv): [string, ShareLeaf][] => { const [id, s] = kv.split('='); return id && (s === 'share:1' || s === 'share:2') ? [[id, s]] : []; }) : []);
     for (const [id, close] of offers.current) if (big.has(id) || !here.has(id)) { close(); offers.current.delete(id); }
-    // With the workspace open a share goes big only because you brought it in: when things take turns, it's the one you asked to see.
-    if (surfaces.ws) for (const [id, seat] of big) if (!wasBig.current.has(id)) setFront(seat);
+    // With the workspace open, a share you brought in is the one you asked to see when things take turns. One a phone seats by
+    // itself waits behind what you're looking at, for the switcher.
+    if (surfaces.ws) for (const [id, seat] of big) if (!wasBig.current.has(id) && chosenBig.has(id)) setFront(seat);
     wasBig.current = new Set(big.keys());
-  }, [bigKey, shareKey, surfaces.ws]);
+  }, [bigKey, shareKey, surfaces.ws, chosenKey]);
   const roomy = surfaces.ws || surfaces.board || seats.size > 0;
   const seatsKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const top = bar ? 46 : 0;
@@ -1488,25 +1503,33 @@ function InCall({ session }: { session: CallSession }) {
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
-            <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
-              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} className="d-share" onClick={() => pickShare()} />
-            <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
-              on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
-            <DockSplit>
-              <DockButton icon="captions" label={cc ? 'Turn off captions' : 'Turn on captions'} tip={`${cc ? 'Turn off captions' : 'Turn on captions'} · the call is still transcribed for notes`} on={cc}
-                onClick={() => { const v = !cc; setCc(v); if (!v && pop === 'cc') setPop(null); toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' }); }} />
-              <Popover open={pop === 'cc'} onOpenChange={(o) => setPop(o ? 'cc' : null)} side="top" align="start" label="Caption language" className="ic-dmenu"
-                anchor={<DockChevron label="Caption language" on={pop === 'cc'} />}>{langMenu}</Popover>
-            </DockSplit>
-            <DockSeparator />
-            {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
-            {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
+            {!short && (
+              <>
+                <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
+                  tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={() => pickShare()} />
+                <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
+                  on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
+                <DockSplit>
+                  <DockButton icon="captions" label={cc ? 'Turn off captions' : 'Turn on captions'} tip={`${cc ? 'Turn off captions' : 'Turn on captions'} · the call is still transcribed for notes`} on={cc} onClick={flipCaptions} />
+                  <Popover open={pop === 'cc'} onOpenChange={(o) => setPop(o ? 'cc' : null)} side="top" align="start" label="Caption language" className="ic-dmenu"
+                    anchor={<DockChevron label="Caption language" on={pop === 'cc'} />}>{langMenu}</Popover>
+                </DockSplit>
+                <DockSeparator />
+                {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} onClick={() => flip('rooms')} />}
+                {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" onClick={() => own.mark()} />}
+              </>
+            )}
             <DockButton icon="folderOpen" label={!work.open && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} tip="Workspace · W" aria-keyshortcuts="W" on={work.open} badge={work.open ? 0 : broughtHere} onClick={work.act.toggle} />
-            <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
-            <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
+            {!short && (
+              <>
+                <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
+                <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
+              </>
+            )}
             <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
               className={pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : 'ic-menu'}
-              anchor={<DockButton icon="more" label="More: catch up, settings" on={pop === 'more' || pop === 'devices' || pop === 'quality'} />}>
+              anchor={<DockButton icon="more" label={short ? (unread ? `More: ${unread} new in Chat, notes, settings` : 'More: chat, notes, settings') : 'More: catch up, settings'}
+                on={pop === 'more' || pop === 'devices' || pop === 'quality'} badge={short ? unread : 0} />}>
               {pop === 'devices' ? (
                 <>
                   <MicOptions media={media} m={m} devices={devices} live onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
@@ -1517,13 +1540,22 @@ function InCall({ session }: { session: CallSession }) {
                 <VideoQuality media={media} m={m} />
               ) : (
                 <>
+                  {short && (
+                    <>
+                      <button type="button" className="mi" aria-pressed={showing.includes('chat')} onClick={() => { setPop(null); flip('chat'); }}><Icon name="chat" size={17} /><span className="t">{unread ? `Chat, ${unread} new` : 'Chat'}</span></button>
+                      <button type="button" className="mi" aria-pressed={notesShowing} onClick={() => { setPop(null); flipNotes(); }}><Icon name="notesPen" size={17} /><span className="t">Notes</span></button>
+                      <button type="button" className="mi" aria-pressed={!!me?.hand} onClick={() => { setPop(null); setHand(!me?.hand); }}><Icon name="hand" size={17} /><span className="t">{handLabel}</span></button>
+                      <button type="button" className="mi" aria-pressed={cc} onClick={() => { setPop(null); flipCaptions(); }}><Icon name="captions" size={17} /><span className="t">{cc ? 'Turn off captions' : 'Turn on captions'}</span></button>
+                      <button type="button" className="mi" disabled={!m.screen && full} onClick={() => { setPop(null); pickShare(); }}><Icon name="screen" size={17} /><span className="t">{m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}</span></button>
+                      {roomsHere && <button type="button" className="mi" aria-pressed={showing.includes('rooms') || !!open} onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
+                      {own.enabled && <button type="button" className="mi" onClick={() => { setPop(null); own.mark(); }}><Icon name="bookmark" size={17} /><span className="t">Mark this moment</span><Scope>Only you</Scope></button>}
+                      <div className="ic-msep" />
+                    </>
+                  )}
                   <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on what you missed</span></button>
-                  {own.enabled && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); own.mark(); }}><Icon name="bookmark" size={17} /><span className="t">Mark this moment</span><Scope>Only you</Scope></button>}
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
                   <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   <button type="button" className="mi" onClick={() => { setPop(null); moving.show(); }}><Icon name="phone" size={17} /><span className="t">Move to another device</span></button>
-                  {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
-                  <button type="button" className="mi only-narrow" onClick={() => { setPop(null); pickShare(); }}><Icon name="screen" size={17} /><span className="t">{m.screen ? 'Change what you share' : 'Share a tab, window or screen'}</span></button>
                 </>
               )}
             </Popover>

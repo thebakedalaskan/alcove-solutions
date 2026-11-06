@@ -21,6 +21,7 @@ import type { DocSection } from './editor/sections';
 import type { BlockDropTarget, EditorHandle, EditorProps, EditorToast, MovingBlock, Point, Rect } from './editor/types';
 import { PersonCard } from './People';
 import { facesIn } from './presence';
+import { KeyboardBar } from './KeyboardBar';
 import { HearIt } from './live/HearIt';
 import { useEditorCall } from './live/useEditorCall';
 import { useVideoHandlers } from './playing';
@@ -248,6 +249,7 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
         {media.popovers}
         {alcove.menu}
       </WsPage>
+      {editor && !readOnly && <KeyboardBar editor={editor} />}
       {comment && (
         <Suspense>
           <Comments doc={session.doc} open={comment} onOpen={openComment} self={ws.self} people={byId} canWrite={!readOnly} hidden={ask !== null}

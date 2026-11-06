@@ -25,6 +25,9 @@ export const PhoneNight = page('/drive', 'busy', { globals: { ...PHONE, theme: '
 /** Before the first call: where workspaces come from. */
 export const Empty = page('/drive', 'first-day');
 export const EmptyNight = page('/drive', 'first-day', { globals: { theme: 'dark' } });
+/** On a phone with little in it, the sea still goes down to the tab bar: no seam where the scene would stop. */
+export const EmptyPhone = page('/drive', 'first-day', { globals: PHONE });
+export const EmptyPhoneNight = page('/drive', 'first-day', { globals: { ...PHONE, theme: 'dark' } });
 /** New workspace, named in place, in the sky. */
 export const NewWorkspace = page('/drive', 'busy', {
   play: async ({ canvas, userEvent }) => { await userEvent.click(await canvas.findByRole('button', { name: 'New workspace' })); }

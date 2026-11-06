@@ -296,6 +296,8 @@ export interface EditorHandle {
   toggleMark: (mark: 'bold' | 'italic' | 'strike' | 'inlineCode' | 'highlight') => void;
   /** Turns the block the caret is in into another kind, for a phone's keyboard bar. */
   turnInto: (kind: BlockKind) => void;
+  /** Adds a Photos block where the caret is, as `/` Photos does, and opens the picker: for a phone's keyboard bar. */
+  addPhotos: () => void;
 }
 
 /** The kinds of text block, as Turn into and `/` name them. */

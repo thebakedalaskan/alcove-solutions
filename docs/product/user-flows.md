@@ -301,7 +301,9 @@ put them, and one dock at the bottom.
   microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own
   picker asks which one), **Raise hand**, **Captions** (with an arrow to pick the caption language), breakout
   rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
-  settings, Video quality) and **Leave**. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
+  settings, Video quality) and **Leave**. On a phone (640 px wide or narrower) the dock is shorter: microphone, camera,
+  the workspace, **More** and **Leave**. Chat (its count on **More**), Notes, the hand, captions, sharing, breakout
+  rooms and marking a moment are at the top of **More**, and the devices are under Audio and video settings. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
   are remembered in this browser, and shared screens are never made smaller.
@@ -334,7 +336,8 @@ put them, and one dock at the bottom.
   says what you're sharing (and "with sound" when its sound goes too), with **Change**, which swaps it in place for
   everyone, and **Stop sharing**. Each share names whoever shares it, with their face in the arch. Two sit side by
   side, or one above the other where that shows both bigger, with a line between them to drag (or move with the arrow
-  keys); one on a phone. The rest wait as tiles: click or tap one, or press **P** on it, to see it big, beside the one
+  keys); one on a phone, where a share that starts goes in a switcher under the arches at once, behind the document
+  if the workspace is open, so **Document** and their screen take turns. The rest wait as tiles: click or tap one, or press **P** on it, to see it big, beside the one
   that's big or, when two already are, in place of the one that's been big longest. Your own share starts as a tile
   on your screen. Until you've chosen how to see any share, a second one goes big beside the first; once you have, a
   new share comes in as a tile and nothing you see moves. A share that starts later glows for a moment where it lands,
@@ -494,6 +497,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      who has a hand up. **Show everything** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
+     On a phone, tapping someone's arch opens their card as a sheet: **Follow** (or **Stop following**), **Go to where
+     they are**, **Tag them in this document**, and **Pin, volume and more** for the rest of their tile's options.
      **@** lists who's in the call first, then who's invited, then the workspace and the company, and tagging someone in
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
      **Go there** opens it on the line. Putting the workspace away, or bringing in something it takes turns with, stops
@@ -1110,4 +1115,6 @@ your workspaces; Sign out asks first if anything hasn't reached Alcove.
 
 On a phone the list and the page take turns: the list until something's open, and the button at the top of the page
 brings it back. Menus and sheets rise from the bottom, and **Share** is in the document's **⋯**. Rows don't drag on a
-touch screen: **Move to…** does that. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.
+touch screen: **Move to…** does that. While you write, a bar rides on the keyboard with a block (as **/** does), the text's
+style, **@**, photos, a checklist and Done; sheets open above it. Holding a finger on a block opens its menu, the one its
+handle opens on a laptop, with **Delete for good** on a photo, video or file. Someone's card and a comment are sheets too, and faces are on the list's rows. A bar's buttons go under its words.

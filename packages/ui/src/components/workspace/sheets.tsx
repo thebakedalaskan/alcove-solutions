@@ -13,11 +13,12 @@ import { canTakeFocus, firstName, focusedNow, useMove } from './shared';
 /**
  * Someone's card, from their tile, their face or their name in a line. `where` is the document they're in, in words:
  * pass "A document you can’t open" or "Not in the workspace" when that's so. `onGo` is left out when you can't go there,
- * and `onTag` when you can't write in what's open.
+ * and `onTag` when you can't write in what's open. `onOptions`, from their arch on a phone: the rest of what their tile's
+ * menu has, such as pinning them or how loud they are, for you.
  */
-export function WsPersonCard({ person, where, followed = false, onFollow, onStop, onGo, onTag }: {
+export function WsPersonCard({ person, where, followed = false, onFollow, onStop, onGo, onTag, onOptions }: {
   person: AvatarPerson; where: string; followed?: boolean | undefined;
-  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag?: (() => void) | undefined;
+  onFollow: () => void; onStop: () => void; onGo?: (() => void) | undefined; onTag?: (() => void) | undefined; onOptions?: (() => void) | undefined;
 }) {
   const first = firstName(person);
   return (
@@ -28,6 +29,7 @@ export function WsPersonCard({ person, where, followed = false, onFollow, onStop
         : <Button variant="primary" size="sm" onClick={onFollow}><Icon name="navigate" size={15} />Follow {first}</Button>}
       {onGo && <button type="button" className="wm-r" onClick={onGo}><Icon name="locate" size={16} /><span className="t"><span className="l">Go to where {first} is</span></span></button>}
       {onTag && <button type="button" className="wm-r" onClick={onTag}><Icon name="at" size={16} /><span className="t"><span className="l">Tag {first} in this document</span></span></button>}
+      {onOptions && <button type="button" className="wm-r" onClick={onOptions}><Icon name="more" size={16} /><span className="t"><span className="l">Pin, volume and more</span></span></button>}
     </div>
   );
 }

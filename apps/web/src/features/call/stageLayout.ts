@@ -47,6 +47,11 @@ export interface ArrangeInput {
   layout: CallLayout;
   /** Something else has the room (the workspace or the board): a share that starts waits as a tile until you bring it in, and nobody leads by themselves. */
   hold: boolean;
+  /**
+   * A phone, where what's big takes turns: a share that starts is seated at once, behind what's in front, so the switcher
+   * under the arches offers it straight away. It doesn't wait as a tile, even while something else has the room or in Grid.
+   */
+  turns: boolean;
   /** The shares big until now: they stay big when something else takes the room, so opening it moves nothing that's on screen. */
   kept: string[];
   /** You've set the people and shares apart: with a share shown big, they're panels of their own. */
@@ -84,8 +89,8 @@ export function arrange(i: ArrangeInput): Plan {
   const live = new Set(i.shares);
   const chose = layout.shares.filter((s) => live.has(s.id));
   const picked = chose.length ? chose.filter((s) => s.show === 'big' && !i.away.includes(s.id)).map((s) => s.id).slice(-i.fit)
-    : i.hold ? i.shares.filter((s) => i.kept.includes(s) && !i.away.includes(s)).slice(0, i.fit)
-      : prefs.mode === 'grid' ? [] : i.shares.filter((s) => s !== i.own && !i.away.includes(s)).slice(0, i.fit);
+    : i.hold && !i.turns ? i.shares.filter((s) => i.kept.includes(s) && !i.away.includes(s)).slice(0, i.fit)
+      : prefs.mode === 'grid' && !i.turns ? [] : i.shares.filter((s) => s !== i.own && !i.away.includes(s)).slice(0, i.fit);
   const featured = i.shares.filter((s) => picked.includes(s));
   const tiles = i.shares.filter((s) => !featured.includes(s)).map(shareKey);
   // People standing as a panel have no stage to have a corner of: there, your own picture is one of them.

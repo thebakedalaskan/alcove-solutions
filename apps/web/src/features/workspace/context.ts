@@ -27,9 +27,14 @@ export interface CallTogether {
   followable: readonly string[]; following: string | null; writing: readonly string[];
   /** Where each is, in words: what's named is only ever what you can open. */
   where: Readonly<Record<string, string>>;
+  /** Who's in a document you can open, so Go there is on offer. */
+  reachable: readonly string[];
 }
-/** What the call can ask of the workspace. */
-export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void }
+/**
+ * What the call can ask of the workspace: follow someone or stop, go to where they are, and tag them in the document
+ * open here, which `canTag` says you can now (one is open, and you can write in it).
+ */
+export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void; go: (connection: string) => void; tag: (connection: string) => void; canTag: () => boolean }
 
 /**
  * Presenting, in a call (features/call/presenting.ts). `present` is what the call says is presented where you are; `watching`:
