@@ -14,6 +14,8 @@
 /* ---- the nav: over the sky at first, then a pane of the page; night over the night windows ---- */
 .lp-nav { position: fixed; inset: 0 0 auto; z-index: 40; padding-top: env(safe-area-inset-top, 0px); color: var(--ink); transition: background-color var(--duration-3) var(--ease-out), box-shadow var(--duration-3) var(--ease-out); }
 .lp-nav.is-scrolled { background: color-mix(in oklch, var(--ground) 78%, transparent); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); box-shadow: 0 1px 0 color-mix(in oklch, var(--ink) 9%, transparent); }
+/* Signing in from the hero: the sky and its cove stay while Home loads, for Home to sail out of them; the words and the nav go. */
+.lp.is-sailing .lp-hero-in, .lp.is-sailing .lp-nav { opacity: 0; pointer-events: none; transition: opacity .3s var(--ease-in); }
 .lp-nav-in { display: flex; align-items: center; gap: clamp(16px, 2.4vw, 32px); height: var(--lp-nav); }
 .lp-nav .ac-brand { font-size: 23px; }
 .lp-links { display: flex; gap: clamp(14px, 1.7vw, 26px); font: 500 14.5px/1 var(--font-sans); color: var(--ink-2); }
