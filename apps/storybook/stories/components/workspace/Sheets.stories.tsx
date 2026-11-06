@@ -169,6 +169,16 @@ export const CommentThread: StoryObj<typeof WsCommentThread> = {
   name: 'Comment: a thread', args: { quote: QUOTE, messages: THREAD, value: '', onChange: did('onChange'), onSend: did('onSend'), onResolve: did('onResolve') }, argTypes: { messages: { control: false } },
   render: (args) => <Thread key={args.quote} {...args} />
 };
+/** Someone who can only read it, on a board they can only look at: what's been said, with no field and no Resolve. */
+export const CommentThreadReading: StoryObj<typeof WsCommentThread> = {
+  name: 'Comment: a thread, only to read', args: { quote: 'Nobody owned the status page', messages: THREAD, value: '', onChange: did('onChange') }, argTypes: { messages: { control: false } },
+  render: (args) => <PopSurface ws><WsCommentThread {...args} /></PopSurface>
+};
+/** On a board, a comment on a picture of a screen or anything else with no words of its own quotes nothing. */
+export const CommentComposeNoQuote: StoryObj<typeof WsCommentCompose> = {
+  name: 'Comment: a new one, on something with no words', args: { quote: '', person: ART, value: '', onChange: did('onChange'), onSend: did('onSend') }, argTypes: { person: { control: false } },
+  render: (args) => <Compose key="no-quote" {...args} />
+};
 
 /* ---------- switching the call's workspace ---------- */
 
