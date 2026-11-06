@@ -27,7 +27,9 @@ const rectOf = (at: WsPoint | (() => DOMRect)): DOMRect => typeof at === 'functi
  * over 140 ms, closes on Esc or a click outside, and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
  */
-export function WsPopover({ open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+  /** For what says it controls this, such as a comment's pin, when that isn't `anchor`. */
+  id?: string | undefined;
   open: boolean; onOpenChange: (open: boolean) => void;
   anchor?: ReactElement | undefined; at?: WsPoint | (() => DOMRect) | undefined;
   /** Names it for assistive tech. */
@@ -43,7 +45,7 @@ export function WsPopover({ open, onOpenChange, anchor, at, label, side = 'botto
       {anchor && <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>}
       {place && <RPopover.Anchor virtualRef={place} />}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={8} aria-label={label}
+        <RPopover.Content id={id} side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={8} aria-label={label}
           className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();

@@ -8,11 +8,13 @@
  * The surface draws at most once for comments: what's open is a store of its own, and the pins and the sheet each read it,
  * and the threads, themselves, so a comment arriving draws them alone.
  */
-import { addReply, addThread, hasBox, observeComments, readThreads, resolveThread, type BoardAuthor, type BoardObject, type BoardReply, type BoardThread, type BoardView, type PlacedObject } from '@alcove/board';
+import { addReply, addThread, hasBox, observeComments, readThreads, resolveThread, type BoardAuthor, type BoardObject, type BoardReply, type BoardThread, type BoardView, type FrameObject, type PlacedObject } from '@alcove/board';
 import { firstName } from '@alcove/api';
 import { BoardComment, WsCommentCompose, WsCommentThread, WsPopover, type AvatarPerson, type WsComment } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
 import type * as Y from 'yjs';
+import { inSlide } from './selection';
+import type { BoardMode } from './state';
 import { useBoardState, type Board } from './useBoard';
 
 /** What a board's comments need from wherever it is. */
@@ -49,12 +51,15 @@ const unresolvedOn = (threads: readonly BoardThread[], on: string): BoardThread 
 
 /** What's open, for the pins and the sheet to read, and K to change. */
 export class BoardCommentsStore {
+  /** The id of the sheet a thread opens in, which its pin says it controls. */
+  readonly sheetId: string;
   private open: CommentOpen = null;
   private readonly listeners = new Set<() => void>();
   private readonly board: Board;
 
-  constructor(board: Board) {
+  constructor(board: Board, sheetId: string) {
     this.board = board;
+    this.sheetId = sheetId;
   }
 
   getSnapshot = (): CommentOpen => this.open;
@@ -107,18 +112,42 @@ function useThreads(board: Board): BoardThread[] {
 
 const useOpen = (store: BoardCommentsStore): CommentOpen => useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
 
-/** The pins, in the layer over the board that stays one size, under everyone's pointers. */
-export function CommentPins({ board, store, commenting }: { board: Board; store: BoardCommentsStore; commenting: BoardCommenting }) {
+/**
+ * A pin, in screen pixels from where it's pinned: it stands over the corner, 6 left of it to 28 right and 30 above it to 6 below
+ * (`board.css`). A frame's title and count sit over its top edge, from 8 above it to 36, as wide as the frame and a little more.
+ */
+const PIN = { left: 6, right: 28, up: 30, down: 6 } as const;
+const TITLE = { up: 36, wider: 20 } as const;
+
+/**
+ * Whether a pin on this corner would stand over a frame's title or its count. Then it hangs under the corner instead, which keeps
+ * it on what it's pinned to, below the frame's top edge. `z` is the camera's zoom: a pin is one size on the screen at any zoom.
+ */
+function overATitle(x: number, y: number, frames: readonly FrameObject[], z: number): boolean {
+  const left = x - PIN.left / z, right = x + PIN.right / z, top = y - PIN.up / z, bottom = y + PIN.down / z;
+  return frames.some((f) => left < f.x + f.w + TITLE.wider && right > f.x && top < f.y && bottom > f.y - TITLE.up);
+}
+
+/**
+ * The pins, in the layer over the board that stays one size, under everyone's pointers. Presenting, only what's on the slide has
+ * its pin: nothing points at what nobody can see.
+ */
+export function CommentPins({ board, store, commenting, mode }: { board: Board; store: BoardCommentsStore; commenting: BoardCommenting; mode: BoardMode }) {
   const view = useBoardState(board, (s) => s.view);
+  const presented = useBoardState(board, (s) => s.slide);
+  // To the percent, so a pinch draws the pins again only when it has to.
+  const z = useSyncExternalStore(board.camera.subscribe, () => Math.round(board.camera.getSnapshot().z * 100) / 100);
   const threads = useThreads(board);
   const open = useOpen(store);
   const shown = open !== null && open !== 'picking' && 'thread' in open ? open.thread : null;
+  const slide = mode === 'present' && presented !== null && view.byId.has(presented) ? inSlide(view, presented) : null;
   return threads.flatMap((t) => {
     const o = view.byId.get(t.on);
     const first = t.replies[0];
-    if (t.resolved || !first || !commentable(o)) return [];
-    return [<BoardComment key={t.id} id={t.id} x={o.x + o.w} y={o.y} person={commenting.face(first)} name={first.name || 'Someone'} text={first.text}
-      count={t.replies.length - 1} open={false} onOpen={(id) => store.set(shown === id ? null : { thread: id })} />];
+    if (t.resolved || !first || !commentable(o) || (slide && !slide.has(o.id))) return [];
+    const x = o.x + o.w, y = o.y;
+    return [<BoardComment key={t.id} id={t.id} x={x} y={y} person={commenting.face(first)} name={first.name || 'Someone'} text={first.text}
+      count={t.replies.length - 1} expanded={shown === t.id} controls={store.sheetId} under={overATitle(x, y, view.frames, z || 1)} onOpen={(id) => store.set(shown === id ? null : { thread: id })} />];
   });
 }
 
@@ -197,7 +226,7 @@ function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: 
       store.set({ thread: addThread(board.doc, open.on, text, me, COMMENTS) });
     };
     return (
-      <WsPopover open onOpenChange={close} at={at} side="right" align="start" label="Comment">
+      <WsPopover id={store.sheetId} open onOpenChange={close} at={at} side="right" align="start" label="Comment">
         <WsCommentCompose quote={quoteOf(view.byId.get(open.on))} person={commenting.person} value={words} onChange={setWords} onSend={send} />
       </WsPopover>
     );
@@ -218,7 +247,7 @@ function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: 
     commenting.onResolved?.(() => resolveThread(board.doc, thread.id, false, COMMENTS));
   } : undefined;
   return (
-    <WsPopover open onOpenChange={close} at={at} side="right" align="start" label="Comment">
+    <WsPopover id={store.sheetId} open onOpenChange={close} at={at} side="right" align="start" label="Comment">
       <WsCommentThread quote={quoteOf(view.byId.get(thread.on))} messages={messages} value={words} onChange={setWords} onSend={reply} onResolve={resolve} />
     </WsPopover>
   );

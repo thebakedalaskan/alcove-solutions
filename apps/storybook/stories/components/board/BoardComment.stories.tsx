@@ -38,6 +38,10 @@ export const APin: Story = { name: 'A pin' };
 export const WithReplies: Story = { name: 'With replies', args: { count: 2 } };
 /** Open, as the canvas's tools sheet draws it: what she said, beside the pin. */
 export const Open: Story = { args: { open: true } };
+/** Its thread open in the workspace's sheet, which the pin says it controls. */
+export const ItsThreadOpen: Story = { name: 'Its thread open', args: { expanded: true, controls: 'comment-sheet' } };
+/** Under the corner, where standing over it would cover a frame's title and count. */
+export const UnderTheCorner: Story = { name: 'Under the corner', args: { under: true } };
 
 /** Zoomed out on the launch retro, the pins stay the size they are at 100%, like the pointers, so they can still be pressed. */
 export const ZoomedOut: Story = {

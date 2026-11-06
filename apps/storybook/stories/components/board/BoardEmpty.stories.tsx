@@ -1,7 +1,7 @@
 /*
  * BoardEmpty: what a blank board says until the first sticky, in the middle of the sheet: how to add one, and that everyone
- * here can add to it. It fades as that sticky lands, and goes on being drawn until it has gone. A phone, which only adds
- * stickies with +, doesn't show it.
+ * here can add to it when they can. It fades as that sticky lands, and goes on being drawn until it has gone. Someone who can
+ * only look is told that what people add shows up here.
  */
 import { BoardBar, BoardEmpty } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -18,3 +18,9 @@ type Story = StoryObj<typeof meta>;
 
 /** A new board from Blank, in a call. */
 export const ABlankBoard: Story = { name: 'A blank board' };
+/** Someone here can only look, so it doesn't say everyone can add. */
+export const NotEveryoneCanAdd: Story = { name: 'Not everyone can add', args: { everyone: false } };
+/** On a board's own page, where everyone who can open it can add to it. */
+export const OnItsPage: Story = { name: 'On its page', args: { page: true } };
+/** For someone who can only look. */
+export const ToSomeoneWhoCanOnlyLook: Story = { name: 'To someone who can only look', args: { reader: true } };

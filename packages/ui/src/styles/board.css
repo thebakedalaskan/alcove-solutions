@@ -181,6 +181,10 @@
 .bo-pin { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); cursor: pointer; animation: bo-pop var(--duration-2) var(--ease-out) both; }
 .bo-pin:hover, .bo-pin[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--horizon), var(--shadow-2); }
 .bo-pin .n { position: absolute; right: -7px; top: -6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11px/1 var(--font-sans); }
+/* Under the corner it's on, where standing over it would cover a frame's title and count. */
+.bo-at.is-under .bo-pin { top: -6px; bottom: auto; border-radius: 4px 999px 999px 999px; }
+.bo-at.is-under .bo-pin .n { top: auto; bottom: -6px; }
+.bo-at.is-under .bo-th { top: -4px; bottom: auto; }
 /* Waiting for what a comment goes on: the next press picks it. */
 .bo-pick { position: absolute; inset: 0; z-index: 7; cursor: crosshair; }
 .bo-th { position: absolute; left: 34px; bottom: -4px; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
@@ -309,6 +313,8 @@
 .bfly { position: absolute; z-index: 13; left: 10px; display: grid; gap: 6px; padding: 8px; border-radius: 14px; animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bfly.is-note { top: calc(50% - 112px); }
 .bfly.is-more { top: calc(50% - 82px); }
+/* Holding less than all six, it ends where all six would, so its last item stays level with More. */
+.bfly.is-more.is-few { top: auto; bottom: calc(50% - 192px); }
 .bfly.is-shape { top: calc(50% - 28px); }
 .bfly.is-line { top: calc(50% + 14px); }
 .bfly.is-pen { top: calc(50% + 56px); }

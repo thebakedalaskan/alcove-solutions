@@ -124,14 +124,22 @@ const RAIL: { tool: BoardTool; icon: IconName; label: string }[] = [
 ];
 
 /** The tools: the call's dock, turned on its side, just off the sheet. `faded` lets them fade out while presenting starts. */
-export function BoardRail({ tool, onTool, onMore, moreOpen = false, faded = false, className }: {
-  tool: BoardTool; onTool: (tool: BoardTool) => void; onMore: () => void; moreOpen?: boolean | undefined; faded?: boolean | undefined; className?: string | undefined;
+export function BoardRail({ tool, onTool, more = BOARD_MORE, onMore, moreOpen = false, faded = false, className }: {
+  tool: BoardTool; onTool: (tool: BoardTool) => void;
+  /** What More holds. With nothing, there's no More: a button that opens nothing is a dead end. */
+  more?: readonly BoardMoreItem[] | undefined;
+  onMore: () => void; moreOpen?: boolean | undefined; faded?: boolean | undefined; className?: string | undefined;
 }) {
+  const holds = MORE.filter((m) => more.includes(m.id));
   return (
     <CallDock label="Tools" className={cn('bz-rail', faded && 'is-faded', className)}>
       {RAIL.map((t) => <DockButton key={t.tool} icon={t.icon} label={t.label} on={tool === t.tool} aria-pressed={tool === t.tool} data-tool={t.tool} onClick={() => onTool(t.tool)} />)}
-      <DockSeparator />
-      <DockButton icon="plus" label="More: images, documents, templates" title="More" aria-expanded={moreOpen} onClick={onMore} />
+      {holds.length > 0 && (
+        <>
+          <DockSeparator />
+          <DockButton icon="plus" label={`More: ${holds.map((m) => m.many).join(', ')}`} title="More" aria-expanded={moreOpen} onClick={onMore} />
+        </>
+      )}
     </CallDock>
   );
 }
@@ -155,6 +163,8 @@ export interface BoardBarProps {
   sealTitle?: string | undefined;
   /** What comes last: on a board's own page, who else is here and Start a call here (`BoardPageActions`). */
   tail?: ReactNode;
+  /** What the menu under the name lets this person do, on hover. */
+  nameTitle?: string | undefined;
   /** The camera's zoom, shown as a percentage. */
   zoom: number;
   canUndo?: boolean | undefined;
@@ -213,12 +223,12 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 }
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
-export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
+export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
   mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       {naming ? <NameField naming={naming} />
-        : <button type="button" className="nm" title="Rename, move or copy this board" aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
+        : <button type="button" className="nm" title={nameTitle} aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
       {seal && <button type="button" className="sv" title={sealTitle} onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
       <span className="sp" />
       {editable && (
@@ -311,14 +321,17 @@ export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function Board
 /* ---------- A tool's options ---------- */
 
 export type BoardMoreItem = 'image' | 'workspace' | 'table' | 'mindMap' | 'comment' | 'templates';
-const MORE: { id: BoardMoreItem; icon: IconName; label: string; key?: string }[] = [
-  { id: 'image', icon: 'image', label: 'Image' },
-  { id: 'workspace', icon: 'transcript', label: 'From your workspace' },
-  { id: 'table', icon: 'table', label: 'Table' },
-  { id: 'mindMap', icon: 'workflow', label: 'Mind map' },
-  { id: 'comment', icon: 'commentBubble', label: 'Comment', key: 'K' },
-  { id: 'templates', icon: 'layoutTemplate', label: 'Templates' }
+/** More's items in the canvas's order, each with what the rail's More calls a few of them. */
+const MORE: { id: BoardMoreItem; icon: IconName; label: string; many: string; key?: string }[] = [
+  { id: 'image', icon: 'image', label: 'Image', many: 'images' },
+  { id: 'workspace', icon: 'transcript', label: 'From your workspace', many: 'documents' },
+  { id: 'table', icon: 'table', label: 'Table', many: 'tables' },
+  { id: 'mindMap', icon: 'workflow', label: 'Mind map', many: 'mind maps' },
+  { id: 'comment', icon: 'commentBubble', label: 'Comment', many: 'comments', key: 'K' },
+  { id: 'templates', icon: 'layoutTemplate', label: 'Templates', many: 'templates' }
 ];
+/** Everything More can hold, in its order. */
+export const BOARD_MORE: readonly BoardMoreItem[] = MORE.map((m) => m.id);
 const LINES: { id: BoardLineStyle; icon: IconName; label: string }[] = [
   { id: 'elbow', icon: 'elbow', label: 'Elbow arrow' },
   { id: 'straight', icon: 'line', label: 'Straight arrow' },
@@ -340,16 +353,17 @@ export type BoardFlyoutProps = { className?: string | undefined } & (
   | { kind: 'shape'; shape: BoardShapeKind; onShape: (shape: BoardShapeKind) => void }
   | { kind: 'line'; line: BoardLineStyle; onLine: (line: BoardLineStyle) => void }
   | { kind: 'pen'; pen: BoardPenKind; onPen: (pen: BoardPenKind) => void }
-  | { kind: 'more'; onMore: (item: BoardMoreItem) => void }
+  | { kind: 'more'; items: readonly BoardMoreItem[]; onMore: (item: BoardMoreItem) => void }
 );
 
 /** A tool's options, beside the rail and level with that tool. */
 export function BoardFlyout(props: BoardFlyoutProps) {
   const cls = cn('bfly', `is-${props.kind}`, props.className);
   if (props.kind === 'more') {
+    const { items } = props;
     return (
-      <div className={cls}>
-        {MORE.map((m) => <button key={m.id} type="button" className="item" onClick={() => props.onMore(m.id)}><Icon name={m.icon} size={18} />{m.label}{m.key && <kbd>{m.key}</kbd>}</button>)}
+      <div className={cn(cls, items.length < MORE.length && 'is-few')}>
+        {MORE.filter((m) => items.includes(m.id)).map((m) => <button key={m.id} type="button" className="item" onClick={() => props.onMore(m.id)}><Icon name={m.icon} size={18} />{m.label}{m.key && <kbd>{m.key}</kbd>}</button>)}
       </div>
     );
   }
@@ -623,13 +637,20 @@ export const BoardPointer = memo(forwardRef<HTMLDivElement, {
  * top right corner of what it's on. In `BoardWorld`'s `pointers`, it stays one size however near the camera is, as a pointer
  * does. `open` shows what they said beside it; `count` how many have replied since. `data-thread` names it, to anchor a sheet to.
  */
-export const BoardComment = memo(function BoardComment({ id, x, y, person, name, text, count = 0, open = false, onOpen }: {
-  id: string; x: number; y: number; person: AvatarPerson; name: string; text: string; count?: number | undefined; open?: boolean | undefined; onOpen?: ((id: string) => void) | undefined;
+export const BoardComment = memo(function BoardComment({ id, x, y, person, name, text, count = 0, open = false, expanded = open, controls, under = false, onOpen }: {
+  id: string; x: number; y: number; person: AvatarPerson; name: string; text: string; count?: number | undefined;
+  /** Its first message beside it, in a bubble of its own. */
+  open?: boolean | undefined;
+  /** Its thread is open, wherever that's shown: `controls` names what shows it. */
+  expanded?: boolean | undefined; controls?: string | undefined;
+  /** It hangs down from where it's pinned instead of standing over it, to keep clear of what's above. */
+  under?: boolean | undefined;
+  onOpen?: ((id: string) => void) | undefined;
 }) {
   return (
-    <span className="bo-at" style={{ left: x, top: y }}>
-      <button type="button" className="bo-pin" data-thread={id} aria-label={count > 0 ? `Comment from ${name}, and ${count === 1 ? '1 reply' : `${count} replies`}` : `Comment from ${name}`} aria-expanded={open}
-        onClick={() => onOpen?.(id)}><Avatar person={person} size={22} />{count > 0 && <b className="n">{count}</b>}</button>
+    <span className={cn('bo-at', under && 'is-under')} style={{ left: x, top: y }}>
+      <button type="button" className="bo-pin" data-thread={id} aria-label={count > 0 ? `Comment from ${name}, and ${count === 1 ? '1 reply' : `${count} replies`}` : `Comment from ${name}`} aria-expanded={expanded}
+        aria-controls={expanded ? controls : undefined} onClick={() => onOpen?.(id)}><Avatar person={person} size={22} />{count > 0 && <b className="n">{count}</b>}</button>
       {open && <div className="bo-th"><b>{name}</b><p>{text}</p></div>}
     </span>
   );
@@ -681,12 +702,19 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
  * What a blank board says, until the first sticky. `fading` as that sticky lands: it goes on being drawn until it has gone.
  * `everyone`: everyone here can add to it, which it says only when it's so.
  */
-export function BoardEmpty({ fading = false, everyone = true, className }: { fading?: boolean | undefined; everyone?: boolean | undefined; className?: string | undefined }) {
+/**
+ * What a blank board says. To someone who can add to it, how to start, and with `everyone`, that everyone here can too: `page` says
+ * it of everyone who can open the board, as a page has nobody "here". To someone who can only look, that what's added shows here.
+ */
+export function BoardEmpty({ fading = false, reader = false, everyone = true, page = false, className }: {
+  fading?: boolean | undefined; reader?: boolean | undefined; everyone?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
+}) {
+  const also = !everyone ? '' : page ? ' Everyone who can open it can add to it too.' : ' Everyone here can add to this board.';
   return (
     <div className={cn('bd-empty', fading && 'is-faded', className)}>
       <EmptyArch />
-      <b>Double-click anywhere to add a sticky</b>
-      <span>{everyone ? 'Or press N. Everyone here can add to this board.' : 'Or press N.'}</span>
+      {reader ? <b>Nothing on this board yet</b> : <b>Double-click anywhere to add a sticky</b>}
+      <span>{reader ? 'What people add shows up here as they add it.' : `Or press N.${also}`}</span>
     </div>
   );
 }

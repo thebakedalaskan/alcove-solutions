@@ -10,10 +10,10 @@
 import { errorCode } from '@alcove/api';
 import { addObject, bounds, hasBox, shapePath, type BoardTheme, type BoardView, type PlacedObject } from '@alcove/board';
 import {
-  BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardPop, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky, BoardStroke,
-  BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
+  BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardPop, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
+  BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
 } from '@alcove/ui';
-import { createContext, forwardRef, memo, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
+import { createContext, forwardRef, memo, useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type * as Y from 'yjs';
 import { log as rootLog } from '~/lib/log';
@@ -23,7 +23,7 @@ import { watchSheet } from './gestures';
 import { FollowingPill } from './pills';
 import { BoardPointers, useBoardPresence, useOthersEditing, type BoardPresenceStore } from './presence';
 import { inSlide, mounted, placed, selectionRing } from './selection';
-import { BOARD_LOOKS, type BoardBarItem, type BoardBarItems, type BoardMode, type BoardMoreItems } from './state';
+import { BOARD_LOOKS, type BoardBarItem, type BoardBarItems, type BoardLook, type BoardMode, type BoardMoreItems } from './state';
 import { SelectedBar } from './tools/bar';
 import { Draft } from './tools/draft';
 import { Flyouts } from './tools/flyouts';
@@ -102,9 +102,11 @@ export interface BoardSurfaceProps extends BoardHandlers {
   mode: BoardMode;
   /** The board's name, in the bar. */
   name?: string | undefined;
+  /** What the menu under the name lets this person do, which its tip says. */
+  nameTitle?: string | undefined;
   /** What the seal says: Sealed, Sealed to this room, View only. */
   seal?: string | undefined;
-  /** Everyone here can add to it, as a blank board says. Unless it's said otherwise, they can. */
+  /** Everyone here can add to it, as a blank board says to whoever can. Unless it's said otherwise, they can. */
   everyone?: boolean | undefined;
   sealIcon?: IconName | undefined;
   /** What the seal says on hover. */
@@ -273,8 +275,8 @@ function Over(props: OverProps) {
   return active ? <OverSheet {...props} /> : null;
 }
 
-/** What a blank board says. It fades as the first thing lands, and goes on being drawn until it has. */
-function Blank({ board, everyone }: { board: Board; everyone: boolean }) {
+/** What a blank board says, to someone who can add to it and to someone who can only look. It fades as the first thing lands, and goes on being drawn until it has. */
+function Blank({ board, look, everyone }: { board: Board; look: BoardLook; everyone: boolean }) {
   const empty = useBoardState(board, (s) => s.view.objects.length === 0);
   const [here, setHere] = useState(empty);
   useEffect(() => {
@@ -285,7 +287,7 @@ function Blank({ board, everyone }: { board: Board; everyone: boolean }) {
     const fading = setTimeout(() => setHere(false), DURATION[2] * 1000);
     return () => clearTimeout(fading);
   }, [empty]);
-  return here ? <BoardEmpty fading={!empty} everyone={everyone} /> : null;
+  return here ? <BoardEmpty fading={!empty} reader={!look.edit} everyone={everyone} page={look.page} /> : null;
 }
 
 function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
@@ -296,11 +298,11 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
   const mapOn = useBoardState(board, (s) => s.map);
   const moreOn = useBoardState(board, (s) => s.barMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name = '', naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call', people = NO_PEOPLE, onName, onSeal, onTimer, onVote, onPresent, onCall } = surface;
+  const { name = '', nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call', people = NO_PEOPLE, onName, onSeal, onTimer, onVote, onPresent, onCall } = surface;
   const look = BOARD_LOOKS[mode];
   const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
-    <BoardBar name={name} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit} acts={acts && !following} canAct={look.edit}
+    <BoardBar name={name} nameTitle={nameTitle} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit} acts={acts && !following} canAct={look.edit}
       moreOn={moreOn} mapOn={mapOn}
       onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
@@ -317,14 +319,37 @@ const BAR_ITEMS: readonly { id: BoardBarItem; icon: IconName; label: string }[] 
   { id: 'night', icon: 'sun', label: 'Night board' }
 ];
 
-/** The bar's More, under its button: whichever of its items this board was given. Picking one gives the keys back to the board. */
+/**
+ * The bar's More, under its button: whichever of its items this board was given. The keys go into it as it opens; picking one
+ * gives them back to the board, and Escape to More.
+ */
 function BarMenu({ board, items }: { board: Board; items: BoardBarItems }) {
   const open = useBoardState(board, (s) => s.barMenu);
   const rows = BAR_ITEMS.flatMap((item) => {
     const run = items[item.id];
     return run ? [{ icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }] : [];
   });
-  return open && rows.length > 0 ? <BoardPop right={14} top={60} label="More" items={rows} /> : null;
+  return open && rows.length > 0 ? <BarMenuPop board={board} rows={rows} /> : null;
+}
+
+function BarMenuPop({ board, rows }: { board: Board; rows: ComponentProps<typeof BoardPop>['items'] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    el.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const more = el.closest('.bd')?.querySelector<HTMLElement>('.bd-head button[aria-label="More"]');
+      board.set({ barMenu: false });
+      more?.focus({ preventScroll: true });
+    };
+    el.addEventListener('keydown', onKey);
+    return () => el.removeEventListener('keydown', onKey);
+  }, [board]);
+  return <BoardPop ref={ref} right={14} top={60} label="More" items={rows} />;
 }
 
 /** What the pill shows by itself: following, with the way back. */
@@ -353,20 +378,23 @@ function shotSpot(board: Board): { x: number; y: number } {
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
   const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, comments, onFollow, onSay, onSort, moreItems = NO_ITEMS, barMore = NO_BAR_ITEMS, children, className } = props;
+  const sheetId = useId();
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
   const sheet = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
   const tool = useBoardState(board, (s) => s.tool);
-  const more = useBoardState(board, (s) => s.fly === 'more');
+  const moreOpen = useBoardState(board, (s) => s.fly === 'more');
   const glide = useBoardState(board, (s) => s.glide);
   const pan = useBoardState(board, (s) => s.space || s.panning);
   const following = useBoardState(board, (s) => s.following);
-  const said = useMemo(() => new BoardCommentsStore(board), [board]);
+  const said = useMemo(() => new BoardCommentsStore(board, `${sheetId}comment`), [board, sheetId]);
   /* Whoever can write comments has K and More's Comment for them, unless what's around the board says otherwise. */
   const commentsMe = comments?.me ?? null;
   const items = useMemo(() => (commentsMe && !moreItems.comment ? { ...moreItems, comment: said.start } : moreItems), [commentsMe, moreItems, said]);
+  /* More holds what it was given something to do with, and nothing else: an item that does nothing is a dead end. */
+  const more = useMemo(() => BOARD_MORE.filter((id) => items[id]), [items]);
 
   useLayoutEffect(() => board.setMode(mode), [board, mode]);
   useLayoutEffect(() => {
@@ -395,7 +423,8 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     focusFrame: (id) => board.focusFrame(id),
     addShot: ({ media, caption }) => {
       const { x, y } = shotSpot(board);
-      const id = board.write(() => addObject(board.doc, { k: 'shot', x, y, w: SHOT.w, h: SHOT.h, media, caption }, board.origin));
+      // It comes from outside the board, whatever this person is doing, so it's an undo of its own.
+      const id = board.writeApart(() => addObject(board.doc, { k: 'shot', x, y, w: SHOT.w, h: SHOT.h, media, caption }, board.origin)).result;
       if (!id) board.refuse();
       return id;
     }
@@ -404,18 +433,19 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
   return (
     <Pictures.Provider value={pictures}>
       <BoardLayout page={look.page} phone={look.phone} className={className}>
-        {look.rail && <BoardRail tool={tool} moreOpen={more} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
+        {look.rail && <BoardRail tool={tool} more={more} moreOpen={moreOpen} onTool={(t) => { board.pickTool(t); board.focusSheet(); }} onMore={() => { board.toggleMore(); board.focusSheet(); }} />}
         <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === following)?.colour}
           tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
-          <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} />}<BoardPointers presence={presence} talking={talking} /></>}>
+          {/* Beside the rail, but first on the sheet: what a tool's key opens is the next thing Tab reaches. */}
+          {look.rail && <Flyouts board={board} more={more} />}
+          <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} mode={mode} />}<BoardPointers presence={presence} talking={talking} only={mode === 'present' ? following : undefined} /></>}>
             <Objects board={board} presence={presence} mode={mode} />
           </BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
-          {look.edit && <Blank board={board} everyone={everyone} />}
+          {!look.mini && <Blank board={board} look={look} everyone={everyone} />}
           {look.bar && <Bar board={board} surface={props} />}
           {look.bar && <BarMenu board={board} items={barMore} />}
           {look.bar && <Minimap board={board} />}
-          {look.rail && <Flyouts board={board} />}
           <SheetPill board={board} people={people} pill={pill ?? followingOnly} />
           {comments && !look.mini && <CommentSheets board={board} sheet={() => sheet.current} store={said} commenting={comments} />}
           {children}

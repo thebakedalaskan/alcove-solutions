@@ -4,7 +4,7 @@
  * drawn with what the design canvas's Tools sheet puts beside it. Pick one and it's the one that's on.
  */
 import { route, shapePath } from '@alcove/board';
-import { BOARD_COLOURS, BoardFlyout, BoardLine, BoardLines, BoardRail, BoardShape, BoardSticky, BoardStroke, type BoardCamera, type BoardFlyoutProps, type BoardLineStyle, type BoardTool } from '@alcove/ui';
+import { BOARD_COLOURS, BOARD_MORE, BoardFlyout, BoardLine, BoardLines, BoardRail, BoardShape, BoardSticky, BoardStroke, type BoardCamera, type BoardFlyoutProps, type BoardLineStyle, type BoardTool } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ReactNode } from 'react';
 import { useArgs } from 'storybook/preview-api';
@@ -91,4 +91,6 @@ export const Lines: Story = { args: { kind: 'line', line: 'elbow', onLine: did('
 /** For circling, underlining and quick sketches. Strokes smooth out as you draw; the highlighter is wide and see-through. */
 export const Pen: Story = { args: { kind: 'pen', pen: 'pen', onPen: did('onPen') }, argTypes: { pen: { control: 'inline-radio', options: ['pen', 'marker', 'eraser'] } } };
 /** Everything else, one click further away, so the rail stays short. Comment has its own key, K. */
-export const More: Story = { args: { kind: 'more', onMore: did('onMore') } };
+export const More: Story = { args: { kind: 'more', items: BOARD_MORE, onMore: did('onMore') } };
+/** More holds only what it can do where it is: on a board's own page, for now, that's Comment. */
+export const MoreWithLess: Story = { name: 'More, with only Comment', args: { kind: 'more', items: ['comment'], onMore: did('onMore') } };
