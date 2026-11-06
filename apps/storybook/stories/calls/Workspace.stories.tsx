@@ -53,11 +53,18 @@ const openPicker = (home: string): Play => async (c) => {
     if (top) await c.userEvent.click(top);
   });
 };
+/**
+ * The organizer's workspaces come in a moment after the picker opens, and a menu takes no press until its rows have been
+ * still for a moment (WsMenu), so what's under the pointer is what someone aimed at: a person's press comes later anyway.
+ */
+const settle = () => new Promise<void>((done) => { setTimeout(done, 500); });
 /** Picks Design in the picker: it asks first. */
 const pickDesign = (home: string): Play => async (c) => {
   await openPicker(home)(c);
   await c.step('Pick Design. The question says who can’t open it, and that the notes still go to the home', async () => {
-    await c.userEvent.click(await screen.findByRole('menuitemradio', { name: /^Design(?! review)/ }, { timeout: 5000 }));
+    const design = await screen.findByRole('menuitemradio', { name: /^Design(?! review)/ }, { timeout: 5000 });
+    await settle();
+    await c.userEvent.click(design);
   });
 };
 
@@ -323,8 +330,8 @@ export const NewWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script
   play: async (c) => {
     await openPicker('Design review · 4 Nov')(c);
     await c.step('Press New workspace. Everyone invited is in it, and the toast says the notes still go to the home', async () => {
-      // The organizer's workspaces come in a moment after the picker opens, and the rows move down as they do.
       await screen.findByRole('menuitemradio', { name: /^Product/ }, { timeout: 8000 });
+      await settle();
       await c.userEvent.click(await screen.findByRole('menuitem', { name: /^New workspace/ }, { timeout: 5000 }));
       await screen.findByText(/^New workspace, Design review\. Everyone invited is in it/, {}, { timeout: 15000 });
     });
