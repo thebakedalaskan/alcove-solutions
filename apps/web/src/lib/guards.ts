@@ -1,7 +1,7 @@
 import { errorCode, type Session } from '@alcove/api';
 import type { QueryClient } from '@tanstack/react-query';
 import { redirect } from '@tanstack/react-router';
-import { takeReturn } from './afterSignIn';
+import { takeAgentReturn, takeReturn } from './afterSignIn';
 import { signedInHere } from './device';
 import { q } from './queries';
 
@@ -40,6 +40,8 @@ export async function requireAccount(qc: QueryClient, preload = false): Promise<
     return { account: { offline: true, ownerId: here.ownerId } };
   }
   if (!s) throw redirect({ to: '/welcome' });
+  const agent = preload ? null : takeAgentReturn();
+  if (agent) throw redirect({ to: '/connect', search: { request: agent }, replace: true });
   const back = preload ? null : takeReturn();
   if (back) throw redirect({ to: '/join/$code', params: { code: back }, replace: true });
   return { account: { offline: false, session: s } };

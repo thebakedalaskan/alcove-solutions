@@ -40,7 +40,11 @@ export default defineConfig({
   server: {
     port: 3000,
     // Same origin for the app and the API, so the session cookie just works.
-    proxy: { '/api': { target: `http://127.0.0.1:${apiPort}`, rewrite: (p) => p.replace(/^\/api/, '') } }
+    proxy: {
+      '/api': { target: `http://127.0.0.1:${apiPort}`, rewrite: (p) => p.replace(/^\/api/, '') },
+      // OAuth discovery inserts .well-known before the issuer's /api path.
+      '/.well-known': { target: `http://127.0.0.1:${apiPort}` }
+    }
   },
   resolve: { alias: { '~': fileURLToPath(new URL('./src', import.meta.url)) } },
   plugins: [

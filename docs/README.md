@@ -11,6 +11,7 @@ behind people's backs, and notes only the people in the call can read.
 3. **How it works.** [Data and storage](engineering/data-and-storage.md),
    [Calls and recordings](engineering/calls-and-recordings.md), [Notes and inference](engineering/notes-and-inference.md),
    [Payments and usage](engineering/payments-and-usage.md), [Logging and errors](engineering/logging-and-errors.md).
+   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions and safe retries.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
 5. **Planning.** [Roadmap](delivery/roadmap.md) and [Decisions and provider assumptions](delivery/decisions-and-provider-assumptions.md).
 6. **Background.** [Stack and provider setup](references/stack-and-provider-setup.md) and [Source evidence](references/source-evidence.md),

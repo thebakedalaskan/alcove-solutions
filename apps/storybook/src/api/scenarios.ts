@@ -27,10 +27,11 @@ import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
+import { withAgentConnections } from './agents';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
 
-export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in';
+export type ScenarioName = 'busy' | 'first-day' | 'on-their-own' | 'offline' | 'writing' | 'call-soon' | 'lots' | 'signed-out' | 'unsaved' | 'first-sign-in' | 'agents-connected';
 
 interface Scenario { title: string; about: string; make: () => { world: World; opening: Partial<Opening> } }
 
@@ -355,6 +356,10 @@ function onTheirOwn(): World {
 /* ---------- the scenarios ---------- */
 
 export const SCENARIOS: Record<ScenarioName, Scenario> = {
+  'agents-connected': {
+    title: 'Agents connected', about: 'Art has a read-only Workspace assistant and a Scheduling assistant token that has not been used yet.',
+    make: () => { const world = busy(); withAgentConnections(world); return { world, opening: {} }; }
+  },
   busy: { title: 'A busy team', about: 'Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30.', make: () => ({ world: busy(), opening: {} }) },
   'first-day': {
     title: 'A first day', about: 'Art has just signed in for the first time: no notes, no calls, a team that isn’t on Alcove yet, and no calendar access.',

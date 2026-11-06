@@ -2879,10 +2879,12 @@ describe('deleting an account', () => {
     drawn.close();
     await b.api.workspaces.presenterNotes.setFrame(hers.id, retro.id, wentWell, 'Thank the room.');
 
+    // Her named agent goes with the account, too, including its hashed credential.
+    await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
@@ -2890,7 +2892,8 @@ describe('deleting an account', () => {
     const before = await counts();
     // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
-    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
+    // OAuth codes and retry receipts have account-deletion coverage in the agents and MCP flows.
+    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;

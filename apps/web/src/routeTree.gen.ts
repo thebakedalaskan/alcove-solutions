@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as MoveRouteImport } from './routes/move'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
@@ -43,6 +44,11 @@ const SplatRoute = SplatRouteImport.update({
 } as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectRoute = ConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MoveRoute = MoveRouteImport.update({
@@ -142,6 +148,7 @@ const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
@@ -187,6 +195,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
   '/_app': typeof AppRouteWithChildren
+  '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
@@ -211,6 +220,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$'
+    | '/connect'
     | '/move'
     | '/ready'
     | '/welcome'
@@ -233,6 +243,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$'
+    | '/connect'
     | '/move'
     | '/ready'
     | '/welcome'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/_app'
+    | '/connect'
     | '/move'
     | '/ready'
     | '/welcome'
@@ -279,6 +291,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
   AppRoute: typeof AppRouteWithChildren
+  ConnectRoute: typeof ConnectRoute
   MoveRoute: typeof MoveRoute
   ReadyRoute: typeof ReadyRoute
   WelcomeRoute: typeof WelcomeRoute
@@ -308,6 +321,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect': {
+      id: '/connect'
+      path: '/connect'
+      fullPath: '/connect'
+      preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/move': {
@@ -484,6 +504,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
   AppRoute: AppRouteWithChildren,
+  ConnectRoute: ConnectRoute,
   MoveRoute: MoveRoute,
   ReadyRoute: ReadyRoute,
   WelcomeRoute: WelcomeRoute,

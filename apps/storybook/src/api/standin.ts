@@ -9,7 +9,7 @@
  */
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
-  AlcoveApiError, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AnswerPart, type Busy, type CallCard,
+  AlcoveApiError, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
@@ -28,6 +28,7 @@ import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
 import { atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
+import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
 
 /* ---------- how every answer comes back ---------- */
@@ -310,7 +311,43 @@ export const standIn: AlcoveApi = {
       };
       return w.prefs;
     }),
-    delete: () => answer((w) => { w.session = null; w.notes = []; w.meetings = []; })
+    delete: () => answer((w) => { forgetAgents(w); w.session = null; w.notes = []; w.meetings = []; })
+  },
+  agents: {
+    list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
+    createToken: (input) => answer((w) => {
+      const parsed = AgentTokenInputSchema.parse(input);
+      const held = agentsFor(w);
+      const now = Date.now();
+      const connection: AgentConnection = {
+        id: nextId('agent').padEnd(22, '_'), name: parsed.name, kind: 'token', scopes: parsed.scopes,
+        createdAt: new Date(now).toISOString(), expiresAt: new Date(now + parsed.expiresInDays * 86_400_000).toISOString(), lastUsedAt: null
+      };
+      held.save([...held.connections, connection]);
+      return { connection, token: PREVIEW_AGENT_TOKEN, endpoint: PREVIEW_MCP_ENDPOINT };
+    }),
+    revoke: (id) => answer((w) => {
+      AgentConnectionIdSchema.parse(id);
+      const held = agentsFor(w);
+      held.save(held.connections.filter((connection) => connection.id !== id));
+    }),
+    authorization: (requestId) => answer((w) => {
+      AgentAuthorizationIdSchema.parse(requestId);
+      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      if (!w.session) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
+      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: 'Workspace assistant', scopes: ['notes:read', 'meetings:read', 'calendar:read'], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+    }),
+    decide: (requestId, decision) => answer((w) => {
+      AgentAuthorizationIdSchema.parse(requestId);
+      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
+      if (decision.ownerId !== w.session?.ownerId) throw refused('conflict', 'Your account changed. Review this connection again.');
+      // Story accounts have descriptive IDs, so compare those directly while parsing the actual permission choices.
+      const allow = AgentDecisionInputSchema.shape.allow.parse(decision.allow);
+      const scopes = AgentDecisionInputSchema.shape.scopes.parse(decision.scopes);
+      const requested = new Set(['notes:read', 'meetings:read', 'calendar:read']);
+      if (scopes.some((scope) => !requested.has(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
+      return { redirectUrl: `https://agent.example/callback?${allow ? 'code=storybook-preview' : 'error=access_denied'}` };
+    })
   },
   people: {
     search: (query: string) => answer((w) => {

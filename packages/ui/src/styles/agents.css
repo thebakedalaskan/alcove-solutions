@@ -1,0 +1,21 @@
+.ac-agent-permissions { min-width: 0; margin: 20px 0; padding: 0; border: 0; }
+.ac-agent-permissions legend { margin-bottom: 8px; color: var(--ink); font: 600 14px/20px var(--font-sans); }
+.ac-agent-permissions .set-r { grid-template-columns: minmax(0, 1fr) auto; }
+.ac-agent-disclosure { margin: 16px 0; color: var(--ink-2); font: 400 14px/22px var(--font-sans); text-wrap: pretty; }
+.ac-agent-connect { min-height: 100dvh; padding: clamp(24px, 5vw, 64px); background: var(--ground); color: var(--ink); }
+.ac-agent-connect > a { display: block; width: fit-content; margin: 0 auto 32px; }
+.ac-agent-sheet { width: min(100%, 640px); margin: 0 auto; padding: clamp(20px, 4vw, 36px); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.ac-agent-sheet h1 { margin-bottom: 18px; font: 450 clamp(30px, 5vw, 40px)/1.12 var(--font-display); }
+.ac-agent-sheet > p, .ac-agent-token > p { margin: 10px 0; font: 400 15px/23px var(--font-sans); }
+.ac-agent-sheet > p[role="alert"], .ac-agent-token > p[role="alert"] { color: var(--caution); }
+.ac-agent-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.ac-agent-form { display: grid; gap: 18px; padding: 20px 0; border-top: 1px solid var(--line); }
+.ac-agent-form .ac-agent-permissions { margin: 0; }
+.ac-agent-form .ac-agent-actions { margin-top: 0; }
+.ac-agent-token { padding: 22px 0; }
+.ac-agent-secret { display: grid; gap: 8px; margin: 16px 0; color: var(--ink-2); font: 500 13px/20px var(--font-sans); }
+.ac-agent-secret input { width: 100%; padding: 12px; border: 1px solid var(--line-control); border-radius: var(--radius-sm); background: var(--ground); color: var(--ink); font: 400 16px/24px var(--font-sans); }
+.ac-agent-endpoint code { display: block; overflow-wrap: anywhere; color: var(--ink-2); font-size: 13px; }
+.ac-agent-hint { margin: 8px 0; color: var(--ink-3); font: 400 13px/20px var(--font-sans); }
+.ac-agent-problem { color: var(--caution); font: 400 14px/22px var(--font-sans); }
+@media (max-width: 520px) { .ac-agent-connect { padding: 24px 12px; } .ac-agent-sheet { padding: 20px 16px; } .ac-agent-actions .ac-btn { flex: 1; } }
