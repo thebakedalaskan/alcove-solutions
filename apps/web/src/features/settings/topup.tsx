@@ -4,7 +4,7 @@
  * it's added (or isn't), and opens again on any top-up from Plan and credits, so closing it loses nothing.
  */
 import { errorMessage, MAX_TOP_UP_CREDITS, type CreditTier, type TopUp, type TopUpRoute } from '@alcove/api';
-import { Button, Chip, CopyField, Dots, Field, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
+import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { q, useStartTopUp } from '~/lib/queries';
@@ -67,14 +67,20 @@ function percentOff(credits: number, tiers: CreditTier[]): number {
   const rate = tierOf(credits, tiers)?.creditsPerUsd;
   return base && rate ? Math.round((1 - base / rate) * 100) : 0;
 }
+/** The least a custom amount suggests: the smallest any network takes. */
+const MIN_CUSTOM = 5_000;
 /**
- * A number of credits typed by hand ("12,000", "12 000"), or null when it isn't a whole number above 0. A "." is never
- * a thousands separator here: "10.5" isn't a whole number, so it's refused rather than read as 105.
+ * What the custom amount field shows for what was typed: digits only (commas are put back as thousands separators),
+ * no leading zeros, and never more than the most one top-up can buy.
  */
+function creditsInput(text: string): string {
+  const digits = text.replace(/\D/g, '').replace(/^0+/, '');
+  if (!digits) return '';
+  return number.format(Math.min(Number(digits.slice(0, 9)), MAX_TOP_UP_CREDITS));
+}
+/** The credits in the custom amount field, or null when it's empty. */
 function typedCredits(text: string): number | null {
-  const digits = text.replace(/[\s,_]/g, '');
-  if (!/^\d{1,9}$/.test(digits)) return null;
-  const n = Number(digits);
+  const n = Number(text.replace(/\D/g, ''));
   return n > 0 ? n : null;
 }
 
@@ -112,6 +118,7 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const routes = useQuery(q.topUpRoutes());
   const start = useStartTopUp();
   const group = useId();
+  const ownId = useId();
   const [token, setToken] = useState<TopUpRoute['token'] | undefined>(undefined);
   const [chain, setChain] = useState<string | undefined>(undefined);
   const [amount, setAmount] = useState<number | 'own' | null>(null);
@@ -119,8 +126,10 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const data = routes.data;
   const list = data?.routes ?? [];
   // Nothing is chosen for them: the token first, then a network it's offered on.
-  const tokenOptions: SelectOption<TopUpRoute['token']>[] = [...new Set(list.map((r) => r.token))].map((t) => ({ value: t, label: t }));
-  const chainOptions: SelectOption<string>[] = list.filter((r) => r.token === token).map((r) => ({ value: r.chain, label: r.chainName }));
+  const tokenOptions: SelectOption<TopUpRoute['token']>[] = [...new Set(list.map((r) => r.token))]
+    .map((t) => ({ value: t, label: t, mark: <CryptoMark name={t} /> }));
+  const chainOptions: SelectOption<string>[] = list.filter((r) => r.token === token)
+    .map((r) => ({ value: r.chain, label: r.chainName, mark: <CryptoMark name={r.chain} /> }));
   const route = list.find((r) => r.token === token && r.chain === chain);
   const pickToken = (t: TopUpRoute['token']) => {
     setToken(t);
@@ -130,16 +139,17 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const picked = amount ?? presets[0] ?? 'own';
   const credits = picked === 'own' ? typedCredits(own) : picked;
   const below = route !== undefined && credits !== null && credits < route.minimumCredits;
-  const tooMany = credits !== null && credits > MAX_TOP_UP_CREDITS;
-  /** "about 6 h 40 min · 10 USDC" */
+  /** "~6 h 40 min" and "10 USDC" for `n` credits, priced in the chosen token (USD until one is chosen). */
   const what = (n: number) => {
-    if (!data) return null;
-    const price = priceOf(n, data.tiers);
-    return { hours: `about ${hoursAndMinutes(n / data.perMinute)}`, price: price === null ? null : `${tokens.format(price)} ${token ?? 'USD'}` };
+    const price = data ? priceOf(n, data.tiers) : null;
+    return { hours: data ? `~${hoursAndMinutes(n / data.perMinute)}` : '', price: price === null ? '' : `${tokens.format(price)} ${token ?? 'USD'}` };
   };
-  const ownWhat = picked === 'own' && credits !== null ? what(credits) : null;
-  const ownOff = data && credits !== null ? percentOff(credits, data.tiers) : 0;
+  const ownWhat = credits !== null && picked === 'own' ? what(credits) : null;
   const go = () => { if (route && credits !== null) start.mutate({ routeId: route.id, credits }, { onSuccess: (t) => onStarted(t.id) }); };
+  const price = (n: number) => {
+    const off = data ? percentOff(n, data.tiers) : 0;
+    return <span className="p">{off > 0 && <Chip tone="horizon">{off}% off</Chip>}<b>{what(n).price}</b></span>;
+  };
   return (
     <>
       <div className="set-topup-body">
@@ -149,43 +159,41 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
             <>
               <fieldset className="set-topup-amounts">
                 <legend>How many credits</legend>
-                {presets.map((n) => {
-                  const w = what(n);
-                  const off = percentOff(n, data.tiers);
-                  return (
-                    <label key={n} className="set-topup-amt">
-                      <input type="radio" name={group} checked={picked === n} onChange={() => setAmount(n)} />
-                      <span className="n">{number.format(n)} credits</span>
-                      <span className="t">{w?.hours}</span>
-                      <span className="p">{w?.price}{off > 0 && <Chip tone="horizon">{off}% off</Chip>}</span>
-                    </label>
-                  );
-                })}
-                <label className="set-topup-amt is-own">
-                  <input type="radio" name={group} checked={picked === 'own'} onChange={() => setAmount('own')} />
-                  <span className="n">Your own amount</span>
-                </label>
+                {presets.map((n) => (
+                  <label key={n} className="set-topup-amt">
+                    <input type="radio" name={group} checked={picked === n} onChange={() => setAmount(n)} />
+                    <span className="n">{number.format(n)} credits<small>{what(n).hours}</small></span>
+                    {price(n)}
+                  </label>
+                ))}
+                <div className="set-topup-amt is-own" onClick={() => setAmount('own')}>
+                  <input type="radio" name={group} aria-label="Custom amount" checked={picked === 'own'} onChange={() => setAmount('own')} />
+                  {picked === 'own' ? (
+                    <span className="n">
+                      <input id={ownId} className="ac-input" inputMode="numeric" autoComplete="off" autoFocus aria-label="Credits"
+                        placeholder={number.format(MIN_CUSTOM)} value={own} onChange={(e) => setOwn(creditsInput(e.target.value))} />
+                      <small>{ownWhat ? ownWhat.hours : 'Credits'}</small>
+                    </span>
+                  ) : <span className="n">Custom amount</span>}
+                  {ownWhat && price(credits ?? 0)}
+                </div>
               </fieldset>
-              {picked === 'own' && (
-                <Field label="Credits" inputMode="numeric" autoComplete="off" placeholder={number.format(route?.minimumCredits ?? Math.min(...list.map((r) => r.minimumCredits)))} value={own}
-                  onChange={(e) => setOwn(e.target.value)}
-                  hint={tooMany ? `At most ${number.format(MAX_TOP_UP_CREDITS)} credits at once`
-                    : ownWhat ? <>{ownWhat.hours}{ownWhat.price && ` · ${ownWhat.price}`}{ownOff > 0 && ` · ${ownOff}% off`}</>
-                    : 'A whole number of credits'} />
-              )}
               <fieldset className="set-topup-pick">
                 <legend>Pay with</legend>
-                <Select<TopUpRoute['token']> label="Token" placeholder="Choose a token" value={token} options={tokenOptions} onChange={pickToken} />
-                <Select<string> label="Network" placeholder={token ? 'Choose a network' : 'Choose a token first'} value={chain}
-                  options={chainOptions} onChange={setChain} disabled={!token} />
-                {route && <small className={below ? 'is-below' : undefined}>At least {number.format(route.minimumCredits)} credits with {routeName(route)}</small>}
+                <Select<TopUpRoute['token']> label="Token" placeholder="Token" value={token} options={tokenOptions} onChange={pickToken} />
+                <Select<string> label="Network" placeholder="Network" value={chain} options={chainOptions} onChange={setChain} disabled={!token} />
               </fieldset>
+              {route && below && (
+                <Notice tone="caution">
+                  {routeName(route)} takes at least {number.format(route.minimumCredits)} credits ({route.minimum} {route.token}). Choose more credits or another network.
+                </Notice>
+              )}
             </>
           ) : <Notice tone="caution">{routes.isError ? errorMessage(routes.error) : 'There’s no way to pay right now. Try again later.'}</Notice>}
         <div role="status">{start.isError && <Notice tone="caution">{errorMessage(start.error)}</Notice>}</div>
       </div>
       <div className="set-topup-f">
-        <Button variant="primary" disabled={!route || credits === null || below || tooMany || start.isPending} onClick={go}>
+        <Button variant="primary" disabled={!route || credits === null || below || start.isPending} onClick={go}>
           {start.isPending && <Spinner />}{start.isPending ? 'Getting an address' : 'Get an address'}
         </Button>
       </div>
@@ -208,7 +216,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
       </div>
     );
   }
-  const hours = (credits: number) => (perMinute ? ` (about ${hoursAndMinutes(credits / perMinute)})` : '');
+  const hours = (credits: number) => (perMinute ? ` (~${hoursAndMinutes(credits / perMinute)})` : '');
   const left = minutesUntil(t.expiresAt, now);
   // The server shows the address only while it can take money; past its expiry it can't, whatever the state says yet.
   const address = left > 0 ? t.address : null;
@@ -229,7 +237,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
         {address !== null && (
           <div className="set-topup-ask">
             <h3>{t.state === 'short' ? `Send ${rest(t)} ${t.route.token} more on ${t.route.chainName}` : `Send ${t.asked.amount} ${t.route.token} on ${t.route.chainName}`}</h3>
-            <p>→ {number.format(t.asked.credits)} credits{t.state === 'short' ? ' in total' : ''}{perMinute ? ` · about ${hoursAndMinutes(t.asked.credits / perMinute)}` : ''}</p>
+            <p>→ {number.format(t.asked.credits)} credits{t.state === 'short' ? ' in total' : ''}{perMinute ? ` · ~${hoursAndMinutes(t.asked.credits / perMinute)}` : ''}</p>
           </div>
         )}
         <div role="status">{state}</div>

@@ -53,7 +53,8 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-export interface SelectOption<T extends string> { value: T; label: string }
+/** One choice in a Select. `mark` is drawn before its name, in the list and on the button once chosen (a logo, say). */
+export interface SelectOption<T extends string> { value: T; label: string; mark?: ReactNode | undefined }
 
 /**
  * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
@@ -159,7 +160,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
     <RPopover.Root open={open} onOpenChange={setOpen}>
       <RPopover.Trigger aria-haspopup="listbox" aria-label={shown ? `${label}: ${shown}` : label} disabled={disabled} onKeyDown={onButtonKey}
         className={cn('ac-select', stage && 'is-stage', className)}>
-        {icon && <Icon name={icon} size={15} />}
+        {options[chosen]?.mark ?? (icon && <Icon name={icon} size={15} />)}
         <span className="v ac-clamp-1">{shown}</span>
         <Icon name={stage ? 'down' : 'chevronsUpDown'} size={15} />
       </RPopover.Trigger>
@@ -178,6 +179,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
             <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
               onClick={() => choose(i)}
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
+              {o.mark}
               <span>{o.label}</span>
               {i === chosen && <Icon name="check" size={15} />}
             </div>

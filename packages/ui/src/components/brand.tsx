@@ -53,3 +53,29 @@ export function ProviderMark({ provider, className }: { provider: 'google' | 'mi
     </svg>
   );
 }
+
+/**
+ * Stablecoin and network logos, served with the app rather than fetched from a third party (which would learn that
+ * someone is paying). Keyed by token symbol (USDC, USDT) and by 1Click's chain name (near, eth, base, arb, sol, pol,
+ * bsc, op, avax, tron). From web3icons (MIT).
+ */
+const CRYPTO_MARKS = new Map<string, string>([
+  ['usdc', new URL('../marks/usdc.svg', import.meta.url).href],
+  ['usdt', new URL('../marks/usdt.svg', import.meta.url).href],
+  ['near', new URL('../marks/near.svg', import.meta.url).href],
+  ['eth', new URL('../marks/eth.svg', import.meta.url).href],
+  ['base', new URL('../marks/base.svg', import.meta.url).href],
+  ['arb', new URL('../marks/arb.svg', import.meta.url).href],
+  ['sol', new URL('../marks/sol.svg', import.meta.url).href],
+  ['pol', new URL('../marks/pol.svg', import.meta.url).href],
+  ['bsc', new URL('../marks/bsc.svg', import.meta.url).href],
+  ['op', new URL('../marks/op.svg', import.meta.url).href],
+  ['avax', new URL('../marks/avax.svg', import.meta.url).href],
+  ['tron', new URL('../marks/tron.svg', import.meta.url).href]
+]);
+/** A token's or a network's logo, or a plain disc for one without a logo here. Decorative: the name is said beside it. */
+export function CryptoMark({ name, className }: { name: string; className?: string | undefined }) {
+  const src = CRYPTO_MARKS.get(name.toLowerCase());
+  if (!src) return <span aria-hidden="true" className={cn('ac-crypto is-blank', className)} />;
+  return <img src={src} alt="" aria-hidden="true" className={cn('ac-crypto', className)} />;
+}

@@ -52,6 +52,9 @@
 .ac-provider .ac-logo, .ac-provider .ac-spin { position: absolute; left: 20px; width: 20px; height: 20px; }
 .ac-provider .ac-spin { width: 18px; height: 18px; }
 .ac-logo { flex: none; width: 17px; height: 17px; }
+/* A token's or network's logo (CryptoMark), in a Select or beside a name. */
+.ac-crypto { flex: none; width: 20px; height: 20px; }
+.ac-crypto.is-blank { border-radius: 50%; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
 
 /* ---- Chip ---- */
 .ac-chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: var(--radius-sm); background: var(--sunk); color: var(--ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
