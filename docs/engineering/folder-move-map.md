@@ -271,3 +271,5 @@ Main `b7f61754221b34b160dc4a524de9138859cb89ad` added camera backgrounds, popup 
 | `apps/api/src/mcp.integration.test.ts` | `apps/api/src/features/agents/mcp.integration.test.ts` |
 
 Frozen-main comparison preserved all 212 ordered HTTP registrations and callbacks, nine server module bodies, eight security helpers, 77 incoming contract declarations, and 41 incoming web/Storybook source/config/doc files. All 736 original and 71 new upstream public contract names remain available (807 total). The incoming migration and lockfile are byte-identical to main. Existing agent suites and popup-auth assertions are retained verbatim apart from import locations.
+
+Welcome-cove main `c87ed4e362f5043d19de6268efdf9737bce6e63e` also landed before publication. Its 12 incoming web/Storybook files are preserved byte-for-byte, and the exact `SailOutStoredSchema` declaration/type/comments now live beside `HomeTour` in `packages/api/src/identity/preferences.ts`. Both public exports remain available (809 total contract names). Fresh web/Storybook typing/build checks passed.

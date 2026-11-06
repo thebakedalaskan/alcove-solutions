@@ -1,7 +1,8 @@
 /*
  * Home: the page is a sunset with starting a call in the middle of it, because that's what people come here to do.
  * Under the water: what's yours to answer and tick off, what's coming up, and your recent notes. The day's calls don't
- * lead: people join from their calendar, so a call only comes near the top in its last few minutes.
+ * lead: people join from their calendar, so a call only comes near the top in its last few minutes. Signed in from the
+ * welcome page, Home opens by sailing out of its cove (features/home/SailOut.tsx).
  */
 import type { Inbox } from '@alcove/api';
 import { Evening, SealedBadge } from '@alcove/ui';
@@ -14,6 +15,7 @@ import { aheadOf, joinable } from '~/features/home/day';
 import { GetSetUp } from '~/features/home/FirstDay';
 import { ForYou } from '~/features/home/ForYou';
 import { Recent } from '~/features/home/Recent';
+import { SailOutHere } from '~/features/home/SailOut';
 import { Start } from '~/features/home/Start';
 import { overlayOpen, typing } from '~/lib/keys';
 import { useNow } from '~/lib/live';
@@ -47,6 +49,7 @@ function Home() {
   const now = useNow();
   const later = useNotNow();
   const me = session?.user.email;
+  const evening = useRef<HTMLDivElement>(null);
 
   const others = prefs?.showOtherMeetings !== false;
   const items = aheadOf(calls, others ? calendar?.events ?? [] : [], now);
@@ -68,21 +71,24 @@ function Home() {
   }, [navigate]);
 
   return (
-    <Evening moment="home" className="hm" data-soon={soon ? true : undefined}>
-      <header className="hm-top" style={{ '--d': 0 }}><h1 className="hm-date">{longDay(new Date(now))}</h1></header>
-      <Start first={firstDay} soon={soon} me={me} now={now} />
-      <div className="hm-grid" style={{ '--d': 2 }}>
-        {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}
-        <div className="hm-side">
-          {/* On the first day, Get set up offers this already. */}
-          {!firstDay && calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
-          <Coming ahead={items} me={me} now={now} />
-          <Recent notes={notes} me={me} />
+    <>
+      <Evening ref={evening} moment="home" className="hm" data-soon={soon ? true : undefined}>
+        <header className="hm-top" style={{ '--d': 0 }}><h1 className="hm-date">{longDay(new Date(now))}</h1></header>
+        <Start first={firstDay} soon={soon} me={me} now={now} />
+        <div className="hm-grid" style={{ '--d': 2 }}>
+          {firstDay ? <GetSetUp /> : <ForYou inbox={inbox} notes={notes} now={now} />}
+          <div className="hm-side">
+            {/* On the first day, Get set up offers this already. */}
+            {!firstDay && calendar?.needsAccess && !later.away && <ConnectCalendar onNotNow={later.notNow} />}
+            <Coming ahead={items} me={me} now={now} />
+            <Recent notes={notes} me={me} />
+          </div>
         </div>
-      </div>
-      {/* The side panel shows the same check on wide screens; this one is for phones and a hidden panel. */}
-      <div className="hm-seal" style={{ '--d': 3 }}><Compute /></div>
-    </Evening>
+        {/* The side panel shows the same check on wide screens; this one is for phones and a hidden panel. */}
+        <div className="hm-seal" style={{ '--d': 3 }}><Compute /></div>
+      </Evening>
+      <SailOutHere page={evening} />
+    </>
   );
 }
 

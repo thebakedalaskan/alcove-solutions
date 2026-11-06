@@ -166,6 +166,9 @@ The hash is deterministic, so equal values show the same person across rows and 
    email and photo, and the identity's email index, up to date with the provider. After every sign-in a
    session opens; for a demo identity with nothing upcoming, the sample calendar is placed too: five sealed
    meetings, the first about 12 minutes later. A new account lands on `/ready`, which plays the account-creation screen over Home; anyone else lands on `/home`.
+   Signed in from the welcome page, Home opens by sailing out of the welcome page's cove: as a way in is pressed, where the
+   cove stood on screen waits in that tab's sessionStorage (`alcove.sail-out`, `SailOutStoredSchema`: a time and geometry,
+   no names, nothing typed) for ten minutes at most, and Home takes it once.
 4. **Every request opens the account's keys** (`openOwner` in `apps/api/src/owners.ts`): it reads
    `root_envelope` and `root_check`, unwraps `Kowner` under `KMASTER`, checks the root check (`IntegrityError`
    on a mismatch) and derives `Kwrap`. The request works on its own copies (`Owner.root`, `Owner.wrapKey`).

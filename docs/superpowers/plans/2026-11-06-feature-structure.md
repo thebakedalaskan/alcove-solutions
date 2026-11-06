@@ -93,3 +93,5 @@
 ## Merge integration stage
 
 The user authorized merging. Main advanced to `b7f61754221b34b160dc4a524de9138859cb89ad` with camera backgrounds, Google popup sign-in and scoped agent MCP. Preserve each feature while applying the amended ownership map before moving its newly introduced files. Resolve the combined branch, update scoped rules and guard owners, verify integration/type/build checks again and merge through the required pull request checks. GitHub connection currently needs reauthentication; the repository guard prohibits using the default account.
+
+The combined `b7f61754` integration passed all package/app type checks and builds plus 124 focused real auth/MCP/API tests. Independent merge review verified the frozen-main route/security/feature bodies. Main then advanced with welcome-cove `c87ed4e`; its web/Storybook files are unchanged and its 16-line tab-geometry schema is preserved in the identity owner. Required full GitHub CI is the acceptance gate on the combined head before merging.

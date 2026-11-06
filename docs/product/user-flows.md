@@ -7,13 +7,14 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
 
 ## 1. Sign in
 
-1. Open Alcove. Signed out, the welcome page shows what Alcove does, as one evening on the app's own scene: the
-   note a call leaves, with its call along the horizon; the call itself, a feature at a time, each looping while its
-   step is the one being read (Documents and boards, Captions in your language, Set your status, Breakout rooms, A
-   quiet nudge, Private messages and threads, Arrange it your way); finding a time with your team; your agent using
-   Alcove; recording in the room without a connection; and what Alcove can see. Each scene plays while it's on
-   screen, and shows a still with reduced motion. Choose **Continue with Google**, **Continue with Microsoft** or
-   **Use single sign-on**, at the top or the bottom of the page; single sign-on asks for a work email in place.
+1. Open Alcove. Signed out, the welcome page shows what Alcove does, as one evening on the app's own scene, looking out
+   of a cove to sea at the top and at the bottom: the note a call leaves, with its call along the horizon; the call
+   itself, a feature at a time, each looping while its step is the one being read (Documents and boards, Captions in
+   your language, Set your status, Breakout rooms, A quiet nudge, Private messages and threads, Arrange it your way);
+   finding a time with your team; your agent using Alcove; recording in the room without a connection; and what Alcove
+   can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with
+   Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the bottom of the page; single sign-on
+   asks for a work email in place.
 2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
    only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
@@ -29,7 +30,9 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    confidential compute**, with the time the hardware was verified when this browser could check it. Then
    "You’re in" and the arch opens into Home. **Skip**, **Escape** or **Enter** opens it straight away; with
    reduced motion the finished screen shows for a moment and Home follows. After that, signing in goes
-   straight to Home.
+   straight to Home. From the welcome page it sails out of the cove: the headlands go by, the horizon comes up to
+   Home's, the side panel and the page's frame form round the sea, and Home rises in, in about three and a half
+   seconds (a press, a key or the wheel ends it at once; with reduced motion Home just opens).
 4. On first arriving in Home, a tour goes through it, one slide at a time: a card with a short animation, and
    the page dimmed around the real thing the slide is about, with an arrow to it. **Start or schedule a call**
    (Start a call, or Start now with the side panel hidden), **Notes for your calls** (the example note before there are
