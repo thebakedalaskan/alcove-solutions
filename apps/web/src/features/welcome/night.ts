@@ -27,7 +27,7 @@ export const SESSION = {
 } as const;
 
 /** One part of a note: what it's called, what you see (or who was there), and the sealed record that's all Alcove holds of it. */
-export interface Held { label: string; plain: string; people?: readonly CastId[] | undefined; sealed: string }
+interface Held { label: string; plain: string; people?: readonly CastId[] | undefined; sealed: string }
 
 /** A call's note, part by part. */
 export const HELD: readonly Held[] = [

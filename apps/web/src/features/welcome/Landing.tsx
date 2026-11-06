@@ -3,7 +3,7 @@
  * the ways in on the sky with the sun under them, setting as the page scrolls on. The note and the call sit on its water,
  * the call a night window of its own. Then the team stands on the horizon with the sun low, your agent works in Alcove, the
  * recorder stands on the night's horizon above what Alcove can see, and morning comes up behind the last ask. Each scene
- * plays while it's on screen; with reduced motion each shows its last picture.
+ * plays while it's on screen; with reduced motion each shows a still.
  */
 import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
@@ -21,6 +21,7 @@ const HEADLINE = ['Meetings,', 'powered', 'by', 'confidential', 'AI.'] as const;
 const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy']] as const;
 const TOOLS = [
   ['search_notes', 'Find what was said, across your calls'],
+  ['get_note', 'Open one call’s notes, with its moments'],
   ['ask_notes', 'Answer from your notes, citing the moments'],
   ['list_follow_ups', 'What’s yours to do, and when'],
   ['find_time', 'When everyone is free'],

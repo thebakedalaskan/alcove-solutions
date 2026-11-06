@@ -15,7 +15,7 @@ export const ORDER = ['priya', 'kofi', 'aiko', 'maya', 'diego', 'art'] as const 
 export type Who = (typeof ORDER)[number];
 
 export type StepId = 'notes' | 'layout' | 'status' | 'translate' | 'chat' | 'nudge' | 'rooms' | 'work';
-export interface Step {
+interface Step {
   id: StepId;
   icon: IconName;
   title: string;

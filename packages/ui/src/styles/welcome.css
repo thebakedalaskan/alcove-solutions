@@ -70,7 +70,7 @@
   .lp-ways .ac-btn, .lp-ways .ac-provider { width: 100%; }
 }
 
-/* ---- the call: a night window on the water, in both themes ---- */
+/* ---- the call: a night window on the water, in both themes. Always night, so its glow is raw colour, as on the stage ---- */
 .lp-call { position: relative; margin-inline: clamp(8px, 1.4vw, 24px); border-radius: clamp(24px, 2.8vw, 44px); color: var(--ink); overflow: clip; box-shadow: 0 60px 120px -70px rgb(6 13 26 / .9);
   background: radial-gradient(1100px 620px at 78% -8%, rgb(31 43 66 / .75), transparent 70%), radial-gradient(900px 600px at 0% 100%, rgb(72 57 99 / .22), transparent 70%), var(--stage); }
 .lp-call-head { padding-top: clamp(76px, 8vw, 124px); }

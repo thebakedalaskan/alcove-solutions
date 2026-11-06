@@ -12,7 +12,7 @@ export type Member = (typeof MEMBERS)[number];
 export type Span = readonly [number, number];
 
 /** Along the horizon, left to right, with you in the middle. Invited people are empty arches; `far` ones step off on a phone. */
-export type OnLine = { kind: 'member'; id: Member; far: boolean } | { kind: 'invited'; name: string };
+type OnLine = { kind: 'member'; id: Member; far: boolean } | { kind: 'invited'; name: string };
 export const LINE: readonly OnLine[] = [
   { kind: 'invited', name: 'Tom' },
   { kind: 'member', id: 'lena', far: true },

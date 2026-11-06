@@ -1,9 +1,10 @@
 /*
  * The welcome page's call (`lp-tour`, `lp-st`), built by CallTour.tsx and TourStage.tsx: eight steps beside a call that
  * plays each one, night in both themes (the part is `.dark`, the stage `.ac-stage`). The stage is drawn at 1120 × 700
- * design pixels inside Fit, so everything under `.lp-st` is in those pixels. Raw colours appear only on the stage: its
- * shared screen, sticky notes and the raised night surfaces of its menus. While the tour is off screen (`:not(.is-on)`)
- * the stage's loops hold still.
+ * design pixels inside Fit, so everything under `.lp-st` is in those pixels. Raw colours appear only where it's always
+ * night: on the stage (its shared screen, the board and its sticky notes, the raised surfaces of its menus and the faint
+ * whites of its controls) and on the night window around it (the steps' icons and the stage's edge here, the window's own
+ * glow in welcome.css). While the tour is off screen (`:not(.is-on)`) the stage's loops hold still.
  */
 
 /* ---- the steps on one side, the call held in view on the other while they scroll past ---- */

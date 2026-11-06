@@ -206,7 +206,7 @@ const WsDoc = memo(function WsDoc({ on, typed, comment }: { on: boolean; typed: 
         <Todo who="aiko">{DOC_LINE.slice(0, typed)}<span className="lp-st-rcaret"><PointerTag person={CAST.priya} name="Priya" /></span></Todo>
       </div>
       <div className={cn('lp-st-comment', comment && 'is-on')}>
-        <Msg who="kofi" at="14:41">Moved from the 12th, so support has the article a week ahead.</Msg>
+        <Msg who="kofi" at="14:31">Moved from the 12th, so support has the article a week ahead.</Msg>
       </div>
     </div>
   );

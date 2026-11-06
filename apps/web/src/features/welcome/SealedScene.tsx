@@ -63,7 +63,7 @@ export function SealedScene() {
   useEffect(() => {
     const el = win.current;
     if (reduce || !el) return undefined;
-    const io = new IntersectionObserver(([e]) => { if (e?.isIntersecting) { setNear(true); io.disconnect(); } }, { threshold: 0.5 });
+    const io = new IntersectionObserver((es) => { if (es.at(-1)?.isIntersecting) { setNear(true); io.disconnect(); } }, { threshold: 0.5 });
     io.observe(el);
     return () => io.disconnect();
   }, [reduce]);
@@ -82,7 +82,7 @@ export function SealedScene() {
     <div ref={win} className={cn('lp-pv', sealed && 'is-sealed')}>
       <div className="lp-pv-top">
         <Segmented value={view} onChange={(v) => { touched.current = true; show(v); }} options={VIEWS} label="Whose view of the note" />
-        <span className="lp-pv-say">{sealed ? 'Sealed records, a size and a time' : 'The note, opened for you'}</span>
+        <span className="lp-pv-say">{sealed ? 'Sealed records and their sizes' : 'The note, opened for you'}</span>
       </div>
       <dl className="lp-pv-rows">
         {HELD.map((h, row) => (

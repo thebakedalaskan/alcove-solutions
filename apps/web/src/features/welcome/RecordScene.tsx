@@ -53,6 +53,8 @@ export function RecordScene({ head, children }: { head: ReactNode; children?: Re
   const reduce = useReducedMotion() ?? false;
   const [take, setTake] = useState<Take>(DONE);
   const [playing, setPlaying] = useState(false);
+  /** A take has played to its end: until then the finished picture is all there's been, and its button says Play it. */
+  const [played, setPlayed] = useState(false);
   const [seen, setSeen] = useState(false);
   const sun = useRef<HTMLDivElement>(null);
   const ctrl = useRef<HTMLDivElement>(null);
@@ -78,13 +80,13 @@ export function RecordScene({ head, children }: { head: ReactNode; children?: Re
     const area = whole.current;
     const el = ctrl.current;
     if (reduce || !area || !el) return undefined;
-    const play = new IntersectionObserver(([e]) => {
-      if (!e?.isIntersecting) return;
+    const play = new IntersectionObserver((es) => {
+      if (!es.at(-1)?.isIntersecting) return;
       play.disconnect();
       setPlaying(true);
     }, { threshold: 0.6 });
-    const near = new IntersectionObserver(([e]) => {
-      if (!e?.isIntersecting) return;
+    const near = new IntersectionObserver((es) => {
+      if (!es.at(-1)?.isIntersecting) return;
       near.disconnect();
       if (el.getBoundingClientRect().bottom <= 0) return;
       setTake(READY);
@@ -124,17 +126,18 @@ export function RecordScene({ head, children }: { head: ReactNode; children?: Re
     to({ step: 'written' });
     await c.sleep(400);
     to({ step: 'done' });
+    setPlayed(true);
     setPlaying(false);
   }, playing);
 
   useVoice({ sun, level: talking, on: step === 'live' && seen && !reduce });
 
-  /* Played again from the keyboard, the way to play it once more comes back where it was. */
+  /* Played from the keyboard, the way to play it once more comes back where it was. */
   useEffect(() => {
     if (step === 'done' && document.activeElement === ctrl.current) again.current?.focus();
   }, [step]);
 
-  const playAgain = () => {
+  const replay = () => {
     ctrl.current?.focus();
     setTake(READY);
     setPlaying(true);
@@ -165,7 +168,7 @@ export function RecordScene({ head, children }: { head: ReactNode; children?: Re
                 <Button variant="primary" className={cn(take.press && 'is-pressed')} inert><Icon name="stop" size={16} className="rec-sq" />Finish and save</Button>
               </>
             )}
-            {step === 'done' && <Button ref={again} icon="reset" onClick={playAgain}>Play it again</Button>}
+            {step === 'done' && <Button ref={again} icon={played ? 'reset' : 'play'} onClick={replay}>{played ? 'Play it again' : 'Play it'}</Button>}
           </div>
           <p className="rec-say lp-rec-say">{SAY[step]}</p>
         </div>

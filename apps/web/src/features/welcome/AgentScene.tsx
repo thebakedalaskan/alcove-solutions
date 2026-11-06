@@ -10,15 +10,19 @@ import { useRef, useState, type ReactNode } from 'react';
 import { CAST } from '~/features/notes/cast';
 
 const ASK = 'What did we decide about the onboarding launch? Then book 45 minutes with Priya and Kofi next week to go over it.';
-/** What it calls, with what, and what came back. Tuesday 10 November at 11:00 is free for all three in the week on this page. */
+/**
+ * What it calls, with what, and what came back. The note it reads is the call on this page, Launch planning: the launch
+ * moved to 18 November and Aiko writes the help article. Tuesday 10 November at 11:00 is free for all three in the week on
+ * this page.
+ */
 const CALLS = [
   { tool: 'search_notes', args: '“onboarding launch”', back: '3 notes' },
-  { tool: 'get_note', args: 'Team standup · 5 Nov', back: '1 decision, 2 follow-ups' },
+  { tool: 'get_note', args: 'Launch planning · 5 Nov', back: '1 decision, 2 follow-ups' },
   { tool: 'find_time', args: 'Priya, Kofi, you · 45 min · 9–13 Nov', back: 'Tue 10 Nov, 11:00' },
   { tool: 'schedule_call', args: 'Onboarding review · notes on', back: 'Booked' }
 ] as const;
-const BEFORE = 'The new onboarding ships behind a flag on 12 November, and support gets the help article first.'.split(' ');
-const AFTER = 'Priya’s help article is still open, due Friday. I booked Onboarding review for Tuesday 10 November at 11:00 with Priya and Kofi, with notes on.'.split(' ');
+const BEFORE = 'The new onboarding ships behind a flag on 18 November, and support gets the help article first.'.split(' ');
+const AFTER = 'Aiko’s help article is still open, due Friday. I booked Onboarding review for Tuesday 10 November at 11:00 with Priya and Kofi, with notes on.'.split(' ');
 
 /* The beats, in order: your message, then each call running and back, the answer, and the call it booked. */
 const ASKED = 1;
@@ -85,7 +89,7 @@ export function AgentScene() {
         })}
         <p className="lp-ag-say">
           {BEFORE.map((w, i) => <Word key={`b${i}`} on={said} i={i}>{`${w} `}</Word>)}
-          <Word on={said} i={BEFORE.length}><Chip icon="moment" className="lp-ag-mc">Team standup · 6:12</Chip></Word>
+          <Word on={said} i={BEFORE.length}><Chip icon="moment" className="lp-ag-mc">Launch planning · 6:12</Chip></Word>
           {AFTER.map((w, i) => <Word key={`a${i}`} on={said} i={BEFORE.length + 1 + i}>{` ${w}`}</Word>)}
         </p>
         <Rise on={beat >= BOOKED} className="lp-ag-booked">

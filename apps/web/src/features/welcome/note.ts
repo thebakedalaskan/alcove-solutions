@@ -18,18 +18,18 @@ export const HEAD = {
 
 export const SUMMARY = 'The sidebar stays dark in both themes, and every page keeps one filled button. Kofi sends the new button styles on Thursday, once Aiko has checked the contrast on the dark sidebar.';
 
-export interface Chapter { at: number; title: string }
+interface Chapter { at: number; title: string }
 export const CHAPTERS: readonly Chapter[] = [{ at: 0, title: 'The sidebar' }, { at: 930, title: 'Buttons' }, { at: 1850, title: 'Rollout' }];
 
 /** A decision, at the moment it was made: who proposed it, and who has confirmed it so far (nobody yet: null). */
-export interface Decided { at: number; text: string; proposer: string; confirmedBy: string | null }
+interface Decided { at: number; text: string; proposer: string; confirmedBy: string | null }
 export const DECIDED: readonly Decided[] = [
   { at: 372, text: 'The sidebar stays dark in both themes', proposer: 'Priya', confirmedBy: 'Kofi and Aiko' },
   { at: 1600, text: 'One filled button per view, on every page', proposer: 'Priya', confirmedBy: null }
 ];
 
 /** Something to do, at the moment someone said they would: whose it is and the day it's due. */
-export interface FollowUp { at: number; text: string; who: CastId; due: string; done: boolean }
+interface FollowUp { at: number; text: string; who: CastId; due: string; done: boolean }
 export const FOLLOW_UPS: readonly FollowUp[] = [
   { at: 1085, text: 'Send the new button styles', who: 'kofi', due: 'Thu', done: false },
   { at: 2091, text: 'Check the contrast on the dark sidebar', who: 'aiko', due: 'Wed', done: false },
@@ -54,7 +54,7 @@ export const SAID: readonly Said[] = [
 export const STOPS: readonly number[] = [...DECIDED, ...FOLLOW_UPS].map((m) => m.at).sort((a, b) => a - b);
 
 /** A short stroke of light under the line where someone spoke: where (% of the call), how far below it, how long and how bright. */
-export interface Glint { x: number; row: number; width: number; o: number }
+interface Glint { x: number; row: number; width: number; o: number }
 /** The same strokes every time: a seeded sequence, so the light under the line never changes between visits. */
 function seeded(seed: number) {
   let n = seed;
