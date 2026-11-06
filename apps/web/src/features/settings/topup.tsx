@@ -37,13 +37,18 @@ export function amountLeft(a: string, b: string): string {
 /** What's still to send on a short top-up: the asked amount less what arrived. */
 const rest = (t: TopUp) => amountLeft(t.asked.amount, t.received?.amount ?? '0');
 
+/** "14:30" today, "tomorrow", "Mon 9 Nov": the day something happens by, for a line that has no room for more. */
+function byDay(iso: string, now: number): string {
+  const days = daysFromToday(new Date(iso), new Date(now));
+  return days <= 0 ? hm(iso) : days === 1 ? 'tomorrow' : shortDay(new Date(iso));
+}
 /** How a top-up stands, in a line. The waiting, arriving and short lines are also what Plan and credits lists. */
 export function topUpLine(t: TopUp, now = Date.now()): string {
   const token = t.route.token;
   switch (t.state) {
-    case 'waiting': return 'Waiting for your payment';
+    case 'waiting': return Date.parse(t.expiresAt) > now ? 'Waiting for your payment' : 'Address expired';
     case 'arriving': return 'Payment seen, adding your credits';
-    case 'short': return `${t.received?.amount ?? 'Less than asked'} of ${t.asked.amount} ${token} arrived. Send the other ${rest(t)} ${token} to the same address by ${byWhen(t.expiresAt, now)} for your ${number.format(t.asked.credits)} credits. If you don’t, what arrived is added as credits then.`;
+    case 'short': return `${t.received?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived · send ${rest(t)} more by ${byDay(t.expiresAt, now)}`;
     case 'credited': return `Added ${number.format(t.received?.credits ?? 0)} credits`;
     case 'held': return 'Too little arrived to add any credits';
     case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';

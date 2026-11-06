@@ -5,7 +5,7 @@
  */
 import { errorMessage, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SignInProvider, type SummaryLength } from '@alcove/api';
 import {
-  Avatar, Button, Chip, Icon, IconButton, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
+  Avatar, Button, Chip, CryptoMark, Icon, IconButton, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
   type SelectOption, type ThemeChoice
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -269,8 +269,8 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
           {open.map((t) => (
             <li key={t.id} data-top-up={t.id} className={cancellable(t) ? 'is-cancellable' : undefined}>
               <button type="button" className="set-conn" onClick={() => setSheet({ open: true, topUpId: t.id })}>
-                <span className="mark"><Icon name="coins" size={20} /></span>
-                <span className="txt"><b>{t.asked.amount} {routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
+                <span className="mark"><CryptoMark name={t.route.chain} /></span>
+                <span className="txt"><b>{t.asked.amount} {routeName(t.route)} → {t.asked.credits.toLocaleString('en-GB')} credits</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
                 {!cancellable(t) && <Icon name="chevron" size={18} />}
               </button>
               {cancellable(t) && (
