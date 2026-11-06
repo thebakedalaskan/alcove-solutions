@@ -134,7 +134,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   participant limit.
 - **Let in from the link, signed in.** The commit that lets in someone who asked with an address also adds it to
   the invite: to the meeting's guests, and to the note's invited people when notes have been on
-  (`modules/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
+  (`features/meetings/invites.ts`), so they get the notes when the call ends, like everyone invited by email. Only someone
   who asked counts (the organizer saw who it was), and an address comes with an ask only when the notes may go to
   that account: a real one (Google), or any when the organizer's own account is a demo one, since demo sign-ins
   check nobody and Microsoft's is one account everyone trying Alcove shares. Invites keep their usual rules, up
@@ -203,7 +203,7 @@ The call itself stays in the API: who's let in, notes and the transcript.
   reload, a comeback, a move to another device) and, for the organizer, on any device, which viewers' own layouts
   key them by ([The call screen](#the-call-screen)). Anyone else joining from a second browser or device without
   moving gets a new seat.
-- **In the browser** `apps/web/src/features/call/livekit.ts` (loaded only by the call screen) wraps the
+- **In the browser** `apps/web/src/features/call/media/livekit.ts` (loaded only by the call screen) wraps the
   room: it publishes `LocalMedia`'s tracks as they are, encrypted, swapping a new microphone or camera (or a
   change of what's shared) into the same publication, plays everyone else's audio on the chosen speaker at each
   person's volume for this listener, and refetches the call on the server's nudges, arrivals and departures. Nudges are
@@ -362,7 +362,7 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
 
 The organizer hosts while they're in the call. While they're away (their connection dropped, or they left it to
 someone), someone invited stands in: the call goes on, and the organizer takes it back by joining again. Who hosts is
-the call's sealed `host` (`apps/api/src/modules/hosting.ts` decides who may and in what order; `newGeneration` in the
+the call's sealed `host` (`apps/api/src/features/calls/hosting.ts` decides who may and in what order; `newGeneration` in the
 calls module makes the change), shown to everyone as `CallState.host`.
 
 - **Who can stand in.** Someone in the call who is invited: by email, or signed in and let in from the link (so added
@@ -431,8 +431,8 @@ calls module makes the change), shown to everyone as `CallState.host`.
 
 ## What's captured
 
-One capture state for the whole call (`CallState.capture`, `packages/api/src/capture.ts`), kept in the
-call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyone in it:
+One capture state for the whole call (`CallState.capture`, `packages/api/src/calls/capture.ts`), kept in the
+call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for everyone in it:
 
 - **Its parts.** `recording` (what the host's browser hears in the main room, mixed: its own
   microphone and everyone else's, encrypted; silent while the host is in a breakout room), `transcript`
@@ -466,7 +466,7 @@ call's sealed state (`apps/api/src/modules/capture.ts`) and the same for everyon
   and anyone reading the card get it without names: `by` says only "the organizer", and there are no gaps or
   asks. Every change nudges the room, so browsers fetch the call again.
 - **Pause** (`{type: "pause"}`, only while notes are on) stops every kind of capture at once. The one gate every
-  capturing path goes through, `mayCapture` in `apps/api/src/modules/capture.ts`, refuses audio pieces, speech
+  capturing path goes through, `mayCapture` in `apps/api/src/features/calls/capture.ts`, refuses audio pieces, speech
   clips, caption translations, catch-up and questions with `409 conflict` ("Notes are paused…"), whoever sends
   them, and refreshes no live notes, so nothing new is recorded, transcribed or sent to the AI; shared-screen frames are refused too. The
   organizer's browser holds everything as it sends the pause: the recorder and every voice stop, and nothing they
@@ -541,7 +541,7 @@ Call media is end-to-end encrypted, so LiveKit never sees a shared screen, and t
 presenter's browser sends for the notes. When the organizer has shared screens read for the notes, each
 presenter's own browser sends frames of its own share to the API, which holds each one in memory only to seal it
 (and later to open it for the notes model and the note's people), and the private notes model reads them after the
-call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`).
+call (`apps/web/src/features/call/notes/frames.ts`, `apps/api/src/features/recordings/screens.ts`).
 
 - **Turning it on.** Only the organizer (`POST /v1/live/calls/:id/actions` with `{type: "screens", on}`), and
   only while notes are on or paused (`409 conflict` otherwise: "Turn on notes first"), or the call's schedule: a
@@ -618,7 +618,7 @@ call (`apps/web/src/features/call/frames.ts`, `apps/api/src/modules/screens.ts`)
 ## Pointing at shared screens
 
 People in a call can point at what someone shares and leave marks that fade, so "this, here" is easy to say
-(`apps/web/src/features/call/marks.ts`, `SharePointing.tsx`, the wire format in `packages/api/src/marks.ts`). Pointers
+(`apps/web/src/features/call/screen-sharing/marks.ts`, `SharePointing.tsx`, the wire format in `packages/api/src/calls/marks.ts`). Pointers
 and marks go from browser to browser, end-to-end encrypted: nothing of them reaches the API, nothing is kept anywhere,
 and nothing reaches anyone's computer but a picture drawn over the share on their own screen. No input of any kind is
 ever sent to the presenter's computer.
@@ -763,7 +763,7 @@ ever sent to the presenter's computer.
 ## Moving to another device
 
 Someone in a call moves their place to another device (a laptop to a phone, say) from **More › Move to another
-device**: `apps/web/src/features/move/` and `apps/api/src/modules/moves.ts`.
+device**: `apps/web/src/features/move/` and `apps/api/src/features/calls/moves.ts`.
 
 1. **A code.** `POST /v1/live/calls/:id/moves {media}` (by the call pass) starts a move and gives a random 128-bit
    code for the new device's link, `<web app>/move#<code>`, shown as a QR code and as the same link to copy. It
@@ -837,7 +837,7 @@ never logged). Upkeep deletes those that ran out, and a call's go when it ends.
 ## Ringing
 
 The organizer rings people into a live call, and each sees a card on whatever Alcove page they have open:
-`modules/rings.ts`, `packages/api-http/src/rings.ts` and, in the app, `features/calls/Ring*`. It's for reaching someone
+`features/calls/rings.ts`, `packages/api-http/src/rings.ts` and, in the app, `features/calls/Ring*`. It's for reaching someone
 now, so it only works once the call is on: "Join and ring" is joining first, then `session.ring(emails)`.
 
 1. **Who can be rung.** Teammates (the people `GET /v1/team` lists) and people invited who said yes to this call (their
@@ -847,7 +847,7 @@ now, so it only works once the call is on: "Join and ring" is joining first, the
    find out whether an address is on Alcove, online, or what it said. Someone
    already in the call isn't rung, nobody is rung into a locked call (`409`), and an invite that's full refuses the
    ring rather than leave someone rung who'd have to ask.
-2. **The ring.** Everyone rung goes on the invite and the note's invited people (`modules/invites.ts`), so they get
+2. **The ring.** Everyone rung goes on the invite and the note's invited people (`features/meetings/invites.ts`), so they get
    the notes and come in without asking, whether or not they pick up. It's the same as for someone let in from the
    link: removing them from the call takes them off it, and the calendar event isn't changed. Each person has one
    ring per call in `call_rings`: ringing them again starts it over, with the same ID, whatever they said to it.
@@ -983,7 +983,7 @@ Rings are rows in `call_rings`, in the organizer's vault, found by a keyed hash 
 
 A call has a home: the workspace its notes and transcript go to, in a folder of its own
 ([Data and storage › Workspaces](data-and-storage.md#workspaces)). Everyone in the call views and edits one workspace
-together, the home unless the organizer switched to another. What's done is `apps/api/src/modules/callWorkspace.ts`, what
+together, the home unless the organizer switched to another. What's done is `apps/api/src/features/calls/workspace.ts`, what
 the call keeps of it is `callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read: access is never copied
 into the call. Being in a call, or organizing it, opens nothing.
 
@@ -1092,7 +1092,7 @@ into the call. Being in a call, or organizing it, opens nothing.
     tells everyone. It's found by a read from someone who can open something in the workspace, or from whoever started it,
     never from someone with nothing in it, who's told only that something's being presented until then. While something's showing, a browser reads the call each time it checks its keys, so it never
     waits on a nudge that isn't coming.
-- **Presenting, in the browser** (`apps/web/src/features/call/presenting.ts`, `features/workspace/Presentation.tsx`).
+- **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, `features/workspace/Presentation.tsx`).
   - *Sections* are one rule, in the editor's reading plugin (`editor/plugins/reading.ts`): a first- or second-level heading
     starts one, named for what it says; what comes before the first is a section named for the title; one with nothing in
     it doesn't count, and only what's on the page does. Whoever presents and everyone watching read it from the same
@@ -1107,7 +1107,7 @@ into the call. Being in a call, or organizing it, opens nothing.
     it ends with you watching. Next and Back show at once for whoever presses them, then follow the call's answer.
   - *Presenter notes* are read and kept through `api.workspaces.presenterNotes`, 600 ms after the last key and on leaving.
     Someone in the call without an account isn't offered any: the API refuses a guest's.
-- **Playing together, in the browser** (`features/call/sharedVideo.ts`, `PlayTogether.tsx`).
+- **Playing together, in the browser** (`features/call/playback/sharedVideo.ts`, `PlayTogether.tsx`).
   - *One player per call*, playing whatever's open. A video block on screen borrows its `<video>`, which moves into the block
     and is never copied, so nothing is heard twice; with none on screen it plays out of sight and is still heard.
   - *In step*: it reads the call itself, and works out where everyone is with `playPosition(play, ms since this browser heard
@@ -1189,7 +1189,7 @@ call ID), when it started, whether it's over, and its note's ID once it is (`Sto
 
 A board is a workspace item of kind `board`: what's on it, who can open it and how it's deleted are the workspace's. What's the
 call's is which board is open, kept by part of the call in its sealed state (`board`: `main`, or a room's ID) with who opened
-it, by their name, address and seat, and which boards it lets everyone into. What's done is `apps/api/src/modules/callBoards.ts`, what's kept is
+it, by their name, address and seat, and which boards it lets everyone into. What's done is `apps/api/src/features/calls/boards.ts`, what's kept is
 `callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
@@ -1266,7 +1266,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   someone in a moment, not at the call's next read. A call it's open in by nobody's seat, changed from elsewhere, still hears it
   through each browser's own document: the stream says the reader's new role (`access`), and the call is read again then.
 - **How it stands, in the browser.** The call's browser holds the board's session (`useBoardSession` in
-  `features/call/callBoard.ts`, with the call's pass) and says how it stands in its page's words, from the same code
+  `features/call/boards/callBoard.ts`, with the call's pass) and says how it stands in its page's words, from the same code
   (`features/board/standing.ts`): its seal, what that says on hover and when it's pressed, and, while there's something to
   say, the pill at the top of the board, ahead of everything else in it (`standing` is the first of `PILL_ORDER`).
   **Reconnecting** while the session has no connection, or the browser is offline: what's added is kept, on the device for
@@ -1330,7 +1330,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
 - **Bringing one to a call.** A board scheduled into a call is one of the meeting's `documents`, as any document is, and comes
   first in the Board menu; joining never opens it. Start a call here, on a board's page, opens the start flow with the board
   brought (`InstantCallInput.documents`, from the starter's own library, checked by `validDocuments` as a scheduled call's
-  are), and the starter's browser opens it for everyone once the call is under way there (`features/call/opening.ts`), with
+  are), and the starter's browser opens it for everyone once the call is under way there (`features/call/session/opening.ts`), with
   nobody let in: someone who can't open it is told, as for any board. A board they can only read is brought and not opened, as
   opening one for everyone needs edit. A reload in between forgets the opening, and the board is still brought. The next call in a series brings what this one brought, and the boards open for everyone in it that the organizer
   can still bring (`documents.boardsFrom`, from the note), up to 12 in all.
@@ -1351,7 +1351,7 @@ call can put a picture of a share on it from the share's ⋯ menu, someone else'
 are on: it has nothing to do with the notes, and nothing of it reaches them.
 
 - **What's taken.** The share's picture as that viewer's own browser shows it now (the frame held for looking back, if they're
-  on one), drawn into a JPEG at most 2560 pixels on its longer side (`keepShot` in `features/call/callBoard.ts`). Nothing
+  on one), drawn into a JPEG at most 2560 pixels on its longer side (`keepShot` in `features/call/boards/callBoard.ts`). Nothing
   else: not its sound, and not any earlier picture.
 - **Where it's kept.** Uploaded with the call's pass to the board's workspace as one of that board's files
   (`media.upload`), sealed as every workspace file is, and placed on the board as a `shot` with its caption ("Priya's screen,
@@ -1423,7 +1423,7 @@ Each step counts towards the same 240 a minute as what goes on in the workspace.
 
 Present on the board's bar presents the board open where you are (`present-start` with `kind: 'board'`, from its first frame);
 what's kept, who may move and stop it, and what stops it are a document's ([Presenting](#the-calls-workspace)). In the browser:
-`features/call/boardPresenting.ts` turns the call's present state into the board's, and `features/board/CallBoard.tsx` draws it.
+`features/call/boards/boardPresenting.ts` turns the call's present state into the board's, and `features/board/CallBoard.tsx` draws it.
 
 - **Frames are slides.** The board's top-level frames, in the order every browser reads them (`slides.ts`): a frame held in
   another is part of it. `section` is a slide's place in that order, so it means the same frame everywhere; past the last it
@@ -1593,7 +1593,7 @@ person's own access where the call uses its pass, and its links open on the page
 ## The join page
 
 `apps/web/src/routes/join.$code.tsx` (with `apps/web/src/features/join/`) is the pre-join for everyone with the
-link: the organizer's lobby (`features/calls/Lobby.tsx`) by their account, and anyone else from the call's card.
+link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account, and anyone else from the call's card.
 
 - **What it says before anyone joins.** The title and organizer, and what the call captures (`CaptureSummary`, the
   same for everyone), with who gets the notes said for the person looking (`PrejoinCapture`, one component for
@@ -1685,7 +1685,7 @@ share picker, the leave sheet and the device pickers.
 - **Host controls** are whoever hosts', in People: mute someone's microphone (LiveKit mutes the track, their
   dock shows it off, they're told, and only they can unmute), remove someone (they're told and go back to the
   call's page; nobody removes the organizer), and lock the call.
-- **Who hosts** (`features/call/Hosting.tsx`). While someone stands in for the organizer, the status bar says so for
+- **Who hosts** (`features/call/rooms/Hosting.tsx`). While someone stands in for the organizer, the status bar says so for
   everyone ("Priya is hosting while Art is away"; to Priya, "You're hosting while Art is away", with **Bring everyone
   back** while breakout rooms are open), and their row in People says it too. Each change arrives once as a notice.
   An organizer's tab that was away when someone else took over says so and goes back to the join page, which shows the
@@ -1989,7 +1989,7 @@ share picker, the leave sheet and the device pickers.
 - **What's captured.** The notes sign in the top bar is the same for everyone: **Notes on** (crimson),
   **Notes paused**, **Notes unavailable** (caution), **Notes off**, or **Notes requested** while someone has
   asked; the organizer's own says **Pausing…** while their pause is on its way. It opens a popover
-  (`features/call/Capture.tsx`) with each kind of capture and its state, who changed it and when, who gets the
+  (`features/call/notes/Capture.tsx`) with each kind of capture and its state, who changed it and when, who gets the
   notes, and that they're written in confidential compute; with the organizer's **Pause notes**, **Resume
   notes** and **Turn off** or **Turn on notes**, or anyone else's **Ask for notes**. Its sentence says what's
   captured now: what everyone says recorded and transcribed, less whatever the host's browser can't do. The
@@ -2243,7 +2243,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 
 ## Media in the browser
 
-`apps/web/src/features/call/media.ts` owns one `LocalMedia` instance from pre-join through the call:
+`apps/web/src/features/call/media/media.ts` owns one `LocalMedia` instance from pre-join through the call:
 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera. Noise
   reduction can be switched from the microphone menu (`applyConstraints` on the live track, so the recording
@@ -2264,7 +2264,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   shows the state in place of the picker, says in plain words how to allow it in this browser (or in the
   computer's privacy settings), offers Try again, and never keeps anyone from joining: they join with both off.
   In the call the dock's buttons carry a caution mark, and pressing one that can't work opens its menu with the
-  same explanation (`apps/web/src/features/call/access.ts` holds the copy).
+  same explanation (`apps/web/src/features/call/media/access.ts` holds the copy).
 - **Watching devices.** From the first start, `LocalMedia` follows `devicechange`, each track's `ended`, the
   permissions' `change` events and, because Safari never sends those, the page coming back into view. A
   microphone or camera that's unplugged gives way to the chosen one or the system's, muted or not and on or off
@@ -2294,7 +2294,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   blur in use, without a word. Only while the camera is still on: one turned off meanwhile stays off. Each try waits
   longer, also when the camera doesn't open again, and a publish that works starts the count over. The new track is
   published as any other, at the size chosen (HD included).
-- **Video quality** (`apps/web/src/features/call/VideoQuality.tsx`, under More → **Video quality**). Two choices,
+- **Video quality** (`apps/web/src/features/call/media/VideoQuality.tsx`, under More → **Video quality**). Two choices,
   remembered in this browser with the devices (`sendVideo` and `receiveVideo` in `alcove.devices`), changeable at
   any moment of a call:
   - **Video you send:** 360p, 720p (the default) or HD 1080p. The camera is asked for that size (`VIDEO` in
@@ -2325,7 +2325,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   page has used the microphone. A chosen speaker that's unplugged falls back to the system's, and is used again
   when it's back. Where a page can't choose (Safari), the menus say calls play through the speaker the system
   uses, and where to change it.
-- **Each person's volume, for you** (`apps/web/src/features/call/volume.ts`). From 0 (muted for you) to 100%,
+- **Each person's volume, for you** (`apps/web/src/features/call/media/volume.ts`). From 0 (muted for you) to 100%,
   on the element that plays that person's voice (`RemoteAudioTrack.setVolume`, LiveKit's element playback;
   a tab they share plays at its own volume). Their track itself is never touched: it stays exactly as it
   arrived, so turning someone down, or a muted speaker, never changes what the person sends, what's recorded or
@@ -2338,7 +2338,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   (iPhones) don't offer it. There's no going above 100%:
   that needs Web Audio on the way to the speaker, which LiveKit turned off by default because echo cancellation
   doesn't cover it everywhere.
-- The microphone test (`apps/web/src/features/call/devices.ts`) records three seconds in memory and plays
+- The microphone test (`apps/web/src/features/call/media/devices.ts`) records three seconds in memory and plays
   them back through the chosen speaker. Nothing is uploaded or kept. In the call, **Play test sound** plays a
   short chime through the chosen speaker.
 - `getDisplayMedia` for screen sharing (`shareScreen`), opened on the kind picked in the share picker (tab, window or
@@ -2371,7 +2371,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   held once it's back (above); on the stage it keeps what it can't send on this device instead
   ([Recording without a connection](#recording-without-a-connection)).
 
-Beside it, `SpeechClips` (`apps/web/src/features/call/speech.ts`) feeds the live transcript: an
+Beside it, `SpeechClips` (`apps/web/src/features/call/notes/speech.ts`) feeds the live transcript: an
 AudioWorklet (`apps/web/public/pcm-capture.js`) mixes the microphone to mono, filters and resamples it to
 16 kHz, and the samples are cut into WAV clips at pauses. Clips without a voice in them aren't sent. It
 never touches the encrypted recording.

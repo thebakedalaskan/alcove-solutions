@@ -3,7 +3,7 @@
 [Docs home](../README.md) · [Product overview](overview.md)
 
 Each flow below is implemented in `apps/web` and exercised end to end by the integration tests in
-`apps/api/src/flows.integration.test.ts` (API level) and by a real-browser check before release.
+`apps/api/src/integration/flows.integration.test.ts` (API level) and by a real-browser check before release.
 
 ## 1. Sign in
 

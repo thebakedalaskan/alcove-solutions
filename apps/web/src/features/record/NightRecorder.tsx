@@ -7,9 +7,9 @@
 import { Button, Icon, Kbd, RecMeter, RecorderSun, Select, Tooltip, cn, useVoice, type SelectOption } from '@alcove/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { troubles } from '~/features/call/access';
-import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/devices';
-import { LocalMedia } from '~/features/call/media';
+import { troubles } from '~/features/call/media/access';
+import { plainName, readPrefs, rememberDevice, useDevices, type Device } from '~/features/call/media/devices';
+import { LocalMedia } from '~/features/call/media/media';
 import { overlayOpen, typing } from '~/lib/keys';
 import { sessions, useLive, useOnline } from '~/lib/live';
 import { UNNAMED } from './uploads';

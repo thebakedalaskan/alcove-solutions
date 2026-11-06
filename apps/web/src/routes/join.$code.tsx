@@ -4,9 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { lastPass, rememberPass } from '~/features/call/pass';
-import { Lobby } from '~/features/calls/Lobby';
-import { PickTime, PickTimeWaiting } from '~/features/calls/PickTime';
+import { lastPass, rememberPass } from '~/features/call/session/pass';
+import { Lobby } from '~/features/calls/lobby/Lobby';
+import { PickTime, PickTimeWaiting } from '~/features/calls/scheduling/PickTime';
 import { GuestName, GuestTradeOff, SignInHere, SignedInAs } from '~/features/join/JoinAs';
 import { JoinProblem, JoinRefused } from '~/features/join/JoinProblem';
 import { PrejoinCapture, type NotesAudience } from '~/features/join/PrejoinCapture';
@@ -51,7 +51,7 @@ function JoinPage({ code }: { code: string }) {
   // The camera starts as soon as there's a call to join, while the rest of the page loads; the call's media code comes down meanwhile too.
   const joinable = !lost && !offers && !picking && (Boolean(mine) || (card.data !== undefined && !card.data.ended));
   const media = usePrejoinMedia(joinable, mine?.joinMuted ?? card.data?.joinMuted ?? false);
-  useEffect(() => { if (joinable) void import('~/features/call/livekit'); }, [joinable]);
+  useEffect(() => { if (joinable) void import('~/features/call/media/livekit'); }, [joinable]);
   const signedIn = me !== undefined;
   const shell = (body: ReactNode) => <div className="stage ac-stage"><div className="stg"><Top home={signedIn} />{body}</div></div>;
 

@@ -54,7 +54,8 @@ apps/api/src/
   live/              shared realtime/worker infrastructure
   testing/           shared fixtures
 packages/api/src/
-  client.ts          aggregate interface and shared errors
+  client.ts          aggregate interface
+  errors.ts          shared client errors
   identity/ meetings/ calls/ notes/ recordings/ workspaces/
   trust/ credits/ telemetry/ shared/
 packages/api-http/src/
@@ -83,6 +84,8 @@ Exact filenames follow the responsibility they implement; this map is not a requ
 `pnpm check:structure` runs in local checks and CI. It protects feature homes, composition entry points, package direction and deliberate exports. It must reject violations with the owning path and a useful explanation. Change the policy only when the ownership decision changes, update this document and the scoped `AGENTS.md` in the same change, and explain why. Never add an allowlist entry just to silence a failure.
 
 Review still checks responsibilities, lifecycle ordering and whether an extraction earns its interface. A static guard cannot judge those decisions.
+
+Prefer the codebase knowledge graph for discovery. Check the index's excluded-directory report: a graph result with no matches is insufficient when it skipped a documented source home (notably a directory named `media` or `integration`). Use the map to read that owner directly or fall back to source search; never infer that implementation or coverage is absent from an incomplete index.
 
 ## Refactor verification
 

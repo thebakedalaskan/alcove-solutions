@@ -1,15 +1,15 @@
 /*
  * The microphone, speaker and camera this browser uses: the same choices the join screen and the call remember
- * (features/call/devices.ts), kept in this browser only. Nothing opens by itself: "Check the level" opens the
+ * (features/call/media/devices.ts), kept in this browser only. Nothing opens by itself: "Check the level" opens the
  * microphone for a few seconds, to show how loud it hears you, and it closes sooner when pressed again or when this
  * part leaves the screen. Choosing a device doesn't open it. The camera is never opened: you see yourself when you
  * join a call, never before.
  */
 import { Button, Icon, MicLevel, Select, SettingFact, SettingRow, SettingsPart, Tooltip, cn, useToast, type SelectOption } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
-import { stateOf, troubles } from '~/features/call/access';
-import { canChooseSpeaker, permissions, plainName, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Device, type Permission } from '~/features/call/devices';
-import { LocalMedia } from '~/features/call/media';
+import { stateOf, troubles } from '~/features/call/media/access';
+import { canChooseSpeaker, permissions, plainName, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Device, type Permission } from '~/features/call/media/devices';
+import { LocalMedia } from '~/features/call/media/media';
 import { useLive } from '~/lib/live';
 import { Setting, SwitchSetting, useSaved } from './save';
 

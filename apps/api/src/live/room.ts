@@ -15,8 +15,8 @@ import { bigintText, bytea, maybeOne } from '../db';
 import { log } from '../log';
 import {
   TREE_NOTICE, canOpen, holdersOf, openState, peopleIn, roleOf, standingIn, workspaceKey, type Holders, type Reader, type Standing, type Who, type WorkspaceState
-} from '../modules/workspaceAccess';
-import { portraitFor } from '../modules/portraits';
+} from '../features/workspaces/access';
+import { portraitFor } from '../features/account/portraits';
 import { findOwner } from '../owners';
 import { publish, type Hub, type HubEvent } from './hub';
 

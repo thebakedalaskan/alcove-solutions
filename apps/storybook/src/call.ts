@@ -14,7 +14,7 @@
  */
 import type { CallSession, Meeting, Person } from '@alcove/api';
 import { screen } from 'storybook/test';
-import { LocalMedia } from '~/features/call/media';
+import { LocalMedia } from '~/features/call/media/media';
 import { sessions } from '~/lib/live';
 import type { ScenarioName } from './api/scenarios';
 import { ringFrom, scriptCall, type CallScript } from './api/script';

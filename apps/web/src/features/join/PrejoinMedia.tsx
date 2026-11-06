@@ -5,10 +5,10 @@
 import type { Person } from '@alcove/api';
 import { Avatar, CallDock, DockButton, cn } from '@alcove/ui';
 import { useEffect, useState } from 'react';
-import { PrejoinDevices } from '~/features/call/DevicePickers';
-import { Video, useLevels } from '~/features/call/Video';
-import { useDevices } from '~/features/call/devices';
-import { LocalMedia } from '~/features/call/media';
+import { PrejoinDevices } from '~/features/call/media/DevicePickers';
+import { Video, useLevels } from '~/features/call/media/Video';
+import { useDevices } from '~/features/call/media/devices';
+import { LocalMedia } from '~/features/call/media/media';
 import { sessions, useLive } from '~/lib/live';
 
 const shape = (l: number, i: number) => 18 + Math.min(1, l * (0.75 + Math.random() * 0.5)) * (i === 2 ? 82 : 62);

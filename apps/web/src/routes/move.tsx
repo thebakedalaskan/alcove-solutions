@@ -3,7 +3,7 @@ import { Avatar, Button, Chip, Dots, Icon, Logo, Notice, useRaisedToasts, useToa
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LocalMedia } from '~/features/call/media';
+import { LocalMedia } from '~/features/call/media/media';
 import { carried } from '~/features/move/MoveSheet';
 import { thisDevice } from '~/features/move/device';
 import { keepClaim, takeClaim, takeCode } from '~/features/move/stash';

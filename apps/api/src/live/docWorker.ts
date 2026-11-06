@@ -6,7 +6,7 @@
  */
 import { parentPort } from 'node:worker_threads';
 import { z } from 'zod';
-import { DOC_TASKS, isDocTask } from '../modules/documentWork';
+import { DOC_TASKS, isDocTask } from '../features/workspaces/document-work';
 
 const Job = z.object({ id: z.number(), task: z.string(), input: z.unknown() });
 const WithKey = z.object({ key: z.instanceof(Uint8Array) });

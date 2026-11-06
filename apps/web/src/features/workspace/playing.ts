@@ -1,6 +1,6 @@
 /*
  * What a document's videos need in a call: Play for everyone, and the picture everyone's watching in the block that holds it
- * (features/call/PlayTogether.tsx). Outside a call a video plays only where it's pressed. The rest of what a video block
+ * (features/call/playback/PlayTogether.tsx). Outside a call a video plays only where it's pressed. The rest of what a video block
  * draws from, its first frame and where a player reads it, is DocumentMedia.tsx's.
  */
 import { useMemo } from 'react';

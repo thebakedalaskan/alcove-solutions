@@ -18,7 +18,7 @@ import { WorkerMessageSchema, firstName, notesAreOn, type CallState, type Meetin
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { askerOf } from '~/features/call/Capture';
+import { askerOf } from '~/features/call/notes/Capture';
 import { dueFrom, dueOf } from '~/features/home/day';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';

@@ -22,6 +22,8 @@ components in `src/styles/kit.css` and `src/components/`, rules in [`AGENTS.md`]
 How the app is designed, page by page, and the design canvas every new design starts from are in [`design/`](design/README.md).
 What's built, every component, page and journey in each of its states, is in Storybook ([`apps/storybook`](../apps/storybook/README.md)).
 Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AGENTS.md).
+Source placement, composition entry points and the enforced rules for new files are in
+[Folder ownership](engineering/folder-ownership.md); [the move map](engineering/folder-move-map.md) records the refactor.
 
 ## Provider boundaries
 

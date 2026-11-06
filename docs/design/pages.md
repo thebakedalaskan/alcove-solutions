@@ -221,7 +221,7 @@ One modal, one question at a time, and a sheet on a phone.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/`, `styles/call.css`. The call's panels are `features/call/Panel.tsx`, styled with
+`routes/call.$code.tsx`, `features/call/`, `styles/call.css`. The call's panels are `features/call/layout/Panel.tsx`, styled with
 `ic-` classes.
 
 Always night, in both themes, on the stage tokens. People are in arches, never circles, and whoever speaks gets the `speak`
@@ -281,7 +281,7 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 
 These screens follow the same rules but have no section here and no board yet:
 - the join screen (`routes/join.$code.tsx`) and the organizer's lobby
-- a guest picking a time (`features/calls/PickTime.tsx`)
+- a guest picking a time (`features/calls/scheduling/PickTime.tsx`)
 - a scheduled call's card
 - sign-in's other ways in, on the join and move pages (`features/welcome/WaysIn.tsx`)
 - onboarding: arrival and the tour (`features/onboarding/`)

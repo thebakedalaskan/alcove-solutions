@@ -1,7 +1,7 @@
 /*
  * A document or a board open on the page: its one session, opened again when asked or when it can't be opened right now, and
  * what's said when a connection comes back. DocumentPane and BoardPane both hold theirs through these, so the two can't drift,
- * and a board in a call opens again the same way (features/call/callBoard.ts).
+ * and a board in a call opens again the same way (features/call/boards/callBoard.ts).
  */
 import type { DocSession, DocStatus } from '@alcove/api';
 import { wsToast } from '@alcove/ui';

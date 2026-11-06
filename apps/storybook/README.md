@@ -45,7 +45,7 @@ stories/journeys/         one file per section of docs/product/user-flows.md, an
 
 **The stand-ins.** `main.ts` swaps two of the app's files for Storybook's, by the file an import lands on (so `~/lib/api`,
 `./api` and `../lib/api` all get it): `apps/web/src/lib/api.ts` becomes `src/api/index.ts`, and
-`apps/web/src/features/call/livekit.ts` becomes `src/media/livekit.ts`. Nothing else in the app changes, and nothing in
+`apps/web/src/features/call/media/livekit.ts` becomes `src/media/livekit.ts`. Nothing else in the app changes, and nothing in
 `apps/web` or `packages/*` knows Storybook exists.
 
 **Before every story** the preview starts its scenario: a fresh world for the stand-in, the demo clock at the scenario's

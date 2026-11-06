@@ -271,7 +271,7 @@ purpose `invite`.
 - **Calls from before this table** have no rows, and their guests are sealed, so no migration can fill them in.
   The organizer's next read of Upcoming does: any call it lists whose rows don't match its guests is put right
   there, with their keys. Until then someone invited to one has its link and calendar event, as before.
-- **The check.** `locateInvited` in `apps/api/src/modules/access.ts` needs a row for that call and the caller's
+- **The check.** `locateInvited` in `apps/api/src/features/meetings/access.ts` needs a row for that call and the caller's
   invite index, taken from their profile email; only then does it open the organizer's keys and read the call.
   Reading a call someone's invited to and answering it both go through this check. Anyone else gets `404 not-found`,
   the same answer as for a call that doesn't exist, and so does the organizer answering their own call. Changing or
@@ -324,7 +324,7 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   group itself (its name and addresses) is sealed in its owner's profile: the app sends its addresses and name,
   and the server never looks a group up. Everyone who has the note sees how each person got it, and each reader
   is told their own way: invited to the organizer's call, or shared by whom and with which group.
-- **The check.** `locate` in `apps/api/src/modules/notes.ts` looks in the caller's own vault first. Otherwise it
+- **The check.** `locate` in `apps/api/src/features/notes/service.ts` looks in the caller's own vault first. Otherwise it
   needs a `note_access` row for that note and the caller's email index, taken from their profile email; only
   then does it open the organizer's keys and read the note. The note, its audio, its progress stream, its
   follow-ups, asking about it and sharing all go through this check. Anyone else gets `404 not-found`, the
@@ -369,7 +369,7 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   `proposed` until the organizer or someone invited confirms it (and a confirmed one can later be said to no longer
   hold), a question stays open until someone says it was answered, and a follow-up's owner and due date are
   suggestions until that person takes it on. Having the note lets someone in; what they can do then is one rule
-  (`packages/api/src/grants.ts`, [Notes and inference › Decisions and follow-ups](notes-and-inference.md#decisions-and-follow-ups)):
+  (`packages/api/src/notes/grants.ts`, [Notes and inference › Decisions and follow-ups](notes-and-inference.md#decisions-and-follow-ups)):
   anyone adds, the organizer and people invited agree, and only the organizer or the person concerned takes away. Only the person a follow-up is for can take
   it on (`403 forbidden` for anyone else; giving it to yourself is taking it on, when it's yours to give), and it can
   only go to someone who has the note now (read under the note's lock, so someone who removed it isn't given one).
@@ -418,7 +418,7 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 
 ## Who can open a workspace
 
-`apps/api/src/modules/workspaceAccess.ts` decides, and nothing else does. Every route asks it first.
+`apps/api/src/features/workspaces/access.ts` decides, and nothing else does. Every route asks it first.
 
 - **A reader** is an account, known by the email index of its profile's address; or someone in a call, known by the
   `call-seat` index of their seat, from their call pass, for as long as they're let in and the call is going on. Signed in
@@ -530,7 +530,7 @@ is signed, as a call pass is, and lasts 12 hours. It says who's asking (an accou
 for (one workspace, document and file), by opaque IDs and nothing else, and it decides nothing:
 
 - **Every request asks again**, each `Range` included: who's asking and whether they can open the document, in
-  `modules/workspaceAccess.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
+  `features/workspaces/access.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
   whole file asks again every four pieces, so a read can't outlast access by much. Someone who lost the document gets the same
   `not-found` on their next request as a URL nobody made, and so does an expired, changed or unsigned token. If they're given
   the document back, the same URL works again.
@@ -550,7 +550,7 @@ takes a token out of anything that quotes a file's URL, a browser's report of a 
 
 ### Brought to a call
 
-`modules/documents.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
+`features/workspaces/library.ts` shows what's in workspaces to people with calls, and `workspaceAccess.ts` still decides.
 
 - **The library** (`GET /v1/documents`) is what someone can bring: everything they can open with their account, by
   workspace, as each tree shows it to them, without folders or what's in Trash. A workspace with nothing to bring isn't
@@ -599,7 +599,7 @@ is signed, as a call pass is, and lasts 12 hours. It says who's asking (an accou
 for (one workspace, document and file), by opaque IDs and nothing else, and it decides nothing:
 
 - **Every request asks again**, each `Range` included: who's asking and whether they can open the document, in
-  `modules/workspaceAccess.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
+  `features/workspaces/access.ts`, and whether the document still has the file. An answer sends at most 16 MiB, and a read of a
   whole file asks again every four pieces, so a read can't outlast access by much. Someone who lost the document gets the same
   `not-found` on their next request as a URL nobody made, and so does an expired, changed or unsigned token. If they're given
   the document back, the same URL works again.
@@ -734,7 +734,7 @@ third-party loads.
   note's page as on screen (`alcove.onScreen.<noteId>`) stay inside this browser.
 - **Fonts** (Newsreader, Hanken Grotesk, IBM Plex Mono) are served from the app (`packages/ui/src/fonts`, OFL), not a
   font service, so no page load tells anyone else who's visiting.
-- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`modules/photos.ts`),
+- **Google profile photos** come through the API: the app gets `/v1/photos/<token>` (`features/account/photos.ts`),
   where the token is the provider URL sealed under a key derived from `KMASTER`. It's stable, so the
   browser caches it, and only this server can read it. The API fetches the image from an allowed host
   (`PHOTO_HOSTS`), keeps it in memory for an hour and serves it only to signed-in browsers. Google sees

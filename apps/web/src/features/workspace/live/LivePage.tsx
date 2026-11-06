@@ -6,8 +6,8 @@
 import { errorMessage, firstName, type CallState, type CatchUpItem } from '@alcove/api';
 import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsFollowUps, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, wsToast, type WsDecision, type WsSaid } from '@alcove/ui';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useFollow } from '~/features/call/LiveLines';
-import { organizerName } from '~/features/call/Capture';
+import { useFollow } from '~/features/call/notes/LiveLines';
+import { organizerName } from '~/features/call/notes/Capture';
 import { captureHere } from '~/lib/capture';
 import { useLive } from '~/lib/live';
 import { useLiveHost, type LiveHost } from './host';

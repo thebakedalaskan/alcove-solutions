@@ -27,6 +27,29 @@ pnpm build
 pnpm check          # all of the above
 ```
 
+## Folder ownership (enforced)
+
+Read [docs/engineering/folder-ownership.md](docs/engineering/folder-ownership.md) before adding or moving code.
+It defines the target map, feature owners and the composition rules. Run `pnpm check:structure`; this also runs
+in `pnpm typecheck`, `pnpm check` and CI. Scoped `AGENTS.md` files add the rules for each area.
+
+- Pick the feature owner first. Colocate its implementation, private helpers/types and server integration suites.
+  Cross-feature/infrastructure suites live in `apps/api/src/integration`; shared fixtures live in `src/testing`.
+- `call` is the running call; `calls` is making, scheduling, listing and entering calls. Use their documented
+  subfeatures, not a new loose file at either root. Backend behavior lives in `apps/api/src/features/<owner>`.
+- Routes, `apps/api/src/app.ts` and the HTTP client entry point compose feature behavior. New HTTP handlers,
+  subscriptions, recorders and capture/connection lifecycles belong to the owning feature. Extract a coherent
+  responsibility with explicit inputs and cleanup; moving a giant entry point intact does not finish a refactor.
+- Import the owning file directly within a package. No folder barrels, old-path re-exports, compatibility shims
+  or generic `utils`, `common`, `misc` and `helpers` buckets. Keep deliberate public package entry points.
+- Shared infrastructure needs a concrete responsibility and callers in more than one feature. Existing crypto,
+  database, logging, ownership, test harness and worker infrastructure stays shared; never duplicate it per feature.
+- Every move updates imports, package export targets, worker/assets/build paths, CI timing keys, existing consumers
+  and docs in the same change. Delete the old path, preserve test discovery/assertions and all other policy guards.
+- For a new feature owner or a changed package responsibility, update the map, scoped rules and structure policy
+  together and explain the decision. Do not loosen a guard merely to make a check green. Review responsibilities
+  and dependencies, not arbitrary file-size limits.
+
 ## No backwards compatibility, no legacy code
 
 When something changes, change it everywhere and delete what it replaced, in the same change. The one
@@ -81,8 +104,8 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
 - CI splits the integration tests across ten runners (`scripts/ci-tests.mjs`) and fails unless every test ran once.
   Keep test files independent of each other: each runs on whichever runner its timing puts it on.
-- When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
-  `*.integration.test.ts`) with the flow it enables. Tests sign in through the real API
+- When you add a feature, extend its colocated `apps/api/src/features/<owner>/*.integration.test.ts`
+  (or `apps/api/src/integration/flows.integration.test.ts` for a cross-feature flow). Tests sign in through the real API
   (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out
   sessions or key checks.
 

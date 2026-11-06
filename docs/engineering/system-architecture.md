@@ -5,6 +5,13 @@
 This page describes what is built and how it maps onto the confidential design the product requires.
 Where the local build differs from production requirements, the difference is stated explicitly.
 
+## Source ownership
+
+[Folder ownership](folder-ownership.md) is the map and rulebook for source and integration coverage.
+Server feature registrars compose in `apps/api/src/app.ts`; the call route delegates to its session page;
+`packages/api-http/src/index.ts` composes transport and feature clients. Shared infrastructure and deployment
+entry paths stay stable. [The move map](folder-move-map.md) records the reorganization.
+
 ## Components
 
 ```mermaid
@@ -48,7 +55,7 @@ flowchart TB
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
 | `packages/api-http` | The browser client: REST, NDJSON streams, raw audio, speech and file uploads, live call and recording sessions, documents being worked on. |
-| `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape and its own settings, reading and writing it, connector routes, templates, its text, landing rooms' boards, where something new lands clear of the rest, stickies from outside it and keeping apart what two people put there at once, a table's cells made with its rows and columns, mind maps, and what a download of a board says for its reader. Pure TypeScript on plain `Y.Doc`s. `apps/web/src/features/board` draws a board with it (More's items in `more/`, the phone's + in `phone.tsx`), on a board's own page in the workspace (`src/features/workspace/BoardPane.tsx`) and in a call (`features/call/BoardStage.tsx`), each loading the board's code the first time a board opens, so a page or a call without one pays nothing for it. The API reads a board's words, puts its template on, and checks what a vote is on with it, in the workers that open documents (`documentText.ts`, `documentOps.ts`). |
+| `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape and its own settings, reading and writing it, connector routes, templates, its text, landing rooms' boards, where something new lands clear of the rest, stickies from outside it and keeping apart what two people put there at once, a table's cells made with its rows and columns, mind maps, and what a download of a board says for its reader. Pure TypeScript on plain `Y.Doc`s. `apps/web/src/features/board` draws a board with it (More's items in `more/`, the phone's + in `phone.tsx`), on a board's own page in the workspace (`src/features/workspace/BoardPane.tsx`) and in a call (`features/call/boards/BoardStage.tsx`), each loading the board's code the first time a board opens, so a page or a call without one pays nothing for it. The API reads a board's words, puts its template on, and checks what a vote is on with it, in the workers that open documents (`documentText.ts`, `documentOps.ts`). |
 | `packages/ui` | The design system. |
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
@@ -58,7 +65,7 @@ one object store, and receive the owner context (the account's keys, opened for 
 reads on its own connection, never through the pool: ten at once each waiting for a second one would wait for ever. Nothing
 waits for a connection longer than 10 seconds, and comes back as an error if it would.
 Billing is given only the owner ID and seals its state under `Kservice`. Google sign-in and Calendar live
-in `apps/api/src/google.ts` and `modules/calendar.ts`; only `apps/api/src/inference.ts` and `apps/api/src/evidence.ts`
+in `apps/api/src/google.ts` and `features/meetings/calendar.ts`; only `apps/api/src/inference.ts` and `apps/api/src/evidence.ts`
 talk to NEAR AI, and only `inference.ts` sends it content.
 `apps/api/src/demo.ts` holds the stand-ins for Microsoft and SSO sign-in, the sample calendar and the
 company directory until the real providers are connected.
@@ -68,10 +75,10 @@ notes worker, which starts when a recording stops ([Notes and inference](notes-a
 has a stream of rings open, a ticker that reads what's ringing once a second ([Calls and recordings › Ringing](calls-and-recordings.md#ringing)); and the hub
 (`apps/api/src/live/hub.ts`), one `LISTEN` connection through which API instances tell each other what changed in a
 workspace ([Data and storage › Live traffic](data-and-storage.md#live-traffic)). What hears it on each instance is a room,
-one for each workspace and one for each document people have open (`live/room.ts`, `modules/workspaceDocuments.ts`), which
+one for each workspace and one for each document people have open (`live/room.ts`, `features/workspaces/documents.ts`), which
 reads each change once for its streams (`live/stream.ts`). Documents are opened in worker threads (`live/docPool.ts`), the only
 place that runs Yjs on the server, so what's in one can't stop the event loop. A workspace is an owner of its own, and
-`modules/workspaceAccess.ts` alone decides who can open what in one
+`features/workspaces/access.ts` alone decides who can open what in one
 ([Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace)). What a document holds is a Yjs document,
 which browsers edit together through the API ([Data and storage › Documents](data-and-storage.md#documents)).
 
@@ -86,7 +93,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
    (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
    ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.
 4. Calls and workspaces come next, each by what it takes: a call pass, or for a workspace a session or a call pass
-   (`modules/workspaceAccess.ts`), since guests have no session, or for reading a file, the token in its URL and the browser's cookie
+   (`features/workspaces/access.ts`), since guests have no session, or for reading a file, the token in its URL and the browser's cookie
    ([Privacy › Files](privacy-keys-and-sessions.md#files)). Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.

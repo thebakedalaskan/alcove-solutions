@@ -3,13 +3,13 @@
  * menu under its name, how it stands (its seal, and Reconnecting and Couldn't save in its pill, as on its page) and the call's
  * one pill, ideas from the call, and the same board as a live tile among the faces or above them. Presented, it's a frame at a
  * time: whoever's presenting has their view of it round it, and everyone else the frame alone, until they look around. The
- * call (features/call/callBoard.ts) holds the board's session and says what's true; this draws it.
+ * call (features/call/boards/callBoard.ts) holds the board's session and says what's true; this draws it.
  */
 import type { DocSession } from '@alcove/api';
 import { BoardHeard, BoardPop, BoardPresenter, BoardTile, BoardTray, type AvatarPerson, type BoardNaming, type BoardPresenting, type IconName } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import type { BoardIdeas } from '~/features/call/callBoard';
+import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
 import { BoardSurface, type BoardHandle, type BoardLanding, type BoardPerson, type BoardPictures } from './BoardSurface';
 import type { BoardCommenting } from './comments';

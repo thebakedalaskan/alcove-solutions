@@ -6,7 +6,7 @@ interface ImportMetaEnv {
 
 /*
  * Document Picture-in-Picture (WICG; Chrome and Edge 116+, Firefox 151+): an always-on-top window the page fills
- * itself. Not in TypeScript's DOM types yet. A share can open in one (features/call/popOut.ts).
+ * itself. Not in TypeScript's DOM types yet. A share can open in one (features/call/screen-sharing/popOut.ts).
  */
 interface DocumentPictureInPictureOptions { width?: number; height?: number; disallowReturnToOpener?: boolean; preferInitialWindowPlacement?: boolean }
 interface DocumentPictureInPicture extends EventTarget {

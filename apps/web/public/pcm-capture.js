@@ -1,5 +1,5 @@
 /*
- * The microphone at 16 kHz mono, for the live transcript (apps/web/src/features/call/speech.ts).
+ * The microphone at 16 kHz mono, for the live transcript (apps/web/src/features/call/notes/speech.ts).
  * Runs on the audio thread: mixes the input to mono, low-passes it below 8 kHz so nothing higher
  * folds into the speech band, resamples it to 16 kHz, and posts 100 ms of samples at a time.
  */

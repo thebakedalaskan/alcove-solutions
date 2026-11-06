@@ -37,7 +37,7 @@ export interface CallTogether {
 export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void; go: (connection: string) => void; tag: (connection: string) => void; canTag: () => boolean }
 
 /**
- * Presenting, in a call (features/call/presenting.ts). `present` is what the call says is presented where you are; `watching`:
+ * Presenting, in a call (features/call/workspace/presenting.ts). `present` is what the call says is presented where you are; `watching`:
  * the page is the presentation, because you're presenting it or watching it rather than working on your own (`away`).
  * `section` is the one on screen, which moves at once for whoever presses Next. `inSight`: the workspace isn't closed or
  * behind something it takes turns with, so its keys are awake.
@@ -60,7 +60,7 @@ export interface WorkspacePresenting {
   setAway: (away: boolean) => void;
 }
 
-/** A video playing for everyone, in a call (features/call/PlayTogether.tsx). */
+/** A video playing for everyone, in a call (features/call/playback/PlayTogether.tsx). */
 export interface WorkspacePlaying {
   /** What's playing where you are: its document, and what a block holding it shows. Null when nothing is. */
   now: { documentId: string; video: VideoPlay } | null;
