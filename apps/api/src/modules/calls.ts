@@ -288,6 +288,29 @@ function personFor(j: Joined | undefined, identity: string, fallbackName: string
 }
 
 /**
+ * When each connection in a call last asked this API anything (ms), by `callId|identity`. A page in a call asks at least
+ * every few seconds, so it's how late its page is known to have been there. A stay that ends without the page saying so
+ * (it crashed, its goodbye was lost, its tab slept) ends no later than this: time nobody can say they were there for is
+ * never counted as theirs, so a guest with the link never reads what was said in it. Kept in memory, as the API runs as
+ * one instance; after a restart it's unknown until each page asks again, and such a stay ends where it began instead.
+ */
+const lastAsked = new Map<string, number>();
+const LAST_ASKED_MAX = 50_000;
+function asked(callId: string, identity: string): void {
+  const key = `${callId}|${identity}`;
+  // Oldest first, so what's dropped when it's full is what was heard from longest ago.
+  lastAsked.delete(key);
+  lastAsked.set(key, Date.now());
+  if (lastAsked.size > LAST_ASKED_MAX) {
+    const oldest = lastAsked.keys().next();
+    if (!oldest.done) lastAsked.delete(oldest.value);
+  }
+}
+/** The latest a connection that went without a word is known to have been in the call: never after `until`, nor before it came in. */
+const knownUntil = (callId: string, j: Pick<Joined, 'identity' | 'since'>, until: number): number =>
+  Math.min(until, Math.max(j.since, lastAsked.get(`${callId}|${j.identity}`) ?? j.since));
+
+/**
  * Who a call pass belongs to, for this request. A removed person's pass stops working, and once the call is over only
  * the organizer can read it. The organizer's powers go with the organizer's current connection only; host powers with
  * the connection that hosts (the organizer's, or someone's standing in for them). Either only together with the same
@@ -310,6 +333,7 @@ export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<O
   const isHost = s.host === pass.identity && (isOrganizer || standingIn);
   // Never more than the pass says, except a guest the organizer let in and so added to the invite.
   const role: CallRole = pass.role === 'guest' && mine?.role === 'invited' ? 'invited' : pass.role;
+  if (mine?.status === 'in') asked(pass.callId, pass.identity);
   return { pass, organizer, session, isOrganizer, isHost, stale: (mine?.hosting.length ?? 0) > 0 && s.host !== pass.identity, inCall: isOrganizer || isHost || mine?.status === 'in', role };
 }
 /** Everything about a call but whether you're let in needs you to be in it. */
@@ -877,7 +901,9 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     }
     if (!hostHere(live)) throw new ConflictError('Waiting for the host to start the call.', { context: { meetingId: meeting.itemId, role: joined.role } });
     let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
-    if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? Date.now() : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
+    // An old connection still in never said it went (its page crashed, or its goodbye hasn't come): its stay ends when it
+    // was last heard from, not now, so the time between isn't counted as theirs for a guest coming back to read.
+    if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? knownUntil(live.call_id, j, Date.now()) : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
     const seq = live.mls_seq + 1;
     await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch, grp: null }, 'keypackage', me.identity, keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, seq]);
@@ -2517,9 +2543,10 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
  * Someone other than whoever hosts is gone (left, or LiveKit says so): the host's browser removes them from the group,
  * so the keys move on. Someone still asking to be let in takes their request back. The host going is handOff's, or
  * upkeep's (reconcile), never this. `onPurpose`: they chose to, so what they started stops; only they can say so, and a
- * connection dropping or a page reloading comes back to what it left.
+ * connection dropping or a page reloading comes back to what it left. `noticed`: Alcove found out, from LiveKit or upkeep,
+ * rather than the connection saying so, so it went some time before `at`: its stay ends when it was last heard from.
  */
-async function departed(o: Owner, callId: string, identity: string, at = Date.now(), onPurpose = false): Promise<void> {
+async function departed(o: Owner, callId: string, identity: string, at = Date.now(), onPurpose = false, noticed = false): Promise<void> {
   const r = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
     const { row } = held;
@@ -2534,7 +2561,7 @@ async function departed(o: Owner, callId: string, identity: string, at = Date.no
     // Someone who was in is kept, as having left (a reload's pass brings them back, hand and all), and their shares
     // end. Someone who only asked is kept as turned away: nothing of theirs, a pass included, brings them in without
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
-    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: at })),
+    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
     return { room: row.room_name, was: j.status };
   });
@@ -2560,7 +2587,7 @@ const LEFT_CHECK_MS = 3_000;
 async function goneFromRoom(d: Deps, ownerId: string, callId: string, roomName: string | null, identity: string, at: number): Promise<void> {
   const here = roomName ? await d.livekit.participants(roomName).then((ps) => ps.some((p) => p.identity === identity), () => false) : false;
   if (here) { clog.info('left and came back to the room', { callId }); return; }
-  await departed(await openOwner(d, ownerId, undefined), callId, identity, at);
+  await departed(await openOwner(d, ownerId, undefined), callId, identity, at, false, true);
 }
 /**
  * How long someone let in has to reach the room before they're taken out. A tab in the background can take a
@@ -2582,7 +2609,7 @@ async function arrivals(d: Deps, ownerId: string, callId: string, roomName: stri
   for (const j of due) {
     if (here.has(j.identity)) continue;
     clog.info('someone let in isn’t in the room', { callId, role: j.role });
-    await departed(o, callId, j.identity);
+    await departed(o, callId, j.identity, now, false, true);
   }
 }
 const ByRoom = z.object({ owner_id: z.string(), call_id: z.string(), host_identity: z.string().nullable() });
