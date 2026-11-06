@@ -6,10 +6,12 @@
 import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
+import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from './crypto';
+import { masterKey } from './owners';
 import { cookieName } from './sessions';
 import { startFakeDstack } from './testing/fake-dstack';
 import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
@@ -87,9 +89,12 @@ const SessionReply = z.object({ ownerId: z.string() });
  * hand so the browser's cookies see every hop (a second pass to Google included). Returns where the
  * API finally sends the browser. `tamper` and `deliverIn` apply to the first return from Google.
  */
-async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean } = {}): Promise<URL> {
+async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean; popup?: string; next?: '/move' } = {}): Promise<URL> {
   h.google.next(user, o.spoil);
-  let url = new URL(`${h.baseUrl}/v1/auth/google${o.consent ? '?consent=1' : ''}`);
+  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  if (o.consent) url.searchParams.set('consent', '1');
+  if (o.popup) url.searchParams.set('popup', o.popup);
+  if (o.next) url.searchParams.set('next', o.next);
   let first = true;
   for (let hop = 0; hop < 10; hop++) {
     if (url.origin === new URL(ORIGIN).origin) return url;
@@ -268,6 +273,122 @@ describe('signing in', () => {
 });
 
 describe('signing in with Google', () => {
+
+  it('writes an explicit absent popup channel and completes an attempt cookie stored before popup sign-in', async () => {
+    const who: GoogleUser = { sub: `before-popup-${seq++}`, email: unique('before-popup') };
+    h.google.next(who);
+    const start = await h.browser().fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
+    const cookie = start.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0]?.slice('__Host-alcove_google='.length);
+    if (!cookie) throw new Error('Google sign-in did not set an attempt cookie.');
+
+    // The prior release wrote exactly these fields, with no popup property. Re-seal that stored shape.
+    const beforePopup = z.object({
+      state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
+      consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional()
+    });
+    const header = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
+    const key = signInAttemptKey(masterKey(h.deps));
+    const current = openJson(key, header, unb64u(cookie), beforePopup.extend({ popup: z.null() }));
+    const { next, ...prior } = beforePopup.parse(current);
+    const oldCookie = b64u(sealJson(key, header, { ...prior, ...(next ? { next } : {}) }));
+    const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+    const b = h.browser();
+    const end = await b.fetch(google.headers.get('location') ?? '', {
+      redirect: 'manual', headers: { cookie: `__Host-alcove_google=${oldCookie}` }
+    });
+    expect(end.headers.get('location')).toBe(`${ORIGIN}/ready`);
+    expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+  });
+
+  it('returns popup sign-ins to their own completion channel with an authenticated session', async () => {
+    const who: GoogleUser = { sub: `popup-${seq++}`, email: unique('popup'), name: 'Popup Person' };
+    const first = h.browser();
+    const popup = randomUUID();
+    const end = await viaGoogle(first, who, { popup });
+    expect([end.origin, end.pathname, Object.fromEntries(end.searchParams)]).toEqual([ORIGIN, '/welcome', { popup, next: '/ready' }]);
+    const session = await first.api.auth.getSession();
+    expect(session).toMatchObject({ provider: 'google', user: { email: who.email } });
+
+    const later = h.browser();
+    const laterPopup = randomUUID();
+    const again = await viaGoogle(later, who, { popup: laterPopup });
+    expect([again.pathname, Object.fromEntries(again.searchParams)]).toEqual(['/welcome', { popup: laterPopup, next: '/home' }]);
+    expect((await later.api.auth.getSession())?.ownerId).toBe(session?.ownerId);
+  });
+
+  it('sends a popup cancellation only to the channel sealed into its matching sign-in attempt', async () => {
+    const b = h.browser();
+    const popup = randomUUID();
+    const end = await viaGoogle(b, { sub: `popup-cancel-${seq++}`, email: unique('popup-cancel') }, {
+      popup, spoil: 'deny', tamper: (u) => u.searchParams.set('popup', randomUUID())
+    });
+    expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'cancelled' }]);
+    expect(await b.api.auth.getSession()).toBeNull();
+  });
+
+  it('never chooses a popup channel from a forged callback state or a missing attempt cookie', async () => {
+    const who: GoogleUser = { sub: `popup-forged-${seq++}`, email: unique('popup-forged') };
+    const b = h.browser();
+    expect(landed(await viaGoogle(b, who, { popup: randomUUID(), tamper: (u) => {
+      u.searchParams.set('state', 'forged-state');
+      u.searchParams.set('popup', randomUUID());
+    } }))).toBe('/welcome?signin=expired');
+    expect(await b.api.auth.getSession()).toBeNull();
+
+    const elsewhere = h.browser();
+    expect(landed(await viaGoogle(h.browser(), who, { popup: randomUUID(), deliverIn: elsewhere }))).toBe('/welcome?signin=expired');
+    expect(await elsewhere.api.auth.getSession()).toBeNull();
+
+    const normal = h.browser();
+    expect(landed(await viaGoogle(normal, who, { tamper: (u) => u.searchParams.set('popup', randomUUID()) }))).toBe('/ready');
+    expect(await normal.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+  });
+
+  it('keeps the popup channel and a waiting move through Google’s second consent pass', async () => {
+    const who: GoogleUser = { sub: `popup-consent-${seq++}`, email: unique('popup-consent') };
+    h.google.preconsent(who.sub);
+    const b = h.browser();
+    const popup = randomUUID();
+    const end = await viaGoogle(b, who, { popup, next: '/move' });
+    expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, next: '/move' }]);
+    expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+    expect((await b.api.calendar.get()).needsAccess).toBe(false);
+  });
+
+  it('delivers an expired popup attempt’s refusal without authenticating it', async () => {
+    const b = h.browser();
+    const popup = randomUUID();
+    const future = Date.now() + 11 * 60_000;
+    try {
+      const end = await viaGoogle(b, { sub: `popup-stale-${seq++}`, email: unique('popup-stale') }, {
+        popup, tamper: () => { vi.spyOn(Date, 'now').mockReturnValue(future); }
+      });
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'expired' }]);
+    } finally { vi.restoreAllMocks(); }
+    expect(await b.api.auth.getSession()).toBeNull();
+  });
+
+  it('returns unavailable, failed and busy starts to a valid popup channel, ignoring invalid channel IDs', async () => {
+    const popup = randomUUID();
+    const bare = await h.secondServer({ GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined });
+    try {
+      const b = h.browser();
+      for (let n = 0; n < 31; n++) {
+        const res = await b.fetch(`${bare.baseUrl}/v1/auth/google?popup=${popup}`, { redirect: 'manual' });
+        const end = new URL(res.headers.get('location') ?? '');
+        expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: n === 30 ? 'busy' : 'unavailable' }]);
+      }
+      const invalid = await h.browser().fetch(`${bare.baseUrl}/v1/auth/google?popup=not-a-channel`, { redirect: 'manual' });
+      expect(invalid.headers.get('location')).toBe(`${ORIGIN}/welcome?signin=unavailable`);
+    } finally { await bare.close(); }
+
+    const unreachable = await h.secondServer({ GOOGLE_ISSUER: 'http://127.0.0.1:1' });
+    try {
+      const res = await h.browser().fetch(`${unreachable.baseUrl}/v1/auth/google?popup=${popup}`, { redirect: 'manual' });
+      const end = new URL(res.headers.get('location') ?? '');
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'failed' }]);
+    } finally { await unreachable.close(); }
+  });
 
   it('shows guests in a call no profile photos, since photos only load signed in', async () => {
     const b = h.browser();

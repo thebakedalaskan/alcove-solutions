@@ -1,34 +1,35 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
+import { GoogleSignInSearchSchema } from '@alcove/api';
 import { useToast } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
 import { Landing } from '~/features/welcome/Landing';
+import { GoogleComplete } from '~/features/welcome/GoogleComplete';
 import { useAuth } from '~/features/welcome/WaysIn';
 import { takeReturn } from '~/lib/afterSignIn';
 import { signedInHere } from '~/lib/device';
 import { sessionOrOffline } from '~/lib/guards';
+import { GOOGLE_REFUSED } from '~/lib/googleSignIn';
 
 /** Why a sign-in with Google came back without signing in, as the API reports it. */
-const REFUSED = {
-  cancelled: 'Google sign-in was cancelled.',
-  expired: 'That sign-in took too long or started in another tab. Try again.',
-  unverified: 'Google hasn’t verified that account’s email address, so Alcove can’t use it.',
-  unavailable: 'Google sign-in isn’t set up on this server.',
-  busy: 'Too many sign-in attempts. Wait a minute and try again.',
-  failed: 'Couldn’t sign in with Google. Try again.'
-} as const;
-type Refused = keyof typeof REFUSED;
-const isRefused = (v: unknown): v is Refused => typeof v === 'string' && Object.keys(REFUSED).includes(v);
+type Refused = keyof typeof GOOGLE_REFUSED;
 
 export const Route = createFileRoute('/welcome')({
-  validateSearch: (s: Record<string, unknown>): { signin?: Refused | undefined } => ({ signin: isRefused(s['signin']) ? s['signin'] : undefined }),
-  beforeLoad: async ({ context }) => {
+  validateSearch: (s: Record<string, unknown>) => GoogleSignInSearchSchema.parse(s),
+  beforeLoad: async ({ context, search }) => {
+    if (search.popup) return;
     const s = await sessionOrOffline(context.queryClient);
     // Offline, someone signed in here can still record; anyone else sees this page, and signs in once they're back.
     if (s === 'offline') { if (signedInHere()) throw redirect({ to: '/record', replace: true }); return; }
     if (s) throw redirect({ to: '/home', replace: true });
   },
-  component: Welcome
+  component: WelcomePage
 });
+
+function WelcomePage() {
+  const { popup, next, signin } = Route.useSearch();
+  if (popup) return <GoogleComplete popup={popup} result={next && !signin ? { type: 'complete', next } : { type: 'refused', reason: signin ?? 'failed' }} />;
+  return <Welcome />;
+}
 
 /* Signed out: the welcome page, with the ways in at the top and the bottom. */
 function Welcome() {
@@ -43,7 +44,7 @@ function Welcome() {
     // Once per refusal, however often the effect runs: the call to go back to can be taken only once.
     if (!signin || handled.current === signin) return;
     handled.current = signin;
-    toast(REFUSED[signin], { icon: 'x', ms: 5200 });
+    toast(GOOGLE_REFUSED[signin], { icon: 'x', ms: 5200 });
     const call = takeReturn();
     void navigate(call ? { to: '/join/$code', params: { code: call }, replace: true } : { to: '/welcome', search: {}, replace: true });
   }, [signin, toast, navigate]);
