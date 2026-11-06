@@ -358,7 +358,7 @@ async function atMost<T, R>(n: number, items: readonly T[], fn: (item: T) => Pro
  * quietly: a waiting deposit is `expired`, and a cancelled or expired one stays as it is. Anything else (arriving,
  * short, failed, a status nobody knows, an answer that can't be trusted) means money may have come and something is
  * wrong, so it is `failed`, logged at error, and reaches support. A record that doesn't open can't be asked about
- * again, so that one isn't watched any more; every other given-up deposit still is, hourly (see `watch`).
+ * again, so that one isn't watched any more; every other given-up deposit still is, on the thinning `TAIL` (see `watch`).
  */
 function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: Exclude<DepositCheck['state'], 'settled'> | 'unreadable'): Promise<TopUpState | undefined> {
   return tx(d.pool, async (c) => {
@@ -409,7 +409,7 @@ function unanswered(d: Deps, ownerId: string, depositId: string, provider: Depos
  * for 15 minutes, every minute until 2 hours, every 5 minutes for the rest of its first day, then hourly until
  * `give_up_at`; a cancelled one every 5 minutes for a day, then hourly; past `give_up_at`, or failed or expired, the
  * thinning `TAIL` (hourly, then 6-hourly, then daily). Open deposits are claimed ahead of the rest. When the provider can't answer, the state stays (logged at
- * warn) and it's asked again in a minute (hourly once given up). Past `give_up_at` a settled answer is applied as
+ * warn) and it's asked again in a minute (on the `TAIL` once given up). Past `give_up_at` a settled answer is applied as
  * usual and anything else goes to `giveUp`; a provider that can't answer then leaves the deposit as it is, asked about
  * on the `TAIL` until it answers (see `unanswered`). A failed, expired or cancelled deposit is watched until 30 days
  * after its address expired, so a payment settled late still credits; then it isn't asked about again.
