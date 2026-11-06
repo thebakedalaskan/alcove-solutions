@@ -4,18 +4,18 @@
  * yes/no mask with nothing carried between frames made the edge shimmer while someone sat still.
  *
  * Each frame:
- * 1. A MediaPipe segmenter (on this device) gives how sure it is that each pixel is the person, from 0 to 1. It's
- *    the landscape selfie model (144×256); in development the debug view can switch to the multiclass one (256×256,
- *    which counts hair as the person) to compare them.
+ * 1. MediaPipe's multiclass selfie segmenter (256×256, on this device) gives how sure it is that each pixel is
+ *    background, and the person is everything else, hair included, which the plain selfie models lost against a
+ *    background of a similar colour.
  * 2. That's smoothed over time: where it changes a little (the model being unsure) it moves slowly, so the edge
  *    settles; where it changes a lot (someone moving) it follows at once, so nothing trails.
  * 3. matteGl.ts sizes it up to the frame along the camera's own colour edges, and lays the person over the blurred
  *    room or a picture.
  */
-import { FilesetResolver, ImageSegmenter, type MPMask } from '@mediapipe/tasks-vision';
+import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
 import { VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
 import { log } from '~/lib/log';
-import { matteDebug, type MatteFlicker, type MatteModel } from './matteDebug';
+import { matteDebug, type MatteFlicker } from './matteDebug';
 import { MatteGl, type Edges } from './matteGl';
 
 const mlog = log.child({ component: 'matte' });
@@ -24,20 +24,10 @@ const mlog = log.child({ component: 'matte' });
 export type Look = { blur: true } | { picture: string };
 export type MatteOptions = { look: Look };
 
-const WASM = '/mediapipe/wasm';
-
-/** Each model: its file, its own input size (what each frame is made before it's segmented, and the mask's size), and
- * how to read the person from its masks. */
-interface ModelSpec { path: string; w: number; h: number; person: (masks: MPMask[]) => Float32Array | null }
-const MODELS: Record<MatteModel, ModelSpec> = {
-  // One mask: the person.
-  landscape: { path: '/mediapipe/selfie_segmenter_landscape.tflite', w: 256, h: 144, person: (m) => m[0]?.getAsFloat32Array().slice() ?? null },
-  // Background, hair, body skin, face skin, clothes, other: the person is everything but the background.
-  multiclass: {
-    path: '/mediapipe/selfie_multiclass_256x256.tflite', w: 256, h: 256,
-    person: (m) => m[0]?.getAsFloat32Array().map((v) => 1 - v) ?? null
-  }
-};
+const ASSETS = { wasm: '/mediapipe/wasm', model: '/mediapipe/selfie_multiclass_256x256.tflite' };
+/** The model's own input size: what each frame is made before it's segmented, and the mask's size. */
+const MASK_W = 256;
+const MASK_H = 256;
 
 /* How the mask settles over time: per frame, it moves SLOW of the way to the new reading where they differ by LO or
  * less, FAST where they differ by HI or more, and in between along a smooth curve. */
@@ -61,14 +51,11 @@ const smoothstep = (a: number, b: number, x: number) => { const t = Math.min(1, 
 export class Matte extends VideoTransformer<MatteOptions> {
   private options: MatteOptions;
   private segmenter: ImageSegmenter | null = null;
-  private model: { id: MatteModel; spec: ModelSpec } | null = null;
-  /** Another model on its way in (development only); frames keep using the current one meanwhile. */
-  private loading: MatteModel | null = null;
   private draw: MatteGl | null = null;
   /** The frame made small for the model. */
   private small: OffscreenCanvas | null = null;
   private smallCtx: OffscreenCanvasRenderingContext2D | null = null;
-  /** The mask as it's settled so far, at the model's size. */
+  /** The mask as it's settled so far, MASK_W×MASK_H. */
   private steady: Float32Array | null = null;
   private picture: { path: string; bitmap: ImageBitmap } | null = null;
   private failed = false;
@@ -109,17 +96,13 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.drop();
     this.segmenter?.close();
     this.segmenter = null;
-    this.model = null;
     this.picture?.bitmap.close();
     this.picture = null;
   }
 
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
     const canvas = this.canvas;
-    const want = matteDebug.model();
-    if (this.model && this.model.id !== want && this.loading === null) void this.switchModel(want);
-    const model = this.model;
-    if (this.isDisabled || this.failed || !canvas || !this.draw || !this.segmenter || !model || !this.smallCtx || !this.small || frame.codedWidth === 0) {
+    if (this.isDisabled || this.failed || !canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small || frame.codedWidth === 0) {
       controller.enqueue(frame);
       return;
     }
@@ -128,13 +111,11 @@ export class Matte extends VideoTransformer<MatteOptions> {
       const width = frame.displayWidth;
       const height = frame.displayHeight;
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-      const { w, h } = model.spec;
-      if (this.small.width !== w || this.small.height !== h) { this.small.width = w; this.small.height = h; }
-      this.smallCtx.drawImage(frame, 0, 0, w, h);
-      const reading = this.personIn(this.small, started, model.spec);
+      this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
+      const reading = this.personIn(this.small, started);
       const steady = this.settle(reading);
       const debug = matteDebug.on();
-      this.draw.draw(frame, steady, w, h, width, height, BLUR_SIGMA, EDGES, debug ? reading : null);
+      this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES, debug ? reading : null);
       controller.enqueue(new VideoFrame(canvas, { timestamp: frame.timestamp }));
       frame.close();
       const ms = performance.now() - started;
@@ -150,12 +131,13 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   /* ---------- each frame ---------- */
 
-  /** How sure the model is that each pixel is the person, at the model's size, top row first. */
-  private personIn(image: OffscreenCanvas, at: number, spec: ModelSpec): Float32Array {
+  /** How sure the model is that each pixel is the person, MASK_W×MASK_H, top row first. */
+  private personIn(image: OffscreenCanvas, at: number): Float32Array {
     const got: { mask: Float32Array | null } = { mask: null };
-    // The masks only live inside the callback, so each model's `person` copies its answer out.
     this.segmenter?.segmentForVideo(image, at, (result) => {
-      got.mask = spec.person(result.confidenceMasks ?? []);
+      // Background, hair, body skin, face skin, clothes, other: the person is everything but the background. The masks
+      // only live inside this callback, so it's copied out (by the `map`).
+      got.mask = result.confidenceMasks?.[0]?.getAsFloat32Array().map((v) => 1 - v) ?? null;
     });
     if (!got.mask) throw new Error('The segmenter gave no mask.');
     return got.mask;
@@ -199,7 +181,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.sums = { frames: t.frames + 1, reading: t.reading + r / n, settled: t.settled + s / n, edge: t.edge + e / n, ms: t.ms + ms };
     if (this.sums.frames < FLICKER_EVERY) return;
     const f = this.sums.frames;
-    const flicker: MatteFlicker = { model: this.model?.id ?? 'landscape', reading: this.sums.reading / f, settled: this.sums.settled / f, edge: this.sums.edge / f, msPerFrame: this.sums.ms / f };
+    const flicker: MatteFlicker = { reading: this.sums.reading / f, settled: this.sums.settled / f, edge: this.sums.edge / f, msPerFrame: this.sums.ms / f };
     this.sums = { frames: 0, reading: 0, settled: 0, edge: 0, ms: 0 };
     matteDebug.report(flicker);
   }
@@ -222,38 +204,22 @@ export class Matte extends VideoTransformer<MatteOptions> {
     const gl = canvas instanceof OffscreenCanvas ? canvas.getContext('webgl2') : canvas.getContext('webgl2');
     if (!(gl instanceof WebGL2RenderingContext)) throw new Error('This browser has no WebGL2 for the matte.');
     this.draw = new MatteGl(gl);
-    this.small = new OffscreenCanvas(1, 1);
+    this.small = new OffscreenCanvas(MASK_W, MASK_H);
     this.smallCtx = this.small.getContext('2d', { willReadFrequently: false });
     this.steady = null;
     this.failed = false;
     if (!this.segmenter) {
-      const id = matteDebug.model();
-      this.segmenter = await segmenterFor(MODELS[id]);
-      this.model = { id, spec: MODELS[id] };
+      const files = await FilesetResolver.forVisionTasks(ASSETS.wasm);
+      // Its own canvas, so MediaPipe's WebGL state never meets the drawing's.
+      this.segmenter = await ImageSegmenter.createFromOptions(files, {
+        baseOptions: { modelAssetPath: ASSETS.model, delegate: 'GPU' },
+        canvas: new OffscreenCanvas(1, 1),
+        runningMode: 'VIDEO',
+        outputConfidenceMasks: true,
+        outputCategoryMask: false
+      });
     }
     await this.showLook();
-  }
-
-  /** Development only: brings in another model, then swaps it for the one in use, and starts the mask over. */
-  private async switchModel(id: MatteModel): Promise<void> {
-    this.loading = id;
-    try {
-      const next = await segmenterFor(MODELS[id]);
-      if (this.isDisabled || !this.segmenter) { next.close(); return; }
-      this.segmenter.close();
-      this.segmenter = next;
-      this.model = { id, spec: MODELS[id] };
-      this.steady = null;
-      this.last = null;
-      this.sums = { frames: 0, reading: 0, settled: 0, edge: 0, ms: 0 };
-      mlog.info('matte model switched', { model: id });
-    } catch (e) {
-      // Most likely its file isn't in public/mediapipe: go back to the one in use.
-      mlog.warn('matte model didn’t load', { model: id, err: e });
-      if (this.model) matteDebug.setModel(this.model.id);
-    } finally {
-      this.loading = null;
-    }
   }
 
   private async showLook(): Promise<void> {
@@ -277,18 +243,6 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.steady = null;
     this.last = null;
   }
-}
-
-async function segmenterFor(spec: ModelSpec): Promise<ImageSegmenter> {
-  const files = await FilesetResolver.forVisionTasks(WASM);
-  // Its own canvas, so MediaPipe's WebGL state never meets the drawing's.
-  return ImageSegmenter.createFromOptions(files, {
-    baseOptions: { modelAssetPath: spec.path, delegate: 'GPU' },
-    canvas: new OffscreenCanvas(1, 1),
-    runningMode: 'VIDEO',
-    outputConfidenceMasks: true,
-    outputCategoryMask: false
-  });
 }
 
 async function loadPicture(src: string): Promise<ImageBitmap> {

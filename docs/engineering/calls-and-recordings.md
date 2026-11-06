@@ -1743,8 +1743,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   and transcript carry on).
 - **Backgrounds** (`backdrop.ts`, `backgrounds.ts`, picked in the camera's menu and before joining): none, blur,
   three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
-  your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's landscape selfie segmenter
-  (144×256) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
+  your own. Alcove's matte (`matte.ts`, drawn by `matteGl.ts`) runs MediaPipe's multiclass selfie segmenter
+  (256×256, which counts hair as the person) on this device and LiveKit's `ProcessorWrapper` (`@livekit/track-processors`) makes a new track of what
   it draws. The segmenter gives how sure it is that each pixel is the person; that's smoothed over time (slowly where
   it only wavers, at once where someone moves, so a still edge doesn't shimmer and a moving one doesn't trail), then
   sized up to the frame along the camera's own colour edges (a joint bilateral upsample), and the person is laid over
@@ -1752,7 +1752,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   its size) and shows and sends the drawn one, so the preview, your tile and the call all have it and nothing in
   `livekit.ts` changes. It happens before anything is encrypted or sent. A new camera track goes through the
   processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
-  drawn the camera turns off and says so. The matte's code loads only once someone has a background, and the
+  drawn the camera turns off and says so. In development, a switch under the picker shows the matte in quarters
+  (the model's reading, the settled mask, the edge, the result) with how much each moves per frame (`matteDebug.ts`).
+  The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
+  them), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of
   `@mediapipe/tasks-vision` the app imports) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
   `'wasm-unsafe-eval'` for it. The choice is remembered with the devices (`background` in `alcove.devices`; a
