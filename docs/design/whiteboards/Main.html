@@ -1,0 +1,80 @@
+<!-- title: Play the journeys -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="pl" data-theme="light">
+<div class="pl-top">
+<div class="pl-who"><dc-import name="Faces" who="{{me.id}}" size="34" ring="transparent" hint-size="34px,37px"></dc-import><span><b>{{me.name}}</b><small>{{me.sub}}</small></span></div>
+<div class="pl-js">
+<sc-for list="{{journeys}}" as="x" hint-placeholder-count="6"><button type="button" class="pl-j" aria-pressed="{{x.on}}" onClick="{{x.pick}}">{{x.name}}</button></sc-for>
+</div>
+<div class="pl-ctl">
+<button type="button" class="ac-btn is-secondary is-sm" onClick="{{toggle}}"><ic d="{{playIcon}}" s="15"></ic>{{playLabel}}</button>
+<button type="button" class="ac-icon-btn" aria-label="Step back" onClick="{{back}}" style="background: var(--surface)"><ic n="left" s="17"></ic></button>
+<button type="button" class="ac-icon-btn" aria-label="Next step" onClick="{{next}}" style="background: var(--surface)"><ic n="right" s="17"></ic></button>
+</div>
+</div>
+<div class="pl-frame"><dc-import name="Scene" node="{{node}}" hot="{{hot}}" fx="{{fx}}" on-go="{{go}}" hint-size="1280px,800px"></dc-import></div>
+<div class="pl-cap">
+<div class="pl-n">{{n}}<small>of {{total}}</small></div>
+<div class="pl-c"><span class="ac-eyebrow">How you get here</span><p>{{step.did}}</p></div>
+<div class="pl-c"><span class="ac-eyebrow">What happens</span><p>{{step.see}}</p></div>
+<div class="pl-c"><span class="ac-eyebrow">How it moves</span><p>{{step.mv}}</p></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"persona":{"editor":"enum","options":["call","rooms"],"default":"call"},"$preview":{"width":1440,"height":1040}}'>
+var WHO = { call: { id: 'art', name: 'In the main call', sub: 'Art, the organizer' }, rooms: { id: 'priya', name: 'In breakout rooms', sub: 'Art and Priya' } };
+class Component extends DCLogic {
+  js() { return window.J[this.props.persona === 'rooms' ? 'rooms' : 'call']; }
+  cur() { var s = this.state || {}; var j = this.js()[s.j || 0]; return { j: j, s: j.steps[s.i || 0], i: s.i || 0 }; }
+  move(to) {
+    var c = this.cur();
+    if (to >= c.j.steps.length || to < 0) { this.setState({ playing: false }); return; }
+    var self = this, fx = to > c.i ? c.s.fx : '';
+    clearTimeout(this.t);
+    if (fx) {
+      this.setState({ fx: fx });
+      this.t = setTimeout(function () { self.setState({ i: to, fx: '', over: '' }); }, fx === 'rise' ? 560 : 420);
+    } else this.setState({ i: to, over: '' });
+  }
+  plan() {
+    var self = this, c = this.cur(), st = this.state || {};
+    if (st.fx) return;
+    clearTimeout(this.t);
+    if (c.s.auto) this.t = setTimeout(function () { self.move(c.i + 1); }, c.s.auto);
+    else if (st.playing) this.t = setTimeout(function () { self.move(c.i + 1); }, 2800);
+  }
+  componentDidMount() {
+    var m = /j=(\d+)&s=(\d+)/.exec(location.hash);
+    if (m) this.setState({ j: +m[1], i: +m[2] }); else this.plan();
+  }
+  componentDidUpdate(_, prev) {
+    var st = this.state || {}, was = prev || {};
+    if (st.i !== was.i || st.j !== was.j || st.playing !== was.playing || st.fx !== was.fx) this.plan();
+  }
+  componentWillUnmount() { clearTimeout(this.t); }
+  renderVals() {
+    var self = this, c = this.cur(), st = this.state || {};
+    var persona = this.props.persona === 'rooms' ? 'rooms' : 'call';
+    return {
+      me: WHO[persona],
+      journeys: this.js().map(function (x, k) {
+        return { name: x.name, on: k === (st.j || 0) ? 'true' : 'false', pick: function () { clearTimeout(self.t); self.setState({ j: k, i: 0, fx: '', over: '', playing: false }); } };
+      }),
+      node: st.over || c.s.node, hot: st.over ? '' : c.s.hot || '', fx: st.fx || '', step: c.s, n: c.i + 1, total: c.j.steps.length,
+      go: function (id) {
+        var cc = self.cur();
+        self.setState({ playing: false });
+        if (cc.s.alt && cc.s.alt[id]) { clearTimeout(self.t); self.setState({ over: cc.s.alt[id] }); return; }
+        if (id === cc.s.hot) self.move(cc.i + 1);
+      },
+      playIcon: window.IC[st.playing ? 'pause' : 'play'], playLabel: st.playing ? 'Pause' : 'Watch it',
+      toggle: function () { self.setState({ playing: !st.playing }); },
+      back: function () { self.setState({ playing: false }); self.move(self.cur().i - 1); },
+      next: function () { self.setState({ playing: false }); self.move(self.cur().i + 1); }
+    };
+  }
+}
+</script>

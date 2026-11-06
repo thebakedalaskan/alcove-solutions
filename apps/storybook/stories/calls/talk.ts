@@ -1,9 +1,12 @@
 /*
- * What the call stories share: the calls they happen in, what's said in them, and what's shared on screen. All made up,
- * at Vandelay Industries, by the demo world's people.
+ * What the call stories share: the calls they happen in, what's said in them, what's shared on screen, and what's in the
+ * call's workspace. All made up, at Vandelay Industries, by the demo world's people.
  */
-import type { Person } from '@alcove/api';
+import { servedType, type Person } from '@alcove/api';
 import type { StoryCall } from '../../src/call';
+import { itemId } from '../../src/api/scenarios';
+import { current } from '../../src/api/state';
+import { filmOf } from '../../src/media/film';
 import { line, type Line } from '../../src/api/script';
 import type { Screen } from '../../src/media/screens';
 import { iso } from '../../src/world/clock';
@@ -102,3 +105,42 @@ export const RELEASE: Screen = {
   title: 'Release 4.12', accent: '#B4652A',
   pages: [{ heading: 'Release 4.12', lines: ['The empty arch, in the kit', 'Two fixes to the team page', 'Faster notes on long calls'] }]
 };
+
+/* ---------- the call's workspace ---------- */
+
+/** Art's launch review, going on now: Product was chosen as its home when he scheduled it, so the call's folder goes there. */
+export const LAUNCH_REVIEW: StoryCall = {
+  id: 'm-launch-review', title: 'Launch review', startsAt: iso(0, 16, 10), minutes: 45, code: 'lch-revw-art', guests: [PRIYA, KOFI, AIKO], workspaceId: 'ws-product'
+};
+/** Product's documents, by their IDs. */
+export const PLAN = itemId('Launch plan');
+export const CHECKLIST_DOC = itemId('Launch checklist');
+export const WALKTHROUGH = itemId('Onboarding walkthrough');
+/** The walkthrough's film, by the ID its block names it by. */
+export const FILM = 'film-onboarding';
+
+/**
+ * Aiko's onboarding walkthrough, put in Product for the story: a line, and a six-second film of the new onboarding,
+ * drawn and recorded in this browser the first time it's played.
+ */
+export function addWalkthrough(): void {
+  const w = current();
+  const space = w.workspaces.find((s) => s.id === 'ws-product');
+  if (!space || space.items.some((i) => i.id === WALKTHROUGH)) return;
+  const at = iso(0, 15, 40);
+  space.items.push({
+    id: WALKTHROUGH, kind: 'document', name: 'Onboarding walkthrough', parent: null, by: AIKO.portrait ? { name: AIKO.name, portrait: AIKO.portrait } : null,
+    createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null
+  });
+  w.pages[WALKTHROUGH] = {
+    blocks: [
+      { type: 'line', content: [{ type: 'text', text: 'The new onboarding, from signing in to the first call. Six seconds, no sound.' }] },
+      { type: 'video', attrs: { media: FILM, title: 'Onboarding, start to first call', dur: 6, width: 960, height: 540 } }
+    ]
+  };
+  w.media.unshift({
+    workspace: 'ws-product',
+    media: { id: FILM, name: 'onboarding.webm', type: servedType('video/webm'), size: 1_200_000, width: 960, height: 540, createdAt: at, documents: [WALKTHROUGH] },
+    body: filmOf({ title: 'Onboarding', steps: ['Sign in with Google', 'Name your team', 'Invite three people', 'Start your first call'], accent: '#9C4A86' })
+  });
+}

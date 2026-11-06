@@ -1,6 +1,7 @@
 /*
  * What a document says, read from its Yjs state on the server: the one place that knows the editor's blocks by name, so a
- * change to the editor's schema is a change here and nowhere else. A board says what it says by `kind`.
+ * change to the editor's schema is a change here and nowhere else. A board says what it says by `kind`, through
+ * @alcove/board, which is what knows a board's Y.Doc.
  *
  * Text is one element, `line`, whose `kind` says what it is: none for plain text, or heading, bullet, numbered, todo, quote or
  * callout. Blocks are retired, never deleted, so an edit landing in one is never lost. What's on the page is `isGone`'s to say,
@@ -11,6 +12,7 @@
  */
 import { DOC_FRAGMENT, type DocTextBlock } from '@alcove/api';
 import { isGone, newBlockId } from '@alcove/api/retire';
+import { boardText } from '@alcove/board';
 import * as Y from 'yjs';
 import { z } from 'zod';
 
@@ -62,7 +64,15 @@ const blocksOf = (doc: Y.Doc): Y.XmlElement[] => elementsIn(doc.getXmlFragment(D
 /** What kind of block something is, as search names it. */
 const typeOf = (el: Y.XmlElement): string => (el.nodeName === 'line' ? textAttr(el, 'kind') || 'paragraph' : el.nodeName);
 
-/** What a document says at the top and in each block on the page, leaving out blocks with no words. */
+/** A board's words come as one block of this id: what search lands on is the board itself. */
+const BOARD_BLOCK = 'board';
+
+/**
+ * What a document says at the top and in each block on the page, leaving out blocks with no words. A board has nothing at the
+ * top, as its name is the tree's, and one block with every word on it: stickies, shapes and text, frames' titles and who was
+ * in a room, tables' cells and pictures' captions, frame by frame in reading order. Not a frame's hint, which isn't on the
+ * board, nor comments.
+ */
 export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; blocks: DocTextBlock[] } {
   switch (kind) {
     case 'document': {
@@ -71,23 +81,51 @@ export function documentText(doc: Y.Doc, kind: ContentKind): { title: string; bl
       const blocks = all.filter((el) => el !== title).flatMap((el) => { const text = blockWords(el); const id = textAttr(el, 'id'); return text && id ? [{ id, type: typeOf(el), text }] : []; });
       return { title: title ? wordsIn(title) : '', blocks };
     }
-    case 'board': return { title: '', blocks: [] };
+    case 'board': {
+      const text = boardText(doc);
+      return { title: '', blocks: text ? [{ id: BOARD_BLOCK, type: 'board', text }] : [] };
+    }
   }
 }
 
-/** A `todo` block: who it tags and when, for the call's follow-ups. */
+/** A `todo` block: what it says, who it tags and when, for the call's follow-ups. */
 export interface DocTodo { block: string; text: string; done: boolean; mentions: { id: string; name: string }[]; dates: string[] }
 const todosOf = (doc: Y.Doc): Y.XmlElement[] => blocksOf(doc).filter((el) => el.nodeName === 'line' && textAttr(el, 'kind') === 'todo');
 function todoOf(el: Y.XmlElement): DocTodo {
   const inline = elementsIn(el);
   const done: unknown = el.getAttribute('done');
   return {
-    block: textAttr(el, 'id'), text: blockWords(el), done: done === true,
+    block: textAttr(el, 'id'), text: todoWords(el), done: done === true,
     mentions: inline.filter((x) => x.nodeName === 'mention').map((x) => ({ id: textAttr(x, 'id'), name: textAttr(x, 'name') })),
     dates: inline.filter((x) => x.nodeName === 'dateChip').map((x) => textAttr(x, 'date'))
   };
 }
-/** Every todo in a document, in order. One with a mention and a date joins the follow-ups of a call it was worked on in. */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** A date tag as it reads in a sentence: 6 Nov. */
+function dayWords(date: string): string {
+  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})$/.exec(date) ?? [];
+  const name = MONTHS[Number(month) - 1];
+  return name && day ? `${Number(day)} ${name}` : date;
+}
+/**
+ * What a to-do says, read apart from its line, where who and when show beside it. Tags side by side at the end of the line
+ * are only labels, so they're left off. Anywhere else they're part of the sentence ("Send the brief to Priya by 6 Nov").
+ */
+function todoWords(line: Y.XmlElement): string {
+  const runs = runsOf(line);
+  let end = runs.length;
+  let tags = 0;
+  for (let run = runs[end - 1]; run && (!('text' in run) || run.text.trim() === ''); run = runs[end - 1]) {
+    if (!('text' in run)) tags += 1;
+    end -= 1;
+  }
+  const said = (rs: Run[]) => rs.map((r) => ('text' in r ? r.text : 'mention' in r ? r.mention.name : dayWords(r.date))).join('').replace(/\s+/g, ' ').trim();
+  return (tags > 1 ? said(runs.slice(0, end)) : '') || said(runs);
+}
+/**
+ * Every todo in a document, in order. One with a mention and a date joins the follow-ups of a call it was worked on in. A board
+ * has none: what's in its frames for actions reaches the note as action items, which the note writer makes of them.
+ */
 export function documentTodos(doc: Y.Doc, kind: ContentKind): DocTodo[] {
   switch (kind) {
     case 'document': return todosOf(doc).map(todoOf);

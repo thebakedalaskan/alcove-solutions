@@ -19,10 +19,10 @@ export const SettingUp = inCall({ scenario: 'call-soon', call: REVIEW, script: {
 /** Rooms open: the organizer's stage shows every room and who's in it, with the shared timer. */
 export const Open = inCall({
   scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS },
-  then: (s) => s.openRooms({ rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [AIKO.email] }], minutes: 10 })
+  then: (s) => s.openRooms({ rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [AIKO.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } })
 }, { play: press('Breakout rooms') });
 /** On a phone, breakout rooms are under More. */
-export const OpenPhone = { ...phone(Open), play: press('More: catch up, settings', { then: ['Breakout rooms'] }) };
+export const OpenPhone = { ...phone(Open), play: press('More: chat, notes, settings', { then: ['Breakout rooms'] }) };
 
 /**
  * At Priya's check-in, she opens rooms two seconds in: you're in Rollout with Kofi, and talk the dates through. Her message

@@ -22,6 +22,9 @@ export const OnTheirOwn = page('/settings', 'on-their-own');
 export const Lots = page('/settings', 'lots');
 /** Opened at the minutes, from the side panel. */
 export const Minutes = page('/settings#plan', 'busy');
+/** Opened at notifications: being tagged in a document you can open, while you're somewhere else, is one of them. */
+export const Notifications = page('/settings#notifications', 'busy');
+export const NotificationsNight = page('/settings#notifications', 'busy', { globals: { theme: 'dark' } });
 
 /** Signed in with Google without sharing the calendar: Connect. */
 export const NoCalendar = page('/settings#calendar', 'busy', { beforeEach: changing(noCalendar) });

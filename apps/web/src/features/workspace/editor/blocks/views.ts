@@ -464,7 +464,7 @@ export function nodeViews(rt: EditorRuntime): Record<string, NodeViewConstructor
     toggleBody: toggleText('wb-t wb-body', 'Write inside this toggle'),
     divider: onPage((node, _, __, decorations) => new DividerBlock(node, rt, decorations)),
     table: onPage((node, _, __, decorations) => new TableBlock(node, rt, decorations)),
-    gallery: atom, file: atom, video: atom, doclink: atom, live: atom, moment: atom, unsupported: atom,
+    gallery: atom, file: atom, video: atom, doclink: atom, board: atom, live: atom, moment: atom, unsupported: atom,
     unsupportedInline: () => {
       const dom = solid(el('span', 'wdt'));
       dom.title = 'This needs a newer Alcove. Reload to see it.';

@@ -312,7 +312,7 @@ const privately: StoryObj<typeof WsNoAccess>['render'] = function Render(args) {
   return (
     <Box width="100%" height={560}>
       <WsPane>
-        <WsDoc><WsNoAccess organizer={args.organizer} asked={args.asked} onAsk={() => { args.onAsk(); update({ asked: true }); }} /></WsDoc>
+        <WsDoc><WsNoAccess organizer={args.organizer} asked={args.asked} onAsk={() => { args.onAsk?.(); update({ asked: true }); }} /></WsDoc>
       </WsPane>
     </Box>
   );

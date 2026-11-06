@@ -14,6 +14,21 @@ import { ME_ID } from '../../src/world/people';
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
 export const troubled = (troubles: Troubles) => (w: World): void => { w.trouble = { ...w.trouble, ...troubles }; };
 
+/**
+ * The standup twice in one day: a first run at 8:00 that ended early, with no notes, and a home of its own, before the one
+ * at 9:00. Their homes share a name, so wherever they're listed together each says when its call started.
+ */
+export const standupTwice = (w: World): void => {
+  const later = w.workspaces.find((s) => s.id === 'ws-standup');
+  const folder = later?.items.find((i) => i.call !== null);
+  if (!later?.call || !folder?.call) return;
+  const at = new Date(Date.parse(later.call.at) - 3_600_000).toISOString();
+  w.workspaces.push({
+    ...later, id: 'ws-standup-early', people: 3, createdAt: at, call: { ...later.call, at },
+    items: [{ ...folder, id: 'StandupEarlyFolder0000', createdAt: at, editedAt: at, call: { ...folder.call, startedAt: at, noteId: null } }]
+  });
+};
+
 /** Signed in with Google without sharing the calendar. */
 export const noCalendar = (w: World): void => { w.calendar = notConnected; };
 

@@ -4,7 +4,7 @@
  * know it. Being in a call, or organizing it, opens nothing, so whoever can't open something is told nothing that names it.
  */
 import { z } from './zod';
-import { LiveFollowUpSchema } from './catchup';
+import { AddedFollowUpSchema, LiveFollowUpSchema } from './catchup';
 import { IDSchema, ISODateSchema, PersonSchema } from './types';
 import { DocumentRoleSchema, ItemIdSchema, ItemKindSchema, WorkspaceRoleSchema } from './workspaces';
 
@@ -66,10 +66,17 @@ export type CallWorkspaceAsk = z.infer<typeof CallWorkspaceAskSchema>;
 
 export const CallWorkspaceSchema = z.object({
   /**
-   * Which workspace the call uses. Null until someone first opens Workspace (`CallSession.openWorkspace`), and for anyone
-   * who can open nothing in it: to them it's private, and they aren't told which it is.
+   * The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. Null
+   * until someone first opens Workspace (`CallSession.openWorkspace`), and for anyone who can open nothing in it: to them
+   * it's private, and they aren't told which it is.
    */
   id: IDSchema.nullable(),
+  /**
+   * The call's home: where its notes and transcript go, in a folder of its own. It's a new workspace made for the call
+   * unless one was chosen when it was scheduled, and it doesn't change during the call, whichever is viewed. Null until it's
+   * settled, and for anyone who can open nothing in it.
+   */
+  home: IDSchema.nullable(),
   /** Its name, for someone in it. */
   name: z.string().nullable(),
   /** Who chooses it: the organizer, as you see them. */
@@ -91,7 +98,7 @@ export const CallWorkspaceSchema = z.object({
 });
 export type CallWorkspace = z.infer<typeof CallWorkspaceSchema>;
 
-/** What changing the call's workspace would mean. `cantOpen`: the first names of people in the call who aren't in that workspace. */
+/** What viewing another workspace in the call would mean. `cantOpen`: the first names of people in the call who aren't in that workspace. */
 export const CallWorkspaceSwitchSchema = z.object({ name: z.string(), cantOpen: z.array(z.string()) });
 export type CallWorkspaceSwitch = z.infer<typeof CallWorkspaceSwitchSchema>;
 
@@ -99,6 +106,8 @@ export type CallWorkspaceSwitch = z.infer<typeof CallWorkspaceSwitchSchema>;
 
 /** One from the call's shared live notes: ticked with `CallSession.tickFollowUp`. */
 export const NotesFollowUpSchema = LiveFollowUpSchema.extend({ from: z.literal('notes') });
+/** One someone added in their own words: ticked with `CallSession.tickFollowUp` too. */
+export const AddedCallFollowUpSchema = AddedFollowUpSchema.extend({ from: z.literal('added') });
 /**
  * A to-do with a person and a date, in a document worked on in this call that you can open: ticked with
  * `CallSession.tickDocumentFollowUp`, or in the document itself, which is the same thing.
@@ -119,7 +128,7 @@ export const DocFollowUpSchema = z.object({
   canTick: z.boolean()
 });
 export type DocFollowUp = z.infer<typeof DocFollowUpSchema>;
-export const CallFollowUpSchema = z.discriminatedUnion('from', [NotesFollowUpSchema, DocFollowUpSchema]);
+export const CallFollowUpSchema = z.discriminatedUnion('from', [NotesFollowUpSchema, AddedCallFollowUpSchema, DocFollowUpSchema]);
 export type CallFollowUp = z.infer<typeof CallFollowUpSchema>;
 /** The call's follow-ups as you may read them. "Mine" is yours to filter. */
 export const CallFollowUpsSchema = z.object({

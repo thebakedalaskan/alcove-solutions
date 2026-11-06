@@ -4,8 +4,10 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree, WorkspaceMedia
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
+  WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
+import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
@@ -14,8 +16,37 @@ import { iso } from './clock';
 
 /** Words this browser wrote in a document that Alcove wouldn't take, as the story opens: on its page, and nowhere else. */
 export interface Refused { why: Exclude<DocRefusal, 'trashed'>; words: string[] }
-/** What a document says, in the editor's own blocks under its title, and what of it Alcove refused, if anything. */
-export interface Page { blocks: BlockJSON[]; refused?: Refused | undefined }
+/**
+ * A comment thread on a page: the words it hangs on (a `comment` mark with its `id`, in the block at index `on`) and what's
+ * been said, the oldest first.
+ */
+export interface PageThread { id: string; on: number; quote: string; says: { who: Person; text: string; hoursAgo: number }[] }
+/**
+ * What a document says, in the editor's own blocks under its title; its comment threads; and what of it Alcove refused, if
+ * anything. A tag on a page names someone by address (`@` and it, as a mention's `id`): the stand-in writes in the ID they
+ * have in the document's workspace, as the app would.
+ */
+/**
+ * A version History lists: when it was kept, who'd changed the page since the one before, and the call it was kept in, by
+ * the call's ID, or null outside calls. What it says is what the page says.
+ */
+export interface PageVersion { at: string; by: Person[]; call: string | null; reason: 'edits' | 'call' }
+export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined; versions?: PageVersion[] | undefined }
+
+/**
+ * A board as the story opens: what's on it (drawn with @alcove/board's own writers), who else has it open and where their
+ * pointer is, and how it stands for this browser: no connection (`offline`), Alcove refusing what was added here (`failed`),
+ * or taken from under you while it's open (`gone`).
+ */
+export interface BoardSpec {
+  draw?: ((doc: Y.Doc) => void) | undefined;
+  here?: { who: Person; x: number; y: number }[] | undefined;
+  standing?: 'offline' | 'failed' | 'gone' | undefined;
+}
+/** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
+export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
+/** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
+export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
 
 /** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
 export interface MoveSpec {
@@ -48,12 +79,16 @@ export interface World {
   calendar: Calendar;
   credits: CreditBalance;
   documents: DocumentLibrary;
-  /** The workspaces you're in, each with everything in it you can open. */
-  workspaces: WorkspaceTree[];
+  /** The workspaces you're in, each with everything in it you can open, and what your Drive says of it. */
+  workspaces: Space[];
   /** What each document says, by its ID. One without a page here is new: a title, and an empty line under it. */
   pages: Record<string, Page>;
   /** Who each document is shared with besides its workspace's own people, by its ID. */
   shares: Record<string, ShareEntry[]>;
+  /** What each board holds and who's on it, by its ID. One without one here is blank. */
+  boards: Record<string, BoardSpec>;
+  /** Where you've been tagged and haven't said you've seen it, the newest first. */
+  mentions: MentionNotice[];
   /** The files in your workspaces' documents. */
   media: Kept[];
   /** Who's ringing you as the story opens. */
@@ -85,7 +120,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 
 export const PREFS: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true },
+  notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
   pinned: [], groups: []
 };
 

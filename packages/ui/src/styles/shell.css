@@ -25,6 +25,9 @@
 .main.is-full .main-top { width: 100%; max-width: none; }
 .main.is-full .top-acts { top: 7px; right: 12px; }
 .main.is-full .wd-head { padding-right: var(--top-room); }
+/* History sits under search and you, and the head only keeps clear of what's left of them. */
+.main.is-full .wh { margin-top: 52px; box-shadow: 0 -52px 0 var(--surface); }
+.main.is-full .ws-pane:has(> .wh) .wd-head { padding-right: max(10px, calc(var(--top-room) - 260px)); }
 /* With a document open its own bar says what being offline means for it: one notice is enough. */
 .shell:has(.wd-off) :is(.ph-offline, .main-offline) { display: none; }
 /* With the side panel hidden, its button waits in the top-left corner, clear of the page, and its offline notice tops the page. */
@@ -55,6 +58,7 @@
   .top-find { justify-content: center; width: 40px; padding: 0; }
   .top-find > span, .top-find .ac-kbd { display: none; }
 }
+@media (max-width: 860px) { .main.is-full .wh { margin-top: 0; box-shadow: none; } }
 
 /* On paper it's just the page. */
 @media print {

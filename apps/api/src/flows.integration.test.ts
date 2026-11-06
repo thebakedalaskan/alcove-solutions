@@ -7,6 +7,7 @@ import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type Al
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes } from 'node:crypto';
+import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
 import { cookieName } from './sessions';
@@ -239,13 +240,13 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false },
+      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
       pinned: [], groups: []
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false }
+      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
     });
     expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
@@ -1020,7 +1021,7 @@ describe('live transcript and written notes', () => {
     expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', disputes: [], changes: [], ...backedBy('We agreed') }]);
     expect(note.actions).toEqual([{
       id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
-      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], ...backedBy('Kofi will')
+      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], from: null, ...backedBy('Kofi will')
     }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
@@ -1405,7 +1406,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     const b = await account();
     expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(401);
     expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(401);
-    expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).toBe(401);
+    expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } })).toBe(401);
     // A guest let in raises their own hand, which everyone sees; spotlight and rooms stay the organizer's.
     const guestTab = h.browser();
     const guest = await guestTab.api.calls.join(s.code, { mic: true, cam: false, name: 'Sam' });
@@ -1415,7 +1416,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(await act(guestTab, s.callId, { type: 'hand', up: true }, guest.ticket.pass)).toBe(200);
     expect((await settle(call, (x) => x.participants.some((p) => p.id === guest.ticket.identity && p.hand))).participants.find((p) => p.id === guest.ticket.identity)?.hand).toBe(true);
     expect(await act(guestTab, s.callId, { type: 'spotlight', participantId: guest.ticket.identity }, guest.ticket.pass)).toBe(403);
-    expect(await act(guestTab, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 }, guest.ticket.pass)).toBe(403);
+    expect(await act(guestTab, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, guest.ticket.pass)).toBe(403);
     await call.leave();
     expect(await act(a, s.callId, { type: 'hand', up: false }, call.ticket.pass)).toBe(409);
   });
@@ -1429,21 +1430,21 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await call.transcribe(speech('We agreed to split into two rooms.', 0, 0), call.ticket.identity);
 
     // Only people invited to the call, each in one room, in two to eight rooms.
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5 }, call.ticket.pass)).toBe(400);
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5 }, call.ticket.pass)).toBe(400);
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5 }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: ['stranger@elsewhere.example'] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Design', emails: [kofi] }, { name: 'Support', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'Alone', emails: [kofi] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(400);
     expect(await act(org, id, { type: 'rooms-message', text: 'Nobody to tell' }, call.ticket.pass)).toBe(409);
 
     call.setSpotlight(call.getSnapshot().participants[0]?.id ?? null);
     // The spotlight is optimistic on the client: wait until the server holds it, so opening rooms can't overtake it.
     await until(async () => SpotlightReply.parse(await (await org.fetch(`${h.baseUrl}/v1/live/calls/${id}`, { headers: { 'x-alcove-call': call.ticket.pass } })).json()).spotlight !== null, 'the server to confirm the spotlight');
-    call.openRooms({ rooms: [{ name: 'Design', emails: [kofi.toUpperCase()] }, { name: 'Support', emails: [lena] }], minutes: 5 });
+    call.openRooms({ rooms: [{ name: 'Design', emails: [kofi.toUpperCase()] }, { name: 'Support', emails: [lena] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     let s = await settle(call, (x) => x.breakouts.open !== null);
     const open = s.breakouts.open;
     expect(open?.rooms.map((r) => [r.name, r.people.map((p) => p.email)])).toEqual([['Design', [kofi]], ['Support', [lena]]]);
     expect((open?.until ?? 0) - (open?.from ?? 0)).toBe(300);
     expect(s.spotlight).toBeNull(); // opening rooms ends a spotlight: everyone's stage changes
-    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 }, call.ticket.pass)).toBe(409);
+    expect(await act(org, id, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, call.ticket.pass)).toBe(409);
 
     call.messageRooms('Two minutes left');
     s = await settle(call, (x) => x.breakouts.open?.message?.text === 'Two minutes left');
@@ -1454,7 +1455,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(s.breakouts.held.map((h) => h.rooms.map((r) => r.name))).toEqual([['Design', 'Support']]);
 
     // Rooms still open when the call ends come back too; every room the call held goes into its notes.
-    call.openRooms({ rooms: [{ name: 'Pairs A', emails: [lena] }, { name: 'Pairs B', emails: [] }], minutes: 10 });
+    call.openRooms({ rooms: [{ name: 'Pairs A', emails: [lena] }, { name: 'Pairs B', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     await settle(call, (x) => x.breakouts.open !== null);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
@@ -1478,7 +1479,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await settle(call, (x) => x.participants.some((p) => p.id === them));
     expect(await act(org, id, { type: 'rooms-visit', roomId: null }, call.ticket.pass)).toBe(409);
 
-    call.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    call.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     let s = await settle(call, (x) => x.breakouts.open !== null);
     const design = s.breakouts.open?.rooms[0]?.id ?? '';
     // Who's in each room, by participant ID: the invited people sent there who are in the call. The organizer starts in the main room.
@@ -1498,7 +1499,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     expect(await act(kofi, id, { type: 'rooms-visit', roomId: design }, kofiCall.ticket.pass)).toBe(403);
     const other = await account();
     const otherCall = await other.api.calls.join((await other.api.calls.startNow()).code, { mic: true, cam: false });
-    otherCall.openRooms({ rooms: [{ name: 'Theirs', emails: [] }, { name: 'Also theirs', emails: [] }], minutes: 5 });
+    otherCall.openRooms({ rooms: [{ name: 'Theirs', emails: [] }, { name: 'Also theirs', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const theirs = (await settle(otherCall, (x) => x.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
     expect(theirs).not.toBe('');
     expect(await act(org, id, { type: 'rooms-visit', roomId: theirs }, call.ticket.pass)).toBe(400);
@@ -1509,7 +1510,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await settle(call, (x) => x.breakouts.open?.rooms[0]?.members.includes(me) === true);
     call.closeRooms();
     await settle(call, (x) => x.breakouts.open === null);
-    call.openRooms({ rooms: [{ name: 'Again', emails: [kofiEmail] }, { name: 'Empty', emails: [] }], minutes: 5 });
+    call.openRooms({ rooms: [{ name: 'Again', emails: [kofiEmail] }, { name: 'Empty', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     s = await settle(call, (x) => x.breakouts.open !== null);
     expect(s.breakouts.open?.rooms.map((r) => r.members)).toEqual([[them], []]);
     expect(await kofiCall.leave()).toBeNull();
@@ -2709,8 +2710,8 @@ describe('deleting an account', () => {
     // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account.
     const shared = (await ann.api.workspaces.create('Shared')).id;
     await ann.api.workspaces.addPerson(shared, lena.email, 'edit');
-    const annsDoc = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
-    await b.api.workspaces.media.upload(shared, annsDoc, new File([new Uint8Array(16)], 'from-lena.png', { type: 'image/png' }));
+    const annPlan = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
+    await b.api.workspaces.media.upload(shared, annPlan, new File([new Uint8Array(16)], 'from-lena.png', { type: 'image/png' }));
     // A room recording whose notes are queued to be tried again...
     const rec = await b.api.recordings.start({ title: 'Waiting' });
     await rec.appendAudio(piece(audioBytes('leaving-room'), 0, 0));
@@ -2748,19 +2749,27 @@ describe('deleting an account', () => {
     const hers = await b.api.workspaces.create('Hers');
     const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
     await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
+    // And beside a frame of a board of hers.
+    const retro = await b.api.workspaces.items.create(hers.id, { kind: 'board', name: 'Retro' });
+    const drawn = await b.api.workspaces.document(hers.id, retro.id);
+    await drawn.ready;
+    const wentWell = addObject(drawn.doc, { k: 'frame', x: 0, y: 0, w: 400, h: 400, c: '', role: '', hint: '', sub: '', sorted: false, title: 'Went well' }, null) ?? '';
+    await until(async () => drawn.getSnapshot().status === 'saved', 'her board to reach Alcove');
+    drawn.close();
+    await b.api.workspaces.presenterNotes.setFrame(hers.id, retro.id, wentWell, 'Thank the room.');
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
       'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
-      'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspaces'
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();
     // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
-    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_uses']);
+    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -3074,7 +3083,7 @@ describe('privacy at rest', () => {
     await invitee.api.auth.signIn('sso', { email: scribeEmail });
     const scribe = await invitee.api.calls.join(started.code, { mic: true, cam: false });
     await until(async () => scribe.crypto.getSnapshot().status === 'in', 'the invitee in the call’s group');
-    call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [scribeEmail] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5 });
+    call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [scribeEmail] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await settle(call, (x) => x.breakouts.open !== null);
     await settle(scribe, (x) => x.capture.room?.scribe === scribe.ticket.identity);
     await scribe.transcribe(speech('CANARY-ROOMTALK the merger moves to Monday.', 0, 2000), scribe.ticket.identity);
@@ -3154,14 +3163,30 @@ describe('privacy at rest', () => {
     await c.api.workspaces.addPerson(space.id, 'canary-ws-member@canary.example', 'edit');
     const spaceFolder = await c.api.workspaces.items.create(space.id, { kind: 'folder', name: 'CANARY-WSFOLDER' });
     const spaceDoc = await c.api.workspaces.items.create(space.id, { kind: 'document', name: 'CANARY-WSDOC', parent: spaceFolder.id });
-    await c.api.workspaces.items.create(space.id, { kind: 'board', name: 'CANARY-WSBOARD', parent: spaceFolder.id });
+    const spaceBoard = await c.api.workspaces.items.create(space.id, { kind: 'board', name: 'CANARY-WSBOARD', parent: spaceFolder.id });
+    // What's on a board, written as the board writes it: a frame's title, a sticky's words, a table's cell, a mind map's idea,
+    // a link to something in the workspace, which keeps only its ID, and a picture, kept in the board's own files.
+    const onBoard = await c.api.workspaces.document(space.id, spaceBoard.id);
+    await onBoard.ready;
+    const row = newId();
+    const col = newId();
+    addObject(onBoard.doc, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: '', hint: '', sub: '', sorted: false, title: 'CANARY-WSFRAME roadmap' }, null);
+    addObject(onBoard.doc, { k: 'note', x: 40, y: 80, w: 150, h: 150, c: 'butter', size: 'm', t: 'CANARY-WSSTICKY sign by Friday' }, null);
+    const grid = addObject(onBoard.doc, { k: 'table', x: 800, y: 0, w: 120, h: 40, rows: [{ id: row, size: 40 }], cols: [{ id: col, size: 120 }], cells: {} }, null);
+    const cell = grid ? tableCell(onBoard.doc, grid, row, col, null) : undefined;
+    if (!cell) throw new Error('the board has no cell to write its canary in');
+    cell.insert(0, 'CANARY-WSCELL owner');
+    addObject(onBoard.doc, { k: 'node', x: 0, y: 600, w: 220, h: 72, parent: '', t: 'CANARY-WSIDEA pricing tiers' }, null);
+    addObject(onBoard.doc, { k: 'link', x: 300, y: 600, w: 300, h: 76, item: spaceDoc.id }, null);
+    const boardPicture = await c.api.workspaces.media.upload(space.id, spaceBoard.id, new File([new TextEncoder().encode('CANARY-BOARDPIC-BYTES of the offsite')], 'CANARY-BOARDPIC-NAME.png', { type: 'image/png' }), { width: 4, height: 3 });
+    addObject(onBoard.doc, { k: 'image', x: 700, y: 600, w: 400, h: 300, media: boardPicture.id }, null);
+    // Each is on the board, so what's looked for below is there to find.
+    for (const canary of ['CANARY-WSFRAME roadmap', 'CANARY-WSSTICKY sign by Friday', 'CANARY-WSCELL owner', 'CANARY-WSIDEA pricing tiers']) expect(boardText(onBoard.doc)).toContain(canary);
+    await until(async () => onBoard.getSnapshot().status === 'saved', 'the board to reach Alcove');
+    onBoard.close();
     await c.api.workspaces.items.rename(space.id, spaceDoc.id, 'CANARY-WSRENAMED');
     await c.api.workspaces.share.set(space.id, spaceDoc.id, [{ email: 'canary-ws-shared@canary.example' }], 'read');
     await c.api.workspaces.items.duplicate(space.id, spaceDoc.id);
-    // Brought to a call, which keeps an ID: its name is in no row and no receipt, whatever the answer said.
-    const library = (await c.api.documents.list()).workspaces.flatMap((w) => w.documents);
-    const bringing = library.find((d) => d.name === 'CANARY-WSRENAMED')?.id ?? '';
-    expect((await c.api.meetings.create({ title: 'CANARY-TITLE brought', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', documents: [bringing] })).documents[0]?.name).toBe('CANARY-WSRENAMED');
     // A file in it: its name and its bytes are sealed, and the URL it's read from reaches no log, whether that read works or not.
     const fileBytes = new TextEncoder().encode('CANARY-MEDIA-BYTES of a picture nobody else may see');
     const file = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([fileBytes], 'CANARY-MEDIA-NAME.png', { type: 'image/png' }));
@@ -3173,6 +3198,10 @@ describe('privacy at rest', () => {
     // One deleted says no more than one kept.
     const deleted = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([new TextEncoder().encode('CANARY-MEDIA-DELETED bytes')], 'CANARY-MEDIA-GONE.png', { type: 'image/png' }));
     await c.api.workspaces.media.remove(space.id, spaceDoc.id, deleted.id);
+    // Brought to a call, which keeps an ID: its name is in no row and no receipt, whatever the answer said.
+    const library = (await c.api.documents.list()).workspaces.flatMap((w) => w.documents);
+    const bringing = library.find((d) => d.name === 'CANARY-WSRENAMED')?.id ?? '';
+    expect((await c.api.meetings.create({ title: 'CANARY-TITLE brought', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', documents: [bringing] })).documents[0]?.name).toBe('CANARY-WSRENAMED');
     await c.api.workspaces.items.trash(space.id, spaceFolder.id);
     // A refusal says nothing either: not the address, the name, or that anything's there.
     expect(await c.api.workspaces.addPerson(space.id, 'not-an-address-CANARY-WSREFUSED', 'read').catch((e: unknown) => code(e))).toBe('invalid');
@@ -3186,6 +3215,72 @@ describe('privacy at rest', () => {
     await settle(boardHost, (s) => s.waiting.some((w) => w.id === boardGuest.ticket.identity));
     await boardHost.admit(boardGuest.ticket.identity);
     expect((await settle(boardGuest, (s) => s.board.open?.role === 'edit')).board.open?.name).toBe('CANARY-BOARDCALL merger');
+    // A vote on that board, with its timer running: the frame and sticky are drawn as a browser draws them, the server reads the
+    // board for each vote, and keeps who voted for what with the call. None of it is readable, nor the board's own IDs for them.
+    const voteBoard = boardHost.getSnapshot().board.open;
+    const drawing = await c.api.workspaces.document(voteBoard?.workspaceId ?? '', voteBoard?.documentId ?? '');
+    await drawing.ready;
+    const voteFrame = addObject(drawing.doc, { k: 'frame', x: 0, y: 0, w: 400, h: 400, c: '', role: '', hint: '', sub: '', sorted: false, title: 'CANARY-VOTEFRAME' }, 'drawn') ?? '';
+    const voteSticky = addObject(drawing.doc, { k: 'note', x: 20, y: 20, w: 150, h: 150, c: 'rose', size: 'm', t: 'CANARY-VOTESTICKY' }, 'drawn') ?? '';
+    for (const id of [voteFrame, voteSticky]) expect(id).toMatch(/^[A-Za-z0-9_-]{12}$/);
+    await until(async () => drawing.getSnapshot().status === 'saved', 'the vote’s board to reach Alcove');
+    await boardHost.startTimer(5);
+    await boardHost.startVote(voteFrame, 3);
+    await boardHost.castVote(voteSticky);
+    await boardGuest.castVote(voteSticky);
+    await boardHost.endVote();
+    expect((await settle(boardGuest, (s) => s.board.vote?.on === false)).board.vote?.results).toEqual({ [voteSticky]: 2 });
+    // What the organizer keeps beside one of its frames to present it: sealed under their account, bound to the frame, and the
+    // frame named in no row.
+    const notedFrame = addObject(drawing.doc, { k: 'frame', x: 600, y: 0, w: 400, h: 400, c: '', role: '', hint: '', sub: '', sorted: false, title: 'CANARY-NOTEDFRAME' }, 'drawn') ?? '';
+    expect(notedFrame).toMatch(/^[A-Za-z0-9_-]{12}$/);
+    await until(async () => drawing.getSnapshot().status === 'saved', 'the noted frame to reach Alcove');
+    await c.api.workspaces.presenterNotes.setFrame(voteBoard?.workspaceId ?? '', voteBoard?.documentId ?? '', notedFrame, 'CANARY-FRAMENOTE thank the support team first', { pass: boardHost.ticket.pass });
+    expect((await c.api.workspaces.presenterNotes.frames(voteBoard?.workspaceId ?? '', voteBoard?.documentId ?? '', { pass: boardHost.ticket.pass })).frames).toEqual({ [notedFrame]: 'CANARY-FRAMENOTE thank the support team first' });
+    // Ideas from a call with notes on, and Sort into themes: what was said and what the stickies say go to the notes model sealed,
+    // and the ideas come back to the call sealed in its state. Nothing of either is in a row, an object or a log.
+    const ideasCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    for (const at of [0, 1]) await ideasCall.appendAudio(piece(audioBytes('ideas'), 0, at));
+    await ideasCall.openBoard({ template: 'retro' });
+    await ideasCall.transcribe(speech('CANARY-IDEA we should repaint the lobby.', 0, 0), ideasCall.ticket.identity);
+    const lookingForIdeas = ideasCall.watchIdeas();
+    expect((await settle(ideasCall, (s) => s.board.ideas.length > 0)).board.ideas.map((i) => i.text)).toEqual(['CANARY-IDEA we should repaint the lobby.']);
+    lookingForIdeas();
+    const ideasBoard = ideasCall.getSnapshot().board.open;
+    const sortedInto = await c.api.workspaces.sortStickies(ideasBoard?.workspaceId ?? '', ideasBoard?.documentId ?? '', {
+      stickies: [{ id: 'canary-sticky-1', text: 'CANARY-SORTED blue doors' }, { id: 'canary-sticky-2', text: 'CANARY-SORTED green doors' }]
+    }, { pass: ideasCall.ticket.pass });
+    expect(sortedInto.themes.flatMap((t) => t.ids)).toEqual(['canary-sticky-1', 'canary-sticky-2']);
+    // The board read by the notes once the call ends: what's on it goes to the notes model sealed, and a sticky in its Actions
+    // frame comes back a follow-up from the board, sealed in the note with the rest.
+    const actionsBoard = await c.api.workspaces.document(ideasBoard?.workspaceId ?? '', ideasBoard?.documentId ?? '', { pass: ideasCall.ticket.pass });
+    await actionsBoard.ready;
+    const actionsFrame = readBoard(actionsBoard.doc).frames.find((f) => f.role === 'actions');
+    if (!actionsFrame) throw new Error('the retro board has no Actions frame');
+    addObject(actionsBoard.doc, { k: 'note', x: actionsFrame.x + 20, y: actionsFrame.y + 60, w: 150, h: 150, c: 'sky', size: 'm', t: 'CANARY-BOARDACTION order the doors' }, null);
+    await until(async () => actionsBoard.getSnapshot().status === 'saved', 'the board to reach Alcove');
+    actionsBoard.close();
+    const ideasEnded = await ideasCall.leave();
+    await written(c.api, ideasEnded?.pendingNoteId ?? '');
+    expect((await c.api.notes.get(ideasEnded?.pendingNoteId ?? '')).actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
+    // Breakout rooms with a board each: a room's name names its board, and what's on it lands on a main board made for it as
+    // rooms close. Names are in the workspace's sealed state, stickies in its sealed updates, and the call keeps only IDs.
+    const roomsCall = await c.api.calls.startNow({ notes: 'off', guests: ['canary-roomie@canary.example'] });
+    const roomsHost = await c.api.calls.join(roomsCall.code, { mic: false, cam: false });
+    const roomie = tapped();
+    await roomie.api.auth.signIn('sso', { email: 'canary-roomie@canary.example' });
+    const roomieCall = await roomie.api.calls.join(roomsCall.code, { mic: false, cam: false });
+    await settle(roomsHost, (s) => s.participants.some((p) => p.id === roomieCall.ticket.identity));
+    roomsHost.openRooms({ rooms: [{ name: 'CANARY-ROOMNAME one', emails: ['canary-roomie@canary.example'] }, { name: 'CANARY-ROOMNAME two', emails: [] }], minutes: 5, board: { mode: 'each', template: 'retro' } });
+    const roomBoard = (await settle(roomieCall, (s) => s.board.open?.role === 'edit')).board.open;
+    expect(roomBoard?.name).toBe('CANARY-ROOMNAME one board');
+    const roomPage = await roomie.api.workspaces.document(roomBoard?.workspaceId ?? '', roomBoard?.documentId ?? '', { pass: roomieCall.ticket.pass });
+    await roomPage.ready;
+    addObject(roomPage.doc, { k: 'note', x: 20, y: 20, w: 150, h: 150, c: 'butter', size: 'm', t: 'CANARY-ROOMSTICKY who owns the merger' }, null);
+    await until(async () => roomPage.getSnapshot().status === 'saved', 'the room’s sticky to reach Alcove');
+    roomPage.close();
+    roomsHost.closeRooms();
+    expect((await settle(roomsHost, (s) => s.breakouts.open === null && s.board.open?.role === 'edit')).board.open?.everyone).toBe(true);
     // And someone who signs in with Google: their Google account ID, name, address and photo stay sealed too,
     // and so does the call they put on their Google Calendar.
     const g = tapped();
@@ -3233,8 +3328,11 @@ describe('privacy at rest', () => {
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
       'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
-      'CANARY-BOARDCALL', 'CANARY-BOARDGUEST',
-      'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED'
+      'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED',
+      'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday', 'CANARY-WSIDEA', 'pricing tiers', 'CANARY-BOARDPIC-NAME',
+      'CANARY-BOARDPIC-BYTES', 'CANARY-BOARDCALL', 'CANARY-BOARDGUEST', 'CANARY-IDEA', 'repaint the lobby', 'CANARY-SORTED',
+      'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
+      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.
@@ -3260,6 +3358,7 @@ describe('privacy at rest', () => {
     // to the verified models, never readable, though the models themselves read them (the fake's prompts).
     expect(h.near.prompts.some((p) => p.includes('CANARY-SPEECH'))).toBe(true);
     expect(h.near.prompts.some((p) => p.includes('CANARY-ROOMTALK'))).toBe(true);
+    expect(h.near.prompts.some((p) => p.includes('<board>') && p.includes('CANARY-BOARDACTION'))).toBe(true);
     const wire = Buffer.concat(h.near.received.map((r) => r.body));
     for (const canary of [...canaries, 'What closes on Friday']) for (const enc of encodings(canary)) expect(wire.includes(Buffer.from(enc)), `${canary} as ${enc} on the wire to NEAR AI`).toBe(false);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);

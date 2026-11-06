@@ -4,8 +4,8 @@ import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
-import type { DocAskBody, DocAskPart, DocSession, DocSessionOptions, DocVersion, DocVersionSummary, PresenterNotes, SearchDoc } from './workspaceDocuments';
-import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
+import type { BoardSortBody, BoardThemes, DocAskBody, DocAskPart, DocSession, DocSessionOptions, DocVersion, DocVersionSummary, PresenterFrameNotes, PresenterNotes, SearchDoc } from './workspaceDocuments';
+import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, MentionBody, MentionNotice, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteFound, NoteKind, NotesSetting, Inbox,
   PersonSuggestion, Preferences, Rsvp, Series, SeriesAnswerPart, Session, SignInResult, Team
@@ -272,15 +272,16 @@ export interface AlcoveApi {
     };
     share: {
       /** Who has a document: for people in the workspace who can edit it, like everything else here. */
-      list(id: ID, documentId: ID): Promise<DocumentShare>;
+      list(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<DocumentShare>;
       /**
        * Opens a document for everyone in `to`, all of them or none, or changes what they can do with it. Sharing with a
        * seat takes the pass of the call it's in, and ends with the call.
        */
       set(id: ID, documentId: ID, to: ShareTarget[], role: DocumentRole, opts?: WorkspaceReadOptions): Promise<void>;
-      remove(id: ID, documentId: ID, entryId: ID): Promise<void>;
+      /** Takes someone off. From a call, with its pass, the call is told at once, as it is of anything here. */
+      remove(id: ID, documentId: ID, entryId: ID, opts?: WorkspaceReadOptions): Promise<void>;
       /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
-      restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
+      restrict(id: ID, documentId: ID, restricted: boolean, opts?: WorkspaceReadOptions): Promise<void>;
     };
     /**
      * Files in a workspace's documents and boards. A file is reached through a document that has it: whoever can open
@@ -327,6 +328,22 @@ export interface AlcoveApi {
        */
       remove(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     };
+    /**
+     * Tells someone you tagged them in a document you can edit. It gives them nothing: someone who can't open it isn't told,
+     * and the answer doesn't say which. They hear on the workspace's stream, or whenever they're next here.
+     */
+    mention(id: ID, documentId: ID, tag: MentionBody, opts?: WorkspaceReadOptions): Promise<void>;
+    /**
+     * The IDs this workspace's documents know people by, for what a tag, a quote or a follow-up carries: the ID a member of it
+     * has, keyed under the workspace's own keys, so one in a document says nothing about an address. Anyone in the workspace
+     * may ask about any address; someone here only through a call, about the people who've been in it. The answer, by address
+     * lower-cased, leaves out the rest.
+     */
+    ids(id: ID, emails: string[], opts?: WorkspaceReadOptions): Promise<Record<string, string>>;
+    /** What you've been tagged in and haven't seen, in every workspace, the newest first: only what you can open now. */
+    mentions(): Promise<MentionNotice[]>;
+    /** You've heard about this tag, so it isn't kept any more. A tag that's gone is fine. */
+    mentionSeen(id: ID, mentionId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     /** A workspace kept up to date until `close()`, or until you lose it (`status: 'closed'`). */
     live(id: ID, opts?: WorkspaceReadOptions): WorkspaceLive;
     /**
@@ -356,6 +373,10 @@ export interface AlcoveApi {
       get(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<PresenterNotes>;
       /** Empty text deletes them. */
       set(id: ID, documentId: ID, text: string, opts?: WorkspaceReadOptions): Promise<void>;
+      /** What you keep beside each frame of a board, by frame: yours alone, as your notes on a document are. */
+      frames(id: ID, boardId: ID, opts?: WorkspaceReadOptions): Promise<PresenterFrameNotes>;
+      /** One frame's. Empty text deletes them. */
+      setFrame(id: ID, boardId: ID, frame: string, text: string, opts?: WorkspaceReadOptions): Promise<void>;
     };
     /**
      * The format bar's Make this shorter and Turn this into a checklist: what's selected goes to the notes model in confidential
@@ -363,6 +384,13 @@ export interface AlcoveApi {
      * call it waits while notes are paused, like everything that reaches the AI.
      */
     ask(id: ID, documentId: ID, body: DocAskBody, opts?: WorkspaceReadOptions): AsyncIterable<DocAskPart>;
+    /**
+     * A board's Sort into themes: the stickies picked go to the notes model in confidential compute, which names a few themes
+     * and says which stickies go in each, for the person asking to put on the board in one step. Needs `edit`. Nothing is
+     * kept. It works whether notes are on or off; in a call, with its pass, it's refused while the call is paused, like
+     * everything that reaches the AI.
+     */
+    sortStickies(id: ID, documentId: ID, body: BoardSortBody, opts?: WorkspaceReadOptions): Promise<BoardThemes>;
   };
   credits: {
     balance(): Promise<CreditBalance>;

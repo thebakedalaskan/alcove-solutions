@@ -22,7 +22,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `transcript_translations` | owner, note item | `line_tag` (keyed hash of the line and the caption language), `translation_ciphertext` (the line in that language) |
 | `content_jobs` | owner, job, revision, kind (`notes`), state (`queued`/`writing`), lease, attempt | `job_ciphertext` (the note and recording IDs) |
 | `calls` | owner, call, meeting item, `live`/`ended`, start and end, `version`, LiveKit room name (random), the LiveKit identity (random) of the connection that hosts (`host_identity`, `host_joined_at` and `host_left_at`, named before hand-off and kept so: the organizer's connection, or a stand-in's while the organizer is away), when that connection joined and left, locked | `state_ciphertext` (what the call captures: notes off, on or paused, every change with who made it and when, what the host's browser says it can't capture now, the stretches it was out of the call while notes were on, and asks for notes; which connection hosts, when each hosted, and how long a host who let go to move to another device has for its new device to come in; who joined (with the addresses of people signed in whom the notes may go to), when each connection was let in and when it left, whose hand is up, who was removed, spotlight, breakout rooms, who's in which, where each person was before their last move and when they moved, the rooms' messages, each room's MLS epoch and when the organizer paused it or carried on there, when the recording's current segment began, each room's scribes (which connection, from when until when) and everyone who was in it, which the rooms' sections of the note are made from when the call ends, and which stay in the ended call's state, like the rest of it, until its meeting is deleted, whether pointing at shared screens is on and who doesn't let others point at what they share, notices, each for everyone, one room, one connection or everyone but one), and where its MLS groups have got to (counters only: the generation, which starts new groups whenever the connection that hosts changes; the main room's epoch, as the API takes one commit per epoch, in order; and the last seq in its log) |
-| `call_notes` | owner, call, part of the call (`place`: `main` or a breakout room's random ID), `view` (`all`, or a digest of the random IDs of the lines this view can't read), how many of the note's clips the last refresh counted, when the last refresh began (`looked_at`), and until when one is under way (`lease_until`) | `notes_ciphertext` (that view's live notes as a catch-up gives them, what they read, who may read all of it, and each follow-up's ID, the lines behind it, and who ticked it and when; null until the first are written) and `lines_ciphertext` (the IDs of the lines it read and when each was said, and when each line it left out was said and who may read it), sealed under the call's notes key, bound to the call, the part and the view. Deleted when the call ends |
+| `call_notes` | owner, call, part of the call (`place`: `main` or a breakout room's random ID), `view` (`all`, or a digest of the random IDs of the lines this view can't read), how many of the note's clips the last refresh counted, when the last refresh began (`looked_at`), and until when one is under way (`lease_until`) | `notes_ciphertext` (that view's live notes as a catch-up gives them, what they read, who may read all of it, each follow-up's ID, the lines behind it, and who ticked it and when, and on `all` what people added by hand; null until the first are written or added) and `lines_ciphertext` (the IDs of the lines it read and when each was said, and when each line it left out was said and who may read it), sealed under the call's notes key, bound to the call, the part and the view. Deleted when the call ends |
 | `call_codes` | owner, the item the code leads to (a meeting, or for a series' own link its `series` item) | `code_hash` (keyed hash of the code, so anyone with the link finds the call) |
 | `call_moves` | owner, call, move, when it runs out | `secret_hash` (SHA-256 of the move's current secret: the code in the new device's link, then the claim that replaces it), `body_ciphertext` (who's moving, the stage, whether their microphone and camera are on, and the new device's identity, key package and kind, sealed under the call's moves key). Deleted when it runs out, and when the call ends |
 | `call_rings` | owner (the organizer), ring, meeting item, when the ring next shows (`deliver_at`), when it stops (`expires_at`) | `email_index` (keyed hash of the address rung, its own purpose), `ring_ciphertext` (the address and what they said, sealed under the call's rings key). Deleted when the person is let in, when the organizer stops ringing them, when the call ends, and a day after it ran out |
@@ -36,7 +36,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `note_additions` | owner (the note's organizer), note item, addition ID, when it was added | `author_index` (keyed hash of who added it, so deleting their account finds their additions on anyone's notes), `body_ciphertext` (the words, who added it, and the lines or shared screens it points at), sealed under the organizer's keys |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
 | `workspaces` | owner, `workspace_id` (the public handle, Id128), `version`, when the oldest thing in its Trash went there (`trash_since`), created | `state_ciphertext` (its name and tree: [Workspaces](#workspaces)) |
-| `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, and their name if the workspace was made by them) |
+| `workspace_members` | owner (the workspace), `member_id` (what the API calls them), role (`admin`/`edit`/`read`), created | `email_index`, `person_ciphertext` (their address, their name if the workspace was made by them, and whether a call's invite put them there and nobody has changed their place by hand since: older records read as not) |
 | `documents` | owner (the workspace), `document_id`, `next_seq`, what it comes to in bytes, items and depth of nesting at its snapshot and since (`snapshot_bytes`, `bytes_since_snapshot`, `snapshot_items`, `items_since_snapshot`, `snapshot_nesting`, `nesting_since_snapshot`), how many of its items aren't on its page (`snapshot_retired_items`), `updates_since_snapshot`, how far the newest version reaches and when it was kept (`version_seq`, `version_at`), until when something's restoring it (`held_until`) or it stays closed because it wouldn't open (`closed_until`), created. One row for each document or board in the tree; a folder has none | — |
 | `document_updates` | owner (the workspace), document, `seq`, how much it adds in `bytes`, `items` and `nesting`, `deletes_tag` (a keyed hash of what it deletes, so the same deletes again cost no row), created | `update_ciphertext` (one Yjs update and who sent it: [Documents](#documents)) |
 | `document_clients` | owner (the workspace), document, `client_id` (a Yjs client: a random number), `next_clock` (how far it's written). Kept as long as the document | `people`: keyed hashes of who it belongs to, by every way access knows them and by their account, each bound to this client and document, so no two rows can be linked. Empty for what the server wrote |
@@ -45,6 +45,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
 | `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
+| `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
 | `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
@@ -68,16 +69,16 @@ exception. `object_gc` keeps a plain owner ID with no foreign key, so a failed o
 account is gone. A workspace's tables hang off its `workspaces` row, which
 hangs off its `owners` row, so deleting that owner deletes all of it; `document_access` and `workspace_media_uses` rows go
 with their document, and a file's pieces and uses with its `workspace_media` row. `document_access.call_id` has no foreign
-key, because a call belongs to its organizer, a different owner. `presenter_notes` belongs to both an account and a
-document, so it goes with either: by `owner_id`, or by its foreign key to `documents`.
+key, because a call belongs to its organizer, a different owner. `presenter_notes` and `presenter_frame_notes` belong to
+both an account and a document, so they go with either: by `owner_id`, or by their foreign key to `documents`.
 
 ## Manifests (encrypted)
 
 | Item kind | Manifest fields |
 | --- | --- |
-| `profile` | name, email, photo URL, whether it's a demo account (`sample`), the workspace it used last (`recentWorkspace`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
+| `profile` | name, email, photo URL, whether it's a demo account (`sample`), preferences (notes default, notes language, summary length, calendar and offline-recording switches, notification choices, pinned note IDs (at most eight, only notes the person has; pins to notes they no longer have are dropped when preferences are read), and groups (a name and up to 50 email addresses each; sharing notes with one carries only its name into the note)), colleagues invited to Alcove |
 | `meeting` | title, start, end, guests (email addresses), notes (`on`/`off`), code, status (`scheduled`/`live`/`ended`), the workspace it uses and its agenda there (`workspaceId`, `agenda`: IDs only), duration, note ID (the latest, when it was held more than once; each note names its meeting), when it's on a calendar the Google Calendar event ID and link, whether the event was the organizer's own before it became an Alcove call (adopted), and for a call in a series that repeats, the recurring event it's an occurrence of (`master`), the series it's in (`seriesId`), when that series repeats its link's code (`seriesCode`), for an occurrence of a recurring Google event, that event's ID (`recurringEventId`), which guests were added by being let in from the call's link (`addedFromLink`), once any were, whether it was started now rather than scheduled (`instant`), what the notes keep (`choices`), whether everyone joins muted (`joinMuted`), the documents brought to it by ID, the times offered, until someone picks one (`offer`: the start and end are then those of the first), and while Google is being asked for its event, until when it's claimed for that (`placing`) |
-| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), what was worked on in the call (`workedOn`: document IDs, `kind` and who, read for each person by what they can open), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
+| `note` | kind (`call`/`room`), title, start, duration, meeting ID, recording ID, status (`recording`/`pending`/`ready`), what was worked on in the call (`workedOn`: document IDs, `kind` and who, and for a board open for everyone the part of the call it was open in, `open`, null in a note stored before boards were noted; read for each person by what they can open), invited emails, when the call ended or the recording stopped (when everyone invited got the note), everyone it was shared with afterwards (each address with who shared it: their account ID, name and email as they were then; the name of their group, when it went to one; and when), summary, decisions (text, time, state `proposed`/`confirmed`/`rejected`/`superseded`, the IDs of the lines it rests on and of any that cut against it, who disputes it, changes), open questions (text, time, state `open`/`answered`, the lines it rests on, changes), action items (text, owner when known, whether they took it on, due date as said, done, the lines it rests on, where it was written down when that's a board's Actions frame (`from`, null otherwise and in a note stored before), changes; a change says who (account, name and address), how they had the note, when, and what it was before), chapters, gaps (each stretch of the call with notes off or paused: when, and where it falls in the recording), screens (each shared-screen frame kept: where it falls in the recording and until when, whose share, its size, how legible it was, its title, text (up to 700 characters), regions and what the notes say it shows; the image is in `screen_frames`), transcript (lines with time, speaker when known, the breakout room by name when said in one, text, what the transcript couldn't vouch for (`unsure`: its words, or who said them), and corrections (`changes`: who changed its words or speaker or said it was heard right, when, and what it was before; the first and the latest 19); null while recording), each breakout room's section (its name, everyone who was in it, when it was open, its gaps, its lines with what the transcript couldn't vouch for and their corrections, and its summary, decisions, open questions, follow-ups and chapters), when the notes last read the transcript to write them (`writtenAt`), suggested questions, breakout rooms (kept with the note, so its chapters include them every time the notes are written), and follow-ups ticked during the call whose notes aren't written yet (`ticked`: each one's ID, words, owner and due date, the IDs of the lines behind it, the room it was in, who ticked it and when; empty in a note stored before calls kept them), what its call was set to keep (`keep`: the transcript and the recording) the seconds of audio recorded (`recorded`, saved when the recording stops, null before then and on a note stopped before it was saved), and what this call came back to from earlier ones in its series (`revisits`: a decision it replaced, by this note's decision, or a question it answered, at a moment and breakout room; each names the earlier note and item by their IDs, and says who said the notes got it wrong, when someone did) |
 | `connection` | provider (`google`), the Google refresh token, the scopes granted, when it was connected |
 | `series` | a series that was scheduled to repeat: title (the one its calls last got together), how it repeats (`repeat`: the rule, the last day and the organizer's time zone), its link's code, and the recurring Google Calendar event that carries its latest calls, when there is one. Its item ID is the `seriesId` its calls share |
 
@@ -94,11 +95,17 @@ scoping and deleting work as they do for an account. It has no `identities` row,
 nobody signs in as one, and nothing that reads an account's tables finds it. Nothing lists `owners`. Its `owner_id` stays
 on the server; everything outside knows it by `workspace_id`.
 
-Its name and tree are one record, `workspace-state`, under the workspace's key: `name`, and `items`, a map of ID to an
-item's `kind` (`document`, `board` or `folder`), `name`, `parent`, `pos`, who made it (`by`: their name and address as they
-were, or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted` and
-`restrictedBy` (the address of whoever restricted it, when that wasn't its creator). To the tree `kind` is only data: a document and a board are alike, each a row in `documents` that what it holds hangs off, and
-nothing here looks inside. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
+Its name and tree are one record, `workspace-state`, under the workspace's key: `name`; `items`, a map of ID to an item's
+`kind` (`document`, `board` or `folder`), `name`, `parent`, `pos`, who made it (`by`: their name and address as they were,
+or null when nobody in particular did), `createdAt`, `editedAt`, `trashedAt`, `trashedBy`, `restricted`, `restrictedBy` (the
+address of whoever restricted it, when that wasn't its creator) and `call` (on a call's folder only: whose call it is, by
+the organizer's owner and address and the call's ID, when it started, whether it's over, and its note's ID once it is); and
+`madeFor`, on a workspace made as a call's home: the call's title, when it started, its meeting and series, and `out`, the
+addresses taken out of it by hand or that left it, which its invite never puts back (older records take `[]`). Older records
+take `null` for `call` and `madeFor`. To the tree `kind` is only data: a document and a board
+are alike, each a row in `documents` that what it holds hangs off, and nothing here looks inside. A call's folder holds no
+content of its own: its pages read the call and its note through their own access
+([Calls and recordings › The call's home](calls-and-recordings.md#the-calls-home)), and nothing of either is copied here. A tree is small (at most 5,000 items, and folders at most 32 deep, though nothing that walks one
 relies on that: stored data of any depth reads and clears), so one record is enough, and every change is made
 under the `workspaces` row's lock, which also serialises changes to its people and who has what: an access check made
 under that lock holds until the change commits. The server filters the state for each reader, so nobody is sent a name
@@ -115,25 +122,63 @@ forever: state, then `documents` rows, and what hangs off them. Each workspace i
 one that can't be read is logged by its ID and left for next time, so it can't hold up the others.
 
 **What nobody can open.** A restricted document with no creator or restrictor left in the workspace, and nobody it's shared
-with, goes to Trash, whenever that happens: someone taken out, an entry removed, a seat ended. Nobody who could decide its
-fate can see it, so it isn't deleted then, and it isn't given to anyone. If its creator comes back within 30 days they
-find it there and can restore it. Otherwise it goes as anything in Trash does.
+with, would be nobody's. When that's because someone was taken out, by an admin or by a call's invite, it's given to the
+workspace's admins, to edit, and stays restricted: nobody's words are lost to a change of people nobody made to that document.
+When it's because someone left by themselves, or an entry was removed, or a seat ended, it goes to Trash: nobody who could
+decide its fate can see it, so it isn't deleted then, and it isn't given to anyone. If its creator comes back within 30 days
+they find it there and can restore it. Otherwise it goes as anything in Trash does.
 
 **People.** `workspace_members` and `document_access` find people by keyed hash and seal who they are beside it, in the
 same row, so taking someone out takes their address with them. `workspace_authors` keeps the hash of every address whose
 name is on something here, which is how deleting an account finds a workspace it left long ago. When a sign-in brings an
 account a new address, everything under the old hash moves to the new one in that sign-in's transaction, and its name on
 what it made follows. A workspace holds at most 1,000 people, a document is shared with at most 500, and an address can
-have made at most 100 workspaces. Who can do what is in
+have made at most 100 workspaces by hand: a home made for a call doesn't count. Who can do what is in
 [Privacy › Who can open a workspace](privacy-keys-and-sessions.md#who-can-open-a-workspace).
+
+### Tags
+
+**Who a document names.** A tag, a quote of what was said and a follow-up line carry someone's ID, which everyone with the
+document reads, so it's never their address or anything made from it alone. Each is the ID a member has in that workspace,
+`HMAC(state key "workspace-person", their address's keyed hash)` under the workspace's own keys, whether they're in it or
+not: `POST /v1/workspaces/:id/ids` (`api.workspaces.ids`) gives them for a list of addresses, to anyone in the workspace for
+any address, and to someone here only through a call for the people who've been in that call, and leaves out the rest. So
+nobody can check a guessed address against an ID in a document without asking the server, as someone who's allowed to, and
+the same person has different IDs in different workspaces. Someone in a call with no address is named by their seat, which
+is already a keyed hash. What was written before IDs were keyed, an address on a quote or a plain hash of one on a tag, still
+finds its face and tells someone a to-do is theirs: the app works those out to read them, and never writes them.
+
+Someone tagged in a document hears about it, on the workspace's stream if they're here, and whenever they're next here if
+they aren't. `POST /v1/workspaces/:id/documents/:doc/mentions` (`api.workspaces.mention`) names them by address, or by their seat
+in the call you're both in, and the line. It takes someone who can edit that document, and it gives nobody anything: whoever
+can't open the document isn't told and nothing's kept, and the answer is the same either way, so tagging can't be used to ask
+who has what. Everything happens under the workspace's lock, so nothing's told after either of them loses it.
+
+What's told waits in `workspace_mentions`: the document, the keyed hash access knows them by (their address's if they're
+signed in, even when tagged by their seat, so it reaches them after the call), and a sealed `workspace-mention` record of who
+tagged them, by name and face, and the line. A notice (`told:<hash>`) wakes only that person's streams, which read what's
+waiting, ask access whether they can open each document now, and write a `mention` line. Opening a stream does the same, so
+a tag is heard on arrival, as often as it takes until someone says they've seen it: `DELETE /v1/workspaces/:id/mentions/:id`
+(`WorkspaceLive.seen`), which only they can do. `GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
+workspaces, with what each document's called, for the side panel's count and the browser's notification.
+
+Nobody hears of a tag in something they can't open now, however long it waited. A tag in something they've lost is deleted when
+it's next read, and having it back doesn't bring that back; one in Trash waits to see whether it comes back. Tags go with their
+document, when someone's taken out of the workspace, with their account, and after 30 days; 200 wait for one person in one
+workspace, the newest. The name of a document is never in the record or on the line: it comes from the reader's own tree.
 
 ### Documents
 
 What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
 with the same thing. Browsers exchange binary updates through the API, which seals each and keeps it. Only
-`apps/api/src/modules/documentText.ts` knows what's inside one, and it goes by `kind`, so a board says its own words;
-everything else below is the same for anything that holds a Y.Doc. A document's blocks are the root fragment `content`,
-its comment threads the root map `comments`, and the editor's schema decides the rest.
+`apps/api/src/modules/documentText.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
+its own words, through `@alcove/board`, which is what knows a board's Y.Doc; everything else below is the same for anything
+that holds a Y.Doc. A document's blocks are the root fragment `content`, its comment threads the root map `comments`, and
+the editor's schema decides the rest. A board's are its root maps `objects` and `comments` and its list `places`
+(`packages/board/src/shape.ts`): a comment thread there is pinned to an object (`on`), stays when it's `resolved`, and each
+reply keeps who wrote it, `by` (what they're known by in the workspace, which finds their face) and `name`; a reply from
+before replies said who wrote them reads as nobody's. A document links a board by its ID alone, in a `board` block, so its
+name reaches only whoever's own list has it.
 
 Yjs trusts what it's given, and what's in a document comes from browsers. So nothing here is taken on trust: an update is
 checked before it's stored ([what gets in](#what-gets-into-a-document)), a document is only ever opened in a worker
@@ -142,7 +187,19 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 - **Starting.** A new document has its title and first line before anyone opens it, each with an empty text in it: the
   seed, one fixed Yjs update that browsers and the API share (`DOC_SEED` in `@alcove/api`), is written as its snapshot when
   the item is made. A browser that can only read never has to write, two people opening a new document find one title, and
-  two people typing there first type in the same text. A board starts with nothing. A
+  two people typing there first type in the same text. A board starts with nothing. Its template, when it's started from
+  one, is the server's: `writeDocument(w, id, 'boardTemplate', { kind, template, seed })`, with the board's id as the seed,
+  puts it on as an update like anyone's, so everyone gets the same frames and nobody's undo can take them away, and only on a
+  board nobody has put anything on yet. `kind` has to be what the tree says the item is, as for every operation that takes one,
+  or it's refused (`invalid`), so a board's frames never go on a document whatever its caller says. A call's new board is filled
+  this way at the end of making it, before the call's row says it's open (`fillBoard`): nobody can know of it until then, so
+  whoever opens it finds its template on. It's written as the Yjs client kept for it, `SERVER_CLIENT.template`, 2 on every board.
+  What makes it land once is that the server writes only as clients the log hasn't had (`requireNewClients`, below): the first
+  fill takes client 2, and every later one finds it taken. So the board itself says whether it has had its template: asking
+  again changes nothing, nor does a second ask at the same moment or one after a compaction, a copy of a board carries its
+  template and can't have another, and a board put back to before its template doesn't get it back by itself or by asking. Two
+  fills worked out at once needn't be the same bytes (a board that had something on it and lost it again hangs the template
+  off what it lost), and they don't have to be: only one is ever written. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
   outside it, one document at a time, with a document's title changed to say what the tree calls the copy. A copy holds only
   each map key's last value, since nobody can be behind it. If the workers stay busy it waits about 15 seconds and then
@@ -181,7 +238,8 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   turns updates away with `503` until it's done, and browsers try again, so whatever's undone is in a version. It's a mark and
   not the row's lock because a big document takes a while, and everyone typing would each hold a connection. A restore that
   would leave the document past its limit is refused. The tree's name follows the title, because a browser renames only what
-  it types.
+  it types. What's new in it is written as a client the log hasn't had, as everything the server changes is (below), and what
+  a version holds that's no longer there goes back as it was written, under whoever wrote it.
 - **Size.** What's on a document's page stops at 150,000 items (`MAX_DOC_ITEMS`, `DOC_ITEMS_MAX`), about 37,500 lines, or
   16 MiB. An item is one Yjs struct that isn't deleted and isn't in a retired block, so a line is about four, and a page someone
   emptied has room again. One rule holds at the limit: an update goes in if it doesn't add to what's on the page, counting what
@@ -211,9 +269,24 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
   so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
-  plain function of the document and plain data, one line each, which a worker can import. `searchText` streams everything
+  plain function of the document and plain data, one line each, which a worker can import. Every change the server makes
+  goes through `writeDocument`, or `restoreVersion` to put a version back, and both write it only as Yjs clients the log
+  hasn't had, asked under the row's lock in the transaction that appends it (`requireNewClients`): two updates that say
+  different things under one client and clock would leave browsers disagreeing for good, and nothing would tell anyone. A
+  change that finds a client of its taken by then is worked out again on what's there now, in three tries at most, then `409`
+  (`ClientTakenError`): a random client gets past that at once, and a fixed one finds what was written as it, which is how a
+  template lands once. A fixed client the log had already when the change was worked out, in a row that won't open or from
+  before a version took a board's place, would be the same every time, so that's refused for good, at once. "Already" is judged
+  against where the log the change was worked out on ended, read from that log itself, so an update that landed while it was
+  being read is something to work the change out again on, not a reason to refuse it. A restore's client is chosen as it's
+  asked for, outside the worker, so the check is the one place it's settled. The server's own
+  clients are 1 to 15 (`SERVER_CLIENT` in `@alcove/api`: 1 the seed, 2 a board's template, the rest kept), and what the server
+  works on otherwise writes as a random client outside them. What starts a log isn't a change: the seed, a copy and words
+  rescued into a new document hold what they hold, and the new document is the server's from there. `searchText` streams everything
   someone can open as blocks of words, one document a line, for searching in their browser, and stops as soon as they can't
-  read what's next. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
+  read what's next. A board is one block, `board`, of every word on it (`boardText`): stickies, shapes and text, frames' titles
+  and who was in a room, tables' cells and pictures' captions, frame by frame in reading order, and never a frame's hint or a
+  comment. Text is one element, `line`, with a `kind`; a block is retired instead of deleted, so an edit landing in one
   is never lost. `isGone` in `@alcove/api/retire` is the one rule for what's on the page, for the editor and the server alike:
   a retired block still holding something reads like any other.
 - **A known limit in Yjs.** Undoing the delete of an element that holds text two people typed into at once can write an item
@@ -221,6 +294,11 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   comes out scrambled, the same for everyone: 25 runs in about 13,000 random ones, and none in over 12,000 where no element
   was deleted. `proveOpens` can't see it. Blocks are retired and never deleted, which avoids it for them. Table rows and a board's
   objects are deleted, so they could reach it, by reasoning rather than a run. It's upstream, and nothing here can catch it.
+- **What comes from a call** is a document's own content, written by a browser in the call, so it's sealed and versioned like
+  anything else. A `live` block holds the lines it shows, with `call`, the call that fills it in: a later call leaves it alone, and
+  after its call it's a block like any other. A `moment` is a quote: who said it, the words, `at` (an ISO time, which each reader
+  reads in their own zone), `line`, its transcript line, and `note`, the note it can be heard from. Neither holds a key to anything:
+  whether someone can hear a quote is whether they can read that note.
 - **What won't open** stops only itself. A row that won't apply or won't decrypt is left out and logged, and the document
   is served without it. One that can't be opened at all, in the time or memory a worker has, is marked closed for five
   minutes (`closed_until`, so a restart doesn't try again, and neither does a tab), with a warning naming the IDs: its
@@ -228,7 +306,10 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   `writeDocument` and compaction cost no worker on a closed document, and any of them that proves too much, out of a worker's
   time or memory, closes it, so a poll can't keep a worker on one however many people are polling. A worker that only says a
   job failed closes nothing: a compaction that won't pass a row it can't read is one, and the document opens without that row. Its versions still read, and restoring one replaces what won't open
-  and ends everyone's stream, since there's nothing to merge with. Updates to it are still taken: nothing's refused for a
+  and ends everyone's stream, since there's nothing to merge with. Every client it has had keeps its row, as the server's, at
+  what the version holds of it, so nothing is written as one again, by the server or anyone: what other versions hold under it
+  stays the one thing it ever said, a board's template among them, and anything still in a browser from before is refused.
+  Updates to it are still taken: nothing's refused for a
   document that may only be slow. What the server does to it for itself, reading, writing, compacting and searching it, costs
   no worker while it's closed, and a job of those that runs out of time or memory closes it too. One that fails closes
   nothing: a fold won't go past a row it can't read, and the document still opens without that row.
@@ -252,6 +333,12 @@ What can be told from the update alone is checked with nothing held, in a worker
   right neighbour: every key typed mid-line shares one. These, and types nested too deep in one update, are `too-large`.
 - Everything in it can be placed: it's worked through as Yjs would, and anything that waits for what it can't ever have is
   refused, because Yjs would carry it pending for ever, in every snapshot.
+- Nothing written as one of the server's own clients, 1 to 15 (`server-client`, `400`), whether or not the server has
+  written as it yet: what's written as one is fixed, so anything else there would say two things at one clock, or take a
+  template's place before it came. A browser's are random 32-bit numbers outside them. Words rescued into a new document
+  (`POST …/adopt`) may hold the seed's, and only as far as the seed goes, as they start a log on top of it: anything else
+  written as one of the server's clients is refused there too, on a document or a board, so no rescue takes a template's
+  place or a client kept for later. The app's rescue writes its own words as a random client (`randomClient`).
 
 What depends on the log is checked under the document's lock, against `document_clients`, without opening the document:
 
@@ -311,6 +398,17 @@ another row doesn't open. `GET` and `POST /v1/workspaces/:id/documents/:doc/pres
 document and has an account: someone in a call by its link has nowhere to keep them (`403`). Empty text deletes the row. At
 most 20,000 characters.
 
+Beside a board they're kept frame by frame, a slide's own notes: one `presenter_frame_notes` row for each account, board and
+frame, sealed under the account's own keys (state key `presenter-frame-notes:<boardId>`, record kind `presenter-frame-notes`,
+whose header binds the account, the workspace, the board and the frame). Which frame a row is for is a keyed hash of the frame's
+ID under that key (`frame_index`), and the frame's ID is inside the record, so nothing a browser named is kept in the clear, and
+a frame's record put in another frame's row doesn't open. `GET /v1/workspaces/:id/documents/:board/presenter-notes/frames`
+answers them all, by frame; `POST` there with `{ frame, text }` keeps one frame's, and empty text deletes its row. Only a board
+has frames: the same for a document is `404`. At most 4,000 characters beside a frame, and notes beside 500 frames of a board:
+past that a new frame is refused (`409`), and two at once can take it one past. Notes beside a frame that's been taken off the
+board stay with the board, and go with it. Whatever was kept beside a whole board before frames had their own still opens
+where it was.
+
 ### In a browser
 
 `DocSession` (`packages/api-http`) owns the `Y.Doc` and runs the same in a browser and in Node. Edits gather for 150 ms and go
@@ -318,7 +416,10 @@ one request at a time, the oldest first, as much as fits in one; a retry only ev
 Nothing typed is let go of until the API has it, and with a `keep` store (the app's is sealed under the device key) that
 survives a reload: what's kept is applied when the session starts and sent when there's a connection. The stream picks up from
 the last `seq` it heard, however it ended, and never moves on from what this browser sent, only from what the stream
-said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise.
+said. Being able to only read, or it going to Trash, stops sending until an `access` line says otherwise. It never writes as
+one of the server's own clients, which the API turns away: it starts on a client of its own (`randomClient`), and whatever puts
+it on one, it moves to another before a word is written, the same move it makes when it's stuck (below), which a client nothing
+was written as doesn't count towards.
 
 A refusal never lets go of anything. What's refused stays in memory and in `keep`, through reloads, and the status says so:
 `unsent` is true until Alcove has everything or someone chooses to let it go, and `saved` only ever means that.
@@ -345,9 +446,28 @@ says only what Alcove may not have, never all that's ever been deleted. That hol
 is let go of: anything Yjs couldn't place stays, and says `rejected`, and nothing's written for it until something changes, as
 does anything Alcove refuses outright. A browser shouldn't ever see that, and what doesn't depend on it carries on regardless.
 
+A `503` isn't the connection. A restore turns updates away with it while it runs, and being rate limited does too, so whoever's
+typing stays `saving` and it's tried again. Only if Alcove goes on saying so for 30 seconds does the status go to `offline`.
+
 `KeptUpdate` says when each edit was made (`at`). Nothing reads that yet: retired blocks can't be pruned while someone may
 still be offline with words for one, and nothing in this release prunes them or limits how long someone can stay offline.
 `document()` is async, because Yjs loads with the first document someone opens and stays out of everything else.
+
+Find looks through what `searchText` sends, in this tab's memory (`features/workspace/words.ts`), so nothing typed into it leaves
+the browser. It's read as Find opens, if anything in the tree was edited since, at most every 6 seconds, and it stays until the
+session ends: it's never stored. What's on the page is read from the editor instead, so what was just typed is found. Whatever
+leaves someone's tree or goes to Trash goes from there as the tree says so, all of it does on a change of role or when the
+workspace's stream closes, and all of it on signing out or in. A guest's goes when they leave the workspace.
+
+History reads a version into a `Y.Doc` of its own that nothing's connected to (`editor/version.ts`), and compares it with the row
+below it, by each block's ID and what it serializes to, to tint what changed. A version shows what was stored: a photo, video
+or file block still uploading or failed when it was kept loses what didn't arrive, and goes if nothing did. A version's `callId`
+is the call that kept it. The first edit of a call keeps what was there before it, so for a document that was there before the
+call started (by the call's start, from the call you're in or the note that covers it), History treats the oldest version of a
+call as the work before it; a document made in the call keeps all its versions under the call. A call has no name in the
+document: a row takes one from the only note of yours whose time covers it, or says **During a call**.
+Whoever restores says so in their awareness state for 8 seconds (`restored`, in `DocCaretStateSchema`), beside who the server says
+they are, so everyone with the document open can be told by name. Nothing is stored for it.
 
 ### Media
 
@@ -403,6 +523,35 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   URL: at most 4 at once for a browser, trying again for minutes when the server's busy. A room of people opening the same
   board at once would otherwise overrun what the process takes on, and an `<img>` can't try again. Video and audio use the URL,
   which a player reads by range.
+- **In a document** (`apps/web/src/features/workspace/uploads.ts`). Files go into a document as blocks: photos a browser can
+  read as one `gallery`, a film it can play as a `video`, anything else as a `file`. The block holds the space at once, with each
+  file's name and, for a picture or a film, its size in pixels, and says how far it's got (`up`) as pieces go, so everyone sees
+  it fill. The block carries the upload's own token (`upload`, random, nothing about the file in it), and the upload follows
+  the block by that, not its ID: cut and pasted, the block has a new ID and the upload goes on into it; undone, it has 15
+  seconds to come back with redo before the upload's let go of. The token goes when the upload's done, and retiring a block
+  takes it away like any other attribute. Only the browser sending writes to the block, and always through one session of its
+  own for that document, so leaving the document or the workspace doesn't stop it. Two sessions writing the same attribute
+  without having heard each other could leave the older value standing, which is why it's never the page's. Nothing is stored
+  until the block has reached that session, which is to say Alcove has it: a block a full document turns away, or that never
+  gets there in a minute, holds no file anywhere, and the page offers Try again. The session closes only once everything it
+  wrote has reached Alcove, however long the connection is away, and until then the upload still says it's on and closing the
+  tab asks first. As each file is stored its ID goes into the block, and a photo's caption, an attribute of its own
+  (`cap:<id>`), starts as the file's name without its extension. A film's first frame goes first, as a picture of its own
+  named `<title> (first frame).jpg`, which the picker never offers as a photo, so there's something to see while the film goes;
+  one whose film never arrives is deleted with its block. A photo the browser can't read isn't sent at all: its block says
+  which file, and the browser that has it offers **Add as a file**, which puts it in as a file in the block's place. What the API
+  refuses goes into the block as failed, and the refusal's own words to whoever sent it. That browser says in the document's
+  awareness which uploads it's sending (their tokens, nothing else), so a block that says it's uploading with nobody saying so
+  for 20 seconds shows as failed. The browser that sent one that failed offers Try again for ten minutes, while it still has the
+  file; that opens the document's session for uploads again.
+- **Shown in a document.** Every picture, a film's frame included, goes through `picture`, read once for as long as anything
+  shows it, kept a minute after so a block redrawn or scrolled back to isn't read again, and let go of with `revokeObjectURL`
+  (`apps/web/src/features/workspace/pictures.ts`). A block pasted or dropped from another document, or sent there with Move
+  to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
+  or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
+  document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
+  block's menu, is `remove`. A version in History and a presentation in a call draw from the same (`useMediaView` in
+  `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
   (`MEDIA_LIMITS` in `modules/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
   their bodies are read; past that they're refused with `503 unavailable` and the client tries again. A piece has to keep
@@ -454,8 +603,8 @@ and this way it runs through the same auth, origin check and tests as everything
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `access`, when their role changes,
-  just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mention`, someone tagged them
+  ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and
   a notice that finds nobody behind stops at that one small query. The read takes the state and what those readers have,
@@ -473,7 +622,7 @@ and this way it runs through the same auth, origin check and tests as everything
   updates or 1 MiB behind is let go of, and its browser picks up from its last `seq`. Hearing that the hub missed something
   reads again from there too. Someone who loses a document hears nothing written after that: a change to who has what
   that was heard first is settled before the update behind it is read.
-- **Carets** (awareness) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
+- **Carets** (awareness, which also carries the IDs of the blocks a browser is uploading into) are never stored. A browser's state goes up at most every 100 ms and travels through a notice sealed
   under the workspace's key, at most 4 KiB, and every instance passes it on. It takes having the document open on that
   instance: a stream hears of every change to who has what, so a caret needs no looking up of its own, and opens no tree. Anyone
   else gets the same `404` as for a document that isn't there, except that someone's own caret can always say it's going. The server writes who it is over `user` in the
@@ -488,7 +637,12 @@ and this way it runs through the same auth, origin check and tests as everything
   what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
   they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
-  only to people in that call, so a tile can show where someone is. Streams work out who's here at most five times a second.
+  only to people in that call, so a tile can show where someone is, and so does `page`: which of the call's own pages they're
+  on (Notes, Follow-ups or the Transcript), which anyone else hears of only as `elsewhere`. Only a browser in a call can be on
+  its pages: a `page` from anyone else is dropped. Streams work out who's here at most five times a second.
+  Whoever moved last comes last, so of someone's windows the one in use can be told from one left open. Following someone
+  is all in the browser, from this: nobody is told, and a document you can't open reaches you only as `elsewhere`, so nothing
+  in the app has its name to show.
 - **Who's reading is checked again** at every ping, on the clock, however busy the workspace is, from the session and pass
   the stream came with. For a session it's one indexed read and nothing of the workspace; a pass takes the call's state,
   and only people in a call have one. A session or pass that ended, a person out of the call, all end it, within 25 seconds
@@ -516,9 +670,9 @@ and this way it runs through the same auth, origin check and tests as everything
 - **Caption translations** are sealed under the same transcript key, one row per line and language, and are
   deleted with the transcript clips when the recording stops.
 - **Live notes** are sealed in `call_notes`, one row for each view of each part of the call that has had some, opened with
-  every read of the call and written at most every 30 seconds and with each tick. A refresh is claimed and saved under the row's
-  lock and runs with nothing held, so the model's answer never holds up the call. When the call ends, what was ticked
-  moves into the note's manifest and the rows go, in the same transaction
+  every read of the call and written at most every 30 seconds and with each tick or follow-up added. A refresh is claimed and
+  saved under the row's lock and runs with nothing held, so the model's answer never holds up the call. When the call ends,
+  what was ticked and what people added move into the note's manifest and the rows go, in the same transaction
   ([Notes and inference › Live notes](notes-and-inference.md#live-notes)).
 - **Shared-screen frames** are sealed under the recording's `Krec` like audio pieces, written to the object
   store, read back and checked, and only then recorded in `screen_frames` under a share lock on the recording;
@@ -549,9 +703,18 @@ and this way it runs through the same auth, origin check and tests as everything
   ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)).
 - **A board in a call** is a document in a workspace like any other. The call's sealed state says which is open in each part
   of the call and which boards it lets everyone into (`board`): where each is, who opened or decided it by their name, address and
-  seat, and the seats and addresses each has been worked out for, and nothing about what's on it. It goes when the call ends. A call stored
-  before this was kept reads as having none
-  ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)).
+  seat, and the seats and addresses each has been worked out for, and nothing about what's on it. An open board's entry keeps its
+  timer (when it runs out, how long it was set for, and who started it) and its vote (which frame, how many votes each, who
+  started it, whether it's ended, and which stickies each person voted for, by their account or their person in the call), only
+  as IDs. It also lists each board made for a breakout room, by room, and whether everyone invited has it by address yet
+  (`rooms`), and what's coming back from rooms that have closed (`landing`), with how many tries at landing it have failed
+  (`tries`). Open rooms keep what they were opened with to work on (`breakouts.open.board`), and a room's board keeps its call
+  as an item (`StoredItem.room`) until the call has kept it for everyone invited, so it isn't stranded meanwhile; then the mark
+  goes, and it's a restricted board like any other. It all goes when the call ends. A call stored before boards were kept reads
+  as having none, an open board stored before timers and votes reads as having neither, rooms open from before rooms had boards
+  read as having none to work on, a landing stored before its tries were counted reads as having failed none, and an item from
+  before reads as nobody's room's ([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call),
+  [A board's timer and vote](calls-and-recordings.md#a-boards-timer-and-vote)).
 - **Series.** What a series carries over isn't stored: it's read on each request from the meetings that share its
   ID and the notes the reader has ([Notes and inference › Series](notes-and-inference.md#series)). What a later call
   came back to is in that later note's manifest (`revisits`), and notes written before it read as having none. One scheduled to
@@ -624,6 +787,7 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
   until the document does, or until newer ones push them out past 64 MiB.
 - **Carets and presence** are never stored: they're in Postgres's notice queue for as long as it takes to deliver them, sealed,
   and in the API process's memory.
+- **A tag** lasts until its person has heard, for at most 30 days, and goes before that with its document or their access.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
   included, and an upload nobody finished for a day. A limit going down never deletes one.
 - **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's

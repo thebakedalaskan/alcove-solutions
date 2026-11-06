@@ -292,7 +292,7 @@ button.nt-pop-row:disabled { opacity: .5; cursor: default; }
 @media (max-width: 860px) {
   /* The sky goes up behind the phone's top bar. */
   .shell:has(> .main > .main-in > .nt) .ph-head { position: relative; z-index: 1; }
-  .nt { --hz: 280px; height: auto; min-height: 0; margin-top: -66px; }
+  .nt { --hz: 280px; --behind: 66px; height: auto; margin-top: -66px; }
   .nt[data-first] { --hz: 286px; min-height: 0; }
   .nt .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
   .nt[data-first] .dusk-in { padding-bottom: 28px; }

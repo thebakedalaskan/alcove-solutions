@@ -13,7 +13,7 @@
  * styles/notes.css (`nt-`); a note and a series in styles/note.css (`nd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
  * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
  * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
- * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the other screens in styles/{app,call,welcome}.css.
+ * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the other screens in styles/{app,call,welcome}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
@@ -26,6 +26,7 @@
 @import "./styles/record.css";
 @import "./styles/call.css";
 @import "./styles/notes.css";
+@import "./styles/drive.css";
 @import "./styles/library.css";
 @import "./styles/capture.css";
 @import "./styles/ringing.css";
@@ -38,6 +39,7 @@
 @import "./styles/flow.css";
 @import "./styles/workspace.css";
 @import "./styles/workspace-editor.css";
+@import "./styles/board.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
@@ -88,8 +90,19 @@
   --stage-ink: #F2EEE6;
   --stage-ink-2: #A9B9CA;
   --speak: #9FC7FB;
+  /* What's chosen on the stage and on night controls, whatever theme is round them: the dark theme's sun. */
+  --stage-sun: #F6E8CC;
   /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
   --stage-point: #215DB3;
+  /* Each person's colour on a board, the same in both themes: their pointer, the ring on what they're writing in, and the ring
+     round a view that's theirs. Deep enough for white words, outlined in white on any sheet, and never the only way to tell
+     who: a pointer carries a face and a name. No green. */
+  --who-1: #5B4BE0;
+  --who-2: #C2406E;
+  --who-3: #2F6FD6;
+  --who-4: #96600F;
+  --who-5: #8A4FD0;
+  --who-6: #9C4A86;
   /* The sky: illustration, tour art and covers only */
   --dawn-1: #17294A;
   --dawn-2: #483963;
@@ -183,6 +196,66 @@
   --focus: var(--horizon);
   --sun-on-ink: #A63D02;
   color-scheme: dark;
+}
+
+/*
+ * The board: a sheet of the page's own paper, with a little of the evening's warmth at its foot. Light values on :root and
+ * .light, and dark wherever everything above is, so on the stage a sheet is night unless it says `.light`: `BoardSheet`'s
+ * `theme`. What can come from the tokens above does, so a sheet scoped to one theme follows it. `note-*` are the sticky
+ * colours, which are content, and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the `line`
+ * tokens for edges above, and `bd-marker` the highlighter, which is brighter and stronger at night so it still reads on a dark
+ * sheet. `bf-*` are frames.
+ */
+:root, .light {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 88%, var(--sun-soft)) 55%, color-mix(in srgb, var(--ground) 40%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink) 22%, transparent);
+  --bd-ring: color-mix(in srgb, var(--ink) 7%, transparent);
+  --bf-fill: rgb(255 255 255 / .68);
+  --bf-ring: color-mix(in srgb, var(--ink) 11%, transparent);
+  --bf-lift: 0 18px 34px -30px rgb(18 34 63 / .5);
+  --note-top: #FFFFFF;
+  --note-butter: #FFE0A0;
+  --note-peach: #FFCCAC;
+  --note-rose: #FCC3CF;
+  --note-lilac: #DBCBFA;
+  --note-sky: #C6D1FF;
+  --note-mist: #E7E3F0;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(18 34 63 / .05), 0 8px 16px -10px rgb(18 34 63 / .3);
+  --line-ink: color-mix(in srgb, var(--sun) 82%, var(--ground));
+  --line-rose: var(--rose);
+  --bd-marker: var(--sun-glow);
+  --bd-marker-alpha: .28;
+  /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
+  --bd-rise: 560ms;
+  --bd-glide: 700ms;
+  --bd-point: 120ms;
+}
+
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.dusk.rec) {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 80%, var(--surface)) 55%, color-mix(in srgb, var(--surface) 88%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink-2) 16%, transparent);
+  --bd-ring: rgb(255 255 255 / .09);
+  --bf-fill: rgb(255 255 255 / .05);
+  --bf-ring: rgb(255 255 255 / .1);
+  --bf-lift: 0 18px 34px -30px rgb(0 0 0 / .7);
+  --note-top: var(--surface);
+  --note-butter: #704A12;
+  --note-peach: #5E3524;
+  --note-rose: #5C2A3C;
+  --note-lilac: #40337A;
+  --note-sky: #2E3A78;
+  --note-mist: #2C2850;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
+  --line-ink: var(--horizon);
+  --line-rose: var(--rose);
+  --bd-marker: var(--gold);
+  --bd-marker-alpha: .5;
 }
 
 /*

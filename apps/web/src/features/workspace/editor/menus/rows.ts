@@ -2,9 +2,10 @@
 import type { IconName } from '@alcove/ui';
 import type { BlockKind } from '../types';
 
-export type SlashId = BlockKind | 'divider' | 'table' | 'photo' | 'video' | 'file' | 'doclink' | 'decided' | 'followups' | 'moment';
+export type SlashId = BlockKind | 'divider' | 'table' | 'photo' | 'video' | 'file' | 'doclink' | 'board' | 'decided' | 'followups' | 'moment';
 
-export interface SlashItem { id: SlashId; name: string; icon: IconName; hint?: string; alias: string; rec?: boolean; picks?: boolean }
+/** `makes`: it makes something in the workspace, so it's only offered to someone who can. */
+export interface SlashItem { id: SlashId; name: string; icon: IconName; hint?: string; alias: string; rec?: boolean; picks?: boolean; makes?: boolean }
 export interface SlashGroup { title: string; call?: boolean; items: SlashItem[] }
 
 export const SLASH: SlashGroup[] = [
@@ -32,7 +33,8 @@ export const SLASH: SlashGroup[] = [
       { id: 'photo', name: 'Photos', icon: 'image', alias: 'image picture upload', picks: true },
       { id: 'video', name: 'Video', icon: 'film', alias: 'film movie', picks: true },
       { id: 'file', name: 'File', icon: 'clip', alias: 'attachment upload pdf', picks: true },
-      { id: 'doclink', name: 'Link to a document', icon: 'link2', alias: 'page reference' }
+      { id: 'doclink', name: 'Link to a document', icon: 'link2', alias: 'page reference' },
+      { id: 'board', name: 'Board', icon: 'presentation', alias: 'whiteboard sticky', makes: true }
     ]
   },
   {
@@ -47,14 +49,14 @@ export const SLASH: SlashGroup[] = [
 ];
 
 /**
- * The items a typed word finds, under their headings. What's only in a call isn't offered outside one, and what needs
- * files chosen isn't offered where nothing can choose them (`canPick`).
+ * The items a typed word finds, under their headings. What's only in a call isn't offered outside one, what needs files chosen
+ * isn't offered where nothing can choose them (`canPick`), and what makes something isn't offered where nothing can (`canMake`).
  */
-export function slashGroups(query: string, inCall: boolean, canPick: boolean): SlashGroup[] {
+export function slashGroups(query: string, inCall: boolean, canPick: boolean, canMake: boolean): SlashGroup[] {
   const q = query.toLowerCase();
   return SLASH
     .filter((g) => inCall || !g.call)
-    .map((g) => ({ ...g, items: g.items.filter((s) => (canPick || !s.picks) && (!q || s.name.toLowerCase().includes(q) || s.alias.includes(q))) }))
+    .map((g) => ({ ...g, items: g.items.filter((s) => (canPick || !s.picks) && (canMake || !s.makes) && (!q || s.name.toLowerCase().includes(q) || s.alias.includes(q))) }))
     .filter((g) => g.items.length > 0);
 }
 

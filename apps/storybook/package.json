@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@alcove/api": "workspace:*",
+    "@alcove/board": "workspace:*",
     "@alcove/ui": "workspace:*",
     "@tanstack/react-query": "^5.105.3",
     "@tanstack/react-router": "^1.170.46",

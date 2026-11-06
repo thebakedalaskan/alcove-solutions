@@ -738,8 +738,8 @@ export async function collect(d: Pick<Owner, 'pool' | 'objects'>, ownerIds: stri
  * Takes away what an upload left when its browser went: its rows, and its objects. Each workspace goes in a transaction of
  * its own, and one that fails is logged and left for next time, so nothing in one can stop the others. Returns how many went.
  */
-export async function sweepUploads(d: Deps, ageMs: number = UPLOAD_MS): Promise<number> {
-  const cutoff = new Date(Date.now() - ageMs);
+export async function sweepUploads(d: Deps, ageMs: number = UPLOAD_MS, now: number = Date.now()): Promise<number> {
+  const cutoff = new Date(now - ageMs);
   const due = await rows(d.pool, z.object({ owner_id: z.string(), workspace_id: z.string() }), `SELECT DISTINCT m.owner_id, w.workspace_id FROM workspace_media m JOIN workspaces w ON w.owner_id = m.owner_id
     WHERE m.state = 'uploading' AND m.created_at < $1`, [cutoff]);
   let swept = 0;

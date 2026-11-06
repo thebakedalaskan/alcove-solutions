@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNow } from '~/lib/live';
 import { agoLabel } from '~/lib/time';
 import { useWs } from './context';
+import { presentingStrip } from './Presentation';
 import { nameOf, trashIn } from './tree';
 
 const KEPT_DAYS = 30;
@@ -23,7 +24,7 @@ export function TrashPage() {
   const ws = useWs();
   const now = useNow(60_000);
   const [asking, setAsking] = useState<string | null>(null);
-  const trash = trashIn(ws.items);
+  const trash = trashIn(ws.items, ws.tree.boards);
   /*
    * Deleted for good, the row and the ask that was open over it go together: the keyboard goes to what took the row's
    * place, or the row before it, or back to Trash in the list once nothing's left.
@@ -41,7 +42,7 @@ export function TrashPage() {
     const name = nameOf(item);
     const can = item.role === 'edit';
     return {
-      id: item.id, name, folder: item.kind === 'folder', sub: kept(item, now),
+      id: item.id, name, kind: item.kind, sub: kept(item, now),
       onOpen: item.kind === 'folder' ? undefined : () => ws.go({ kind: 'document', id: item.id }),
       onRestore: can ? () => ws.actions.restore(item.id) : undefined,
       onDelete: can && ws.canChange ? {
@@ -52,7 +53,7 @@ export function TrashPage() {
   });
   return (
     <WsDoc>
-      <WsDocHead crumbs={[ws.spaceName, 'Trash']} save="quiet" onToggleList={ws.toggleList} />
+      {presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={[ws.spaceName, 'Trash']} save="quiet" onToggleList={ws.toggleList} />}
       <WsScroll><WsTrash items={items} /></WsScroll>
     </WsDoc>
   );

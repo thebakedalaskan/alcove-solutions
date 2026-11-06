@@ -1,6 +1,7 @@
 /*
- * The workspace a call uses (docs: Calls and recordings › The call's workspace). Which one it is lives on the meeting, so it
- * carries to the next call in a series; what's going on in it lives in the call's sealed state (modules/callSpace.ts).
+ * The workspace a call uses (docs: Calls and recordings › The call's workspace). Its home, where its notes and transcript go,
+ * in a folder of its own, lives on the meeting, so it carries to the next call in a series; which workspace everyone views,
+ * if the organizer switched, and what's going on there, live in the call's sealed state (modules/callSpace.ts).
  *
  * Nothing here decides who can open what: modules/workspaceAccess.ts does, on every read, for each person. Being in a call or
  * organizing it opens nothing, and access is never copied into the call, so someone who loses a document stops being told
@@ -16,24 +17,24 @@ import type { Deps, Owner } from '../context';
 import { id128 } from '../crypto';
 import { tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, notFound } from '../errors';
-import type { Hub } from '../live/hub';
+import { publish, type Hub } from '../live/hub';
 import { log } from '../log';
 import { findItem, type Loaded } from '../vault';
-import { profile, updateProfile } from './account';
+import { profile } from './account';
 import { seatOfViewer, type Viewer } from './calls';
-import { stopped, type AgendaDraft, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
+import { stopped, type AgendaDraft, type CallBoards, type CallHome, type CallSpace, type Controller, type Playing, type Presenting, type WorkedBy, type WorkedDocument } from './callSpace';
 import type { DocTodo, FollowUpLimits, Run } from './documentText';
 import { MeetingManifest, all as allMeetings, updateManifest } from './meetings';
-import { placeOf, placesOf, type Joined, type Placing } from './places';
+import { boardPlace, placeOf, placesOf, type Joined, type Placing } from './places';
 import { zoneOf } from './repeats';
-import { canOpen, emailIndex, grant, holdersOf, readerInCall, requireDocument, requireRole, requireSharing, roleOf, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, workspaceOwner, type HeldWorkspace, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
+import { TREE_NOTICE, canOpen, emailIndex, grant, holdersOf, organizerEdits, readerInCall, requireDocument, requireRole, requireSharing, roleOf, saveState, serverWorkspace, standingIn, trashOf, whoInCall, workspaceAt, workspaceFor, type HeldWorkspace, type MadeFor, type Reader, type Standing, type StoredItem, type Who, type Workspace } from './workspaceAccess';
 import { documentsAt, editorOf, keepVersion, kindOf, readDocument, writeDocument } from './workspaceDocuments';
-import { addBeside, createIn } from './workspaces';
+import { addBeside, addCallFolder, createIn, followInvite, makeHome, type CallFolder, type InviteChange } from './workspaces';
 
 const wlog = log.child({ component: 'call-workspace' });
 
-/** What the rules here read of a call. */
-export interface Spaced extends Placing { workspace: CallSpace; removed: string[] }
+/** What the rules here read of a call: what it keeps of its workspace, and which board is open where, which is what a board presented is. */
+export interface Spaced extends Placing { workspace: CallSpace; removed: string[]; board: Pick<CallBoards, 'open'> }
 
 /* ---------- what's brought to a call ---------- */
 
@@ -68,6 +69,12 @@ function over(s: Spaced, x: { place: string; by: Controller }): boolean {
   return !placesOf(s).includes(x.place) || s.removed.includes(x.by.person) || (j !== undefined && placeOf(s, j) !== x.place);
 }
 /**
+ * Whether something presented is still there to present: a document is, while it's in the workspace viewed, which reading the
+ * call finds out; a board is while it's the one open in the part of the call it was presented in, on everyone's stage there.
+ * Closed, it's over.
+ */
+const onStage = (s: Spaced, p: Presenting): boolean => p.kind !== 'board' || s.board.open[boardPlace(s, p.place)]?.documentId === p.id;
+/**
  * Someone chose to leave on this connection: what they started stops for good, so it doesn't come back if they do. A reload
  * isn't this, and nor is one device of two: they're still here.
  */
@@ -80,7 +87,7 @@ export function leftForGood<S extends Spaced>(s: S, person: string, identity: st
 /** The call as it stands, with what's over gone from what it keeps. */
 export function tidied<S extends Spaced>(s: S): S {
   const w = s.workspace;
-  return { ...s, workspace: { ...w, present: w.present.filter((x) => !over(s, x)), play: w.play.filter((x) => !over(s, x)), asks: w.asks.filter((a) => !s.removed.includes(a.person)) } };
+  return { ...s, workspace: { ...w, present: w.present.filter((x) => !over(s, x) && onStage(s, x)), play: w.play.filter((x) => !over(s, x)), asks: w.asks.filter((a) => !s.removed.includes(a.person)) } };
 }
 /** Who started something, by the name they came into the call with, which is how everyone there knows them. */
 export const controllerOf = (v: Viewer, reader: Reader): Controller => ({ person: v.pass.person, seat: seatOfViewer(v), name: v.pass.name, email: reader.email ?? null });
@@ -181,16 +188,20 @@ async function seenAt(d: Deps, workspaceId: string, version: number, ids: string
 export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: Lost }> {
   const { v, s, place, meeting } = x;
   const shut: CallWorkspace = {
-    id: null, name: null, chosenBy: x.chosenBy, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: x.asks,
+    id: null, home: null, name: null, chosenBy: x.chosenBy, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: x.asks,
     asked: s.workspace.asks.find((a) => a.person === v.pass.person)?.state === 'asking' ? 'asking' : s.workspace.asks.some((a) => a.person === v.pass.person) ? 'declined' : 'no'
   };
   const brought = meeting.documents.flatMap((id) => { const at = placeOfBrought(id); return at ? [at] : []; });
-  const inUse = meeting.workspaceId;
-  const workspaces = new Set([...(inUse ? [inUse] : []), ...brought.map((b) => b.workspaceId)]);
+  const home = meeting.workspaceId;
   const lost: Lost = { present: [], play: [] };
-  if (!workspaces.size) return { shown: shut, lost };
+  // A board presented is wherever it's kept, which needn't be the workspace everyone views.
+  const boards = s.workspace.present.flatMap((p) => (p.kind === 'board' && p.place === place ? [p.workspaceId] : []));
+  if (!home && !s.workspace.viewing && !brought.length && !boards.length) return { shown: shut, lost };
   const d = v.organizer;
   try {
+    // A workspace everyone was viewing that's been deleted since: they're back in the home.
+    const inUse = s.workspace.viewing !== null && await workspaceAt(d.pool, s.workspace.viewing) ? s.workspace.viewing : home;
+    const workspaces = new Set([...(inUse ? [inUse] : []), ...(home ? [home] : []), ...brought.map((b) => b.workspaceId), ...boards]);
     const reader = await readerInCall(v);
     const out = { ...shut };
     const documents = new Map<string, CallBrought>();
@@ -199,15 +210,19 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       const at = await workspaceAt(d.pool, workspaceId);
       if (!at) continue;
       const inCall = workspaceId === inUse;
-      const present = inCall ? s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
+      // A document is presented from the workspace everyone views; a board, from wherever it's kept, while it's on the stage.
+      const present = s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p) && (p.kind === 'board' ? onStage(s, p) : inCall));
       const play = inCall ? s.workspace.play.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)) : undefined;
       const standing = standingIn(await holdersOf(d.pool, at.ownerId, reader.principals), reader);
       const opensSomething = canOpen(standing);
+      if (opensSomething && workspaceId === home) out.home = home;
       if (!opensSomething && !startedHere(present) && !startedHere(play)) {
         if (present) out.present = presentAs(v, present, '', false);
         continue;
       }
       const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : [])];
+      // The home, when it isn't what's viewed and nothing's brought from it, only says whether it opens for them.
+      if (!ids.length && !inCall) continue;
       const seen = await seenAt(d, workspaceId, at.version, ids);
       if (!seen) continue;
       /** What `who`, standing as they do, can do with something that's still in the tree. */
@@ -219,8 +234,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
           if (f && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: f.item.kind, name: f.item.name, role });
         }
       }
-      if (!inCall) continue;
-      if (opensSomething) {
+      if (inCall && opensSomething) {
         out.id = workspaceId;
         out.name = standing.role === null ? null : seen.name;
         out.canOpen = true;
@@ -248,54 +262,131 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
   }
 }
 
-/* ---------- choosing a workspace ---------- */
+/* ---------- the call's home, and what's viewed ---------- */
 
 /** Who an account is to a workspace, without a call. */
 const accountWho = (o: Owner, email: string): Who => ({ email, principals: [emailIndex(o, email)] });
 
+/** The workspace everyone in the call views and edits together: its home, unless the organizer switched to another. */
+export const viewedIn = (m: Pick<MeetingManifest, 'workspaceId'>, w: Pick<CallSpace, 'viewing'>): string | null => w.viewing ?? m.workspaceId;
+
+/** What a call's new home and its folder are called: the call, and the day it started where `timeZone` is. */
+export const homeName = (title: string, startedAt: Date, timeZone: string): string =>
+  `${title.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Untitled call'} · ${dayOf(startedAt.toISOString(), timeZone)}`;
+
+/** This run of a call's folder, as it's made: its name, and whose call it is. Its note comes when the call's over (`homeAfter`). */
+export const folderFor = (o: Owner, organizer: string, callId: string, folderId: string, name: string, startedAt: Date): CallFolder => ({
+  id: folderId, name, call: { ownerId: o.ownerId, callId, organizer: organizer.trim().toLowerCase(), startedAt: startedAt.toISOString(), noteId: null, ended: false }
+});
+
+/** What a call's new home starts with, besides its folder: the call it's for. */
+export const madeForCall = (m: Loaded<MeetingManifest>, startedAt: Date): Omit<MadeFor, 'out'> =>
+  ({ title: m.manifest.title, at: startedAt.toISOString(), meetingId: m.itemId, seriesId: m.manifest.seriesId ?? null });
+/** Whether a home was made for this call, or for its series, so who's in it follows the call's invite. */
+export const homeOf = (made: MadeFor | null, m: Loaded<MeetingManifest>): boolean =>
+  made !== null && (made.meetingId === m.itemId || (made.seriesId !== null && made.seriesId === (m.manifest.seriesId ?? null)));
+
 /**
- * The workspace a call settles on when nobody has chosen, if it's one there already: its organizer's most recently used, if
- * they can still edit in it. Asked with nothing held, from who's in it, without opening it.
+ * A workspace chosen as a call's home, if its organizer can still make things there: the call writes its folder in their
+ * name, so it takes what making a folder takes (`organizerEdits`). Undefined for one deleted since, or theirs no longer.
  */
-export async function recentFor(o: Owner): Promise<string | undefined> {
-  const me = await profile(o);
-  const ownerId = me.recentWorkspace ? await workspaceOwner(o.pool, me.recentWorkspace) : undefined;
-  if (!me.recentWorkspace || !ownerId) return undefined;
-  const who = accountWho(o, me.email);
-  const { role } = standingIn(await holdersOf(o.pool, ownerId, who.principals), who);
-  return role === 'admin' || role === 'edit' ? me.recentWorkspace : undefined;
+export async function usableHome(o: Owner, email: string, workspaceId: string | null): Promise<HeldWorkspace | undefined> {
+  const w = workspaceId ? await serverWorkspace(o, workspaceId) : undefined;
+  return w && await organizerEdits(o, w, o.pool, email) ? w : undefined;
 }
-/** Otherwise a new one in the organizer's name, in the caller's transaction: nobody else can reach it yet, so nothing waits on it. */
-export const newFor = async (o: Owner, c: Db): Promise<string> => (await createIn(o, c, `${firstName((await profile(o, c)).name)}’s workspace`)).id;
-/** Remembers the workspace someone used last, when that's changed. */
-export async function noteUsed(o: Owner, workspaceId: string): Promise<void> {
+
+/** Where putting a call's folder in a home left it: there, with no room for it in a full workspace, or with no home, deleted since. */
+export type FolderPut = 'made' | 'full' | 'gone';
+/**
+ * Puts this run of the call's folder in a home that's there already, in that workspace's own transaction, with nothing of the
+ * call held. Only a folder that's there counts as made: a full home has no room, and the call settles on another.
+ */
+export async function folderIn(o: Owner, workspaceId: string, folder: CallFolder): Promise<FolderPut> {
+  return tx(o.pool, async (c) => {
+    const w = await serverWorkspace(o, workspaceId, c, 'change');
+    if (!w) return 'gone';
+    return await addCallFolder(w, c, folder) ? 'made' : 'full';
+  });
+}
+
+/**
+ * Who's on the invite as far as a call's home goes: the call's own, and, for a call in a series, every call of it that hasn't
+ * ended and has the same home. Lower-cased.
+ */
+async function invitedTo(o: Owner, m: Loaded<MeetingManifest>, home: string): Promise<Set<string>> {
+  const series = m.manifest.seriesId;
+  const calls = series ? (await allMeetings(o)).filter((x) => x.manifest.seriesId === series && x.manifest.workspaceId === home && x.manifest.status !== 'ended') : [];
+  return new Set([m, ...calls].flatMap((x) => x.manifest.guests.map((e) => e.trim().toLowerCase())));
+}
+
+/**
+ * Who's in the call's home follows its invite, one change at a time, when it was made for the call or its series
+ * (`followInvite`): whoever the change put on the invite is let in, if they're on it still, and whoever it took off is
+ * taken out, unless the series still invites them to a call to come. So does who's in each workspace made in the call
+ * (`made`), by the call's own invite. It never throws: the call goes on, and the next change, or the next call's start,
+ * tries again.
+ */
+export async function followHome(o: Owner, meetingId: string, change: InviteChange, made: readonly string[] = []): Promise<void> {
+  if (!change.add?.length && !change.gone?.length) return;
   try {
-    if ((await profile(o)).recentWorkspace !== workspaceId) await updateProfile(o, (p) => ({ ...p, recentWorkspace: workspaceId }));
+    const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
+    if (!m) return;
+    const home = m.manifest.workspaceId;
+    const own = new Set(m.manifest.guests.map((e) => e.trim().toLowerCase()));
+    const spaces = new Map<string, Set<string>>(made.map((x) => [x, own]));
+    if (home) spaces.set(home, await invitedTo(o, m, home));
+    let organizer: string | undefined;
+    for (const [workspaceId, invited] of spaces) {
+      const add = (change.add ?? []).filter((e) => invited.has(e.trim().toLowerCase()));
+      const gone = (change.gone ?? []).filter((e) => !invited.has(e.trim().toLowerCase()));
+      if (!add.length && !gone.length) continue;
+      const by = (organizer ??= (await profile(o)).email);
+      await tx(o.pool, async (c) => {
+        const w = await serverWorkspace(o, workspaceId, c, 'change');
+        if (w && homeOf(w.state.madeFor, m)) await followInvite(w, c, by, { add, gone });
+      });
+    }
   } catch (e) {
-    wlog.warn('most recently used workspace not kept', { workspaceId, err: e });
+    wlog.warn('a call’s home didn’t follow its invite', { meetingId, err: e });
   }
 }
 
-/** How often opening a workspace in the app says so, for each person and workspace: tabs come and go, and every change to a profile is a revision. */
-const OPENED_EVERY_MS = 10 * 60_000;
-const MAX_OPENED = 4096;
-const openedByHub = new WeakMap<Hub, Map<string, number>>();
-/** Someone who can work in a workspace opened it: their next call starts there unless they say otherwise. */
-export async function noteOpened(o: Owner, workspaceId: string): Promise<void> {
-  const opened = openedByHub.get(o.hub) ?? new Map<string, number>();
-  openedByHub.set(o.hub, opened);
-  const key = `${o.ownerId}:${workspaceId}`;
-  if (Date.now() - (opened.get(key) ?? 0) < OPENED_EVERY_MS) return;
-  opened.delete(key);
-  opened.set(key, Date.now());
-  for (const oldest of opened.keys()) {
-    if (opened.size <= MAX_OPENED) break;
-    opened.delete(oldest);
+/**
+ * Who each call a change to `meetingId` can reach invites, as they are: that call's, and the rest of its series' that haven't
+ * ended. Asked before the change, for the calls' homes to follow it afterwards (`followInvites`).
+ */
+export async function invitesOf(o: Owner, meetingId: string, m: Pick<MeetingManifest, 'guests' | 'seriesId'>): Promise<Map<string, string[]>> {
+  const series = m.seriesId;
+  const calls = series ? (await allMeetings(o)).filter((x) => x.manifest.seriesId === series && x.itemId !== meetingId && x.manifest.status !== 'ended') : [];
+  return new Map([[meetingId, m.guests], ...calls.map((x): [string, string[]] => [x.itemId, x.manifest.guests])]);
+}
+/**
+ * A change to scheduled calls' invites reaches the homes made for them as a change in the call does (`followHome`): who it
+ * put on an invite is let in, and who it took off is taken out. `before`: the invites as they were (`invitesOf`). Never throws.
+ */
+export async function followInvites(o: Owner, before: Map<string, string[]>): Promise<void> {
+  try {
+    const now = new Map((await allMeetings(o)).map((x) => [x.itemId, x]));
+    const lower = (xs: string[]) => new Set(xs.map((e) => e.trim().toLowerCase()));
+    const homes = new Map<string, { meetingId: string; add: Set<string>; gone: Set<string> }>();
+    for (const [meetingId, was] of before) {
+      const m = now.get(meetingId);
+      const home = m?.manifest.workspaceId;
+      if (!m || !home) continue;
+      const then = lower(was);
+      const after = lower(m.manifest.guests);
+      const at = homes.get(home) ?? { meetingId, add: new Set<string>(), gone: new Set<string>() };
+      for (const e of after) if (!then.has(e)) at.add.add(e);
+      for (const e of then) if (!after.has(e)) at.gone.add(e);
+      homes.set(home, at);
+    }
+    for (const { meetingId, add, gone } of homes.values()) await followHome(o, meetingId, { add: [...add], gone: [...gone] });
+  } catch (e) {
+    wlog.warn('calls’ homes didn’t follow their invites', { calls: before.size, err: e });
   }
-  await noteUsed(o, workspaceId);
 }
 
-/** What changing the call's workspace would mean: refused as changing it is. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that isn't theirs to know. */
+/** What viewing another workspace would mean: refused as switching is. It goes only by who's in the workspace, which the organizer can see: what's been given to anyone beyond that isn't theirs to know. */
 export async function preview(v: Viewer, reader: Reader, people: Joined[], workspaceId: string): Promise<CallWorkspaceSwitch> {
   const o = v.organizer;
   const w = await workspaceFor(o, reader, workspaceId);
@@ -306,7 +397,7 @@ export async function preview(v: Viewer, reader: Reader, people: Joined[], works
   return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...holders, shares: [] }, x.who).role === null).map((x) => firstName(x.j.name)) };
 }
 
-/** Later calls in a series that were using `from` follow it to `to`: they're the same meetings, so it can only be said here. */
+/** Later calls in a series that had the home `from` follow it to `to`, once a call of theirs settles one: they're the same meetings, so it can only be said here. */
 export async function carryForward(o: Owner, meetingId: string, from: string | null, to: string): Promise<void> {
   try {
     const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
@@ -352,6 +443,8 @@ export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | nu
 export interface Changing<S extends Spaced> {
   v: Viewer; reader: Reader; callId: string;
   meeting: Loaded<MeetingManifest>;
+  /** When this run of the call started. */
+  startedAt: Date;
   s: S;
   /** Where whoever's asking is in the call. */
   place: string;
@@ -359,10 +452,14 @@ export interface Changing<S extends Spaced> {
   seatOf: (j: Joined) => string;
 }
 /**
- * What came of it: the call as it is now; the workspace it left and moved to, if it moved; and the seat a grant gave someone
- * who was removed meanwhile, for the caller to take back once the call's row is let go, as their removal does.
+ * What came of it: the call as it is now, and the seat a grant gave someone who was removed meanwhile, for the caller to take
+ * back once the call's row is let go, as their removal does.
  */
-export interface Changed<S> { s: S; moved?: { from: string | null; to: string } | undefined; ended?: string | undefined }
+export interface Changed<S> {
+  s: S; ended?: string | undefined;
+  /** A workspace made for the call just now, and who's invited, for them to be let into it once the call's row is let go. */
+  made?: { workspaceId: string; guests: string[] } | undefined;
+}
 /**
  * The change to what the call keeps, in the transaction that holds its row (`c`). What it went by is checked again there, from
  * the call's own state alone; `again` when that's moved on, for it all to be asked afresh with nothing held.
@@ -370,6 +467,8 @@ export interface Changed<S> { s: S; moved?: { from: string | null; to: string } 
 export type Apply<S extends Spaced> = (x: Changing<S> & { c: Db }) => Promise<Changed<S> | 'again'>;
 
 const withSpace = <S extends Spaced>(s: S, workspace: CallSpace): S => ({ ...s, workspace });
+/** How many of the workspaces made in a call it keeps following: as many as anyone can have. */
+const MADE_KEPT = 100;
 const notYours = (callId: string, what: string) => new ForbiddenError('Only whoever started this, or the organizer, can do that.', { context: { callId, what } });
 /** Whether someone can open a document in a workspace, read with nothing held. */
 async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string): Promise<boolean> {
@@ -384,16 +483,16 @@ async function opens(d: Deps, reader: Who, workspaceId: string, documentId: stri
 /** What's presented or playing in one part of the call, as a start over it goes by: who, what, and whether it shows. */
 const presentSlot = (s: Placing, p: Presenting | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.id}:${String(showing(s, p))}` : '');
 const playSlot = (s: Placing, p: Playing | undefined): string => (p ? `${p.by.person}:${p.workspaceId}:${p.documentId}:${p.mediaId}:${String(showing(s, p))}` : '');
-/** Where a document brought or taken off is from: what's brought, from the workspace in use; what's taken off can have come from one the call used before. */
-const broughtFrom = (m: Pick<MeetingManifest, 'workspaceId' | 'documents'>, a: { documentId: string; brought: boolean }): string | null =>
-  a.brought ? m.workspaceId : m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? m.workspaceId;
+/** Where a document brought or taken off is from: what's brought, from the workspace viewed; what's taken off can have come from one viewed before. */
+const broughtFrom = (m: Pick<MeetingManifest, 'workspaceId' | 'documents'>, w: Pick<CallSpace, 'viewing'>, a: { documentId: string; brought: boolean }): string | null =>
+  a.brought ? viewedIn(m, w) : m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === a.documentId ? [at.workspaceId] : []; })[0] ?? viewedIn(m, w);
 
-async function moveTo<S extends Spaced>(x: Changing<S> & { c: Db }, workspaceId: string): Promise<Changed<S>> {
-  const from = x.meeting.manifest.workspaceId;
-  if (from === workspaceId) return { s: x.s };
-  await updateManifest(x.v.organizer, x.c, x.meeting.itemId, (m) => ({ ...m, workspaceId }));
-  wlog.info('call moved to a workspace', { callId: x.callId, workspaceId });
-  return { s: withSpace(x.s, stopped(x.s.workspace)), moved: { from, to: workspaceId } };
+/** Everyone views `workspaceId` together, the home or another: what's being presented and played stops, and the notes still go home. */
+function view<S extends Spaced>(x: Changing<S>, workspaceId: string): Changed<S> {
+  const home = x.meeting.manifest.workspaceId;
+  if (viewedIn(x.meeting.manifest, x.s.workspace) === workspaceId) return { s: x.s };
+  wlog.info('call views a workspace', { callId: x.callId, workspaceId, home: workspaceId === home });
+  return { s: withSpace(x.s, { ...stopped(x.s.workspace), viewing: workspaceId === home ? null : workspaceId }) };
 }
 
 /**
@@ -407,21 +506,30 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
   const { v, reader, s, callId, place } = x;
   const o = v.organizer;
   const w = s.workspace;
-  const inUse = x.meeting.manifest.workspaceId;
+  const inUse = viewedIn(x.meeting.manifest, w);
   const control = (p: { by: Controller }) => p.by.person === v.pass.person || v.isOrganizer;
   switch (a.type) {
     case 'workspace-set': {
       requireRole(await workspaceFor(o, reader, a.workspaceId), 'edit');
-      return (y) => moveTo(y, a.workspaceId);
+      return (y) => Promise.resolve(view(y, a.workspaceId));
     }
-    // A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody.
-    case 'workspace-new': return async (y) => moveTo(y, (await createIn(o, y.c, a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
+    /*
+     * A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody. It's made for
+     * this call, as its home is: everyone invited is let in to edit once the row's let go, and who's in it follows the invite
+     * for as long as the call's on (the call keeps it in `made`).
+     */
+    case 'workspace-new': return async (y) => {
+      const name = a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled');
+      const { id } = await createIn(o, y.c, name, { ...madeForCall(y.meeting, y.startedAt), seriesId: null });
+      const { s } = view(y, id);
+      return { s: withSpace(s, { ...s.workspace, made: [...s.workspace.made, id].slice(-MADE_KEPT) }), made: { workspaceId: id, guests: y.meeting.manifest.guests } };
+    };
     case 'workspace-bring': {
-      const from = broughtFrom(x.meeting.manifest, a);
+      const from = broughtFrom(x.meeting.manifest, w, a);
       if (!from) throw noDocument(a.documentId);
       await reached(a.documentId, async () => requireDocument(reader, await workspaceFor(o, reader, from), a.documentId, 'read'));
       return async (y) => {
-        if (broughtFrom(y.meeting.manifest, a) !== from) return 'again';
+        if (broughtFrom(y.meeting.manifest, y.s.workspace, a) !== from) return 'again';
         const id = broughtId(from, a.documentId);
         await updateManifest(o, y.c, y.meeting.itemId, (m) => {
           if (a.brought === m.documents.includes(id)) return m;
@@ -462,25 +570,33 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
       return { s: withSpace(y.s, { ...now, asks: now.asks.map((q) => (q.id === a.askId ? { ...q, state: 'declined' as const } : q)) }) };
     };
     case 'present-start': {
-      if (!inUse) throw noDocument(a.id);
-      const held = await workspaceFor(o, reader, inUse);
+      /*
+       * A document is presented from the workspace everyone views. A board is presented where it's open: the one on everyone's
+       * stage in this part of the call, from wherever it's kept, and nothing else.
+       */
+      const board = a.kind === 'board' ? s.board.open[boardPlace(s, place)] : undefined;
+      if (a.kind === 'board' && board?.documentId !== a.id) throw noDocument(a.id);
+      const from = board ? board.workspaceId : inUse;
+      if (!from) throw noDocument(a.id);
+      const held = await workspaceFor(o, reader, from);
       const { item } = requireDocument(reader, held, a.id, 'read');
       if (item.kind !== a.kind) throw noDocument(a.id);
       if (trashOf(held.state, a.id)) throw new ConflictError('This is in Trash. Restore it to present it.', { context: { callId, documentId: a.id } });
       const there = w.present.find((p) => p.place === place);
-      if (there && showing(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
+      if (there && showing(s, there) && onStage(s, there) && there.by.person !== v.pass.person && await opens(o, whoStarted(o, callId, there.by), there.workspaceId, there.id)) throw new ConflictError('Someone else is presenting here.', { context: { callId } });
       const slot = presentSlot(s, there);
       return async (y) => {
         const now = y.s.workspace;
-        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || presentSlot(y.s, now.present.find((p) => p.place === place)) !== slot) return 'again';
-        const next: Presenting = { place, workspaceId: inUse, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
+        const still = board ? y.s.board.open[boardPlace(y.s, place)]?.documentId === a.id : viewedIn(y.meeting.manifest, now) === from;
+        if (!still || y.place !== place || presentSlot(y.s, now.present.find((p) => p.place === place)) !== slot) return 'again';
+        const next: Presenting = { place, workspaceId: from, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
         return { s: withSpace(y.s, { ...now, present: [...now.present.filter((p) => p.place !== place), next] }) };
       };
     }
     case 'present-move':
     case 'present-stop': return async (y) => {
       const now = y.s.workspace;
-      const p = now.present.find((q) => q.place === y.place && showing(y.s, q));
+      const p = now.present.find((q) => q.place === y.place && showing(y.s, q) && onStage(y.s, q));
       if (!p) throw new ConflictError('Nothing is being presented here.', { context: { callId, what: a.type } });
       if (!control(p)) throw notYours(callId, a.type);
       const rest = now.present.filter((q) => q !== p);
@@ -498,7 +614,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
       const slot = playSlot(s, there);
       return async (y) => {
         const now = y.s.workspace;
-        if (y.meeting.manifest.workspaceId !== inUse || y.place !== place || playSlot(y.s, now.play.find((p) => p.place === place)) !== slot) return 'again';
+        if (viewedIn(y.meeting.manifest, now) !== inUse || y.place !== place || playSlot(y.s, now.play.find((p) => p.place === place)) !== slot) return 'again';
         const next: Playing = { place, workspaceId: inUse, documentId: a.documentId, mediaId: a.mediaId, by: controllerOf(v, reader), playing: true, positionMs: a.positionMs, atMs: y.now };
         return { s: withSpace(y.s, { ...now, play: [...now.play.filter((p) => p.place !== place), next] }) };
       };
@@ -528,7 +644,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
 /** What's kept of something worked on in a call, once it's known what it is. Nothing, if it's gone. */
 export async function workedEntry(d: Deps, at: Pick<WorkedDocument, 'workspaceId' | 'documentId'>): Promise<Omit<WorkedDocument, 'by'> | undefined> {
   const item = (await serverWorkspace(d, at.workspaceId))?.state.items[at.documentId];
-  return item ? { workspaceId: at.workspaceId, documentId: at.documentId, kind: kindOf(item) } : undefined;
+  return item ? { workspaceId: at.workspaceId, documentId: at.documentId, kind: kindOf(item), open: null } : undefined;
 }
 
 /* ---------- the call's follow-ups ---------- */
@@ -630,10 +746,11 @@ async function fromDocuments(d: Deps, reader: Reader, worked: WorkedDocument[]):
   }
   return out;
 }
-/** The call's follow-ups: the live notes' as this person reads them, then the documents'. */
+/** The call's follow-ups: the live notes' as this person reads them, what people added, then the documents'. */
 export async function followUps(d: Deps, reader: Reader, notes: LiveNotes, status: CallFollowUps['notes'], worked: WorkedDocument[]): Promise<CallFollowUps> {
   const said: CallFollowUp[] = (notes.notes?.next ?? []).map((f) => ({ ...f, from: 'notes' }));
-  return { items: [...said, ...await fromDocuments(d, reader, worked)], notes: status };
+  const added: CallFollowUp[] = notes.added.map((f) => ({ ...f, from: 'added' }));
+  return { items: [...said, ...added, ...await fromDocuments(d, reader, worked)], notes: status };
 }
 /**
  * A follow-up ticked from the call, or the tick taken back: the to-do's own `done`, as the editor sets it, so a tick here and
@@ -679,12 +796,74 @@ async function agendaOf(o: Owner, documents: string[], worked: WorkedDocument[])
   }
   return undefined;
 }
+/** What a call that's just ended leaves for afterwards: what was worked on, its note if it had notes, and its folder if it took one. */
+export interface Ended { callId: string; meetingId: string; worked: WorkedDocument[]; noteId: string | null; home: CallHome | null; startedAt: Date }
+
 /**
- * Once a call has ended and everyone's gone, with nothing held and nobody waiting: for a call in a series, which document was
- * its agenda, so the next one can carry on from it, and then a version with reason `call` of everything worked on. It never
- * throws: whatever doesn't work is logged, and costs only what it was keeping.
+ * The call's folder once it's over (docs: Calls and recordings › The call's home): its pages read its note from now on, for
+ * whoever has it, if it had notes. A folder the call took and never made is made now. A call that had notes and never settled
+ * a home gets one now, so they land somewhere: the meeting's, if its organizer can still make things there, else a new one
+ * made for it. A folder someone deleted stays gone.
  */
-export async function afterCall(o: Owner, callId: string, meetingId: string, worked: WorkedDocument[]): Promise<void> {
+async function homeAfter(o: Owner, end: Ended): Promise<void> {
+  const m = await findItem(o, o.pool, 'meeting', end.meetingId, MeetingManifest);
+  if (!m) return;
+  const organizer = (await profile(o)).email;
+  const zone = (m.manifest.seriesId ? await zoneOf(o, m.manifest.seriesId) : undefined) ?? 'UTC';
+  const over = (folderId: string): CallFolder => {
+    const f = folderFor(o, organizer, end.callId, folderId, homeName(m.manifest.title, end.startedAt, zone), end.startedAt);
+    return { ...f, call: { ...f.call, ended: true, noteId: end.noteId } };
+  };
+  const home = end.home;
+  if (home) {
+    const folder = over(home.folderId);
+    const put = await tx(o.pool, async (c): Promise<FolderPut> => {
+      const w = await serverWorkspace(o, home.workspaceId, c, 'change');
+      const there = w?.state.items[folder.id];
+      if (!w) return 'gone';
+      if (there?.call) {
+        w.state = { ...w.state, items: { ...w.state.items, [folder.id]: { ...there, call: { ...there.call, ended: true, noteId: end.noteId } } } };
+        await saveState(w, c);
+        await publish(c, w.workspaceId, TREE_NOTICE);
+        return 'made';
+      }
+      // A folder someone deleted stays gone; one the call took and never made is made now, if there's room.
+      return there || home.made ? 'made' : await addCallFolder(w, c, folder) ? 'made' : 'full';
+    });
+    wlog.info('call folder told the call is over', { callId: end.callId, workspaceId: home.workspaceId, notes: end.noteId !== null, put });
+    if (put !== 'full') return;
+  }
+  if (!end.noteId) return;
+  const chosen = m.manifest.workspaceId;
+  const folder = over(id128());
+  if (chosen && await usableHome(o, organizer, chosen) && await folderIn(o, chosen, folder) === 'made') {
+    wlog.info('call folder made after the call', { callId: end.callId, workspaceId: chosen });
+    await followHome(o, m.itemId, { add: m.manifest.guests });
+    return;
+  }
+  // A new one: nobody can reach it until the meeting names it, and everyone invited comes in once it does.
+  const made = await tx(o.pool, async (c) => {
+    const { id } = await makeHome(o, c, { name: folder.name, madeFor: madeForCall(m, end.startedAt), folder });
+    const next = await updateManifest(o, c, m.itemId, (x) => ({ ...x, workspaceId: id }));
+    return { id, guests: next.guests };
+  });
+  wlog.info('call home made after the call', { callId: end.callId, workspaceId: made.id });
+  await followHome(o, m.itemId, { add: made.guests });
+  await carryForward(o, m.itemId, chosen, made.id);
+}
+
+/**
+ * Once a call has ended and everyone's gone, with nothing held and nobody waiting: its folder, which its note goes to; for a
+ * call in a series, which document was its agenda, so the next one can carry on from it; and then a version with reason
+ * `call` of everything worked on. It never throws: whatever doesn't work is logged, and costs only what it was keeping.
+ */
+export async function afterCall(o: Owner, end: Ended): Promise<void> {
+  const { callId, meetingId, worked } = end;
+  try {
+    await homeAfter(o, end);
+  } catch (e) {
+    wlog.warn('a call’s folder not told it’s over', { callId, err: e });
+  }
   try {
     const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
     if (m?.manifest.seriesId && !m.manifest.agenda) {

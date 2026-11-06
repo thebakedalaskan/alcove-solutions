@@ -127,22 +127,22 @@ const THREAD: WsComment[] = [
 /** A thread that answers: a reply rises in under the others, and Resolve closes it with a toast that can reopen it. */
 function Thread({ quote, messages: said, value: start, onSend, onResolve, onChange }: ComponentProps<typeof WsCommentThread>) {
   const [messages, setMessages] = useState(said);
-  const [value, setValue] = useState(start);
+  const [value, setValue] = useState(start ?? '');
   const [resolved, setResolved] = useState(false);
   const { toasts, say } = useToasts();
   const send = () => {
     const text = value.trim();
     if (!text) return;
-    onSend();
+    onSend?.();
     setMessages((now) => [...now, { id: `c${now.length + 1}`, person: ART, name: first(ART), text }]);
     setValue('');
   };
-  const resolve = () => { onResolve(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
+  const resolve = () => { onResolve?.(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
   return (
     <>
       {resolved
         ? <Button size="sm" icon="message" onClick={() => setResolved(false)}>Show the comment again</Button>
-        : <PopSurface ws><WsCommentThread quote={quote} messages={messages} value={value} onChange={(v) => { onChange(v); setValue(v); }} onSend={send} onResolve={resolve} /></PopSurface>}
+        : <PopSurface ws><WsCommentThread quote={quote} messages={messages} value={value} onChange={(v) => { onChange?.(v); setValue(v); }} onSend={send} onResolve={resolve} /></PopSurface>}
       <WsToasts toasts={toasts} />
     </>
   );
@@ -168,6 +168,16 @@ export const CommentCompose: StoryObj<typeof WsCommentCompose> = {
 export const CommentThread: StoryObj<typeof WsCommentThread> = {
   name: 'Comment: a thread', args: { quote: QUOTE, messages: THREAD, value: '', onChange: did('onChange'), onSend: did('onSend'), onResolve: did('onResolve') }, argTypes: { messages: { control: false } },
   render: (args) => <Thread key={args.quote} {...args} />
+};
+/** Someone who can only read it, on a board they can only look at: what's been said, with no field and no Resolve. */
+export const CommentThreadReading: StoryObj<typeof WsCommentThread> = {
+  name: 'Comment: a thread, only to read', args: { quote: 'Nobody owned the status page', messages: THREAD, value: '', onChange: did('onChange') }, argTypes: { messages: { control: false } },
+  render: (args) => <PopSurface ws><WsCommentThread {...args} /></PopSurface>
+};
+/** On a board, a comment on a picture of a screen or anything else with no words of its own quotes nothing. */
+export const CommentComposeNoQuote: StoryObj<typeof WsCommentCompose> = {
+  name: 'Comment: a new one, on something with no words', args: { quote: '', person: ART, value: '', onChange: did('onChange'), onSend: did('onSend') }, argTypes: { person: { control: false } },
+  render: (args) => <Compose key="no-quote" {...args} />
 };
 
 /* ---------- switching the call's workspace ---------- */
@@ -249,7 +259,7 @@ export const FindNothing: FindStory = { name: 'Find: nothing found', ...WIDE, ar
 
 /* ---------- asking to see the workspace ---------- */
 
-/** On the organizer's screen: Jonas, a guest, asked to see the workspace. Letting him read shares just this document. */
+/** On the organizer's screen: Jonas, a guest, asked to see the workspace. Letting him read or edit shares just this document. */
 function Knocking(args: ComponentProps<typeof WsKnock>) {
   const [person, setPerson] = useState<Person | null>(args.person === null ? null : GUEST);
   const { toasts, say } = useToasts();
@@ -258,15 +268,17 @@ function Knocking(args: ComponentProps<typeof WsKnock>) {
       {person === null && <Button size="sm" icon="hand" onClick={() => setPerson(GUEST)}>{first(GUEST)} asks to see the workspace</Button>}
       <Behind height={520} />
       <WsKnock person={person} document={args.document}
-        onLet={() => { args.onLet(); setPerson(null); say(wsToast.canOpen(first(GUEST), 'read', args.document)); }} onNotNow={() => { args.onNotNow(); setPerson(null); }} />
+        onLet={() => { args.onLet(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'read', args.document)); }}
+        onEdit={() => { args.onEdit(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'edit', args.document)); }}
+        onChoose={() => { args.onChoose(); setPerson(null); }} onNotNow={() => { args.onNotNow(); setPerson(null); }} />
       <WsToasts toasts={toasts} />
     </Stack>
   );
 }
 type KnockStory = StoryObj<typeof WsKnock>;
-export const Knock: KnockStory = { name: 'Knock: someone asks', ...WIDE, args: { person: GUEST, document: 'Launch plan', onLet: did('onLet'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
+export const Knock: KnockStory = { name: 'Knock: someone asks', ...WIDE, args: { person: GUEST, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
 /** Answered, or not asked yet: nothing over the call. The button asks, and it drops in. */
-export const KnockGone: KnockStory = { name: 'Knock: gone', ...WIDE, args: { person: null, document: 'Launch plan', onLet: did('onLet'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
+export const KnockGone: KnockStory = { name: 'Knock: gone', ...WIDE, args: { person: null, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
 
 /* ---------- photos ---------- */
 

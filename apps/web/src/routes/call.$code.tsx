@@ -1,16 +1,24 @@
 import {
-  CALL_LAYOUT_MAX, CAPTION_LANGUAGES, CallPanelTabSchema, MAIN_PLACE, errorMessage, notesAreOn, type CallAsker, type CallPanelGroup, type CallPanelGroupId, type CallPanels, type CallPeopleMode, type CallSession, type CallState, type CaptionLanguage,
-  type CaptureMode, type Person, type SelfView
+  BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, CallPanelTabSchema, MAIN_PLACE, errorCode, errorMessage, notesAreOn, type CallAsker, type CallPanelGroup, type CallPanelGroupId, type CallPanels, type CallPeopleMode, type CallSession, type CallState, type CaptionLanguage,
+  type BreakoutBoard, type CaptureMode, type Person, type SelfView
 } from '@alcove/api';
 import {
-  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useToast,
-  volumeTag
+  Avatar, Caption, CallDock, DockButton, DockChevron, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, KnockCard, LinkRow, Popover, RecDot, RingAgain, RingReply, Scope, Tooltip, WaitTile, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast,
+  type IconName
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/access';
+import { BoardButton, BoardMoreView } from '~/features/call/BoardMenu';
+import type { BoardLanding } from '~/features/board/BoardSurface';
+import type { BoardNameMenu } from '~/features/board/CallBoard';
+import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
+import { UNREAD, standingOf, useChangesSinceSaved } from '~/features/board/standing';
+import { BoardLeaf, BoardTileOnStage, boardOverPeople, loadBoard } from '~/features/call/BoardStage';
+import { useBoardRun } from '~/features/call/boardRun';
+import { BOARD_SHOT_TOPIC, keepShot, shotHeard, shotNotice, useCallBoard } from '~/features/call/callBoard';
 import { useCaptions } from '~/features/call/captions';
 import { CamMenu, CamOptions, MicMenu, MicOptions } from '~/features/call/DevicePickers';
 import { useDevices } from '~/features/call/devices';
@@ -18,6 +26,7 @@ import { ScreenFrames } from '~/features/call/frames';
 import { HostSpill, organizerFirst } from '~/features/call/Hosting';
 import { LeaveSheet, type Ended, type NextHost } from '~/features/call/LeaveSheet';
 import { copyUrl, shownUrl, useCopyLink } from '~/features/call/links';
+import { useOpenWhenStarted } from '~/features/call/opening';
 import type { CallRoom, RoomView } from '~/features/call/livekit';
 import { AskView, MomentView } from '~/features/call/CatchUp';
 import { useCatchingUp } from '~/features/call/catchingUp';
@@ -28,9 +37,12 @@ import { useShareMarkCount } from '~/features/call/SharePointing';
 import { LocalMedia, NotesRecorder, type ShareChoice } from '~/features/call/media';
 import { ChatView, NotesView, PeopleView, SidePanel, TranscriptView, type HostControls, type PanelPerson, type PanelView } from '~/features/call/Panel';
 import { PanelHost, tabName, useCallArea, useHorizon, type PanelHostHandle } from '~/features/call/PanelHost';
+import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/PlayTogether';
+import { useBoardPresenting } from '~/features/call/boardPresenting';
+import { usePresenting } from '~/features/call/presenting';
 import {
-  PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView,
-  type Leaf, type PanelFacts, type PanelPreset
+  PHONE_W, closeAll, closeGroup, crowdedOut, frontGroup, groupOfLeaf, growShare, isArranged, isShareLeaf, mainRoom, moveLeaf, preset as layoutPreset, presetOf, setList, setPeople, shownViews, showView, solve, toggleView, zenRoom,
+  type Leaf, type PanelFacts, type PanelPreset, type ShareLeaf
 } from '~/features/call/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts, type CaptureControls } from '~/features/call/Capture';
 import { useNotesAskedNotifications } from '~/features/shell/notify';
@@ -41,28 +53,36 @@ import { keepSeen, seenNotices } from '~/features/call/seen';
 import { SharePicker } from '~/features/call/SharePicker';
 import { VideoQuality } from '~/features/call/VideoQuality';
 import { CallEars, canListen } from '~/features/call/speech';
-import { GLIDE, Stage, useStagePlan, type StageParticipant, type StageRooms, type StageShare, type StageWaiter } from '~/features/call/Stage';
+import { GLIDE, Stage, useStagePlan, type StageBoard, type StageParticipant, type StageRooms, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/Stage';
 import type { StageFrame } from '~/features/call/stageLayout';
 import { TopBar } from '~/features/call/TopBar';
 import type { Feed } from '~/features/call/Video';
 import { isCustom, presetNow, useCallView, type Preset, type ViewSnapshot } from '~/features/call/view';
 import { ViewMenu } from '~/features/call/ViewMenu';
 import { canSetVolume, volumesFor } from '~/features/call/volume';
+import { useLiveCall } from '~/features/call/liveCall';
+import { WorkspaceKnock } from '~/features/call/WorkspaceAsks';
+import { WorkspacePanel, useWorkspacePanel } from '~/features/call/WorkspacePanel';
+import { ShareSheetFor } from '~/features/workspace/Sheets';
 import { ringable, rungWords, waitingOnStage } from '~/features/calls/RingWords';
 import { Moved } from '~/features/move/Moved';
 import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
-import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
+import { tickEverywhere } from '~/features/workspace/live/useFollowUps';
+import { overlayOpen, typing, withMod, withModShift } from '~/lib/keys';
+import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
-import { q, qk, useCallSeries } from '~/lib/queries';
+import { q, qk, useCallSeries, useRenameBoard } from '~/lib/queries';
+import { hm } from '~/lib/time';
 
 /* Guests have no account: being in the call (its pass) is what lets them in. */
 export const Route = createFileRoute('/call/$code')({ component: Call });
 
 const clog = log.child({ component: 'call' });
-const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, [contenteditable]');
-type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | 'quality' | null;
+type Pop = 'mic' | 'cam' | 'cc' | 'cap' | 'more' | 'devices' | 'quality' | 'board' | null;
+/** How long after rooms close a board that came back with them is the rooms' news, not a board opening. */
+const CAME_BACK_MS = 8_000;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '' };
@@ -115,6 +135,9 @@ function useSpeaking(media: LocalMedia, on: boolean): boolean {
 }
 
 /** How wide the window is: on a phone, one thing at a time. */
+/** As wide as the phone's shorter dock goes: the microphone, the camera, the workspace, More and Leave. */
+const SHORT_DOCK_W = 640;
+
 function useWidth() {
   const [w, setW] = useState(() => innerWidth);
   useEffect(() => { const on = () => setW(innerWidth); addEventListener('resize', on); return () => removeEventListener('resize', on); }, []);
@@ -150,7 +173,9 @@ function InCall({ session }: { session: CallSession }) {
   // catching up and asking follow it, and the live transcript is heard only while it says on.
   const capHere = captureHere(state.capture);
   const hearing = capHere.transcript.mode === 'on';
-  const phone = useWidth() < PHONE_W;
+  const width = useWidth();
+  const phone = width < PHONE_W;
+  const short = width <= SHORT_DOCK_W;
   const [pop, setPop] = useState<Pop>(null);
   const [sharePick, setSharePick] = useState(false);
   /** Why the last share didn't start: the picker opens again and says what to do. */
@@ -179,6 +204,13 @@ function InCall({ session }: { session: CallSession }) {
   useEffect(() => { if (owner !== undefined) media.setAccount(owner); }, [media, owner]);
   const forgetLayout = layout.forget;
   const panels = layout.panels;
+  // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot. A
+  // video playing tells the server's time on every read, which only its player uses, and it reads the call itself.
+  const spaceKey = JSON.stringify(told.workspace, (k, v: unknown) => (k === 'nowMs' ? undefined : v));
+  const space = useMemo(() => told.workspace, [spaceKey]);
+  const work = useWorkspacePanel(session, space, layout);
+  // What's been brought to this call, as the list will show it: what's in the workspace the call uses now.
+  const broughtHere = space.documents.filter((d) => d.workspaceId === space.id).length;
   // What the side panels show now, and the view you last brought up: the one Escape closes and Back to live leaves.
   // A panel there's no room for shows nothing, so it doesn't count (`crowdedOut`).
   const [crowded, setCrowded] = useState<CallPanelGroupId[]>([]);
@@ -554,10 +586,28 @@ function InCall({ session }: { session: CallSession }) {
   } : null;
   const organizerPerson = state.participants.find((p) => p.isOrganizer)?.person;
   const message = open?.message && state.elapsed - open.message.at < 10 ? open.message : null;
-  const stageRooms: StageRooms | null = open && organizer ? {
+  /**
+   * The rooms are worked on boards: they opened with one each or one they all share, or a room started its own. Only then do
+   * the rooms say things the board's way; rooms with no board say what they always have.
+   */
+  const roomsOnBoards = !!open && (open.board !== 'none' || open.rooms.some((r) => r.board));
+  /* With boards, the organizer's message to every room reaches everyone else as a toast: nobody has to leave the board to read it. */
+  const heardMessage = useRef<number | null>(null);
+  const messageKey = !organizer && roomsOnBoards && message ? `${message.at}` : null;
+  useEffect(() => {
+    if (!messageKey || !message || heardMessage.current === message.at) return;
+    heardMessage.current = message.at;
+    toast(`${organizerPerson ? callName(organizerPerson) : 'The organizer'}, to every room: ${message.text}`, { icon: 'send', ms: 8000 });
+  }, [messageKey]);
+  /**
+   * The organizer oversees the rooms from the main room, unless there's a board to be on: the one every room shares, or the
+   * board of the room they're visiting.
+   */
+  const onRoomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
+  const stageRooms: StageRooms | null = open && organizer && !onRoomsBoard ? {
     // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
-    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off' })),
-    main: mainIds, joined: myRoom >= 0 ? myRoom : null, left,
+    rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off', board: r.board })),
+    main: mainIds, joined: myRoom >= 0 ? myRoom : null, left, boards: roomsOnBoards,
     message: message && me ? { from: me.person, text: message.text } : null
   } : null;
   const visit = (k: number | null) => {
@@ -576,18 +626,32 @@ function InCall({ session }: { session: CallSession }) {
     if (left <= 0 && !closing.current && hosting) { closing.current = true; session.closeRooms(); }
   }, [open, left, hosting, session, toast]);
   const wasOpen = useRef(!!open);
+  /** The rooms as they were last open: what came back with everyone when they closed, and when, and until when it lands. */
+  const lastRooms = useRef(open);
+  const backFromRooms = useRef(0);
+  const [landing, setLanding] = useState<BoardLanding | null>(null);
   useEffect(() => {
     if (wasOpen.current && !open) {
-      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast('Everyone is back in the main room, where notes are on. Each room’s talk goes into the call’s notes as its own section.', { icon: 'notesPen' }); }
-      else toast('Everyone is back from the rooms', { icon: 'door' });
+      const was = lastRooms.current;
+      const boards = was?.rooms.filter((r) => r.board).length ?? 0;
+      const came = was?.board === 'shared' ? 'Everyone’s back. The board stays as it is.' : boards > 0 ? `Everyone’s back. ${boards} ${boards === 1 ? 'board' : 'boards'} came with you.` : null;
+      if (came) backFromRooms.current = Date.now();
+      // Each room's board lands on the main board, frame by frame, as it arrives. One every room shared has nothing to land.
+      if (came && was && was.board !== 'shared') setLanding({ until: Date.now() + CAME_BACK_MS, rooms: was.rooms.filter((r) => r.board).map((r) => r.id) });
+      if (on) { if (innerWidth >= 1100) setPanel('notes'); toast(came ?? 'Everyone is back in the main room, where notes are on. Each room’s talk goes into the call’s notes as its own section.', { icon: came ? 'door' : 'notesPen' }); }
+      else toast(came ?? 'Everyone is back from the rooms', { icon: 'door' });
     } else if (!wasOpen.current && open && !organizer) {
       const minutes = Math.max(1, Math.round((open.until - open.from) / 60));
       // Said plainly when notes are on: a room's talk is transcribed, and goes into the call's notes as its section.
       const noted = on ? ' What’s said there is transcribed for the call’s notes, as the room’s own section.' : '';
-      toast(roomName ? `You’re in ${roomName} for ${minutes} min.${noted}` : `Rooms are open for ${minutes} min. You’re in the main room.`, { icon: 'door', ms: 6000 });
+      const opener = organizerPerson ? callName(organizerPerson) : 'The organizer';
+      // Rooms with boards say it the board's way, and rooms without say it as they always have.
+      const going = (room: string) => (roomsOnBoards ? `${opener} opened rooms. You’re going to ${room}.` : `You’re in ${room} for ${minutes} min.`);
+      toast(roomName ? `${going(roomName)}${noted}` : `Rooms are open for ${minutes} min. You’re in the main room.`, { icon: 'door', ms: 6000 });
     }
     wasOpen.current = !!open;
   }, [open, on, organizer, roomName, toast]);
+  useEffect(() => { if (open) lastRooms.current = open; });
   /* Sent to another room (or back) while the rooms are open: you're told where you are now. Your keys move with you. */
   const myRoomId = open && myRoom >= 0 ? open.rooms[myRoom]?.id ?? null : null;
   const lastRoomId = useRef<string | null | undefined>(undefined);
@@ -607,8 +671,9 @@ function InCall({ session }: { session: CallSession }) {
     if (organizer || was === null || organizerRoom === null || was === organizerRoom) return;
     const who = organizerPerson ? callName(organizerPerson) : 'The organizer';
     // Coming into a room whose notes are on starts what's said there being transcribed: they're told so.
-    if (organizerRoom === myRoom) toast(myRoom >= 0 ? `${who} joined your room` : `${who} is back in the main room`, { icon: 'door' });
-    else if (was === myRoom) toast(myRoom >= 0 ? `${who} left your room` : `${who} went to ${state.breakouts.open?.rooms[organizerRoom]?.name ?? 'a room'}`, { icon: 'door' });
+    const went = state.breakouts.open?.rooms[organizerRoom]?.name ?? 'a room';
+    if (organizerRoom === myRoom) toast(roomsOnBoards ? (myRoom >= 0 ? `${who} joined this room.` : `${who} is back in the main room.`) : (myRoom >= 0 ? `${who} joined your room` : `${who} is back in the main room`), { icon: 'door' });
+    else if (was === myRoom) toast(roomsOnBoards ? (myRoom >= 0 ? `${who} left this room.` : `${who} went to ${went}.`) : (myRoom >= 0 ? `${who} left your room` : `${who} went to ${went}`), { icon: 'door' });
   }, [organizerRoom, myRoom, organizer, organizerPerson, state.breakouts.open, capHere.mode, toast]);
   /* The organizer hears once when a room asks for help, and can go straight there. */
   const helped = useRef(new Set<string>());
@@ -644,9 +709,9 @@ function InCall({ session }: { session: CallSession }) {
     const who = candidates.find((c) => c.id === email.toLowerCase())?.person ?? open?.rooms.flatMap((x) => x.people).find((p) => sameEmail(p, { email }));
     toast(`${who ? callName(who) : 'They'} ${r ? `will be in ${r.name}` : 'will be back in the main room'}. Their keys move with them.`, { icon: 'door' });
   };
-  const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number) => {
-    session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes });
-    toast(`${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
+  const openRooms = (rooms: { name: string; ids: string[] }[], minutes: number, roomBoard: BreakoutBoard) => {
+    session.openRooms({ rooms: rooms.map((r) => ({ name: r.name, emails: r.ids })), minutes, board: roomBoard });
+    toast(roomBoard.mode === 'each' ? `${rooms.length} rooms are open. Each one has a board.` : `${rooms.length} rooms are open for ${minutes} min`, { icon: 'door' });
   };
 
   /*
@@ -706,18 +771,68 @@ function InCall({ session }: { session: CallSession }) {
   const sharing = shares.filter((s) => !s.mine);
   // At most MAX_SHARES going at once in your part of the call, yours counted; changing what you share is always fine.
   const full = !m.screen && sharing.length >= MAX_SHARES;
+
+  /*
+   * ---------- the board: one open for everyone in your part of the call, which only you can hide, for yourself (callBoard.ts) ----------
+   * With none open, nothing here is drawn or loaded, and the call is as it always is.
+   */
+  const { resolved: theme } = useTheme();
+  const [boardMenu, setBoardMenu] = useState(false);
+  // Your workspaces, to name a board's and know whether you're in it: read only once a board is open or the Board menu opens,
+  // so a call that never has one never lists them.
+  const drive = useQuery({ ...q.workspaces(), enabled: state.role !== 'guest' && (state.board.open !== null || boardMenu || pop === 'board') }).data;
+  const spaceName = (id: string): string | null => drive?.find((w) => w.id === id)?.name ?? (space.id === id ? space.name : null);
+  const board = useCallBoard({
+    place: myRoomId ?? MAIN_PLACE, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS,
+    session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])), spaceName,
+    say: (text, icon, action) => { toast(text, { icon, action }); }, sharer: sharing[0]?.presenter ?? null
+  });
+  const boardStatus = board.status;
+  const boardRun = useBoardRun(session, state, m.speakerId);
+  /*
+   * Your role on the open board changed, by Share in this call or anywhere else: the board's own document hears it first, so the
+   * call is read again then, and the board turns read-only, or back, in a moment rather than at the next read.
+   */
+  const docRole = boardStatus?.role ?? null;
+  useEffect(() => {
+    const said = board.open?.role ?? null;
+    if (docRole === null || said === null || docRole === said) return;
+    session.refresh({ call: true, log: false }).catch((e: unknown) => clog.info('call not read again for a board’s role', { code: errorCode(e) }));
+  }, [docRole]);
+  const renameBoard = useRenameBoard(session.ticket.pass);
+  /* Who can add to it: the board's own Share, as its workspace has it, for someone in that workspace who can edit it there. */
+  const boardSpace = board.open?.workspaceId ?? null;
+  // The call says your place in the workspace it views; any other is in your Drive.
+  const boardMember = boardSpace !== null && ((space.id === boardSpace && space.role !== null) || (drive ?? []).some((w) => w.id === boardSpace && w.role !== null));
+  const boardItem = useQuery({ ...q.workspaceItem(boardSpace ?? '', board.open?.documentId ?? ''), enabled: boardMember && !!board.open?.documentId }).data;
+  /* Someone put a picture of your screen on the board: you're told, so nothing of your screen goes there without you knowing. */
+  useEffect(() => room.receive(BOARD_SHOT_TOPIC, (payload, from) => {
+    const share = shotHeard(payload);
+    if (share && share === myShare) toast(`${callName(personOf(from))} put a picture of your screen on the board.`, { icon: 'image' });
+  }, BOARD_SHOT_LIMITS), [room, myShare]);
   /*
    * A share that starts once you're settled in and isn't big for you is told, with a way to see it; one you were
    * watching that stops, too. Not while the room connects or reconnects, when shares come and go with the connection.
    */
   const settledAt = useRef<number | null>(null);
+  /* What a share's toast offers goes once it's been taken up some other way, or the share stops. */
+  const offers = useRef(new Map<string, () => void>());
   // Starts again whenever the connection or your part of the call changes: shares come and go with either. A call that
   // ends empties the call (its state, or the room's disconnect, whichever comes first) in the render that says so, as a
   // reconnect does: `live` and `connected` cover those.
   useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
   const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
   const shareStarted = (s: StageShare, big: boolean, show: () => void) => {
-    if (!big && settled()) toast(`${callName(s.presenter)} started sharing`, { icon: 'screen', ms: 6000, action: { label: 'Show it', onClick: show } });
+    if (big || !settled()) return;
+    offers.current.get(s.id)?.();
+    // While you're on the board, it comes in beside it at once, as it would have if the board had opened beside it, and nothing
+    // you're doing stops. (A phone seats one at once, to take turns with the board, so it's big already.)
+    if (surfaces.board) {
+      show();
+      toast(`${callName(s.presenter)} started sharing. It’s beside the board.`, { icon: 'screen' });
+      return;
+    }
+    offers.current.set(s.id, work.act.announce(wsToast.sharing(s.presenter, callName(s.presenter), () => { work.act.setZen(false); show(); })));
   };
   const shareStopped = (s: StageShare, wasBig: boolean) => { if (wasBig && settled()) toast(`${callName(s.presenter)} stopped sharing`, { icon: 'stopShare' }); };
 
@@ -796,7 +911,8 @@ function InCall({ session }: { session: CallSession }) {
     if (roomsHold()) return;
     undoable(id === 'equal' ? 'Everyone the same size, you included' : 'Whoever presents is big, and you’re in a corner', id === 'equal' ? 'grid' : 'presenter', layout.preset(id));
   };
-  const custom = isCustom(layout.prefs, layout.layout) || isArranged(panels);
+  // A share brought in beside the workspace is what the workspace is for: that's not you arranging anything.
+  const custom = isCustom(layout.prefs, work.open ? { ...layout.layout, shares: [] } : layout.layout) || isArranged(panels);
   /** While rooms are open the organizer's stage shows every room; their own view comes back after. */
   const roomsHold = () => { if (open && organizer) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
   const resetView = () => { if (!roomsHold()) undoable('Your view is back to the call’s layout', 'reset', layout.reset()); };
@@ -816,6 +932,8 @@ function InCall({ session }: { session: CallSession }) {
   }, [seatKey, pinKey, toast]);
 
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
+  // A board asked for as the call started (Start a call here) opens for everyone once the call's under way here.
+  useOpenWhenStarted(state.code, session, state.phase === 'in-call', board.open !== null, board.expect, failed);
   /*
    * Turning notes off keeps everything said while they were on and nothing after, like ending the call: capture stops
    * at once, what was recorded and heard until then is sent first, and nothing starts again while the server turns
@@ -880,8 +998,9 @@ function InCall({ session }: { session: CallSession }) {
   };
   useCaptureAlerts(state, controls);
   useNotesAskedNotifications(state);
-  const openPanel = (v: PanelView) => { setPop(null); setPanel(v); };
-  const flip = (v: PanelView) => layout.arrange((p) => toggleView(p, v, phone, crowded));
+  // Whatever brings a panel up gives everything back: nothing else has a place while it's just the document.
+  const openPanel = (v: PanelView) => { setPop(null); work.act.setZen(false); setPanel(v); };
+  const flip = (v: PanelView) => { work.act.setZen(false); layout.arrange((p) => toggleView(p, v, phone, crowded)); };
   /* Notes in the dock stands for what's written from the call: whichever panel shows any of it closes, or Notes opens. */
   const isNotes = (v: PanelView) => v === 'notes' || v === 'yours' || v === 'transcript' || v === 'ask';
   const notesShowing = showing.some(isNotes);
@@ -938,6 +1057,13 @@ function InCall({ session }: { session: CallSession }) {
 
   /* Turning on a device that isn't working opens its menu, which says what's wrong and how to fix it. */
   const pressMic = () => { void media.setMic(!media.getSnapshot().mic).then((ok) => { if (!ok) setPop('mic'); }); };
+  const handLabel = me?.hand ? 'Lower your hand' : roomName && !organizer && !roomsOnBoards ? 'Ask for help' : 'Raise your hand';
+  const flipCaptions = () => {
+    const v = !cc;
+    setCc(v);
+    if (!v && pop === 'cc') setPop(null);
+    toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' });
+  };
   const pressCam = () => { void media.setCam(!media.getSnapshot().cam).then((ok) => { if (!ok) setPop('cam'); }); };
 
   /* ---------- keys ---------- */
@@ -946,15 +1072,50 @@ function InCall({ session }: { session: CallSession }) {
   /** Hides the people, or brings them back, as ⇧P and the People row do. It only ever changes your screen. */
   const setPeopleMode = (m: CallPeopleMode) => {
     if (roomsHold()) return;
+    work.act.setZen(false);
     layout.arrange((p) => setPeople(p, m));
-    if (m !== 'tiles' && !roomy) toast('People stay on the stage until something is shared', { icon: 'eye' });
+    if (m !== 'tiles' && !roomy) toast('People stay on the stage until the workspace is open or something is shared', { icon: 'eye' });
     else onCustom();
   };
   const togglePeople = () => setPeopleMode(panels.people === 'hidden' ? 'tiles' : 'hidden');
-  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own });
-  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own };
+  /* `@` in the workspace: who's here and who's invited. The call changes all the time and these rarely do, and the workspace draws a lot. */
+  const spacePeopleKey = JSON.stringify(told.participants.map((p) => [p.id, p.seat, p.person, p.isMe]));
+  const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
+  const spaceInvitedKey = JSON.stringify(invited);
+  const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
+  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag };
+  const zenOffered = !phone && !stageRooms;
+  const zenOn = zenOffered && work.zen;
+  const latestZen = useRef(zenOn);
+  latestZen.current = zenOn;
+  const toggleZen = useCallback(() => { work.act.setZen(!latestZen.current); }, [work.act]);
+  /** You may start a board: invited, not a guest. In a room it's the room's alone, and the menu says so. */
+  const canStartBoard = state.role !== 'guest' && live;
+  const boardInRoom = myRoomId !== null;
+  /** The Board button and O: with a board open, hides it for you or brings it back; with none, the Board menu. */
+  const pressBoard = () => {
+    if (board.open) {
+      // While you present it, it stays in front of you: `hold` says to stop presenting first.
+      if (!board.hidden && boardPresented.hold) boardPresented.hold();
+      else if (board.hidden) board.show();
+      else board.hide();
+      return;
+    }
+    if (!canStartBoard) return;
+    loadBoard();
+    if (short) setPop((p) => (p === 'board' ? null : 'board'));
+    else setBoardMenu((o) => !o);
+  };
+  const keys = useRef({ panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own, zenOffered, pressBoard });
+  keys.current = { panel, pinned: pinnedHere, unpinAll, setPanel, flip, pressMic, pressCam, togglePeople, own, zenOffered, pressBoard };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Wherever the caret is, this gives you just the document, and everything back.
+      if (withModShift(e) && e.key.toLowerCase() === 'f') { if (keys.current.zenOffered) { e.preventDefault(); toggleZen(); } return; }
+      // Find, from anywhere in the call. With the workspace in sight it's taken this already, and with words selected the editor has.
+      // Behind something it's taking turns with, it comes to the front, so the line Find lands on is one you can see.
+      if (withMod(e) && e.key.toLowerCase() === 'k') { if (!e.defaultPrevented && !overlayOpen()) { e.preventDefault(); work.act.find(); setFront('ws'); } return; }
+      // The call's letters sleep while you're typing, in a field or in a document.
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       const k = e.key.toLowerCase();
       if (k === 'escape') {
@@ -965,6 +1126,8 @@ function InCall({ session }: { session: CallSession }) {
         return;
       }
       if (k === 'p' && e.shiftKey) { e.preventDefault(); keys.current.togglePeople(); return; }
+      if (k === 'w' && !e.shiftKey && !overlayOpen()) { e.preventDefault(); work.act.toggle(); return; }
+      if (k === 'o' && !e.shiftKey && !overlayOpen()) { e.preventDefault(); keys.current.pressBoard(); return; }
       if (k !== 'm' && k !== 'v' && k !== 'c' && !(k === 'b' && keys.current.own.enabled)) return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
@@ -975,7 +1138,24 @@ function InCall({ session }: { session: CallSession }) {
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, []);
+  }, [work.act, toggleZen]);
+
+  /*
+   * The connection: this browser offline, or the call's media finding its way back. It's said at the top of the call while it
+   * lasts, and once it's back, in the workspace's place for what it says, so a document saying its edits are saved says so instead.
+   */
+  const online = useOnline();
+  const down = !online || roomView.connection === 'reconnecting';
+  const wasDown = useRef(false);
+  useEffect(() => {
+    if (down) { wasDown.current = true; return; }
+    if (!wasDown.current || ended) return;
+    wasDown.current = false;
+    work.act.say(wsToast.reconnected());
+  }, [down, ended, work.act]);
+
+  /* What the workspace said last, such as a switch with Back, means nothing once the call's over, and sits over Leave's question. */
+  useEffect(() => { if (ended || leaveOpen) work.act.hush(); }, [ended, leaveOpen, work.act]);
 
   /* ---------- leaving: whoever hosts ends the call for everyone, or leaves it with someone else hosting; anyone else just leaves ---------- */
   /*
@@ -1145,10 +1325,22 @@ function InCall({ session }: { session: CallSession }) {
   const movingBar = crypto.status === 'moving' && (
     <div className="ic-spill" role="status"><Dots /><span className="tx2">{roomName ? <>Moving you to <b>{roomName}</b></> : <>Moving you back to the <b>main room</b></>}</span></div>
   );
-  /* In a room (or the main room while rooms are open): where you are, how long for, and the organizer's message to every room. */
-  const roomBar = open && !organizer && (movingBar || (message ? (
+  /*
+   * The rooms' time on the board, in its one pill: the room you're in, or how many rooms share the main board, and how long is
+   * left. While that's the pill the board on the stage shows, it's said there, and the rooms line above says nothing more. While
+   * the board's pill says something more pressing (how it stands, someone presenting, a vote, following, the timer), the line
+   * says it: the board hands up which kind it shows (`BoardPills`).
+   */
+  const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
+  const [boardPill, setBoardPill] = useState<PillKind | null>(null);
+  const pillSaysRooms = board.shown && ended === null && !leaving && !stageRooms && (boardPill === 'room' || boardPill === 'closing');
+  /*
+   * In a room (or the main room while rooms are open): where you are and how long for. In rooms without boards, the organizer's
+   * message to every room shows here for a moment; with boards it's a toast.
+   */
+  const roomBar = open && !organizer && (movingBar || (message && !roomsOnBoards ? (
     <div className="ic-banner">{organizerPerson && <Avatar person={organizerPerson} size={24} />}<span><b>{organizerPerson ? callName(organizerPerson) : 'The organizer'}</b> to all rooms: {message.text}</span></div>
-  ) : (
+  ) : !pillSaysRooms && (
     <div className="ic-spill"><Icon name={left <= 30 ? 'timer' : 'door'} size={15} />
       <span className="tx2">{left <= 30 ? <>Rooms close in <b>{mmss(left)}</b>. Everyone comes back to the main room.</> : <>You’re in <b>{roomName ?? 'the main room'}</b> · everyone comes back in {mmss(left)}</>}</span>
     </div>
@@ -1172,6 +1364,17 @@ function InCall({ session }: { session: CallSession }) {
     };
   });
   const justYou = organizer && others.length === 0 && !open && team.data !== undefined && !ringable(team.data, me?.person).length;
+  /**
+   * On your own, the link for anyone to ask to join: at the bottom left of the stage, or at the foot of the workspace's list
+   * while that's in sight, where it covers nothing (`WorkspaceCall.foot`). One element while it's the same, so the workspace
+   * doesn't draw again for it.
+   */
+  const aloneCard = useMemo(() => (justYou && !cc ? (
+    <div className="rg-alone">
+      <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
+      <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
+    </div>
+  ) : null), [justYou, cc, state.code]);
   const alone = others.length === 0 && !open && !justYou && !waiting.length && !(organizer && team.isPending) && (
     <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
@@ -1191,8 +1394,10 @@ function InCall({ session }: { session: CallSession }) {
   );
   /* While someone stands in for the organizer, everyone sees who; whoever it is can bring everyone back from the rooms. */
   const hostPill = state.host.standIn && live && <HostSpill state={state} onBringBack={open && hosting ? () => { session.closeRooms(); toast('Everyone is coming back to the main room', { icon: 'door' }); } : undefined} />;
+  // Built only from what's there, so with nothing to say over the call there's no empty band above it.
   const bar = open
-    ? (organizer ? (soundPill || camsPill ? <>{soundPill}{camsPill}</> : null) : <>{soundPill}{camsPill}{hostPill}{roomBar}{sharePill}</>)
+    ? (organizer ? (soundPill || camsPill ? <>{soundPill}{camsPill}</> : null)
+      : [soundPill, camsPill, hostPill, roomBar, sharePill].some(Boolean) ? <>{soundPill}{camsPill}{hostPill}{roomBar}{sharePill}</> : null)
     : (m.screen || spotlight || alone || soundPill || movingBar || camsPill || hostPill) ? (
       <>
         {soundPill}
@@ -1238,19 +1443,94 @@ function InCall({ session }: { session: CallSession }) {
   const [resizing, setResizing] = useState(false);
   const [front, setFront] = useState<Leaf | null>(null);
   const setApart = panels.apart || panels.people !== 'tiles';
-  const surfaces = { ws: false, board: false };
-  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: false, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
+  /*
+   * Once the call is over for this tab (it ended, or you're leaving), the workspace goes at once: its streams close and it stops
+   * saying where you are, while the sheet says what happened.
+   */
+  const callOver = ended !== null || leaving;
+  // Overseeing rooms, the organizer sees the rooms: the main room's board waits behind them, as it is.
+  const surfaces = { ws: work.open && !callOver, board: board.shown && !callOver && !stageRooms };
+  const zenBox = zenOn ? zenRoom(size, horizon) : null;
+  const noFacts: PanelFacts = { ...surfaces, shown: [], front, phone, zen: zenBox, rooms: !!stageRooms, top: 0, bottom: 0, absent: own.enabled ? [] : ['yours'] };
   const stageW = solve(panels, size, noFacts).rects.stage?.w ?? size.w;
   // A stage that holds the shares has its own width to fit them in; panels of their own find their room with `adapt`.
   const stageHolds = !surfaces.ws && !surfaces.board && !(setApart && shares.length > 0);
-  const staged = useStagePlan({ people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, apart: setApart && !stageRooms });
+  const staged = useStagePlan({
+    people: onStage, waiting, shares, spotlight, view: layout, part: crypto.place, paused: mode === 'paused', narrow: phone || (stageHolds && stageW > 0 && stageW < 760), hold: surfaces.ws || surfaces.board, turns: phone, apart: setApart && !stageRooms,
+    board: board.hidden && board.open !== null && board.open.role !== null && board.doc !== null && !callOver
+  });
   const seats = staged.shareSeats;
+  // The stage's speaker is never you: it says who to make room for. The end of the transcript says who's talking.
+  const talking = onStage.find((p) => p.id === staged.speaker) ?? onStage.find((p) => p.isMe && p.speaking);
+  const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
+    // A list over the page goes, or it would cover what the panel opens beside.
+    notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); layout.arrange((p) => showView(p, v)); },
+    reveal: () => { work.act.reveal(); if (phone) layout.arrange(closeAll); }, covered: () => phone && showing.length > 0
+  });
+  const bigKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
+  const chosenKey = layout.layout.shares.filter((c) => c.show === 'big').map((c) => c.id).join(' ');
+  const chosenBig = new Set(chosenKey ? chosenKey.split(' ') : []);
+  const wasBig = useRef(new Set(seats.keys()));
+  useEffect(() => {
+    const here = new Set(shareKey ? shareKey.split(' ') : []);
+    const big = new Map(bigKey ? bigKey.split(' ').flatMap((kv): [string, ShareLeaf][] => { const [id, s] = kv.split('='); return id && (s === 'share:1' || s === 'share:2') ? [[id, s]] : []; }) : []);
+    for (const [id, close] of offers.current) if (big.has(id) || !here.has(id)) { close(); offers.current.delete(id); }
+    // With the workspace open, a share you brought in is the one you asked to see when things take turns. One a phone seats by
+    // itself waits behind what you're looking at, for the switcher.
+    if (surfaces.ws) for (const [id, seat] of big) if (!wasBig.current.has(id) && chosenBig.has(id)) setFront(seat);
+    wasBig.current = new Set(big.keys());
+  }, [bigKey, shareKey, surfaces.ws, chosenKey]);
   const roomy = surfaces.ws || surfaces.board || seats.size > 0;
   const seatsKey = [...seats].map(([id, s]) => `${id}=${s}`).join(' ');
   const top = bar ? 46 : 0;
   const bottom = capNode ? (stageW < 700 ? 150 : 124) : 0;
   const facts: PanelFacts = { ...noFacts, shown: [...seats.values()], top, bottom };
-  const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom]);
+  /*
+   * The board beside a share shown big, for your view only. With nothing arranged by hand, it takes the main space, and the share
+   * goes to the top of the column with everyone under it: the panels' board preset, given back as the board goes. Pressing the
+   * share swaps them, so the share is big and the board a live tile over the faces; pressing the board swaps them back.
+   */
+  const besideShare = surfaces.board && seats.size > 0;
+  const boardCompact = besideShare && boardOverPeople(panels.tree);
+  const beforeBoard = useRef<CallPanels | null>(null);
+  const swappedWith = useRef<ShareLeaf | null>(null);
+  const swapBoard = (seat: ShareLeaf) => { swappedWith.current = seat; layout.arrange((p) => moveLeaf(p, 'board', seat, 'swap', size, facts)); };
+  const boardBack = () => {
+    const seat = swappedWith.current ?? 'share:1';
+    swappedWith.current = null;
+    layout.arrange((p) => (boardOverPeople(p.tree) ? moveLeaf(p, 'board', seat, 'swap', size, facts) : p));
+  };
+  useEffect(() => {
+    if (besideShare && presetOf(panels) === 'beside') {
+      beforeBoard.current = panels;
+      layout.arrange((p) => layoutPreset(p, 'board'));
+    } else if (!surfaces.board && beforeBoard.current) {
+      const was = beforeBoard.current;
+      beforeBoard.current = null;
+      swappedWith.current = null;
+      layout.arrange((p) => ({ ...p, tree: was.tree, apart: was.apart }));
+    }
+    // A share that stops while the board is a tile over the faces leaves nothing big: the board comes back.
+    if (surfaces.board && seats.size === 0 && swappedWith.current) boardBack();
+  }, [besideShare, surfaces.board, seats.size]);
+  /* Put on the board: a picture of a share as this browser shows it, into the board's own files, and whoever shares it is told. */
+  const putShot = (s: StageShare) => {
+    const open = board.open;
+    if (!open?.workspaceId || !open.documentId || open.role !== 'edit') return;
+    const { workspaceId, documentId } = open;
+    const whose = s.mine ? callName(me?.person ?? SOMEONE) : callName(s.presenter);
+    const caption = `${whose}’s screen, ${hm(new Date())}`;
+    const look = s.mine ? null : staged.looks.look(s.id);
+    keepShot({ workspaceId, documentId, pass: session.ticket.pass }, s.id, look?.getSnapshot().held?.ready ? look.heldBitmap() : null, caption).then((media) => {
+      if (!media) { toast(`There’s no picture of ${s.mine ? 'your screen' : `${whose}’s screen`} yet. Try again in a moment.`, { icon: 'image' }); return; }
+      if (!board.handle.current?.addShot({ media, caption })) return;
+      if (s.mine) { toast('A picture of your screen is on the board.', { icon: 'image' }); return; }
+      if (s.point) room.send(BOARD_SHOT_TOPIC, shotNotice(s.point.sid), { reliable: true });
+      toast(`A picture of ${whose}’s screen is on the board. ${whose} can see that.`, { icon: 'image' });
+    }).catch(failed);
+  };
+  const zenKey = zenBox ? `${zenBox.x} ${zenBox.y} ${zenBox.w} ${zenBox.h}` : '';
+  const solved = useMemo(() => solve(panels, size, facts), [panels, size, surfaces.ws, surfaces.board, seatsKey, front, phone, !!stageRooms, top, bottom, zenKey]);
   useLayoutEffect(() => {
     const now = crowdedOut(panels, solved);
     setCrowded((was) => (was.join() === now.join() ? was : now));
@@ -1261,11 +1541,13 @@ function InCall({ session }: { session: CallSession }) {
     const { A, rects } = solved;
     const shown = new Map([...seats].flatMap(([id, s]) => { const r = rects[s]; return r ? [[id, r] as const] : []; }));
     return {
-      box: A.apart ? { x: 0, y: 0, w: size.w, h: size.h } : rects.stage ?? solved.box, top, bottom, ratio: layout.prefs.ratio, split: layout.layout.split,
-      panels: A.apart ? { shares: shown, people: rects.people ?? null, mode: A.people, horizon, loud: new Set(loudKey.split(' ')), small: A.phone } : null
+      box: A.apart ? zenBox ?? { x: 0, y: 0, w: size.w, h: size.h } : rects.stage ?? solved.box, top, bottom, ratio: layout.prefs.ratio, split: layout.layout.split,
+      panels: A.apart ? { shares: shown, people: rects.people ?? null, mode: A.people, horizon, loud: new Set(loudKey.split(' ')), small: A.phone, sharesLast: surfaces.ws } : null
     };
-  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey]);
+  }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey, zenKey, surfaces.ws]);
   const clear = mainRoom(solved);
+  /** The workspace is open and in sight. What's clear starts at its left, so its list has the bottom left of it. */
+  const wsInSight = work.open && !!solved.rects.ws;
   /** What a panel is called, on its handle and for the keyboard. */
   const panelName = (leaf: Leaf): string => {
     if (leaf === 'people') return 'People';
@@ -1279,30 +1561,33 @@ function InCall({ session }: { session: CallSession }) {
   /* When there isn't room for all of it, what's shown big takes turns, and the top bar says which is showing. */
   const turns = solved.A.tabs ? [...(facts.ws ? [{ id: 'ws' as const, name: 'Document' }] : []), ...(facts.board ? [{ id: 'board' as const, name: 'Board' }] : []),
     ...[...seats].map(([id, s]) => ({ id: s, name: shares.find((x) => x.id === id)?.name ?? 'Shared screen' }))] : [];
+  /* On a phone an open panel covers what's taking turns, so choosing one puts the panel away. */
+  const covered = phone && panel !== null;
   const swap = turns.length > 1 && (
     <div className="ic-swap" role="group" aria-label="What’s showing">
-      {turns.map((t) => <button key={t.id} type="button" aria-pressed={solved.A.front === t.id} onClick={() => setFront(t.id)}>{t.name}</button>)}
+      {turns.map((t) => <button key={t.id} type="button" aria-pressed={!covered && solved.A.front === t.id} onClick={() => { setFront(t.id); if (covered) layout.arrange(closeAll); }}>{t.name}</button>)}
     </div>
   );
   const ALL_TABS = CallPanelTabSchema.options;
   const roomsPanel = () => (open && me && activity
     ? <RoomsLive open={open} elapsed={state.elapsed} members={open.rooms.map((r) => r.members.flatMap((id) => { const p = byId.get(id); return p ? [p] : []; }))}
       people={byId} activity={activity} me={me.person} onJoin={visit} onRename={renameRoom} onMove={moveTo} onMessage={(t) => session.messageRooms(t)} onClose={() => session.closeRooms()} />
-    : <RoomsSetup people={candidates} guests={guestsHere} onOpen={openRooms} />);
+    : <RoomsSetup people={candidates} guests={guestsHere} boardName={state.board.open?.name ?? null} onOpen={openRooms} />);
   const panelBody = (v: PanelView) => {
     switch (v) {
-      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)}
-        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { session.tickFollowUp(id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
+      case 'notes': return <NotesView state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)} put={put}
+        onPage={() => { work.act.reveal(); work.act.go({ kind: 'live', page: 'notes' }); }}
+        controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open} onTick={(id, done) => { tickEverywhere(session, id, done).catch(failed); }} onTranscript={() => openPanel('transcript')} />;
       case 'yours': return <YoursView own={own} state={state} me={me?.person.email} onOpen={cu.open} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
-        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} />;
+        : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} put={put} />;
       case 'ask': return <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={drafts.current.ask} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
       case 'chat': return <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'}
         here={open ? roomName ?? 'the main room' : null} placeName={placeName} who={personOf} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} />;
-      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes}
+      case 'people': return <PeopleView here={panelPeople} invited={invited} asking={hosting ? state.waiting : []} invites={organizer} ringing={rung} host={host} foot={privacyLine} volumes={volumes} together={together}
         canRing={(p) => team.data?.members.some((x) => x.onAlcove && sameEmail(x.person, p)) ?? false} onRing={organizer && live ? ring : undefined} onStopRing={organizer && live ? stopRing : undefined}
         notesAsks={organizer && !on && state.capture.requests.length > 0 ? <NotesAsks state={state} controls={controls} decline={(id) => session.declineNotes(id)} after={state.waiting.length > 0} /> : undefined} />;
       case 'rooms': return roomsPanel();
@@ -1315,6 +1600,132 @@ function InCall({ session }: { session: CallSession }) {
     </SidePanel>
   );
   const pickLayout = (l: PanelPreset) => { if (!roomsHold()) { layout.arrange((p) => layoutPreset(p, l)); onCustom(); } };
+  /* The list's button: a list that gave way for want of room comes over the page for now. One you put away comes back. */
+  const listGaveWay = panels.list && !solved.A.list;
+  const turnList = () => {
+    if (listGaveWay) { work.act.setPeek((on) => !on); return; }
+    work.act.setPeek(false);
+    layout.arrange((p) => setList(p, !p.list));
+    onCustom();
+  };
+  const listTurn = useRef(turnList);
+  listTurn.current = turnList;
+  const toggleList = useCallback(() => { listTurn.current(); }, []);
+  /*
+   * What needs the list, such as naming a folder, shows it and never hides it: one that gave way comes over the page, and one
+   * you put away comes back, or over the page in a window with no room for it.
+   */
+  const showList = () => {
+    if (solved.A.list) return;
+    if (panels.list) { work.act.setPeek(true); return; }
+    const back = setList(panels, true);
+    layout.arrange((p) => setList(p, true));
+    onCustom();
+    if (!solve(back, size, facts).A.list) work.act.setPeek(true);
+  };
+  const listShow = useRef(showList);
+  listShow.current = showList;
+  const onShowList = useCallback(() => { listShow.current(); }, []);
+
+  /* ---------- the board, as the panels, the stage and the dock show it ---------- */
+  const boardOpen = board.open;
+  const boardWhere = boardOpen?.workspaceId ? spaceName(boardOpen.workspaceId) : null;
+  const viewOnly = boardOpen?.role === 'read';
+  /** A room's own board: only the people in the room see it, until rooms close. On the board every room shares, you're on the main board. */
+  const roomsOwn = boardOpen !== null && roomName !== null && boardOpen.frame === null;
+  const sealed = boardOpen?.seal ?? 'Sealed';
+  /*
+   * How the board stands, in its page's words (features/board/standing.ts): its seal, what that says on hover and pressed, and
+   * Reconnecting and Couldn't save in its pill, with Try again. While all's well, the seal says what's true of it in this call.
+   */
+  const boardChanges = useChangesSinceSaved(board.doc, boardStatus);
+  const boardStanding = standingOf({
+    status: boardStatus, offline: boardStatus !== null && (boardStatus.status === 'offline' || (!online && boardStatus.status !== 'failed')), readOnly: viewOnly,
+    changes: boardChanges, tryAgain: board.tryAgain, kept: boardWhere ? { icon: 'lock', text: `Saved in ${boardWhere}.` } : null,
+    sealed: {
+      seal: sealed, title: `${sealed}. Alcove can’t read this board.`,
+      rows: roomsOwn ? [
+        { icon: 'lock', text: `Only the people in ${roomName} can see this board.` },
+        { icon: 'door', text: 'When rooms close it comes back to the main room, and everyone in the call sees it.' },
+        { icon: 'sealed', text: 'Alcove can’t read it, then or later.' }
+      ] : [
+        ...(boardOpen?.everyone ? [{ icon: 'lock' as const, text: boardWhere ? `Everyone in this call can add to it. Saved in ${boardWhere}.` : 'Everyone in this call can add to it.' }]
+          : boardWhere ? [{ icon: 'lock' as const, text: `Saved in ${boardWhere}.` }] : []),
+        ...(on ? [{ icon: 'notes' as const, text: 'The notes read it in confidential compute.' }] : []),
+        UNREAD
+      ]
+    }
+  });
+  /** Where a board is kept: the workspace everyone's viewing comes up in the call, and any other opens in a tab of its own. */
+  const openSaved = (workspaceId: string) => {
+    if (workspaceId === space.id) { work.act.setZen(false); work.act.wantList(); return; }
+    window.open(`/drive/${encodeURIComponent(workspaceId)}`, '_blank', 'noopener');
+  };
+  /*
+   * Something the board links to opens as its workspace does: in the call when everyone's viewing that workspace, and in a tab of
+   * its own for an account anywhere else. A guest has nowhere else to open it.
+   */
+  const linkedIn = boardOpen?.workspaceId ?? null;
+  const linkHere = linkedIn !== null && linkedIn === space.id;
+  const linkOpens = linkedIn !== null && (linkHere || state.role !== 'guest');
+  const openLinked = useMemo(() => (linkedIn && linkOpens ? (item: string) => {
+    if (linkHere) { work.act.setZen(false); work.act.openAt({ kind: 'document', id: item }); return; }
+    window.open(`/drive/${encodeURIComponent(linkedIn)}/${encodeURIComponent(item)}`, '_blank', 'noopener');
+  } : undefined), [linkedIn, linkOpens, linkHere, work.act]);
+  /** The board's own address, which opens it for whoever can open it. */
+  const boardLink = linkedIn && boardOpen?.documentId ? `${location.origin}/drive/${encodeURIComponent(linkedIn)}/${encodeURIComponent(boardOpen.documentId)}` : undefined;
+  const boardNames: BoardNameMenu = (() => {
+    if (!boardOpen?.workspaceId || !boardOpen.documentId) return {};
+    const { workspaceId, documentId } = boardOpen;
+    return {
+      rename: boardOpen.role === 'edit' ? (name: string) => renameBoard.mutateAsync({ workspaceId, id: documentId, name }).catch((e: unknown) => { failed(e); throw e; }) : undefined,
+      saved: boardWhere ? { name: boardWhere, onOpen: () => openSaved(workspaceId) } : undefined,
+      // As the call says now, and as the workspace has it: someone the board's become read-only to has no Share.
+      share: boardOpen.role === 'edit' && boardItem && boardItem.id === documentId && boardItem.role === 'edit' && boardItem.trashedAt === null
+        ? () => <ShareSheetFor workspaceId={workspaceId} item={{ ...boardItem, name: boardOpen.name ?? boardItem.name }} say={work.act.say} pass={session.ticket.pass} />
+        : undefined,
+      // The keys go to the dock's Board button, before the board sinks away from under them: on a phone, to More, where Board is.
+      close: boardOpen.canClose ? () => {
+        const dock = dockBar.current;
+        (dock?.querySelector<HTMLElement>('.d-board') ?? dock?.querySelector<HTMLElement>('button[aria-label^="More"]'))?.focus({ preventScroll: true });
+        session.closeBoard().catch(failed);
+      } : undefined
+    };
+  })();
+  const openerName = board.opener ? callName(board.opener) : null;
+  const boardOwner = { person: board.opener ?? me?.person ?? SOMEONE, name: boardOpen?.openedBy === meId ? 'Your board' : openerName ? `${openerName}’s board` : boardOpen?.name ?? 'The board' };
+  /** Asking whoever brought a board you can't open to let you in: in the call's chat, where they'll see it, as you'd ask them yourself. */
+  const askBoard = openerName && boardOpen?.openedBy !== meId ? () => {
+    session.sendChat(`${openerName}, could you let me into the board?`).then(() => toast(`Asked ${openerName} in the chat.`, { icon: 'chat' }), failed);
+  } : undefined;
+  /** What the board says to you, with its own icon: what you were typing in going, a trash can. Following says its own, with an eye. */
+  const sayBoard = (text: string, icon: IconName) => { toast(text, { icon }); };
+  /*
+   * Presenting: what's presented where you are, drawn over your own page or worked on beside it (presenting.ts), or, for the
+   * board open here, on the board itself, a frame at a time (boardPresenting.ts).
+   */
+  const presenting = usePresenting({
+    session, present: space.present, participants: state.participants, open: work.open, inSight: wsInSight,
+    show: work.act.show, hide: work.act.hide, go: work.act.go, say: work.act.say, failed: work.act.failed
+  });
+  const boardPresented = useBoardPresenting({
+    session, presenting, board, account: (account.data?.ownerId ?? null) !== null, failed, notesFailed: (message) => work.act.say(wsToast.failed(message)),
+    refuse: (text) => toast(text, { icon: 'x' })
+  });
+  /** On a board being presented, the frame is everyone's: nobody goes to or follows anyone on it until they look around. */
+  const boardOnFrame = boardPresented.present !== null && (boardPresented.present.mine || boardPresented.present.watching);
+  const stageBoard: StageBoard | null = boardOpen && !callOver ? {
+    tile: board.hidden && board.doc ? (w, h) => <BoardTileOnStage board={board} width={w} height={h} theme={theme} owner={boardOwner} onOpen={board.show} /> : null,
+    find: (p) => (board.shown && !boardCompact && !boardOnFrame && !p.isMe && board.onBoard.has(p.id)
+      ? { goTo: () => board.goTo(p.id), follow: { on: board.following === p.id, toggle: () => board.follow(board.following === p.id ? null : p.id) } } : undefined),
+    swap: besideShare && !boardCompact ? boardPresented.hold ?? swapBoard : null,
+    put: boardOpen.role === 'edit' && board.doc ? putShot : null
+  } : null;
+
+  /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
+  const player = useSharedVideo(session, !ended, work.act.failed);
+  const startPlaying = useCallback((documentId: string, mediaId: string) => { session.startPlaying(documentId, mediaId, 0).catch(work.act.failed); }, [session, work.act]);
+  const playing = useWorkspacePlaying(player, startPlaying);
 
   if (moving.moved) {
     const leaveFor = (to: 'join' | 'home') => {
@@ -1326,25 +1737,37 @@ function InCall({ session }: { session: CallSession }) {
 
   return (
     <div className="stage ac-stage">
-      <div className={cn('ic-call', ended && 'is-ended')}>
+      <div className={cn('ic-call', ended && 'is-ended', zenOn && 'is-zen')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
-          asking={hosting ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
+          asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
           swap={!phone && swap}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom} layout={presetOf(panels)} people={panels.people} list={facts.ws ? panels.list : null}
               roomy={roomy} phone={phone} onMode={(m) => { if (!roomsHold()) layout.setMode(m); }} onSelf={(where) => { if (!roomsHold()) setSelf(where); }} onReset={resetView} onPreset={applyPreset}
-              onLayout={pickLayout} onPeople={setPeopleMode} onList={(on) => layout.arrange((p) => setList(p, on))} />
+              onLayout={pickLayout} onPeople={setPeopleMode} onList={(on) => layout.arrange((p) => setList(p, on))} onZen={zenOffered ? toggleZen : undefined} />
           )}
           onReset={resetView} onCatchUp={catchUp} onPeople={() => flip('people')} />
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
+          board={board.drawn && !callOver ? (r) => (
+            <BoardLeaf board={board} compact={boardCompact} width={r.w} height={r.h} seal={boardStanding} menu={boardNames} run={boardRun} theme={theme}
+              pills={{ ...roomsPill, standing: boardStanding.pill && <StandingPill pill={boardStanding.pill} /> }} onPill={setBoardPill}
+              phone={phone} openLinked={openLinked} link={boardLink}
+              owner={boardOwner} opener={board.drawn?.openedBy !== meId ? openerName : null} onAsk={askBoard} onBack={boardBack} onSay={sayBoard} landing={landing}
+              present={boardPresented.present} onPresent={boardPresented.start} />
+          ) : undefined}
+          ws={work.mounted && !callOver ? () => (
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={wsInSight} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
+              listOff={!solved.A.list} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenting={presenting} playing={playing} foot={wsInSight ? aloneCard : null} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+          ) : undefined}
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={resizing} phone={phone} people={onStage} waiting={waiting} shares={shares} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} spotlight={spotlight} view={layout} organizer={hosting}
+                together={together}
                 bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onShareStarted={shareStarted} onShareStopped={shareStopped} onPeopleMode={setPeopleMode} onPickUp={(leaf) => hostHandle.current?.pickUp(leaf)}
-                onGrowShare={facts.ws || facts.board ? (seat) => layout.arrange((p) => growShare(p, seat)) : null} onMorePeople={() => openPanel('people')} />
+                onGrowShare={facts.ws || facts.board ? (seat) => layout.arrange((p) => growShare(p, seat)) : null} onMorePeople={() => openPanel('people')} board={stageBoard} />
               <motion.div className="ic-frame" initial={false} animate={{ left: clear.x, top: clear.y, width: clear.w, height: clear.h }} transition={reduce || resizing ? { duration: 0 } : GLIDE}>
                 {hosting && !showing.includes('people') && state.waiting.length > 0 && (
                   <div className="rg-knocks">
@@ -1358,47 +1781,54 @@ function InCall({ session }: { session: CallSession }) {
                     {state.waiting.length > 2 && <button type="button" className="rg-more" onClick={() => openPanel('people')}><Icon name="people" size={15} />{state.waiting.length - 2} more asking</button>}
                   </div>
                 )}
-                {justYou && !cc && (
-                  <div className="rg-alone">
-                    <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
-                    <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
-                  </div>
-                )}
+                {!wsInSight && aloneCard}
               </motion.div>
             </>
           )} />
+        <PlayTogetherBar player={player} />
         <footer ref={dockBar} className="ic-dockbar">
-          <CallDock>
-            <DockSplit>
+          <CallDock tucked={zenOn}>
+            <DockSplit className="keep">
               <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} onClick={pressMic}
                 tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
               <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
                 onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
             </DockSplit>
-            <DockSplit>
+            <DockSplit className="keep">
               <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} onClick={pressCam}
                 tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
-            <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
-              tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} onClick={() => pickShare()} />
-            <DockButton icon="hand" label={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Ask for help' : 'Raise your hand'} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? 'Raise your hand to ask the organizer for help' : 'Raise your hand'}
-              on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
-            <DockSplit>
-              <DockButton icon="captions" label={cc ? 'Turn off captions' : 'Turn on captions'} tip={`${cc ? 'Turn off captions' : 'Turn on captions'} · the call is still transcribed for notes`} on={cc}
-                onClick={() => { const v = !cc; setCc(v); if (!v && pop === 'cc') setPop(null); toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' }); }} />
-              <Popover open={pop === 'cc'} onOpenChange={(o) => setPop(o ? 'cc' : null)} side="top" align="start" label="Caption language" className="ic-dmenu"
-                anchor={<DockChevron label="Caption language" on={pop === 'cc'} />}>{langMenu}</Popover>
-            </DockSplit>
-            <DockSeparator />
-            {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} className="d-rooms" onClick={() => flip('rooms')} />}
-            {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" className="d-mark" onClick={() => own.mark()} />}
-            <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
-            <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
-            <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label="More"
-              className={pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : 'ic-menu'}
-              anchor={<DockButton icon="more" label="More: catch up, settings" on={pop === 'more' || pop === 'devices' || pop === 'quality'} />}>
+            {!short && (
+              <>
+                <DockButton icon="screen" label={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}
+                  tip={m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing. You can share once one of them stops.` : 'Share a tab, window or screen'} on={!!m.screen} className="d-share" onClick={() => pickShare()} />
+                <BoardButton session={session} board={board} brought={space.documents} spaceName={spaceName} canStart={canStartBoard} inRoom={boardInRoom} open={boardMenu}
+                  onOpenChange={(o) => { setBoardMenu(o); if (o) loadBoard(); }} onToggle={pressBoard} failed={failed} />
+                <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
+                  on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
+                <DockSplit>
+                  <DockButton icon="captions" label={cc ? 'Turn off captions' : 'Turn on captions'} tip={`${cc ? 'Turn off captions' : 'Turn on captions'} · the call is still transcribed for notes`} on={cc} onClick={flipCaptions} />
+                  <Popover open={pop === 'cc'} onOpenChange={(o) => setPop(o ? 'cc' : null)} side="top" align="start" label="Caption language" className="ic-dmenu"
+                    anchor={<DockChevron label="Caption language" on={pop === 'cc'} />}>{langMenu}</Popover>
+                </DockSplit>
+                <DockSeparator />
+                {roomsHere && <DockButton icon="door" label="Breakout rooms" tip="Breakout rooms" on={showing.includes('rooms') || !!open} onClick={() => flip('rooms')} />}
+                {own.enabled && <DockButton icon="bookmark" label="Mark this moment, for you alone" tip="Mark this moment · only you · B" onClick={() => own.mark()} />}
+              </>
+            )}
+            <DockButton icon="folderOpen" label={!work.open && broughtHere > 0 ? `Workspace, ${broughtHere} in this call` : 'Workspace'} tip="Workspace · W" aria-keyshortcuts="W" on={work.open} badge={work.open ? 0 : broughtHere} onClick={work.act.toggle} />
+            {!short && (
+              <>
+                <DockButton icon="notesPen" label="Notes" tip="Notes" on={notesShowing} onClick={flipNotes} />
+                <DockButton icon="chat" label={unread ? `Chat, ${unread} new` : 'Chat'} tip="Chat" on={showing.includes('chat')} badge={unread} onClick={() => flip('chat')} />
+              </>
+            )}
+            <Popover open={pop === 'more' || pop === 'devices' || pop === 'quality' || pop === 'board'} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="end" label={pop === 'board' ? 'Open a board' : 'More'}
+              className={pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : pop === 'board' ? 'bl' : 'ic-menu'}
+              anchor={<DockButton icon="more" label={short ? (unread ? `More: ${unread} new in Chat, notes, settings` : 'More: chat, notes, settings') : 'More: catch up, settings'}
+                on={pop === 'more' || pop === 'devices' || pop === 'quality' || pop === 'board'} badge={short ? unread : 0} />}>
               {pop === 'devices' ? (
                 <>
                   <MicOptions media={media} m={m} devices={devices} live onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
@@ -1407,22 +1837,39 @@ function InCall({ session }: { session: CallSession }) {
                 </>
               ) : pop === 'quality' ? (
                 <VideoQuality media={media} m={m} />
+              ) : pop === 'board' ? (
+                <BoardMoreView session={session} board={board} brought={space.documents} spaceName={spaceName} inRoom={boardInRoom} onDone={() => setPop(null)} failed={failed} />
               ) : (
                 <>
+                  {short && (
+                    <>
+                      <button type="button" className="mi" aria-pressed={showing.includes('chat')} onClick={() => { setPop(null); flip('chat'); }}><Icon name="chat" size={17} /><span className="t">{unread ? `Chat, ${unread} new` : 'Chat'}</span></button>
+                      <button type="button" className="mi" aria-pressed={notesShowing} onClick={() => { setPop(null); flipNotes(); }}><Icon name="notesPen" size={17} /><span className="t">Notes</span></button>
+                      <button type="button" className="mi" aria-pressed={!!me?.hand} onClick={() => { setPop(null); setHand(!me?.hand); }}><Icon name="hand" size={17} /><span className="t">{handLabel}</span></button>
+                      <button type="button" className="mi" aria-pressed={cc} onClick={() => { setPop(null); flipCaptions(); }}><Icon name="captions" size={17} /><span className="t">{cc ? 'Turn off captions' : 'Turn on captions'}</span></button>
+                      <button type="button" className="mi" disabled={!m.screen && full} onClick={() => { setPop(null); pickShare(); }}><Icon name="screen" size={17} /><span className="t">{m.screen ? 'Change what you share' : full ? `${MAX_SHARES} people are sharing` : 'Share a tab, window or screen'}</span></button>
+                      {board.open ? <button type="button" className="mi" aria-pressed={!board.hidden} onClick={() => { setPop(null); pressBoard(); }}><Icon name="presentation" size={17} /><span className="t">{board.hidden ? 'Show the board' : 'Hide the board'}</span><Scope>Only you</Scope></button>
+                        : canStartBoard && <button type="button" className="mi" onClick={pressBoard}><Icon name="presentation" size={17} /><span className="t">Open a board</span></button>}
+                      {roomsHere && <button type="button" className="mi" aria-pressed={showing.includes('rooms') || !!open} onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
+                      {own.enabled && <button type="button" className="mi" onClick={() => { setPop(null); own.mark(); }}><Icon name="bookmark" size={17} /><span className="t">Mark this moment</span><Scope>Only you</Scope></button>}
+                      <div className="ic-msep" />
+                    </>
+                  )}
                   <button type="button" className="mi" onClick={() => { setPop(null); catchUp(); }}><Icon name="history" size={17} /><span className="t">Catch up on what you missed</span></button>
-                  {own.enabled && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); own.mark(); }}><Icon name="bookmark" size={17} /><span className="t">Mark this moment</span><Scope>Only you</Scope></button>}
                   <button type="button" className="mi" onClick={() => setPop('devices')}><Icon name="speaker" size={17} /><span className="t">Audio and video settings</span></button>
                   <button type="button" className="mi" onClick={() => setPop('quality')}><Icon name="sliders" size={17} /><span className="t">Video quality</span></button>
                   <button type="button" className="mi" onClick={() => { setPop(null); moving.show(); }}><Icon name="phone" size={17} /><span className="t">Move to another device</span></button>
-                  {roomsHere && <button type="button" className="mi only-narrow" onClick={() => { setPop(null); flip('rooms'); }}><Icon name="door" size={17} /><span className="t">Breakout rooms</span></button>}
                 </>
               )}
             </Popover>
             <DockSeparator />
-            <DockLeave disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
+            {zenOn && <DockWords icon="shrink" className="keep" onClick={toggleZen}>Show everything</DockWords>}
+            <DockLeave className="keep" disabled={leaving || !!ended} onClick={() => setLeaveOpen(true)}>Leave</DockLeave>
           </CallDock>
         </footer>
       </div>
+      <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act}
+        onChoose={() => { work.act.wantList(); setFront('ws'); if (phone) setPanel(null); onShowList(); }} />
       <SharePicker open={sharePick} onOpenChange={(o) => { setSharePick(o); if (!o) setShareTrouble(null); }} sharing={!!m.screen}
         others={sharing.map((s) => s.presenter)} trouble={shareTrouble} read={sharingInRoom ? undefined : screenRead(state.capture.screen.mode)} onShare={share} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}

@@ -3,28 +3,42 @@
  * call and a panel inside one, the same in both: it takes where it is and says where to go, and whatever holds it keeps the
  * address. See WorkspaceProps in context.ts.
  */
-import { type WorkspaceLive, type WorkspaceTree } from '@alcove/api';
-import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, type WsToastData } from '@alcove/ui';
+import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
+import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
-import { overlayOpen, typing, withMod } from '~/lib/keys';
+import { moveFocusOut, overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
-import { q } from '~/lib/queries';
+import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
+import { BoardPane } from './BoardPane';
 import { useLaidOver } from './changes';
-import { WsContext, type FolderDraft, type Ws, type WorkspaceProps } from './context';
+import { WsContext, type FolderDraft, type OpenPage, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
 import { keptDocuments } from './keep';
 import { KeptHere } from './Rescue';
 import { useRowDrag } from './drag';
 import { preloadEditor } from './editor/lazy';
+import { useFollow } from './follow';
+import { Find, useFindKeys } from './Find';
+import { usePersonIds } from './ids';
+import { Keys } from './Keys';
 import { List } from './List';
-import { placesOf, rememberPlaces } from './places';
+import { LiveHostContext } from './live/host';
+import { LivePage } from './live/LivePage';
+import { useSending } from './live/useSending';
+import { Pictures } from './pictures';
+import { openedIn, placesOf, rememberPlaces } from './places';
+import { othersIn, pageName } from './presence';
+import { Presentation, presentingStrip } from './Presentation';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
+import { onStored, talkThrough } from './uploads';
+import { useWordsFollow } from './words';
 
 const GLOW_MS = 1400;
 const wlog = log.child({ component: 'workspace' });
@@ -79,14 +93,14 @@ function useToasts() {
 }
 
 /** What just arrived in the list or moved in it, for everyone, glows. */
-function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
+function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): ReadonlySet<string> {
   const [glowing, setGlowing] = useState<ReadonlySet<string>>(new Set());
   const before = useRef<Tree | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
   useEffect(() => {
     if (!sent) return;
-    const now = treeOf(sent.items);
+    const now = treeOf(sent.items, mode === 'page');
     const was = before.current;
     before.current = now;
     if (!was) return;
@@ -98,8 +112,41 @@ function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
       setGlowing((on) => new Set([...on].filter((id) => !lit.includes(id))));
     }, GLOW_MS);
     timers.current.add(t);
-  }, [sent]);
+  }, [sent, mode]);
   return glowing;
+}
+
+/** How long a tag's toast stays, and so how long the next one waits. */
+const TAG_MS = 9000;
+
+/**
+ * Being tagged: a toast says who and where, and nothing moves until you say so. One at a time, the oldest first, and only
+ * while someone can see it: what's said in a tab nobody's looking at waits for them.
+ */
+function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[], tree: Tree, at: WorkspacePlace, say: (toast: WsToastData) => void, go: (to: WorkspacePlace) => void) {
+  const qc = useQueryClient();
+  const [turn, setTurn] = useState(0);
+  const busy = useRef(false);
+  const wait = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    const look = () => setTurn((n) => n + 1);
+    document.addEventListener('visibilitychange', look);
+    return () => document.removeEventListener('visibilitychange', look);
+  }, []);
+  useEffect(() => {
+    if (busy.current || document.visibilityState !== 'visible') return;
+    /* A document just shared with you can arrive a moment after the tag: until the list has it, it can't be named. */
+    const next = waiting.find((m) => tree.all.has(m.document));
+    const item = next && tree.all.get(next.document);
+    if (!next || !item) return;
+    void store.seen(next.id).then(() => qc.invalidateQueries({ queryKey: qk.mentions }));
+    /* Already on that line, from a notification say: there's nothing to tell. */
+    if (at.kind === 'document' && at.id === next.document && at.block === next.block) { setTurn((n) => n + 1); return; }
+    busy.current = true;
+    say(wsToast.tagged(next.by, firstName(next.by.name), nameOf(item), () => go({ kind: 'document', id: next.document, block: next.block ?? undefined })));
+    wait.current = setTimeout(() => { busy.current = false; setTurn((n) => n + 1); }, TAG_MS);
+  }, [store, waiting, tree, at, qc, say, go, turn]);
+  useEffect(() => () => clearTimeout(wait.current), []);
 }
 
 /** Which folders are open, remembered in this browser. */
@@ -131,134 +178,271 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
   const { items, change } = useLaidOver(view.tree);
-  const tree = useMemo(() => treeOf(items), [items]);
-  const { toasts, say } = useToasts();
-  const glowing = useGlow(view.tree);
+  const tree = useMemo(() => treeOf(items, mode === 'page'), [items, mode]);
+  const { toasts, say: sayHere } = useToasts();
+  const say = call?.say ?? sayHere;
+  const glowing = useGlow(view.tree, mode);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [blockInto, setBlockInto] = useState<string | null>(null);
-  const [listOff, setListOff] = useState(() => placesOf(owner).listOff);
+  const [ownListOff, setListOff] = useState(() => placesOf(owner).listOff);
+  /* In a call the list is one of the things that give way, so the call says whether it shows. */
+  const listOff = call?.list.off ?? ownListOff;
   const phone = useMedia('(max-width: 640px)');
   const [phoneList, setPhoneList] = useState(at.kind === 'home');
   const justMade = useRef<string | null>(null);
   const openDoc = useRef<Ws['openDoc']['current']>(null);
+  const page = useRef<OpenPage | null>(null);
   /* What the list last called each document, for a copy of someone's words in one that's gone. */
-  const known = useRef(new Map<string, string>());
-  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
+  const known = useRef(new Map<string, { name: string; board: boolean }>());
+  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, { name: nameOf(it), board: it.kind === 'board' }); }, [items]);
+  /* Its pictures, read for whatever shows them and let go of with it; an upload that outlives the page says how it went here. */
+  const pictures = useMemo(() => new Pictures(workspaceId, pass), [workspaceId, pass]);
+  useEffect(() => () => pictures.close(), [pictures]);
+  useEffect(() => talkThrough(workspaceId, say), [workspaceId, say]);
+  const qc = useQueryClient();
+  useEffect(() => onStored((id) => { if (id === workspaceId) void qc.invalidateQueries({ queryKey: qk.workspaceMedia(id) }); }), [qc, workspaceId]);
   const spaceName = view.tree?.name ?? 'Shared with you';
-  /* Going anywhere puts a phone's list away, even to what's already open behind it. */
-  const go = useCallback<WorkspaceProps['onGo']>((to, how) => { setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo]);
+  const others = useMemo(() => othersIn(view.here), [view.here]);
+  const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
+  const { following, follow, stopFollowing } = useFollow({ others, tree, at, goWith, say });
+  /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
+  const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
+  /*
+   * Something outside the workspace needs a document from it, such as someone asking to see it: the one you were last in here,
+   * if you can share it, or else the list to pick one from, on a phone too. Only for each ask after this opened.
+   */
+  const wanted = call?.list.wanted ?? 0;
+  const seenWant = useRef(wanted);
+  const forWant = useRef({ tree, owner, go });
+  forWant.current = { tree, owner, go };
+  useEffect(() => {
+    if (wanted === seenWant.current) return;
+    seenWant.current = wanted;
+    const { tree: t, owner: o, go: to } = forWant.current;
+    const lastId = placesOf(o).documents[workspaceId];
+    const last = lastId === undefined ? undefined : t.all.get(lastId);
+    if (last && last.kind === 'document' && last.role === 'edit' && last.trashedAt === null) to({ kind: 'document', id: last.id });
+    else setPhoneList(true);
+  }, [wanted, workspaceId]);
+  useTagToasts(store, view.mentions, tree, at, say, go);
   const actions = useTreeActions({ workspaceId, pass, owner, tree, at, me, spaceName, change, go, say, openFolders: openAll, justMade, openDoc });
+  /* Everyone a document here may tag, quote or name for a follow-up, by the ID the workspace knows them by. */
+  const member = view.tree?.role != null;
+  const team = useQuery({ ...q.team(), enabled: member }).data;
+  const named = useMemo(() => [...(call?.people ?? []).map((p) => p.person.email), ...(call?.invited ?? []).map((p) => p.email), ...(team?.members ?? []).map((m) => m.person.email)], [call?.people, call?.invited, team]);
+  const ids = usePersonIds(workspaceId, pass, named, member || call !== undefined);
+  const { put, lastDocument } = useSending({
+    live: call?.live, workspaceId, pass, owner, tree, at, member, here: view.here, closed: call?.closed ?? false, go, say, openDoc, ids
+  });
   const role = view.tree?.role ?? null;
   const canChange = role === 'admin' || role === 'edit';
   const documentId = at.kind === 'document' ? at.id : null;
   const item = documentId === null ? undefined : tree.all.get(documentId);
 
+  const toggleInCall = call?.list.onToggle;
   const toggleList = useCallback(() => {
     if (matchMedia('(max-width: 640px)').matches) setPhoneList((on) => !on);
+    else if (toggleInCall) toggleInCall();
     else setListOff((off) => !off);
-  }, []);
-  useEffect(() => { rememberPlaces(owner, (p) => ({ ...p, listOff })); }, [owner, listOff]);
+  }, [toggleInCall]);
+  useEffect(() => { rememberPlaces(owner, (p) => ({ ...p, listOff: ownListOff })); }, [owner, ownListOff]);
 
   /*
    * A phone shows the list until something's open. A screen with room opens what you had open last, once, on arriving:
-   * what someone else makes in the meantime doesn't take you anywhere.
+   * what someone else makes in the meantime doesn't take you anywhere. Someone in a call who was given what they can open
+   * here, and is outside the workspace, lands on it on a phone too: it opens by itself, as they were told it would.
    */
   const empty = view.tree !== null && tree.kids.size === 0;
   useEffect(() => { setPhoneList(at.kind === 'home' && !empty); }, [at.kind, documentId, empty]);
+
   const arrived = useRef(false);
+  const given = call !== undefined && view.tree?.role === null;
   useEffect(() => {
     if (at.kind !== 'home') { arrived.current = false; return; }
-    if (!view.tree || arrived.current || phone) return;
+    if (!view.tree || arrived.current || (phone && !given)) return;
     arrived.current = true;
     const was = placesOf(owner).documents[workspaceId];
     const docs = documentsIn(tree);
     const next = docs.find((d) => d.id === was) ?? docs[0];
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
-  }, [view.tree, at.kind, phone, owner, workspaceId, tree, onGo]);
+  }, [view.tree, at.kind, phone, given, owner, workspaceId, tree, onGo]);
+
+  /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
+  const closed = call?.closed ?? false;
+  const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.page !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
+  const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
+  const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
+  const placed = closed ? [] : others.flatMap((o): [string, string][] => {
+    if (o.callIdentity === null) return [];
+    const doc = o.document === null ? undefined : tree.all.get(o.document);
+    return doc ? [[o.callIdentity, nameOf(doc)]] : o.page ? [[o.callIdentity, pageName(o.page)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
+  });
+  const placedNow = useRef(placed);
+  placedNow.current = placed;
+  const where = JSON.stringify(placed);
+  const reachable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && o.document !== null && tree.all.has(o.document) ? [o.callIdentity] : [])).join(' ');
+  const tellTiles = call?.onTogether;
+  useEffect(() => {
+    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current), reachable: reachable ? reachable.split(' ') : [] });
+  }, [tellTiles, followable, followingIn, writing, where, reachable]);
+  const othersNow = useRef(others);
+  othersNow.current = others;
+  const treeNow = useRef(tree);
+  treeNow.current = tree;
+  const togetherRef = call?.together;
+  useEffect(() => {
+    if (!togetherRef) return;
+    const someone = (connection: string) => othersNow.current.find((x) => x.callIdentity === connection);
+    togetherRef.current = {
+      follow: (connection) => { const o = someone(connection); if (o) follow(o.person.id); },
+      stop: () => stopFollowing(),
+      /* To the line they're on, as Go there on their card does. */
+      go: (connection) => {
+        const o = someone(connection);
+        if (o?.document && treeNow.current.all.has(o.document)) go({ kind: 'document', id: o.document, block: o.block ?? undefined });
+      },
+      tag: (connection) => { const o = someone(connection); if (o) page.current?.tag(o.person); },
+      canTag: () => page.current?.canTag === true
+    };
+    return () => { togetherRef.current = null; };
+  }, [togetherRef, follow, stopFollowing, go]);
+  /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
+  /* Leaving with the call's workspace, it's said: they'd otherwise just stop going with whoever they followed. */
+  const leaving = call?.leaving ?? false;
+  useEffect(() => { if (closed) stopFollowing(leaving ? 'moved' : 'quiet'); }, [closed, leaving, stopFollowing]);
+
+  /*
+   * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
+   * counts as out of sight meanwhile (`closed`): you're following nobody, and nothing under it can be reached.
+   */
+  const watching = call?.presenting.watching ?? false;
+  const reduce = useReducedMotion();
+  /*
+   * Your page goes out of reach under it, and with it whatever had your caret: you land on the document being presented,
+   * where a key does nothing, and the call's letters sleep, since you may be mid-sentence.
+   */
+  const pane = useRef<HTMLElement>(null);
+  const over = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (watching) moveFocusOut(pane.current, over.current?.querySelector<HTMLElement>('.wd-scroll') ?? over.current);
+  }, [watching]);
+
+  /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
+  const livePage = at.kind === 'live' ? at.page : null;
+  useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false, page: closed ? null : livePage }); }, [store, documentId, livePage, closed]);
+  const closedNow = useRef(closed);
+  closedNow.current = closed;
+  const present = useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
 
   /* A document just made is only opening while it's the one open. */
   useEffect(() => { if (justMade.current !== null && justMade.current !== documentId) justMade.current = null; }, [documentId]);
 
   /* What's open stays remembered, and its folders open around it. */
   useEffect(() => {
-    rememberPlaces(owner, (p) => ({ ...p, workspace: workspaceId, documents: documentId ? { ...p.documents, [workspaceId]: documentId } : p.documents }));
+    if (documentId) rememberPlaces(owner, (p) => openedIn(p, workspaceId, documentId));
   }, [owner, workspaceId, documentId]);
   const inFolders = item ? foldersAbove(tree, item.id).map((f) => f.id).join() : '';
   useEffect(() => { if (inFolders) openAll(inFolders.split(',')); }, [inFolders, openAll]);
 
-  /* A folder is named in the list, so the list has to be showing. */
+  /* A folder is named in the list, so the list has to be showing: in a call, wherever the call shows it, and never hidden. */
+  const showInCall = call?.list.onShow;
   const newFolder = useCallback(() => {
     setDraft({ parent: null });
     setPhoneList(true);
-    setListOff(false);
-  }, []);
+    if (showInCall) showInCall();
+    else setListOff(false);
+  }, [showInCall]);
 
   /*
    * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
-   * typed then was meant for its title. ⌘\ shows or hides the list.
+   * typed then was meant for its title. On a board, N is the board's: a sticky, as the blank board says. ⌘\ shows or hides
+   * the list.
    */
+  const onBoard = item?.kind === 'board';
+  const asleep = call?.closed ?? false;
   useEffect(() => {
+    if (asleep) return;
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || onBoard || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
       else actions.newDocument(null);
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, newFolder, toggleList]);
+  }, [actions, canChange, onBoard, newFolder, toggleList, asleep]);
+
+  const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
+  useWordsFollow(workspaceId, pass, view);
 
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
     onOpenFolder: (id) => setOpen(id, true),
-    onDrop: (id, spot) => { if (spot.kind === 'trash') actions.trash(id); else actions.move(id, spot.to); }
+    canBring: call !== undefined,
+    onDrop: (id, spot) => { if (spot.kind === 'trash') actions.trash(id); else if (spot.kind === 'bring') call?.onBring(id, true); else actions.move(id, spot.to); }
   });
 
-  const page = mode === 'page';
-  const closedFor = useClosedFor(view.status === 'closed', owner, page);
+  const isPage = mode === 'page';
+  const closedFor = useClosedFor(view.status === 'closed', owner, isPage);
   if (view.status === 'closed') {
-    if (closedFor === 'asking') return <WsPane page={page} />;
-    const back = <Button size="sm" onClick={onLeave}>Back to your workspaces</Button>;
+    if (closedFor === 'asking') return <WsPane page={isPage} />;
+    const back = <Button size="sm" onClick={onLeave}>{isPage ? 'Back to your workspaces' : 'Back to the call'}</Button>;
     return (
       <>
-        <WsPane page={page}>
-          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
+        <WsPane page={isPage}>
+          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} what={known.current.get(documentId)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
         </WsPane>
-        <WsToasts toasts={toasts} />
+        {!call && <WsToasts toasts={toasts} />}
       </>
     );
   }
-  if (!view.tree) return <WsPane page={page}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
+  if (!view.tree) return <WsPane page={isPage}>{view.status === 'reconnecting' && <WsDoc><WsOfflineEmpty /></WsDoc>}</WsPane>;
 
   const ws: Ws = {
-    mode, workspaceId, pass, call, sent: view.tree, here: view.here, items, tree, at, go, switchTo: onSwitch, owner, me, actions, say, canChange, spaceName,
-    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc
+    mode, workspaceId, pass, call, sent: view.tree, here: view.here, others, present, following, follow, stopFollowing, items, tree, at, go, switchTo: onSwitch, owner, me,
+    self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
+    open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen, ids, following, stopFollowing: () => stopFollowing() } : null;
   return (
     <WsContext value={ws}>
-      <WsPane page={page} listOff={listOff} phoneList={phoneList}>
+     <LiveHostContext value={host}>
+      <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
         <List drags={{ drag, arm, ended }} />
-        {at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
-            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
-            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
-              copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id) ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
+            {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
+            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
+              copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
               back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (
-          <WsDoc className="is-bare">
-            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} />
+          /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
+          <WsDoc className={listOff ? undefined : 'is-bare'}>
+            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
             {empty
-              ? <WsEmpty space={spaceName} page={page} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
+              ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
               : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
           </WsDoc>
         )}
       </WsPane>
-      <WsToasts toasts={toasts} />
+      {/* It comes and goes over 240 ms, and your own page is back underneath as it goes. */}
+      <AnimatePresence>
+        {watching && call && (
+          <motion.div ref={over} tabIndex={-1} key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
+            <Presentation ws={ws} presenting={call.presenting} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {!call && <WsToasts toasts={toasts} />}
+      <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
+      <Keys open={find.listing} onOpenChange={find.setListing} />
       {drag && <WsDragGhost x={drag.x + 12} y={drag.y + 10} icon={drag.icon} label={drag.label} />}
+     </LiveHostContext>
     </WsContext>
   );
 }
@@ -270,7 +454,10 @@ function Live(props: WorkspaceProps) {
   useEffect(() => {
     const live = api.workspaces.live(workspaceId, pass ? { pass } : undefined);
     setStore(live);
-    return () => { live.close(); };
+    /* A page going for good says so, so nobody sees someone here who's gone. One put away to come back to carries on. */
+    const leaving = (e: PageTransitionEvent) => { if (!e.persisted) live.close(); };
+    addEventListener('pagehide', leaving);
+    return () => { removeEventListener('pagehide', leaving); live.close(); };
   }, [workspaceId, pass]);
   useEffect(preloadEditor, []);
   return store ? <Pane {...props} store={store} /> : <WsPane page={props.mode === 'page'} />;

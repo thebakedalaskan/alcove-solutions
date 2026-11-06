@@ -4,12 +4,13 @@
  * nothing and drops the draft; a save that fails stays here with the draft intact. Once a call is scheduled it lives
  * in Home's list and opens its card (Card.tsx) from there.
  */
-import { errorMessage, type Meeting, type MeetingInput, type Person } from '@alcove/api';
-import { Button, FlowFoot, FlowHead, FlowSteps, FlowView, Modal, WayCard, cn, useSmoothHeight, useToast } from '@alcove/ui';
+import { errorMessage, type Document, type Meeting, type MeetingInput, type Person } from '@alcove/api';
+import { Button, FlowFoot, FlowHead, FlowNote, FlowSteps, FlowView, Modal, WayCard, cn, useSmoothHeight, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCopyLink } from '~/features/call/links';
-import { freshCalls, type CallFlow, type StartOptions } from '~/features/shell/context';
+import { openWhenStarted } from '~/features/call/opening';
+import { freshCalls, type BoardToOpen, type CallFlow, type StartOptions } from '~/features/shell/context';
 import { someNames } from '~/lib/people';
 import { q, useCancelCall, useScheduleCall, useStartNow } from '~/lib/queries';
 import { hm, shortDay } from '~/lib/time';
@@ -27,8 +28,11 @@ const VIEWS: readonly View[] = ['choice', 'who', 'when', 'details', 'documents']
 const STEPS = ['Who', 'When', 'Details'] as const;
 const STEP_OF: Record<View, number> = { choice: -1, who: 0, when: 1, details: 2, documents: 2 };
 
-/** What's open: starting a call, with anyone already picked, or one call's card. `n` starts each opening over. */
-type Opened = { n: number; kind: 'start'; people: Person[]; name?: string | undefined; later: boolean } | { n: number; kind: 'card'; meeting: Meeting; onGone?: (() => void) | undefined };
+/**
+ * What's open: starting a call, with anyone already picked and anything it brings, or one call's card. `n` starts each opening
+ * over.
+ */
+type Opened = { n: number; kind: 'start'; people: Person[]; name?: string | undefined; later: boolean; documents: Document[]; board: BoardToOpen | null } | { n: number; kind: 'card'; meeting: Meeting; onGone?: (() => void) | undefined };
 
 /** The call modal's state, for the shell to keep and share. */
 export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open: boolean; close: () => void } {
@@ -39,7 +43,11 @@ export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open
   useQuery(q.team());
   useQuery(q.prefs());
   const flow = useMemo<CallFlow>(() => ({
-    start: (o: StartOptions = {}) => { n.current += 1; setOpened({ n: n.current, kind: 'start', people: o.people ?? [], name: o.name, later: o.later === true }); setOpen(true); },
+    start: (o: StartOptions = {}) => {
+      n.current += 1;
+      setOpened({ n: n.current, kind: 'start', people: o.people ?? [], name: o.name, later: o.later === true, documents: o.documents ?? [], board: o.open ?? null });
+      setOpen(true);
+    },
     open: (meeting, o = {}) => { n.current += 1; setOpened({ n: n.current, kind: 'card', meeting, onGone: o.onGone }); setOpen(true); }
   }), []);
   return { flow, opened, open, close: useCallback(() => setOpen(false), []) };
@@ -49,11 +57,13 @@ export function useCallFlowHost(): { flow: CallFlow; opened: Opened | null; open
 export function CallFlowHost({ opened, open, close }: { opened: Opened | null; open: boolean; close: () => void }) {
   if (!opened) return null;
   return opened.kind === 'start'
-    ? <StartFlow key={opened.n} open={open} onClose={close} people={opened.people} name={opened.name} later={opened.later} />
+    ? <StartFlow key={opened.n} open={open} onClose={close} people={opened.people} name={opened.name} later={opened.later} documents={opened.documents} board={opened.board} />
     : <CallCard key={opened.n} open={open} onClose={close} meeting={opened.meeting} onGone={opened.onGone} />;
 }
 
-function StartFlow({ open, onClose, people, name, later }: { open: boolean; onClose: () => void; people: Person[]; name: string | undefined; later: boolean }) {
+function StartFlow({ open, onClose, people, name, later, documents, board }: {
+  open: boolean; onClose: () => void; people: Person[]; name: string | undefined; later: boolean; documents: Document[]; board: BoardToOpen | null;
+}) {
   const session = useQuery(q.session()).data;
   const team = useQuery(q.team()).data;
   const prefs = useQuery(q.prefs()).data;
@@ -63,7 +73,7 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
   const toast = useToast();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const me = session?.user.email;
-  const [draft, setDraft] = useState<Draft>(() => newDraft(prefs, { people, name }));
+  const [draft, setDraft] = useState<Draft>(() => newDraft(prefs, { people, name, documents }));
   /* With anyone else picked there's no Who to ask: scheduling goes straight to finding a time with them, and Back still reaches it. */
   const scheduleFrom = (tokens: Draft['tokens']): View => (guestsOf(tokens, me).length ? 'when' : 'who');
   const [view, setView] = useState<View>(() => (later ? scheduleFrom(draft.tokens) : 'choice'));
@@ -102,7 +112,7 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
     <Modal ref={setBox} open={open} onOpenChange={(o) => { if (!o) onClose(); }} label={label} className={cn('cf-modal', widened && 'is-wide')}>
       <FlowView>
         {view === 'choice'
-          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} onClose={onClose} onLater={() => go(scheduleFrom(draft.tokens))} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
+          ? <Choice people={guestsOf(draft.tokens, me)} name={name} team={!!team} documents={draft.documents} board={board} onClose={onClose} onLater={() => go(scheduleFrom(draft.tokens))} toast={(e) => toast(errorMessage(e), { icon: 'x' })} />
           : <FlowSteps steps={STEPS} at={STEP_OF[view]} busy={schedule.isPending} onBack={previous} onClose={onClose} />}
         {view !== 'choice' && <p className="sr-only" role="status">{`Step ${STEP_OF[view] + 1} of ${STEPS.length}: ${STEPS[STEP_OF[view]] ?? ''}`}</p>}
         {view === 'who' && (
@@ -129,8 +139,13 @@ function StartFlow({ open, onClose, people, name, later }: { open: boolean; onCl
   );
 }
 
-/** Now or later. Enter starts now and S schedules, unless focus has gone to something else that takes them. */
-function Choice({ people, name, team, onClose, onLater, toast }: { people: Person[]; name: string | undefined; team: boolean; onClose: () => void; onLater: () => void; toast: (e: unknown) => void }) {
+/**
+ * Now or later. Enter starts now and S schedules, unless focus has gone to something else that takes them. What the call brings
+ * comes either way; `board`, one of them, opens for everyone when a call started now is under way.
+ */
+function Choice({ people, name, team, documents, board, onClose, onLater, toast }: {
+  people: Person[]; name: string | undefined; team: boolean; documents: readonly Document[]; board: BoardToOpen | null; onClose: () => void; onLater: () => void; toast: (e: unknown) => void;
+}) {
   const startNow = useStartNow();
   const { go, flood } = useFloodToCall();
   const now = useRef<HTMLButtonElement>(null);
@@ -138,7 +153,11 @@ function Choice({ people, name, team, onClose, onLater, toast }: { people: Perso
   const start = (card: Element | null) => {
     if (starting.current) return;
     starting.current = true;
-    go(card, async () => (await startNow.mutateAsync(people.length ? { guests: people.map((p) => p.email) } : {})).code)
+    go(card, async () => {
+      const { code } = await startNow.mutateAsync({ ...(people.length ? { guests: people.map((p) => p.email) } : {}), ...(documents.length ? { documents: documents.map((d) => d.id) } : {}) });
+      if (board) openWhenStarted(code, board);
+      return code;
+    })
       .catch(toast)
       .finally(() => { starting.current = false; });
   };
@@ -159,6 +178,7 @@ function Choice({ people, name, team, onClose, onLater, toast }: { people: Perso
         <WayCard ref={now} art="now" title="Start now" kbd="↵" autoFocus aria-keyshortcuts="Enter" onClick={(e) => start(e.currentTarget)}>{team ? 'Ring your team in, or share a link.' : 'Get a link to send to anyone.'}</WayCard>
         <WayCard art="later" title="Schedule for later" kbd="S" aria-keyshortcuts="S" onClick={onLater}>{team ? 'Find a time that works for everyone.' : 'Pick a time and invite people.'}</WayCard>
       </div>
+      {board && <FlowNote tone="info" icon="stickyNote">{board.name || 'Untitled board'} comes with this call. Start now and it opens for everyone.</FlowNote>}
       {flood}
     </>
   );

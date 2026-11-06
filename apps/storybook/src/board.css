@@ -1,0 +1,27 @@
+/*
+ * The board stories' own frames (`sbb-`): the space the call gives its main thing, on the stage, and a board's own page.
+ * The board fills whatever it's given, so each frame says how much that is.
+ */
+
+/* The call's space on a laptop, with the stage round it. */
+.sbb-call { position: relative; width: min(100%, 1180px); height: min(calc(100vh - 80px), 740px); }
+/* On a phone, the space between the faces and the dock. */
+.sbb-call.is-phone { width: 100%; height: calc(100vh - 80px); }
+
+/* A board's own page fills the window. */
+.sbb-page { height: 100vh; }
+
+/* A live tile, the size the call's grid gives one beside three faces. */
+.sbb-tile { display: grid; width: min(100%, 560px); aspect-ratio: 16 / 10; }
+
+/* The kit on a sheet of its own: a story's piece of board, at the size the story gives it. */
+.sbb-sheet { position: relative; width: min(100%, var(--sbb-w, 720px)); height: var(--sbb-h, 420px); }
+
+/* A phone's screen: the board fills it, and what rises from the bottom rises over all of it. */
+.sbb-phone { position: relative; width: 100%; height: calc(100vh - 80px); }
+
+/* The tile above the faces beside a big share: as wide as their column. */
+.sbb-column { width: min(100%, 380px); }
+
+/* The call's dock, at the foot of the stage, with room above it for what it opens. */
+.sbb-dock { display: grid; align-content: end; justify-items: center; width: 100%; min-height: calc(100vh - 80px); }

@@ -47,13 +47,13 @@ function Everything({ label }: { label: string }) {
   const [space, setSpace] = useState('ws-product');
   const rows: WsMenuRow[] = [
     { type: 'head', label: 'This call’s workspace' },
-    ...SPACES.map((s): WsMenuRow => ({ icon: 'folders', label: s.name, sub: s.sub, ticked: s.id === space, onSelect: () => { pressed(s.id); setSpace(s.id); } })),
+    ...SPACES.map((s): WsMenuRow => ({ id: s.id, icon: 'folders', label: s.name, sub: s.sub, ticked: s.id === space, onSelect: () => { pressed(s.id); setSpace(s.id); } })),
     { type: 'sep' },
     { type: 'head', label: 'In this call' },
-    { person: PRIYA, label: PRIYA.name, sub: 'In Launch plan', onSelect: pressed },
+    { id: 'priya', person: PRIYA, label: PRIYA.name, sub: 'In Launch plan', onSelect: pressed },
     { type: 'sep' },
-    { icon: 'filePlus', label: 'New document', hint: 'N', onSelect: pressed },
-    { icon: 'trash', label: 'Move to Trash', tone: 'caution', onSelect: pressed },
+    { id: 'document', icon: 'filePlus', label: 'New document', hint: 'N', onSelect: pressed },
+    { id: 'trash', icon: 'trash', label: 'Move to Trash', tone: 'caution', onSelect: pressed },
     { type: 'text', icon: 'sealed', label: 'Written in confidential compute.' }
   ];
   return <PopSurface ws><WsMenu label={label} rows={rows} /></PopSurface>;
@@ -63,8 +63,8 @@ export const MenuEvery: Story = { name: 'Menu: every kind of row', args: { label
 
 const chosen = (fixed: boolean): WsMenuRow[] => [
   { type: 'head', label: 'This call’s workspace' },
-  { icon: 'folders', label: 'Product', sub: '6 people', ticked: true, fixed, onSelect: pressed },
-  ...(fixed ? [{ type: 'text', label: 'Priya chooses the workspace for this call.' } satisfies WsMenuRow] : [{ icon: 'folders', label: 'Design', sub: '4 people', ticked: false, onSelect: pressed } satisfies WsMenuRow])
+  { id: 'product', icon: 'folders', label: 'Product', sub: '6 people', ticked: true, fixed, onSelect: pressed },
+  ...(fixed ? [{ type: 'text', label: 'Priya chooses the workspace for this call.' } satisfies WsMenuRow] : [{ id: 'design', icon: 'folders', label: 'Design', sub: '4 people', ticked: false, onSelect: pressed } satisfies WsMenuRow])
 ];
 /** Ticked, for the one you chose and can change; fixed, when it only says what someone else chose, so the tick isn't in the colour you can press. */
 export const MenuFixed: Story = {
@@ -90,7 +90,7 @@ function Picking({ label }: { label: string }) {
       </div>
       <WsMenu label={label} rows={people.length === 0
         ? [{ type: 'text', label: `Nobody called “${query}” in this call.` }]
-        : people.map((p, i): WsMenuRow => ({ person: p, label: p.name, sub: 'In this call', selected: i === at, onSelect: () => pressed(p.name) }))} />
+        : people.map((p, i): WsMenuRow => ({ id: p.id, person: p, label: p.name, sub: 'In this call', selected: i === at, onSelect: () => pressed(p.name) }))} />
     </PopSurface>
   );
 }
@@ -178,6 +178,11 @@ function OverWords() {
 /** Plus, at the top of the list and on a folder. */
 export const NewMenu: StoryObj<typeof WsNewMenu> = {
   name: 'New menu', args: { onDocument: did('onDocument'), onFolder: did('onFolder'), onUpload: did('onUpload') },
+  render: (args) => <PopSurface ws><WsNewMenu {...args} /></PopSurface>
+};
+/** On a page, where boards are in the list: New board makes Untitled board there and opens it. */
+export const NewMenuWithBoard: StoryObj<typeof WsNewMenu> = {
+  name: 'New menu: with New board', args: { onDocument: did('onDocument'), onFolder: did('onFolder'), onBoard: did('onBoard'), onUpload: did('onUpload') },
   render: (args) => <PopSurface ws><WsNewMenu {...args} /></PopSurface>
 };
 /** From the list's +: a document opens at once, a folder is named in its row. */

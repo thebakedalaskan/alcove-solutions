@@ -306,6 +306,32 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
       cites: [...hits.map((x) => ({ note: x.note, at: x.h.at })), { note: notes.length + 1, at: 0 }]
     };
   }
+  if (system.startsWith('You pick out ideas')) {
+    // Offers each line that suggests something, unless it's on offer already, in the frame whose title shares a word with it
+    // (else the first), with the line's words up to its first comma; and, as a model can, one from a line it wasn't sent,
+    // which Alcove must drop, and words for a line about staging that weren't said there, which give way to the line's own.
+    const frames = labelledIn(user, 'F');
+    const offered = new Set(user.split('\n').flatMap((l) => (l.startsWith('- ') ? [l.slice(2)] : [])));
+    const ideas = heard.filter((h) => /\b(should|let's|what if|idea|need to)\b/i.test(h.text) && !offered.has(h.text)).map((h) => {
+      const words = new Set(h.text.toLowerCase().split(/\W+/).filter((w) => w.length > 3));
+      const frame = frames.find((f) => f.text.toLowerCase().split(/\W+/).some((w) => words.has(w)))?.label ?? frames[0]?.label ?? null;
+      return { text: h.text, said: /staging/i.test(h.text) ? 'We agreed to drop staging.' : h.text.split(',')[0] ?? h.text, line: h.ref, frame };
+    });
+    return { ideas: [...ideas, { text: 'Something nobody said.', line: `L${heard.length + 9}`, frame: null }] };
+  }
+  if (system.startsWith('You sort the stickies')) {
+    // Groups the stickies by their first word, naming each group after it; and, as a model can, names one it wasn't sent and
+    // puts one in two themes, which Alcove must drop.
+    const fence = /<stickies-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/stickies-\1>/.exec(user)?.[2] ?? '';
+    const stickies = labelledIn(fence, 'S');
+    const groups = new Map<string, string[]>();
+    for (const x of stickies) {
+      const key = (x.text.split(/\s+/)[0] ?? '').toLowerCase();
+      groups.set(key, [...(groups.get(key) ?? []), x.label]);
+    }
+    const first = stickies[0]?.label;
+    return { themes: [...[...groups].map(([key, labels]) => ({ name: key.charAt(0).toUpperCase() + key.slice(1), stickies: labels })), { name: 'Strays', stickies: ['S99', ...(first ? [first] : [])] }] };
+  }
   if (system.startsWith('You edit a passage')) {
     // Says what it was given, so tests can see what went and came back.
     const selection = /<selection-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/selection-\1>/.exec(user)?.[2] ?? '';
@@ -345,6 +371,15 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
      */
     const nowhere = heard.length + 7;
     const ticks = labelledIn(user, 'T');
+    /*
+     * Each sticky in a board's Actions frame is a follow-up, labelled with the sticky it is, with whoever the sticky names
+     * first ("Kofi: ..."). One that says "forgotten" is left out, as a model can leave one out.
+     */
+    const onBoards = labelledIn(user, 'B').filter((b) => !/\bforgotten\b/i.test(b.text)).map((b) => {
+      const named = /^(\w+): (.+)$/.exec(b.text);
+      return { text: named?.[2] ?? b.text, owner: named?.[1] ?? null, due: null, at: null, lines: [], against: [], board: b.label };
+    });
+    const boards = user.split('\n').filter((l) => l === '<board>').length;
     const refs = (h: Heard) => {
       const next = heard[heard.indexOf(h) + 1];
       return { lines: [h.ref, `L${nowhere}`, 0], against: next && /^no\b/i.test(next.text) ? [next.ref, nowhere] : [] };
@@ -353,16 +388,16 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
     /** A sentence nothing said backs: the model's word alone, which the notes must keep marked as that. */
     const unbacked = /\bunbacked\b/i.test(user) ? [{ text: 'Everyone agreed to double the budget.', at: heard[0]?.at ?? 0, lines: [nowhere], against: [] }] : [];
     return {
-      summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
+      summary: `Heard ${heard.length} lines.${boards ? ` Read ${boards} ${boards === 1 ? 'board' : 'boards'}.` : ''} It ended on: ${heard.at(-1)?.text ?? ''}`,
       decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
-      actions: heard.flatMap((h) => {
+      actions: [...heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
         const told = { ...(ticks.length ? { ticked: which(h.text, ticks, 'T') } : {}), takenOn: true, done: true, changes: [{ what: 'took-on' }] };
         if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h), ...refs(h), ...told }] : [];
         const rest = m[2] ?? '';
         return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), ...told }];
-      }),
+      }), ...onBoards],
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
       // Each screen, with what was said while it was up.

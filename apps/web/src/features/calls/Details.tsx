@@ -1,11 +1,14 @@
 /*
  * Details: the last step reads like the finished call. The name is ready to type over, When and Who step back, and
- * notes open in place. The button says what it will do, and the line beside it who will hear about it.
+ * notes and where they go open in place. The button says what it will do, and the line beside it who will hear about it.
  */
 import type { MeetingInput, Person } from '@alcove/api';
-import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Switch, SwitchLine } from '@alcove/ui';
+import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Select, Switch, SwitchLine } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { namesIn } from '~/features/workspace/List';
 import { callName } from '~/lib/people';
+import { q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
 import { docNames } from './Documents';
 import { BIG_CALL, peopleLine, repeatInput, ruleOf, titleFor, type Draft } from './draft';
@@ -34,7 +37,11 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
   onSchedule: (input: MeetingInput) => Promise<void>;
 }) {
   const [failed, setFailed] = useState<unknown>(null);
-  const [open, setOpen] = useState<'notes' | 'big' | null>(null);
+  const [open, setOpen] = useState<'notes' | 'big' | 'home' | null>(null);
+  /* A call's home can be one of your workspaces you can make things in: the menu reads them again as it opens. */
+  const spaces = useQuery({ ...q.workspaces(), enabled: open === 'home' }).data ?? [];
+  const named = namesIn(spaces);
+  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: named(w) }] : []));
   const name = useRef<HTMLInputElement>(null);
   const zone = timeZone();
   const series = useMemo(() => (draft.offer ? null : repeatInput(draft.repeat, at, zone)), [draft.offer, draft.repeat, at, zone]);
@@ -56,7 +63,7 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
     const input: MeetingInput = {
       title: title.trim() || titleFor(draft.tokens, guests), startsAt: at.toISOString(), durationMinutes: draft.minutes, guests: guests.map((g) => g.email), notes: draft.notes,
       ...(draft.notes === 'on' ? { choices: draft.choices } : {}), ...(big ? { joinMuted: muted } : {}),
-      ...(draft.documents.length ? { documents: draft.documents.map((d) => d.id) } : {}),
+      ...(draft.documents.length ? { documents: draft.documents.map((d) => d.id) } : {}), ...(draft.home ? { workspaceId: draft.home.id } : {}),
       ...(series ? { repeat: series } : {}), ...(offer ? { offer: offer.map((t) => t.toISOString()) } : {})
     };
     try {
@@ -84,6 +91,17 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
           )}
           <FlowRow icon="notes" on={draft.notes === 'on'} title={notesWord(draft)} sub={draft.notes === 'on' ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded={open === 'notes'} onClick={() => setOpen((o) => (o === 'notes' ? null : 'notes'))} />
           {open === 'notes' && <div className="cf-more"><NotesSwitches notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
+          <FlowRow icon="folders" title={draft.home ? draft.home.name : 'New workspace for this call'} sub={draft.home ? 'Its notes and transcript go here, in a folder of their own' : 'Its notes and transcript go there. Everyone invited is in it'}
+            expanded={open === 'home'} onClick={() => setOpen((o) => (o === 'home' ? null : 'home'))} disabled={saving} />
+          {open === 'home' && (
+            <div className="cf-more">
+              <SwitchLine title="Where its notes go" control={
+                <Select label="Where its notes go" value={draft.home?.id ?? 'new'} align="end"
+                  options={[{ value: 'new', label: 'New workspace for this call', icon: 'plus' }, ...homes.map((h) => ({ value: h.id, label: h.name, icon: 'folders' as const }))]}
+                  onChange={(id) => change({ home: id === 'new' ? null : homes.find((h) => h.id === id) ?? null })} />
+              } />
+            </div>
+          )}
           <FlowRow id="cf-docs-row" icon="fileText" onClick={onDocs} disabled={saving} title={draft.documents.length ? `${draft.documents.length} ${draft.documents.length === 1 ? 'document' : 'documents'}` : 'Documents'}
             sub={draft.documents.length ? docNames(draft.documents) : 'Add from a workspace'} />
         </div>

@@ -4,11 +4,11 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, BoardCheckSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, MediaTokenAnswerSchema, WorkspaceMediaSchema,
-  NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
-  SeriesAnswerPartSchema, SeriesSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, MediaTokenAnswerSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, PresenterFrameNotesSchema, BoardCheckSchema, BoardThemesSchema, IdeasWatchedSchema,
+  NoteFoundSchema, OPERATION_HEADER, PersonIdsSchema, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
+  SeriesAnswerPartSchema, SeriesSchema, isTimeZone,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
+  type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
 import type { DocVersionSummary } from '@alcove/api';
@@ -33,6 +33,8 @@ export interface HttpOptions {
   callPollMs?: number | undefined;
   /** How often a browser showing the live notes says so, in ms (default 5000). Tests go faster. */
   callNotesMs?: number | undefined;
+  /** How often a browser with a call's board open looks for ideas from the call, in ms (default 15 s; the server reads at most once a minute). Tests go faster. */
+  callIdeasMs?: number | undefined;
   /** How long a browser waits after the call's keys move on before it sends with its new one, in ms (default 2000). */
   callKeySwitchMs?: number | undefined;
   /** How often the host's browser moves the call's keys on when nobody comes or goes, in ms (default 10 minutes). */
@@ -62,6 +64,15 @@ const audioPath = (id: string, segment: number, pieces: number) => `/notes/${enc
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
+/** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's new home and folder are named after. */
+function hereZone(): { timeZone?: string } {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return timeZone && isTimeZone(timeZone) ? { timeZone } : {};
+  } catch {
+    return {};
+  }
+}
 
 export function createHttpApi(o: HttpOptions): AlcoveApi {
   const f = o.fetch ?? globalThis.fetch.bind(globalThis);
@@ -113,18 +124,23 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     // A line can be a whole document, so what's come so far is looked through once, not again with every piece that arrives.
     let pieces: string[] = [];
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      let from = 0;
-      for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
-        pieces.push(value.slice(from, i));
-        const line = pieces.join('').trim();
-        pieces = [];
-        from = i + 1;
-        if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        let from = 0;
+        for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
+          pieces.push(value.slice(from, i));
+          const line = pieces.join('').trim();
+          pieces = [];
+          from = i + 1;
+          if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+        }
+        if (from < value.length) pieces.push(value.slice(from));
       }
-      if (from < value.length) pieces.push(value.slice(from));
+    } finally {
+      // Whoever was reading may have stopped early, and the API lets go of a stream once nobody's there.
+      reader.cancel().catch(() => undefined);
     }
   }
   /** Every stream of rings this client has open, so an answer leaves them all at once. */
@@ -176,7 +192,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     // Every request about the call carries its pass; guests have no session, so this is all they have.
     const p = { [CALL_PASS_HEADER]: joined.ticket.pass };
     const live = (id: string) => `/live/calls/${id}`;
-    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
+    const call = new HttpCall(joined.state, joined.ticket, mls, { pollMs: o.callPollMs ?? 1500, notesMs: o.callNotesMs ?? 5000, ideasMs: o.callIdeasMs ?? 15_000, switchMs: o.callKeySwitchMs ?? 2000, rekeyMs: o.callRekeyMs ?? 10 * 60_000, movePollMs }, {
       get: (id) => req(CallStateSchema, 'GET', live(id), undefined, p),
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
@@ -187,10 +203,11 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       })).json(), 'frame receipt'),
       shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
       watchNotes: async (id) => (await req(NotesWatchedSchema, 'POST', `${live(id)}/notes/watch`, {}, p)).refreshed,
+      watchIdeas: async (id) => (await req(IdeasWatchedSchema, 'POST', `${live(id)}/ideas/watch`, {}, p)).found,
       followUps: (id) => req(CallFollowUpsSchema, 'GET', `${live(id)}/follow-ups`, undefined, p),
       tickDocument: (id, t) => req(CallFollowUpsSchema, 'POST', `${live(id)}/follow-ups`, t, p),
       previewWorkspace: (id, workspaceId) => req(CallWorkspaceSwitchSchema, 'GET', `${live(id)}/workspace/${encodeURIComponent(workspaceId)}`, undefined, p),
-      boardCheck: (id, documentId) => req(BoardCheckSchema, 'GET', `${live(id)}/boards/${encodeURIComponent(documentId)}`, undefined, p),
+      boardCheck: (id, workspaceId, documentId) => req(BoardCheckSchema, 'GET', `${live(id)}/boards/${encodeURIComponent(workspaceId)}/${encodeURIComponent(documentId)}`, undefined, p),
       catchUp: (id, range) => req(CatchUpSchema, 'POST', `${live(id)}/catch-up`, { range }, p),
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
@@ -363,14 +380,19 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
       },
       share: {
-        list: (id, documentId) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`),
+        list: (id, documentId, w) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`, undefined, withPass(w)),
         set: async (id, documentId, to, role, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/share`, { to, role }, withPass(w)); },
-        remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
-        restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }
+        remove: async (id, documentId, entryId, w) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`, undefined, withPass(w)); },
+        restrict: async (id, documentId, restricted, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }, withPass(w)); }
       },
+      mention: async (id, documentId, tag, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/mentions`, tag, withPass(w)); },
+      ids: async (id, emails, w) => (await req(PersonIdsSchema, 'POST', `${space(id)}/ids`, { emails }, withPass(w))).ids,
+      mentions: () => req(z.array(MentionNoticeSchema), 'GET', '/mentions'),
+      mentionSeen: async (id, mentionId, w) => { await req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mentionId)}`, undefined, withPass(w)); },
       live: (id, w) => new HttpWorkspaceLive(
         (signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS,
-        (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS
+        (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS,
+        (mention) => req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mention)}`, undefined, withPass(w))
       ),
       // Yjs comes with the first document anyone opens, and stays out of everything else.
       document: async (id, documentId, opts) => {
@@ -415,12 +437,16 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w)),
       presenterNotes: {
         get: (id, documentId, w) => req(PresenterNotesSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, undefined, withPass(w)),
-        set: async (id, documentId, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, { text }, withPass(w)); }
+        set: async (id, documentId, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, { text }, withPass(w)); },
+        frames: (id, boardId, w) => req(PresenterFrameNotesSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(boardId)}/presenter-notes/frames`, undefined, withPass(w)),
+        setFrame: async (id, boardId, frame, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(boardId)}/presenter-notes/frames`, { frame, text }, withPass(w)); }
       },
       // What's selected goes in the body, so it's never in a URL or an access log.
       ask: async function* (id, documentId, body, w) {
         yield* await req(z.array(DocAskPartSchema), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/ask`, body, withPass(w));
       },
+      // The stickies' words go in the body, so they're never in a URL or an access log.
+      sortStickies: (id, documentId, body, w) => req(BoardThemesSchema, 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/sort`, body, withPass(w)),
       media: {
         upload: (id, documentId, file, w) => sendFile({
           begin: (input) => req(CreatedSchema, 'POST', mediaIn(id, documentId), input, withPass(w)),
@@ -462,10 +488,11 @@ interface CallTransport {
   shareEnded(id: string, share: string): Promise<void>;
   /** Says this browser is looking at the live notes. True when that refreshed them. */
   watchNotes(id: string): Promise<boolean>;
+  watchIdeas(id: string): Promise<boolean>;
   followUps(id: string): Promise<CallFollowUps>;
   tickDocument(id: string, t: DocFollowUpTick): Promise<CallFollowUps>;
   previewWorkspace(id: string, workspaceId: string): Promise<CallWorkspaceSwitch>;
-  boardCheck(id: string, documentId: string): Promise<BoardCheck>;
+  boardCheck(id: string, workspaceId: string, documentId: string): Promise<BoardCheck>;
   catchUp(id: string, range: CatchUpRange): Promise<CatchUp>;
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
@@ -515,7 +542,7 @@ class Live<S extends { elapsed: number }> {
  * How a call keeps up: how often it checks while nothing nudges it, how often it says it's showing the live notes, how
  * long a new send key waits, how often the keys move on anyway, and how often a move to another device is checked on.
  */
-interface CallTiming { pollMs: number; notesMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
+interface CallTiming { pollMs: number; notesMs: number; ideasMs: number; switchMs: number; rekeyMs: number; movePollMs: number }
 /** Epoch keys use 127 indices in each half of LiveKit's ring, all below the void index, which stays free for sending between two parts of the call. */
 const RING_HALF = Math.floor(CALL_VOID_KEY_INDEX / 2);
 /** Asking to come back in after being taken out waits at least this long between tries (the keys move on first). */
@@ -613,6 +640,9 @@ class HttpCall extends Live<CallState> implements CallSession {
   private notesWatchers = 0;
   private notesTimer: ReturnType<typeof setTimeout> | null = null;
   private notesLook: Promise<void> | null = null;
+  private ideasWatchers = 0;
+  private ideasTimer: ReturnType<typeof setTimeout> | null = null;
+  private ideasLook: Promise<void> | null = null;
   /** How many things here are showing the call's follow-ups, and when this browser next reads them. */
   private followUpWatchers = 0;
   private followUpsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -699,6 +729,33 @@ class HttpCall extends Live<CallState> implements CallSession {
         unref(this.notesTimer);
       });
   }
+
+  /**
+   * Says this browser has the board open, and goes on saying so while anything here does. It's what has ideas from the call
+   * looked for; when a look found some, the call is fetched straight away, as a nudge would have it.
+   */
+  watchIdeas = () => {
+    if (++this.ideasWatchers === 1) this.lookForIdeas();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      if (--this.ideasWatchers === 0 && this.ideasTimer) { clearTimeout(this.ideasTimer); this.ideasTimer = null; }
+    };
+  };
+  private lookForIdeas() {
+    if (this.closed || this.ideasLook) return;
+    this.ideasLook = this.t.watchIdeas(this.state.callId).then((found) => (found ? this.fetchState() : undefined))
+      // A look that doesn't arrive is only one look: the next one is a moment away.
+      .catch((e: unknown) => this.emit('debug', 'ideas not looked for', { code: errorCode(e) }))
+      .finally(() => {
+        this.ideasLook = null;
+        if (this.closed || !this.ideasWatchers) return;
+        this.ideasTimer = setTimeout(() => this.lookForIdeas(), this.timing.ideasMs);
+        unref(this.ideasTimer);
+      });
+  }
+  ideasDone = (ids: string[]) => this.space({ type: 'board-ideas-done', ids });
 
   /** Says this browser is showing the follow-ups: they're read now and every few seconds until nothing here is. */
   watchFollowUps = () => {
@@ -1133,8 +1190,9 @@ class HttpCall extends Live<CallState> implements CallSession {
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
+  addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
-  openWorkspace = () => this.space({ type: 'workspace-open' });
+  openWorkspace = () => this.space({ type: 'workspace-open', ...hereZone() });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
   setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
   newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });
@@ -1152,7 +1210,14 @@ class HttpCall extends Live<CallState> implements CallSession {
   stopPlaying = () => this.space({ type: 'play-stop' });
   openBoard = (from: BoardOpen) => this.space({ type: 'board-open', ...from });
   closeBoard = () => this.space({ type: 'board-close' });
-  boardCheck = (documentId: string) => this.t.boardCheck(this.state.callId, documentId);
+  boardCheck = (workspaceId: string, documentId: string) => this.t.boardCheck(this.state.callId, workspaceId, documentId);
+  startTimer = (minutes: BoardTimerMinutes) => this.space({ type: 'board-timer', minutes });
+  stopTimer = () => this.space({ type: 'board-timer', minutes: null });
+  startVote = (frame: string | null, per: BoardVotesEach) => this.space({ type: 'board-vote', step: 'start', frame, per });
+  castVote = (sticky: string) => this.space({ type: 'board-vote', step: 'cast', sticky });
+  takeBackVote = (sticky: string) => this.space({ type: 'board-vote', step: 'take-back', sticky });
+  endVote = () => this.space({ type: 'board-vote', step: 'end' });
+  clearVote = () => this.space({ type: 'board-vote', step: 'done' });
   tickDocumentFollowUp = async (tick: DocFollowUpTick) => { this.followUps.set(await this.t.tickDocument(this.state.callId, tick)); };
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
@@ -1165,7 +1230,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
-  openRooms = (plan: BreakoutPlan) => this.actAndSync({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes });
+  openRooms = (plan: BreakoutPlan) => this.actAndSync({ type: 'rooms-open', rooms: plan.rooms, minutes: plan.minutes, board: plan.board });
   closeRooms = () => this.actAndSync({ type: 'rooms-close' });
   messageRooms = (text: string) => { if (text.trim()) this.act({ type: 'rooms-message', text }); };
   visitRoom = (roomId: string | null) => this.actAndSync({ type: 'rooms-visit', roomId });
@@ -1208,6 +1273,8 @@ class HttpCall extends Live<CallState> implements CallSession {
     this.timer = null;
     if (this.notesTimer) clearTimeout(this.notesTimer);
     this.notesTimer = null;
+    if (this.ideasTimer) clearTimeout(this.ideasTimer);
+    this.ideasTimer = null;
     if (this.followUpsTimer) clearTimeout(this.followUpsTimer);
     this.followUpsTimer = null;
     for (const h of this.groups.values()) { if (h.switchTimer) clearTimeout(h.switchTimer); h.switchTimer = null; }

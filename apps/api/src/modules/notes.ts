@@ -129,6 +129,11 @@ export const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...
 /** The parts of a note people settle: the call's own, then each breakout room's section, by name. */
 export const partsOf = (m: NoteManifest): (Pick<NoteManifest, 'decisions' | 'questions' | 'actions'> & { room?: RoomRef })[] =>
   [{ decisions: m.decisions, questions: m.questions, actions: m.actions }, ...m.rooms.map((r) => ({ room: { id: r.id, name: r.name }, decisions: r.decisions, questions: r.questions, actions: r.actions }))];
+/**
+ * Everyone a note has gone to, by address: its organizer's (`organizer`), everyone invited, and everyone it's been shared with
+ * since. What one summary reads, and what the note says everyone can open, goes by all of them.
+ */
+export const everyoneWith = (m: Pick<NoteManifest, 'invited' | 'shared'>, organizer: string): string[] => [organizer, ...m.invited, ...m.shared.map((s) => s.email)];
 
 /** A note about to be recorded, starting when its recording does. */
 export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined; keep?: NoteKeep | undefined }): NoteManifest {
@@ -170,14 +175,15 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
 /**
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
  * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in, what was on
- * shared screens (`shown`, the call's frames as screen moments) and the follow-ups ticked during the call. Everyone
- * invited gets the note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
+ * shared screens (`shown`, the call's frames as screen moments), the follow-ups ticked during the call, and the ones people
+ * added (`added`), which are theirs in the note from now on, whatever becomes of the notes. Everyone invited gets the
+ * note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
  * Runs in the stopping transaction, once the recording has stopped. A call set not to keep its recording loses its audio
  * here, after everything worked out from it (where lines fall, and the seconds billed) is in the note. Returns the
  * objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = [], workedOn: WorkedDocument[] = []): Promise<string[]> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = [], workedOn: WorkedDocument[] = [], added: { room: string | null; action: ActionItem }[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
   const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
@@ -186,14 +192,14 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   // In a call, each line keeps whoever said it; a room recording names nobody.
   const sections: RoomNote[] = rooms.map((r) => ({
     id: r.id, name: r.name, people: r.people, from: r.from, to: r.to, gaps: r.gaps,
-    summary: '', decisions: [], questions: [], actions: [], chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
+    summary: '', decisions: [], questions: [], actions: added.flatMap((a) => (a.room === r.id ? [a.action] : [])), chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
   }));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
     recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
-    transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
+    transcript: transcripts.spoken(heard, speakerOf), rooms: sections, actions: [...n.actions, ...added.flatMap((a) => (sections.some((r) => r.id === a.room) ? [] : [a.action]))],
     inference: heardBy, ticked, workedOn
   }));
   await transcripts.clear(o, db, noteId);
@@ -202,7 +208,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
-    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length
+    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length, added: added.length
   });
   return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }
@@ -432,7 +438,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   return {
     ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
-    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn), ...(seriesId ? { seriesId } : {})
+    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)), ...(seriesId ? { seriesId } : {})
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */
@@ -828,7 +834,7 @@ export async function proposeAction(o: Owner, noteId: string, p: ActionProposal)
       const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
       const a: ActionItem = {
         id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: !!p.owner && same(p.owner, by.email), ...(p.due ? { due: p.due } : {}), done: false,
-        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }]
+        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }], from: null
       };
       added = true;
       return part.put({ actions: inOrder([...part.actions, a]) });

@@ -24,7 +24,7 @@ import type { MediaToken } from '../mediaToken';
 import { findOwner, masterKey, openOwner } from '../owners';
 import { findSession } from '../sessions';
 import { profile } from './account';
-import { inSeat, nudgeCall, seated, seatedIn, seatOfViewer, settledWorkspace, viewerOf, type Viewer } from './calls';
+import { inSeat, nudgeCall, seated, seatedIn, seatOfViewer, settledHome, viewerOf, type Viewer } from './calls';
 import { personOf, portraitFor } from './portraits';
 
 const xlog = log.child({ component: 'access' });
@@ -40,6 +40,22 @@ export const TREE_NOTICE = 'tree';
 /** Who made something: their name and address as they were. A deleted account leaves its name and no address. */
 const Maker = z.object({ name: z.string(), email: z.string() });
 export type Maker = z.infer<typeof Maker>;
+/**
+ * What makes a folder a call's own (docs: Calls and recordings › The call's home): which call, whose, and, once it's over,
+ * its note. Its pages read the call or the note, through their own access: nothing of either is kept here.
+ */
+export const StoredCall = z.object({
+  /** The organizer's owner, whose call and note it is. */
+  ownerId: z.string(),
+  callId: z.string(),
+  /** The organizer's address, as it was: they read its pages whatever the note's rows say. */
+  organizer: z.string(),
+  startedAt: z.string(),
+  /** Set once the call has ended (`ended`), if it had notes. */
+  noteId: z.string().nullable(),
+  ended: z.boolean()
+});
+export type StoredCall = z.infer<typeof StoredCall>;
 export const StoredItem = z.object({
   kind: ItemKindSchema,
   name: z.string(),
@@ -59,11 +75,26 @@ export const StoredItem = z.object({
    * The address of whoever restricted it, when that wasn't its creator: they keep it as its creator does, for as long as
    * it's restricted and they're in the workspace. It gives nobody an entry in `document_access`, so nothing outlives it.
    */
-  restrictedBy: z.string().nullable().default(null)
+  restrictedBy: z.string().nullable().default(null),
+  /** On a call's folder only. */
+  call: StoredCall.nullable().default(null),
+  /**
+   * A board made for a breakout room, while its call goes on (the organizer's owner, and the call): only seats for whoever's in
+   * that room open it, and they come and go, so it isn't stranded when there's nobody in it for a moment. Once the call is over
+   * it's a restricted board like any other. Null on anything else, and on what was stored before rooms had boards.
+   */
+  room: z.object({ ownerId: z.string(), callId: z.string() }).nullable().default(null)
 });
 export type StoredItem = z.infer<typeof StoredItem>;
+/**
+ * The call a workspace was made for, as its home: what it was called and when, and its meeting and series (the series' later
+ * calls share it). `out`: the addresses taken out of it by hand, or who left: the invite never puts them back. Whom the invite
+ * put there is on each member (`workspaces.ts`), so taking them off the invite takes out only them.
+ */
+export const MadeFor = z.object({ title: z.string(), at: z.string(), meetingId: z.string(), seriesId: z.string().nullable(), out: z.array(z.string()).default([]) });
+export type MadeFor = z.infer<typeof MadeFor>;
 /** A workspace's name and tree: one record, because its server serialises every change under the row's lock. */
-export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem) });
+export const WorkspaceState = z.object({ name: z.string(), items: z.record(z.string(), StoredItem), madeFor: MadeFor.nullable().default(null) });
 export type WorkspaceState = z.infer<typeof WorkspaceState>;
 
 /** Seals what's kept for a workspace: `workspace-state`, `workspace-member` and `document-access` records. */
@@ -89,8 +120,7 @@ export interface Who { email: string | undefined; principals: Uint8Array[] }
 export interface Seat { callId: string; seat: string; name: string; viewer: Viewer }
 /** Who's asking, for this request: the account with its keys, their seat, or both. */
 export interface Reader extends Who {
-  /** `sample`: an account anyone can make for nothing (`demo.ts`). */
-  account: { owner: Owner; name: string; sample: boolean } | undefined;
+  account: { owner: Owner; name: string } | undefined;
   seat: Seat | undefined;
 }
 
@@ -113,7 +143,7 @@ async function seatFrom(d: Deps, token: string | undefined, account: Owner | und
 async function readerWith(d: Deps, owner: Owner | undefined, seat: Seat | undefined): Promise<Reader> {
   const me = owner && await profile(owner);
   return {
-    account: owner && me ? { owner, name: me.name, sample: me.sample } : undefined, seat, email: me?.email,
+    account: owner && me ? { owner, name: me.name } : undefined, seat, email: me?.email,
     principals: [...(me ? [emailIndex(d, me.email)] : []), ...(seat ? [seatIndex(d, seat.callId, seat.seat)] : [])]
   };
 }
@@ -160,8 +190,9 @@ export async function whoNamed(d: Deps, named: Pick<MediaToken, 'account' | 'sea
  * connection and for nobody anywhere else, so it can go on a caret that someone outside the workspace sees: an address
  * can't. The address is in `email`, for `Room.seenBy` to pass on or not.
  */
+export const personKey = (o: Owner, principal: Uint8Array): string => b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), principal)).slice(0, 22);
 export function personIn(o: Owner, r: Reader): Person {
-  const id = b64u(mac(stateKey(o.root, o.ownerId, 'workspace-person'), r.principals[0] ?? new Uint8Array(0))).slice(0, 22);
+  const id = personKey(o, r.principals[0] ?? new Uint8Array(0));
   const name = r.account?.name ?? r.seat?.name ?? '';
   return r.email === undefined ? { id, name, email: '', portrait: portraitFor(id) } : { ...personOf(r.email, name), id };
 }
@@ -430,6 +461,8 @@ export async function broughtFrom(d: Deps, who: Who, workspaceId: string, ids: r
 const MAX_SHARES = 500;
 /** One person to give a document to: by address, or in a seat of a call, which ends with the call. */
 export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kind: 'seat'; callId: string; seat: string; name: string; role: DocumentRole };
+/** How access knows them. */
+export const principalOf = (d: Deps, g: Grant): Uint8Array => (g.kind === 'email' ? emailIndex(d, g.email) : seatIndex(d, g.callId, g.seat));
 
 /**
  * Gives one document to many people in a single statement, in the caller's transaction, which holds the workspace's row
@@ -439,7 +472,7 @@ export type Grant = { kind: 'email'; email: string; role: DocumentRole } | { kin
 export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, grants: Grant[]): Promise<void> {
   const o = w.owner;
   const byIndex = new Map(grants.map((g) => {
-    const index = g.kind === 'email' ? emailIndex(o, g.email) : seatIndex(o, g.callId, g.seat);
+    const index = principalOf(o, g);
     return [Buffer.from(index).toString('hex'), { ...g, index, accessId: id128() }] as const;
   }));
   const rowsToAdd = [...byIndex.values()];
@@ -459,18 +492,42 @@ export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db,
   await publish(db, w.workspaceId, TREE_NOTICE);
 }
 
+/**
+ * Puts the seats a call has on one document in step with `seats`: whoever's missing gets one, as `role`, and every other seat
+ * of that call on it goes, in the caller's transaction, which holds the workspace's row. Nothing anyone has by address
+ * changes. It's for a breakout room's board, which only the seats of whoever's in its room open, and which its call keeps
+ * from being stranded meanwhile (`StoredItem.room`). Their streams hear when the transaction commits. How many it changed.
+ */
+export async function seatsInStep(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, callId: string, seats: { seat: string; name: string }[], role: DocumentRole): Promise<number> {
+  const o = w.owner;
+  const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+  const there = await rows(db, z.object({ principal_index: bytea }), "SELECT principal_index FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat' AND call_id = $3", [o.ownerId, documentId, callId]);
+  const had = new Set(there.map((r) => hex(r.principal_index)));
+  const wanted = new Map(seats.map((s) => [hex(seatIndex(o, callId, s.seat)), s]));
+  const adding = [...wanted].filter(([k]) => !had.has(k)).map(([, s]): Grant => ({ kind: 'seat', callId, seat: s.seat, name: s.name, role }));
+  const going = there.filter((r) => !wanted.has(hex(r.principal_index))).map((r) => Buffer.from(r.principal_index));
+  if (adding.length) await grant(w, db, documentId, adding);
+  if (going.length) {
+    await exec(db, "DELETE FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat' AND call_id = $3 AND principal_index = ANY($4::bytea[])", [o.ownerId, documentId, callId, going]);
+    await exec(db, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [o.ownerId]);
+    await publish(db, w.workspaceId, TREE_NOTICE);
+  }
+  return adding.length + going.length;
+}
+
 /** A call, as what's done for it on the server names it: its organizer's keys, and which call. */
 export interface CallRef { organizer: Owner; callId: string }
 
 /**
- * The workspace a call uses, for the server to work in: the meeting's, else its organizer's most recently used, else a new
- * one in their name, settled the first time it's asked for. It opens nothing for anyone.
+ * The call's home, for the server to work in, and the call's folder at the top of it (`folderId`): what the server makes for
+ * the call, such as its board, goes in that folder. The meeting's, else a new one made for the call, settled the first time
+ * it's asked for. It opens nothing for anyone.
  */
-export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace> {
-  const workspaceId = await settledWorkspace(call.organizer, call.callId);
+export async function workspaceForCall(d: Deps, call: CallRef): Promise<HeldWorkspace & { folderId: string }> {
+  const { workspaceId, folderId } = await settledHome(call.organizer, call.callId);
   const w = await serverWorkspace(d, workspaceId);
   if (!w) throw missing(workspaceId);
-  return w;
+  return { ...w, folderId };
 }
 
 /**
@@ -504,7 +561,7 @@ export const cantOpen = async <T extends { who: Who }>(w: HeldWorkspace, db: Db,
 export const cantEdit = async <T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> =>
   (await rolesOn(w, db, documentId, people)).filter((x) => x.role !== 'edit' && !x.entry).map((x) => x.person);
 /** What each of these indexes has on a document by an entry of its own, whatever a workspace role gives anyone. */
-export async function entriesOn(w: HeldWorkspace, db: Db, documentId: string, indexes: Uint8Array[]): Promise<(index: Uint8Array) => DocumentRole | undefined> {
+export async function entriesOn(w: Pick<HeldWorkspace, 'owner'>, db: Db, documentId: string, indexes: Uint8Array[]): Promise<(index: Uint8Array) => DocumentRole | undefined> {
   const shares = (await holdersOf(db, w.owner.ownerId, indexes)).shares.filter((s) => s.document_id === documentId);
   return (index) => shares.find((s) => Buffer.compare(s.principal_index, index) === 0)?.role;
 }

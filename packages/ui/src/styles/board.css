@@ -1,0 +1,572 @@
+/*
+ * Whiteboards: the sheet, what's on it, and the controls around it. Night is the call and dawn is the board: whatever is
+ * small and floats over the sheet is night, like the dock beside it, and the sheet takes its colours from the tokens in
+ * styles.css. Classes: bz- the board and its rail, bd- the sheet and its chrome, bf- frames, bo- objects, bc- pointers,
+ * bs- selection, bx- the bar on what's selected, bfly- a tool's options, bp- small menus, bpg- its own page, bl- the Board
+ * menu, pc- the phone's add button and sheet. Raw colours appear only on what's night.
+ */
+
+/* A registered colour, so the follow ring can fade in and out as it's set and cleared. */
+@property --fc { syntax: "<color>"; inherits: true; initial-value: transparent; }
+/* The camera writes these on the sheet on every frame. Left to inherit, each write would restyle everything on the board, so they don't: the dots take them on purpose. */
+@property --dot { syntax: "<length>"; inherits: false; initial-value: 24px; }
+@property --dx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --dy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+/* The same for a pointer, which moves ten times a second: inherited, each move would restyle everything in its face too. */
+@property --bcx { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --bcy { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --iz { syntax: "<number>"; inherits: false; initial-value: 1; }
+
+/* ---------------------------------------------------------------- the board and its rail */
+/* The board sits on the stage like anything else that's shared. Its tools are the call's dock, turned on its side, just off the sheet. */
+.bz { position: relative; display: flex; gap: 10px; width: 100%; height: 100%; min-width: 0; }
+.bz > .bd { min-width: 0; }
+.bz .bd { flex: 1; }
+.bz-rail { flex: none; flex-direction: column; align-self: center; gap: 2px; padding: 5px; transition: opacity var(--duration-2) var(--ease-out); animation: bz-rail var(--duration-3) var(--ease-out) both; }
+.bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+.bz-rail .ac-dock-sep { width: 24px; height: 1px; margin: 3px 0; }
+.bz-rail.is-faded { opacity: 0; pointer-events: none; }
+
+/* On a board's own page there's no night around it, so the rail turns to day. */
+.bz.is-page { padding: 12px; background: var(--ground); }
+.bz.is-page .bz-rail { background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
+.bz.is-page .bz-rail .ac-dock-btn { color: var(--ink-2); }
+.bz.is-page .bz-rail .ac-dock-btn:hover { background: var(--sunk); }
+.bz.is-page .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
+.bz.is-page .bz-rail .ac-dock-sep { background: var(--line); }
+.bz.is-page .bd { border-radius: 18px; box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
+
+/* Who else is here, and bringing the board to a call, at the end of the page's bar */
+.bpg-acts { flex: none; display: flex; align-items: center; gap: 10px; margin-left: 8px; }
+.bpg-acts .ac-faces .ac-avatar { --ring: var(--bd-ground); }
+.bpg-acts .ac-btn { height: 36px; padding: 0 14px; font-size: 13.5px; }
+
+/* A board's own page in the workspace, beside its list, under the head that says where it is: it fills where a document would be. */
+.wd.is-board { background: var(--ground); }
+.wd.is-board > .bpg { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.wd.is-board .bz.is-page { padding-top: 0; }
+@container (max-width: 640px) { .wd.is-board .bz.is-page { padding: 0 8px 8px; gap: 8px; } }
+/* A narrow bar: who else is here gives way first, then Start a call here keeps only its camera. */
+@container (max-width: 700px) { .bd-head .bpg-acts .ac-faces { display: none; } }
+@container (max-width: 560px) { .bd-head .bpg-acts .ac-btn { width: 36px; padding: 0; justify-content: center; } .bd-head .bpg-acts .ac-btn .lb { display: none; } }
+
+/* On a phone the sheet is the whole space between the faces and the dock, and nothing sits above it. */
+.bz.is-phone { padding: 0; background: none; }
+.bz.is-phone .bd { border-radius: 14px; box-shadow: none; }
+/* A board's own page on a phone keeps its edge on the day round it. */
+.bz.is-page.is-phone .bd { box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
+/* There's no map on a phone, where + has its corner: a drag and a pinch find the way round. */
+.bz.is-phone .bd-head .mp { display: none; }
+
+/* ---------------------------------------------------------------- the sheet */
+.bd { --focus: var(--horizon); position: relative; width: 100%; height: 100%; overflow: clip; border-radius: 18px; isolation: isolate; background: var(--bd-wash); color: var(--ink); font: 400 15px/22px var(--font-sans); box-shadow: 0 0 0 1px rgb(255 255 255 / .07), 0 24px 60px -30px rgb(0 0 0 / .8); outline: none; touch-action: none; user-select: none; -webkit-user-select: none; transition: --fc var(--duration-2) var(--ease-out); }
+.bd.is-new { animation: bd-open var(--bd-rise) var(--ease-in-out) both; }
+.bd.is-page { border-radius: 0; box-shadow: none; }
+.bd.is-mini { border-radius: 0; box-shadow: none; pointer-events: none; }
+.bd::before { --dot: inherit; --dx: inherit; --dy: inherit; content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: radial-gradient(circle at 1px 1px, var(--bd-dot) 1px, transparent 1.4px); background-size: var(--dot, 24px) var(--dot, 24px); background-position: var(--dx, 0) var(--dy, 0); -webkit-mask-image: linear-gradient(180deg, black 30%, transparent 94%); mask-image: linear-gradient(180deg, black 30%, transparent 94%); }
+.bd.is-clean::before { display: none; }
+.bd.is-tool-note, .bd.is-tool-text, .bd.is-tool-shape, .bd.is-tool-line, .bd.is-tool-pen, .bd.is-tool-frame { cursor: crosshair; }
+.bd.is-pan, .bd.is-pan * { cursor: grabbing !important; }
+/* Whose view this is, when it isn't your own: a ring in their colour. */
+.bd::after { content: ""; position: absolute; inset: 0; z-index: 30; border-radius: inherit; box-shadow: inset 0 0 0 3px var(--fc); pointer-events: none; }
+/* The sheet takes every shortcut, so it shows when it has the keyboard: a ring at its edge, outside any follow ring. */
+.bd:focus-visible::after { box-shadow: inset 0 0 0 2px var(--focus), inset 0 0 0 5px var(--fc); }
+.bd-w { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.bd.is-glide .bd-w { transition: transform var(--duration-3) var(--ease-in-out); }
+
+/* Lines and ink: one drawing, in board units */
+.bd-svg { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.bd-svg path { fill: none; stroke: var(--line-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.bd-svg path.head { fill: var(--line-ink); stroke-width: 1; }
+.bd-svg path.is-sel { stroke: var(--horizon); }
+.bd-svg path.head.is-sel { fill: var(--horizon); }
+.bd-svg path.is-draft { stroke: var(--horizon); stroke-dasharray: 2 7; }
+.bd-svg path.head.is-draft { fill: var(--horizon); stroke-dasharray: none; }
+.bd-svg path.is-settle { animation: bd-settle var(--duration-1) var(--ease-out) both; }
+.bd-svg path.ink { stroke-width: 3.5; }
+.bd-svg path.ink.c-rose { stroke: var(--line-rose); }
+.bd-svg path.ink.c-sun { stroke: var(--bd-marker); }
+.bd-svg path.ink.c-horizon { stroke: var(--horizon); }
+.bd-svg path.ink.is-sel { stroke: var(--horizon); }
+.bd-svg path.ink.is-marker { stroke-width: 12; opacity: var(--bd-marker-alpha); }
+/* What takes a press on a line or a stroke: a band one width on screen at any zoom, so a thin line is easy to hit and doesn't reach for what's near it. A highlighter is wide in board units, so zoomed in its band is as wide as it is. */
+.bd-svg path.bd-hit { --iz: inherit; stroke: transparent; stroke-width: calc(16px * var(--iz, 1)); pointer-events: stroke; }
+.bd-svg path.bd-hit.is-marker { stroke-width: max(12px, calc(16px * var(--iz, 1))); }
+.bd.is-mini .bd-svg path.bd-hit, .bd.is-mini .bf-h { pointer-events: none; }
+
+/* ---------------------------------------------------------------- frames */
+/* A frame's body takes no press, which is the sheet's anyway, so that a title under another frame can still be pressed: a frame is only picked by its title. */
+.bf { position: absolute; border-radius: 32px 32px 18px 18px; background: var(--bf-fill); box-shadow: inset 0 0 0 1px var(--bf-ring), var(--bf-lift); pointer-events: none; }
+.bf.is-land { animation: bf-land var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+/* What a room's frame holds lands with it, and its lines fade in with it. */
+.bo.is-land { animation: bf-land var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.bd-svg path.is-land { animation: bd-settle var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.bf.is-dim { opacity: .35; }
+.bf.is-theme { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); border-radius: 18px; }
+/* A title can run a little past its frame, as "What happened" does in a room, and still stop short of the next one. */
+.bf-h { position: absolute; left: 8px; bottom: 100%; max-width: calc(100% + 12px); margin-bottom: 8px; display: flex; align-items: baseline; gap: 10px; white-space: nowrap; pointer-events: auto; font: 450 25px/1.1 var(--font-display); letter-spacing: -.016em; font-variation-settings: 'opsz' 26; color: var(--ink); }
+.bf-h .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* A frame is picked by its title, so one left blank keeps a faint one to press. */
+.bf-h .t:empty::before { content: "Frame"; color: var(--ink-3); }
+.bf-h.is-other { outline: 2px solid var(--pc); outline-offset: 4px; border-radius: 6px; }
+.bf-h .sub { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; letter-spacing: 0; color: var(--ink-3); }
+/* Typing a title: in the title's own type and place, on one line, across all the room a title can take. */
+.bf-h:has(.bo-edit) { width: calc(100% + 12px); }
+.bf-h .bo-edit { position: static; width: 100%; min-width: 0; height: 1.1em; padding: 0; overflow: hidden; white-space: pre; font: inherit; letter-spacing: inherit; font-variation-settings: inherit; }
+/* Where the browser can, it's only as wide as the words, so what's beside the title stays beside it. */
+@supports (field-sizing: content) { .bf-h .bo-edit { field-sizing: content; width: auto; max-width: 100%; } }
+.bf-hint { position: absolute; left: 0; right: 0; top: 50%; translate: 0 -50%; margin: 0; padding: 0 44px; text-align: center; font: 400 17px/1.4 var(--font-sans); color: var(--ink-3); }
+
+/* ---------------------------------------------------------------- objects */
+.bo { position: absolute; cursor: default; transition: opacity var(--duration-2) var(--ease-out); }
+.bo.is-glide { transition: left var(--bd-glide) var(--ease-in-out), top var(--bd-glide) var(--ease-in-out), opacity var(--duration-2); }
+.bo.is-pop { animation: bo-pop var(--duration-2) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.bo-sh { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.bo-t { position: relative; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Stickies: each a small dawn of its own */
+.bo.k-note { overflow: hidden; padding: 14px 14px 26px; border-radius: 12px; background: linear-gradient(180deg, color-mix(in srgb, var(--nc, var(--note-butter)) 58%, var(--note-top)) 0%, var(--nc, var(--note-butter)) 78%); color: var(--note-ink); box-shadow: var(--note-shadow); }
+.bo.k-note .bo-t { font: 500 15.5px/1.32 var(--font-sans); letter-spacing: -.005em; }
+.bo.k-note.is-s .bo-t, .bo.k-note.is-s .bo-edit { font-size: 13.5px; }
+.bo.k-note.is-l .bo-t, .bo.k-note.is-l .bo-edit { font-size: 18px; }
+.c-butter { --nc: var(--note-butter); }
+.c-peach { --nc: var(--note-peach); }
+.c-rose { --nc: var(--note-rose); }
+.c-lilac { --nc: var(--note-lilac); }
+.c-sky { --nc: var(--note-sky); }
+.c-mist { --nc: var(--note-mist); }
+
+/* Text, in three sizes: `k-text` is a title, `k-label` a heading, `is-body` a line of reading */
+.bo.k-text { display: flex; align-items: center; }
+.bo.k-text .bo-t { font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; color: var(--ink); }
+.bo.k-label .bo-t { font: 600 16px/1.2 var(--font-sans); letter-spacing: -.008em; color: var(--ink-2); }
+.bo.k-text.is-body .bo-t { font: 400 15px/1.4 var(--font-sans); color: var(--ink-2); }
+.bo.k-text .bo-t:empty::before, .bo.k-label .bo-t:empty::before { content: "Type something"; color: var(--ink-3); }
+
+/* Shapes */
+.bo.k-shape { display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px 14px; color: var(--ink); }
+.bo.k-shape .bo-sh path { fill: var(--nc, var(--surface)); stroke: var(--line-ink); stroke-width: 2; stroke-linejoin: round; }
+.bo.k-shape .bo-t { font: 500 15.5px/1.28 var(--font-sans); }
+
+/* Pictures: one you added, and a moment of someone's screen with its time under it */
+.bo.k-img { border-radius: 8px; overflow: hidden; background: var(--sunk); box-shadow: var(--note-shadow); }
+.bo.k-shot { padding: 7px; border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--note-shadow); }
+.bo-shot { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; border-radius: 6px; background: var(--sunk); }
+.bo.k-img img, .bo-shot img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.bo.k-shot .bo-t { margin-top: 6px; font: 500 13px/1.2 var(--font-sans); color: var(--ink-2); }
+
+/* What's happening to an object */
+.bo.is-sel { z-index: 2; }
+.bo.is-other { outline: 2px solid var(--pc); outline-offset: 2px; }
+.bo.is-lift { z-index: 3; transform: rotate(-1.5deg) scale(1.03); box-shadow: 0 2px 2px rgb(18 34 63 / .08), 0 22px 30px -14px rgb(18 34 63 / .4); }
+.bo.is-top { outline: 2.5px solid var(--horizon); outline-offset: 3px; }
+/* A sticky in a vote, with the keys on it: Enter or Space votes for it. */
+.bo.is-ballot:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 3px; }
+.bo.is-muted { opacity: .4; }
+.bo.is-live-edit .bo-t { visibility: hidden; }
+
+/* Votes: your own dots while it runs, and everyone's count at the end */
+.bo-v { position: absolute; left: 10px; bottom: 8px; display: none; align-items: center; gap: 3px; height: 20px; padding: 0 6px 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11.5px/1 var(--font-sans); }
+.bo.has-v .bo-v { display: inline-flex; animation: bo-pop var(--duration-2) var(--ease-out) both; }
+.bo.has-v .bo-v svg { width: 11px; height: 11px; }
+.bo-dots { position: absolute; left: 10px; bottom: 9px; display: none; gap: 4px; }
+.bo.has-dots .bo-dots { display: flex; }
+.bo-dots i { width: 13px; height: 13px; border-radius: 50%; background: var(--horizon); box-shadow: 0 0 0 2px var(--nc); animation: bd-pop var(--duration-1) var(--ease-out) both; }
+
+/* Typing in an object. The field covers all of it, so a press anywhere on it places the caret, and its padding keeps the words where they sit at rest. */
+.bo-edit { position: absolute; left: 0; top: 0; width: 100%; height: 100%; box-sizing: border-box; padding: 14px 14px 26px; border: 0; resize: none; outline: none; background: transparent; color: inherit; font: 500 15.5px/1.32 var(--font-sans); letter-spacing: -.005em; user-select: text; -webkit-user-select: text; }
+.bo.k-text .bo-edit { padding: 0; font: 600 21px/1.25 var(--font-sans); letter-spacing: -.012em; }
+.bo.k-label .bo-edit { padding: 0; font: 600 16px/1.2 var(--font-sans); letter-spacing: -.008em; color: var(--ink-2); }
+.bo.k-text.is-body .bo-edit { font: 400 15px/1.4 var(--font-sans); color: var(--ink-2); }
+.bo.k-shape .bo-edit { padding: 0 14px; font: 500 15.5px/1.28 var(--font-sans); letter-spacing: 0; text-align: center; }
+/* Text and shapes can sit anywhere down their box, which a field can't, so `fitBoardEdit` says how far down the words start. A blank shape's first line is where its words will be. */
+.bo.is-live-edit:is(.k-text, .k-label, .k-shape) .bo-edit { overflow: hidden; }
+.bo.k-shape.is-live-edit .bo-t:empty::before { content: "\200b"; }
+
+/* A comment: a pin with their face on it, and what they said */
+/* A comment's pin: its point on the corner of what it's on, one size however near the camera is, as a pointer is. */
+.bo-at { --iz: inherit; position: absolute; z-index: 5; width: 0; height: 0; scale: var(--iz, 1); transform-origin: 0 0; }
+.bd.is-glide .bo-at { transition: scale var(--duration-3) var(--ease-in-out); }
+.bo-pin { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); cursor: pointer; animation: bo-pop var(--duration-2) var(--ease-out) both; }
+.bo-pin:hover, .bo-pin[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--horizon), var(--shadow-2); }
+.bo-pin .n { position: absolute; right: -7px; top: -6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11px/1 var(--font-sans); }
+/*
+ * Under the corner it's on, and inside it, where standing over it would cover a frame's title and count: it covers the corner of
+ * what it's pinned to rather than what's beside it.
+ */
+.bo-at.is-under .bo-pin { top: -6px; bottom: auto; left: auto; right: -6px; border-radius: 999px 4px 999px 999px; }
+.bo-at.is-under .bo-pin .n { top: auto; bottom: -6px; right: auto; left: -7px; }
+.bo-at.is-under .bo-th { top: -4px; bottom: auto; }
+/* Waiting for what a comment goes on: the next press picks it. */
+.bo-pick { position: absolute; inset: 0; z-index: 7; cursor: crosshair; }
+.bo-th { position: absolute; left: 34px; bottom: -4px; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
+.bo-th b { display: block; font: 600 12.5px/1.3 var(--font-sans); }
+.bo-th p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- pointers */
+/* Everyone's pointer: their face and name, and a glow on whoever is talking. `--iz` undoes the camera's zoom, so a pointer stays one size. It's written on their layer alone: changing a custom property restyles an element's children, and the world's children are everything on the board. */
+.bd-pts { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+/* Updates come ten times a second, so a pointer goes at an even speed for a little longer than the gap between two: it's still moving when the next arrives, even a late one. An ease would start from rest at each. Its size isn't eased with its place, because that has to keep step with the board, at once or with its glide. */
+.bc { --iz: inherit; position: absolute; left: 0; top: 0; z-index: 6; pointer-events: none; translate: var(--bcx, 0) var(--bcy, 0); scale: var(--iz, 1); transform-origin: 0 0; transition: translate var(--bd-point) linear; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.bd.is-glide .bc { transition: translate var(--bd-point) linear, scale var(--duration-3) var(--ease-in-out); }
+.bc .ac-ptag { height: 24px; font-size: 12px; transition: box-shadow var(--duration-2) var(--ease-out); }
+.bc .ac-ptag .n { display: inline-flex; align-items: center; gap: 5px; }
+.bc .ac-ptag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bc .ac-ptag .ac-level { flex: none; margin-left: 2px; }
+.bc.is-talk .ac-ptag { box-shadow: 0 0 0 1.5px white, 0 0 0 4.5px color-mix(in srgb, var(--speak) 70%, transparent), 0 6px 12px -4px rgb(0 0 0 / .4); }
+.bc-type { flex: none; display: inline-flex; gap: 2px; margin-left: 3px; }
+.bc-type i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: bc-dot 1.2s infinite; }
+.bc-type i:nth-child(2) { animation-delay: .15s; }
+.bc-type i:nth-child(3) { animation-delay: .3s; }
+
+/* ---------------------------------------------------------------- selection */
+/* Selection, handles and connection points: drawn in screen pixels, so they never scale with the board */
+.bs { position: absolute; z-index: 8; pointer-events: none; border-radius: 8px; box-shadow: 0 0 0 1.5px var(--horizon); }
+/* It's drawn where a glide will end, so it takes the glide's own way there and stays round what it's selecting. */
+.bd.is-glide .bs { transition: left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out), width var(--duration-3) var(--ease-in-out), height var(--duration-3) var(--ease-in-out); }
+.bs i { position: absolute; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--horizon); pointer-events: auto; }
+.bs i:nth-child(1) { left: -5px; top: -5px; cursor: nwse-resize; }
+.bs i:nth-child(2) { right: -5px; top: -5px; cursor: nesw-resize; }
+.bs i:nth-child(3) { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.bs i:nth-child(4) { right: -5px; bottom: -5px; cursor: nwse-resize; }
+.bs-p { position: absolute; z-index: 8; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--horizon); cursor: crosshair; transition: transform var(--duration-1) var(--ease-out); }
+.bs-p:hover { transform: scale(1.3); background: var(--horizon); }
+.bm { position: absolute; z-index: 8; border-radius: 4px; background: color-mix(in srgb, var(--horizon) 10%, transparent); box-shadow: 0 0 0 1px var(--horizon); pointer-events: none; }
+.bd-guide { position: absolute; z-index: 7; background: var(--sun-glow); pointer-events: none; }
+
+/* ---------------------------------------------------------------- the bar along the top */
+/* Everything about the board that isn't a tool: frosted, its name as a heading, and the seal as the app shows it. */
+.bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; transition: opacity var(--duration-2) var(--ease-out); }
+.bd-head.is-faded { opacity: 0; pointer-events: none; }
+/* The bar fades in as it comes, as it does when a presentation gives someone their own view back. */
+.bd-head { animation: bd-fade var(--duration-2) var(--ease-out) backwards; }
+.bd-head .sp { flex: 1; min-width: 8px; }
+.bd-head .nm { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 7px; border-radius: 9px; font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); white-space: nowrap; }
+.bd-head .nm:hover { background: var(--sunk); }
+/* Room below the line for descenders, without touching the line: a taller line would lift the name a pixel. */
+.bd-head .nm span { min-width: 0; margin: -3px 0; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; }
+.bd-head .nm .ac-i { flex: none; color: var(--ink-3); }
+/* The name being changed: the name's own type, in its place, ringed as a field with the keyboard is. */
+.bd-head .nm-in { flex: 0 1 auto; min-width: 140px; max-width: min(360px, 46cqw); height: 34px; margin: 0; padding: 0 9px; border: 0; border-radius: 9px; outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--focus); font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); field-sizing: content; }
+.bd-head .sv { flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 75px; height: 34px; padding: 0 9px 0 6px; border-radius: 9px; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
+.bd-head .sv:hover { background: var(--sunk); color: var(--ink-2); }
+.bd-head .sv span { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.bd-head .sv .ac-i { flex: none; color: var(--sun-text); }
+.bd-head .bt { width: 34px; height: 34px; border-radius: 9px; }
+.bd-head .vr { flex: none; width: 1px; height: 20px; margin: 0 5px; background: var(--bf-ring); }
+.bd-head .pct { flex: none; min-width: 44px; height: 34px; border-radius: 9px; text-align: center; font: 500 12px/34px var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.bd-head .pct:hover { background: var(--sunk); }
+/*
+ * The tools always stay on the sheet. A long name gives way first, and the seal stays whole. A bar with all its tools (`is-full`)
+ * can still be tight: there the name is capped and the two share what's left, and the seal keeps the width of the word "Sealed",
+ * so a longer seal can read "Reco…". Then the board's icon goes, and last the seal's words.
+ */
+@container (max-width: 760px) { .bd-head.is-full .sv { flex-shrink: 1; } .bd-head.is-full .nm { max-width: 220px; } }
+@container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
+@container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
+/*
+ * Narrow, as on a phone: the name, the seal, the session's Timer and Vote and More stay, and the name keeps room to be read;
+ * undo, zoom and the map go, as a pinch zooms. On a board's own page, the page's own button comes in close.
+ */
+@container (max-width: 480px) { .bd-head .zm, .bd-head .pct, .bd-head .ur { display: none; } .bd-head .vr { margin: 0 2px; } .bd-head .nm { min-width: 84px; } .bd-head .bpg-acts { margin-left: 2px; } }
+
+/* The board's own button, on top of IconButton */
+.bt { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.bt:hover { background: var(--sunk); color: var(--ink); }
+.bt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
+.bt[disabled] { opacity: 1; color: var(--line-control); pointer-events: none; }
+
+/* The map */
+.bi { position: absolute; z-index: 10; display: flex; color: var(--ink-2); background: var(--surface); border-radius: 14px; box-shadow: 0 0 0 1px var(--bd-ring), 0 2px 4px rgb(18 34 63 / .04), 0 14px 28px -16px rgb(18 34 63 / .32); }
+.bd-map { right: 12px; bottom: 12px; width: 172px; height: 112px; overflow: hidden; padding: 0; background: var(--surface); }
+.bd-map i { position: absolute; display: block; border-radius: 2px; background: var(--note-mist); }
+.bd-map b { position: absolute; display: block; border-radius: 3px; box-shadow: 0 0 0 1.5px var(--horizon); }
+
+/* ---------------------------------------------------------------- night, floating on the sheet */
+/*
+ * What's going on, for everyone: one pill, at the top of the sheet. Night, because it's about the call. As wide as what it says,
+ * up to the sheet's width: placed from the middle, it would otherwise have only half the sheet to fit in.
+ */
+.bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; width: max-content; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
+/* With no bar, as when presenting, the pill comes up to the top. */
+.bd.is-clean:not(:has(.bd-head)) .bd-pill { top: 14px; }
+.bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
+.bd-pill b { font-weight: 600; }
+/* What a pill says gives way before its title does, and the title is cut last of all. */
+.bd-pill > b { flex: 0 1 auto; min-width: 0; line-height: 1.3; }
+.bd-pill > span:not(.sep, .t) { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.bd-pill .t { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink); transition: color var(--duration-2) var(--ease-out); }
+.bd-pill .sep { flex: none; width: 1px; height: 18px; background: rgb(255 255 255 / .14); }
+.bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: var(--caution); }
+.bd-pill.has-act { padding-right: 5px; }
+.bd-pill button { flex: none; height: 28px; margin-left: 3px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); }
+.bd-pill button:hover { background: rgb(255 255 255 / .2); }
+/*
+ * A board on a phone, on its own page or in a call: what the pill says wraps rather than being cut, since the seal has only its
+ * icon there. A call's phone board is always narrow, and a page's is when its column is.
+ */
+@container (max-width: 480px) {
+  .bd.is-page .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
+  .bd.is-page .bd-pill > b, .bd.is-page .bd-pill > span:not(.sep, .t) { overflow: visible; white-space: normal; -webkit-line-clamp: unset; }
+}
+.bz.is-phone:not(.is-page) .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
+.bz.is-phone:not(.is-page) .bd-pill > :is(b, span:not(.sep, .t)) { overflow: visible; white-space: normal; -webkit-line-clamp: unset; }
+
+/* Anything small that floats over the sheet is night, like the dock beside it */
+.bx, .bx-sw, .bfly, .bd-heard { color: var(--stage-ink); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 16px 30px -14px rgb(6 13 26 / .55); }
+
+/* The bar on what's selected */
+.bx { position: absolute; z-index: 13; display: flex; align-items: center; gap: 1px; height: 42px; padding: 3px; border-radius: 12px; animation: bd-pop var(--duration-1) var(--ease-out) both; white-space: nowrap; }
+.bx .bt { width: 36px; height: 36px; border-radius: 9px; color: var(--stage-ink); }
+.bx .sw { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; }
+.bx .sw i, .swatch { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--nc); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); }
+.bx .wide { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 11px 0 9px; border-radius: 9px; color: var(--stage-ink); font: 600 13px/1 var(--font-sans); }
+.bx .wide .ac-i { color: var(--stage-ink-2); }
+.bx .wide:disabled { cursor: progress; color: var(--stage-ink-2); }
+.bx .wide:disabled:hover { background: none; color: var(--stage-ink-2); }
+.bx .n { padding: 0 8px 0 9px; font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink-2); }
+.bd-sep { flex: none; align-self: stretch; width: 1px; margin: 8px 3px; background: rgb(255 255 255 / .14); }
+.bx-sw { position: absolute; z-index: 14; display: flex; gap: 2px; padding: 5px; border-radius: 12px; animation: bd-pop var(--duration-1) var(--ease-out) both; }
+.bx-sw button { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; }
+
+/* They're drawn where a glide will end, so they take the glide's own way there and stay with what's picked. */
+.bd.is-glide :is(.bx, .bx-sw, .bp) { transition: left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out), translate var(--duration-3) var(--ease-in-out); }
+.bd.is-glide .bs-p { transition: transform var(--duration-1) var(--ease-out), left var(--duration-3) var(--ease-in-out), top var(--duration-3) var(--ease-in-out); }
+
+/* A tool's options, beside the rail, each level with its tool */
+.bfly { position: absolute; z-index: 13; left: 10px; display: grid; gap: 6px; padding: 8px; border-radius: 14px; animation: bd-pop var(--duration-1) var(--ease-out) both; }
+.bfly.is-note { top: calc(50% - 112px); }
+.bfly.is-more { top: calc(50% - 82px); }
+/* Holding less than all six, it ends where all six would, so its last item stays level with More. */
+.bfly.is-more.is-few { top: auto; bottom: calc(50% - 192px); }
+.bfly.is-shape { top: calc(50% - 28px); }
+.bfly.is-line { top: calc(50% + 14px); }
+.bfly.is-pen { top: calc(50% + 56px); }
+.bfly .row { display: flex; gap: 2px; }
+.bfly .bt { width: 36px; height: 36px; border-radius: 9px; color: var(--stage-ink); }
+.bfly .bt[aria-pressed="true"], .bx .bt[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+.bfly .sw { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; }
+.bfly .item { display: flex; align-items: center; gap: 10px; width: 188px; height: 38px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); text-align: left; }
+.bfly .item .ac-i { color: var(--stage-ink-2); }
+.bfly .item kbd { margin-left: auto; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink-2); }
+
+.bx .bt:hover, .bx .sw:hover, .bx .wide:hover, .bfly .bt:hover, .bfly .sw:hover, .bfly .item:hover, .bx-sw button:hover { background: rgb(255 255 255 / .1); color: var(--stage-ink); }
+.bfly .sw[aria-pressed="true"], .bx-sw button[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--speak); }
+
+/* What the call heard */
+.bd-heard { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px 0 11px; border-radius: 999px; font: 600 13px/1 var(--font-sans); white-space: nowrap; animation: bd-toast var(--duration-3) var(--ease-out) both; }
+.bd-heard .ac-i { color: var(--rose); }
+
+/* ---------------------------------------------------------------- on paper, over the sheet */
+/* Small menus on the board */
+.bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(18 34 63 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
+.bp .hd { padding: 10px 10px 8px; font: 600 14px/1.25 var(--font-sans); letter-spacing: -.005em; }
+/* Who can add to it: the workspace's Share sheet, which has its own width and room. */
+.bp.bp-share { width: auto; max-width: calc(100% - 24px); padding: 0; }
+.bp .sub { padding: 0 10px 10px; font-size: 13px; line-height: 1.42; color: var(--ink-3); }
+.bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
+.bp .mi:hover { background: var(--sunk); }
+.bp .mi .ac-i { flex: none; color: var(--ink-2); }
+.bp .mi small { margin-left: auto; font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.bp .opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 10px 10px; }
+.bp .opt { height: 40px; border-radius: 10px; font: 600 14px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
+.bp .opt[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); box-shadow: inset 0 0 0 1.5px var(--sun); }
+.bp .ft { padding: 2px 10px 10px; }
+.bp .ft .ac-btn { width: 100%; }
+.bp .rows { display: grid; gap: 7px; padding: 2px 10px 10px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.bp .rows div { display: flex; gap: 8px; }
+.bp .rows .ac-i { flex: none; margin-top: 2px; color: var(--ink-3); }
+
+/* Ideas from the call */
+.bd-tray { position: absolute; z-index: 12; left: 50%; bottom: 14px; translate: -50% 0; width: 560px; max-width: calc(100% - 24px); padding: 6px; border-radius: 16px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 26px 50px -20px rgb(18 34 63 / .5); animation: bd-toast var(--duration-2) var(--ease-out) both; }
+.bd-tray .hd { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 10px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; }
+.bd-tray .hd .ac-i { color: var(--rec); }
+.bd-tray .hd .sp { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: normal; }
+.bd-tray .hd .sp .ac-i { color: var(--ink-3); }
+.bd-tray .hd .bt { width: 32px; height: 32px; }
+.bd-tray .hd .bt .ac-i { color: inherit; }
+.bd-tray .ln { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 46px; padding: 4px 6px 4px 10px; border-radius: 10px; }
+.bd-tray .ln:hover { background: var(--sunk); }
+.bd-tray .ln p { font-size: 14px; line-height: 1.32; color: var(--ink); }
+.bd-tray .ln small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.bd-tray .ac-btn.is-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+.bd-tray .ft { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 6px 4px; }
+/* A narrow tray, as on a phone: what it's written in goes under its name, rather than squeezing in beside it. */
+.bd-tray { container-type: inline-size; }
+@container (max-width: 440px) {
+  .bd-tray .hd { flex-wrap: wrap; height: auto; min-height: 40px; padding-block: 4px 6px; row-gap: 0; }
+  .bd-tray .hd .bt { margin-left: auto; }
+  .bd-tray .hd .sp { order: 3; flex-basis: 100%; margin-left: 0; padding-left: 24px; }
+}
+
+/* A blank board */
+.bd-empty { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; justify-items: center; gap: 8px; text-align: center; pointer-events: none; color: var(--ink); transition: opacity var(--duration-2) var(--ease-out); }
+.bd-empty.is-faded { opacity: 0; }
+.bd-empty svg { margin-bottom: 8px; }
+.bd-empty b { font: 600 16px/1.3 var(--font-sans); letter-spacing: -.008em; }
+.bd-empty span { font-size: 14px; line-height: 1.4; color: var(--ink-3); }
+
+/* The sealed board you can't open: its place on the stage, and nothing of what's on it */
+.bd-noaccess { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; border-radius: 18px; background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); }
+.bd-noaccess h3 { font: 600 17px/1.3 var(--font-sans); letter-spacing: -.01em; color: var(--stage-ink); }
+.bd-noaccess p { margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--stage-ink-2); }
+.bd-noaccess .ac-btn { margin-top: 16px; }
+.bd-noaccess .ac-i { color: var(--gold); margin-bottom: 12px; }
+
+/* Inside the stage, but on paper: buttons, faces and focus follow the board, not the night. */
+.stage .bd :focus-visible, .stage .pc-sheet :focus-visible { outline-color: var(--focus); }
+/* What floats over the sheet is night wherever the sheet is, in a call or on a board's own page. */
+.bd :is(.bx, .bx-sw, .bfly, .bd-pill) :focus-visible, .bd .bd-heard:focus-visible { outline-color: var(--speak); }
+.stage .bd .ac-btn.is-secondary { background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-control); }
+.stage .bd .ac-btn.is-secondary:hover { background: var(--sunk); }
+.ac-stage .bd .ac-avatar { background: var(--sunk); }
+.ac-stage .bd .ac-avatar .initial { color: var(--ink-2); }
+
+/* ---------------------------------------------------------------- the Board menu */
+/* It rises from the dock's Board button, in a Popover. */
+.bl { width: 372px; max-width: calc(100vw - 24px); margin-bottom: 8px; padding: 12px; border-radius: 18px; color: var(--ink); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); animation: ac-rise var(--duration-2) var(--ease-out) both; }
+.bl-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 4px 6px 9px; font: 600 14.5px/1.2 var(--font-sans); letter-spacing: -.005em; }
+.bl-h small { font: 500 12px/1 var(--font-sans); color: var(--ink-3); letter-spacing: 0; }
+.bl-tpl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.bl-c { display: grid; gap: 7px; padding: 6px 6px 8px; border-radius: 12px; text-align: left; font: 600 12.5px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1), transform var(--duration-1) var(--ease-out), background-color var(--duration-1); }
+.bl-c:hover { box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); transform: translateY(-1px); }
+.bl-c .lb { padding: 0 2px; }
+.bl-th { display: block; width: 100%; aspect-ratio: 4 / 3; border-radius: 7px; overflow: hidden; background: var(--bd-ground); }
+.bl-th svg { display: block; width: 100%; height: 100%; }
+.bl-sub { margin: 14px 6px 4px; font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
+.bl-r { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 4px 8px 4px 6px; border-radius: 10px; text-align: left; }
+.bl-r:hover { background: var(--sunk); }
+.bl-r .bl-th { width: 38px; aspect-ratio: 1; }
+.bl-r b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13.5px/1.25 var(--font-sans); }
+.bl-r small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
+.bl-r .when { font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
+.bl-f { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 9px 6px 2px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.bl-q { margin: 8px 0 0; padding: 12px; border-radius: 12px; background: var(--sunk); animation: bd-unfold var(--duration-2) var(--ease-out) backwards; }
+.bl-q p { font-size: 13.5px; line-height: 1.4; color: var(--ink); }
+.bl-q .acts { display: flex; gap: 8px; margin-top: 10px; }
+.bl-q .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
+.bl.is-busy { cursor: progress; }
+
+/* ---------------------------------------------------------------- a live tile */
+/* The board as a tile on the stage, when someone keeps faces big. `is-col` is the smaller one above the tiles beside a big share. */
+.bd-tile { position: relative; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); text-align: left; cursor: pointer; }
+.bd-tile.is-col { flex: none; width: 100%; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); }
+.bd-tile .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
+.bd-tile .ac-tile-name { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; border-radius: 8px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); }
+.bd-tile.is-col .ac-tile-name { left: 8px; bottom: 8px; gap: 6px; height: 24px; padding: 0 8px 0 5px; border-radius: 7px; font-size: 12px; }
+.bd-tile .open { position: absolute; right: 10px; top: 10px; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); }
+
+/* ---------------------------------------------------------------- More's objects */
+/* What Templates and From your workspace offer, beside the rail where More was. */
+.bfly.is-list { top: calc(50% - 82px); width: 264px; max-height: min(360px, calc(100% - 24px)); overflow: auto; grid-auto-rows: min-content; }
+.bfly.is-list .hd { padding: 4px 8px 2px; font: 600 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--stage-ink-2); }
+.bfly.is-list .item { width: 100%; }
+.bfly.is-list .item .lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.bfly.is-list .item small { flex: none; color: var(--stage-ink-2); font-size: 12px; }
+.bfly.is-list .none { margin: 0; padding: 6px 8px 8px; max-width: 240px; font-size: 13px; line-height: 1.4; color: var(--stage-ink-2); }
+/* A table: cells share its size by their rows' and columns' sizes; the first row reads as its head. */
+.bo.k-table { border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--note-shadow); }
+.bo-grid { display: grid; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+.bo-cell { position: relative; min-width: 0; min-height: 0; overflow: hidden; padding: 9px 11px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.bo-cell .bo-t { font: 400 14.5px/1.35 var(--font-sans); color: var(--ink); }
+.bo-cell.is-head { background: var(--sunk); }
+.bo-cell.is-head .bo-t { font-weight: 600; }
+.bo-cell.is-live-edit .bo-t { visibility: hidden; }
+.bo-cell .bo-edit { padding: 9px 11px; font: 400 14.5px/1.35 var(--font-sans); }
+.bo-cell.is-head .bo-edit { font-weight: 600; }
+.bo-add { position: absolute; z-index: 3; display: grid; place-items: center; width: calc(26px * var(--iz, 1)); height: calc(26px * var(--iz, 1)); border-radius: 50%; background: var(--ink); color: var(--ground); box-shadow: var(--shadow-2); }
+.bo-add svg { width: calc(14px * var(--iz, 1)); height: calc(14px * var(--iz, 1)); }
+.bo-add.is-row { left: 50%; bottom: 0; translate: -50% 50%; }
+.bo-add.is-col { right: 0; top: 50%; translate: 50% -50%; }
+/* A mind map's idea: a pill of words, the first one bigger, joined to what it branches from by a curve. */
+.bo.k-node { display: flex; align-items: center; justify-content: center; padding: 8px 18px; border-radius: 999px; text-align: center; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1.5px var(--line-ink), var(--note-shadow); }
+.bo.k-node.is-first { background: var(--note-butter); color: var(--note-ink); box-shadow: 0 0 0 2px var(--line-ink), var(--note-shadow); }
+.bo.k-node .bo-t { font: 500 15px/1.25 var(--font-sans); }
+.bo.k-node.is-first .bo-t { font: 600 17px/1.25 var(--font-sans); }
+.bo.k-node .bo-t:empty::before { content: "An idea"; color: var(--ink-3); }
+.bo.k-node.is-first .bo-t:empty::before { content: "The main idea"; color: color-mix(in srgb, var(--note-ink) 55%, transparent); }
+.bo.k-node .bo-edit { display: flex; padding: 8px 18px; text-align: center; font: 500 15px/1.25 var(--font-sans); }
+.bo.k-node.is-first .bo-edit { font: 600 17px/1.25 var(--font-sans); }
+.bd-svg path.branch { stroke: var(--line-ink); stroke-width: 2; }
+/* Something from the workspace: what it is and its name, as its reader knows it, or that they can't open it. */
+.bo.k-link { display: flex; align-items: center; gap: 12px; padding: 0 12px 0 14px; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--note-shadow); }
+.bo-li { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); }
+.bo.k-link .bo-t { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font: 600 15px/1.3 var(--font-sans); }
+.bo.k-link.is-closed .bo-t { font-weight: 500; color: var(--ink-2); }
+.bo-open { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--ink-2); }
+.bo-open:hover { background: var(--sunk); color: var(--ink); }
+
+/* ---------------------------------------------------------------- a phone */
+.pc-add { position: absolute; z-index: 14; right: 14px; bottom: 14px; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
+/* While ideas from the call are open over the foot of the sheet, + steps aside: they're added from there. */
+.bd:has(.bd-tray) .pc-add { display: none; }
+.pc-sheet { position: absolute; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 16px 18px; border-radius: 24px 24px 0 0; color: var(--ink); background: var(--surface-raised); box-shadow: var(--shadow-3); animation: bd-sheet var(--duration-3) var(--ease-out) both; }
+.pc-sheet .grab { width: 40px; height: 4px; margin: 0 auto 12px; border-radius: 2px; background: var(--line); }
+.pc-sheet .pc-note { position: relative; display: block; width: 100%; min-height: 132px; padding: 14px; border: 0; border-radius: 8px; resize: none; outline: none; background: var(--nc, var(--note-butter)); color: var(--note-ink); font: 500 18px/1.32 var(--font-sans); }
+.pc-sheet .row { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.pc-sheet .row .sw { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; }
+.pc-sheet .row .sw[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--horizon); }
+.pc-sheet .ac-btn { width: 100%; margin-top: 12px; height: 48px; }
+.pc-sheet .pc-note::placeholder { color: color-mix(in srgb, var(--note-ink) 45%, transparent); }
+/* Under the sheet: a press anywhere else puts it away. */
+.pc-shade { position: absolute; z-index: 19; inset: 0; border-radius: inherit; background: rgb(6 13 26 / .28); animation: bd-settle var(--duration-2) var(--ease-out) both; }
+
+/* ---------------------------------------------------------------- motion */
+@keyframes bd-open { from { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); } to { clip-path: inset(0 0 0 0 round 18px); } }
+/* Presenting: whoever's presenting has, round the board as everyone sees it, where they are and the way on, and beside it the next frame and their notes */
+.bd-pres { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; container: bd-pres / inline-size; }
+.bd-pres-in { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; height: 100%; }
+.bd-pres .pm { position: relative; display: grid; grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; }
+.bd-pres .shown { position: relative; min-width: 0; min-height: 0; }
+.bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr) 248px; gap: 10px; }
+.bd-pres.is-on .pm { grid-template-rows: minmax(0, 1fr) auto; gap: 10px; }
+.bd-pres.is-on .shown { border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 2px var(--speak); }
+.bd-pres .tag { position: absolute; z-index: 13; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 9px; border-radius: 9px; background: var(--stage-raised); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); pointer-events: none; }
+.bd-pres .tag .ac-i { color: var(--speak); }
+.bd-pres .ctl { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; color: var(--stage-ink); font: 500 13px/1 var(--font-mono); }
+.bd-pres .ctl .at { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+.bd-pres .ctl button { display: grid; place-items: center; height: 44px; border-radius: 12px; background: rgb(255 255 255 / .08); color: var(--stage-ink); transition: background var(--duration-1) var(--ease-out), opacity var(--duration-1) var(--ease-out); }
+.bd-pres .ctl button:hover:not([aria-disabled="true"]) { background: rgb(255 255 255 / .14); }
+.bd-pres .ctl button:focus-visible { outline: 2px solid var(--horizon); outline-offset: 2px; }
+.bd-pres .ctl .go { width: 44px; }
+.bd-pres .ctl .go[aria-disabled="true"] { opacity: .38; cursor: default; }
+.bd-pres .ctl .stop { padding: 0 14px; margin-left: 14px; font: 600 13.5px/1 var(--font-sans); }
+.bd-pres .side { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 10px; min-height: 0; color: var(--stage-ink); }
+.bd-pres .lab { font: 500 11.5px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--stage-ink-2); }
+.bd-pres .nx { position: relative; height: 150px; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); background: var(--bd-ground); }
+.bd-pres .nx .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
+.bd-pres .nx .end { position: absolute; inset: 0; display: grid; place-items: center; background: var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); }
+.bd-pres .pn { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px; border-radius: 12px; background: rgb(255 255 255 / .05); cursor: text; }
+.bd-pres .pn:focus-within { box-shadow: inset 0 0 0 1px var(--horizon); }
+.bd-pres .pn textarea { flex: 1; min-height: 0; width: 100%; padding: 0; border: 0; resize: none; background: none; color: var(--stage-ink); font: 400 13.5px/1.45 var(--font-sans); outline: none; }
+.bd-pres .pn textarea::placeholder { color: var(--stage-ink-2); }
+/* A narrow stage: the frame, the way on under it, and the notes under that. The next frame waits for a wider one. */
+@container bd-pres (max-width: 640px) {
+  .bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .bd-pres .side { grid-template-rows: auto; }
+  .bd-pres .side > .lab, .bd-pres .nx { display: none; }
+  .bd-pres .pn { max-height: 104px; }
+  .bd-pres .ctl { gap: 6px; }
+  .bd-pres .ctl .stop { margin-left: 6px; }
+}
+
+/* The rise played backwards, as a board closed for everyone goes. */
+@keyframes bd-sink { from { clip-path: inset(0 0 0 0 round 18px); } to { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); opacity: 0; } }
+@keyframes bz-rail { from { opacity: 0; transform: translateX(-40px); } }
+@keyframes bd-fade { from { opacity: 0; } }
+@keyframes bf-land { from { opacity: 0; transform: translateY(60px) scale(.92); } }
+@keyframes bo-pop { from { opacity: 0; transform: translateY(8px) scale(.9); } }
+@keyframes bc-dot { 0%, 60%, 100% { opacity: .35; } 30% { opacity: 1; } }
+@keyframes bd-pop { from { opacity: 0; transform: translateY(4px) scale(.96); } }
+@keyframes bd-settle { from { opacity: 0; } }
+@keyframes bd-drop { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes bd-toast { from { opacity: 0; transform: translateY(10px); } }
+@keyframes bd-sheet { from { transform: translateY(100%); } }
+/* Clips only while it opens, so the button's glow isn't cut off afterwards. */
+@keyframes bd-unfold { from { opacity: 0; max-height: 0; overflow: hidden; } to { opacity: 1; max-height: 320px; overflow: hidden; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bd.is-new { animation: none; clip-path: none; }
+  .bo.is-glide, .bc, .bd.is-glide .bc { transition: none; }
+  .bc { animation: none; }
+}

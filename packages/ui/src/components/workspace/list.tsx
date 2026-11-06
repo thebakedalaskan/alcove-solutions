@@ -1,6 +1,6 @@
 /* The pane and the list of documents down its side. */
 import { AnimatePresence, motion } from 'motion/react';
-import { Children, useLayoutEffect, useRef, type ComponentProps, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { Children, useLayoutEffect, useRef, type ComponentProps, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type Ref } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Faces, type AvatarPerson } from '../people';
@@ -13,14 +13,15 @@ import { useMove } from './shared';
  * call, or the page in the app. `listOff` tucks the list away and `listPeek` brings it back over the page for a moment;
  * `phoneList` slides it in on a phone. `following` draws the frame that says you're going where someone goes. `reading`
  * is the audience's view of a presentation, `zen` Just the document, and `away` hides the page behind a share on a phone.
- * `page` is outside a call.
+ * `page` is outside a call. `under`: something's drawn over it, a presentation, and nothing in it can be reached meanwhile.
  */
-export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, reading = false, zen = false, away = false, page = false, className }: {
+export function WsPane({ children, label = 'Workspace', listOff = false, listPeek = false, phoneList = false, following = false, reading = false, zen = false, away = false, page = false, under = false, className, ref }: {
   children?: ReactNode; label?: string | undefined; listOff?: boolean | undefined; listPeek?: boolean | undefined; phoneList?: boolean | undefined;
-  following?: boolean | undefined; reading?: boolean | undefined; zen?: boolean | undefined; away?: boolean | undefined; page?: boolean | undefined; className?: string | undefined;
+  following?: boolean | undefined; reading?: boolean | undefined; zen?: boolean | undefined; away?: boolean | undefined; page?: boolean | undefined; under?: boolean | undefined; className?: string | undefined;
+  ref?: Ref<HTMLElement> | undefined;
 }) {
   return (
-    <section aria-label={label} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', reading && 'is-reading', zen && 'is-zen', away && 'is-away', page && 'in-app', className)}>
+    <section ref={ref} aria-label={label} inert={under || undefined} className={cn('ws-pane', listOff && 'tree-off', listPeek && 'list-peek', phoneList && 'phone-tree', following && 'is-follow', reading && 'is-reading', zen && 'is-zen', away && 'is-away', page && 'in-app', under && 'is-under', className)}>
       {children}
     </section>
   );
@@ -60,9 +61,9 @@ function moveInList(e: KeyboardEvent<HTMLDivElement>) {
  */
 export type WsListEmpty = 'yours' | 'others' | 'shared';
 const EMPTY_WORDS: Record<WsListEmpty, string> = {
-  yours: 'Documents and folders you make show up here.',
-  others: 'Documents and folders show up here once someone makes them.',
-  shared: 'Documents shared with you show up here.'
+  yours: 'Documents, boards and folders you make show up here.',
+  others: 'Documents, boards and folders show up here once someone makes them.',
+  shared: 'Documents and boards shared with you show up here.'
 };
 
 export function WsList({ head, children, empty = false, listKey, label = 'Documents', foot, onKeyDown }: {
@@ -109,23 +110,24 @@ function SpaceName({ name, placeholder, onCommit, onCancel }: WsNaming) {
 }
 
 /**
- * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`). `naming`
- * swaps the name for a field. Whatever isn't given isn't shown: someone who can only read makes nothing.
+ * The top of the list: which workspace (a menu of them in `picker`), find, and what you can make (`create`, named for what its
+ * menu makes: `createLabel`). `naming` swaps the name for a field. Whatever isn't given isn't shown: someone who can only read
+ * makes nothing.
  */
-export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, naming }: {
-  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; naming?: WsNaming | null | undefined;
+export function WsListHead({ name, picker, pickerLabel = 'This call’s workspace', onFind, create, createLabel = 'New document or folder', naming }: {
+  name: string; picker: WsPop; pickerLabel?: string | undefined; onFind?: (() => void) | undefined; create?: WsPop | undefined; createLabel?: string | undefined; naming?: WsNaming | null | undefined;
 }) {
   return (
     <div className="wt-head">
       {naming ? <SpaceName {...naming} /> : (
         <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label={pickerLabel} anchor={
-          <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n">{name}</span><Icon name="chevronsUpDown" size={14} /></button>
+          <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
       )}
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}
       {create && (
         <WsPopover open={create.open} onOpenChange={create.onOpenChange} label="New" anchor={
-          <IconButton icon="plus" size={17} className="wt-ib" label="New document or folder" title="New" />
+          <IconButton icon="plus" size={17} className="wt-ib" label={createLabel} title="New" />
         }>{create.content}</WsPopover>
       )}
     </div>
@@ -142,15 +144,18 @@ function RowAction({ icon, label, ...rest }: { icon: IconName; label: string } &
   return <button type="button" className="wt-a" aria-label={label} {...rest}><Icon name={icon} size={15} /></button>;
 }
 
-/** What a row is. A board slots in here when boards are built. */
-export type WsRowKind = 'document' | 'folder' | 'live';
+/** What a row is. */
+export type WsRowKind = 'document' | 'folder' | 'board' | 'live';
+
+/** What a row in the list shows for each kind of thing in it. */
+export const WS_ITEM_ICONS = { document: 'fileText', folder: 'folder', board: 'presentation' } as const satisfies Record<string, IconName>;
 
 export interface WsRowProps {
   /** The item's ID, on the row as `data-row`, for working out what a drag is over. */
   id: string;
   name: string;
   kind?: WsRowKind | undefined;
-  /** A live page's icon: notes, todos, transcript. Documents and folders have their own. */
+  /** A live page's icon: notes, todos, transcript. Documents, folders and boards have their own. */
   icon?: IconName | undefined;
   /** How deep it is in the folders. */
   depth?: number | undefined;
@@ -192,7 +197,7 @@ export interface WsRowProps {
 export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tree', open = false, current = false, count = 0, faces = [], facesCard, quiet = false, flash = false, into = false, ghosted = false, onOpen, onTwist, onBeside, menu, add, onRename, onContextMenu, onPointerDown }: WsRowProps) {
   const move = useMove();
   const folder = kind === 'folder';
-  const glyph = icon ?? (folder ? (open ? 'folderOpen' : 'folder') : 'fileText');
+  const glyph = icon ?? (folder ? (open ? 'folderOpen' : 'folder') : kind === 'board' ? WS_ITEM_ICONS.board : WS_ITEM_ICONS.document);
   const keys = (e: KeyboardEvent<HTMLButtonElement>) => {
     if (folder && onTwist && ((e.key === 'ArrowRight' && !open) || (e.key === 'ArrowLeft' && open))) { e.preventDefault(); onTwist(); }
   };
@@ -221,13 +226,13 @@ export function WsRow({ id, name, kind = 'document', icon, depth = 0, area = 'tr
 
 /** A row being named, in place: Enter or leaving the field keeps it, Esc goes back. The name's selected when it opens. */
 export function WsRenameRow({ name, kind = 'document', depth = 0, placeholder = 'Name this folder', onCommit, onCancel }: {
-  name: string; kind?: 'document' | 'folder' | undefined; depth?: number | undefined; placeholder?: string | undefined; onCommit: (name: string) => void; onCancel: () => void;
+  name: string; kind?: keyof typeof WS_ITEM_ICONS | undefined; depth?: number | undefined; placeholder?: string | undefined; onCommit: (name: string) => void; onCancel: () => void;
 }) {
   const move = useMove();
   const cancelled = useRef(false);
   return (
     <motion.div className="wt-r is-edit" style={{ '--d': depth }} initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1, transition: move(1) }}>
-      <Icon name={kind === 'folder' ? 'folder' : 'fileText'} size={16} />
+      <Icon name={WS_ITEM_ICONS[kind]} size={16} />
       <input className="wt-in" type="text" aria-label="Name" placeholder={placeholder} defaultValue={name} maxLength={200} autoFocus onFocus={(e) => e.currentTarget.select()}
         onKeyDown={(e) => {
           e.stopPropagation();

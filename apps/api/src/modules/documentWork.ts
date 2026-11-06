@@ -9,7 +9,7 @@
  *
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
-import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SearchDocSchema } from '@alcove/api';
+import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SERVER_CLIENT, SearchDocSchema, isServerClient, randomClient } from '@alcove/api';
 import { bytesOnPage, itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
@@ -93,6 +93,16 @@ function openLog(l: SealedLog): OpenLog {
   return { base, editors, rows, unreadable };
 }
 
+/**
+ * A Y.Doc for the server to work on. What it writes goes as a client of its own, random as a browser's and never one the server
+ * writes as fixed (`SERVER_CLIENT`): an operation that writes as one of those says so itself.
+ */
+function workingDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  doc.clientID = randomClient();
+  return doc;
+}
+
 interface Built { doc: Y.Doc; marked: Uint8Array | null; skipped: number[]; pending: boolean }
 /**
  * The state a log comes to. Going through a Y.Doc rather than `Y.mergeUpdates` lets go of what was deleted: only that it's
@@ -105,7 +115,7 @@ interface Built { doc: Y.Doc; marked: Uint8Array | null; skipped: number[]; pend
 function build(l: OpenLog, mark: number | null = null): Built {
   const skipped = new Set<number>();
   for (;;) {
-    const doc = new Y.Doc();
+    const doc = workingDoc();
     let marked: Uint8Array | null = null;
     let bad: number | null = null;
     if (l.base) Y.applyUpdate(doc, l.base);
@@ -263,9 +273,13 @@ const RESTORING = Symbol('restoring');
  * A document's blocks are never deleted, this included: someone offline may be writing in one that's new since the version.
  * Undoing a block's arrival empties it and leaves the element, and the undo's own transaction says which those are, having
  * taken their `id` with everything else. They're settled the way any block is that an undo took back.
+ *
+ * What's new in it is written as `as`. What the version has and `current` doesn't goes as it was, under whoever wrote it:
+ * after a version took the place of a document that wouldn't open, a newer one brings back its own history as it was.
  */
-function backTo(current: Y.Doc, version: Uint8Array, kind: ContentKind): Uint8Array {
+function backTo(current: Y.Doc, version: Uint8Array, kind: ContentKind, as: number): Uint8Array {
   const past = new Y.Doc({ gc: false });
+  past.clientID = as;
   Y.applyUpdate(past, version);
   const fragment = kind === 'document' ? past.getXmlFragment(DOC_FRAGMENT) : null;
   const undo = new Y.UndoManager(past, { trackedOrigins: new Set([RESTORING]), captureTimeout: 0, ...(fragment ? { deleteFilter: (item: Y.Item) => undoMayDelete(item, fragment) } : {}) });
@@ -283,15 +297,20 @@ function backTo(current: Y.Doc, version: Uint8Array, kind: ContentKind): Uint8Ar
   past.destroy();
   return update;
 }
-function restore(i: SealedLog & { version: z.infer<typeof VersionParts>; kind: ContentKind }) {
+/**
+ * A restore as one update, and the client what's new in it is written as, `as`, which the log mustn't have had. It's chosen by
+ * whoever asks, outside the worker, so that the check that it's new is the one place it's settled.
+ */
+function restore(i: SealedLog & { version: z.infer<typeof VersionParts>; kind: ContentKind; as: number }) {
   const l = openLog(i);
   const b = build(l);
-  const update = backTo(b.doc, openParts(i, i.version), i.kind);
+  const { as } = i;
+  const update = backTo(b.doc, openParts(i, i.version), i.kind, as);
   Y.applyUpdate(b.doc, update);
   const shape = shapeOf(b.doc, Y.encodeStateAsUpdate(b.doc));
   const { title } = documentText(b.doc, i.kind);
   b.doc.destroy();
-  return { update, title, shape, seen: seenOf(update), found: found(b, l) };
+  return { update, as, title, shape, seen: seenOf(update), found: found(b, l) };
 }
 /** A version made into a document's whole state, for when what's there won't open: there's nothing to merge with. */
 function reset(i: { at: At; key: Uint8Array; through: number; version: z.infer<typeof VersionParts> }) {
@@ -362,6 +381,8 @@ function copy(i: SealedLog & { name: string | null }) {
   b.doc.destroy();
   return { state, shape, seen: seenOf(state), found: found(b, l) };
 }
+/** How far the seed goes as its own client: all of the server's own clients that rescued words may hold. */
+const SEED_REACH = Y.decodeStateVector(Y.encodeStateVectorFromUpdate(DOC_SEED)).get(SERVER_CLIENT.seed) ?? 0;
 /**
  * Someone's words from another document, as this one's first state (`saveCopy`). It's judged as anything from a browser is,
  * and goes through a Y.Doc, so what's kept is a state proved to open, holding nothing that waits for what never came, whose
@@ -369,9 +390,12 @@ function copy(i: SealedLog & { name: string | null }) {
  * from a document that never opened here come without it, and its title is where the name goes.
  */
 function adopt(i: { state: Uint8Array; items: number; kind: ContentKind; name: string | null }) {
-  const { seen, why } = inspect(i.state, browserCaps(i.items));
+  // A document's carries the seed, which the new one already holds, and nothing else of the server's own clients: anything else
+  // written as one is refused, as it is from any browser, so nothing rescued takes a template's place or a client kept for later.
+  const { seen, why } = inspect(i.state, { ...browserCaps(i.items), asServer: true });
   if (!seen) return { why };
-  const doc = new Y.Doc();
+  if (seen.blocks.some((b) => isServerClient(b.client) && !(i.kind === 'document' && b.client === SERVER_CLIENT.seed && b.to <= SEED_REACH))) return { why: 'server-client' };
+  const doc = workingDoc();
   if (i.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, i.state);
   doc.store.pendingStructs = null;
@@ -397,7 +421,7 @@ export const DOC_TASKS = {
   fold: task(SealedLog.extend({ through: z.number(), keep: Keep.nullable() }), z.object({
     snapshot: Bytes, editors: Bytes, shape: Shape, found: Found, version: z.object({ info: Bytes, parts: z.array(Bytes), bytes: z.number() }).nullable()
   }), fold),
-  restore: task(SealedLog.extend({ version: VersionParts, kind: Kind }), z.object({ update: Bytes, title: z.string(), shape: Shape, seen: SeenSchema, found: Found }), restore),
+  restore: task(SealedLog.extend({ version: VersionParts, kind: Kind, as: z.number().int() }), z.object({ update: Bytes, as: z.number(), title: z.string(), shape: Shape, seen: SeenSchema, found: Found }), restore),
   reset: task(z.object({ at: AtSchema, key: Bytes, through: z.number(), version: VersionParts }), z.object({ snapshot: Bytes, editors: Bytes, shape: Shape, seen: SeenSchema }), reset),
   read: task(SealedLog.extend({ op: ReadName, args: z.unknown() }), z.object({ value: z.unknown(), found: Found }), read),
   searchLine: task(SealedLog.extend({ id: z.string(), itemKind: ItemKindSchema, name: z.string(), kind: Kind }), z.object({ line: Bytes, found: Found }), searchLine),

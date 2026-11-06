@@ -3,7 +3,7 @@
  * has (`DOC_SEED`), its first line holding the first paragraph and a line for each after it. Nothing else of the document
  * they were written in comes with them. It holds Yjs, so it loads only when someone saves their words as a new document.
  */
-import { DOC_FRAGMENT, DOC_SEED } from '@alcove/api';
+import { DOC_FRAGMENT, DOC_SEED, randomClient } from '@alcove/api';
 import { newBlockId } from '@alcove/api/retire';
 import * as Y from 'yjs';
 
@@ -15,9 +15,13 @@ function lineOf(words: string): Y.XmlElement {
   return line;
 }
 
-/** The state of a new document whose page is `text`, a paragraph to a line. */
+/**
+ * The state of a new document whose page is `text`, a paragraph to a line. The words are written as a client of a browser's,
+ * never one of the server's, which the API refuses here as it does everywhere a browser writes.
+ */
 export function stateOf(text: string): Uint8Array {
   const doc = new Y.Doc();
+  doc.clientID = randomClient();
   Y.applyUpdate(doc, DOC_SEED);
   const page = doc.getXmlFragment(DOC_FRAGMENT);
   const [first, ...rest] = text.split('\n').filter((p) => p.trim() !== '');

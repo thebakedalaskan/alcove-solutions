@@ -220,7 +220,7 @@ describe('bookmarks', () => {
     expect(await fails(kofiCall.personal.add({ kind: 'bookmark', label: '', point: { kind: 'screen', frameId: 'made-up' } }))).toBe('not-found');
 
     // Rooms open, each with its own transcript.
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     const design = rooms[0]?.id ?? '';
     await inPlace(kofiCall, design);
@@ -353,7 +353,7 @@ describe('answers you keep', () => {
     await host.transcribe(speech('Legal signs on Thursday.', 0, 30_600), host.ticket.identity);
     // Two minutes in when the rooms open: a room's lines are placed by the server's clock.
     await h.pool.query(`UPDATE calls SET started_at = started_at - interval '2 minutes' WHERE call_id = $1`, [host.ticket.callId]);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     await inPlace(kofiCall, rooms[0]?.id ?? '');
     await inPlace(lenaCall, rooms[1]?.id ?? '');

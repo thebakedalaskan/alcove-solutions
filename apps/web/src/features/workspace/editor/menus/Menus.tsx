@@ -11,10 +11,13 @@ import { createPortal } from 'react-dom';
 import {
   applyLink, askAboutSelection, commentOnBlock, deleteFromMenu, duplicateBlock, openLinkField, pickDocument, pickMention, pickMoment, pickSlash, sendBlock, startComment, turnInto
 } from '../actions';
+import type { Node as PMNode } from 'prosemirror-model';
+import { galleryItems, mediaIn } from '../blocks/attrs';
 import { evenTables, findBlock, kindOf, scrollerOf } from '../commands';
+import { clockOf } from '../../live/dates';
 import type { EditorRuntime, OpenMenu, Store } from '../runtime';
-import { schema } from '../schema';
-import type { BlockKind, MentionItem, Rect } from '../types';
+import { numberAttr, schema, textAttr } from '../schema';
+import type { BlockKind, MediaDeletion, MentionItem, Rect } from '../types';
 import { slashGroups, TURN } from './rows';
 
 export const useStore = <T,>(store: Store<T>): T => useSyncExternalStore(store.subscribe, store.get, store.get);
@@ -158,7 +161,7 @@ function ListMenu({ rt, rows, anchor, className, label, start, reset, caret, onC
 
 function slashRows(rt: EditorRuntime, menu: Extract<OpenMenu, { kind: 'slash' }>): Row[] {
   const call = rt.props.call;
-  const groups = slashGroups(menu.query, call !== undefined, rt.props.onPick !== undefined);
+  const groups = slashGroups(menu.query, call !== undefined, rt.props.onPick !== undefined, rt.props.onNewBoard !== undefined);
   if (groups.length === 0) return [{ kind: 'text', label: `Nothing called “${menu.query}”.` }];
   return groups.flatMap((g) => [
     { kind: 'head', label: g.title } satisfies Row,
@@ -184,9 +187,10 @@ function mentionRows(rt: EditorRuntime, query: string, docsOnly: boolean, pick: 
 
 function momentRows(rt: EditorRuntime, block: string): Row[] {
   const lines = rt.props.call?.recent().slice(0, 4) ?? [];
+  if (lines.length === 0) return [{ kind: 'text', label: 'Nothing said yet.' }];
   return [
     { kind: 'head', label: 'Just said' },
-    ...lines.map((l): Row => ({ kind: 'item', key: l.id, label: l.text, face: l.person ?? { name: l.name }, sub: `${l.person?.name.split(' ')[0] ?? l.name} · ${l.at}`, className: 'is-line', run: () => pickMoment(rt, block, l) }))
+    ...lines.map((l): Row => ({ kind: 'item', key: l.id, label: l.text, face: l.person ?? { name: l.name }, sub: `${l.person?.name.split(' ')[0] ?? l.name} · ${clockOf(l.at)}`, className: 'is-line', run: () => pickMoment(rt, block, l) }))
   ];
 }
 
@@ -239,7 +243,31 @@ function blockRows(rt: EditorRuntime, block: string, rect: Rect, keyboard: boole
   if (copyLink) out.push({ kind: 'item', key: 'link', icon: 'link', label: 'Copy link', run: () => { rt.menu.set(null); copyLink(block); } });
   if (known && rt.props.moveTargets && rt.props.onMoveBlock) out.push({ kind: 'item', key: 'move', icon: 'folderInput', label: 'Move to…', run: () => rt.menu.set({ kind: 'move', block, rect }) });
   out.push({ kind: 'sep' }, { kind: 'item', key: 'delete', icon: 'trash', label: 'Delete', className: 'is-caution', run: () => deleteFromMenu(rt, block) });
+  const files = filesOf(rt, ref.node, block, rect);
+  if (files) out.push({ kind: 'item', key: 'files', icon: 'trash', label: FOR_GOOD[files.what], className: 'is-caution', run: () => { rt.menu.set(null); rt.props.media?.onDeleteFiles?.(files); } });
   return out;
+}
+
+/** Delete takes a block out and leaves its files in the workspace. This deletes them, everywhere, so it says so. */
+const FOR_GOOD: Record<MediaDeletion['what'], string> = {
+  photo: 'Delete the photo for good', photos: 'Delete the photos for good', video: 'Delete the video for good', file: 'Delete the file for good'
+};
+
+/** The stored files a finished photo, video or file block holds, for deleting them for good. */
+function filesOf(rt: EditorRuntime, node: PMNode, block: string, rect: Rect): MediaDeletion | null {
+  if (rt.readOnly || !rt.props.media?.onDeleteFiles || numberAttr(node, 'up') !== null) return null;
+  const media = mediaIn(node);
+  if (media.length === 0) return null;
+  switch (node.type) {
+    case schema.nodes.gallery: {
+      const photos = galleryItems(node).filter((i) => i.media !== null);
+      const one = photos.length === 1 ? photos[0] : undefined;
+      return one ? { block, media, what: 'photo', name: one.name, rect } : { block, media, what: 'photos', name: `these ${photos.length} photos`, rect };
+    }
+    case schema.nodes.video: return { block, media, what: 'video', name: textAttr(node, 'title') || 'this video', rect };
+    case schema.nodes.file: return { block, media, what: 'file', name: textAttr(node, 'name') || 'this file', rect };
+    default: return null;
+  }
 }
 
 function moveRows(rt: EditorRuntime, block: string): Row[] {

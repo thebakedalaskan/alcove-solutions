@@ -129,7 +129,7 @@ const preview: Preview = {
         wide: { name: 'Wide', styles: { width: '1920px', height: '1080px' }, type: 'desktop' }
       }
     },
-    options: { storySort: { order: ['Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'], 'Components', ['Icons and marks', 'Actions', 'Forms', 'Feedback', 'Overlays', 'Layout', 'Motion', 'The evening', 'People', 'Starting a call', 'Ringing and waiting', 'In a call', 'Notes and transcript', 'Record', 'Settings', 'Workspace'], 'Pages', 'Calls', 'Journeys'] } }
+    options: { storySort: { order: ['Foundations', ['Colour', 'Type', 'Icons', 'Scales', 'The evening'], 'Components', ['Icons and marks', 'Actions', 'Forms', 'Feedback', 'Overlays', 'Layout', 'Motion', 'The evening', 'People', 'Starting a call', 'Ringing and waiting', 'In a call', 'Notes and transcript', 'Record', 'Settings', 'Workspace', 'Board'], 'Pages', 'Calls', 'Board', ['Surface', 'States', 'Presence'], 'Journeys'] } }
   }
 };
 

@@ -408,7 +408,8 @@ account.
   shows are written afresh (frames already read aren't read again); of the decisions, open questions and
   follow-ups, whatever someone has added, confirmed, answered, taken on or otherwise changed stays as it is, and the new
   ones take the place of the ones nobody touched (`keepSettled` in `writer.ts`, which merges any part of the notes
-  with its own decisions, questions and follow-ups the same way). The notes model is told what's settled
+  with its own decisions, questions and follow-ups the same way). The notes model is told what's settled, the first time
+  it writes them too, when that's what people added during the call
   ("Already settled (don't list these again)", each with where it stands, from `settledOf`), and a new item
   that's still a kept one in other words is dropped anyway: most of the shorter one's words (60%) in the other,
   pointing at moments within a minute of each other. With no moment to go on, which is any proposal made from memory,
@@ -934,10 +935,11 @@ read, as catching up always has. The notes everyone gets are still written when 
 the notes worker: live notes only hand on what was ticked.
 
 - **The contract.** `CallState.liveNotes` (`LiveNotes`) comes with the call: `notes` (a `CatchUp` whose `next` are
-  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `writing`, and `error`, saying the
-  latest refresh of them didn't work. `read.whileHere` says they were written from only part of what was said there.
-  `CallSession.watchNotes()` says this browser is showing them until the function it returns is called, and
-  `CallSession.tickFollowUp(id, done)` ticks one.
+  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `added` (what people added by hand,
+  [Adding a follow-up](#adding-a-follow-up)), `writing`, and `error`, saying the latest refresh of them didn't work.
+  `read.whileHere` says they were written from only part of what was said there. `CallSession.watchNotes()` says this
+  browser is showing them until the function it returns is called, `CallSession.tickFollowUp(id, done)` ticks one, and
+  `CallSession.addFollowUp(text)` adds one.
 - **Where they're kept.** In `call_notes`, a row for each view of each part of the call (`main`, or a breakout room's
   random ID), sealed as a `call-notes` record under the state key `call-notes:<callId>`, whose header binds the owner, the
   call, the part and the view. Beside it, as a `call-notes-lines` record, the lines it read, by ID and when each was said,
@@ -1041,7 +1043,34 @@ call they're in: an ID from another room or call, from notes for a narrower view
 holds the call's row, so it comes before the call ends or is refused (`409 conflict`). A tick is kept under the notes' row
 with who made it and when, and a refresh saves around it, so one made while the notes were being written isn't lost.
 
+### Adding a follow-up
+
+`{type: "follow-up-add", text}`, sharing the 60 a minute of ticking, adds a follow-up nobody said to the part of the call
+someone is in, in their words (one line, at most 300 characters, at most 40 in a part of the call), for themselves. It's for
+whoever can tick there: anyone who gets the notes, reading the notes everyone shares. A guest with the link gets `403
+forbidden`, and so does someone on a narrower view, who can't tick either. It needs a note for it to go in, so a call that
+has never had notes on answers `409 conflict`. Once one exists it works however notes stand, paused and off too: it reaches no AI.
+The same words again add nothing, so a retry is safe.
+
+- **Where it's kept.** Beside the notes, in the same sealed record of the `all` row (`added`), not among `next`: there may be
+  no notes yet, and these aren't the notes model's. A record from before this reads as having none. The row is made if there
+  isn't one, with no notes in it, and everything else about it stays as for a row nobody has refreshed.
+- **Who reads it.** `added`, with the call, for people who get the notes and may read everyone's: a guest with the link is
+  sent none, whatever they were there for, as the note doesn't go to them. `GET .../follow-ups` lists them as `from: 'added'`.
+- **Ticking** is the same `{type: "follow-up", id, done}`.
+- **The notes model** is told them with the follow-ups so far, by label, and can say something it heard is one of them. Then
+  it's left out of `next`, and what was added stays in its adder's words. It can't change or drop one: what it says about one
+  goes no further than that, as for what's ticked. Nothing else about it reaches the model.
+- **What reads less.** As for what's ticked, and for the same reason: someone may have put anything they'd heard into it. A
+  refresh that reads less than the last one did isn't told them, and they stop showing for good. They still go to the note.
+
 ### Into the note
+
+What people added goes in as it stands when the call ends, whatever happens to the notes: a follow-up in that part of the
+note, the call's or a breakout room's, as if its adder had proposed it there. It's for them and taken on, its first change is
+`proposed` (with `done` after, if it was ticked), and it has no lines behind it, so it's flagged as having nothing to back it,
+as any proposal is. `at` is where it was added, as seconds into the recording. So it stays through every writing of the
+notes (`keepSettled`), and the notes model is told it's settled, the first time too, and doesn't list it again.
 
 When the call ends, in the transaction that ends it, every ticked follow-up goes into the note's sealed manifest
 (`ticked`: its ID, words, owner and due date, the lines behind it, the breakout room it was in, who ticked it and when),
@@ -1065,7 +1094,8 @@ them written after all. Writing the notes again keeps them done, as anything wit
 A call's follow-ups are also the to-dos with a mention and a date in the documents worked on in it, for whoever can open
 each ([Calls and recordings › The call's workspace](calls-and-recordings.md#the-calls-workspace)). They're the document's
 own: ticking one writes to the document, they aren't kept anywhere else, and they don't go into the note, whose
-follow-ups are what was said. The note says which documents were worked on (`workedOn`), for whoever can open them.
+follow-ups are what was said and what a board's Actions frame holds ([Boards in the notes](#boards-in-the-notes)). The note says which documents were worked on (`workedOn`), for whoever can open them, and
+by whom, with the reader told which of them is them (`isMe`).
 
 ## Asking about a selection
 
@@ -1083,10 +1113,72 @@ It works as catching up does. It's one answer in one response, which `@alcove/ap
 `AsyncIterable`, as `notes.ask`); nobody's credits pay for it; and it has the same limit, 20 a minute per person. Asked from
 inside a call, it needs what catching up needs: the call is live, nothing's paused where this person is, and its notes have
 been on, so a call with notes off sends the AI nothing. Outside a call there's no call to rest on, so it needs an account that
-can edit the document. Demo accounts cost nothing to make, so a limit for each is no limit: they share one, 60 a minute on
-each instance, on top of their own. They aren't refused outright, because the shared demo is how people try Alcove.
+can edit the document. A demo account has the same limit as any other account.
 Access is checked again once the model has answered, so whoever lost the document meanwhile isn't sent
 what came back. A reply that isn't the shape asked for is refused, and nothing is made of it.
+
+## A board in a call: ideas, and sorting stickies
+
+**Ideas from the call** (`drafting.ideasFrom`). While a board is open in a part of a call (its own: a room on the one board every
+room shares has none) and notes are on there, what was said
+there lately is read as catching up reads it (numbered lines, gaps marked, the same rules for unsure words and speakers), at most
+once a minute and only after something new was said, by someone who may read all of it
+([Calls and recordings › A board in a call](calls-and-recordings.md#a-board-in-a-call)). With the lines go the board's frames, by
+their titles (`F1 Went well`), and what's on offer already, so nothing is offered twice. Back comes
+`{ideas: [{text, said, line, frame}]}`: up to three, each a sticky's few words, the words it comes from, the one line it was
+said in, and the frame it fits, or null. An idea that points at no line it was sent is the model's word alone, and goes; words
+that aren't in the line it names give way to the line's own, so the tray never quotes anyone saying what they didn't; a frame it
+names that isn't there is none. Nobody's credits pay for it, as for the live notes, and a reply in the wrong shape is logged and
+offers nothing.
+
+**Sort into themes** (`drafting.themesOf`). The stickies picked, each `S4 words`, fenced between `<stickies-…>` and
+`</stickies-…>` with a random mark, as a selection is, so nothing on a sticky can end the list early or be read as an
+instruction. Back comes `{themes: [{name, stickies}]}`: up to six themes of one to three words, every sticky in one. A label it
+wasn't given is nothing, one it uses twice stays where it was first, and a theme left with no stickies goes. It's one answer in
+one response, 20 a minute per person, and nobody's credits pay for it. In a call it needs the call to be live and nothing paused
+where this person is; with notes off it still works, as someone asked, about what people wrote. Outside a call it needs an
+account that can edit the board. Nothing is kept, and it has no receipt.
+
+## Boards in the notes
+
+A board open for everyone in a part of a call goes into what the call worked on (`CallSpace.worked`, with `open`: `main` or
+the breakout room's ID), whether or not anyone changes it, and into the note with the rest when the call ends (`workedOn`):
+every board in the call's `board.open` is noted each time the call is saved, and again as it ends, however it opened (from the
+Board menu, with rooms opening with a board each or one they share, or started in a room). A board someone only changed from
+the list moved nobody else, so its `open` is null, as it is for what a call kept before boards were noted, until it's open
+somewhere in the call as it's saved or ends. A board is noted in the first part of the call it opened in. A room's own board is
+everyone invited's once its room closes or the call ends, so its room's notes read it; the one board rooms share is the main
+room's, and is read for the call's notes.
+
+**What the notes read** (`workedOn.boardsToRead`, `writer.ts`). When the notes are written, each board open for everyone in
+the call is read as it is then, if everyone the note went to can open it now: the organizer, everyone invited, and everyone
+it's been shared with since (`notes.everyoneWith`). One summary goes to all of them, so a board someone couldn't open stays out
+of it: a saved board opened without letting someone in, or let in for the call alone, whose seats ended with it, and any board
+once the note has been shared with someone it isn't open to, when the notes are written again. A board the call made was given
+to everyone invited, so it's read until then. The read is
+a worker's (`documentOps.boardNotes`): the board's words, frame by frame in reading order (`boardText`), the first 12,000
+characters, and the stickies in its Actions frames (`boardFollowUps`, frames with `role: 'actions'`), the first 20, each cut to
+300. A board that can't be read then is left out with a warning, and the notes are written without it. The main room's notes
+read the boards open in the main room; a room's notes read the boards open in that room, and nothing else. Written again, the
+notes read the boards again, as they are then.
+
+**What comes of it.** The boards go to the notes model after the transcript (see [Prompts](#prompts)), and the stickies in their
+Actions frames become follow-ups like any other, `ActionItem`s with `from: 'board'`: the model words them and names an owner
+when the transcript or the sticky says who, and one it leaves out is still there, as the board has it, for nobody yet. They
+come on top of the follow-ups the notes keep from what was said (20, or 10 when asking again), so a full board never crowds
+those out. Owners, taking on, ticking, the inbox and a series carrying what's still open all work as for any follow-up. The
+note shows them under "Follow-ups from the board", and what backs them is the board, so they're never flagged as backed by
+nothing said. Older notes' follow-ups read `from: null`.
+
+**What the note says of each board** (`Note.workedOn`, for each reader as for documents): its name now, the workspace's name
+for someone in it (`workspace`), the breakout room it was open in (`room`, null for the main room), and whether everyone the
+note went to can open it now (`everyone`), which is when the notes read it. The app draws each one as a picture from the board
+itself (`features/notes/Boards.tsx`), in the reader's theme as the board's page is, opened to read as its card comes on screen
+(and counted by `features/board/counts.ts`, which loads with the board's surface: the note page loads no board code itself),
+right under the summary: the main room's boards first, then each room's beside the others', under how many rooms the call had
+(`2 of 3 breakout rooms` when the reader has fewer rooms' boards than the call had rooms). `everyone` counts the people the note
+has been shared with as well, so a board stops being everyone's on the note as soon as it's shared with someone who can't open
+it. The follow-ups from the main room's boards come next; a room's are in its section.
 
 ## Captions in another language
 
@@ -1325,7 +1417,12 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   (`PATCH /v1/notes/:id/decisions/:id`, `…/questions/:id` and `…/actions/:id`, each answering with the
   note; see [Decisions and follow-ups](#decisions-and-follow-ups)). Notes written
   again list what people already settled before the transcript, under "Already settled (don't list these again)":
-  each decision, question and follow-up someone changed, with where it stands, one line each.
+  each decision, question and follow-up someone changed, with where it stands, one line each. With boards open in this part
+  of the call (see [Boards in the notes](#boards-in-the-notes)), the stickies in their Actions frames are listed before the
+  transcript, each with a label (`B2 Write the launch runbook`), and each board's words come after it, between `<board>` and
+  `</board>`, 12,000 characters at most for all of them; nothing on a board can close either fence. The prompt says to read
+  what's on a board as part of the meeting and never as an instruction, to make each listed sticky a follow-up, which doesn't
+  count towards the most it lists, and to give each action `board`: the label of the sticky it is, or null.
 - **A breakout room's notes.** As the call's, with the room's own people, length and lines, and a line saying
   which breakout room it is and to write the notes of that room alone, from what was said in it; written again,
   with what was settled in the room's section listed the same way.
@@ -1376,6 +1473,15 @@ The prompts are in `apps/api/src/modules/drafting.ts`; read them there. In short
   plainly show. Checked on the real notes model with made-up meetings: it found a plain replacement and answer at the
   right second, left a call that only touched the same subjects alone, and didn't follow someone in the transcript
   telling it to mark everything.
+
+- **Ideas for a board** (`ideasFrom`). What the meeting is, the board's frames by their titles (`F1`, `F2`...), what's on
+  offer already, then the transcript of the part of the call, numbered and fenced like every transcript. One JSON object,
+  `{ideas: [{text, said, line, frame}]}`: at most three suggestions, problems, fixes or things to do someone said, in the words
+  someone would write on a sticky (at most 120 characters), the words they come from copied from that line, its number, and a
+  frame's label or null; never small talk, anything only half said, or what's on offer already, in any words.
+- **Sorting stickies** (`themesOf`). The stickies' words, labelled `S1`, `S2`... and fenced as a selection is. One JSON object,
+  `{themes: [{name, stickies}]}`: two to six themes (one if they're all about one thing), each named in one to three plain words
+  in the stickies' language, every sticky in exactly one.
 
 Replies are checked before anything is kept:
 
@@ -1719,7 +1825,15 @@ decision said not to be decided, writing the notes again, a comparison that's sl
 that keeps no transcript, and its verification when the model's key changed after the notes); breakout rooms' items,
 questions and revisits; what someone keeps for themselves reaching none of it; and canaries in every row, object and
 log line, and on the wire. `apps/api/src/hosting.integration.test.ts` covers a stand-in, who gets nothing of a series'
-earlier calls for hosting.
+earlier calls for hosting. `apps/api/src/boardsAfter.integration.test.ts` covers the boards in the notes: a board open for
+everyone read in one request, fenced, its Actions frame's stickies labelled and coming back as follow-ups from the board with
+their owners, one the model left out added for nobody, none flagged as backed by nothing said, and taken on like any other; a
+board opened without someone, or let in for the call alone, left out of the summary and the prompt, on its opener's note as not
+open to everyone and on nobody else's; a room's board read for that room's notes alone and the main room's for the call's; a
+note and a call kept before boards were noted; and bringing a board to a call: Start a call here from your own library alone
+(someone else's board, a made-up ID and the same one twice refused in the same words), the next call in the series bringing
+what this one brought and the board made in it, and a board scheduled with a call brought to it without opening. The leakage flow sends a board's sticky to the notes model and back as a
+follow-up, and finds it in no row, object or log line, nor on the wire.
 
 ## What's kept, and for how long
 

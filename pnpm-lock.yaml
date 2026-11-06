@@ -23,6 +23,9 @@ importers:
       '@alcove/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@alcove/board':
+        specifier: workspace:*
+        version: link:../../packages/board
       '@aws-sdk/client-s3':
         specifier: ^3.1161.0
         version: 3.1161.0
@@ -114,6 +117,9 @@ importers:
       '@alcove/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@alcove/board':
+        specifier: workspace:*
+        version: link:../../packages/board
       '@alcove/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -175,6 +181,9 @@ importers:
       '@alcove/api-http':
         specifier: workspace:*
         version: link:../../packages/api-http
+      '@alcove/board':
+        specifier: workspace:*
+        version: link:../../packages/board
       '@alcove/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -303,6 +312,19 @@ importers:
       y-protocols:
         specifier: ^1.0.7
         version: 1.0.7(yjs@13.6.33)
+      yjs:
+        specifier: ^13.6.33
+        version: 13.6.33
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/board:
+    dependencies:
       yjs:
         specifier: ^13.6.33
         version: 13.6.33

@@ -4,8 +4,9 @@
  * someone was when they said something, and who may read a line of the live transcript are all worked out here from
  * the call's sealed state, so every rule about rooms agrees. Nothing here touches the database or any key.
  */
-import { MAIN_PLACE } from '@alcove/api';
+import { BreakoutBoardSchema, MAIN_PLACE } from '@alcove/api';
 import { z } from 'zod';
+import type { CallBoards } from './callSpace';
 import { RoomPause } from './capture';
 import { HeldRooms } from './heldRooms';
 
@@ -73,13 +74,15 @@ export const ScribeTerm = z.object({ identity: z.string(), term: z.number(), fro
  */
 const RoomRecord = { pauses: z.array(RoomPause).default([]), scribes: z.array(ScribeTerm).default([]), seen: z.array(z.string()).default([]) };
 /**
- * Breakout rooms: those open now (each with its MLS group's epoch in this generation, and the room the organizer is
- * visiting, or null for the main room), and those that have closed, which go into the notes as each room's section.
+ * Breakout rooms: those open now (each with its MLS group's epoch in this generation, the room the organizer is visiting,
+ * or null for the main room, and what they were opened with to work on, the panel's Board row: none in a call stored
+ * before rooms had boards), and those that have closed, which go into the notes as each room's section.
  */
 export const BreakoutState = z.object({
   open: z.object({
     rooms: z.array(Room.extend({ epoch: z.number(), ...RoomRecord })), from: z.number(), until: z.number(),
-    message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable()
+    message: z.object({ text: z.string(), at: z.number() }).nullable(), visiting: z.string().nullable(),
+    board: BreakoutBoardSchema.default({ mode: 'none', template: 'blank' })
   }).nullable(),
   held: z.array(z.object({ rooms: z.array(Room.extend(RoomRecord)), from: z.number(), to: z.number() }))
 });
@@ -91,6 +94,13 @@ export interface Placing { people: Joined[]; breakouts: z.infer<typeof BreakoutS
 
 /** The parts of the call open now: the main room, and each breakout room while rooms are open. */
 export const placesOf = (s: Placing): string[] => [MAIN_PLACE, ...(s.breakouts.open?.rooms.map((r) => r.id) ?? [])];
+
+/**
+ * Where the board shown in a part of the call is open: there, or, in a room with none of its own while rooms share the main
+ * board, the main room.
+ */
+export const boardPlace = (s: Placing & { board: Pick<CallBoards, 'open'> }, place: string): string =>
+  place === MAIN_PLACE || s.board.open[place] || s.breakouts.open?.board.mode !== 'shared' ? place : MAIN_PLACE;
 
 /** Where someone is in the call now: the organizer where it's visiting (or the main room); an invited person in the room they were sent to; anyone else in the main room. */
 export function placeOf(s: Placing, j: Joined): string {

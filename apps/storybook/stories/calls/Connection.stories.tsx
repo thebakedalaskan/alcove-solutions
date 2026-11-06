@@ -5,6 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { at, joins } from '../../src/api/script';
+import { setOnline } from '../../src/browser';
 import { inCall, phone } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
@@ -14,12 +15,22 @@ export default meta;
 
 const REVIEWERS = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
 
-/** Your connection drops three seconds in and is back fifteen seconds later, as the same person. */
+/** Your connection drops three seconds in: the top of the call says Reconnecting, and fifteen seconds later you're back, as the same person, with Back online. */
 export const Reconnecting = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY, cues: at(3, { do: 'reconnect', seconds: 15 }) }
 });
 export const ReconnectingPhone = phone(Reconnecting);
+
+const wait = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
+/** This browser goes offline three seconds in: the top of the call says Reconnecting until it's back eight seconds later, with Back online. */
+export const OfflineAndBack = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, {
+  play: async ({ step }) => {
+    await step('Three seconds in, the browser loses its connection', async () => { await wait(3000); setOnline(false); });
+    await step('Eight seconds later it’s back', async () => { await wait(8000); setOnline(true); });
+  }
+});
+export const OfflineAndBackPhone = phone(OfflineAndBack);
 
 /** Your connection drops for good: the call says so, with Reload to join again. */
 export const ConnectionDropped = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, cues: at(4, { do: 'drop' }) } });

@@ -47,7 +47,7 @@ export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment:
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /** The paths that capture something, or send what was captured to the AI. */
-export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes';
+export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes' | 'ideas' | 'sort';
 /**
  * What the gate needs to know about a call, in the part of it something was captured in: whether it's live, notes, the
  * note and recording, and whether shared screens are read (`screens`). `status` is that part's (a breakout room's is
@@ -74,7 +74,7 @@ export const roomStatus = (call: CaptureStatus, pauses: RoomPause[]): CaptureSta
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
   const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
   mayReachAi(call, path, ctx);
-  const captures = path === 'audio' || path === 'speech' || path === 'screen' || path === 'live-notes';
+  const captures = path === 'audio' || path === 'speech' || path === 'screen' || path === 'live-notes' || path === 'ideas';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
   if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
   if (path === 'screen' && call.inRoom) throw new ConflictError('What’s shared in a breakout room stays in the room. It isn’t read for the notes.', { context: ctx });

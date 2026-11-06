@@ -5,7 +5,7 @@
  * asking Alcove about a selection. What's checked is what each person is told, and above all what they aren't.
  */
 import {
-  AlcoveApiError, CallFollowUpsSchema, playPosition, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note, type TranscriptClip, type WorkspaceRole
+  AlcoveApiError, CallFollowUpsSchema, playPosition, type AudioPiece, type CallAction, type CallSession, type CallState, type DocSession, type DocSessionOptions, type Note, type TranscriptClip, type WorkspaceRole, type WorkspaceTree
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
@@ -13,7 +13,7 @@ import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { id128, openJson, sealJson, stateKey, toJson } from './crypto';
+import { id128, openJson, sealJson, sealRecord, stateKey, toJson, utf8 } from './crypto';
 import { tx } from './db';
 import { NotFoundError } from './errors';
 import { DocFailure } from './live/docPool';
@@ -115,15 +115,18 @@ async function open(who: Browser, id: string, document: string, opts: DocSession
 const saved = (s: DocSession) => until(() => s.getSnapshot().status === 'saved', 'everything to reach Alcove');
 const inlineNode = (type: string, attrs: Record<string, string>) => { const el = new Y.XmlElement(type); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
 const textNode = (s: string) => { const t = new Y.XmlText(); t.insert(0, s); return t; };
-/** Adds a to-do at the end, as the editor writes one: `who` and `when` give it a mention and a date, which is what joins it to the call's follow-ups. */
-function addTodo(s: { doc: Y.Doc }, block: string, words: string, o: { who?: { id: string; name: string }; when?: string; done?: boolean } = {}): Y.XmlElement {
+/**
+ * Adds a to-do at the end, as the editor writes one: `who` and `when` give it a mention and a date, which is what joins it to the
+ * call's follow-ups. `tags`: they're side by side at the end of the line, as what's sent from the notes lands, not in a sentence.
+ */
+function addTodo(s: { doc: Y.Doc }, block: string, words: string, o: { who?: { id: string; name: string }; when?: string; done?: boolean; tags?: boolean } = {}): Y.XmlElement {
   const el = new Y.XmlElement('line');
   setAttr(el, 'id', block);
   setAttr(el, 'kind', 'todo');
   if (o.done !== undefined) setAttr(el, 'done', o.done);
   const fragment = s.doc.getXmlFragment('content');
   fragment.insert(fragment.length, [el]);
-  el.insert(0, [textNode(words), ...(o.who ? [inlineNode('mention', o.who)] : []), ...(o.when ? [textNode(' by '), inlineNode('dateChip', { date: o.when })] : [])]);
+  el.insert(0, [textNode(words), ...(o.who ? [inlineNode('mention', o.who)] : []), ...(o.when ? [textNode(o.tags ? ' ' : ' by '), inlineNode('dateChip', { date: o.when })] : [])]);
   return el;
 }
 function addVideo(s: { doc: Y.Doc }, block: string, media: string): void {
@@ -195,7 +198,7 @@ async function seedTree(workspaceId: string, n: number, parent: string | null = 
     if (!w) throw new Error('no workspace');
     const now = new Date().toISOString();
     const items: Record<string, StoredItem> = { ...w.state.items };
-    for (let i = 0; i < n; i++) items[id128()] = { kind: 'document', name: `Quarterly planning notes for team ${i}, second draft`, parent, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+    for (let i = 0; i < n; i++) items[id128()] = { kind: 'document', name: `Quarterly planning notes for team ${i}, second draft`, parent, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null };
     w.state = { ...w.state, items };
     await saveState(w, c);
   });
@@ -206,61 +209,33 @@ const waitingOnLocks = () => count("SELECT count(*)::int AS n FROM pg_stat_activ
 const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
 
 describe('which workspace a call uses', () => {
-  it('settles the first time anyone opens it: a new one in the organizer’s name, once, however many open it at once', async () => {
+  it('settles the first time anyone opens it: a new home made for the call, with everyone invited in it, once, however many open it at once', async () => {
     const ann = await account();
     const kofi = await account();
-    const { host, code: c } = await callBy(ann, { guests: [kofi.email] });
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email], title: 'Launch check-in' });
     const k = await invited(host, c, kofi);
-    expect(host.getSnapshot().workspace).toMatchObject({ id: null, name: null, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' });
+    expect(host.getSnapshot().workspace).toMatchObject({ id: null, home: null, name: null, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' });
     expect(host.getSnapshot().workspace.chosenBy.name).toBe(ann.name);
-    // Anyone opening it settles it, and it's the organizer's, whoever opened it: Kofi isn't in it.
+    // Anyone opening it settles it, and it's the organizer's, whoever opened it: Kofi's in it because he's invited.
     await Promise.all([k.openWorkspace(), host.openWorkspace(), k.openWorkspace()]);
     const mine = await ann.api.workspaces.list();
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toMatchObject({ role: 'admin', people: 1 });
-    expect(await space(host)).toMatchObject({ id: mine[0]?.id, name: mine[0]?.name, canOpen: true, role: 'admin' });
-    expect(mine[0]?.name).toContain(ann.name.split(' ')[0]);
-    expect(await space(k)).toMatchObject({ id: null, name: null, canOpen: false, role: null });
+    const home = mine[0]?.id ?? '';
+    expect(mine[0]).toMatchObject({ role: 'admin', people: 2, call: { title: 'Launch check-in' } });
+    expect(mine[0]?.name).toMatch(/^Launch check-in · \d{1,2} \p{L}{3,4}$/u);
+    expect(await space(host)).toMatchObject({ id: home, home, name: mine[0]?.name, canOpen: true, role: 'admin' });
+    expect(await space(k)).toMatchObject({ id: home, home, canOpen: true, role: 'edit' });
     // It's on the meeting, for the organizer alone.
     const meetingId = host.getSnapshot().meetingId;
-    expect((await ann.api.meetings.get(meetingId)).workspaceId).toBe(mine[0]?.id);
+    expect((await ann.api.meetings.get(meetingId)).workspaceId).toBe(home);
     expect((await kofi.api.meetings.get(meetingId)).workspaceId).toBeNull();
-    // Opening it again changes nothing.
+    // Opening it again changes nothing: one home, one folder.
     await k.openWorkspace();
     expect(await ann.api.workspaces.list()).toHaveLength(1);
+    expect((await ann.api.workspaces.get(home)).items.filter((x) => x.call !== null)).toHaveLength(1);
   });
 
-  it('is the organizer’s most recently used, the next time, and not one they can no longer edit in', async () => {
-    const ann = await account();
-    const lena = await account();
-    const first = await workspace(ann, 'First');
-    const second = await workspace(ann, 'Second');
-    // Making one uses it.
-    let c = await callBy(ann);
-    await c.host.openWorkspace();
-    expect(c.host.getSnapshot().workspace.id).toBe(second);
-    // Opening one in the app does too.
-    const stream = ann.api.workspaces.live(first);
-    await until(() => stream.getSnapshot().status === 'live', 'the stream');
-    await until(async () => { const n = await callBy(ann); c = n; await n.host.openWorkspace(); return n.host.getSnapshot().workspace.id === first; }, 'the first workspace to be the latest used');
-    stream.close();
-    // One they only read isn't a workspace they could have chosen: it's skipped for a new one.
-    const theirs = await workspace(lena, 'Lena’s', [[ann, 'edit']]);
-    const live = ann.api.workspaces.live(theirs);
-    await until(() => live.getSnapshot().status === 'live', 'the stream');
-    await until(async () => { const n = await callBy(ann); await n.host.openWorkspace(); return n.host.getSnapshot().workspace.id === theirs; }, 'Lena’s workspace to be the latest used');
-    live.close();
-    const people = await lena.api.workspaces.people(theirs);
-    await lena.api.workspaces.setRole(theirs, people.find((p) => p.person.email === ann.email)?.id ?? '', 'read');
-    const after = await callBy(ann);
-    await after.host.openWorkspace();
-    const chosen = after.host.getSnapshot().workspace.id;
-    expect(chosen).not.toBe(theirs);
-    expect([first, second]).not.toContain(chosen);
-    expect(after.host.getSnapshot().workspace.role).toBe('admin');
-  });
-
-  it('comes with the meeting, carries to the next call in a series, and goes for later calls when it’s changed', async () => {
+  it('comes with the meeting, carries to the next call in a series, and stays the home whichever is viewed', async () => {
     const ann = await account();
     const theo = await account();
     const lena = await account();
@@ -291,9 +266,13 @@ describe('which workspace a call uses', () => {
     const host = await ann.api.calls.join(calls[1]?.code ?? '', { mic: false, cam: false });
     await inGroup(host);
     expect((await space(host)).id).toBe(product);
+    // Viewing another changes what everyone sees, and not where the notes go, for this call or the ones after it.
     await host.setWorkspace(design);
-    await until(async () => (await ann.api.meetings.get(calls[2]?.id ?? '')).workspaceId === design, 'the later call to follow');
-    expect((await ann.api.meetings.get(calls[0]?.id ?? '')).workspaceId).toBe(product);
+    expect(await space(host)).toMatchObject({ id: design, home: product });
+    await rest(300);
+    expect((await Promise.all(calls.map((x) => ann.api.meetings.get(x.id)))).map((x) => x.workspaceId)).toEqual([product, product, product]);
+    await host.setWorkspace(product);
+    expect(await space(host)).toMatchObject({ id: product, home: product });
   });
 
   it('takes the later calls in a series along when it settles on one', async () => {
@@ -394,13 +373,15 @@ describe('which workspace a call uses', () => {
     // The workspace it left is still there.
     expect((await art.api.workspaces.list()).map((x) => x.name)).toEqual(expect.arrayContaining(['Design', 'Product']));
 
-    // A new one, from the call: named after it, with just the organizer in it, still there after the call.
+    // A new one, from the call: named after it, made for the call as a home is, so everyone invited is in it to edit and a
+    // guest isn't; still there after the call.
     await host.newWorkspace('Launch review');
     const made = host.getSnapshot().workspace;
     expect(made).toMatchObject({ name: 'Launch review', role: 'admin', canOpen: true });
-    expect(await art.api.workspaces.people(made.id ?? '')).toHaveLength(1);
+    expect(Object.fromEntries((await art.api.workspaces.people(made.id ?? '')).map((x) => [x.person.email, x.role]))).toEqual({ [art.email]: 'admin', [priya.email]: 'edit', [theo.email]: 'edit' });
     expect((await art.api.workspaces.get(made.id ?? '')).items).toEqual([]);
-    expect(await space(p)).toMatchObject({ id: null, name: null, canOpen: false });
+    expect(await space(p)).toMatchObject({ id: made.id, name: 'Launch review', canOpen: true, role: 'edit' });
+    expect(await space(jamie.call)).toMatchObject({ id: null, name: null, canOpen: false });
     expect(await code(p.newWorkspace('Mine now'))).toBe('forbidden');
     await host.newWorkspace();
     expect(host.getSnapshot().workspace.name).toBe(host.getSnapshot().title);
@@ -501,7 +482,7 @@ describe('which workspace a call uses', () => {
     expect(host.getSnapshot().workspace.id).not.toBe(id);
   });
 
-  it('gives the server the call’s workspace, and one document to the people in the call or in a room, until it ends', async () => {
+  it('gives the server the call’s home and folder, and one document to the people in the call or in a room, until it ends', async () => {
     const art = await account();
     const kofi = await account();
     const priya = await account();
@@ -513,9 +494,13 @@ describe('which workspace a call uses', () => {
     const jamie = await guest(host, c);
     await host.setWorkspace(id);
     const call = { organizer: await openOwner(h.deps, art.ownerId, undefined), callId: host.ticket.callId };
-    const w = await workspaceForCall(h.deps, call);
-    expect(w.workspaceId).toBe(id);
-    expect(w.state.items[board]?.kind).toBe('board');
+    // The home, whatever's viewed, with the call's folder at its top for what the server makes for the call.
+    const home = await workspaceForCall(h.deps, call);
+    expect(home.workspaceId).not.toBe(id);
+    expect(home.state.items[home.folderId]).toMatchObject({ kind: 'folder', parent: null, call: { callId: host.ticket.callId, ended: false } });
+    expect(await space(host)).toMatchObject({ id, home: home.workspaceId });
+    expect((await workspaceForCall(h.deps, call)).folderId).toBe(home.folderId);
+    const w = { workspaceId: id };
 
     // To everyone in the call: a seat each, and a guest reads it with their pass.
     await grantDocumentToCall(h.deps, w, board, call, { role: 'edit' });
@@ -524,7 +509,7 @@ describe('which workspace a call uses', () => {
     await art.api.workspaces.share.list(id, board).then(async (share) => { for (const e of share.entries) await art.api.workspaces.share.remove(id, board, e.id); });
 
     // To one room's people: nobody else gets it.
-    host.openRooms({ rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [priya.email] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [priya.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     await until(() => k.crypto.getSnapshot().place === rooms[0]?.id, 'Kofi to be in their room');
     await grantDocumentToCall(h.deps, w, board, call, { role: 'read', place: rooms[0]?.id });
@@ -562,7 +547,7 @@ describe('someone who can’t open it', () => {
     await host.startPlaying(film, media, 5000);
     const here = priya.api.workspaces.live(id, { pass: p.ticket.pass });
     await until(() => here.getSnapshot().status === 'live', 'Priya’s stream');
-    here.present({ document: plan, block: null, typing: false });
+    here.present({ document: plan, block: null, typing: false, page: null });
     await rest(250);
 
     await jamie.call.openWorkspace();
@@ -727,7 +712,7 @@ describe('a guest in a call', () => {
     // Taking it back from Share stops content, edits and presence at once.
     const here = jamie.api.workspaces.live(id, pass);
     await until(() => here.getSnapshot().status === 'live', 'their stream');
-    here.present({ document: plan, block: null, typing: false });
+    here.present({ document: plan, block: null, typing: false, page: null });
     const watching = art.api.workspaces.live(id);
     await until(() => watching.getSnapshot().here.some((x) => x.document === plan && x.person.name === 'Jamie Guest'), 'Art to see Jamie there');
     const entry = (await art.api.workspaces.share.list(id, plan)).entries[0];
@@ -898,22 +883,25 @@ describe('the call’s follow-ups', () => {
     addTodo(a, 't1', 'Send the brief to ', { who: { id: 'priya', name: priya.name }, when: '2026-11-06' });
     addTodo(a, 't2', 'Nobody’s yet');
     addTodo(a, 't3', 'No date', { who: { id: 'priya', name: priya.name } });
+    addTodo(a, 't4', 'Book the room ', { who: { id: 'priya', name: priya.name }, when: '2026-11-09', tags: true });
     await saved(a);
     const b = await open(art, id, hidden, { pass: host.ticket.pass });
     addTodo(b, 'h1', 'CANARY-HIDDEN-TODO ', { who: { id: 'art', name: art.name }, when: '2026-11-07' });
     await saved(b);
 
-    const mine = await read2(host, (f) => inDocuments(f).length === 2);
+    const mine = await read2(host, (f) => inDocuments(f).length === 3);
     expect(mine.notes).toBe('on');
     expect(mine.items.filter((x) => x.from === 'notes').map((x) => x.text)).toEqual(['Kofi will book the press briefing by Friday.']);
     expect(mine.items.find((x) => x.from === 'document' && x.block === 't1')).toEqual({
-      from: 'document', workspaceId: id, documentId: plan, document: 'Launch plan', block: 't1', text: `Send the brief to ${priya.name} by 2026-11-06`,
+      from: 'document', workspaceId: id, documentId: plan, document: 'Launch plan', block: 't1', text: `Send the brief to ${priya.name} by 6 Nov`,
       mentions: [{ id: 'priya', name: priya.name }], dates: ['2026-11-06'], done: false, canTick: true
     });
+    // Tags side by side at the end are only labels, shown beside it: what it says is the words.
+    expect(mine.items.find((x) => x.from === 'document' && x.block === 't4')).toMatchObject({ text: 'Book the room', mentions: [{ name: priya.name }], dates: ['2026-11-09'] });
     // Priya can't open the restricted one, and isn't told it's there; Theo can read and not tick; Jamie can open nothing.
-    const hers = await read2(p, (f) => inDocuments(f).length === 1);
+    const hers = await read2(p, (f) => inDocuments(f).length === 2);
     expect(JSON.stringify(hers)).not.toContain('CANARY-HIDDEN-TODO');
-    expect(inDocuments(await read2(t, (f) => inDocuments(f).length === 1))[0]).toMatchObject({ block: 't1', canTick: false });
+    expect(inDocuments(await read2(t, (f) => inDocuments(f).length === 2))[0]).toMatchObject({ block: 't1', canTick: false });
     const guestSees = await read2(jamie.call, () => true);
     expect(inDocuments(guestSees)).toEqual([]);
     expect(JSON.stringify(guestSees)).not.toContain('Send the brief');
@@ -941,7 +929,7 @@ describe('the call’s follow-ups', () => {
     expect(await code(jamie.call.tickDocumentFollowUp({ ...tick, done: true }))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ ...tick, block: 't2', done: true }))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ ...tick, block: 'nothing', done: true }))).toBe('not-found');
-    expect(documentTodos(a.doc, 'document').map((x) => x.done)).toEqual([false, false, false]);
+    expect(documentTodos(a.doc, 'document').map((x) => x.done)).toEqual([false, false, false, false]);
     // A tick is someone working on it.
     const stored = await storedCall(art.ownerId, host.ticket.callId);
     expect(JSON.stringify(stored.state['workspace'])).toContain(priya.name);
@@ -963,7 +951,7 @@ describe('the call’s follow-ups', () => {
     // The same person in the same document, without the call's pass, wasn't working in the call.
     const f = await read2(host, (x) => inDocuments(x).length === 1);
     expect(f.notes).toBe('off');
-    expect(f.items.map((x) => x.text)).toEqual([`Written in the call ${art.name} by 2026-11-06`]);
+    expect(f.items.map((x) => x.text)).toEqual([`Written in the call ${art.name} by 6 Nov`]);
     // Nothing in a document nobody worked on in this call can be ticked from it, nor a document elsewhere.
     expect(await code(host.tickDocumentFollowUp({ workspaceId: id, documentId: other, block: 'b1', done: true }))).toBe('not-found');
     const elsewhere = await callBy(art);
@@ -1144,14 +1132,20 @@ describe('what was worked on', () => {
     const noteId = ended?.pendingNoteId;
     const asArt = await noteOf(art, noteId);
     const by = (n: Note, doc2: string) => n.workedOn.find((x) => x.id === doc2)?.by.map((x) => x.name).sort();
+    /** Who the reader of the note is told is them. */
+    const me = (n: Note, doc2: string) => n.workedOn.find((x) => x.id === doc2)?.by.filter((x) => x.isMe).map((x) => x.name);
     expect(asArt.workedOn.map((x) => x.id).sort()).toEqual([plan, hidden, board].sort());
     expect(asArt.workedOn.find((x) => x.id === plan)).toMatchObject({ workspaceId: id, kind: 'document', name: 'Launch plan' });
     expect(asArt.workedOn.find((x) => x.id === board)).toMatchObject({ kind: 'board', name: 'Board' });
     expect(by(asArt, plan)).toEqual([art.name, priya.name].sort());
+    expect(me(asArt, plan)).toEqual([art.name]);
     // Priya has the note and can open only two of them: the third isn't counted, or named.
     const asPriya = await priya.api.notes.get(noteId ?? '');
     expect(asPriya.workedOn.map((x) => x.id).sort()).toEqual([plan, board].sort());
     expect(JSON.stringify(asPriya)).not.toContain('CANARY-RESTRICTED');
+    // Each reader is told which of the people who worked on it they are, and nobody else.
+    expect(me(asPriya, plan)).toEqual([priya.name]);
+    expect(me(asPriya, board)).toEqual([]);
     // Theo has the note and can open none of them.
     const asTheo = await theo.api.notes.get(noteId ?? '');
     expect(asTheo.workedOn).toEqual([]);
@@ -1159,6 +1153,8 @@ describe('what was worked on', () => {
     await art.api.workspaces.share.set(id, plan, [{ email: theo.email }], 'read');
     await art.api.workspaces.items.rename(id, plan, 'Launch plan, renamed');
     expect((await theo.api.notes.get(noteId ?? '')).workedOn.map((x) => x.name)).toEqual(['Launch plan, renamed']);
+    // Being given it afterwards doesn't make Theo one of the people who worked on it.
+    expect(me(await theo.api.notes.get(noteId ?? ''), plan)).toEqual([]);
     await art.api.workspaces.items.trash(id, plan);
     expect((await theo.api.notes.get(noteId ?? '')).workedOn).toEqual([]);
     await art.api.workspaces.items.restore(id, plan);
@@ -1241,11 +1237,10 @@ describe('presenting', () => {
     const elsewhere = await doc(art, other, 'Elsewhere');
     expect(await code(host.startPresenting('document', elsewhere))).toBe('not-found');
     expect(await code(host.startPresenting('board', plan))).toBe('not-found');
+    // A board is presented where it's open, on the call's stage (boards-in-calls.integration.test.ts), so one that's only in the workspace isn't.
     const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Board' })).id;
     expect(await code(host.startPresenting('document', board))).toBe('not-found');
-    await host.startPresenting('board', board);
-    expect((await space(again)).present).toMatchObject({ kind: 'board', id: board, name: 'Board' });
-    await host.stopPresenting();
+    expect(await code(host.startPresenting('board', board))).toBe('not-found');
     const folder = (await art.api.workspaces.items.create(id, { kind: 'folder', name: 'Folder' })).id;
     expect(await code(host.startPresenting('document', folder))).toBe('not-found');
     const trashed = await doc(art, id, 'Going');
@@ -1347,7 +1342,7 @@ describe('presenting', () => {
     p.closing();
     await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
     // Rooms open while she's away, with her in one, so that's where she comes back to.
-    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const room = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms[0]?.id;
     expect(room).toBeDefined();
     const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
@@ -1363,7 +1358,7 @@ describe('presenting', () => {
 
   it('is for the part of the call it started in', async () => {
     const { priya, theo, plan, host, p, t } = await presented();
-    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [theo.email] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [theo.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     await until(() => p.crypto.getSnapshot().place === rooms[0]?.id && t.crypto.getSnapshot().place === rooms[1]?.id, 'everyone to be in their rooms');
     await p.startPresenting('document', plan);
@@ -1443,6 +1438,88 @@ describe('presenter notes', () => {
     await art.api.workspaces.remove(id);
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE document_id = $1', [two])).toBe(0);
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE owner_id = $1', [art.ownerId])).toBe(0);
+  });
+
+  it('on a board are by frame: each frame its own, yours alone, sealed with the frame they’re for, and what was kept for the whole board still opens', async () => {
+    const art = await account();
+    const priya = await account();
+    const lena = await account();
+    const id = await workspace(art, 'Product', [[priya, 'edit']]);
+    const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Launch retro' })).id;
+    const plan = await doc(art, id, 'Plan');
+    const well = 'wentWell0001', fix = 'couldImprove';
+    // What the release before kept for the whole board, the only way it could, sealed as it sealed it.
+    const o = await openOwner(h.deps, art.ownerId, undefined);
+    const space = z.object({ owner_id: z.string() }).parse((await h.pool.query('SELECT owner_id FROM workspaces WHERE workspace_id = $1', [id])).rows[0]);
+    const before = sealRecord(stateKey(o.root, art.ownerId, `presenter-notes:${board}`), { v: 1, kind: 'presenter-notes', ownerId: art.ownerId, workspaceId: id, documentId: board }, utf8('The whole board, kept before'));
+    await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) VALUES ($1, $2, $3, $4)', [art.ownerId, space.owner_id, board, before]);
+    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
+    expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
+
+    // Each frame its own, and changing one leaves the rest.
+    await art.api.workspaces.presenterNotes.setFrame(id, board, well, 'CANARY-FRAMENOTE thank Maya’s team for launch day');
+    await art.api.workspaces.presenterNotes.setFrame(id, board, fix, 'Ask Priya to take the changelog point.');
+    expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: { [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya to take the changelog point.' } });
+    await art.api.workspaces.presenterNotes.setFrame(id, board, fix, 'Ask Priya first.');
+    expect((await art.api.workspaces.presenterNotes.frames(id, board)).frames).toEqual({ [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya first.' });
+    // What was kept for the whole board is as it was.
+    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
+
+    // Yours alone: Priya can open the board and has her own, none of Art's, and hers change nothing of his.
+    expect(await priya.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
+    await priya.api.workspaces.presenterNotes.setFrame(id, board, well, 'Priya’s');
+    expect(await priya.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: { [well]: 'Priya’s' } });
+    expect((await art.api.workspaces.presenterNotes.frames(id, board)).frames[well]).toBe('CANARY-FRAMENOTE thank Maya’s team for launch day');
+    // Someone who can't open the board reaches nothing, the same as for a board that isn't there; a document has no frames.
+    expect(await refusal(lena.api.workspaces.presenterNotes.frames(id, board))).toEqual(await refusal(lena.api.workspaces.presenterNotes.frames(id, madeUp())));
+    expect(await code(lena.api.workspaces.presenterNotes.setFrame(id, board, well, 'No'))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.frames(id, plan))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.setFrame(id, plan, well, 'No'))).toBe('not-found');
+    // Someone in a call with no account has nowhere to keep them, even with the board open to them.
+    const { host, code: c } = await callBy(art);
+    await host.setWorkspace(id);
+    await host.openBoard({ workspaceId: id, documentId: board, letIn: true });
+    const jamie = await guest(host, c);
+    await until(async () => (await read(jamie.call)).board.open?.role === 'edit', 'Jamie to have the board');
+    expect(await code(jamie.api.workspaces.presenterNotes.frames(id, board, { pass: jamie.call.ticket.pass }))).toBe('forbidden');
+    expect(await code(jamie.api.workspaces.presenterNotes.setFrame(id, board, well, 'Mine', { pass: jamie.call.ticket.pass }))).toBe('forbidden');
+    // A frame is a board's id for it, and what's kept beside one has a length.
+    expect(await code(art.api.workspaces.presenterNotes.setFrame(id, board, 'not a frame', 'No'))).toBe('invalid');
+    expect(await code(art.api.workspaces.presenterNotes.setFrame(id, board, fix, 'x'.repeat(4_001)))).toBe('invalid');
+
+    // Sealed: a row holds neither the words nor which frame, and a frame's record put in another frame's row doesn't open.
+    const FrameRows = z.array(z.object({ frame_index: z.instanceof(Uint8Array), body_ciphertext: z.instanceof(Uint8Array) }));
+    const kept = FrameRows.parse((await h.pool.query('SELECT frame_index, body_ciphertext FROM presenter_frame_notes WHERE owner_id = $1 AND document_id = $2', [art.ownerId, board])).rows);
+    expect(kept).toHaveLength(2);
+    for (const r of kept) {
+      const all = Buffer.concat([Buffer.from(r.frame_index), Buffer.from(r.body_ciphertext)]);
+      for (const word of ['CANARY-FRAMENOTE', 'changelog', 'Ask Priya', well, fix]) expect(all.includes(Buffer.from(word)), word).toBe(false);
+    }
+    const [first, second] = kept;
+    await h.pool.query('UPDATE presenter_frame_notes SET body_ciphertext = $3 WHERE owner_id = $1 AND frame_index = $2', [art.ownerId, second?.frame_index, first?.body_ciphertext]);
+    expect(await code(art.api.workspaces.presenterNotes.frames(id, board))).toBe('key-unavailable');
+    await h.pool.query('UPDATE presenter_frame_notes SET body_ciphertext = $3 WHERE owner_id = $1 AND frame_index = $2', [art.ownerId, second?.frame_index, second?.body_ciphertext]);
+    expect(Object.keys((await art.api.workspaces.presenterNotes.frames(id, board)).frames)).toHaveLength(2);
+
+    // Empty text leaves nothing of that frame's, and they go with the board, the account and the workspace.
+    await art.api.workspaces.presenterNotes.setFrame(id, board, fix, '');
+    expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: { [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day' } });
+    await priya.api.account.delete();
+    expect(await count('SELECT count(*)::int AS n FROM presenter_frame_notes WHERE owner_id = $1', [priya.ownerId])).toBe(0);
+    await art.api.workspaces.items.trash(id, board);
+    await art.api.workspaces.items.deleteForever(id, board);
+    expect(await count('SELECT count(*)::int AS n FROM presenter_frame_notes WHERE document_id = $1', [board])).toBe(0);
+  });
+
+  it('on a board keep to as many frames as a board can have notes beside', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Wall' })).id;
+    const frame = (i: number) => `f${String(i).padStart(11, '0')}`;
+    for (let i = 0; i < 500; i++) {
+      await h.pool.query('INSERT INTO presenter_frame_notes (owner_id, workspace_owner_id, document_id, frame_index, body_ciphertext) SELECT $1, owner_id, $2, $3, $4 FROM workspaces WHERE workspace_id = $5', [art.ownerId, board, Buffer.from(`index-${i}`), Buffer.from('x'), id]);
+    }
+    expect(await refusal(art.api.workspaces.presenterNotes.setFrame(id, board, frame(500), 'One more'))).toMatchObject({ code: 'conflict', message: 'You keep notes beside 500 frames of this board already. Clear some to add more.' });
   });
 });
 
@@ -1579,7 +1656,7 @@ describe('playing a video together', () => {
 
     // Sent to a room, someone stops being told; the person playing it leaving the main room stops it.
     await host.startPlaying(film, media);
-    host.openRooms({ rooms: [{ name: 'One', emails: [theo.email] }, { name: 'Two', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'One', emails: [theo.email] }, { name: 'Two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     await until(() => t.crypto.getSnapshot().place === rooms[0]?.id, 'Theo to be in their room');
     expect((await space(t)).play).toBeNull();
@@ -1624,6 +1701,8 @@ describe('the next call’s agenda', () => {
     await until(async () => (await art.api.workspaces.versions(id, agenda)).some((v) => v.reason === 'call'), 'the version');
     return { art, priya, id, folder, agenda, next, page };
   }
+  /** What's in a workspace besides each call's own folder. */
+  const documents = (t: WorkspaceTree) => t.items.filter((x) => x.call === null);
   const agendaIn = async (who: Account, id: string, call: CallSession) => {
     const s = await settle(call, (x) => x.workspace.agenda !== null);
     const page = await open(who, id, s.workspace.agenda ?? '', { pass: call.ticket.pass });
@@ -1635,10 +1714,10 @@ describe('the next call’s agenda', () => {
     const host = await art.api.calls.join(next.code, { mic: false, cam: false });
     await inGroup(host);
     const p = await invited(host, next.code, priya);
-    const before = (await art.api.workspaces.get(id)).items.length;
+    const before = documents(await art.api.workspaces.get(id)).length;
     await Promise.all([host.openWorkspace(), p.openWorkspace(), host.openWorkspace(), p.openWorkspace()]);
     const tree = await art.api.workspaces.get(id);
-    expect(tree.items).toHaveLength(before + 1);
+    expect(documents(tree)).toHaveLength(before + 1);
     const made = await agendaIn(art, id, host);
     const item = tree.items.find((x) => x.id === made.id);
     expect(item).toMatchObject({ kind: 'document', parent: folder });
@@ -1673,13 +1752,13 @@ describe('the next call’s agenda', () => {
     expect([texts(fragment[0]), texts(lines[0])]).toEqual([1, 1]);
     // Opening it again makes no other, and neither does the call starting again.
     await host.openWorkspace();
-    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    expect(documents(await art.api.workspaces.get(id))).toHaveLength(before + 1);
     const left = await host.leave();
     expect(left?.meetingId).toBe(next.id);
     const reopened = await art.api.calls.join(next.code, { mic: false, cam: false });
     await inGroup(reopened);
     await reopened.openWorkspace();
-    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    expect(documents(await art.api.workspaces.get(id))).toHaveLength(before + 1);
   });
 
   it('carries what’s left open from the one before it, and stays private when the last one was', async () => {
@@ -1713,7 +1792,7 @@ describe('the next call’s agenda', () => {
     await inGroup(host);
     await host.openWorkspace();
     expect(host.getSnapshot().workspace).toMatchObject({ id: other, agenda: null });
-    expect((await art.api.workspaces.get(other)).items).toEqual([]);
+    expect(documents(await art.api.workspaces.get(other))).toEqual([]);
     await host.leave();
     const again = await series();
     await again.art.api.workspaces.items.trash(again.id, again.agenda);
@@ -1732,7 +1811,7 @@ describe('the next call’s agenda', () => {
     const host = await art.api.calls.join(next.code, { mic: false, cam: false });
     await inGroup(host);
     await host.bringDocument(agenda, true);
-    const before = (await art.api.workspaces.get(id)).items.length;
+    const before = documents(await art.api.workspaces.get(id)).length;
     const pool = h.deps.docs;
     const run = pool.run;
     const real = pool.run.bind(pool);
@@ -1748,15 +1827,15 @@ describe('the next call’s agenda', () => {
     // makes no other, and says nothing new.
     await host.openWorkspace();
     expect(await space(host)).toMatchObject({ agenda: null, documents: [expect.objectContaining({ id: agenda })] });
-    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    expect(documents(await art.api.workspaces.get(id))).toHaveLength(before + 1);
     // Once it opens again, the next opening fills that one in, in the last one's place.
     await h.pool.query('UPDATE documents SET closed_until = NULL WHERE owner_id = $1', [await ownerOf(id)]);
     await host.openWorkspace();
     const made = await agendaIn(art, id, host);
-    expect(documentTodos(made.page.doc, 'document').map((t) => t.text)).toEqual([`CANARY-AGENDA book the briefing ${priya.name} by 2026-11-06`, `Who signs off the pricing? ${art.name}`]);
+    expect(documentTodos(made.page.doc, 'document').map((t) => t.text)).toEqual([`CANARY-AGENDA book the briefing ${priya.name} by 6 Nov`, `Who signs off the pricing? ${art.name}`]);
     expect(documentText(made.page.doc, 'document').title).toMatch(/^Agenda · /);
     expect((await space(host)).documents.map((x) => x.id)).toEqual([made.id]);
-    expect((await art.api.workspaces.get(id)).items).toHaveLength(before + 1);
+    expect(documents(await art.api.workspaces.get(id))).toHaveLength(before + 1);
     // And filling it in again, as a retry would if it had been filled and not said so, changes nothing.
     await host.openWorkspace();
     expect(documentTodos(made.page.doc, 'document')).toHaveLength(2);
@@ -1792,7 +1871,7 @@ describe('the next call’s agenda', () => {
       await inGroup(host);
       const g = await guest(host, s.next);
       await g.call.openWorkspace();
-      const names = (await viewer.api.workspaces.get(s.id)).items.map((x) => x.name);
+      const names = documents(await viewer.api.workspaces.get(s.id)).map((x) => x.name);
       await host.leave();
       return names;
     }
@@ -1913,7 +1992,7 @@ describe('asking Alcove about a selection', () => {
     const p = await invited(host, c, priya);
     const t = await invited(host, c, theo);
     for (const at of [0, 1]) await host.appendAudio(piece(audioBytes('rooms'), 0, at));
-    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [theo.email] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'One', emails: [priya.email] }, { name: 'Two', emails: [theo.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
     await until(() => p.crypto.getSnapshot().place === rooms[0]?.id && t.crypto.getSnapshot().place === rooms[1]?.id, 'everyone to be in their rooms');
     await host.pauseRoom(rooms[0]?.id ?? '', true);
@@ -1938,7 +2017,7 @@ describe('asking Alcove about a selection', () => {
     expect(await code(collect(art.api.workspaces.ask(id, plan, body)))).toBe('allowed');
   });
 
-  it('holds accounts that cost nothing to make to one limit between them', async () => {
+  it('holds accounts that cost nothing to make to the limit any account has, each its own', async () => {
     const second = await h.secondServer();
     try {
       const answers: string[] = [];
@@ -1949,8 +2028,8 @@ describe('asking Alcove about a selection', () => {
         const api = createHttpApi({ baseUrl: second.baseUrl, fetch: who.fetch });
         for (let i = 0; i < 15; i++) answers.push(await code(collect(api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' }))));
       }
-      expect(answers.filter((x) => x === 'allowed').length).toBe(60);
-      expect(answers.filter((x) => x === 'unavailable').length).toBe(15);
+      // Fifteen each is under one account's limit, and nobody shares theirs: none is refused for what the others asked.
+      expect(answers.filter((x) => x === 'allowed').length).toBe(75);
     } finally {
       await second.close();
     }
@@ -2197,18 +2276,6 @@ describe('what a call leaves in the record', () => {
     for (let i = 0; i < 5; i++) await host.bringDocument(plan, false);
     expect(await revisions(art.ownerId, 'meeting')).toBe(after);
   });
-
-  it('writes to the account once for tabs going back and forth between two workspaces', async () => {
-    const art = await account();
-    const a = await workspace(art, 'A');
-    const b = await workspace(art, 'B');
-    const opened = async (id: string) => { const s = art.api.workspaces.live(id); await until(() => s.getSnapshot().status === 'live', 'the stream'); s.close(); };
-    await opened(a);
-    await opened(b);
-    const before = await revisions(art.ownerId, 'profile');
-    for (let i = 0; i < 5; i++) { await opened(a); await opened(b); }
-    expect(await revisions(art.ownerId, 'profile')).toBe(before);
-  });
 });
 
 describe('what the previous release stored', () => {
@@ -2231,8 +2298,7 @@ describe('what the previous release stored', () => {
     await saveRevision(o, o.pool, meeting.itemId, meeting.revisionId, oldMeeting);
     const [profile] = await listItems(o, o.pool, 'profile', Profile);
     if (!profile) throw new Error('no profile');
-    const { recentWorkspace: _r, ...oldProfile } = profile.manifest;
-    await saveRevision(o, o.pool, profile.itemId, profile.revisionId, oldProfile);
+    await saveRevision(o, o.pool, profile.itemId, profile.revisionId, { ...profile.manifest, recentWorkspace: madeUp() });
 
     expect(await space(host)).toMatchObject({ id: null, canOpen: false, documents: [], present: null, play: null, asks: [], asked: 'no' });
     expect((await read(p)).transcript.map((l) => l.text)).toEqual(['Said before this release.']);
@@ -2320,6 +2386,8 @@ describe('what’s kept', () => {
     const agenda = await doc(art, id, 'Agenda CANARY-AGENDANAME');
     await art.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-PRESENTERNOTE thank the pilot team');
     await worker.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-THEIRNOTE mention the 20th');
+    const retro = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Retro' })).id;
+    await art.api.workspaces.presenterNotes.setFrame(id, retro, 'canaryFrame1', 'CANARY-FRAMENOTE thank the support team');
     const at = Date.now() + 3_600_000;
     const m = await art.api.meetings.create({ title: 'CANARY-CALLTITLE', startsAt: new Date(at).toISOString(), durationMinutes: 30, guests: [worker.email], notes: 'on', workspaceId: id });
     const next = await art.api.meetings.scheduleNext(m.id, new Date(at + 7 * 86_400_000).toISOString());
@@ -2352,9 +2420,10 @@ describe('what’s kept', () => {
     await nextCall.leave();
     await until(async () => (await art.api.workspaces.versions(id, agenda)).some((v) => v.reason === 'call'), 'the version');
 
-    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-PRESENTERNOTE', 'CANARY-THEIRNOTE', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
+    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-PRESENTERNOTE', 'CANARY-THEIRNOTE', 'CANARY-FRAMENOTE', 'canaryFrame1', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(tables).toContain('presenter_notes');
+    expect(tables).toContain('presenter_frame_notes');
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (${tables.map((t) => `SELECT row_to_json(x)::text AS t FROM ${t} x`).join(' UNION ALL ')}) q`);
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;
     expect(rowsText).toContain('body_ciphertext');

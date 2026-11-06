@@ -6,11 +6,14 @@
  * call's shared live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone
  * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, VolumeControl, cn, useToast, type IconName } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, VolumeControl, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
+import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import { rungWords } from '~/features/calls/RingWords';
+import { lineClock } from '~/features/workspace/live/lines';
+import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
@@ -41,6 +44,37 @@ export interface HostControls {
   setPointing: (on: boolean) => Promise<void>;
 }
 
+/**
+ * A panel's tabs. In a panel too narrow for all of them they scroll, the one you're on stays in view, and whichever edge has
+ * more behind it fades out, so a tab out of sight doesn't read as no tab at all.
+ */
+function PanelTabs({ tabs, view, onView }: { tabs: CallPanelTab[]; view: PanelView; onView: (v: PanelView) => void }) {
+  const strip = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState({ before: false, after: false });
+  useLayoutEffect(() => {
+    const el = strip.current;
+    if (!el) return;
+    const read = () => {
+      const before = el.scrollLeft > 1;
+      const after = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setMore((was) => (was.before === before && was.after === after ? was : { before, after }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    el.addEventListener('scroll', read, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', read); };
+  }, [tabs.length]);
+  useEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [view]);
+  /* A mouse's wheel only turns one way. */
+  const wheel = (e: ReactWheelEvent<HTMLDivElement>) => { if (e.deltaY !== 0 && e.deltaX === 0) e.currentTarget.scrollLeft += e.deltaY; };
+  return (
+    <div ref={strip} className={cn('ac-tabs', more.before && 'more-before', more.after && 'more-after')} role="tablist" aria-label="Call panel" onWheel={wheel}>
+      {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
+    </div>
+  );
+}
+
 export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }: {
   view: PanelView;
   /** The tabs in this panel: dragging one out makes it a panel of its own, and one on its own has its name instead. */
@@ -56,9 +90,7 @@ export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }:
         <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={view === 'rooms' ? 'Close the panel' : `Close ${name}`} onClick={onClose} /></div>
       ) : (
         <div className="ic-side-head">
-          <div className="ac-tabs" role="tablist" aria-label="Call panel">
-            {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
-          </div>
+          <PanelTabs tabs={tabs} view={view} onView={onView} />
           <IconButton icon="x" label={`Close ${tabName(view)}`} onClick={onClose} />
         </div>
       )}
@@ -79,7 +111,7 @@ const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed
 
 /* ---------- notes ---------- */
 
-function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void }) {
+function DecidedRows({ items, times, onSeek, put }: { items: CatchUpItem[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; put: LivePut | null | undefined }) {
   return (
     <>
       {items.map((it) => (
@@ -87,6 +119,7 @@ function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: Ca
           <span className="mk"><Icon name="check" size={12} /></span>
           <div className="nr-text">{it.text}</div>
           {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
+          {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.decided(it.text)} />}
         </motion.div>
       ))}
     </>
@@ -94,7 +127,7 @@ function DecidedRows({ items, times, onSeek }: { items: CatchUpItem[]; times: Ca
 }
 
 /** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes, and in notes written for what someone may read of it. */
-function FollowUpRows({ items, times, onSeek, onTick }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined }) {
+function FollowUpRows({ items, times, onSeek, onTick, put }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined; put: LivePut | null | undefined }) {
   return (
     <>
       {items.map((it) => (
@@ -105,10 +138,11 @@ function FollowUpRows({ items, times, onSeek, onTick }: { items: LiveFollowUp[];
           <div>
             <span className="nr-text">{it.text}</span>
             {(it.owner || it.due) && (
-              <div className="meta">{it.owner}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
+              <div className="meta">{it.owner && firstName(it.owner)}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
             )}
           </div>
           {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
+          {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.followUp(it)} />}
         </motion.div>
       ))}
     </>
@@ -132,7 +166,7 @@ function Summary({ text }: { text: string }) {
 const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
-export function NotesView({ state, getting, problems, controls, carried, onSeek, onTick, onTranscript }: {
+export function NotesView({ state, getting, problems, controls, carried, put, onPage, onSeek, onTick, onTranscript }: {
   state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
@@ -141,6 +175,10 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
   controls: CaptureControls;
   /** What carries over from earlier calls, for you alone, when there's anything of yours. */
   carried?: ReactNode;
+  /** Sends a line into the document you were last in, while the workspace has one you can edit. */
+  put?: LivePut | null | undefined;
+  /** Opens the notes as a page in the workspace. */
+  onPage?: (() => void) | undefined;
   onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void; onTranscript: () => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
@@ -158,6 +196,9 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
   const [menu, setMenu] = useState(false);
   const live = state.liveNotes;
   const n = live.notes;
+  /* What people added comes first in nothing: it's listed among what was said, and there may be no notes for it to go with yet. */
+  const followUps: LiveFollowUp[] = [...(n?.next ?? []), ...live.added];
+  const any = n !== null || live.added.length > 0;
   const held = state.breakouts.held;
   const item = (icon: IconName, label: string, f: () => void) => (
     <button type="button" className="mi" onClick={() => { setMenu(false); f(); }}><Icon name={icon} size={16} /><span className="t">{label}</span></button>
@@ -170,6 +211,7 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
       <div className="ic-nh">
         <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
         <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+        {onPage && <IconButton icon="grow" size={16} className="ic-page" label="Open in the workspace" title="Open in the workspace" onClick={onPage} />}
         <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
           anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
           {host && on && item('pause', 'Pause notes', controls.pause)}
@@ -186,44 +228,44 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
         {on && state.isHost && !host && c.room && (
           <div className="ic-problems is-top"><Notice tone="caution" icon="alert">You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.</Notice></div>
         )}
-        {unavailable && n && (
+        {unavailable && any && (
           <div className="ic-problems is-top"><Notice tone="caution" icon="alert">{c.room ? ROOM_UNHEARD : c.away
             ? `${notesBrowser(state)} isn’t in the call right now, so nothing new is captured until it’s back.`
             : `${notesBrowser(state)} can’t record or listen right now, so nothing new is captured.${state.isHost ? ' Everyone can see that.' : ''}`}</Notice></div>
         )}
-        {pausedHere && n && (
+        {pausedHere && any && (
           <div className="ic-problems is-top"><Notice icon="pause">{roomHeld ? ROOM_PAUSED : <>Paused{c.recording.since ? ` at ${hm(c.recording.since)}` : ''}. Nothing is recorded, transcribed or sent to the AI until {host ? 'you resume' : `${organizer} resumes`}.</>}</Notice></div>
         )}
         {(problems.length > 0 || live.error) && (
           <div className="ic-problems is-top">{[...problems, ...(live.error ? [live.error] : [])].map((p) => <Notice key={p} tone="caution">{p}</Notice>)}</div>
         )}
-        {roomHeld && !n ? (
+        {roomHeld && !any ? (
           <EmptyState title="Notes are paused in this room" className="ic-empty">Nothing said here is transcribed until the organizer resumes.</EmptyState>
-        ) : paused && !n ? (
+        ) : paused && !any ? (
           <EmptyState title="Notes are paused" className="ic-empty"
             action={host ? <Button variant="primary" size="sm" icon="play" onClick={controls.resume}>Resume notes</Button> : ask}>
             {host ? 'Nothing is recorded, transcribed or sent to the AI until you resume.' : asking ? `You asked ${organizer} to resume them.` : `Nothing is recorded, transcribed or sent to the AI until ${organizer} resumes.`}
           </EmptyState>
-        ) : c.mode === 'off' && !n ? (
+        ) : c.mode === 'off' && !any ? (
           <EmptyState title="Notes are off" className="ic-empty"
             action={host ? <Button variant="primary" size="sm" onClick={() => controls.notes(true)}>Turn notes on</Button> : ask}>
             {host ? 'Nothing from this call is being written down. Notes pick up from the moment you turn them on.' : asking ? `You asked ${organizer} for notes.` : `Only ${organizer} can turn them on. You can ask them to.`}
           </EmptyState>
-        ) : unavailable && !n ? (
+        ) : unavailable && !any ? (
           <EmptyState title="Nothing is being captured" className="ic-empty">
             {c.room ? 'Nobody’s browser in this room can transcribe it right now. Notes pick up as soon as one can.' : c.away ? `${notesBrowser(state)} isn’t in the call right now. Notes pick up as soon as it’s back.`
               : `${notesBrowser(state)} can’t record or listen right now.${state.isHost ? ' Everyone can see that.' : ''} Notes pick up as soon as it can.`}
           </EmptyState>
-        ) : !n ? (
+        ) : !any ? (
           <EmptyState title={live.writing ? 'Writing the first notes' : 'Listening'} className="ic-empty">
             {state.transcript.length ? 'Decisions, follow-ups and a summary appear here in a moment.' : 'Decisions, follow-ups and a summary appear here as people talk.'}
           </EmptyState>
         ) : (
           <div className="ic-nb">
-            <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n.decided.length}</span></div>
-              {n.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
-            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{n.next.length}</span></div>
-              {n.next.length ? <FollowUpRows items={n.next} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n.read.whileHere ? undefined : onTick} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+            <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n?.decided.length ?? 0}</span></div>
+              {n?.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} put={put} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
+            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{followUps.length}</span></div>
+              {followUps.length ? <FollowUpRows items={followUps} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n?.read.whileHere ? undefined : onTick} put={put} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (
@@ -234,11 +276,11 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
                 ))}
               </div>
             )}
-            <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
-            {(n.read.whileHere || on) && (
+            <div><div className="ic-sh"><span className="ac-eyebrow">Summary</span></div>{n?.summary ? <Summary text={n.summary} /> : <p className="ic-quiet">Nothing to sum up yet.</p>}</div>
+            {(n?.read.whileHere || (on && (n || live.writing))) && (
               <div className="ic-about">
-                {n.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
-                {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
+                {n?.read.whileHere && <div className="ic-writing"><Icon name="lock" size={13} />Only what was said while you were here.</div>}
+                {on && <div className="ic-writing">{live.writing ? <><Dots />Writing as people talk</> : n && <><Icon name="clock" size={13} />Updated from {n.read.lines} {n.read.lines === 1 ? 'line' : 'lines'} of the transcript</>}</div>}
               </div>
             )}
           </div>
@@ -251,7 +293,7 @@ export function NotesView({ state, getting, problems, controls, carried, onSeek,
 
 /* ---------- transcript ---------- */
 
-export function TranscriptView({ state, me, onMark }: { state: CallState; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
+export function TranscriptView({ state, me, onMark, put }: { state: CallState; me: string | undefined; onMark?: ((lineId: string) => void) | undefined; put?: LivePut | null | undefined }) {
   // What's said where you are: in a breakout room, the room's lines, under the room's capture.
   const c = captureHere(state.capture);
   const mode = c.mode;
@@ -267,7 +309,7 @@ export function TranscriptView({ state, me, onMark }: { state: CallState; me: st
         )}
         {mode === 'paused' && <Notice icon="pause">{roomHeld ? ROOM_PAUSED : 'Notes are paused. Nothing new is transcribed until they resume.'}</Notice>}
         {mode === 'off' && <Notice icon="notesPen">{state.notes.everOn ? 'Notes are off. Nothing new is written down until they’re back on.' : 'Notes are off, so nothing is being transcribed.'}</Notice>}
-        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} /> : on && (
+        {state.transcript.length ? <CallLines lines={state.transcript} gaps={c.gaps} me={me} onMark={onMark} quote={put ? { target: put.target, onQuote: put.line } : null} when={(at) => lineClock(state, at)} /> : on && (
           <EmptyState title="Nothing said yet" className="ic-empty">
             {!state.capture.room ? 'What’s said appears here a few seconds later.'
               : state.capture.room.scribe ? `What’s said here appears a few seconds later, transcribed by ${roomScribe(state)} for this room’s section of the notes.`
@@ -386,8 +428,10 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes, together }: {
   here: PanelPerson[]; invited: Person[];
+  /** With the workspace open: where each is, and following them. */
+  together?: StageTogether | undefined;
   /** People asking to join: only whoever hosts sees them. */
   asking: CallAsker[];
   /** Letting someone signed in in adds them to the invite: only when the organizer does it. */
@@ -440,8 +484,11 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
         {here.map((p) => (
           <div key={p.id} className="ic-prow">
             <Avatar person={p.person} size={36} />
-            <div className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{p.tags.length ? p.tags.join(' · ') : p.detail}</small></div>
+            <div className="min-w-0"><b>{p.person.name}{p.isMe ? ' (you)' : ''}</b><small>{(!p.isMe && together?.where[p.id]) || (p.tags.length ? p.tags.join(' · ') : p.detail)}</small></div>
             <div className="st">
+              {together?.following === p.id
+                ? <Button size="xs" variant="quiet" onClick={together.onStop}>Following</Button>
+                : together?.followable.includes(p.id) && <Button size="xs" onClick={() => together.onFollow(p.id)}>Follow</Button>}
               {p.hand && <Icon name="hand" size={16} />}
               {p.speaking && p.mic && <span className="ac-level" aria-label="Speaking"><i /><i /><i /></span>}
               {!p.mic && <Icon name="micOff" size={16} aria-label="Microphone off" />}

@@ -7,6 +7,9 @@
  * Nothing typed is let go of until the API has it, or until someone chooses to. A refusal never does: what's refused stays
  * here and in `keep`, through reloads, until it goes or someone takes it out with `unsentCopy`.
  *
+ * It never writes as one of the server's own clients (`SERVER_CLIENT`), which the API turns away: whatever puts it on one, it
+ * moves to a client of its own before anything is written, so nothing it writes is ever refused for that.
+ *
  * A refused update can't hold up what's behind it. A client's clocks have to reach the API in order, so anything written as
  * the same client is stuck behind it: this document moves to a new client, and what's written from then on goes as usual,
  * unless it builds on what's stuck. It only moves so many times, as a client costs the API a row: after that what's written
@@ -17,7 +20,7 @@
  * This module holds Yjs, and loads with the first document someone opens.
  */
 import {
-  AlcoveApiError, DOC_FRAGMENT, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, toBase64Url, type DocClosed, type DocCopyToken, type DocLiveEvent, type DocRefusal, type DocSession,
+  AlcoveApiError, DOC_FRAGMENT, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, errorCode, fromBase64Url, isServerClient, randomClient, toBase64Url, type DocClosed, type DocCopyToken, type DocLiveEvent, type DocRefusal, type DocSession,
   type DocSize, type DocStatus, type DocUnsentCopy, type KeptUpdates
 } from '@alcove/api';
 import { TAGS, itemsOnPage } from '@alcove/api/retire';
@@ -31,6 +34,11 @@ const BATCH_MS = 150;
 const CARET_MS = 100;
 const FIRST_WAIT_MS = 500;
 const LONGEST_WAIT_MS = 10_000;
+/**
+ * How long Alcove can be turning edits away with `unavailable` before that's the connection's fault as far as anyone typing
+ * is concerned. A restore holds a document for a moment, and it's only ever longer if the instance doing it went.
+ */
+const BUSY_MS = 30_000;
 /** A stream that lasted at least this long was fine, so opening it again waits for nothing. */
 const STEADY_MS = 1_000;
 /** What one request carries, leaving room for what merging adds. */
@@ -166,8 +174,15 @@ function wordsWaiting(doc: Y.Doc, mine: Ranges): string[] {
   return out;
 }
 
+/** A Y.Doc on a client of its own from the start, so its caret's is too. */
+function ownDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  doc.clientID = randomClient();
+  return doc;
+}
+
 export class HttpDocSession implements DocSession {
-  readonly doc = new Y.Doc();
+  readonly doc = ownDoc();
   readonly awareness = new Awareness(this.doc);
   readonly ready: Promise<void>;
   private settle: { resolve: () => void; reject: (e: unknown) => void } | null = null;
@@ -209,6 +224,8 @@ export class HttpDocSession implements DocSession {
   private sending = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private retryWait = FIRST_WAIT_MS;
+  /** When Alcove started saying it can't take this yet, though there's a connection. */
+  private busySince: number | null = null;
   private stuckTry: ReturnType<typeof setTimeout> | undefined;
 
   private caret: ReturnType<typeof setTimeout> | undefined;
@@ -220,6 +237,9 @@ export class HttpDocSession implements DocSession {
     // Nobody may be waiting on it: a refusal also shows in the status.
     this.ready.catch(() => undefined);
     this.doc.on('update', (update: Uint8Array, origin: unknown) => { if (origin !== HEARD) this.edited(update); });
+    // Anything that put it on one of the server's clients is moved off it before a word is written: what's written as one is refused for good.
+    // A move costs the API nothing until it's written as, so it isn't one of the moves a stretch of being stuck gets.
+    this.doc.on('beforeTransaction', () => { if (isServerClient(this.doc.clientID)) this.becomeNew(); });
     this.awareness.on('update', (changes: { added: number[] }, origin: unknown) => {
       // Someone new doesn't know where this caret is: nothing keeps it for them.
       if (origin === 'local' || (origin === HEARD && changes.added.length)) this.announceSoon();
@@ -362,9 +382,7 @@ export class HttpDocSession implements DocSession {
   }
   /** A new client, for Yjs and for the caret that goes with it: an editor tells its own caret from others' by the two matching. */
   private becomeNew(): void {
-    const scratch = new Y.Doc();
-    this.doc.clientID = scratch.clientID;
-    scratch.destroy();
+    this.doc.clientID = randomClient();
     const was = this.awareness.clientID;
     const state = this.awareness.getLocalState();
     removeAwarenessStates(this.awareness, [was], 'moved');
@@ -400,6 +418,7 @@ export class HttpDocSession implements DocSession {
   }
   private delivered(batch: Unsent[]): void {
     this.sendDown = false;
+    this.busySince = null;
     this.retryWait = FIRST_WAIT_MS;
     this.unsent = this.unsent.filter((u) => !batch.includes(u));
     void this.forget(batch);
@@ -421,11 +440,17 @@ export class HttpDocSession implements DocSession {
     if (code === 'forbidden') this.shut = 'read-only';
     else if (code === 'conflict') this.shut = 'trashed';
     else if (code === 'not-found' || code === 'unauthenticated') this.barred = true;
-    else this.tryAgain();
+    else if (code === 'unavailable') this.tryAgain(this.stillBusy());
+    else this.tryAgain(true);
     return false;
   }
-  private tryAgain(): void {
-    this.sendDown = true;
+  /** Whether Alcove has been saying "not yet" for longer than it should: someone typing through a restore is saving, not offline. */
+  private stillBusy(): boolean {
+    this.busySince ??= Date.now();
+    return Date.now() - this.busySince >= BUSY_MS;
+  }
+  private tryAgain(down: boolean): void {
+    this.sendDown = down;
     if (this.retry !== undefined || this.stopped) return;
     this.retry = setTimeout(() => { this.retry = undefined; void this.send(); }, this.retryWait * (0.8 + Math.random() * 0.4));
     unref(this.retry);
