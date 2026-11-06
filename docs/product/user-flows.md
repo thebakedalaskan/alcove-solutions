@@ -965,21 +965,25 @@ opens it. Someone who can't open that board sees **A board you can’t open** th
 
 **The page.** The board fills the page under the workspace's head, with its tools down the side and its bar along the
 top: its name, its seal, Undo and Redo, how near you are, the map, the faces of whoever else is on it, and **Start a call
-here**, which opens Start a call named after the board. Everyone on it has a pointer with their face and name, in a
-colour of their own. A blank board says **Double-click anywhere to add a sticky**, or press **N**. What's added reaches
-everyone on it as it happens.
+here**, which opens Start a call named after the board. Everyone else on it has a pointer with their face and name, in a
+colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add a
+sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
+it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
 
 **Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
 the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
 **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
-it again for the highlighter) and **Frame** (F). Two people typing in one sticky both keep what they typed.
+it again for the highlighter) and **Frame** (F). The **+** under them holds only what can be done here: on a board's page,
+**Comment**. Two people typing in one sticky both keep what they typed.
 
 **Changing what's there.** Click something and a small bar sits above it: its colour, its size, a line from it, copy (**⌘D**)
 and delete (**Delete**), with handles to size it. Drag it to move it; a frame takes what's in it along. Drag round several, or
 Shift-click them, to pick them together: the bar says how many and offers **Tidy**, which puts them in a grid. Pointing at
 something shows four dots just off its edges: drag from one onto something else, or press **Draw a line from this** and then
 click it, and the line stays attached, finding a clean route whenever either end moves. **Undo** (**⌘Z**, with **⇧⌘Z** to redo,
-or the arrows in the bar) takes back only your own changes, never anyone else's, whatever they've done since.
+or the arrows in the bar) takes back only your own changes, never anyone else's, whatever they've done since. **Sort into
+themes**, on stickies picked together, sorts them into named columns when its answer comes; that's an undo of its own,
+whatever you've started meanwhile, and the toast's **Undo** takes the sort back even after you've done something else.
 
 **Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
 **−**, how near you are and **+**, and **Map**, which shows where you are on a board too big for the sheet; **⇧1** shows
@@ -988,13 +992,16 @@ everything.
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and
-**Copy link**. Pressing the seal says where it's saved and that Alcove can't read it.
+**Copy link**. Its tip says which of these are yours to do. Pressing the seal says how the board stands, in the seal's own
+word: sealed, and where it's saved, and that Alcove can't read it; or **Reconnecting**, **Couldn’t save** or **View only**,
+with what that means, under the pill and never over it. Escape, or **Copy link**, gives the keys back to the board.
 
 **Comments.** Pick a sticky and press **K**, or **Comment** in the **+** under the tools, and a field opens beside it.
 With nothing picked, **K** comments on what the pointer is on, or on the next thing pressed (**Esc** stops). A comment
-pins its writer's face to the corner of what it's on, with how many have replied since; pressing the pin opens the thread,
-with **Reply** and **Resolve**, which a toast can take back. Comments aren't on the board: nobody's Undo takes one back,
-and a sticky that's deleted takes its comments with it, and brings them back with it.
+pins its writer's face to the corner of what it's on, with how many have replied since, hanging under the corner where it
+would cover a frame's title and count; pressing the pin opens the thread, with **Reply** and **Resolve**, which a toast can
+take back. Comments aren't on the board: nobody's Undo takes one back, and a sticky that's deleted takes its comments with
+it, and brings them back with it. Presenting a frame, only its own comments and the presenter's pointer show.
 
 **When things go wrong.** The seal says how the board stands, and the pill at the top of the sheet says the rest.
 
@@ -1006,8 +1013,9 @@ and a sticky that's deleted takes its comments with it, and brings them back wit
 - Someone given view only: the tools go and the seal says **View only**. They can still look round, follow people and
   read the comments.
 - Someone moves it to Trash: a bar says who, the board stops taking anything, and **Restore it** brings it back.
-- It stops being yours, or it's deleted: the page says you can't open it, the same as for a board that never existed,
-  with the way back.
+- It stops being yours, or it's deleted, or you're taken out of the workspace: the page says **You can’t open this
+  board**, the same as for a board that never existed, with the way back. Anything changed on it that didn't reach
+  Alcove is kept in this browser, and **Discard** says it drops every change made on it, moves and all.
 
 On a phone the list and the board take turns, as a document does, and the bar keeps the name, the seal, Undo, Redo, how
 near you are and Start a call here.
