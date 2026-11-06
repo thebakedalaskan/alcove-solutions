@@ -145,8 +145,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const justMade = useRef<string | null>(null);
   const openDoc = useRef<Ws['openDoc']['current']>(null);
   /* What the list last called each document, for a copy of someone's words in one that's gone. */
-  const known = useRef(new Map<string, string>());
-  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
+  const known = useRef(new Map<string, { name: string; board: boolean }>());
+  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, { name: nameOf(it), board: it.kind === 'board' }); }, [items]);
   const spaceName = view.tree?.name ?? 'Shared with you';
   /* Going anywhere puts a phone's list away, even to what's already open behind it. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo]);
@@ -198,19 +198,21 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /*
    * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
-   * typed then was meant for its title. ⌘\ shows or hides the list.
+   * typed then was meant for its title. On a board, N is the board's: a sticky, as the blank board says. ⌘\ shows or hides
+   * the list.
    */
+  const onBoard = item?.kind === 'board';
   useEffect(() => {
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || onBoard || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
       else actions.newDocument(null);
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, newFolder, toggleList]);
+  }, [actions, canChange, onBoard, newFolder, toggleList]);
 
   const { drag, arm, ended } = useRowDrag({
     tree, canDrag: (id) => canChange && tree.all.get(id)?.role === 'edit',
@@ -245,9 +247,12 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         {at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
-            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
-              copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id) ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
-              back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
+            {/* A board that was open here says it's a board it can't open: a board's own words have nowhere else to go. */}
+            {known.current.get(at.id)?.board
+              ? <WsCantOpen what="board" action={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
+              : <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
+                copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+                back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />}
           </WsDoc>
         ) : (
           <WsDoc className="is-bare">
