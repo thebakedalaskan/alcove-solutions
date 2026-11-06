@@ -57,7 +57,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
   private failed = false;
   private timing = { frames: 0, ms: 0 };
 
-  constructor(options: MatteOptions) {
+  constructor(options: MatteOptions, private readonly onFailure: (error: unknown) => void) {
     super();
     this.options = options;
   }
@@ -67,8 +67,14 @@ export class Matte extends VideoTransformer<MatteOptions> {
   }
 
   override async init(opts: VideoTransformerInitOptions): Promise<void> {
-    await super.init(opts);
-    await this.start();
+    try {
+      await super.init(opts);
+      await this.start();
+    } catch (e) {
+      // ProcessorWrapper cannot destroy an initializing processor. Let it finish setting up its output, which
+      // receives no frames, so Backdrop can destroy all of it after noticing this failure.
+      this.fail(e);
+    }
   }
 
   override async restart(opts: VideoTransformerInitOptions): Promise<void> {
@@ -95,11 +101,17 @@ export class Matte extends VideoTransformer<MatteOptions> {
 
   transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
     const canvas = this.canvas;
-    if (this.isDisabled || this.failed || !canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small || frame.codedWidth === 0) {
-      controller.enqueue(frame);
+    if (this.isDisabled || this.failed || frame.codedWidth === 0) {
+      frame.close();
+      return;
+    }
+    if (!canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small) {
+      frame.close();
+      this.fail(new Error('The matte is not ready to draw.'));
       return;
     }
     const started = performance.now();
+    let output: VideoFrame | null = null;
     try {
       const width = frame.displayWidth;
       const height = frame.displayHeight;
@@ -107,15 +119,24 @@ export class Matte extends VideoTransformer<MatteOptions> {
       this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
       const steady = this.settle(this.personIn(this.small, started));
       this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES);
-      controller.enqueue(new VideoFrame(canvas, { timestamp: frame.timestamp }));
-      frame.close();
+      output = new VideoFrame(canvas, { timestamp: frame.timestamp });
+      controller.enqueue(output);
+      output = null;
       this.timed(performance.now() - started);
     } catch (e) {
-      // Showing the camera as it is beats showing nothing; one line, not one per frame.
-      this.failed = true;
-      mlog.error('the matte failed, so frames pass through as they are', { err: e });
-      controller.enqueue(frame);
+      output?.close();
+      this.fail(e);
+    } finally {
+      frame.close();
     }
+  }
+
+  /** A selected background never falls back to an unprocessed camera frame. Report once, then discard frames. */
+  private fail(error: unknown): void {
+    if (this.failed) return;
+    this.failed = true;
+    mlog.error('the matte failed; camera frames are discarded', { err: error });
+    this.onFailure(error);
   }
 
   /* ---------- each frame ---------- */
@@ -160,6 +181,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
     if (!canvas) throw new Error('The matte has no canvas to draw on.');
     // The base class set up LiveKit's drawing on this canvas; this draws its own instead.
     this.gl?.cleanup();
+    this.gl = undefined;
     const gl = canvas instanceof OffscreenCanvas ? canvas.getContext('webgl2') : canvas.getContext('webgl2');
     if (!(gl instanceof WebGL2RenderingContext)) throw new Error('This browser has no WebGL2 for the matte.');
     this.draw = new MatteGl(gl);

@@ -2252,7 +2252,10 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   its size) and shows and sends the drawn one, so the preview, your tile and the call all have it and nothing in
   `livekit.ts` changes. It happens before anything is encrypted or sent. A new camera track goes through the
   processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
-  drawn the camera turns off and says so. The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
+  drawn the camera turns off and says so. A failure while processing frames discards those frames and turns the
+  camera off too: the unprocessed camera is never a fallback. Turning the camera off or leaving while the model
+  loads stops its input and output at once; the processor stays owned until initialization settles, then is destroyed.
+  The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
   them), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of
   `@mediapipe/tasks-vision` the app imports) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
@@ -2260,7 +2263,8 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   browser that kept `blur: true` from before keeps blur). Pictures of your own are made into 1920×1080 JPEGs and
   kept sealed in this browser for the account ([Privacy › On this device](privacy-keys-and-sessions.md#on-this-device));
   one that isn't here for the account using the camera shows blur instead, and a guest has none. Where the
-  browser can't do it (no WebGL2, or no way to make a track from frames) there's no background choice.
+  browser can't do it (no WebGL2, or no way to make a track from frames) there's no background choice. A background
+  remembered from before keeps the camera off there; choosing None explicitly clears it, then the camera can be turned on.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.

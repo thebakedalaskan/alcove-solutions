@@ -780,7 +780,13 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   fresh 12-byte IV each, with the account, the picture's ID and when it was added bound in. In the clear: those
   IDs, the time and the size. They're never sent: only the camera picture with you in front of one reaches a call,
   end-to-end encrypted like any other. Removing one deletes it; signing out, or deleting the account, on this
-  browser deletes all of the account's, and the key with the last of anyone's.
+  browser deletes all of the account's, and the key with the last of anyone's. Pending preparation, encryption and
+  decryption are fenced by opaque account tokens and the database's deletion revision: they cannot save a picture or
+  refill its decrypted cache after cleanup, including after another sign-in. The device store retains only opaque
+  revision and access markers after deletion. `alcove.account-state.<ownerId>` in localStorage holds revocation and
+  activation nonces and a signed-out flag, never picture content; unavailable coordination storage leaves pictures
+  closed. A fresh authenticated session can reopen access, while a session response started before revocation cannot.
+  Existing JPEG records, keys and their authenticated headers read unchanged; no database version upgrade is needed.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
   the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
   hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.

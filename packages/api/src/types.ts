@@ -1171,6 +1171,10 @@ export type SignedInHere = z.infer<typeof SignedInHereSchema>;
  */
 export const DeviceSealedSchema = z.object({ iv: z.instanceof(ArrayBuffer), data: z.instanceof(ArrayBuffer) });
 export type DeviceSealed = z.infer<typeof DeviceSealedSchema>;
+/** An opaque browser-storage revision, changed when locally kept data is deleted. Never key material. */
+export const DeviceGenerationSchema = z.uuid();
+/** An account's picture-storage fence: null after sign-out, or its opaque active generation. */
+export const KeptBackgroundAccessSchema = z.string().min(1).max(100).nullable();
 /**
  * `recording`: a recorder has it, or had it until its tab closed. `finished`: it waits to upload. `discarded`: it was
  * thrown away, and whatever reached Alcove of it is deleted when there's a connection.
@@ -1232,6 +1236,9 @@ export const AccountSignalSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('signed-in'), owner: z.string() })
 ]);
 export type AccountSignal = z.infer<typeof AccountSignalSchema>;
+/** Synchronous cross-tab revocation: signing back in preserves the nonce, so older work stays revoked. */
+export const AccountDeviceStateSchema = z.object({ generation: DeviceGenerationSchema, activation: DeviceGenerationSchema, signedOut: z.boolean() });
+export type AccountDeviceState = z.infer<typeof AccountDeviceStateSchema>;
 
 /** A call's code, as its links have it: `kpw-rnzq-hte`. */
 export const CallCodeSchema = z.string().regex(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);

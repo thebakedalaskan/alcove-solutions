@@ -147,6 +147,10 @@ export class LocalMedia {
   /** What the camera shows: the camera's own track, or the one the backdrop draws from it. */
   private shown: MediaStreamTrack | null = null;
   private backdrop: Backdrop | null = null;
+  /** A camera still preparing its background: off/leave must stop it before initialization finishes. */
+  private dressing: MediaStreamTrack | null = null;
+  /** A press of Off invalidates pending camera work even if On is pressed again before it finishes. */
+  private cameraGen = 0;
   /** What's chosen to show behind the camera (what shows can differ: see lookOf), and whose pictures it can be. */
   private chosen: CameraBackground = readPrefs().background ?? NO_BACKGROUND;
   private account: string | null = null;
@@ -323,6 +327,17 @@ export class LocalMedia {
     this.backdrop = null;
     void b?.stop().catch((e: unknown) => mlog.warn('the background didn’t stop', { err: e }));
   }
+  /** Stop both the input and anything already published before announcing a background failure. */
+  private backgroundFailed(camera: MediaStreamTrack, background: CameraBackground, canBackground: boolean): void {
+    camera.stop();
+    this.dressing?.stop();
+    this.shown?.stop();
+    this.cameraGen++;
+    this.want.cam = false;
+    this.useVideo(null);
+    this.set({ canBackground, background, cam: false, changes: this.changed('cam', 'Your background couldn’t be shown, so your camera is off. Pick another background, or None, then turn your camera on.') });
+    this.rebuild();
+  }
   /**
    * What `b` shows, ready for the backdrop, and what that is: a picture of their own only when it's kept here for the
    * account using the camera. One that isn't (deleted, or another account's) shows blurred, so what's behind them
@@ -344,27 +359,57 @@ export class LocalMedia {
     }
   }
   /**
-   * `camera` with the chosen background drawn behind: its own track with none (or where the browser can't draw one),
-   * else the backdrop's. One that can't be drawn turns the camera off and says so, rather than show what someone
+   * `camera` with the chosen background drawn behind: its own track with none, else the backdrop's.
+   * One that can't be drawn turns the camera off and says so, rather than show what someone
    * asked not to; `camera` is let go of then, and when it's `late`.
    */
   private async dress(gen: number, camera: MediaStreamTrack): Promise<Dressed> {
-    const [{ look, shows }, can] = await Promise.all([this.lookOf(this.chosen), canBackdrop()]);
-    if (gen !== this.gen || !this.want.cam) { camera.stop(); return 'late'; }
-    if (!look || !can) { this.set({ canBackground: can, background: look ? NO_BACKGROUND : shows }); return camera; }
+    const cameraGen = this.cameraGen;
+    const chosen = this.chosen;
+    const account = this.account;
+    this.dressing = camera;
+    const late = () => gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || camera.readyState !== 'live';
+    let backdrop: Backdrop | null = null;
     try {
-      this.backdrop ??= new Backdrop();
-      const out = await this.backdrop.show(camera, look);
-      if (gen !== this.gen || !this.want.cam) { camera.stop(); this.dropBackdrop(); return 'late'; }
+      const [{ look, shows }, can] = await Promise.all([this.lookOf(chosen), canBackdrop()]);
+      if (late()) { camera.stop(); return 'late'; }
+      if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
+      if (!look) { this.set({ canBackground: can, background: shows }); return camera; }
+      if (!can) {
+        mlog.warn('the requested background is not supported', { kind: shows.kind });
+        this.backgroundFailed(camera, shows, false);
+        return 'failed';
+      }
+      if (!this.backdrop) {
+        const created = new Backdrop((source, error) => {
+          if (this.backdrop !== created || gen !== this.gen || cameraGen !== this.cameraGen || !this.want.cam || this.chosen.kind === 'none' || (source !== this.video && source !== this.dressing)) return;
+          mlog.warn('the background stopped drawing', { err: error, kind: this.chosen.kind });
+          this.backgroundFailed(source, this.chosen, true);
+        });
+        this.backdrop = created;
+      }
+      backdrop = this.backdrop;
+      const out = await backdrop.show(camera, look);
+      if (late() || this.backdrop !== backdrop) {
+        camera.stop();
+        if (this.backdrop === backdrop) this.dropBackdrop();
+        return 'late';
+      }
+      if (chosen !== this.chosen || account !== this.account) return await this.dress(gen, camera);
       this.set({ canBackground: true, background: shows });
       return out;
     } catch (e) {
-      mlog.warn('could not draw the background', { err: e, kind: shows.kind });
-      camera.stop();
-      this.dropBackdrop();
-      this.want.cam = false;
-      this.set({ canBackground: true, background: shows, cam: false, changes: this.changed('cam', 'Your background couldn’t be shown, so your camera is off. Pick another background, or None, then turn your camera on.') });
+      // An old initialization or processor must never turn off a newer camera or overwrite an intentional Off.
+      if (late() || (backdrop && this.backdrop !== backdrop)) { camera.stop(); return 'late'; }
+      if (chosen !== this.chosen || account !== this.account) {
+        this.dropBackdrop();
+        return await this.dress(gen, camera);
+      }
+      mlog.warn('could not draw the background', { err: e, kind: chosen.kind });
+      this.backgroundFailed(camera, chosen, true);
       return 'failed';
+    } finally {
+      if (this.dressing === camera) this.dressing = null;
     }
   }
   /** A device stopped on its own (unplugged, or the browser took it back): note it, and look at once. */
@@ -397,6 +442,8 @@ export class LocalMedia {
   async setCam(on: boolean): Promise<boolean> {
     this.want.cam = on;
     if (!on) {
+      this.cameraGen++;
+      this.dressing?.stop();
       this.useVideo(null);
       this.set({ cam: false, access: this.snap.access.cam.problem === 'blocked' ? this.snap.access : this.access('cam', { problem: null }) });
       this.rebuild();
@@ -760,6 +807,11 @@ export class LocalMedia {
   async setBackground(next: CameraBackground): Promise<void> {
     rememberDevice('background', next);
     this.chosen = next;
+    if (next.kind !== 'none' && this.video?.readyState === 'live' && this.shown === this.video) {
+      // Stop the published raw track at once. Its enabled clone is only an input until the background is ready.
+      this.useVideo(this.video.clone(), null);
+      this.rebuild();
+    }
     await this.redress();
     mlog.info('background changed', { kind: next.kind });
   }
@@ -882,6 +934,8 @@ export class LocalMedia {
   stop() {
     this.begun = false;
     this.gen++;
+    this.cameraGen++;
+    this.dressing?.stop();
     this.stopWatching?.();
     this.stopWatching = null;
     if (this.soon) clearTimeout(this.soon);

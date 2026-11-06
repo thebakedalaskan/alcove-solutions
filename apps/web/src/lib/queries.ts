@@ -5,7 +5,7 @@ import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
-import { forgetPictures } from '~/features/call/backgrounds';
+import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
 import { announceSignIn, announceSignOut } from './signedOut';
@@ -91,7 +91,7 @@ export function trustLine(t: Trust | undefined): string {
 }
 
 export const q = {
-  session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
+  session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
@@ -210,7 +210,16 @@ export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { forgetWords(); if (r.session) announceSignIn(r.session.ownerId); qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => {
+      forgetWords();
+      if (r.session) announceSignIn(r.session.ownerId);
+      qc.clear();
+      qc.setQueryData(qk.session, r.session);
+      // Cached sign-in data is fresh for a minute. Read the authenticated session now to reopen the picture fence.
+      if (r.session) void qc.fetchQuery({ ...q.session(), staleTime: 0 }).catch((e: unknown) => {
+        log.child({ component: 'account' }).warn('session could not be refreshed after sign-in', { err: e });
+      });
+    }
   });
 }
 /**
