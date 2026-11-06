@@ -1558,8 +1558,9 @@ describe('into the note', () => {
     const deck = followUp((await notesOf(kofi)).next, DECK);
     stop();
     await kofi.tickFollowUp(deck.id, true);
-    // Three unusable answers, and the note is finished without notes.
-    h.near.failNext(3, 'prose');
+    // Three unusable answers to this organizer's notes, and the note is finished without notes. Theirs alone: the upkeep
+    // below ends any call an earlier test left running and writes its notes, which mustn't take one of the three.
+    h.near.failNext(3, 'prose', `Organizer: ${org.session.user.name}`);
     const ended = await host.leave();
     const noteId = ended?.pendingNoteId ?? '';
     const dueNow = () => h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = (SELECT owner_id FROM items WHERE item_id = $1)`, [noteId]);
