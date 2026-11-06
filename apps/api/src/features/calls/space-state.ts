@@ -24,9 +24,29 @@ export type WorkedDocument = z.infer<typeof WorkedDocument>;
  */
 const Controller = z.object({ person: z.string(), seat: z.string(), name: z.string(), email: z.string().nullable() });
 export type Controller = z.infer<typeof Controller>;
-/** What's being presented in one part of the call. `place` is where it started: it's for the people there. */
-const Presenting = z.object({ place: z.string(), workspaceId: z.string(), kind: z.enum(['document', 'board']), id: z.string(), section: z.number(), by: Controller });
+/**
+ * What's being presented in one part of the call. `place` is where it started: it's for the people there. `key` is this one
+ * presentation, from its start to its end: starting again is a new key. `since` is when it started, in ms on this server's
+ * clock. Both are empty (`''` and 0) in one started before presentations had them.
+ */
+const Presenting = z.object({
+  place: z.string(), workspaceId: z.string(), kind: z.enum(['document', 'board']), id: z.string(), section: z.number(), by: Controller,
+  key: z.string().default(''), since: z.number().default(0)
+});
 export type Presenting = z.infer<typeof Presenting>;
+/**
+ * The workspace presented in one part of the call. It names the workspace everyone views, and nothing more: where the presenter
+ * is in it comes from presence. `key` and `since` are as for anything presented.
+ */
+const SpacePresenting = z.object({ place: z.string(), workspaceId: z.string(), key: z.string(), since: z.number(), by: Controller });
+export type SpacePresenting = z.infer<typeof SpacePresenting>;
+/**
+ * How the last presentation in one part of the call ended, until another starts there: which one it was (`key`), when (`at`, in
+ * ms on this server's clock), and whether it closed for everyone (`close`) or only for whoever presented it, so everyone
+ * following knows whether to keep it open.
+ */
+const PresentEnded = z.object({ place: z.string(), key: z.string(), close: z.boolean(), by: Controller, at: z.number() });
+export type PresentEnded = z.infer<typeof PresentEnded>;
 /** A video playing in one part of the call. `positionMs` is where it was at `atMs`, on this server's clock. Only IDs: the video stays in its document. */
 const Playing = z.object({ place: z.string(), workspaceId: z.string(), documentId: z.string(), mediaId: z.string(), by: Controller, playing: z.boolean(), positionMs: z.number(), atMs: z.number() });
 export type Playing = z.infer<typeof Playing>;
@@ -51,6 +71,9 @@ export type CallHome = z.infer<typeof CallHome>;
 export const CallSpace = z.object({
   asks: z.array(SpaceAsk).default([]),
   present: z.array(Presenting).default([]),
+  /** Not in `present`: a release that knows only documents and boards there couldn't open the call. */
+  space: z.array(SpacePresenting).default([]),
+  ended: z.array(PresentEnded).default([]),
   play: z.array(Playing).default([]),
   worked: z.array(WorkedDocument).default([]),
   /** This run of the call has its agenda, or has found there's none to make, so nobody opening Workspace looks again. */
@@ -63,7 +86,7 @@ export const CallSpace = z.object({
   made: z.array(z.string()).default([])
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
+export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
 /** Nothing presented or playing is left: everyone views another workspace. */
 export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });
