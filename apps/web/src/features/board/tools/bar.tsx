@@ -70,8 +70,8 @@ export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera;
       onDuplicate={copyable ? act(() => board.duplicateSelected()) : undefined} onDelete={act(() => board.removeSelected())}
       onMore={picked.some(stacks) ? () => board.set({ menu: !menu, picking: false }) : undefined}
       moreItems={menu ? [
-        { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
-        { icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
+        { id: 'front', icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
+        { id: 'back', icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
       ] : undefined}
       onSort={onSort && stickies.length > 1 ? act(() => { void board.sortIntoThemes(stickies, onSort); }) : undefined} sorting={sorting}
       onTidy={arrangeable.length > 1 ? act(() => tidySelected(board)) : undefined} />

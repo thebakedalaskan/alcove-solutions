@@ -97,7 +97,7 @@ function nameTip(doing: readonly string[]): string {
 }
 
 /** The menu under the board's name, on the sheet, closing with Escape or a press anywhere else but the name. */
-function NameMenu({ items, onClose }: { items: { icon: IconName; label: string; onPick: () => void }[]; onClose: () => void }) {
+function NameMenu({ items, onClose }: { items: { id: string; icon: IconName; label: string; onPick: () => void }[]; onClose: () => void }) {
   const { ref, top } = usePopOnSheet(onClose, '.bd-head .nm');
   return <BoardPop ref={ref} left={12} top={top} label="The board" items={items} />;
 }
@@ -235,12 +235,12 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   };
   const canRename = item.role === 'edit' && !trashed;
   const items = [
-    ...(canRename ? [{ icon: 'pen' as const, label: 'Rename', onPick: () => { closePop(); setNaming(name); } }] : []),
+    ...(canRename ? [{ id: 'rename', icon: 'pen' as const, label: 'Rename', onPick: () => { closePop(); setNaming(name); } }] : []),
     // Someone it's shared with from outside the workspace isn't told what the workspace is called.
-    ...(member ? [{ icon: 'folderOpen' as const, label: `Saved in ${ws.spaceName}`, onPick: () => { closePop(); showInList(); } }] : []),
-    ...(canShare ? [{ icon: 'people' as const, label: 'Who can add to it', onPick: () => setPop('share') }] : []),
+    ...(member ? [{ id: 'saved', icon: 'folderOpen' as const, label: `Saved in ${ws.spaceName}`, onPick: () => { closePop(); showInList(); } }] : []),
+    ...(canShare ? [{ id: 'share', icon: 'people' as const, label: 'Who can add to it', onPick: () => setPop('share') }] : []),
     // The page is as it was, so the keys go back to the name, where the board's keys still reach.
-    { icon: 'link' as const, label: 'Copy link', onPick: () => { closePop(); ws.actions.copyLink(item.id); backToName(); } }
+    { id: 'link', icon: 'link' as const, label: 'Copy link', onPick: () => { closePop(); ws.actions.copyLink(item.id); backToName(); } }
   ];
   const nameTitle = nameTip([...(canRename ? ['rename'] : []), ...(canShare ? ['share'] : []), 'copy a link']);
 

@@ -327,7 +327,7 @@ function BarMenu({ board, items }: { board: Board; items: BoardBarItems }) {
   const open = useBoardState(board, (s) => s.barMenu);
   const rows = BAR_ITEMS.flatMap((item) => {
     const run = items[item.id];
-    return run ? [{ icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }] : [];
+    return run ? [{ id: item.id, icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); board.focusSheet(); } }] : [];
   });
   return open && rows.length > 0 ? <BarMenuPop board={board} rows={rows} /> : null;
 }

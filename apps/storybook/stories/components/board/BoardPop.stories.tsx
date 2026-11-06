@@ -12,7 +12,7 @@ import { BAR, KitSheet, RetroPiece } from './parts';
 
 /** Three choices with the one picked on, each saying it was pressed. */
 const choices = (labels: readonly string[], on: string): NonNullable<BoardPopProps['options']> =>
-  labels.map((label) => ({ label, on: label === on, onPick: did(label) }));
+  labels.map((label) => ({ id: label, label, on: label === on, onPick: did(label) }));
 
 const meta = {
   title: 'Components/Board/BoardPop',
@@ -31,7 +31,7 @@ const meta = {
     const [, update] = useArgs<typeof args>();
     const board: unknown = parameters['board'], seal: unknown = parameters['seal'];
     // Picking one of the choices makes it the one that's on.
-    const options = args.options?.map((o) => ({ ...o, onPick: () => { o.onPick(); update({ options: args.options?.map((p) => ({ ...p, on: p.label === o.label })) }); } }));
+    const options = args.options?.map((o) => ({ ...o, onPick: () => { o.onPick(); update({ options: args.options?.map((p) => ({ ...p, on: p.id === o.id })) }); } }));
     return (
       <KitSheet width={1000} height={440} cam={{ x: 40, y: 96, z: 0.8 }}
         over={<><BoardBar name={typeof board === 'string' ? board : ''} seal={typeof seal === 'string' ? seal : undefined} zoom={0.8} {...BAR} /><BoardPop {...args} options={options} /></>}>
@@ -64,10 +64,10 @@ export const TheName: Story = {
   args: {
     title: undefined, rows: undefined, label: 'Launch retro',
     items: [
-      { icon: 'pen', label: 'Rename', onPick: did('Rename') },
-      { icon: 'folderOpen', label: 'Saved in Product', onPick: did('Saved in Product') },
-      { icon: 'people', label: 'Who can add to it', onPick: did('Who can add to it') },
-      { icon: 'x', label: 'Close for everyone', onPick: did('Close for everyone') }
+      { id: 'rename', icon: 'pen', label: 'Rename', onPick: did('Rename') },
+      { id: 'saved', icon: 'folderOpen', label: 'Saved in Product', onPick: did('Saved in Product') },
+      { id: 'share', icon: 'people', label: 'Who can add to it', onPick: did('Who can add to it') },
+      { id: 'close', icon: 'x', label: 'Close for everyone', onPick: did('Close for everyone') }
     ]
   }
 };
@@ -94,10 +94,10 @@ export const More: Story = {
   args: {
     left: undefined, right: 14, top: 60, title: undefined, rows: undefined, label: 'More',
     items: [
-      { icon: 'link', label: 'Copy link', onPick: did('Copy link') },
-      { icon: 'download', label: 'Download as an image', onPick: did('Download as an image') },
-      { icon: 'fileText', label: 'Download as a PDF', onPick: did('Download as a PDF') },
-      { icon: 'sun', label: 'Night board', onPick: did('Night board') }
+      { id: 'link', icon: 'link', label: 'Copy link', onPick: did('Copy link') },
+      { id: 'image', icon: 'download', label: 'Download as an image', onPick: did('Download as an image') },
+      { id: 'pdf', icon: 'fileText', label: 'Download as a PDF', onPick: did('Download as a PDF') },
+      { id: 'night', icon: 'sun', label: 'Night board', onPick: did('Night board') }
     ]
   }
 };

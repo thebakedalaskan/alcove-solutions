@@ -52,8 +52,8 @@ export const PickingAColour: Story = { name: 'Picking a colour', args: { picking
 export const More: Story = {
   args: {
     moreItems: [
-      { icon: 'bringToFront', label: 'Bring to front', onPick: did('Bring to front') },
-      { icon: 'sendToBack', label: 'Send to back', onPick: did('Send to back') }
+      { id: 'front', icon: 'bringToFront', label: 'Bring to front', onPick: did('Bring to front') },
+      { id: 'back', icon: 'sendToBack', label: 'Send to back', onPick: did('Send to back') }
     ]
   }
 };

@@ -13,6 +13,7 @@ import { EmptyArch } from './illustrations';
 import { Popover } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
 import { Button, IconButton } from './primitives';
+import { useSettledPress } from './settle';
 
 export const BOARD_COLOURS = ['butter', 'peach', 'rose', 'lilac', 'sky', 'mist'] as const;
 export type BoardColour = (typeof BOARD_COLOURS)[number];
@@ -293,10 +294,13 @@ export interface BoardPopProps {
   label?: string | undefined;
   /** Lines to read. */
   rows?: { icon: IconName; text: string }[] | undefined;
-  /** A choice of up to three. */
-  options?: { label: string; on: boolean; onPick: () => void }[] | undefined;
-  /** Things to do. `small` sits at the end of the line. */
-  items?: { icon: IconName; label: string; small?: string | undefined; onPick: () => void }[] | undefined;
+  /** A choice of up to three. Each `id` is unique among them, and the same for as long as the choice is there. */
+  options?: { id: string; label: string; on: boolean; onPick: () => void }[] | undefined;
+  /**
+   * Things to do. Each `id` is unique among them, and the same for as long as the item is there, so a press never lands on
+   * another item's action as items come and go. `small` sits at the end of the line.
+   */
+  items?: { id: string; icon: IconName; label: string; small?: string | undefined; onPick: () => void }[] | undefined;
   /** The one button at the bottom. */
   action?: { label: string; onPick: () => void } | undefined;
   /** Moves it from where `left` puts it, as `BoardSelectionBar` does to keep its menu on the sheet. */
@@ -304,16 +308,23 @@ export interface BoardPopProps {
   className?: string | undefined;
 }
 
-/** A small menu on the sheet, opened from the bar. Say where with `left` or `right`, and `top`. */
+/**
+ * A small menu on the sheet, opened from the bar. Say where with `left` or `right`, and `top`. For a moment after what's in
+ * it moves, a press does nothing (`useSettledPress`), as in every menu.
+ */
 export const BoardPop = forwardRef<HTMLDivElement, BoardPopProps>(function BoardPop({ left, right, top, title, sub, label, rows, options, items, action, translate, className }, ref) {
+  const settled = useSettledPress([
+    title ? 'title' : '', sub ? 'sub' : '', ...(rows ?? []).map((_, i) => `row:${i}`), ...(options ?? []).map((o) => `option:${o.id}`),
+    ...(items ?? []).map((i) => `item:${i.id}`), action ? 'action' : ''
+  ].join('\n'));
   return (
     <div ref={ref} className={cn('bp', className)} style={{ left, right, top, translate }} role="dialog" aria-label={title ?? label}>
       {title && <div className="hd">{title}</div>}
       {sub && <div className="sub">{sub}</div>}
-      {rows && <div className="rows">{rows.map((r) => <div key={r.text}><Icon name={r.icon} size={15} /><span>{r.text}</span></div>)}</div>}
-      {options && <div className="opts">{options.map((o) => <button key={o.label} type="button" className="opt" aria-pressed={o.on} onClick={o.onPick}>{o.label}</button>)}</div>}
-      {items?.map((i) => <button key={i.label} type="button" className="mi" onClick={i.onPick}><Icon name={i.icon} size={17} /><span>{i.label}</span>{i.small && <small>{i.small}</small>}</button>)}
-      {action && <div className="ft"><Button variant="primary" onClick={action.onPick}>{action.label}</Button></div>}
+      {rows && <div className="rows">{rows.map((r, i) => <div key={i}><Icon name={r.icon} size={15} /><span>{r.text}</span></div>)}</div>}
+      {options && <div className="opts">{options.map((o) => <button key={o.id} type="button" className="opt" aria-pressed={o.on} onClick={settled(o.onPick)}>{o.label}</button>)}</div>}
+      {items?.map((i) => <button key={i.id} type="button" className="mi" onClick={settled(i.onPick)}><Icon name={i.icon} size={17} /><span>{i.label}</span>{i.small && <small>{i.small}</small>}</button>)}
+      {action && <div className="ft"><Button variant="primary" onClick={settled(action.onPick)}>{action.label}</Button></div>}
     </div>
   );
 });
@@ -798,7 +809,9 @@ const namesList = (names: string[]): string => (names.length < 2 ? names.join(''
 /**
  * The Board button's menu, rising from `anchor` (the dock's button): a new board from a template, the team's recent boards
  * and, in place of those, the access step. `inRoom` says it's only for this room, and leaves the saved boards out. `tip`
- * names the button on hover, as a dock button's does. `busy`: something chosen is on its way, so nothing else can be.
+ * names the button on hover, as a dock button's does. `busy`: something chosen is on its way, so nothing else can be. Each
+ * row is told apart by what it is, a template or a board by its `id`, and for a moment after the rows move, as the recent
+ * boards come in or the access step takes their place, a press does nothing (`useSettledPress`).
  */
 export function BoardMenu({ open, onOpenChange, anchor, tip, inRoom = false, recents, access, busy = false, onTemplate, onRecent, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode; inRoom?: boolean | undefined;
@@ -807,24 +820,28 @@ export function BoardMenu({ open, onOpenChange, anchor, tip, inRoom = false, rec
   busy?: boolean | undefined;
   onTemplate: (template: BoardTemplate) => void; onRecent?: ((id: string) => void) | undefined; className?: string | undefined;
 }) {
+  const shown = !access && !inRoom && recents ? recents.boards : [];
+  const settled = useSettledPress([
+    ...TEMPLATES.map((t) => `template:${t.id}`), ...shown.map((r) => `board:${r.id}`), access ? `access:${access.onLetIn ? 'let-in' : 'without'}` : ''
+  ].join('\n'));
   return (
     <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="top" align="center" label="Open a board" className={cn('bl', busy && 'is-busy', className)}>
       <div className="bl-h"><span>New board</span><small>{inRoom ? 'Only this room sees it' : 'Opens for everyone here'}</small></div>
       <div className="bl-tpl">
-        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={() => onTemplate(t.id)}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
+        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={settled(() => onTemplate(t.id))}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
       </div>
-      {!access && !inRoom && recents && recents.boards.length > 0 && (
+      {recents && shown.length > 0 && (
         <>
           <div className="bl-sub">From {recents.workspace}</div>
-          {recents.boards.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={() => onRecent?.(r.id)}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
+          {shown.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={settled(() => onRecent?.(r.id))}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
         </>
       )}
       {access && (
         <div className="bl-q">
           <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
           <div className="acts">
-            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={access.onLetIn}>Let them in for this call</Button>}
-            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={access.onWithout}>Open without them</Button>
+            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={settled(access.onLetIn)}>Let them in for this call</Button>}
+            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={settled(access.onWithout)}>Open without them</Button>
           </div>
         </div>
       )}
