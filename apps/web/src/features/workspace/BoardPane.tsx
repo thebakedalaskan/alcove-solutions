@@ -63,12 +63,13 @@ interface PopRow { icon: IconName; text: string }
 
 /**
  * What the seal and the pill say for how the board stands, and what the seal says when it's pressed: the same standing, in the
- * same words. Where it's kept is said only once it's there. `kept` is that line, for someone in the workspace.
+ * same words. Where it's kept is said only while it's there.
  */
 interface Standing { seal: string; icon: IconName; title: string; pop: { title: string; rows: PopRow[] }; pill?: { icon: IconName; title: string; text: string; action?: { label: string; run: () => void } | undefined } | undefined }
 
 const UNREAD: PopRow = { icon: 'sealed', text: 'Alcove can’t read it.' };
 
+/** `kept` says where it's saved, for someone in the workspace, and null for anyone else. */
 function standingOf(status: DocStatus, offline: boolean, readOnly: boolean, changes: number, tryAgain: (() => void) | undefined, kept: PopRow | null): Standing {
   const where = kept ? [kept] : [];
   if (readOnly) {
