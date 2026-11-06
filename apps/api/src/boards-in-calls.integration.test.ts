@@ -180,8 +180,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
     const asTemplate = (board: string) => count('SELECT count(*)::int AS n FROM document_clients WHERE document_id = $1 AND client_id = $2 AND octet_length(people) = 0', [board, SERVER_CLIENT.template]);
@@ -208,8 +207,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
     // The instance's workers are busy, as on a loaded instance: each change waits its turn.
@@ -236,8 +234,7 @@ describe('a new board', () => {
   it('opens a new board whose template wouldn’t go on, as the board it is, and says so once in the log, at warn', async () => {
     const art = await account();
     const id = await workspace(art, 'Product');
-    const { host } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host } = await callBy(art, { home: id });
     const docs: DocPool = h.deps.docs;
     const real = docs.run.bind(docs);
     const failing: DocPool['run'] = async (task, input, o) => { if (task === 'edit') throw new Error('the workers are gone'); return real(task, input, o); };
@@ -261,8 +258,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     const docs: DocPool = h.deps.docs;
     const real = docs.run.bind(docs);
