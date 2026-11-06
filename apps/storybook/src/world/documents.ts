@@ -59,6 +59,12 @@ export const LAUNCH_PLAN: Page = {
     todo('Close the last two items on the launch checklist'),
     todo('Tell support about the new refund wording', true),
     callout('Nothing goes out before the design review has seen the onboarding.')
+  ],
+  /* Kept as it was written: Priya's edits this afternoon, and yesterday's design review, where three of them worked on it. */
+  versions: [
+    { at: iso(0, 14, 5), by: [PRIYA], call: null, reason: 'edits' },
+    { at: iso(-1, 11, 45), by: [PRIYA, KOFI, ART], call: REVIEW_CALL, reason: 'call' },
+    { at: iso(-1, 11, 20), by: [KOFI], call: REVIEW_CALL, reason: 'edits' }
   ]
 };
 

@@ -6,12 +6,14 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { asksToSee, at, goesTo, leaves, movesPresenting, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
+import { asksToSee, at, goesTo, leaves, movesPresenting, opensPage, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
+import { current } from '../../src/api/state';
 import { inCall, phone, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
-  addWalkthrough, AIKO, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO, WALKTHROUGH
+  addWalkthrough, AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST_DOC, FILM, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM, THEO,
+  WALKTHROUGH
 } from './talk';
 
 const meta = { title: 'Calls/Workspace', ...pages } satisfies Meta<PageArgs>;
@@ -250,3 +252,92 @@ export const PrivatePhone = phone(Private);
 /** Theo, with the link, asks to see the workspace: the organizer's card offers the document in front of them, or not now. */
 export const AskCard = inCall(reviewing({ here: [...REVIEWERS, { who: THEO, guest: true }], cues: at(4, asksToSee(THEO)) }), { play: openWorkspace });
 export const AskCardPhone = phone(AskCard);
+
+/* ---------- following onto the call's pages, and stopping ---------- */
+
+/** Follows Priya from her tile: its button, or its options on a phone. */
+const followPriya: Play = async (c) => {
+  await openWorkspace(c);
+  await c.step('Follow Priya from her tile: its button, or its options on a phone', async () => {
+    await c.canvas.findByRole('button', { name: 'More for this document' }, { timeout: 8000 });
+    const [tile] = c.canvas.queryAllByRole('button', { name: 'Follow Priya' });
+    if (tile) { await c.userEvent.click(tile); return; }
+    const arch = await c.canvas.findByRole('group', { name: /^Priya\. Enter for options/ }, { timeout: 5000 });
+    arch.focus();
+    await c.userEvent.keyboard('{Enter}');
+    await c.userEvent.click(await screen.findByRole('button', { name: /^Follow Priya/ }, { timeout: 5000 }));
+  });
+};
+/** Following Priya onto the call's own pages: she opens its Notes, then its Transcript, and you go too, the bar naming each. */
+export const FollowingOntoTheCallsPages = inCall(reviewing({ cues: [...at(10, opensPage(PRIYA, 'notes')), ...at(16, opensPage(PRIYA, 'transcript'))] }), {
+  play: async (c) => {
+    await followPriya(c);
+    await c.step('Priya opens the call’s Notes: you go too, and the bar says where she is', async () => {
+      await c.canvas.findByText('Notes', { selector: '.wd-follow .w' }, { timeout: 15000 });
+    });
+    await c.step('Then its Transcript, and you go there too', async () => {
+      await c.canvas.findByText('Transcript', { selector: '.wd-follow .w' }, { timeout: 15000 });
+    });
+  }
+});
+export const FollowingOntoTheCallsPagesPhone = phone(FollowingOntoTheCallsPages);
+
+/** Stop following on the bar: you stay where you are, and the toast offers Follow again. */
+export const StoppedFollowing = inCall(reviewing(), {
+  play: async (c) => {
+    await followPriya(c);
+    await c.step('Press Stop following on the bar. You stay, and the toast offers Follow again', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: /^Stop following/ }, { timeout: 8000 }));
+    });
+  }
+});
+export const StoppedFollowingPhone = phone(StoppedFollowing);
+
+/* ---------- notes turned off ---------- */
+
+const CHECKING_IN: Present[] = [{ who: KOFI }, { who: AIKO }, { who: MAYA }];
+/**
+ * Priya turns notes off at her check-in once some are written: the call's Notes keep what was written, say they're off, and
+ * offer to ask her for them back. You ask: it says so, with Take it back.
+ */
+export const NotesTurnedOff = inCall({
+  scenario: 'busy', call: { ...CHECK_IN, code: 'lch-chck-wso' },
+  script: {
+    here: CHECKING_IN, since: 100, earlier: CHECK_IN_TALK.slice(0, 5), talk: { lines: CHECK_IN_TALK.slice(5), from: 2, every: 5 }, summary: CHECK_IN_SUMMARY,
+    cues: at(6, { do: 'notes', mode: 'off' })
+  }
+}, {
+  play: async (c) => {
+    await openPage('Notes')(c);
+    await c.step('When Priya turns notes off, the page says so and offers to ask her. Ask', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Ask Priya for notes' }, { timeout: 15000 }));
+    });
+  }
+});
+export const NotesTurnedOffPhone = phone(NotesTurnedOff);
+
+/* ---------- a workspace made in the call, and a name twice ---------- */
+
+/** New workspace, from the picker: one for the call, with everyone invited in it to edit, and the notes still go to the home. */
+export const NewWorkspace = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, {
+  play: async (c) => {
+    await openPicker('Design review · 4 Nov')(c);
+    await c.step('Press New workspace. Everyone invited is in it, and the toast says the notes still go to the home', async () => {
+      // The organizer's workspaces come in a moment after the picker opens, and the rows move down as they do.
+      await screen.findByRole('menuitemradio', { name: /^Product/ }, { timeout: 8000 });
+      await c.userEvent.click(await screen.findByRole('menuitem', { name: /^New workspace/ }, { timeout: 5000 }));
+      await screen.findByText(/^New workspace, Design review\. Everyone invited is in it/, {}, { timeout: 15000 });
+    });
+  }
+});
+export const NewWorkspacePhone = phone(NewWorkspace);
+
+/** An earlier design review today, at 9:00, with a home of its own: named as this call's is. */
+function earlierReview(): void {
+  const at = iso(0, 9, 0);
+  const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at));
+  current().workspaces.push({ id: 'ws-review-early', name: `Design review · ${day}`, role: 'admin', people: 4, items: [], createdAt: at, call: { title: 'Design review', at } });
+}
+/** The picker when this call's home and an earlier one share a name: each says when its call started. */
+export const ThePickerSameNameTwice = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: earlierReview }, { play: openPicker('Design review · 4 Nov') });
+export const ThePickerSameNameTwicePhone = phone(ThePickerSameNameTwice);

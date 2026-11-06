@@ -4,7 +4,8 @@
  * Follow-ups and Transcript open the call's note (user-flows 12).
  */
 import type { Meta } from '@storybook/react-vite';
-import { page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { standupTwice } from './changes';
 
 const meta = { title: 'Pages/Drive', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -15,6 +16,12 @@ const openFolder: PageStory['play'] = async ({ canvas, userEvent }) => {
   const named = await canvas.findAllByRole('button', { name: /^Team standup · / });
   const folder = named.find((b) => b.closest('.wt-r') !== null);
   if (folder) await userEvent.click(folder);
+};
+/** Opens the picker at the top of the standup's list: the workspace's own name there, not its call's folder, named the same. */
+const openPicker: PageStory['play'] = async ({ canvas, userEvent }) => {
+  const named = await canvas.findAllByRole('button', { name: /^Team standup · / });
+  const top = named.find((b) => b.closest('.wt-head') !== null);
+  if (top) await userEvent.click(top);
 };
 
 /** The day's calls' homes first, the standup's newest, then the workspaces made by hand. */
@@ -41,3 +48,11 @@ export const TheCallsNotes = page('/notes/n2', 'busy');
 export const TheCallsFollowUps = page('/notes/n2#follow-ups', 'busy');
 /** The folder's Transcript: the note, at what was said. */
 export const TheCallsTranscript = page('/notes/n2#transcript', 'busy');
+/**
+ * The standup twice in one day, each run with a home of its own: the two share a name, so each says when its call started
+ * ("Team standup · 4 Nov, 09:00"), to the second if two started in the same minute.
+ */
+export const SameCallTwice = page('/drive', 'busy', { beforeEach: changing(standupTwice) });
+export const SameCallTwicePhone = page('/drive', 'busy', { beforeEach: changing(standupTwice), globals: PHONE });
+/** The same in the picker at the top of the standup's list. */
+export const SameCallTwicePicker = page('/drive/ws-standup', 'busy', { beforeEach: changing(standupTwice), play: openPicker });

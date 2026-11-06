@@ -41,11 +41,12 @@ const GROUPS = [group('g-leads', 'Leads', [PRIYA, KOFI, INES]), group('g-product
 /** A workspace item's ID, from its name: the 22 characters the contract asks for. Stories open a document by it. */
 export const itemId = (slug: string) => slug.replace(/[^A-Za-z0-9]/g, '').padEnd(22, '0').slice(0, 22);
 const hoursBefore = (hours: number) => new Date(Date.parse(iso(0, 16, 12)) - hours * 3_600_000).toISOString();
-interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: boolean; trashed?: { hoursAgo: number; by: Person }; call?: ItemCall }
+/** `made`: how many hours ago it was made, when that's longer ago than its last edit. */
+interface ItemShape { parent?: string | null; role?: DocumentRole; restricted?: boolean; trashed?: { hoursAgo: number; by: Person }; call?: ItemCall; made?: number }
 function item(name: string, kind: WorkspaceItem['kind'], by: Person, hoursAgo: number, o: ItemShape = {}): WorkspaceItem {
   const at = hoursBefore(hoursAgo);
   return {
-    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: at, editedAt: at,
+    id: itemId(name), kind, name, parent: o.parent ?? null, by: by.portrait ? { name: by.name, portrait: by.portrait } : null, createdAt: o.made === undefined ? at : hoursBefore(o.made), editedAt: at,
     trashedAt: o.trashed ? hoursBefore(o.trashed.hoursAgo) : null, trashedBy: o.trashed?.by.name ?? null, restricted: o.restricted ?? false, role: o.role ?? 'edit',
     call: o.call ?? null
   };
@@ -79,7 +80,7 @@ function workspaces(): Space[] {
     {
       id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,
       items: [
-        item('Launch plan', 'document', PRIYA, 2), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
+        item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
         item('Pricing page copy', 'document', LENA, 26, { restricted: true }),
         item('Old roadmap', 'document', PRIYA, 900, { trashed: { hoursAgo: 20, by: PRIYA } }),
