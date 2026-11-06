@@ -287,6 +287,9 @@ export interface SailFrom {
   /** The words on its sky, which no cliff or tree rose in front of. */
   words: readonly CoveWords[];
   seed: number;
+  /** The cove was on screen as the way in was pressed, and stayed there while Home loaded: the sail takes over from it
+      directly. Otherwise it comes up out of the ground first. */
+  seen?: boolean | undefined;
 }
 
 /** Home as it's laid out under the sail (px on the window): where it ends up, and the parts of it that come in. */
@@ -348,7 +351,8 @@ export function SailOut({ from, home, onDone }: { from: SailFrom; home: SailHome
     const finish = () => { if (!over) { over = true; done.current(); } };
     const ours: Animation[] = [];
     const theirs: Animation[] = [];
-    ours.push(v.animate([{ opacity: 1, visibility: 'visible' }, { opacity: 0, visibility: 'hidden' }], { duration: IN, easing: 'ease-out', fill: 'forwards' }));
+    if (from.seen) v.style.visibility = 'hidden';
+    else ours.push(v.animate([{ opacity: 1, visibility: 'visible' }, { opacity: 0, visibility: 'hidden' }], { duration: IN, easing: 'ease-out', fill: 'forwards' }));
 
     /* The horizon comes up to Home's with the cove riding on it, and the sun eases to Home's size and onto the horizon. Its
        middle moves by the same eased share as the horizon, so it only ever rises. */

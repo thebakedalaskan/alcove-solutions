@@ -4,7 +4,7 @@
  */
 import { errorMessage, type DemoProvider, type SignInProvider } from '@alcove/api';
 import { Button, EASE, Field, ProviderButton, ProviderMark, Spinner, useToast } from '@alcove/ui';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useRouter } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { clearReturn, returnToAgent, returnToCall } from '~/lib/afterSignIn';
@@ -26,6 +26,7 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
   const signIn = useSignIn();
   const googleSignIn = useGoogleSignIn();
   const navigate = useNavigate();
+  const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<Busy>(null);
   const [leaving, setLeaving] = useState(false);
@@ -35,7 +36,9 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
     if (o.call) { clearReturn(); setBusy(null); return; }
     if (o.agent) { clearReturn(); setBusy(null); await navigate({ to: '/connect', search: { request: o.agent }, replace: true }); return; }
     setLeaving(true);
-    await sleep(reduce ? 0 : 300);
+    // Home loads while the words fade, so it opens as the welcome page goes, with nothing blank between. (Not /ready: its
+    // loading starts a new account's arrival.)
+    await Promise.all([sleep(reduce ? 0 : 300), next === '/home' ? router.preloadRoute({ to: '/home' }).catch(() => undefined) : undefined]);
     await navigate({ to: next, replace: true });
   };
 
