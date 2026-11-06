@@ -103,7 +103,10 @@ describe('top-ups', () => {
   it('refuses fewer credits than a route’s minimum buys, or more than one top-up adds', async () => {
     const { api, session } = await account();
     const quotes = h.oneclick.quotes.length;
+    const from = h.logs.length;
     const e = await api.credits.startTopUp(BASE_USDC, 4_999).catch((x: unknown) => x);
+    // The refusal is logged by its reason, never with how many credits were asked for.
+    expect(logsSince(from).filter((l) => l.line.includes('"credits"'))).toEqual([]);
     expect(code(e)).toBe('invalid');
     expect(e instanceof AlcoveApiError ? e.message : '').toBe('The least you can add with USDC on Base is 5,000 credits.');
     expect(await failure(api.credits.startTopUp(ETH_USDC, 19_999))).toBe('invalid');
@@ -184,12 +187,42 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 60_000);
   });
 
+  it('credits a swap below 1Click’s band as what it buys by itself', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC, 50_000);
+    // 40 USDC of the 45 asked, under the band's 44.55: 40,000 credits, not the 50,000 promised.
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '40000000', amountOut: '39990000', intentHashes: ['h40'] });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', received: { amount: '40', credits: 40_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 40_000);
+  });
+
+  it('refuses a quote for another amount, or with a band wider than 1.5%, and logs it as an error without amounts', async () => {
+    const { api, session } = await account();
+    const from = h.logs.length;
+    h.oneclick.nextQuote({ amountIn: '9000000' });
+    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('unavailable');
+    h.oneclick.nextQuote({ minAmountIn: '9840000' });
+    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('unavailable');
+    expect(await depositRows(session.ownerId)).toBe(0);
+    const lines = logsSince(from);
+    expect(lines.some((l) => l.level === 50 && l.line.includes('unexpected-quote-amount'))).toBe(true);
+    expect(lines.some((l) => l.level === 50 && l.line.includes('unexpected-quote-band'))).toBe(true);
+    expect(lines.filter((l) => /9000000|9840000|10000000/.test(l.line))).toEqual([]);
+    // A band of exactly 1.5% is taken.
+    h.oneclick.nextQuote({ minAmountIn: '9850000' });
+    expect((await api.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
+  });
+
   it('reads 18-decimal tokens', async () => {
     const { api } = await account();
     const t = await api.credits.startTopUp(BNB_USDC, 50_000);
     h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '45000000000000000000', amountOut: '44990000', intentHashes: ['h45'] });
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', received: { amount: '45', credits: 50_000 } });
-    expect((await api.credits.balance()).balance).toBe(10_000 + 50_000);
+    // Just under the price, within the band: the promise.
+    const under = await api.credits.startTopUp(BNB_USDC, 50_000);
+    h.oneclick.set(addr(under), 'SUCCESS', { depositedAmount: '44700000000000000001', amountOut: '44690000', intentHashes: ['h447'] });
+    expect(await api.credits.topUp(under.id)).toMatchObject({ state: 'credited', received: { amount: '44.7', credits: 50_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 50_000 + 50_000);
   });
 
   it('shows a payment under the band as short, without the address, and credits it as what it buys once refunded', async () => {
@@ -220,11 +253,11 @@ describe('top-ups', () => {
     expect(await api.credits.topUp(small.id)).toMatchObject({ state: 'held', address: null, received: { amount: '0.4', credits: 0 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 51_111);
 
-    // 12 sent, 2 refunded: 2,000 for the refund, and the 10 swapped was what was asked.
-    const part = await api.credits.startTopUp(TRON_USDT, 10_000);
-    h.oneclick.set(addr(part), 'REFUNDED', { depositedAmount: '12000000', amountOut: '9990000', refundedAmount: '2000000', intentHashes: ['h12'] });
-    expect(await api.credits.topUp(part.id)).toMatchObject({ state: 'credited', received: { amount: '12', credits: 12_000 } });
-    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 12_000);
+    // 80 sent for 100,000 credits, 60 swapped and 20 refunded: the whole 80 reached the treasury, so it's the promise.
+    const part = await api.credits.startTopUp(TRON_USDT, 100_000);
+    h.oneclick.set(addr(part), 'REFUNDED', { depositedAmount: '80000000', amountOut: '59990000', refundedAmount: '20000000', intentHashes: ['h80'] });
+    expect(await api.credits.topUp(part.id)).toMatchObject({ state: 'credited', received: { amount: '80', credits: 100_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 100_000);
   });
 
   it('marks a failed swap and logs only its ID', async () => {

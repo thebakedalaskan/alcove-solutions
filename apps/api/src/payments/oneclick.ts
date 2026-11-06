@@ -66,8 +66,13 @@ const IN_PROGRESS = new Map<string, OpenDepositState>([
   ['PENDING_DEPOSIT', 'waiting'], ['KNOWN_DEPOSIT_TX', 'arriving'], ['PROCESSING', 'arriving'], ['INCOMPLETE_DEPOSIT', 'short']
 ]);
 
-const unavailable = (context: Record<string, string | number>) =>
-  new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context } });
+const unavailable = (context: Record<string, string | number>, level: 'warn' | 'error' = 'warn') =>
+  new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { context: { provider: 'oneclick', ...context }, level });
+/**
+ * The widest band of a quote Alcove takes, in basis points below what it asks for: 1% slippage and half a percent more.
+ * A payment anywhere in the band earns the full promise, so a wider one would give credits away.
+ */
+const MAX_BAND_BPS = 150n;
 
 export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string }): DepositProvider {
   let tokens: { routes: DepositRoute[]; until: number } | null = null;
@@ -114,10 +119,15 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
         refundTo: o.treasury, refundType: 'INTENTS', recipient: o.treasury, recipientType: 'INTENTS',
         deadline: new Date(Date.now() + DEADLINE_MS).toISOString()
       });
-      // The person is told to send exactly what was asked for: a quote for anything else isn't one to hand out.
+      // The person is told to send exactly what was asked for, and anything from `minAmountIn` up earns the promise: a
+      // quote for another amount, or with a wider band, isn't one to hand out. Either means the integration is broken
+      // (not that 1Click is down), so it's an error; amounts stay out of the log.
       const amountIn = BigInt(data.quote.amountIn);
       const minAmountIn = BigInt(data.quote.minAmountIn);
-      if (amountIn !== amount || minAmountIn > amountIn) throw unavailable({ endpoint: '/v0/quote', error: 'unexpected-quote' });
+      if (amountIn !== amount) throw unavailable({ endpoint: '/v0/quote', error: 'unexpected-quote-amount' }, 'error');
+      if (minAmountIn > amountIn || minAmountIn * 10_000n < amount * (10_000n - MAX_BAND_BPS)) {
+        throw unavailable({ endpoint: '/v0/quote', error: 'unexpected-quote-band' }, 'error');
+      }
       return { route, address: data.quote.depositAddress, memo: data.quote.depositMemo || null, expiresAt: data.quote.deadline, amountIn, minAmountIn, quote: toJson(raw) };
     },
     async check(deposit): Promise<DepositCheck> {

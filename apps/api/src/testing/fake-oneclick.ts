@@ -57,6 +57,8 @@ export interface FakeOneClick {
   addresses(): string[];
   /** What 1Click reports for a deposit from now on: its status, and what happened to the swap. */
   set(address: string, status: string, swapDetails?: Partial<SwapDetails>): void;
+  /** The next quote answers with these instead of the amount asked and 99% of it, as a misbehaving 1Click might. */
+  nextQuote(o: { amountIn?: string; minAmountIn?: string }): void;
   /** 1Click refuses every request (true), or answers again (false). */
   down(on: boolean): void;
   close(): Promise<void>;
@@ -82,6 +84,7 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   /** Each deposit address, with the quote response that made it and what it reports. */
   const deposits = new Map<string, { quoteResponse: unknown; status: string; swapDetails: SwapDetails; updatedAt: string }>();
   let isDown = false;
+  let override: { amountIn?: string; minAmountIn?: string } = {};
 
   async function quote(req: IncomingMessage, res: ServerResponse) {
     const body: unknown = JSON.parse(await text(req));
@@ -91,6 +94,8 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     quotes.push(q);
     const depositAddress = `0xcanary-deposit-address-${randomBytes(12).toString('hex')}`;
     const amountUsd = (Number(q.amount) / 1e6).toFixed(2);
+    const { amountIn = q.amount, minAmountIn = ((BigInt(q.amount) * 99n) / 100n).toString() } = override;
+    override = {};
     const response = {
       correlationId: randomBytes(16).toString('hex'),
       timestamp: new Date().toISOString(),
@@ -98,7 +103,7 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
       quoteRequest: q,
       quote: {
         // 1Click's band: it still swaps a deposit down to 99% of what the quote asked for.
-        depositAddress, amountIn: q.amount, amountInFormatted: amountUsd, amountInUsd: amountUsd, minAmountIn: ((BigInt(q.amount) * 99n) / 100n).toString(),
+        depositAddress, amountIn, amountInFormatted: amountUsd, amountInUsd: amountUsd, minAmountIn,
         amountOut: q.amount, amountOutFormatted: amountUsd, amountOutUsd: amountUsd, minAmountOut: q.amount,
         deadline: q.deadline, timeWhenInactive: q.deadline, timeEstimate: 20
       }
@@ -141,6 +146,7 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
       if (!d) throw new Error('1Click never quoted that deposit address');
       deposits.set(address, { ...d, status: s, swapDetails: { ...d.swapDetails, ...swapDetails }, updatedAt: new Date().toISOString() });
     },
+    nextQuote(o) { override = o; },
     down(on) { isDown = on; },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };

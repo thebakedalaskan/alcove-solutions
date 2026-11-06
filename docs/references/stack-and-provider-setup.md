@@ -63,7 +63,8 @@ partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. To
   10 minutes.
 - `POST /v0/quote`: `swapType: FLEX_INPUT` (any deposit from the quote's `minAmountIn` up is swapped in full),
   `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the price of the credits chosen in the
-  token's smallest unit (the response's `amountIn` must equal it; `amountIn` and `minAmountIn` are kept),
+  token's smallest unit (the response's `amountIn` must equal it and its `minAmountIn` be within 1.5% below it, or the
+  top-up is refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept),
   `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
   `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
   `deadline` 24 hours ahead, `dry: false`. The whole response, signature included, is kept sealed for disputes.

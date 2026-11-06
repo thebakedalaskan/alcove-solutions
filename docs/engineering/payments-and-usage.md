@@ -25,8 +25,7 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
   address's deadline. It's credited as what it buys by itself (`creditsForUsd`: the best tier it reaches, so 46 USD is
   51,111 credits and 30 USD is 30,000); a refund under 1 USD is held. Addresses take one payment: there's no "send
   the rest".
-- **Refunded in part** (some swapped): the refund as above, plus the swapped part (sent less refunded) by the rules
-  above.
+- **Refunded in part** (some swapped): the whole amount sent, which all reached the treasury, by the first three rules.
 
 ## Status
 
@@ -64,6 +63,8 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
 2. **Address.** `POST /v1/credits/top-ups { routeId, credits }` prices the credits (`priceFor`) and asks 1Click for a
    `FLEX_INPUT` quote for exactly that amount of the token, whose recipient and refund target are both the treasury's
    Intents account (fields in [Stack and provider setup › 1Click as built](../references/stack-and-provider-setup.md#1click-as-built)).
+   A quote for another amount, or whose `minAmountIn` is more than 1.5% below it, is refused as unavailable and
+   logged at error (without amounts): a payment anywhere in the band earns the full promise.
    The deposit's route, address, memo, expiry, the amount asked, the quote's `minAmountIn`, the credits promised and
    the rate they were priced at, and the whole signed quote are sealed in a `deposit` record; its row holds only the
    owner, ID, provider, state and when to look again. The top-up says what to send (`asked`), and shows its address

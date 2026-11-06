@@ -53,9 +53,12 @@ function percentOff(credits: number, tiers: CreditTier[]): number {
   const rate = tierOf(credits, tiers)?.creditsPerUsd;
   return base && rate ? Math.round((1 - base / rate) * 100) : 0;
 }
-/** A number of credits typed by hand ("12,000", "12 000"), or null when it isn't a whole number above 0. */
+/**
+ * A number of credits typed by hand ("12,000", "12 000"), or null when it isn't a whole number above 0. A "." is never
+ * a thousands separator here: "10.5" isn't a whole number, so it's refused rather than read as 105.
+ */
 function typedCredits(text: string): number | null {
-  const digits = text.replace(/[\s,._]/g, '');
+  const digits = text.replace(/[\s,_]/g, '');
   if (!/^\d{1,9}$/.test(digits)) return null;
   const n = Number(digits);
   return n > 0 ? n : null;

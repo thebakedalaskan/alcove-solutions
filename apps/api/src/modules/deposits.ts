@@ -115,7 +115,7 @@ export async function start(d: Deps, ownerId: string, routeId: string, credits: 
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
   const least = minimumCredits(found.route);
   if (credits < least) {
-    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${count.format(least)} credits.`, { reason: 'below-minimum', credits, least });
+    throw invalid(`The least you can add with ${found.route.token} on ${found.route.chainName} is ${count.format(least)} credits.`, { reason: 'below-minimum', least });
   }
   const rate = rateFor(credits);
   const opened = await found.p.open(found.route, fromMicroUsd(priceFor(credits), found.route.decimals));
@@ -186,15 +186,13 @@ function creditsForSwap(rec: DepositRecord, sentMicroUsd: bigint): number {
   return creditsForUsd(sentMicroUsd);
 }
 /**
- * Credits for a settled deposit. A swap that went through follows `creditsForSwap`. A refund (the provider didn't
- * swap, or swapped only part) is credited for what it buys by itself when it's at least 1 USD; a part that was swapped
- * alongside it follows `creditsForSwap` on what was sent less what was refunded.
+ * Credits for a settled deposit. When anything was swapped (even with part refunded, which reaches the treasury too),
+ * the whole amount sent follows `creditsForSwap`. When nothing was, the refund is credited for what it buys by
+ * itself, if it's at least 1 USD.
  */
 function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state: 'settled' }>): number {
-  if (s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
-  const refund = s.refundedMicroUsd >= REFUND_FLOOR ? creditsForUsd(s.refundedMicroUsd) : 0;
-  const swapped = s.sentMicroUsd > s.refundedMicroUsd ? s.sentMicroUsd - s.refundedMicroUsd : 0n;
-  return refund + (s.outMicroUsd > 0n && swapped > 0n ? creditsForSwap(rec, swapped) : 0);
+  if (s.outMicroUsd > 0n || s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
+  return s.refundedMicroUsd >= REFUND_FLOOR ? creditsForUsd(s.refundedMicroUsd) : 0;
 }
 
 /**
