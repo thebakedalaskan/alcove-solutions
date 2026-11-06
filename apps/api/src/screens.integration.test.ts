@@ -338,7 +338,7 @@ describe('shared screens in the notes', () => {
     const kofiShare = await screenOf(await joinRoom(kofi));
     const hostShare = await screenOf(await joinRoom(host));
     await host.setScreens(true);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const s = await settle(host, (x) => x.breakouts.open !== null);
     const ROOM = 'What’s shared in a breakout room stays in the room. It isn’t read for the notes.';
     expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART)))).toEqual(['conflict', ROOM]);
@@ -373,7 +373,7 @@ describe('shared screens in the notes', () => {
     // arrives: it's kept.
     const inMain = Date.now();
     await sleep(1000);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await settle(host, (x) => x.breakouts.open !== null);
     expect((await kofi.shareFrame(frameOf(kofiShare, CODE, { takenAt: inMain }))).duplicate).toBe(false);
     // One he takes in Design stays out, while he's there and once the rooms have closed.

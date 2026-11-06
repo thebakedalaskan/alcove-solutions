@@ -425,7 +425,7 @@ async function roomsCall(choices: Partial<NotesChoices>) {
 type Invited = Awaited<ReturnType<typeof roomsCall>>['kofi'];
 /** Kofi sent to Design and Lena to Support, each there and the scribe of the room, the only person in it. */
 async function rooms(host: CallSession, kofi: Invited, lena: Invited): Promise<void> {
-  host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+  host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
   await settle(host, (s) => s.breakouts.open !== null);
   for (const who of [kofi, lena]) {
     const state = await settle(who.call, (s) => s.capture.room?.scribe === who.call.ticket.identity);

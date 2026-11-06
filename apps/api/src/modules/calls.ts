@@ -1,6 +1,6 @@
 import {
-  CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type Breakouts,
-  type BoardCheck, type CallAction, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
+  CALL_TOPIC, CAPTION_LANGUAGES, LIVE_TRANSCRIPT_LINES, CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, MAX_CALL_IDEAS, firstName, type Breakouts,
+  type BoardCheck, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallCard, type CallEndResult, type CallHost, type CallMls, type CallMlsGroup, type CallMlsItem, type CallMoment, type CallNudge, type CallRole,
   type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person,
   type CallFollowUps, type CallWorkspace, type CallWorkspaceAsk, type CallWorkspaceSwitch, type DocFollowUpTick, type RingReply, type ScreenFrameReceipt, type SeriesAnswerPart, type Speaker
 } from '@alcove/api';
@@ -13,7 +13,7 @@ import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
 import { findOwner, openOwner } from '../owners';
 import { me, profile } from './account';
-import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withWorked, type WorkedBy, type WorkedDocument } from './callSpace';
+import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards, withWorked, type Controller, type FoundRoomBoard, type Landing, type RoomBoard, type StoredIdea, type WorkedBy, type WorkedDocument } from './callSpace';
 import * as space from './callWorkspace';
 import * as boards from './callBoards';
 import * as catchup from './catchup';
@@ -33,7 +33,7 @@ import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } fr
 import { addToInvite, addedFromLink, takeOffInvite } from './invites';
 import { mayStandIn, noticesFor, standIns, type HostChange } from './hosting';
 import {
-  BreakoutState, Joined, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readerOf, readersAt, relocate,
+  BreakoutState, Joined, boardPlace, chatSince, committerOf, departedFrom, epochIn, groupOf, mainScribeOf, needsKeys, pendingFor, placeAt, placeOf, placesOf, readableBy, readerOf, readersAt, relocate,
   type Room
 } from './places';
 import * as rings from './rings';
@@ -41,7 +41,7 @@ import { keepRooms, scribeAt, scribedIn, scribeOf } from './scribes';
 import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
-import { readerInCall, workspaceOwner, type CallRef } from './workspaceAccess';
+import { readerInCall, serverWorkspace, trashOf, workspaceOwner, type CallRef } from './workspaceAccess';
 import { endSeat, endSeats, makeHome } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
@@ -150,9 +150,14 @@ async function load(o: Owner, db: Db, callId: string, lock: boolean | 'share' = 
   if (!r) throw notFound('That call');
   return { row: r, state: openJson(key(o, callId), header(o, callId), r.state_ciphertext, Stored) };
 }
-/** Saves the call's sealed state, with each open breakout room's record brought up to date: who was in it, and its scribe. */
+/**
+ * Saves the call's sealed state, with each open breakout room's record brought up to date: who was in it, and its scribe. `s` is
+ * the call as it was read under its row, changed: a call worked out from a settled one is saved with `saveSettled`, so rooms whose
+ * time ran out close with what goes with them.
+ */
 async function save(o: Owner, db: Db, callId: string, s: Stored) {
-  const kept = keepRooms(s, Date.now());
+  // A board open in any part of the call goes into the note, for that part's notes to read, whether or not anyone changes it.
+  const kept = keepRooms({ ...s, workspace: withOpenBoards(s.workspace, s.board.open) }, Date.now());
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);
 }
 const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined): Stored =>
@@ -212,11 +217,42 @@ function roomsOpenAt(s: Stored, row: Pick<Row, 'started_at'>, t: number): boolea
 async function roomsChanged(o: Owner, db: Db, callId: string, before: Stored, after: Stored): Promise<Stored> {
   const open = new Set(placesOf(after));
   const closed = placesOf(before).filter((p) => !open.has(p));
-  if (closed.length) {
-    await exec(db, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND grp = ANY($3::text[])', [o.ownerId, callId, closed]);
-    clog.info('breakout rooms closed', { callId, rooms: closed.length });
-  }
-  return after;
+  if (!closed.length) return after;
+  await exec(db, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND grp = ANY($3::text[])', [o.ownerId, callId, closed]);
+  clog.info('breakout rooms closed', { callId, rooms: closed.length });
+  // Each room's board comes back to the main room, named for the room with who was there (as its notes name them), once the
+  // row's let go: `landRooms`.
+  const held = after.breakouts.held.at(-1);
+  const names = (seen: string[]) => seen.flatMap((key) => { const j = key === 'organizer' ? undefined : after.people.findLast((x) => x.person === key); return j ? [firstName(j.name)] : []; });
+  const rooms = closed.flatMap((id) => { const r = held?.rooms.find((x) => x.id === id); return r ? [{ id, name: r.name, who: names(r.seen) }] : []; });
+  return boards.roomsClosed(after, rooms, after.workspace.home?.workspaceId ?? null, id128);
+}
+/** Whether a part of the call open in `before` isn't in `after`: rooms closed between them. */
+const roomsClosedBetween = (before: Stored, after: Stored): boolean => {
+  const open = new Set(placesOf(after));
+  return placesOf(before).some((p) => !open.has(p));
+};
+/**
+ * Saves the call as `next`, worked out from `stored`, the call as it was read under its row, settled: rooms whose time is up
+ * close as it's saved, and what goes with them goes (`roomsChanged`), whatever is first to save the call once their time runs
+ * out. Says what was saved, and whether rooms closed, for the caller to follow through once the row's let go (`afterClosing`).
+ */
+async function saveSettled(o: Owner, db: Db, callId: string, stored: Stored, next: Stored): Promise<{ s: Stored; closed: boolean }> {
+  const s = space.tidied(await roomsChanged(o, db, callId, stored, next));
+  await save(o, db, callId, s);
+  return { s, closed: roomsClosedBetween(stored, s) };
+}
+/**
+ * What follows a save that closed rooms (`closed`, as `saveSettled` says), once the call's row is let go: each room's board goes
+ * from the seats of whoever was in it to everyone invited (`syncRoomBoards`), before anyone's told; then `answer`, what whoever
+ * asked is told, and anyone else; and then the rooms' boards come back to the main board (`landRooms`), which nobody waits for
+ * and which tells everyone itself once they're there.
+ */
+async function afterClosing<T>(call: CallRef, closed: boolean, answer: () => Promise<T>): Promise<T> {
+  if (closed) await syncRoomBoards(call);
+  const out = await answer();
+  if (closed) void landRooms(call);
+  return out;
 }
 /**
  * Rooms as the call shows them: the people sent to each, and who's in each now, by identity (the organizer too, in
@@ -236,7 +272,10 @@ function breakoutsOf(s: Stored, v: Viewer, organizer: Person): Breakouts {
     members: live ? here.filter((j) => placeOf(s, j) === r.id).map((j) => j.identity) : []
   });
   return {
-    open: open ? { rooms: open.rooms.map((r) => ({ ...roomOf(r, true), paused: r.pauses.at(-1)?.paused === true })), from: open.from, until: open.until, message: open.message } : null,
+    open: open ? {
+      rooms: open.rooms.map((r) => ({ ...roomOf(r, true), paused: r.pauses.at(-1)?.paused === true, board: s.board.open[r.id] !== undefined })),
+      board: open.board.mode, from: open.from, until: open.until, message: open.message
+    } : null,
     held: s.breakouts.held.map((h) => ({ rooms: h.rooms.map((r) => roomOf(r, false)), from: h.from, to: h.to }))
   };
 }
@@ -495,7 +534,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
     liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),
     workspace,
-    board: await boards.shownTo(v, rooms, where),
+    board: await boardFor(v, rooms, viewing, where, row, invited),
     // Each notice to the people it's for: everyone, only those in the room it's about, one connection, or everyone but one.
     notices: s.notices.filter((n) => (n.place === undefined || n.place === where) && (n.to === undefined || n.to === v.pass.identity) && n.not !== v.pass.identity)
       .map((n) => ({ id: n.id, text: n.text, kind: n.kind }))
@@ -914,8 +953,14 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
 
-/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking or adding a follow-up, what goes by what you can open in the workspace and a board is whoever hosts' (the organizer's own besides, checked by the API). */
-export const anyone = (a: CallAction): boolean => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || space.anyonesAction(a) || boards.isBoardAction(a);
+/**
+ * Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking or adding a follow-up, what goes by
+ * what you can open in the workspace, a board and its timer and vote, and ideas from the call done with, is whoever hosts' (the
+ * organizer's own besides, checked by the API).
+ */
+export const anyone = (a: CallAction): boolean =>
+  a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'board-ideas-done' || space.anyonesAction(a) ||
+  boards.isBoardAction(a) || boards.isRunAction(a);
 /**
  * Refused for a connection that doesn't host now (`who`: the connection that does, by default whoever hosts): checked
  * again where it counts, as the host may have changed since the request came in. The same 409 as the API's for a
@@ -930,6 +975,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   if (a.type === 'workspace-open') return openWorkspace(v, callId, a.timeZone);
   if (space.isSpaceAction(a)) return actOnWorkspace(v, callId, a);
   if (boards.isBoardAction(a)) return actOnBoard(v, callId, a);
+  if (boards.isRunAction(a)) return runOnBoard(v, callId, a);
   if (a.type === 'mute') {
     // Carried out by LiveKit; nothing about the call changes here.
     const { row, state } = await load(o, o.pool, callId);
@@ -946,6 +992,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
    * workspaces made in the call (`made`), which do too.
    */
   const invite: { meetingId: string; add: string[]; gone: string[]; made: string[] } | null = a.type === 'ring' || a.type === 'remove' ? { meetingId: '', add: [], gone: [], made: [] } : null;
+  // Rooms opening with something to work on: it's made first, with nothing of the call held.
+  const ready = a.type === 'rooms-open' && a.board.mode !== 'none' ? await roomsReady(v, callId, a) : undefined;
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
@@ -968,6 +1016,11 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
       const off = s.othersPointOff.filter((p) => p !== v.pass.person);
       s = { ...s, othersPointOff: a.on ? off : [...off, v.pass.person] };
+    } else if (a.type === 'board-ideas-done') {
+      // Added to the board, or put aside: they go for everyone in the part of the call they're from, and nothing of them stays.
+      const place = whereIs(v, settled);
+      const kept = s.board.ideas[place];
+      if (kept) s = { ...s, board: { ...s.board, ideas: { ...s.board.ideas, [place]: { ...kept, list: kept.list.filter((i) => !a.ids.includes(i.id)) } } } };
     } else if (a.type === 'follow-up') {
       await tickFollowUp(v, c, row, s, a);
     } else if (a.type === 'follow-up-add') {
@@ -981,14 +1034,13 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (a.participantId !== null && !s.people.some((j) => j.identity === a.participantId && j.status === 'in')) throw new ValidationError('That person isn’t in this call.', { context: ctx });
       s = { ...s, spotlight: a.participantId };
     } else if (a.type === 'rooms-open') {
-      if (s.breakouts.open) throw new ConflictError('Rooms are already open.', { context: ctx });
-      const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-      const invited = new Set(meeting.manifest.guests.map((e) => e.toLowerCase()));
-      const placed = a.rooms.flatMap((r) => r.emails);
-      if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
-      if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
-      // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's.
-      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] })), from: exact, until: exact + a.minutes * 60, message: null, visiting: null, board: { mode: 'none', template: 'blank' } } } };
+      checkRooms(s, a, (await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest, ctx);
+      // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's. What they
+      // have to work on was made before the call's row was taken (`roomsReady`), and opens with them.
+      const rooms = a.rooms.map((r, k) => ({ id: ready?.ids[k] ?? id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] }));
+      s = { ...s, spotlight: null, board: ready ? withRoomsReady(s.board, ready, rooms.map((r) => r.id)) : s.board, breakouts: { ...s.breakouts, open: { rooms, from: exact, until: exact + a.minutes * 60, message: null, visiting: null, board: a.board } } };
+      // The board that was open can't take the rooms' frames, so they share a new one in its place: everyone is told why it changed.
+      if (ready?.instead) s = notice(s, ROOMS_ON_NEW_BOARD, 'info');
     } else if (a.type === 'rooms-close') {
       s = closeRooms(s, exact, row.started_at.getTime());
     } else if (a.type === 'rooms-rename') {
@@ -1071,8 +1123,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     // Whoever left the main room (sent to a room, or the organizer visiting one) takes their share with them: it stops
     // there in the notes. Each share is ended by presenter, not by share, so it's read again once they're back.
     s = sharesEnd(s, s.people.filter((j) => j.status === 'in' && placeOf(settled, j) === MAIN_PLACE && placeOf(s, j) !== MAIN_PLACE).map((j) => j.identity), exact);
-    s = space.tidied(await roomsChanged(o, c, callId, state, relocate(settled, s, Date.now(), row.mls_seq)));
-    await save(o, c, callId, s);
+    s = (await saveSettled(o, c, callId, state, relocate(settled, s, Date.now(), row.mls_seq))).s;
     // Anyone sent to another part of the call (or back) moves group: their browser and the organizer's read the log again.
     clog.info('call action', {
       callId, action: a.type, notes: s.notes.status, screens: s.notes.screens.on, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
@@ -1080,16 +1131,73 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
     if (invite) invite.made = s.workspace.made;
-    return { room: row.room_name, gone, moved, removed };
-  }).then(async ({ room, gone, moved, removed }) => {
+    // Who has each room's board changes only as people move or rooms open or close, by time or by hand.
+    const shifted = moved > 0 || a.type === 'rooms-open' || a.type === 'rooms-close' || a.type === 'rooms-move' || a.type === 'rooms-visit' || (state.breakouts.open !== null) !== (s.breakouts.open !== null);
+    return { room: row.room_name, gone, moved, removed, board: s.board, shifted };
+  }).then(async ({ room, gone, moved, removed, board, shifted }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
     if (removed) await endSeat(o, callId, removed);
-    // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it.
+    // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it. And a
+    // room's board they had by address, as they don't get that room's notes.
     if (invite) await space.followHome(o, invite.meetingId, invite, invite.made);
+    if (invite?.gone.length) await boards.offRoomBoards(o, board, invite.gone);
+    // Each room's board goes with whoever's in its room before anyone's told, so whoever's moved out has lost it by then.
+    if (shifted) await syncRoomBoards({ organizer: o, callId });
+    if (ready?.main) void syncBoardSeats({ organizer: o, callId });
     await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
+    if (board.landing) void landRooms({ organizer: o, callId });
+  }, async (e: unknown) => {
+    if (ready) await boards.dropRoomsReady(o, callId, ready);
+    throw e;
   });
   return view(v, o.pool, callId);
+}
+
+/** Whether rooms can open as asked: none are open, and everyone sent to one is invited, once. */
+function checkRooms(s: Stored, a: Extract<CallAction, { type: 'rooms-open' }>, meeting: Pick<MeetingManifest, 'guests'>, ctx: Record<string, string>): void {
+  if (s.breakouts.open) throw new ConflictError('Rooms are already open.', { context: ctx });
+  const invited = new Set(meeting.guests.map((e) => e.toLowerCase()));
+  const placed = a.rooms.flatMap((r) => r.emails);
+  if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
+  if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
+}
+/**
+ * What rooms opening with a board each, or one they share, need, made with nothing of the call held (callBoards.ts's
+ * `prepareRooms`), from the call as it stands: whoever's going to each room, by seat, is seated on its board now. What can't
+ * open is refused first, so nothing is made for rooms that won't open.
+ */
+async function roomsReady(v: Viewer, callId: string, a: Extract<CallAction, { type: 'rooms-open' }>): Promise<boards.RoomsReady> {
+  const o = v.organizer;
+  const ctx = { callId, action: a.type };
+  const { row, state } = await load(o, o.pool, callId);
+  if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+  const s = settle(state, row);
+  stillHosting(v, s, ctx);
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  checkRooms(s, a, meeting.manifest, ctx);
+  const going = (emails: string[]) => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && j.role !== 'host' && j.email !== undefined && emails.includes(j.email.toLowerCase())));
+  const reader = await readerInCall(v);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  const main: boards.MainBoardFor = {
+    o, callId, s, meeting: meeting.manifest, here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' }, asOrganizer: v.isOrganizer
+  };
+  return boards.prepareRooms({ rooms: a.rooms.map((r) => ({ name: r.name, people: going(r.emails) })), board: a.board, main, ids: a.rooms.map(() => id128()), by: space.controllerOf(v, reader) });
+}
+/** The call's boards with what rooms opening made: each room's board open in it, and a shared board open in the main room. */
+function withRoomsReady(board: CallBoards, ready: boards.RoomsReady, ids: string[]): CallBoards {
+  if (ready.each) {
+    const each = ready.each;
+    const made = ids.flatMap((room, k) => { const documentId = each.documentIds[k]; return documentId ? [{ room, documentId }] : []; });
+    return {
+      ...board,
+      open: { ...board.open, ...Object.fromEntries(made.map((m) => [m.room, { workspaceId: each.workspaceId, documentId: m.documentId, by: ready.by, timer: null, vote: null }])) },
+      rooms: [...board.rooms, ...made.map((m) => ({ workspaceId: each.workspaceId, documentId: m.documentId, room: m.room, kept: false }))]
+    };
+  }
+  const main = ready.main;
+  if (!main) return board;
+  return { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: main.workspaceId, documentId: main.documentId, by: ready.by, timer: null, vote: null } }, letIn: [...board.letIn, main.entry] };
 }
 
 /* ---------- the workspace a call uses: what's done is modules/callWorkspace.ts; the call's row is held here ---------- */
@@ -1123,9 +1231,9 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
       const { row, state, changing } = await read(c, true);
       const changed = await apply({ ...changing, c });
       if (changed === 'again') return 'again';
-      await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, changed.s)));
+      const { closed } = await saveSettled(o, c, callId, state, changed.s);
       clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
-      return { room: row.room_name, ended: changed.ended, made: changed.made, meetingId: row.meeting_item_id };
+      return { room: row.room_name, ended: changed.ended, made: changed.made, meetingId: row.meeting_item_id, closed };
     });
     if (done === 'again') {
       if (tries < SPACE_TRIES) continue;
@@ -1134,8 +1242,10 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
     // A grant to someone removed while it was made goes, as their removal took everything else.
     if (done.ended) await endSeat(o, callId, done.ended);
     if (done.made) await space.followHome(o, done.meetingId, { add: done.made.guests }, [done.made.workspaceId]);
-    await nudge(o, done.room, callId, { call: true, log: false });
-    return view(v, o.pool, callId);
+    return afterClosing({ organizer: o, callId }, done.closed, async () => {
+      await nudge(o, done.room, callId, { call: true, log: false });
+      return view(v, o.pool, callId);
+    });
   }
 }
 
@@ -1299,6 +1409,8 @@ function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here[] {
 }
 /** Everyone in the call now, wherever they are in it: a main board is for the whole call. */
 const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in'));
+/** Everyone in one part of the call now: whoever's in a room is who its board is for. */
+const inPlaceOf = (o: Owner, callId: string, s: Stored, place: string): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && placeOf(s, j) === place));
 /** Everyone the call has had who wasn't taken out of it, here now or not. Taking someone out ends their seats, so those don't count. */
 const knownIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => !s.removed.includes(j.person)));
 /** The part of the call someone asking is in. */
@@ -1324,37 +1436,75 @@ async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Pro
     const s = settle(state, row);
     const mine = s.people.find((j) => j.identity === v.pass.identity);
     const { manifest } = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+    const place = whereIs(v, s);
     return {
       row, state,
-      changing: { v, reader, callId, meeting: manifest, viewed: space.viewedIn(manifest, s.workspace), s, place: whereIs(v, s), here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' } }
+      changing: { v, reader, callId, meeting: manifest, s, place, inPlace: inPlaceOf(o, callId, s, place), here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' } }
     };
   };
   const apply = await boards.prepare((await read(o.pool, false)).changing, a);
-  const { room, changed } = await tx(o.pool, async (c) => {
+  const { room, changed, roomBoards, closed } = await tx(o.pool, async (c) => {
     const { row, state, changing } = await read(c, true);
     const done = apply(changing);
-    await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, done.s)));
-    return { room: row.room_name, changed: done };
+    const saved = await saveSettled(o, c, callId, state, done.s);
+    return { room: row.room_name, changed: done, roomBoards: state.board.rooms.length, closed: saved.closed };
   });
   const { what, ...done } = changed.done;
   clog.info(what, { ...done, callId });
   // A seat given to someone taken out while it was given goes, as their removal took everything else.
   for (const seat of changed.ended) await endSeat(o, callId, seat);
-  // Anyone let in while it was being opened.
+  // Anyone let in while it was being opened; and in a room, whoever's come or gone meanwhile.
   if (a.type === 'board-open') void syncBoardSeats({ organizer: o, callId });
-  await nudge(o, room, callId, { call: true, log: false });
-  return view(v, o.pool, callId);
+  // Rooms whose time ran out closed with it, and come back; a board started in a room is everyone's there before anyone's told.
+  return afterClosing({ organizer: o, callId }, closed, async () => {
+    if (!closed && changed.s.board.rooms.length > roomBoards) await syncRoomBoards({ organizer: o, callId });
+    await nudge(o, room, callId, { call: true, log: false });
+    return view(v, o.pool, callId);
+  });
+}
+
+/**
+ * Someone runs the session on a board: its timer, and a vote. In two steps, as opening one is: what asks the workspace whether
+ * they can edit it, and the board what's on it, with nothing of the call held; then the call's row, held only to save what came
+ * of it. Everyone where the board is reads the call again, except for a vote cast or taken back, which is told to nobody else.
+ * It's the board open where they are: in a room on the one board every room shares, the main room's (`boardPlace`), whose
+ * timer and vote they're told of there, so they run and vote in them as everyone else on it does.
+ */
+async function runOnBoard(v: Viewer, callId: string, a: boards.RunAction): Promise<CallState> {
+  const o = v.organizer;
+  const reader = await readerInCall(v);
+  const ctx = { callId, action: a.type };
+  /** The call as it stands, read with `db`: the pool, or the transaction that holds its row. */
+  const read = async (db: Db, held: boolean) => {
+    const { row, state } = await load(o, db, callId, held);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+    const s = settle(state, row);
+    return { row, state, running: { v, reader, callId, s, place: boardPlace(s, whereIs(v, s)), now: secondsIn(row.started_at) } };
+  };
+  const apply = await boards.prepareRun((await read(o.pool, false)).running, a);
+  const { room, ran, closed } = await tx(o.pool, async (c) => {
+    const { row, state, running } = await read(c, true);
+    const done = apply(running);
+    const saved = done.changed ? await saveSettled(o, c, callId, state, done.s) : undefined;
+    return { room: row.room_name, ran: done, closed: saved?.closed === true };
+  });
+  if (ran.done.quiet) clog.debug(ran.done.what, ran.done.context);
+  else clog.info(ran.done.what, ran.done.context);
+  // Rooms whose time ran out closed with it, and come back. A vote cast still tells nobody: their landing says it itself.
+  return afterClosing({ organizer: o, callId }, closed, async () => {
+    if (ran.tell) await nudge(o, room, callId, { call: true, log: false });
+    return view(v, o.pool, callId);
+  });
 }
 
 /** What opening a saved board would mean, for the menu to ask first. It holds nothing of the call. */
-export async function boardCheck(v: Viewer, callId: string, documentId: string): Promise<BoardCheck> {
+export async function boardCheck(v: Viewer, callId: string, workspaceId: string, documentId: string): Promise<BoardCheck> {
   boards.requireStarter(v, 'board-check');
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'board-check' } });
   const s = settle(state, row);
-  const { manifest } = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, viewed: space.viewedIn(manifest, s.workspace), place: whereIs(v, s), here: hereIn(o, callId, s) }, documentId);
+  return boards.check(o, await readerInCall(v), { callId, place: whereIs(v, s), here: hereIn(o, callId, s) }, workspaceId, documentId);
 }
 
 /**
@@ -1394,6 +1544,254 @@ export async function syncBoardSeats(call: CallRef): Promise<void> {
     if (changed) await nudge(o, row.room_name, callId, { call: true, log: false });
   } catch (e) {
     clog.warn('seats on the call’s boards not kept up', { callId, err: e });
+  }
+}
+
+/**
+ * What a room's board needs, read with `db` while its workspace is held: whether its room is open and who's in it, the
+ * organizer while visiting; and once it's closed, everyone who gets it by address, the people its room's notes go to: the
+ * organizer, and everyone on the invite who wasn't taken out of the call. A board nothing names the room of any more (`null`)
+ * is for nobody while rooms are open, and everyone invited's once they've closed.
+ */
+async function roomNow(o: Owner, db: Db, callId: string, room: string | null): Promise<boards.RoomNow> {
+  const { row, state } = await load(o, db, callId);
+  const s = settle(state, row);
+  const open = row.state === 'live' ? s.breakouts.open : null;
+  if (open && (room === null || open.rooms.some((r) => r.id === room))) return { open: true, seats: room === null ? [] : inPlaceOf(o, callId, s, room), invited: [] };
+  const meeting = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  return { open: false, seats: [], invited: [(await profile(o, db)).email, ...boards.onInvite(s, meeting.manifest.guests, hereIn(o, callId, s))] };
+}
+
+/**
+ * Every board of the call's rooms: what the call keeps of them (`boards.roomBoardsOf`), and any its home's tree says is one of
+ * this call's rooms' (`StoredItem.room`) that the call has no word of, as a save by a release that didn't know rooms' boards can
+ * leave it. A board found only in the tree is for a room nothing names any more (`room: null`).
+ */
+async function roomBoardsFound(o: Owner, callId: string, s: Pick<Stored, 'board' | 'workspace'>): Promise<FoundRoomBoard[]> {
+  const known = boards.roomBoardsOf(s.board);
+  const home = s.workspace.home?.workspaceId;
+  const w = home ? await serverWorkspace(o, home) : undefined;
+  if (!w) return known;
+  const there = new Set(known.map((b) => b.documentId));
+  const marked = Object.entries(w.state.items).flatMap(([id, x]): FoundRoomBoard[] =>
+    (x.room?.ownerId === o.ownerId && x.room.callId === callId && !there.has(id) && !trashOf(w.state, id) ? [{ workspaceId: w.workspaceId, documentId: id, room: null, kept: false }] : []));
+  return [...known, ...marked];
+}
+
+/**
+ * Keeps each room's board with the people in its room (docs: Calls and recordings › Boards in breakout rooms): its readers are
+ * the seats of whoever's in the room now, the organizer's only while they're visiting. It's run wherever people move, before
+ * anyone's told, so someone moved out of a room has lost its board by the time they hear, and by upkeep. Once a room has
+ * closed its seats go, and everyone invited has its board by address, as a saved board like any other: then it's kept, and
+ * nothing here looks at it again. It goes by every board of the call's rooms it can find (`roomBoardsFound`), so a save by a
+ * release that didn't know them leaves none of them behind. One board at a time, in its workspace's own transaction with
+ * nothing of the call held. Says whether anything changed. This fails on its own, with a log line: what moved people is done
+ * by then.
+ */
+export async function syncRoomBoards(call: CallRef): Promise<boolean> {
+  const { organizer: o, callId } = call;
+  try {
+    const { row, state } = await load(o, o.pool, callId);
+    if (row.state !== 'live') return false;
+    const found = await roomBoardsFound(o, callId, state);
+    let changed = 0;
+    const kept: string[] = [];
+    for (const b of found.filter((r) => !r.kept)) {
+      try {
+        const done = await boards.roomInStep(o, callId, b, (db) => roomNow(o, db, callId, b.room));
+        changed += done.changed;
+        if (done.kept) kept.push(b.documentId);
+      } catch (err) {
+        clog.warn('a room’s board not kept with its room', { callId, workspaceId: b.workspaceId, documentId: b.documentId, err });
+      }
+    }
+    // What the call had lost track of, with the room it's for, it keeps with the rest from now on.
+    const lost = found.flatMap((b): RoomBoard[] => (b.room !== null && !state.board.rooms.some((r) => r.documentId === b.documentId) ? [{ ...b, room: b.room }] : []));
+    if (kept.length || lost.length) await keptRooms(o, callId, kept, lost);
+    if (changed) clog.info('room boards kept with their rooms', { callId, changed, kept: kept.length, found: lost.length });
+    return changed > 0;
+  } catch (e) {
+    clog.warn('room boards not kept with their rooms', { callId, err: e });
+    return false;
+  }
+}
+/**
+ * Room boards that everyone invited has by address now, so nothing about who's in their room changes them any more, and room
+ * boards the call had lost track of (`lost`), kept with the rest from now on: under the call's row. Entries for boards open in
+ * rooms that have closed, which a release that didn't know rooms' boards left, go: nothing reads them.
+ */
+async function keptRooms(o: Owner, callId: string, documentIds: string[], lost: RoomBoard[]): Promise<void> {
+  await tx(o.pool, async (c) => {
+    const held = await load(o, c, callId, true);
+    if (held.row.state !== 'live') return;
+    const board = held.state.board;
+    const known = new Set(board.rooms.map((r) => r.documentId));
+    const rooms = [...board.rooms, ...lost.filter((r) => !known.has(r.documentId))].map((r): RoomBoard => (documentIds.includes(r.documentId) ? { ...r, kept: true } : r));
+    const places = new Set(placesOf(held.state));
+    const open = Object.fromEntries(Object.entries(board.open).filter(([place]) => places.has(place)));
+    await save(o, c, callId, { ...held.state, board: { ...board, rooms, open } });
+  });
+}
+
+/** What a call says of its rooms' boards to a workspace asking what's stranded (`roomsOfCalls`). */
+export type RoomsOfCall = { live: true; boards: string[] } | { live: false; invited: string[] };
+/**
+ * What these calls (by organizer and call, as a workspace's tree names them) say of their rooms' boards, for a workspace asking
+ * what's stranded, read with `db`, its transaction, and holding nothing of any call: for a call going on, every board of its
+ * rooms it keeps (`boards.roomBoardsOf`); for one that's over, everyone its rooms' boards go to by address, as `roomNow` has them
+ * once rooms have closed. A call that's gone, or whose organizer is, says nothing. These IDs come from a workspace's own tree.
+ */
+export async function roomsOfCalls(d: Deps, calls: { ownerId: string; callId: string }[], db: Db): Promise<Map<string, RoomsOfCall>> {
+  const out = new Map<string, RoomsOfCall>();
+  for (const at of calls) {
+    const key = `${at.ownerId}/${at.callId}`;
+    if (out.has(key)) continue;
+    const o = await findOwner(d, at.ownerId, undefined, db);
+    const found = o && await load(o, db, at.callId).catch((e: unknown) => { if (e instanceof NotFoundError) return undefined; throw e; });
+    if (!o || !found) continue;
+    if (found.row.state === 'live') {
+      out.set(key, { live: true, boards: boards.roomBoardsOf(found.state.board).map((b) => b.documentId) });
+      continue;
+    }
+    const meeting = await findItem(o, db, 'meeting', found.row.meeting_item_id, MeetingManifest);
+    out.set(key, { live: false, invited: [(await profile(o, db)).email, ...(meeting ? boards.onInvite(found.state, meeting.manifest.guests, hereIn(o, at.callId, found.state)) : [])] });
+  }
+  return out;
+}
+
+/** How long whoever's landing rooms' boards has them before anyone else may try. */
+const LANDING_MS = 60_000;
+/** How many tries at landing may fail before it's given up, and how long after the first failure the next may be: twice that after the next. */
+const LANDING_TRIES = 3;
+const LANDING_AGAIN_MS = 30_000;
+/** What the call says when the rooms' boards don't come back where they would. */
+const LANDED_ELSEWHERE = 'The rooms’ boards came back on a new board. The one that was open can’t take them.';
+const LANDED_NOWHERE = 'The rooms’ boards didn’t come back: this call’s home can’t take a new board any more. Each one is still saved there.';
+/** What it says when the rooms share a new board for the same reason. */
+const ROOMS_ON_NEW_BOARD = 'The rooms share a new board. The one that was open can’t take their frames.';
+
+/** The landing under the call's row, if it's still the one claimed until `until`: whatever changed it meanwhile has it now. */
+const stillLanding = (held: { row: Row; state: Stored }, until: number): Landing | undefined => {
+  const l = held.state.board.landing;
+  return held.row.state === 'live' && l?.until === until ? l : undefined;
+};
+/**
+ * A try at landing that failed: it's let go, and the next try may be only once some time has gone by, longer each time, so a
+ * landing that can't be done doesn't cost every call action a try. After a few it's given up, said once at warn: each room's
+ * board is kept for everyone invited all the same. Under the call's row.
+ */
+async function landingFailed(o: Owner, callId: string, until: number, e: unknown): Promise<void> {
+  await tx(o.pool, async (c) => {
+    const held = await load(o, c, callId, true);
+    const l = stillLanding(held, until);
+    if (!l) return;
+    const tries = l.tries + 1;
+    const next = tries >= LANDING_TRIES ? null : { ...l, tries, until: Date.now() + LANDING_AGAIN_MS * 2 ** (tries - 1) };
+    await save(o, c, callId, { ...held.state, board: { ...held.state.board, landing: next } });
+    if (next) clog.info('rooms’ boards not landed yet; trying again later', { callId, tries, againInS: Math.round((next.until - Date.now()) / 1000), err: e });
+    else clog.warn('rooms’ boards not landed, and given up', { callId, tries, rooms: l.rooms.length, err: e });
+  }).catch((err: unknown) => clog.warn('landing rooms’ boards not let go of', { callId, err }));
+}
+
+/**
+ * Lands rooms' boards on the main board once rooms have closed (the call's `landing`), in three steps, as everything about a
+ * workspace is: whoever's first takes it on under the call's row, so there's one landing however many ask at once; it's done
+ * with nothing of the call held; and only then does the call let it go, opening in the main room the board it made, if it made
+ * one and nothing else is open there. Landing again changes nothing, so one cut short is done again by the next to ask, or
+ * upkeep, once some time has gone by (`landingFailed`). A board open in the main room that isn't the call's to write on any
+ * more (`boards.land`'s `elsewhere`) gives way to a new one in the call's home, made for them as when nothing is open, which
+ * opens in its place; and when the home can't take a new board, they come back nowhere. Either way the call says so. Fails on
+ * its own, with a log line.
+ */
+export async function landRooms(call: CallRef): Promise<void> {
+  const { organizer: o, callId } = call;
+  try {
+    const claimed = await tx(o.pool, async (c) => {
+      const { row, state } = await load(o, c, callId, true);
+      const l = state.board.landing;
+      if (row.state !== 'live' || !l || l.until > Date.now()) return undefined;
+      const until = Date.now() + LANDING_MS;
+      await save(o, c, callId, { ...state, board: { ...state.board, landing: { ...l, until } } });
+      return { ...l, until };
+    });
+    if (!claimed) return;
+    const { row, state } = await load(o, o.pool, callId);
+    const s = settle(state, row);
+    const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+    const organizer = await profile(o);
+    const main: boards.MainBoardFor = { o, callId, s, meeting: meeting.manifest, here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: organizer.name, email: organizer.email }, asOrganizer: true };
+    const home = s.workspace.home;
+    const open = s.board.open[MAIN_PLACE];
+    let l: Landing = claimed;
+    /** The board open in the main room that the one made for them takes the place of. */
+    let insteadOf: string | null = null;
+    let made: boards.MadeMain | null = null;
+    for (;;) {
+      const opener = !l.make && open?.documentId === l.into.documentId ? open.by : null;
+      let landed: boards.Landed;
+      try {
+        landed = await boards.land(o, callId, l, { main, folderId: home?.workspaceId === l.into.workspaceId ? home.folderId : null }, opener);
+      } catch (e) {
+        await landingFailed(o, callId, claimed.until, e);
+        return;
+      }
+      if (landed.kind === 'landed') { made = landed.made; break; }
+      if (landed.kind === 'elsewhere' && insteadOf !== null) {
+        await landingFailed(o, callId, claimed.until, new ConflictError('The board made for the rooms’ boards can’t take them.', { context: { callId } }));
+        return;
+      }
+      if (landed.kind === 'shut') {
+        // Nothing can be made for them: each room's board stays as it is, everyone invited's, and the call says so.
+        const told = await tx(o.pool, async (c) => {
+          const held = await load(o, c, callId, true);
+          if (!stillLanding(held, claimed.until)) return false;
+          await save(o, c, callId, notice({ ...held.state, board: { ...held.state.board, landing: null } }, LANDED_NOWHERE, 'info'));
+          return true;
+        });
+        if (told) {
+          clog.info('rooms’ boards not landed: the call’s home can’t take a new board', { callId, rooms: l.rooms.length });
+          await nudge(o, row.room_name, callId, { call: true, log: false });
+        }
+        return;
+      }
+      // The board they were coming back to isn't the call's to write on any more: a new one in the call's home, as when nothing's open.
+      const into = { workspaceId: home?.workspaceId ?? l.rooms[0]?.workspaceId ?? l.into.workspaceId, documentId: id128() };
+      const moved = await tx(o.pool, async (c) => {
+        const held = await load(o, c, callId, true);
+        const now = stillLanding(held, claimed.until);
+        if (!now) return undefined;
+        const next: Landing = { ...now, into, make: true };
+        await save(o, c, callId, { ...held.state, board: { ...held.state.board, landing: next } });
+        return next;
+      });
+      if (!moved) return;
+      clog.info('rooms’ boards come back on a new board: the one open can’t take them', { callId, rooms: moved.rooms.length });
+      insteadOf = l.into.documentId;
+      l = moved;
+    }
+    const host = s.people.findLast((j) => j.role === 'host');
+    const by: Controller | null = host ? { person: host.person, seat: seatOf(seatKey(o, callId), host), name: organizer.name, email: organizer.email } : null;
+    const again = await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      const now = stillLanding(held, claimed.until);
+      if (!now) return false;
+      // Rooms that closed meanwhile land next, on the same board.
+      const rest = now.rooms.filter((r) => !l.rooms.some((x) => x.documentId === r.documentId));
+      let board: CallBoards = { ...held.state.board, landing: rest.length ? { ...now, rooms: rest, into: l.into, make: false, until: 0, tries: 0 } : null };
+      // The board made for them opens for everyone, in place of the one that couldn't take them, as another opening would replace it.
+      const there = board.open[MAIN_PLACE];
+      if (made && by && (!there || there.documentId === insteadOf)) {
+        const { [MAIN_PLACE]: _was, ...ideas } = board.ideas;
+        board = { ...board, open: { ...board.open, [MAIN_PLACE]: { workspaceId: made.workspaceId, documentId: made.documentId, by, timer: null, vote: null } }, letIn: [...board.letIn, made.entry], ideas };
+      }
+      await save(o, c, callId, insteadOf !== null && made ? notice({ ...held.state, board }, LANDED_ELSEWHERE, 'info') : { ...held.state, board });
+      return rest.length > 0;
+    });
+    if (made) void syncBoardSeats(call);
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    if (again) void landRooms(call);
+  } catch (e) {
+    clog.warn('rooms’ boards not landed', { callId, err: e });
   }
 }
 
@@ -1457,6 +1855,17 @@ export async function mayAskInCall(v: Viewer): Promise<void> {
   const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
+}
+
+/**
+ * Sort into themes on a board, from a call: someone asked for it, about what people wrote, so it needs no notes, only that the
+ * part of the call they're in isn't paused, when nothing goes to the AI.
+ */
+export async function maySortInCall(v: Viewer): Promise<void> {
+  const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  capture.mayReachAi(capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE), 'sort', { callId: v.pass.callId, what: 'board-sort' });
 }
 
 /** Someone rung answers: the organizer's browser is told, so their arch shows it. */
@@ -1797,7 +2206,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
   const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length, room: b.group !== MAIN_PLACE };
   /** The meeting, and who this put on its invite: a home made for the call lets them in too, as does each workspace made in it. */
   const invited: { meetingId: string; add: string[]; made: string[] } = { meetingId: '', add: [], made: [] };
-  const room = await tx(o.pool, async (c) => {
+  const { room, closed } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     let s = settle(state, row);
@@ -1861,22 +2270,23 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
       // The invite is full: they're in the call, as guests, without the notes.
       if (added.length < wanted.length) clog.warn('invite full; let in without the notes', { callId, meetingId: row.meeting_item_id, people: wanted.length - added.length });
     }
-    s = await roomsChanged(o, c, callId, state, s);
-    await save(o, c, callId, s);
-    return row.room_name;
+    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, s)).closed };
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
   if (invited.add.length) await space.followHome(o, invited.meetingId, invited, invited.made);
-  // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.
-  if (b.added.length) void syncBoardSeats({ organizer: o, callId });
-  await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
-  if (b.added.length && room) {
-    // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
-    const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub, docs: o.docs };
-    const ownerId = o.ownerId;
-    setTimeout(() => { arrivals(d, ownerId, callId, room, Date.now()).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId, err })); }, ARRIVAL_MS + 1_000).unref();
-  }
-  return { epoch: b.epoch + 1 };
+  // Rooms whose time ran out closed with it, and come back.
+  return afterClosing({ organizer: o, callId }, closed, async () => {
+    // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.
+    if (b.added.length) { void syncBoardSeats({ organizer: o, callId }); if (!closed) void syncRoomBoards({ organizer: o, callId }); }
+    await nudge(o, room, callId, { call: closed || b.added.length > 0 || b.removed.length > 0, log: true });
+    if (b.added.length && room) {
+      // Whoever was just let in should reach the room soon; anyone who doesn't (their tab closed while they asked) is taken out.
+      const d: Deps = { cfg: o.cfg, pool: o.pool, objects: o.objects, livekit: o.livekit, hub: o.hub, docs: o.docs };
+      const ownerId = o.ownerId;
+      setTimeout(() => { arrivals(d, ownerId, callId, room, Date.now()).catch((err: unknown) => clog.warn('checking who reached the room failed', { callId, err })); }, ARRIVAL_MS + 1_000).unref();
+    }
+    return { epoch: b.epoch + 1 };
+  });
 }
 
 /**
@@ -1887,7 +2297,7 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
   requireIn(v, 'chat');
   const o = v.organizer;
   const ctx = { callId, epoch: b.epoch, room: b.group !== MAIN_PLACE };
-  const room = await tx(o.pool, async (c) => {
+  const { room, closed } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     const s = settle(state, row);
@@ -1899,12 +2309,11 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
     const seq = row.mls_seq + 1;
     await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'message', null, b.message);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
-    await save(o, c, callId, await roomsChanged(o, c, callId, state, { ...s, chatAt: { ...s.chatAt, [b.group]: seq } }));
-    return row.room_name;
+    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, { ...s, chatAt: { ...s.chatAt, [b.group]: seq } })).closed };
   });
   // Sizes only: what was said is in the MLS message, which nobody here can read.
   clog.debug('chat relayed', { ...ctx, bytes: b.message.length });
-  await nudge(o, room, callId, { call: false, log: true });
+  await afterClosing({ organizer: o, callId }, closed, () => nudge(o, room, callId, { call: closed, log: true }));
 }
 
 /**
@@ -1925,11 +2334,11 @@ export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof
     await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: row.mls_epoch, grp: null }, 'keypackage', mine.identity, b.keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
     const next = withPerson(s, mine.identity, (j) => ({ ...j, admit: 'auto', keysFor: row.mls_generation }));
-    await save(o, c, callId, await roomsChanged(o, c, callId, state, next));
-    return { room: row.room_name, moving: groupOf(s, mine) !== null || placeOf(s, mine) !== MAIN_PLACE };
+    const { closed } = await saveSettled(o, c, callId, state, next);
+    return { room: row.room_name, moving: groupOf(s, mine) !== null || placeOf(s, mine) !== MAIN_PLACE, closed };
   });
   clog.info('keys sent to join another group', { callId, generation: b.generation, moving: r.moving });
-  await nudge(o, r.room, callId, { call: false, log: true });
+  await afterClosing({ organizer: o, callId }, r.closed, () => nudge(o, r.room, callId, { call: r.closed, log: true }));
 }
 
 /**
@@ -1939,7 +2348,7 @@ export async function mlsKeyPackage(v: Viewer, callId: string, b: z.infer<typeof
  */
 export async function mlsBack(v: Viewer, callId: string, b: z.infer<typeof CallBackBodySchema>): Promise<void> {
   const o = v.organizer;
-  const room = await tx(o.pool, async (c) => {
+  const { room, closed } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     const s = settle(state, row);
     const mine = s.people.find((j) => j.identity === v.pass.identity && j.person === v.pass.person);
@@ -1954,11 +2363,10 @@ export async function mlsBack(v: Viewer, callId: string, b: z.infer<typeof CallB
     // nothing said then, and catching up "while you were away" finds it).
     const now = Date.now();
     const next = withPerson(s, mine.identity, (j) => ({ ...j, status: 'in', admit: 'auto', earlier: [...j.earlier, { since: j.since, left: j.left ?? now }], since: now, left: null }));
-    await save(o, c, callId, await roomsChanged(o, c, callId, state, next));
-    return row.room_name;
+    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, next)).closed };
   });
   clog.info('back in the call after its connection dropped', { callId, generation: b.generation });
-  await nudge(o, room, callId, { call: true, log: true });
+  await afterClosing({ organizer: o, callId }, closed, () => nudge(o, room, callId, { call: true, log: true }));
 }
 
 /** A LiveKit token, only for someone the host's browser let in. It names nobody. */
@@ -2275,6 +2683,145 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
   }
 }
 
+/* ---------- ideas from the call, for the board open in the part of the call they were said in ---------- */
+
+/** Whoever said an idea, when the call doesn't know them any more. */
+const SOMEONE: Person = { id: 'someone', name: 'Someone', email: '', portrait: portraitFor('someone') };
+/** Ideas in a part of the call are looked for at most this often, however many browsers have its board open. */
+const IDEAS_EVERY_MS = 60_000;
+/** How long a look holds its claim: longer than the notes model takes to be verified and answer. If its worker dies, the next look takes over after this. */
+const IDEAS_LEASE_MS = 150_000;
+/** What a look at ideas reads: what was said lately. */
+const IDEAS_READ: CatchUpRange = { kind: 'recent', minutes: 5 };
+
+/** A line as an idea keeps it, for `mayRead`: where it was said, when, and who may read it. */
+const lineOf = (place: string, l: { when?: number | undefined; readers?: string[] | undefined }): transcripts.Line => ({
+  id: '', at: 0, end: 0, text: '', ...(place === MAIN_PLACE ? {} : { room: place }), ...(l.when === undefined ? {} : { when: l.when }), ...(l.readers ? { readers: l.readers } : {})
+});
+
+/**
+ * The board open in the part of the call someone's in, as they may know it, with that part's ideas from the call while notes
+ * are on there: only for someone who can add to the board, and only the ones they may read every line of what they were
+ * picked from, so nobody is told anything of what they may not read. A part's ideas are for its own board: in a room on the one
+ * board every room shares there are none, since not everyone on that board may read what's said in the room.
+ */
+async function boardFor(v: Viewer, s: Stored, mine: Joined | undefined, place: string, row: Row, invited: Set<string>): Promise<CallBoard> {
+  const shown = await boards.shownTo(v, s, place);
+  const kept = s.board.ideas[place];
+  if (!kept?.list.length || !mine || row.state !== 'live' || shown.open?.role !== 'edit' || capturing(row, s, place).status !== 'on') return shown;
+  const may = mayRead(v, s, mine, row.started_at, invited);
+  const organizer = await me(v.organizer);
+  const speaker = speakersIn(s, organizer, v);
+  const ideas = kept.list.filter((i) => i.seen.every((l) => may(lineOf(place, l)))).map((i): CallBoardIdea => ({
+    id: i.id, text: i.text,
+    said: { person: (i.speaker ? speaker(i.speaker)?.person : undefined) ?? SOMEONE, at: i.when === undefined ? null : new Date(i.when).toISOString(), words: i.words },
+    frame: i.frame
+  }));
+  return { ...shown, ideas };
+}
+
+/** Connections that looked for ideas and found it wasn't for them to look, until when they needn't look again. */
+const restingIdeas = new Map<string, number>();
+
+/**
+ * Someone in the call has its board open, while notes are on in the part of the call they're in. If it's been a minute since
+ * that part's ideas were last looked for, nobody else is at it, and something new was said, what was said lately is read now,
+ * for everyone there, with the board's frames, and the notes model offers ideas worth a sticky: each from one line, which
+ * says who said it and when, and in the frame it fits. Ideas come only from what everyone in that part may read: someone who
+ * may read less doesn't look. Nobody's credits pay for it, as for the live notes. True when this look found some; any other
+ * look at the same time answers false at once. Nothing is held while the model reads. A part looks only at its own board:
+ * a room on the board every room shares has none of its own, so nobody there looks. Claiming the look and letting it go both
+ * save the call (`saveSettled`), so rooms whose time ran out close with either: their boards are everyone invited's once the
+ * look is done, and they land with the next look or whatever's done next in the call.
+ */
+export async function watchIdeas(v: Viewer, callId: string): Promise<boolean> {
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  if (row.state !== 'live') return false;
+  // Rooms' boards waiting to come back land now, as after anything done in the call: a look comes every 15 seconds.
+  const waiting = state.board.landing;
+  if (waiting && waiting.until <= Date.now()) void landRooms({ organizer: o, callId });
+  const s = settle(state, row);
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  if (!mine) return false;
+  const place = placeOf(s, mine);
+  const open = s.board.open[place];
+  const kept = s.board.ideas[place];
+  const now = Date.now();
+  if (!open || (kept && (kept.at + IDEAS_EVERY_MS > now || (kept.running ?? 0) > now))) return false;
+  const { status, noteId, recordingId } = capturing(row, s, place);
+  if (status !== 'on' || !noteId || !recordingId) return false;
+  const restKey = `${callId}|${v.pass.identity}`;
+  if ((restingIdeas.get(restKey) ?? 0) > now) return false;
+  const rest = () => {
+    if (restingIdeas.size > 10_000) restingIdeas.clear();
+    restingIdeas.set(restKey, Date.now() + IDEAS_EVERY_MS);
+    return false;
+  };
+  // Only someone who can add to the board looks for what to add to it.
+  if ((await boards.shownTo(v, s, place)).open?.role !== 'edit') return rest();
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const invited = invitedIn(meeting);
+  const ctx = { callId, part: place !== MAIN_PLACE ? 'room' : 'main' };
+  const part = await soFarIn(o, row, s, { noteId, recordingId }, meeting, place, sharedIn(row, s, place), (gaps) => catchup.windowOf(tenthsIn(row.started_at), row.started_at.getTime(), [], true, gaps));
+  const may = mayRead(v, s, mine, row.started_at, invited);
+  if (part.all.some((l) => !may(l))) return rest();
+  const { lines, read } = catchup.readOf(part.all, IDEAS_READ, part.window, part.missed, ctx);
+  const heard = liveNotes.digestOf(lines);
+  if (!lines.length || heard === kept?.heard) return false;
+  // Under the call's row: a pause is either here to see, and nothing is claimed, or comes after what got through.
+  const claimed = await tx(o.pool, async (c) => {
+    const at = await load(o, c, callId, true);
+    const held = settle(at.state, at.row);
+    const was = held.board.ideas[place];
+    const stamp = Date.now();
+    if (!placesOf(held).includes(place) || !held.board.open[place] || (was && (was.at + IDEAS_EVERY_MS > stamp || (was.running ?? 0) > stamp))) return undefined;
+    capture.mayCapture(capturing(at.row, held, place), 'ideas', ctx);
+    const claim = { at: stamp, heard: was?.heard ?? '', running: stamp + IDEAS_LEASE_MS, list: was?.list ?? [] };
+    return saveSettled(o, c, callId, at.state, { ...held, board: { ...held.board, ideas: { ...held.board.ideas, [place]: claim } } });
+  });
+  if (!claimed) return false;
+  /** Whether rooms closed with either save, for them to come back once the look's done. */
+  let closed = claimed.closed;
+  /** Lets the claim go, keeping what's offered, and anything new: under the row again, so an idea added meanwhile stays added. */
+  const settleIdeas = (found: StoredIdea[]) => tx(o.pool, async (c) => {
+    const at = await load(o, c, callId, true);
+    const held = settle(at.state, at.row);
+    const was = held.board.ideas[place];
+    // The board closed or changed meanwhile, or its room did: what was found was for it.
+    if (!was || held.board.open[place]?.documentId !== open.documentId) return false;
+    const list = placesOf(held).includes(place) ? [...was.list, ...found].slice(-MAX_CALL_IDEAS) : was.list;
+    const saved = await saveSettled(o, c, callId, at.state, { ...held, board: { ...held.board, ideas: { ...held.board.ideas, [place]: { ...was, heard, running: null, list } } } });
+    closed ||= saved.closed;
+    return found.length > 0 && saved.s.board.ideas[place] !== undefined;
+  });
+  try {
+    const t0 = performance.now();
+    const frames = await boards.framesOf(o, open);
+    const brief = part.brief(lines, read.gaps);
+    const found = await drafting.ideasFrom(o.cfg, brief, frames, kept?.list.map((i) => i.text) ?? []);
+    const seen = lines.map((l) => ({ ...(l.when === undefined ? {} : { when: l.when }), ...(l.readers ? { readers: l.readers } : {}) }));
+    const ideas = found.flatMap((f): StoredIdea[] => {
+      const line = lines[f.line];
+      return line ? [{ id: id128(), text: f.text, words: f.said, ...(line.speaker ? { speaker: line.speaker } : {}), ...(line.when === undefined ? {} : { when: line.when }), frame: f.frame, seen }] : [];
+    });
+    const offered = await settleIdeas(ideas);
+    clog.info('ideas from the call looked for', { ...ctx, lines: lines.length, frames: frames.length, ideas: ideas.length, ms: Math.round(performance.now() - t0) });
+    // Rooms that closed meanwhile have their boards kept for everyone invited before anyone's told.
+    if (closed) await syncRoomBoards({ organizer: o, callId });
+    if (offered || closed) await nudge(o, row.room_name, callId, { call: true, log: false });
+    return offered;
+  } catch (e) {
+    clog.warn('ideas from the call not looked for', { ...ctx, err: e });
+    await settleIdeas([]).catch((err: unknown) => clog.warn('a look for ideas not let go', { ...ctx, err }));
+    if (closed) {
+      await syncRoomBoards({ organizer: o, callId });
+      await nudge(o, row.room_name, callId, { call: true, log: false });
+    }
+    return false;
+  }
+}
+
 /**
  * Who's changing the follow-ups of the part of the call they're in, for everyone there, in the caller's transaction, which
  * holds the call's row, so the call can't end halfway through. It's for anyone in the call who gets the notes, as
@@ -2403,8 +2950,11 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   let audio: string[] = [];
   let worked: WorkedDocument[] = [];
   let home: CallSpace['home'] = null;
-  let keptBoards = NO_BOARDS;
+  /** What the call kept of its boards, and its home, whose tree has every room's board. */
+  let kept: Pick<Stored, 'board' | 'workspace'> = { board: NO_BOARDS, workspace: NO_SPACE };
   let everyone: boards.Here[] = [];
+  /** Who has the rooms' boards by address once the call's over: the organizer, and everyone on the invite as it ended. */
+  let invitedAtEnd: string[] = [];
   const end = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     // Upkeep decided from an earlier read; the organizer may have come back since.
@@ -2419,10 +2969,14 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     }
     const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, relocate(state, closed, Date.now(), row.mls_seq)) : closed;
     if (row.state === 'live') {
-      worked = s.workspace.worked;
+      // Whatever was open anywhere as it ended is noted too, rooms' boards included, as every save notes it.
+      worked = withOpenBoards(s.workspace, state.board.open).worked;
       home = s.workspace.home;
-      keptBoards = s.board;
+      kept = { board: s.board, workspace: s.workspace };
       everyone = knownIn(o, callId, s);
+      // Who has the rooms' boards by address, whatever the call says of them: one it lost track of is found in its home's tree.
+      const m = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+      invitedAtEnd = [(await profile(o, c)).email, ...boards.onInvite(s, m.manifest.guests, hereIn(o, callId, s))];
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
@@ -2469,7 +3023,10 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   await queueDelete(o, audio);
   // Nor do moves to other devices. Deleted once the call has ended, so a move coming in at that moment never waits on it.
   await exec(o.pool, 'DELETE FROM call_moves WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
-  await boards.keepForInvited(o, callId, end.meetingId, keptBoards, everyone);
+  await boards.keepForInvited(o, callId, end.meetingId, kept.board, everyone);
+  // Every room's board is everyone invited's now, before its seats go, and what was open in rooms as the call ended lands on
+  // the main board, if there is one: there's no main room to come back to.
+  await keepRoomBoards(o, callId, kept, invitedAtEnd);
   // Nor does anything shared with people's seats in it (maintenance sweeps up, should this be cut short).
   await endSeats(o, [callId]);
   if (end.pendingNoteId) writer.kick(o, o.ownerId);
@@ -2479,6 +3036,25 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
   if (end.ended) void space.afterCall(o, { callId, meetingId: end.meetingId, worked, noteId: end.pendingNoteId, home, startedAt: end.startedAt });
   return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration };
+}
+
+/**
+ * The call is over: each room's board it hadn't kept yet is kept now, for everyone invited, every one it can find
+ * (`roomBoardsFound`), and rooms open as it ended land, on the board open in the main room while it's still the call's to write
+ * on. Nothing is made for them now.
+ */
+async function keepRoomBoards(o: Owner, callId: string, s: Pick<Stored, 'board' | 'workspace'>, invited: string[]): Promise<void> {
+  const found = await roomBoardsFound(o, callId, s).catch((err: unknown) => { clog.warn('rooms’ boards not found as the call ended', { callId, err }); return boards.roomBoardsOf(s.board); });
+  for (const b of found.filter((r) => !r.kept)) {
+    await boards.roomInStep(o, callId, b, () => Promise.resolve({ open: false, seats: [], invited })).catch((err: unknown) => clog.warn('a room’s board not kept as the call ended', { callId, documentId: b.documentId, err }));
+  }
+  const l = s.board.landing;
+  if (!l) return;
+  const open = s.board.open[MAIN_PLACE];
+  const opener = !l.make && open?.documentId === l.into.documentId ? open.by : null;
+  void boards.land(o, callId, l, null, opener).then((landed) => {
+    if (landed.kind !== 'landed') clog.info('rooms’ boards not landed as the call ended: the board open can’t take them', { callId, rooms: l.rooms.length });
+  }, (err: unknown) => clog.warn('rooms’ boards not landed as the call ended', { callId, err }));
 }
 
 /**
@@ -2530,10 +3106,10 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
     const organizer = (await me(o, c)).name;
     const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
-    return { room: row.room_name };
+    return { room: row.room_name, closed: roomsClosedBetween(state, s) };
   });
   if (r.room) await o.livekit.removeParticipant(r.room, v.pass.identity).catch((e: unknown) => clog.info('host already gone from the room', { callId, err: e }));
-  await nudge(o, r.room, callId, { call: true, log: true });
+  await afterClosing({ organizer: o, callId }, r.closed, () => nudge(o, r.room, callId, { call: true, log: true }));
 }
 
 /**
@@ -2560,9 +3136,14 @@ async function departed(o: Owner, callId: string, identity: string, at = Date.no
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
     await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
-    return { room: row.room_name, was: j.status };
+    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept) };
   });
-  if (r) { clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId }); await nudge(o, r.room, callId, { call: true, log: true }); }
+  if (r) {
+    clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId });
+    // Someone who's gone isn't in their room: its board goes with them, and comes back when they do.
+    if (r.rooms) await syncRoomBoards({ organizer: o, callId });
+    await nudge(o, r.room, callId, { call: true, log: true });
+  }
 }
 
 /* ---------- the call's lifecycle from LiveKit: webhooks and upkeep, with nobody's session ---------- */
@@ -2598,8 +3179,11 @@ export const ARRIVAL_MS = 90_000;
 async function arrivals(d: Deps, ownerId: string, callId: string, roomName: string, now: number): Promise<void> {
   const o = await openOwner(d, ownerId, undefined);
   const { row, state } = await load(o, o.pool, callId);
-  // Upkeep comes through here, so a seat that a crash kept from someone let in is put right.
+  // Upkeep comes through here, so a seat that a crash kept from someone let in is put right, and so is a room's board, and
+  // rooms' boards a crash kept from landing land.
   if (row.state === 'live' && state.board.letIn.length) await syncBoardSeats({ organizer: o, callId });
+  if (row.state === 'live' && state.board.rooms.some((r) => !r.kept)) await syncRoomBoards({ organizer: o, callId });
+  if (row.state === 'live' && state.board.landing) await landRooms({ organizer: o, callId });
   const due = row.state === 'live' ? state.people.filter((j) => j.role !== 'host' && j.identity !== state.host && j.status === 'in' && now - j.since >= ARRIVAL_MS) : [];
   if (!due.length) return;
   const here = new Set((await d.livekit.participants(roomName)).map((p) => p.identity));
@@ -2716,20 +3300,22 @@ async function standInFor(d: Deps, c: LiveCall, connected: ReadonlySet<string>, 
   const r = await tx(o.pool, async (tc) => {
     const { row, state } = await load(o, tc, c.call_id, true);
     const same = row.state === 'live' && row.host_identity === c.host_identity && row.host_left_at?.getTime() === c.host_left_at?.getTime();
-    if (!same) return { result: 'moved on' as const, room: null };
+    if (!same) return { result: 'moved on' as const, room: null, closed: false };
     // Its connection let go to move to another device, which can still arrive: the call waits for it. One that ran out
     // is a host gone like any other.
-    if (state.moving && state.moving.until > now) return { result: 'moved on' as const, room: null };
+    if (state.moving && state.moving.until > now) return { result: 'moved on' as const, room: null, closed: false };
     const s = await roomsChanged(o, tc, c.call_id, state, settle(state, row, now));
     const from = s.people.find((j) => j.identity === s.host);
     const next = standIns(s, new Set(s.host ? [s.host] : []), connected)[0];
-    if (!next) return { result: 'nobody' as const, room: null };
+    if (!next) return { result: 'nobody' as const, room: null, closed: false };
     const told = from ? { change: { kind: 'dropped' as const, from, to: next }, organizer: (await me(o, tc)).name } : undefined;
     const { generation, state: after } = await newGeneration(o, tc, row, s, { host: next, joining: false, gone: from ? [from.identity] : [] }, told);
     clog.info('host gone; someone else hosts', { callId: c.call_id, generation, from: from?.role === 'host' ? 'organizer' : 'stand-in', segment: after.notes.segment, notes: after.notes.status });
-    return { result: 'handed' as const, room: row.room_name };
+    return { result: 'handed' as const, room: row.room_name, closed: roomsClosedBetween(state, s) };
   });
-  if (r.result === 'handed') await nudge(o, r.room, c.call_id, { call: true, log: true });
-  return r.result;
+  return afterClosing({ organizer: o, callId: c.call_id }, r.closed, async () => {
+    if (r.result === 'handed') await nudge(o, r.room, c.call_id, { call: true, log: true });
+    return r.result;
+  });
 }
 export const state = (v: Viewer, callId: string) => view(v, v.organizer.pool, callId);

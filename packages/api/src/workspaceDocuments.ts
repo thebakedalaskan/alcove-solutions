@@ -224,6 +224,16 @@ export const MAX_PRESENTER_NOTES = 20_000;
 export const PresenterNotesSchema = z.object({ text: z.string() });
 export type PresenterNotes = z.infer<typeof PresenterNotesSchema>;
 export const PresenterNotesBodySchema = z.object({ text: z.string().max(MAX_PRESENTER_NOTES) });
+/** The longest someone's own notes on one frame of a board can be. */
+export const MAX_FRAME_NOTES = 4_000;
+/** How many of a board's frames someone can keep notes beside. */
+export const MAX_FRAMES_NOTED = 500;
+/** A frame on a board, as the board names it (`@alcove/board`'s ids): 12 base64url characters. */
+export const FrameIdSchema = z.string().regex(/^[A-Za-z0-9_-]{12}$/);
+/** What you keep beside each frame of a board for presenting it, by frame, for your eyes only. Frames with none aren't there. */
+export const PresenterFrameNotesSchema = z.object({ frames: z.record(FrameIdSchema, z.string()) });
+export type PresenterFrameNotes = z.infer<typeof PresenterFrameNotesSchema>;
+export const PresenterFrameNoteBodySchema = z.object({ frame: FrameIdSchema, text: z.string().max(MAX_FRAME_NOTES) });
 
 /* ---------- asking Alcove about a selection ---------- */
 
@@ -238,6 +248,27 @@ export type DocAskBody = z.infer<typeof DocAskBodySchema>;
 /** What comes back, in order: the words to put in the selection's place, or a to-do for each thing to do. */
 export const DocAskPartSchema = z.discriminatedUnion('type', [z.object({ type: z.literal('text'), text: z.string() }), z.object({ type: z.literal('todo'), text: z.string() })]);
 export type DocAskPart = z.infer<typeof DocAskPartSchema>;
+
+/* ---------- sorting a board's stickies into themes ---------- */
+
+/** The most stickies one sort takes, and the most of each one's words. */
+export const MAX_SORT_STICKIES = 80;
+export const MAX_SORT_STICKY = 400;
+/** What Sort into themes says when what's picked can't be sorted: too few stickies with words on them, or too many at once. */
+export const SORT_TOO_FEW = 'Pick at least two stickies with words to sort.';
+export const SORT_TOO_MANY = `Sort up to ${MAX_SORT_STICKIES} stickies at a time.`;
+/**
+ * The stickies picked, by their IDs on the board, and what each says: to the notes model and nowhere else, and nothing of it is
+ * kept. A blank one has nothing to sort by. How many there are is checked where it's answered, so whoever picked them is told
+ * just what's wrong (`SORT_TOO_FEW`, `SORT_TOO_MANY`); the request's own cap keeps it small.
+ */
+export const BoardSortBodySchema = z.object({
+  stickies: z.array(z.object({ id: z.string().min(1).max(64), text: z.string().max(MAX_SORT_STICKY) }))
+});
+export type BoardSortBody = z.infer<typeof BoardSortBodySchema>;
+/** The themes the stickies sort into: each one's name, and the stickies in it by their IDs, each in one theme at most. */
+export const BoardThemesSchema = z.object({ themes: z.array(z.object({ name: z.string(), ids: z.array(z.string()) })) });
+export type BoardThemes = z.infer<typeof BoardThemesSchema>;
 
 /* ---------- search ---------- */
 

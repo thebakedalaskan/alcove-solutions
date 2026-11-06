@@ -375,7 +375,7 @@ describe('what a call captures', () => {
     await inGroup(kofiCall);
     await host.pause();
     // Rooms open and close: still paused.
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await settle(host, (x) => x.breakouts.open !== null);
     host.closeRooms();
     expect((await settle(host, (x) => x.breakouts.open === null)).capture.mode).toBe('paused');

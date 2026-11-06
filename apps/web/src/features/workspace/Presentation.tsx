@@ -5,26 +5,24 @@
  * and Stop presenting, always at the foot. Your own page waits underneath just as you left it, for when it ends or you work
  * on your own. While something's presented and you're not watching, the strip takes the place of a document's head.
  */
-import { errorMessage, firstName, type CallPresent, type DocSession, type DocStatus, type LiveStore } from '@alcove/api';
+import { firstName, type CallPresent, type DocSession, type DocStatus, type LiveStore } from '@alcove/api';
 import { DURATION, EASE, WsCantOpen, WsDoc, WsPage, WsPane, WsPresentStrip, WsPresenterView, WsScroll, wsToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { overlayOpen, typing } from '~/lib/keys';
 import { useLive } from '~/lib/live';
 import { log } from '~/lib/log';
-import { q, useSavePresenterNotes } from '~/lib/queries';
+import { q } from '~/lib/queries';
 import type { Ws, WorkspacePresenting } from './context';
 import { useMediaView } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import { sectionAt, type DocSection } from './editor/sections';
 import { useVideoHandlers } from './playing';
+import { usePresenterNotes } from './presenterNotes';
 import { openToRead } from './session';
 import { nameOf } from './tree';
 
 const plog = log.child({ component: 'presenting' });
-
-/** How long notes wait after the last key before they're kept. */
-const NOTES_WAIT = 600;
 
 /**
  * While something's presented where you are and you're working on your own, or can't open it: what takes the place of a
@@ -65,35 +63,6 @@ function useReading(ws: Ws, documentId: string) {
   return opened;
 }
 
-/**
- * Your own notes for presenting a document, kept under your account a moment after you stop typing, and as you leave.
- * Null for someone in the call without an account, who has nowhere to keep them.
- */
-function useNotes(ws: Ws, documentId: string): { notes: string | null; setNotes: (text: string) => void } {
-  const mine = ws.owner !== null;
-  const saved = useQuery({ ...q.presenterNotes(ws.workspaceId, documentId, ws.pass), enabled: mine });
-  const save = useSavePresenterNotes(ws.workspaceId, documentId, ws.pass).mutate;
-  const [draft, setDraft] = useState<string | null>(null);
-  const waiting = useRef<{ text: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const say = ws.say;
-  const keep = useCallback((text: string) => {
-    save(text, { onError: (e: unknown) => { plog.warn('presenter notes weren’t kept', { documentId, err: e }); say(wsToast.failed(errorMessage(e))); } });
-  }, [save, documentId, say]);
-  useEffect(() => () => {
-    const w = waiting.current;
-    if (!w) return;
-    clearTimeout(w.timer);
-    keep(w.text);
-  }, [keep]);
-  const setNotes = useCallback((text: string) => {
-    setDraft(text);
-    if (waiting.current) clearTimeout(waiting.current.timer);
-    const timer = setTimeout(() => { waiting.current = null; keep(text); }, NOTES_WAIT);
-    waiting.current = { text, timer };
-  }, [keep]);
-  return { notes: mine ? draft ?? saved.data?.text ?? '' : null, setNotes };
-}
-
 /** Over your own page while you're watching a presentation, or giving one. Nothing for a board, which presents itself. */
 export function Presentation({ ws, presenting }: { ws: Ws; presenting: WorkspacePresenting }) {
   const present = presenting.present;
@@ -109,7 +78,9 @@ function Presented({ ws, presenting, present, documentId }: { ws: Ws; presenting
   const total = sections.length;
   const name = present.name || 'Untitled';
   const mine = present.mine;
-  const { notes, setNotes } = useNotes(ws, documentId);
+  const say = ws.say;
+  const failed = useCallback((message: string) => say(wsToast.failed(message)), [say]);
+  const { notes, setNotes } = usePresenterNotes({ workspaceId: ws.workspaceId, documentId, pass: ws.pass, mine: ws.owner !== null, failed });
   const people = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: ws.sent.role !== null }).data;
   const faces = useMemo(() => [...(people ?? []).map((p) => p.person), ...ws.here.map((h) => h.person)], [people, ws.here]);
   const documentName = useCallback((id: string) => { const d = ws.tree.all.get(id); return d && d.trashedAt === null ? nameOf(d) : undefined; }, [ws.tree]);

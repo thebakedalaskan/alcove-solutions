@@ -129,6 +129,11 @@ export const decisionsOf = (m: NoteManifest): Decision[] => [...m.decisions, ...
 /** The parts of a note people settle: the call's own, then each breakout room's section, by name. */
 export const partsOf = (m: NoteManifest): (Pick<NoteManifest, 'decisions' | 'questions' | 'actions'> & { room?: RoomRef })[] =>
   [{ decisions: m.decisions, questions: m.questions, actions: m.actions }, ...m.rooms.map((r) => ({ room: { id: r.id, name: r.name }, decisions: r.decisions, questions: r.questions, actions: r.actions }))];
+/**
+ * Everyone a note has gone to, by address: its organizer's (`organizer`), everyone invited, and everyone it's been shared with
+ * since. What one summary reads, and what the note says everyone can open, goes by all of them.
+ */
+export const everyoneWith = (m: Pick<NoteManifest, 'invited' | 'shared'>, organizer: string): string[] => [organizer, ...m.invited, ...m.shared.map((s) => s.email)];
 
 /** A note about to be recorded, starting when its recording does. */
 export function blankNote(o: { kind: NoteKind; title: string; startedAt: Date; recordingId: string; invited: string[]; meetingId?: string | undefined; keep?: NoteKeep | undefined }): NoteManifest {
@@ -433,7 +438,7 @@ export async function get(o: Owner, id: string): Promise<Note> {
   return {
     ...summaryOf(l, organizer, who), recipients: who, summary: m.summary, decisions, questions, actions, chapters: m.chapters,
     gaps: m.gaps, screens: m.screens, transcript: read.transcript, rooms, additions: await additions.of(l, o.ownerId), writtenAt: m.writtenAt, writingAgain: m.status === 'ready' && !!(await jobOf(l.owner, l.owner.pool, id)),
-    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn), ...(seriesId ? { seriesId } : {})
+    suggestedQuestions: m.suggestedQuestions, audio: await segments(l.owner, m.recordingId), kept: m.keep, inference: m.inference, workedOn: await workedOnFor(o, m.workedOn, everyoneWith(m, organizer.email)), ...(seriesId ? { seriesId } : {})
   };
 }
 /** A note's notes job while its notes are queued or being written, whichever of its revisions it was queued for. */

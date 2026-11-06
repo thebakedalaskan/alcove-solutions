@@ -94,7 +94,9 @@ A slim band of sky, and the horizon is the call.
   - gaps where notes were off
   - while recording, the line ends in a recording-coloured edge
   - it sticks to the top as you read
-- **The water.** The summary, larger. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
+- **The water.** The summary, larger. Then the boards open in the call, when there were any: the call's as a wide card with
+  a picture of all of it, each breakout room's as a card beside the others' (a stack on a phone), each opening its board in one
+  click, and the follow-ups from the board. Then Decided (rose, with how many are left to confirm), Still open, and Follow-ups
   (horizon, with how many are yours). Every row uses one set of columns:
   - the kind's icon, or a tick box for a follow-up
   - the words, with who said or proposed it
@@ -227,21 +229,24 @@ ring. The camera appears only here and on the join screen.
 
 ## A board
 
-`features/workspace/BoardPane.tsx`, beside the list, drawing `features/board/` (`BoardSurface`, `mode` `page`, or `pageRead`
-for someone who can only look), `styles/board.css` (`bz-`, `bd-`, `bp`, `bpg-`). The board was designed as the whiteboards
-canvas's page and its States board.
+`features/workspace/BoardPane.tsx`, beside the list, drawing `features/board/` (`BoardSurface`, `mode` `page`, `pageRead`
+for someone who can only look, or `pagePhone` on a phone), `styles/board.css` (`bz-`, `bd-`, `bp`, `bpg-`). The board was
+designed as the whiteboards canvas's page and its States board, and on a phone as its phone board.
 
 - The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
   workspace and its folders) and holds the list's button. Its tools are the call's dock turned on its side, made day.
 - Its bar is the page's head: the name, with everything about the board itself under it (Rename in its place, Saved in,
-  Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; and at the end the faces of
-  whoever else is on it and Start a call here, the one primary button.
+  Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; More (the downloads and Night
+  board); and at the end the faces of whoever else is on it and Start a call here, the one primary button.
+- More, at the foot of the tools, is the call's: Image, From your workspace, Table, Mind map, Comment and Templates.
 - The seal says how it stands: Sealed, Reconnecting, Not saved or View only. Reconnecting and Couldn't save also take the
   one pill at the top of the sheet, ahead of following someone.
 - A comment is a pin, the face of whoever started it on the corner of what it's on, one size however near you are; the
   thread opens beside it in the workspace's comment sheet.
 - A narrow bar gives way in order: the faces, then Start a call here's words (its camera stays), then zooming and the map.
   The name keeps room to be read.
+- On a phone it's the call's phone board on the day round the page: it opens readable on its first frame, there are no
+  tools beside it and no map, and + at the bottom right opens the add sheet in the person's own theme.
 - In a document a board is a small picture of one with its name on it, which opens it (`wb-board`).
 
 ## Not yet on the canvas

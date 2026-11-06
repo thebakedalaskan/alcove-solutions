@@ -7,7 +7,7 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
-import type { DocAskBody, DocAskPart } from '@alcove/api';
+import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
   AlcoveApiError, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
@@ -16,6 +16,7 @@ import {
   type SeriesAnswerPart, type SeriesNote, type SignInResult, type DemoProvider, type RoomRecordingInput, type RoomRecording, type CallMoveIn
 } from '@alcove/api';
 import { isOnline } from '../browser';
+import { canvasTheme } from '../world/boards';
 import { changer, foundOf } from '../world/build';
 import { personAt } from '../world/people';
 import { session as sessionFor, type World } from '../world';
@@ -380,7 +381,7 @@ export const standIn: AlcoveApi = {
   calls: {
     // As the server makes one: an hour from now, and scheduled until someone joins, so the lobby can ring people.
     startNow: (input?: InstantCallInput) => answer((w) => {
-      const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 60, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault }), instant: true };
+      const m = { ...meetingFrom(w, { title: input?.title ?? `${me().name.split(' ')[0] ?? 'Your'}’s call`, startsAt: new Date().toISOString(), durationMinutes: 60, guests: input?.guests ?? [], notes: input?.notes ?? w.prefs.notesDefault, documents: input?.documents ?? [] }), instant: true };
       w.meetings.push(m);
       return { code: m.code };
     }),
@@ -566,8 +567,10 @@ export const standIn: AlcoveApi = {
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),
     presenterNotes: {
-      get: () => answer(() => ({ text: '' })),
-      set: () => answer(() => undefined)
+      get: (_id: ID, documentId: ID) => answer(() => ({ text: spaces.presenterNotes(documentId) })),
+      set: (_id: ID, documentId: ID, text: string) => answer(() => { spaces.keepPresenterNotes(documentId, text); }),
+      frames: (_id: ID, boardId: ID) => answer(() => ({ frames: spaces.presenterFrameNotes(boardId) })),
+      setFrame: (_id: ID, boardId: ID, frame: string, text: string) => answer(() => { spaces.keepFrameNotes(boardId, frame, text); })
     },
     media: {
       upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
@@ -581,6 +584,19 @@ export const standIn: AlcoveApi = {
       if (body.action === 'checklist') { for (const line of body.text.split(/[.\n]+/).map((x) => x.trim()).filter(Boolean)) yield { type: 'todo', text: line }; return; }
       yield { type: 'text', text: body.text.split(/(?<=\.)\s/)[0] ?? body.text };
     })(),
+    /**
+     * Sorts stickies the way the notes model might: the canvas's ideas into the canvas's three themes, and anything else by its
+     * first word, those that start with the same word one theme, named for it.
+     */
+    sortStickies: (_id: ID, _documentId: ID, body: BoardSortBody) => answer(() => {
+      const themes = new Map<string, string[]>();
+      for (const s of body.stickies) {
+        const word = s.text.trim().split(/\s+/)[0] ?? '';
+        const name = canvasTheme(s.text) ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        themes.set(name, [...(themes.get(name) ?? []), s.id]);
+      }
+      return { themes: [...themes].map(([name, ids]) => ({ name, ids })) };
+    }),
     rename: (id: ID, name: string) => answer(() => { spaces.treeOf(id).name = name; }),
     remove: (id: ID) => answer((w) => { spaces.treeOf(id); w.workspaces = w.workspaces.filter((x) => x.id !== id); }),
     people: (id: ID) => answer(() => spaces.peopleIn(id)),

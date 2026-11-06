@@ -1,6 +1,7 @@
 /*
  * What was worked on in the call, on its note: each document someone changed during it, and who, for whoever reads the note
  * and can open it now (`Note.workedOn`). Each opens in the app, in your theme: the same document, nothing copied or archived.
+ * The boards are in their own section, as pictures (Boards.tsx).
  */
 import { firstName, type NoteWorkedOn } from '@alcove/api';
 import { WsWorkedOn } from '@alcove/ui';
@@ -18,7 +19,7 @@ export function workedBy(by: NoteWorkedOn['by']): string {
   return `${list.charAt(0).toUpperCase()}${list.slice(1)} edited this`;
 }
 
-/** A section of the note. Boards open nowhere in the app yet, so only documents are listed: nothing here leads to a dead end. */
+/** A section of the note, for documents: boards have their own, with a picture of each (Boards.tsx). */
 export function WorkedOn({ worked }: { worked: readonly NoteWorkedOn[] }) {
   const navigate = useNavigate();
   const documents = worked.filter((w) => w.kind === 'document');

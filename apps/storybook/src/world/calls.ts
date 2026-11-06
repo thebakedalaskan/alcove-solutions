@@ -3,7 +3,7 @@
  * Wednesday (a design sync at 17:30 with Priya and Kofi), and the same morning a few minutes before the design review.
  * All made up.
  */
-import type { CalendarEvent, DocumentLibrary, Meeting } from '@alcove/api';
+import type { CalendarEvent, Meeting } from '@alcove/api';
 import { iso } from './clock';
 import { calendarEvent, call } from './build';
 import { AIKO, ART, DIEGO, INES, KOFI, LENA, MAYA, PRIYA } from './people';
@@ -36,15 +36,4 @@ export function soonCalls(): Meeting[] {
     call({ id: 'm-intro', title: 'Intro with Harbourline', startsAt: iso(0, 14, 0), minutes: 30, code: 'hbr-intr-dgx', guests: [DIEGO], rsvps: { yes: 1 } }),
     call({ id: 'm-priya', title: '1:1 with Priya', startsAt: iso(0, 16, 30), minutes: 30, code: 'one-prya-art', guests: [PRIYA], rsvps: { yes: 1 }, seriesId: 's-priya', repeat: weekly })
   ];
-}
-
-/** What a demo account at the company can bring to a call: the company's workspaces. */
-export function library(): DocumentLibrary {
-  const doc = (id: string, name: string, kind: 'doc' | 'board', by: string, hoursAgo: number) => ({ id, name, kind, by, updatedAt: new Date(Date.parse(iso(0, 16, 12)) - hoursAgo * 3_600_000).toISOString() });
-  return {
-    workspaces: [
-      { id: 'product', name: 'Product', documents: [doc('vandelay.launch-plan', 'Launch plan', 'doc', 'Priya', 2), doc('vandelay.launch-checklist', 'Launch checklist', 'doc', 'Maya', 5), doc('vandelay.pricing-copy', 'Pricing page copy', 'doc', 'Lena', 26)] },
-      { id: 'design', name: 'Design', documents: [doc('vandelay.onboarding-flow', 'Onboarding flow', 'board', 'Aiko', 50)] }
-    ]
-  };
 }

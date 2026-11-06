@@ -600,7 +600,7 @@ describe('breakout rooms in what carries over', () => {
     const inKofi = await kofi.api.calls.join(c, { mic: true, cam: false });
     await inGroup(inKofi);
     await host.transcribe(speech('We agreed to meet again next week.'), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [room = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await waitFor(() => inKofi.crypto.getSnapshot().place === room && Boolean(inKofi.crypto.getSnapshot().media?.send), 'Kofi in the room');
     await settle(inKofi, (s) => s.capture.room?.scribe === inKofi.ticket.identity);
@@ -655,7 +655,7 @@ describe('breakout rooms in what carries over', () => {
     await inGroup(inKofi);
     const inLena = await lena.api.calls.join(next.code, { mic: true, cam: false });
     await inGroup(inLena);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await waitFor(() => inKofi.crypto.getSnapshot().place === design && Boolean(inKofi.crypto.getSnapshot().media?.send), 'Kofi in Design');
     await waitFor(() => inLena.crypto.getSnapshot().place === support && Boolean(inLena.crypto.getSnapshot().media?.send), 'Lena in Support');
@@ -686,7 +686,7 @@ describe('breakout rooms in what carries over', () => {
     const inKofi = await kofi.api.calls.join(next.code, { mic: true, cam: false });
     await inGroup(inKofi);
     await host.transcribe(speech('Hello again.'), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Follow-up', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Follow-up', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [later = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await waitFor(() => inKofi.crypto.getSnapshot().place === later && Boolean(inKofi.crypto.getSnapshot().media?.send), 'Kofi in the room');
     await settle(inKofi, (s) => s.capture.room?.scribe === inKofi.ticket.identity);
@@ -738,7 +738,7 @@ describe('a call that keeps no transcript', () => {
     const inKofi = await kofi.api.calls.join(meeting.code, { mic: true, cam: false });
     await inGroup(inKofi);
     await host.transcribe(speech('We agreed to meet again next week.'), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     await settle(host, (s) => s.breakouts.open !== null);
     await settle(inKofi, (s) => s.capture.room?.scribe === inKofi.ticket.identity);
     await inKofi.transcribe(speech('The printer is CANARY-HIDDEN-LINE for now.', 2000), inKofi.ticket.identity);

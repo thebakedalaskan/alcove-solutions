@@ -12,7 +12,7 @@ import type { SheetPoint } from '../camera';
 import { STICKY } from '../editing';
 import type { Gesture, ToolPress } from '../gestures';
 import { CLICK_SLOP, OVER_THE_SHEET, endBox } from '../selection';
-import type { Board } from '../useBoard';
+import type { Board, BoardBallot } from '../useBoard';
 
 /** How far off an edge a dot sits, in screen pixels, so it's easy to grab. */
 const DOT_OFF = 18;
@@ -60,16 +60,18 @@ function outside(b: Box, { x, y }: SheetPoint): number {
 
 /**
  * What shows its dots: what's already showing them, until the pointer leaves it, so that a dot sitting over its neighbour can
- * still be reached. Otherwise the nearest, which is the top one of anything the pointer is on.
+ * still be reached. Otherwise the nearest, which is the top one of anything the pointer is on. While a vote is on, a sticky in
+ * it shows none: a press on it is a vote, and at a low zoom its dots sit over the stickies beside it, where a press meant as a
+ * vote would draw a line.
  */
-function nearest(view: BoardView, hover: string | null, at: SheetPoint, reach: number): string | null {
+function nearest(view: BoardView, hover: string | null, at: SheetPoint, reach: number, ballot: BoardBallot | null): string | null {
   const now = hover ? view.byId.get(hover) : undefined;
-  if (now && joinable(now) && outside(now, at) <= reach) return now.id;
+  if (now && joinable(now) && outside(now, at) <= reach && !ballot?.takes(now.id)) return now.id;
   let found: string | null = null, least = reach;
   for (const o of view.objects) {
     if (!joinable(o)) continue;
     const d = outside(o, at);
-    if (d > least) continue;
+    if (d > least || ballot?.takes(o.id)) continue;
     found = o.id;
     least = d;
   }
@@ -87,7 +89,7 @@ export function hoverAt(board: Board, at: SheetPoint, target: EventTarget | null
     board.hoverOn(null);
     return;
   }
-  board.hoverOn(nearest(view, hover, at, HOVER_REACH / board.camera.getSnapshot().z));
+  board.hoverOn(nearest(view, hover, at, HOVER_REACH / board.camera.getSnapshot().z, board.ballot));
 }
 
 /** Writes a line, and it's done: back to Select with nothing picked. It can be turned down without the board being full, if what it joins has just gone. */

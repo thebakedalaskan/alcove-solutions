@@ -492,6 +492,29 @@ export async function grant(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db,
   await publish(db, w.workspaceId, TREE_NOTICE);
 }
 
+/**
+ * Puts the seats a call has on one document in step with `seats`: whoever's missing gets one, as `role`, and every other seat
+ * of that call on it goes, in the caller's transaction, which holds the workspace's row. Nothing anyone has by address
+ * changes. It's for a breakout room's board, which only the seats of whoever's in its room open, and which its call keeps
+ * from being stranded meanwhile (`StoredItem.room`). Their streams hear when the transaction commits. How many it changed.
+ */
+export async function seatsInStep(w: Pick<Workspace, 'owner' | 'workspaceId'>, db: Db, documentId: string, callId: string, seats: { seat: string; name: string }[], role: DocumentRole): Promise<number> {
+  const o = w.owner;
+  const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+  const there = await rows(db, z.object({ principal_index: bytea }), "SELECT principal_index FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat' AND call_id = $3", [o.ownerId, documentId, callId]);
+  const had = new Set(there.map((r) => hex(r.principal_index)));
+  const wanted = new Map(seats.map((s) => [hex(seatIndex(o, callId, s.seat)), s]));
+  const adding = [...wanted].filter(([k]) => !had.has(k)).map(([, s]): Grant => ({ kind: 'seat', callId, seat: s.seat, name: s.name, role }));
+  const going = there.filter((r) => !wanted.has(hex(r.principal_index))).map((r) => Buffer.from(r.principal_index));
+  if (adding.length) await grant(w, db, documentId, adding);
+  if (going.length) {
+    await exec(db, "DELETE FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat' AND call_id = $3 AND principal_index = ANY($4::bytea[])", [o.ownerId, documentId, callId, going]);
+    await exec(db, 'UPDATE workspaces SET version = version + 1 WHERE owner_id = $1', [o.ownerId]);
+    await publish(db, w.workspaceId, TREE_NOTICE);
+  }
+  return adding.length + going.length;
+}
+
 /** A call, as what's done for it on the server names it: its organizer's keys, and which call. */
 export interface CallRef { organizer: Owner; callId: string }
 
@@ -538,7 +561,7 @@ export const cantOpen = async <T extends { who: Who }>(w: HeldWorkspace, db: Db,
 export const cantEdit = async <T extends { who: Who }>(w: HeldWorkspace, db: Db, documentId: string, people: T[]): Promise<T[]> =>
   (await rolesOn(w, db, documentId, people)).filter((x) => x.role !== 'edit' && !x.entry).map((x) => x.person);
 /** What each of these indexes has on a document by an entry of its own, whatever a workspace role gives anyone. */
-export async function entriesOn(w: HeldWorkspace, db: Db, documentId: string, indexes: Uint8Array[]): Promise<(index: Uint8Array) => DocumentRole | undefined> {
+export async function entriesOn(w: Pick<HeldWorkspace, 'owner'>, db: Db, documentId: string, indexes: Uint8Array[]): Promise<(index: Uint8Array) => DocumentRole | undefined> {
   const shares = (await holdersOf(db, w.owner.ownerId, indexes)).shares.filter((s) => s.document_id === documentId);
   return (index) => shares.find((s) => Buffer.compare(s.principal_index, index) === 0)?.role;
 }

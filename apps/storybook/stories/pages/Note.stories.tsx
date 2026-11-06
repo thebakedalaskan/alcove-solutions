@@ -1,6 +1,7 @@
 /* A note: the call as its horizon, then what it decided, what's still open, what's next, and what was said (user-flows 8). */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
+import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { STATES, inEveryState } from '../../src/world/states';
@@ -47,6 +48,16 @@ export const Rooms = page(`/notes/${STATES.rooms}`, 'busy', everyState);
 export const ARoomOpen = page(`/notes/${STATES.rooms}?room=room-pricing&at=1050`, 'busy', everyState);
 /** Priya confirmed the launch date and Kofi says it wasn't decided: Art, who organized the call, keeps it or crosses it out. */
 export const Disputed = page(`/notes/${STATES.disputed}`, 'busy', everyState);
+/**
+ * After the launch retro: right under the summary, the board open in the call as a picture of all of it, then each breakout
+ * room's board side by side (Support's isn't open to everyone invited, so the summary left it out, and its card says so), then
+ * the follow-ups the notes took from the board's Actions frame, under their own heading.
+ */
+export const WithABoard = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) });
+export const WithABoardPhone = phone(WithABoard);
+export const WithABoardNight = page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro), globals: { theme: 'dark' } });
+/** Comms's section, open from a link: its notes, and the follow-ups the notes took from its board. Its board is with the call's, above. */
+export const ARoomsBoard = page(`/notes/${RETRO_NOTE}?room=room-comms&at=800`, 'busy', { beforeEach: changing(afterTheRetro) });
 /** A call in a series: beside the note, the series' other calls and what's still open across them, and the next call. */
 export const InASeries = page('/notes/n2', 'busy', everyState);
 /** The example note a first day opens. */

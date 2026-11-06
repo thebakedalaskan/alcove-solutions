@@ -1,6 +1,7 @@
 /*
  * A document or a board open on the page: its one session, opened again when asked or when it can't be opened right now, and
- * what's said when a connection comes back. DocumentPane and BoardPane both hold theirs through these, so the two can't drift.
+ * what's said when a connection comes back. DocumentPane and BoardPane both hold theirs through these, so the two can't drift,
+ * and a board in a call opens again the same way (features/call/callBoard.ts).
  */
 import type { DocSession, DocStatus } from '@alcove/api';
 import { wsToast } from '@alcove/ui';
@@ -44,17 +45,18 @@ export function useSession(ws: Ws, documentId: string) {
 /** How long a document that can't be opened right now waits before it's opened again, a little longer each time. */
 const UNAVAILABLE_WAITS = [2_000, 5_000, 15_000, 30_000];
 
-/** A document that can't be opened right now opens again by itself, a little later each time. */
-export function useOpensAgain(status: DocStatus, ready: boolean, reopen: () => void): void {
+/** A document that can't be opened right now opens again by itself, a little later each time. `status`: null while none is. */
+export function useOpensAgain(status: Pick<DocStatus, 'closed'> | null, ready: boolean, reopen: () => void): void {
   const tries = useRef(0);
+  const closed = status?.closed ?? null;
   useEffect(() => { if (ready) tries.current = 0; }, [ready]);
   useEffect(() => {
-    if (status.closed !== 'unavailable') return undefined;
+    if (closed !== 'unavailable') return undefined;
     const wait = UNAVAILABLE_WAITS[Math.min(tries.current, UNAVAILABLE_WAITS.length - 1)] ?? 30_000;
     tries.current += 1;
     const timer = setTimeout(reopen, wait);
     return () => clearTimeout(timer);
-  }, [status.closed, reopen]);
+  }, [closed, reopen]);
 }
 
 /**

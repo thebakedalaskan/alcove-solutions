@@ -16,7 +16,8 @@
  * hasn't had (`requireNewClients`). What starts a log (the seed, a copy, words rescued into a new document) isn't a change.
  */
 import {
-  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, isServerClient, randomClient, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart
+  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MAX_SORT_STICKIES, SORT_TOO_FEW, SORT_TOO_MANY, isServerClient, randomClient, type DocClosed, type DocLiveEvent,
+  type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart, type BoardSortBody, type BoardThemes
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
 import * as decoding from 'lib0/decoding';
@@ -36,8 +37,8 @@ import { findOwner } from '../owners';
 import {
   change, editableBy, isItemId, limitKey, personIn, requireDocument, roleOf, standingIn, trashOf, workspaceFor, workspaceKey, workspaceVersion, type Allowed, type Credentials, type Reader, type StoredItem, type Who, type Workspace
 } from './workspaceAccess';
-import { workedOn as workedOnInCall, mayAskInCall } from './calls';
-import { editSelection } from './drafting';
+import { workedOn as workedOnInCall, mayAskInCall, maySortInCall } from './calls';
+import { editSelection, themesOf } from './drafting';
 import { MAX_NESTING, SERVER_CAPS, bringsNew, browserCaps, clientsOf, inspect, isTooMuch, refusalGiven, type Block, type Inspected, type KnownClient } from './documentFirewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './documentOps';
 import type { ContentKind } from './documentText';
@@ -952,6 +953,27 @@ export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, do
   requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
   dlog.info('selection edited', { workspaceId, documentId, action: body.action, chars: body.text.length, parts: parts.length, ms: Math.round(performance.now() - t0) });
   return parts;
+}
+
+/**
+ * A board's Sort into themes, for someone who can edit it: the stickies they picked, as they sent them, go to the notes model,
+ * which names the themes and says which stickies go in each, for them to put on the board as one step. Nothing is kept, here
+ * or anywhere. It needs no notes, and in a call it's refused while the part of it they're in is paused, as everything that
+ * reaches the AI is.
+ */
+export async function sortStickies(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: BoardSortBody): Promise<BoardThemes> {
+  const { item } = requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  if (item.kind !== 'board') throw notFound('That board', { workspaceId, documentId });
+  if (reader.seat) await maySortInCall(reader.seat.viewer);
+  // A blank sticky has nothing to sort by, and the notes model takes so many at once: either is said as it is.
+  const picked = body.stickies.flatMap((s) => { const text = s.text.trim(); return text ? [{ id: s.id, text }] : []; });
+  if (picked.length < 2) throw new ValidationError(SORT_TOO_FEW, { context: { workspaceId, documentId, stickies: picked.length } });
+  if (picked.length > MAX_SORT_STICKIES) throw new ValidationError(SORT_TOO_MANY, { context: { workspaceId, documentId, stickies: picked.length } });
+  const t0 = performance.now();
+  const themes = await themesOf(d.cfg, picked);
+  requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
+  dlog.info('stickies sorted into themes', { workspaceId, documentId, stickies: picked.length, themes: themes.length, ms: Math.round(performance.now() - t0) });
+  return { themes };
 }
 
 /* ---------- awareness: where everyone's caret is, never stored ---------- */

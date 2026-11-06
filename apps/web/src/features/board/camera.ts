@@ -5,7 +5,7 @@
  * zoom, as the canvas has them.
  */
 import type { LiveStore } from '@alcove/api';
-import { fit, type Box, type Camera, type Pad } from '@alcove/board';
+import { bounds, fit, hasBox, type BoardView, type Box, type Camera, type Pad } from '@alcove/board';
 import { moveBoardCamera, restBoardCamera } from '@alcove/ui';
 
 /** How far a person zooms by hand. `fit` can go further out, to show a very big board. */
@@ -27,6 +27,30 @@ export interface BoardPlace {
   x: number;
   y: number;
   z: number;
+}
+
+/**
+ * On a phone, a board opens where it can be read, not shrunk to fit: on its first frame, as its first slide, or else at the
+ * start of what's on it, never further out than `READABLE`. An empty one is the middle of its blank sheet, as it is. It keeps
+ * clear of the bar at the top and of the add button at the bottom, and of the pill under the bar while one shows.
+ */
+const READABLE = 0.6;
+const PHONE_PAD: Pad = { l: 16, r: 16, t: 64, b: 28 };
+/** The pill under the bar ends 96 px down the sheet. */
+const PHONE_PILL_PAD: Pad = { ...PHONE_PAD, t: 106 };
+/** A sheet narrower than this is a phone's: the call's own line between a phone and the rest (`PHONE_W`). */
+export const PHONE_SHEET = 600;
+/** How far a frame's title stands above it, in board units: the title is read with the frame. */
+const FRAME_TITLE = 44;
+export function phoneCamera(view: BoardView, W: number, H: number, pill = false): Camera {
+  const pad = pill ? PHONE_PILL_PAD : PHONE_PAD;
+  const first = view.frames.find((f) => !f.f);
+  const placed = view.objects.filter(hasBox);
+  const box = first ? { x: first.x, y: first.y - FRAME_TITLE, w: first.w, h: first.h + FRAME_TITLE } : placed.length ? bounds(placed) : { x: 0, y: 0, w: 1160, h: 530 };
+  const fitted = fit(box, W, H, pad);
+  if (fitted.z >= READABLE) return fitted;
+  // Too big to read whole: its start, from the top left, at a size it can be read.
+  return { x: pad.l - box.x * READABLE, y: pad.t - box.y * READABLE, z: READABLE };
 }
 
 /** A `--duration-*` token in milliseconds, read from where it's defined, so there's only ever one number to change. */

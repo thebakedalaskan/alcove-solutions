@@ -7,8 +7,11 @@ import type { BoardMoreItem, BoardPenKind, BoardTool } from '@alcove/ui';
 import type { Guide } from './selection';
 import type { BoardDraft } from './tools/draft';
 
-/** `read`: in a call or a note, for someone who can only look. `pageRead`: a board's own page, for someone who can only look. */
-export type BoardMode = 'call' | 'page' | 'pageRead' | 'tile' | 'present' | 'phone' | 'read';
+/**
+ * `read`: in a call or a note, for someone who can only look. `pageRead`: a board's own page, for someone who can only look.
+ * `phone` and `pagePhone`: the call's board and a board's own page, on a phone, for someone who can add to it.
+ */
+export type BoardMode = 'call' | 'page' | 'pageRead' | 'pagePhone' | 'tile' | 'present' | 'phone' | 'read';
 
 /** What each mode has. */
 export interface BoardLook {
@@ -36,16 +39,21 @@ export const BOARD_LOOKS: Record<BoardMode, BoardLook> = {
   read: { ...LOOK, rail: false, edit: false },
   present: BARE,
   tile: { ...BARE, mini: true },
-  phone: { ...BARE, page: true, phone: true }
+  /** On a phone: look round, follow, vote with a tap, and add a sticky from the sheet. Moving and drawing stay on bigger screens. */
+  phone: { ...LOOK, rail: false, edit: false, clean: true, phone: true },
+  /** A board's own page on a phone: the same, with the page round it, and + in the person's own theme. */
+  pagePhone: { ...LOOK, rail: false, edit: false, clean: true, phone: true, page: true }
 };
 
-/** What can open beside the rail: a tool's options, or More's. */
-export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more';
+/** What can open beside the rail: a tool's options, More, and what two of More's items offer: templates, and the workspace's items. */
+export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more' | 'templates' | 'items';
+/** What can open from the bar to run the session: the Timer's menu, or the Vote's. */
+export type BoardRunMenu = 'timer' | 'vote';
 
-/** What More's items do. Each comes from outside the board, and one that isn't given does nothing. */
+/** What More's items do, where the world round the board does them: one given here takes the place of the board's own. */
 export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
 
-/** What the bar's More holds, beside the name: none of it changes the board, so it's there for someone who can only look too. */
+/** What the bar's More holds: Copy link and the downloads for anyone who can see the board, and Night board for whoever can change it. */
 export type BoardBarItem = 'link' | 'image' | 'pdf' | 'night';
 /** What each of the bar's More items does. An item that isn't given isn't shown. */
 export type BoardBarItems = Partial<Record<BoardBarItem, (() => void) | undefined>>;
@@ -64,10 +72,18 @@ export interface BoardState {
   sel: readonly string[];
   /** What's being typed in. */
   edit: string | null;
+  /** In a table being typed in (`edit`), the cell. */
+  cell: { row: string; col: string } | null;
+  /** The bar's More is open. */
+  barMenu: boolean;
+  /** Night board, the board's own setting: dark in any theme, for everyone, everywhere it shows. */
+  night: boolean;
   /** The row of colours under the selection bar is open. */
   picking: boolean;
   /** The selection bar's More is open. */
   menu: boolean;
+  /** The bar's Timer or Vote menu is open. */
+  runMenu: BoardRunMenu | null;
   /** What the pointer is near, whose dots are showing. */
   hover: string | null;
   /** What's being drawn, which only this person sees until it's let go. */
@@ -91,12 +107,12 @@ export interface BoardState {
   settling: ReadonlySet<string>;
   /** Objects that have just landed, which pop in. */
   landed: ReadonlySet<string>;
+  /** Rooms' boards coming back: each frame, with what it holds, and how long it waits (ms) to land, one after another. */
+  landing: ReadonlyMap<string, number>;
   /** Past 500 objects, the part of the board that's mounted, in board units. */
   near: Box | null;
   /** Whose view this is, if it isn't your own. */
   following: string | null;
-  /** The bar's More is open. */
-  barMenu: boolean;
   /** The frame on the sheet while presenting, which is all a presented board shows. */
   slide: string | null;
   /** Sort into themes is waiting for its answer. */

@@ -6,6 +6,7 @@
  */
 import { BreakoutBoardSchema, MAIN_PLACE } from '@alcove/api';
 import { z } from 'zod';
+import type { CallBoards } from './callSpace';
 import { RoomPause } from './capture';
 import { HeldRooms } from './heldRooms';
 
@@ -93,6 +94,13 @@ export interface Placing { people: Joined[]; breakouts: z.infer<typeof BreakoutS
 
 /** The parts of the call open now: the main room, and each breakout room while rooms are open. */
 export const placesOf = (s: Placing): string[] => [MAIN_PLACE, ...(s.breakouts.open?.rooms.map((r) => r.id) ?? [])];
+
+/**
+ * Where the board shown in a part of the call is open: there, or, in a room with none of its own while rooms share the main
+ * board, the main room.
+ */
+export const boardPlace = (s: Placing & { board: Pick<CallBoards, 'open'> }, place: string): string =>
+  place === MAIN_PLACE || s.board.open[place] || s.breakouts.open?.board.mode !== 'shared' ? place : MAIN_PLACE;
 
 /** Where someone is in the call now: the organizer where it's visiting (or the main room); an invited person in the room they were sent to; anyone else in the main room. */
 export function placeOf(s: Placing, j: Joined): string {

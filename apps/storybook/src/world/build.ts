@@ -24,7 +24,8 @@ export interface Said { id?: string | undefined; at: string; who?: Person | unde
 interface Entry { id: string; text: string; at?: string | undefined }
 export interface DecisionSpec extends Entry { state: NoteDecision['state']; by?: Person | undefined }
 export interface QuestionSpec extends Entry { answered?: Person | undefined }
-export interface ActionSpec extends Entry { owner?: Person | undefined; takenOn?: boolean | undefined; due?: string | undefined; done?: boolean | undefined }
+/** `board`: written on a board's Actions frame, so it's under Follow-ups from the board. */
+export interface ActionSpec extends Entry { owner?: Person | undefined; takenOn?: boolean | undefined; due?: string | undefined; done?: boolean | undefined; board?: boolean | undefined }
 export interface ShareSpec { person: Person; by: Person; group?: string | undefined; at: string }
 
 export interface NoteSpec {
@@ -112,9 +113,11 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     if (owner && a.done) changes.push({ by: changer(owner, roleOf(owner)), at: addMinutes(settled, 60), what: 'done' });
     const item: ActionItem = {
       id: a.id, text: a.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: a.takenOn ?? false, ...(a.due ? { due: a.due } : {}),
-      ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes, from: null
+      ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes, from: a.board ? 'board' : null
     };
-    return { ...item, evidence: evidenceOf(lines) };
+    // What's backed by a board needn't be backed by anything said, as the API has it (backing.ts).
+    const evidence = evidenceOf(lines);
+    return { ...item, evidence: a.board ? { ...evidence, flags: evidence.flags.filter((f) => f !== 'missing') } : evidence };
   });
   const recipients: Recipient[] = [
     { person: s.organizer, role: 'organizer' },

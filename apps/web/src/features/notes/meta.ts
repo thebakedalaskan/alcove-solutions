@@ -38,11 +38,15 @@ export function noteAsText(n: Note): string {
   // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
   const decided = n.decisions.filter((d) => d.state !== 'rejected');
   const open = n.questions.filter((x) => x.state === 'open');
+  const said = n.actions.filter((a) => a.from === null);
+  const fromBoards = n.actions.filter((a) => a.from === 'board');
+  const line = (a: ActionItem) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`;
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,
     ...(decided.length ? ['', 'Decisions', ...decided.map((d) => `- ${d.text}${d.state === 'proposed' ? ' (not confirmed yet)' : d.state === 'superseded' ? ' (no longer holds)' : ''}`)] : []),
     ...(open.length ? ['', 'Still open', ...open.map((x) => `- ${x.text}`)] : []),
-    ...(n.actions.length ? ['', 'Follow-ups', ...n.actions.map((a) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`)] : []),
+    ...(said.length ? ['', 'Follow-ups', ...said.map(line)] : []),
+    ...(fromBoards.length ? ['', 'Follow-ups from the board', ...fromBoards.map(line)] : []),
     ...(n.additions.some((a) => a.text) ? ['', 'Added by people', ...n.additions.filter((a) => a.text).map((a) => `- ${a.text} (${a.by.name})`)] : [])
   ].join('\n');
 }

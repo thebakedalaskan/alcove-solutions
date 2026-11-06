@@ -20,11 +20,11 @@ import { LiveStream, type Line, type Step } from '../live/stream';
 import { log } from '../log';
 import { createOwner, findOwner, lockOwner, masterKey, ownerFrom } from '../owners';
 import {
-  TREE_NOTICE, canOpen, change, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex, standingIn, trashOf,
-  workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
+  TREE_NOTICE, canOpen, change, emailIndex, entriesOn, grant, grantsFor, limitKey, openSharedPerson, openState, personIn, personKey, placeableIn, requireEditable, requireItem, requireRole, requireSharing, roleOf, saveState, sealSharedPerson, sealState, seatIndex,
+  standingIn, trashOf, workspaceFor, workspaceKey, type Credentials, type Grant, type MadeFor, type Maker, type Reader, type Standing, type StoredCall, type StoredItem, type Who, type Workspace, type WorkspaceState
 } from './workspaceAccess';
 import { profile } from './account';
-import { addressesIn, nudgeCall, seated } from './calls';
+import { addressesIn, nudgeCall, roomsOfCalls, seated } from './calls';
 import { collect, copyUses, releaseDocuments, releaseWorkspace } from './media';
 import { personOf, portraitFor } from './portraits';
 import { copyContent, kindOf, moveClientTags, startContent } from './workspaceDocuments';
@@ -505,18 +505,25 @@ async function dropMember(w: HeldWorkspace, c: Db, m: z.infer<typeof Member>, wh
 /* ---------- the tree ---------- */
 
 export interface NewItem { kind: ItemKind; name: string; parent: string | null; after?: string | null | undefined }
+/**
+ * Who a new item is by, or nobody in particular (`null`); its id, when one was taken for it already; and, for a breakout
+ * room's board, the call that's for, which makes it restricted with only what the call gives opening it.
+ */
+export interface Making { by: Maker | null; id?: string | undefined; room?: StoredItem['room'] | undefined }
 /** Puts something new in `w.state`, in the caller's transaction, which holds the workspace's row and saves it. */
-async function addItem(w: HeldWorkspace, c: Db, input: NewItem, by: Maker): Promise<string> {
+async function addItem(w: HeldWorkspace, c: Db, input: NewItem, made: Making): Promise<string> {
   requireRoom(w, 1);
-  const id = id128();
+  const id = made.id ?? id128();
+  const room = made.room ?? null;
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
-    kind: input.kind, name: input.name, parent: input.parent, pos: positionIn(w.state, input.parent, input.after), by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null
+    kind: input.kind, name: input.name, parent: input.parent, pos: positionIn(w.state, input.parent, input.after), by: made.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null,
+    restricted: room !== null, restrictedBy: null, call: null, room
   });
   if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
   if (input.kind === 'document') await startContent(w, c, [id]);
-  await noteAuthor(w, c, by.email);
-  wlog.info('item created', { workspaceId: w.workspaceId, itemId: id, kind: input.kind });
+  if (made.by) await noteAuthor(w, c, made.by.email);
+  wlog.info('item created', { workspaceId: w.workspaceId, itemId: id, kind: input.kind, room: room !== null });
   return id;
 }
 export async function createItem(d: Deps, reader: Reader, workspaceId: string, input: NewItem): Promise<{ id: string }> {
@@ -525,17 +532,19 @@ export async function createItem(d: Deps, reader: Reader, workspaceId: string, i
     const parent = landing(reader, w, input.parent);
     requireDepth(w, parent, input.kind === 'folder' ? 1 : 0);
     if (input.after) requireItem(reader, w, input.after);
-    return { id: await addItem(w, c, { ...input, parent }, makerOf(reader)) };
+    return { id: await addItem(w, c, { ...input, parent }, { by: makerOf(reader) }) };
   });
 }
 /**
  * A board the server makes for a call, in the caller's transaction, which holds the workspace's row: the same as making one
- * here, for someone in the call who needn't be in the workspace. `by` is who it's made for. It goes in the call's folder
- * (`folder`), beside its notes, while that's there and not in Trash, and at the top of the tree otherwise.
+ * here, for someone in the call who needn't be in the workspace. `made.by` is who it's made for; a breakout room's board is
+ * nobody's, with the room's call as `made.room`. It goes in the call's folder (`folder`), beside its notes, while that's there
+ * and not in Trash, and at the top of the tree otherwise. `made.id`, taken for it under the call's row, makes it once.
  */
-export async function addBoard(w: HeldWorkspace, db: Db, name: string, by: Maker, folder: string | null = null): Promise<string> {
+export async function addBoard(w: HeldWorkspace, db: Db, name: string, made: Making, folder: string | null = null): Promise<string> {
+  if (made.id && w.state.items[made.id]) return made.id;
   const into = folder !== null && w.state.items[folder]?.kind === 'folder' && !trashOf(w.state, folder) ? folder : null;
-  const id = await addItem(w, db, { kind: 'board', name, parent: into }, by);
+  const id = await addItem(w, db, { kind: 'board', name, parent: into }, made);
   await saveState(w, db);
   await publish(db, w.workspaceId, TREE_NOTICE);
   return id;
@@ -545,6 +554,8 @@ export async function renameItem(d: Deps, reader: Reader, workspaceId: string, i
     const { item: it } = requireEditable(reader, w, itemId);
     w.state = withItem(w.state, itemId, { ...it, name, editedAt: new Date().toISOString() });
   });
+  // A name changed from a call shows in it, as the board's or what's presented: the call is told to look again.
+  if (reader.seat) await nudgeCall(d, reader.seat.callId);
 }
 export async function moveItem(d: Deps, reader: Reader, workspaceId: string, itemId: string, to: ItemPlace): Promise<void> {
   await change(d, reader, workspaceId, (w) => {
@@ -718,38 +729,56 @@ export async function shareList(d: Deps, reader: Reader, workspaceId: string, do
   const callId = reader.seat?.callId ?? '';
   return { workspace: { name: w.state.name, people: w.people }, restricted: it.restricted, entries, canOpen: await whoCanOpen(w, documentId, it, entries), seats: inCall.filter((s) => given.has(b64u(seatIndex(d, callId, s)))) };
 }
+/** The calls a document is open to by a seat in, live or not: the ones a change to who has it could matter to now. */
+async function seatedIn(db: Db, ownerId: string, documentId: string): Promise<string[]> {
+  const found = await rows(db, z.object({ call_id: z.string() }), 'SELECT DISTINCT call_id FROM document_access WHERE owner_id = $1 AND document_id = $2 AND call_id IS NOT NULL', [ownerId, documentId]);
+  return found.map((r) => r.call_id);
+}
+/**
+ * A change to who has a document is told at once to the call it was made from, and to every call it's open to by a seat in,
+ * so everyone's role there changes then and not at their next read: a board open in a call goes read-only, or opens, in a moment.
+ * Only a call that's on hears it.
+ */
+async function tellCalls(d: Deps, reader: Reader, seated: readonly string[]): Promise<void> {
+  const calls = new Set(seated);
+  if (reader.seat) calls.add(reader.seat.callId);
+  for (const callId of calls) await nudgeCall(d, callId);
+}
 export async function share(d: Deps, reader: Reader, workspaceId: string, documentId: string, to: ShareTarget[], role: DocumentRole): Promise<void> {
   const grants = await grantsFor(reader, to, role);
-  await change(d, reader, workspaceId, async (w, c) => {
+  const seated = await change(d, reader, workspaceId, async (w, c) => {
     requireSharing(reader, w, documentId);
     await grant(w, c, documentId, grants);
     wlog.info('document shared', { workspaceId, documentId, people: grants.length, role });
+    return seatedIn(c, w.owner.ownerId, documentId);
   });
-  // What's shared with someone in a call opens by itself: their call is told to look again.
-  if (reader.seat && grants.some((g) => g.kind === 'seat')) await nudgeCall(d, reader.seat.callId);
+  // What's shared with someone in a call opens by itself, and a role changed in one changes there: its calls look again.
+  await tellCalls(d, reader, seated);
 }
 export async function unshare(d: Deps, reader: Reader, workspaceId: string, documentId: string, accessId: string): Promise<void> {
-  const callId = await change(d, reader, workspaceId, async (w, c) => {
+  const seated = await change(d, reader, workspaceId, async (w, c) => {
     requireSharing(reader, w, documentId);
     const removed = await maybeOne(c, z.object({ call_id: z.string().nullable() }), 'DELETE FROM document_access WHERE owner_id = $1 AND document_id = $2 AND access_id = $3 RETURNING call_id', [w.owner.ownerId, documentId, accessId]);
     if (!removed) throw notFound('That person', { workspaceId, documentId });
     await trashStranded(w, c);
     wlog.info('document unshared', { workspaceId, documentId, accessId });
-    return removed.call_id;
+    return [...(removed.call_id ? [removed.call_id] : []), ...await seatedIn(c, w.owner.ownerId, documentId)];
   });
-  if (callId) await nudgeCall(d, callId);
+  await tellCalls(d, reader, seated);
 }
 export async function restrict(d: Deps, reader: Reader, workspaceId: string, documentId: string, restricted: boolean): Promise<void> {
-  await change(d, reader, workspaceId, async (w, c) => {
+  const seated = await change(d, reader, workspaceId, async (w, c) => {
     const { item: it } = requireSharing(reader, w, documentId);
-    if (it.restricted === restricted) return;
+    if (it.restricted === restricted) return null;
     // Whoever restricts something they didn't make would otherwise lock themselves out of it: they keep it as its creator does.
     const me = makerOf(reader).email;
     const keeper = restricted && it.by?.email !== me ? me : null;
     w.state = withItem(w.state, documentId, { ...it, restricted, restrictedBy: keeper });
     if (keeper) await noteAuthor(w, c, keeper);
     wlog.info('document restricted', { workspaceId, documentId, restricted });
+    return seatedIn(c, w.owner.ownerId, documentId);
   });
+  if (seated) await tellCalls(d, reader, seated);
 }
 
 /* ---------- upkeep and deleted accounts ---------- */
@@ -763,13 +792,69 @@ async function held(d: Deps, db: Db, ownerId: string): Promise<HeldWorkspace | u
   return row && owner ? { owner, workspaceId: row.workspace_id, state: openState(owner, row.workspace_id, row.state_ciphertext) } : undefined;
 }
 
+/** A call as a workspace's tree names one, by its organizer and itself. */
+interface TreeCall { ownerId: string; callId: string }
+const callKey = (c: TreeCall): string => `${c.ownerId}/${c.callId}`;
+/** Which of these calls are going on. */
+async function liveCalls(db: Db, calls: TreeCall[]): Promise<Set<string>> {
+  if (!calls.length) return new Set();
+  const live = await rows(db, z.object({ owner_id: z.string(), call_id: z.string() }), `SELECT owner_id, call_id FROM calls WHERE state = 'live'
+    AND (owner_id, call_id) IN (SELECT * FROM unnest($1::text[], $2::text[]))`, [calls.map((r) => r.ownerId), calls.map((r) => r.callId)]);
+  return new Set(live.map((r) => callKey({ ownerId: r.owner_id, callId: r.call_id })));
+}
+/**
+ * A breakout room's board whose call is over without having kept it, as a release before this one ended its calls: kept now
+ * for everyone the call invited, by address at `edit`, as its end would have, unless they have an entry on it already, and from
+ * then on a restricted board like any other. One whose call, or its organizer, is gone is one already. In the caller's
+ * transaction, which holds the workspace's row and saves its state.
+ */
+async function keepRoomsOfEndedCalls(w: HeldWorkspace, db: Db): Promise<void> {
+  const marked = Object.entries(w.state.items).flatMap(([id, item]) => (item.room ? [{ id, item, room: item.room }] : []));
+  if (!marked.length) return;
+  const live = await liveCalls(db, marked.map((m) => m.room));
+  const over = marked.filter((m) => !live.has(callKey(m.room)));
+  if (!over.length) return;
+  const said = await roomsOfCalls(w.owner, over.map((m) => m.room), db);
+  const items = { ...w.state.items };
+  let kept = 0;
+  for (const m of over) {
+    const call = said.get(callKey(m.room));
+    const invited = call && !call.live ? call.invited : [];
+    try {
+      const has = await entriesOn(w, db, m.id, invited.map((e) => emailIndex(w.owner, e)));
+      const giving = invited.filter((e) => has(emailIndex(w.owner, e)) === undefined);
+      if (giving.length) await grant(w, db, m.id, giving.map((email): Grant => ({ kind: 'email', email, role: 'edit' })));
+    } catch (e) {
+      // Kept as its call's, so nothing strands it, and tried again the next time anything here asks.
+      if (e instanceof ConflictError) { wlog.warn('a room’s board not kept after its call', { workspaceId: w.workspaceId, itemId: m.id, err: e }); continue; }
+      throw e;
+    }
+    items[m.id] = { ...m.item, room: null };
+    kept++;
+  }
+  w.state = { ...w.state, items };
+  if (kept) wlog.info('rooms’ boards kept after their calls', { workspaceId: w.workspaceId, boards: kept });
+}
+/**
+ * The boards calls going on keep for their rooms, of every call with its folder here: a room's board the tree lost the mark of,
+ * as a release that didn't know rooms' boards saves the tree, is still its call's.
+ */
+async function liveRoomBoards(w: HeldWorkspace, db: Db): Promise<Set<string>> {
+  const calls = Object.values(w.state.items).flatMap((x): TreeCall[] => (x.kind === 'folder' && x.call ? [{ ownerId: x.call.ownerId, callId: x.call.callId }] : []));
+  const live = await liveCalls(db, calls);
+  const going = calls.filter((c) => live.has(callKey(c)));
+  if (!going.length) return new Set();
+  return new Set([...(await roomsOfCalls(w.owner, going, db)).values()].flatMap((x) => (x.live ? x.boards : [])));
+}
 /**
  * What's restricted and nobody can open any more: no creator or restrictor in the workspace, and nobody it's shared with.
- * Each address is hashed once however many things carry it, and this reads under the lock, so it stays one pass.
+ * Each address is hashed once however many things carry it, and this reads under the lock, so it stays one pass. A breakout
+ * room's board is its call's to give until the call has kept it for everyone invited, so it's never stranded: while its call
+ * goes on, whatever the tree says of it, since its people come and go; and a call that ended without keeping it has it kept
+ * now (`keepRoomsOfEndedCalls`), which is why this is in the caller's transaction, which saves the state.
  */
 async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
-  // A board made for a breakout room is its call's to give: to whoever's in the room while it's open, and to everyone invited
-  // as it ends. This release never makes one, nor strands one that the release after it made.
+  await keepRoomsOfEndedCalls(w, db);
   const restricted = Object.entries(w.state.items).filter(([, x]) => x.restricted && !x.room);
   if (!restricted.length) return [];
   const members = new Set((await rows(db, z.object({ email_index: bytea }), 'SELECT email_index FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId])).map((r) => b64u(r.email_index)));
@@ -781,7 +866,10 @@ async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
     indexes.set(email, index);
     return members.has(index);
   };
-  return restricted.filter(([id, x]) => !given.has(id) && !inHere(x.by?.email) && !inHere(x.restrictedBy)).map(([id]) => id);
+  const lost = restricted.filter(([id, x]) => !given.has(id) && !inHere(x.by?.email) && !inHere(x.restrictedBy)).map(([id]) => id);
+  if (!lost.length) return lost;
+  const rooms = await liveRoomBoards(w, db);
+  return lost.filter((id) => !rooms.has(id));
 }
 /**
  * Gives the workspace's admins what nobody can open any more because someone was taken out: restricted as it was, shared with

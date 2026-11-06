@@ -1,10 +1,10 @@
 /**
- * What the next release stores, read and saved by this one. The next release (boards in calls, their rooms, ideas, timers and
- * votes) keeps more in a call's sealed state, in a workspace's tree and in a note than this release makes. This release writes
- * none of it, but mid-deploy it reads and saves those records while the next one serves beside it, so it keeps every field it
- * doesn't use, and never strands a board the next one made for a breakout room. Through the real API over HTTP via
- * @alcove/api-http, on real Postgres, the object store and the local LiveKit server; each record is written as the next release
- * writes it, sealed as the server seals it.
+ * What boards in calls keep (their rooms' boards, their landing, ideas, timers and votes) in a call's sealed state, in a
+ * workspace's tree and in a note, through saves that don't change them. The release before this one stored these shapes and
+ * wrote none of them, so mid-deploy each release keeps every field the other wrote. A board made for a breakout room is never
+ * stranded while its call goes on, and once its call is over it's kept for everyone the call invited. Through the real API over
+ * HTTP via @alcove/api-http, on real Postgres, the object store and the local LiveKit server; each record is written as boards in
+ * calls write it, sealed as the server seals it.
  */
 import { AlcoveApiError, type AlcoveApi, type CallSession, type CallState, type TranscriptClip, type WorkspaceRole } from '@alcove/api';
 import { randomBytes } from 'node:crypto';
@@ -114,7 +114,7 @@ describe('what the next release stores', () => {
     await host.openBoard({ template: 'retro' });
     const open = (await settle(host, (s) => s.board.open?.role === 'edit')).board.open;
     const [workspaceId, documentId] = [open?.workspaceId ?? '', open?.documentId ?? ''];
-    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [] }], minutes: 10 })).status).toBe(200);
+    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } })).status).toBe(200);
     const room = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
 
     // The next release stores all of this in the call as it goes on.
@@ -125,7 +125,8 @@ describe('what the next release stores', () => {
     const timer = { until: 900, length: 300, by: main.by };
     const vote = { id: madeUp(), frame: onBoard(), per: 3, by: main.by, ballots: { [madeUp()]: [onBoard(), onBoard()] }, ended: false };
     const rooms = [{ workspaceId, documentId: madeUp(), room, kept: false }];
-    const landing = { rooms: [{ room, workspaceId, documentId: rooms[0]?.documentId ?? '', name: 'One', who: ['Kofi'] }], into: { workspaceId, documentId }, make: false, until: 0 };
+    // A landing someone is doing as the save happens, so nothing takes it on meanwhile.
+    const landing = { rooms: [{ room, workspaceId, documentId: rooms[0]?.documentId ?? '', name: 'One', who: ['Kofi'] }], into: { workspaceId, documentId }, make: false, until: Date.now() + 3_600_000 };
     const ideas = {
       main: { at: 1_000, heard: madeUp(), running: null, list: [{ id: madeUp(), text: 'Name a status page owner', words: 'We should name a status page owner.', speaker: host.ticket.identity, when: 1_000, frame: onBoard(), seen: [{ when: 1_000, readers: [madeUp()] }, {}] }] }
     };
@@ -157,7 +158,7 @@ describe('what the next release stores', () => {
     await invited(host, c, kofi);
     await host.openBoard({ template: 'retro' });
     const open = (await settle(host, (s) => s.board.open?.role === 'edit')).board.open;
-    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [] }], minutes: 10 })).status).toBe(200);
+    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } })).status).toBe(200);
     await settle(host, (s) => s.breakouts.open !== null);
 
     // Stored as the release before this one stored it: none of the next release's fields anywhere.
@@ -177,7 +178,8 @@ describe('what the next release stores', () => {
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
     expect(after.board).toMatchObject({ open: { main: { timer: null, vote: null } }, rooms: [], landing: null, ideas: {} });
     expect(after.breakouts.open).toMatchObject({ board: { mode: 'none', template: 'blank' } });
-    expect(after.workspace.worked).toContainEqual({ workspaceId: open?.workspaceId, documentId: open?.documentId, kind: 'board', by: [], open: null });
+    // A board open in the call is noted in the part it's open in as the call is saved.
+    expect(after.workspace.worked).toContainEqual({ workspaceId: open?.workspaceId, documentId: open?.documentId, kind: 'board', by: [], open: 'main' });
     await host.leave();
   });
 
@@ -217,10 +219,14 @@ describe('what the next release stores', () => {
     const after = (await tree(id)).items[roomBoard];
     expect({ trashed: after?.trashedAt ?? null, room: after?.room }).toEqual({ trashed: null, room });
     await host.leave();
-    // Nor once its call is over: what the next release does then is its own.
+    // Once its call is over it's kept for everyone the call invited, the first time anything in Product asks what nobody can
+    // open: by address, a restricted board like any other, neither in Trash nor the admins' alone.
     await art.api.workspaces.share.set(id, plan, [{ email: kofi.email }], 'read');
     await art.api.workspaces.share.remove(id, plan, (await art.api.workspaces.share.list(id, plan)).entries.find((e) => e.person.email === kofi.email)?.id ?? '');
-    expect((await tree(id)).items[roomBoard]?.trashedAt).toBeNull();
+    const kept = (await tree(id)).items[roomBoard];
+    expect({ trashed: kept?.trashedAt ?? null, room: kept?.room ?? null }).toEqual({ trashed: null, room: null });
+    expect({ kofi: await opens(kofi, id, roomBoard), art: await opens(art, id, roomBoard), entries: await entries(roomBoard) }).toEqual({ kofi: 'allowed', art: 'allowed', entries: 2 });
+    expect(await opens(maya, id, roomBoard)).toBe('not-found');
   });
 
   it('keeps where a follow-up was written down, through a save of its own', async () => {

@@ -1,7 +1,8 @@
 /*
- * The shape of a board's Y.Doc, the one thing the app and the API have to agree on. Three roots: `objects`
- * holds a Y.Map per object, `places` one shared list of where each object is and what frame it's in, and `comments` a Y.Map
- * per thread. What people type together is Y.Text and everything else is last-write-wins: per key, or per entry in `places`.
+ * The shape of a board's Y.Doc, the one thing the app and the API have to agree on. Four roots: `objects`
+ * holds a Y.Map per object, `places` one shared list of where each object is and what frame it's in, `comments` a Y.Map
+ * per thread, and `settings` the board's own settings, which every picture of it follows (`settings.ts`). What people type
+ * together is Y.Text and everything else is last-write-wins: per key, or per entry in `places`.
  * The schemas describe an object as it reads out, its place joined in and text as plain strings, and both
  * directions use them: `readBoard` leaves out what doesn't parse and a write refuses what wouldn't, so one
  * browser can't write what the others would throw away.
@@ -14,6 +15,8 @@ export const BOARD_OBJECTS = 'objects';
 export const BOARD_PLACES = 'places';
 /** The root map of comment threads: id to Y.Map, each with a Y.Array of replies. */
 export const BOARD_COMMENTS = 'comments';
+/** The root map of the board's own settings: `night`, a dark board in any theme. */
+export const BOARD_SETTINGS = 'settings';
 
 /** What a board can hold. Past these it says so and refuses more, rather than slowing down for everyone. */
 export const BOARD_LIMITS = { objects: 5000, points: 2000, text: 4000, minSide: 16, maxSide: 8000 } as const;
@@ -89,7 +92,10 @@ const InkSchema = z.object({
 });
 const ImageSchema = z.object({ k: z.literal('image'), ...Placed, media: OutsideIdSchema });
 const ShotSchema = z.object({ k: z.literal('shot'), ...Placed, media: OutsideIdSchema, caption: TextSchema });
-/** `cells` are sparse, keyed by `cellKey`: a cell is there from its first write, and one that isn't reads as empty. The limit on text is each cell's. */
+/**
+ * `cells` are keyed by `cellKey`, and read as only those with words. Each is a Y.Text made with its row and column; one a table
+ * is missing, as one from before cells came with them can be, reads as empty. The limit on text is each cell's.
+ */
 const TableSchema = z.object({ k: z.literal('table'), ...Placed, rows: TableLinesSchema, cols: TableLinesSchema, cells: z.record(z.string(), TextSchema) });
 const NodeSchema = z.object({ k: z.literal('node'), ...Placed, parent: IdOrNoneSchema, t: TextSchema });
 /** A card pointing at a workspace item. Only its id: a stored name would reach people who can't open the item. */

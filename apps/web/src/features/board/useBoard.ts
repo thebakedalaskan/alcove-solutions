@@ -6,28 +6,52 @@
  * Other people's changes are read once a frame. Your own are read at once, so what you did is on the sheet when you next
  * look. `readBoard` keeps the identity of whatever didn't change, which is what lets one move draw one object again.
  */
-import { errorCode, type LiveStore } from '@alcove/api';
+import { errorCode, errorMessage, type LiveStore } from '@alcove/api';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, applyThemes, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, isAttached, makeHistory, objectText, observeBoard, readBoard,
-  removeObjects, type BoardHistory, type BoardObject, type BoardStep, type BoardTheme, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, MAP_ROOM, NODE, addBranch, addMindMap, addObject, addSibling, addTableLine, addTemplate, applyThemes, boardNight, bounds, cellKey, colourIn, contains, duplicateObjects, frameAt, freeNear,
+  hasBox, isAttached, landedFrameId, makeHistory, moveObjects, newId, objectText, observeBoard, observeSettings, readBoard, removeObjects, removeTableLine, resizeObject, setNight, type BoardHistory, type BoardObject, type BoardStep, type BoardTheme,
+  type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour, type TableAxis, type TemplateName
 } from '@alcove/board';
-import type { BoardMoreItem, BoardTool, ToastOptions } from '@alcove/ui';
+import type { BoardMoreItem, BoardTool, IconName, ToastOptions } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import type * as Y from 'yjs';
 import { editable } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
-import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
+import { BoardCameraStore, PHONE_SHEET, phoneCamera, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, holdKeys, nextSpot, textField } from './editing';
 import { holdBoardKeys } from './keys';
+import { JustPut } from './landing';
 import { BoardOverlay } from './overlay';
+import type { PillKind } from './pills';
 import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
-import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
+import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardRunMenu, type BoardState } from './state';
 
 const log = rootLog.child({ component: 'board' });
 
+/** What answers Sort into themes: given the stickies picked, by their ids and what each says, the themes they sort into. */
+export type SortAsk = (stickies: readonly { id: string; text: string }[]) => Promise<readonly BoardTheme[]>;
+
 const NOTHING: ReadonlySet<string> = new Set();
+const NONE_LANDING: ReadonlyMap<string, number> = new Map();
+/** How far apart rooms' frames land, one after another, as the canvas has them. */
+const LAND_STEP_MS = 180;
+
+/**
+ * Rooms' frames (`frames`, by id) among `arrived`, in reading order, each with what it holds, and how long each waits to land:
+ * 180 ms after the one before. Nothing when none of them is there.
+ */
+function landingOf(arrived: readonly BoardObject[], frames: ReadonlySet<string>): Map<string, number> | null {
+  const landing = arrived.filter((o) => o.k === 'frame' && frames.has(o.id)).sort((a, b) => ('x' in a && 'x' in b ? a.x - b.x || a.y - b.y : 0));
+  if (!landing.length) return null;
+  const waits = new Map(landing.map((f, i) => [f.id, i * LAND_STEP_MS]));
+  for (const o of arrived) {
+    const wait = o.f ? waits.get(o.f) : undefined;
+    if (wait !== undefined && !waits.has(o.id)) waits.set(o.id, wait);
+  }
+  return waits;
+}
 /** Whatever is open or under way over the sheet, closed. */
-const CLOSED = { fly: null, picking: false, menu: false, draft: null, lineFrom: null, barMenu: false } satisfies Partial<BoardState>;
+const CLOSED = { fly: null, picking: false, menu: false, runMenu: null, barMenu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
 /** The tools with options to pick, which open as the tool is picked. */
 const OPTIONS: Partial<Record<BoardTool, BoardFly>> = { note: 'note', shape: 'shape', line: 'line', pen: 'pen' };
 /** What a board with nothing on it frames: the canvas's working space. */
@@ -36,6 +60,16 @@ const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 const BARE_PAD: Pad = { l: 40, r: 40, t: 56, b: 40 };
 /** A frame filling the sheet, with room for its title. */
 const SLIDE_PAD: Pad = { l: 40, r: 40, t: 96, b: 40 };
+/**
+ * Clear of the bar and of the pill under it, with room for a frame's title above the frame: where a vote frames what it's on
+ * (tools/run.tsx), and the top of whatever's framed while a pill shows.
+ */
+export const CLEAR: Pad = { l: 36, r: 36, t: 136, b: 30 };
+/** A new table's columns and rows, in board units. */
+const TABLE = { col: 160, row: 48 } as const;
+/** What the bar takes at the top of the sheet, and the room `reveal` leaves at its edges, in pixels. */
+const BAR_ROOM = 56;
+const EDGE = 24;
 const ZOOM_STEP = 1.25;
 /** How far Duplicate puts a copy from what it copied. */
 const COPY_OFFSET = { x: 24, y: 24 };
@@ -50,6 +84,14 @@ const SETTLE_MS = 20;
 /** What's said when what someone is typing in is deleted under them. */
 const DELETED: Partial<Record<BoardObject['k'], string>> = { note: 'This sticky was deleted.', text: 'This text was deleted.', shape: 'This shape was deleted.', frame: 'This frame was deleted.' };
 
+/** What a vote takes, while it's on: a press on a sticky it takes is a vote for it, or takes one back, and moves nothing. */
+export interface BoardBallot {
+  takes(id: string): boolean;
+  press(id: string): void;
+  /** The stickies it takes, in the order Tab goes through them. */
+  order(): readonly string[];
+}
+
 export class Board implements LiveStore<BoardState> {
   readonly doc: Y.Doc;
   /** This surface's own, so undo takes back what was done here and nothing else. */
@@ -57,22 +99,33 @@ export class Board implements LiveStore<BoardState> {
   readonly camera = new BoardCameraStore();
   /** What this person sees ahead of the doc. */
   readonly overlay = new BoardOverlay(() => this.showOverlay());
+  /** What this person has just put on the board, kept apart from what someone else puts in the same place at the same moment. */
+  readonly justPut = new JustPut(this);
   /** The doc as last read, which is what writes go by. `view` is what's shown, and can be ahead of it. */
   written: BoardView;
   mode: BoardMode;
-  /** Says something to the person at this board, with something to press, such as Undo, when there is one. */
+  /**
+   * Says something to the person at this board, with something to press, such as Undo, when there is one: what happened, or
+   * why something they tried here didn't, such as a full board or a refusal from the call.
+   */
   tell: (text: string, o?: ToastOptions) => void = () => undefined;
   /** Told when following stops, whatever stopped it. */
   onFollow: ((id: string | null) => void) | undefined;
-  /** Told what to say to this person about what just happened to them. */
-  onSay: ((text: string) => void) | undefined;
+  /** Told what to say to this person about what just happened to them, and the icon that goes with it. */
+  onSay: ((text: string, icon: IconName) => void) | undefined;
   moreItems: BoardMoreItems = {};
+  /** While a vote is on and this person can vote: what it takes, and what a press on that does. The surface fills this in. */
+  ballot: BoardBallot | null = null;
   /** Lets go of whatever the pointer is holding, as if it had been taken away. Says whether it was holding anything. The sheet's listeners fill this in. */
   letGo: () => boolean = () => false;
   /** Writes in a word still being composed. The field being typed in fills this in. */
   flushTyping: (() => void) | null = null;
   /** Where this person was when they started following, which is where Stop and Esc take them. */
   home: BoardPlace | null = null;
+  /** The camera is the board's to put: nothing this person does moves it. A presenter's own frame, as everyone sees it, is. */
+  still = false;
+  /** Told when this person takes the camera from a frame presented to them: they're looking around. */
+  onLook: (() => void) | undefined;
 
   private state: BoardState;
   private sheet: HTMLElement | null = null;
@@ -82,10 +135,20 @@ export class Board implements LiveStore<BoardState> {
   private fresh: string | null = null;
   /** The line it was made on the end of, which goes with it. */
   private freshLine: string | null = null;
+  /** The words a table's cell had as it opened for typing, so one opened empty and left empty leaves nothing to undo. */
+  private cellBefore: string | null = null;
   /** Whether the camera has been put anywhere yet, which waits until the sheet has a size. */
   private framed = false;
   /** Nobody has moved the camera or changed anything yet, so a board that fills after it opens can frame what arrived. */
   private untouched = true;
+  /** The camera is a presentation's: on the frame presented, or everything, kept there as the sheet and the frame change. */
+  private presented = false;
+  /** The frame a presentation or a picture of one asks for, which may not have arrived yet. */
+  private wanted: string | null = null;
+  /** Where this person was before a presentation took their sheet, which is where they go back to after. */
+  private ownView: Camera | null = null;
+  /** The kind of pill at the top of the sheet, if one shows: whatever's framed keeps clear of it. */
+  private pill: PillKind | null = null;
   private frame = 0;
   private readonly waits = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly listeners = new Set<() => void>();
@@ -96,14 +159,16 @@ export class Board implements LiveStore<BoardState> {
     this.mode = mode;
     this.written = readBoard(doc);
     this.state = {
-      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, picking: false, menu: false, hover: null,
-      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING,
-      near: null, following: null, barMenu: false, slide: null, sorting: false, canUndo: false, canRedo: false
+      view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, cell: null, picking: false, menu: false, runMenu: null, barMenu: false, night: boardNight(doc), hover: null,
+      draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING, landing: NONE_LANDING,
+      near: null, following: null, slide: null, sorting: false, canUndo: false, canRedo: false
     };
   }
 
   get look(): BoardLook { return BOARD_LOOKS[this.mode]; }
   get canEdit(): boolean { return this.look.edit; }
+  /** On a phone nothing moves under a finger, but stickies come from the sheet. */
+  get canAdd(): boolean { return this.look.edit || this.look.phone; }
 
   getSnapshot = (): BoardState => this.state;
 
@@ -128,6 +193,7 @@ export class Board implements LiveStore<BoardState> {
 
     const stopCamera = this.camera.attach(sheet, world);
     const stopDoc = observeBoard(this.doc, this.changed);
+    const stopSettings = observeSettings(this.doc, () => { if (boardNight(this.doc) !== this.state.night) this.set({ night: boardNight(this.doc) }); });
     const stopNear = this.camera.subscribe(this.cameraMoved);
     const measure = (): void => this.measure(sheet);
     const size = new ResizeObserver(measure);
@@ -141,8 +207,10 @@ export class Board implements LiveStore<BoardState> {
       size.disconnect();
       stopNear();
       stopDoc();
+      stopSettings();
       stopCamera();
       this.overlay.stop();
+      this.justPut.stop();
       history.destroy();
       this.history = null;
       this.sheet = null;
@@ -156,18 +224,58 @@ export class Board implements LiveStore<BoardState> {
 
   private measure(sheet: HTMLElement): void {
     this.camera.resize(sheet.offsetWidth, sheet.offsetHeight);
-    if (!this.camera.width || (this.framed && !this.look.mini)) return;
+    // Framed once it has a size, and again as that size settles, as the call makes room for it, until someone does something on it;
+    // drawn small or presented, whenever it changes.
+    if (!this.camera.width || (this.framed && !this.look.mini && !this.presented && !this.untouched)) return;
     this.framed = true;
-    this.fitAll(false);
+    this.fitShown(false, true);
   }
 
   setMode(mode: BoardMode): void {
     if (mode === this.mode) return;
+    const was = this.mode;
     this.mode = mode;
+    if (was === 'present' && mode !== 'present') this.ownAgain();
     if (this.canEdit) return;
     this.letGo();
     this.editTaken();
     this.set({ ...CLOSED, hover: null, sel: [], tool: 'select' });
+  }
+
+  /** Until when what arrives is rooms' boards coming back, and which frames they are: they land frame by frame. */
+  private landingUntil = 0;
+  private landingFrames: ReadonlySet<string> = NOTHING;
+
+  /**
+   * Rooms (by id) whose boards are coming back to this board until `until` (ms): each lands as its frame, one after another,
+   * with what it holds, whether it's here already, as on a board just opened, or arrives after.
+   */
+  expectLanding(until: number, rooms: readonly string[]): void {
+    if (until <= Date.now() || !rooms.length) return;
+    this.landingUntil = until;
+    this.landingFrames = new Set(rooms.map(landedFrameId));
+    const landing = landingOf(this.state.view.objects, this.landingFrames);
+    if (!landing) return;
+    this.set({ landing });
+    this.landed(landing);
+    this.showLanding();
+  }
+
+  /**
+   * What's landing, brought into view as it lands, as the board every room shares glides out to its rooms' frames: for someone
+   * whose view is still their own, not presented to, following anyone, or in the middle of something on the board.
+   */
+  private showLanding(): void {
+    const { following, edit, pressing, view } = this.state;
+    if (this.look.mini || this.presented || this.still || following !== null || edit !== null || pressing || !this.camera.width) return;
+    const frames = [...this.landingFrames].filter((id) => view.byId.get(id)?.k === 'frame');
+    if (frames.length) this.showFrames(frames);
+  }
+
+  /** Lets go of what's landing once the last of it has. */
+  private landed(landing: ReadonlyMap<string, number>): void {
+    const last = Math.max(0, ...landing.values());
+    this.later('landing', (this.sheet ? tokenMs(this.sheet, '--bd-glide') : 700) + last + 100, () => this.set({ landing: NONE_LANDING }));
   }
 
   private later(name: string, ms: number, then: () => void): void {
@@ -207,21 +315,34 @@ export class Board implements LiveStore<BoardState> {
     this.written = readBoard(this.doc, before);
     if (this.written === before) return;
     if (heard && !this.look.mini) this.overlay.heard(before, this.written);
+    this.justPut.heard();
     const { view: was, sel, edit, landed } = this.state;
     const view = this.overlay.over(this.written);
     const patch: Partial<BoardState> = { view };
     if (sel.some((id) => !view.byId.has(id))) patch.sel = sel.filter((id) => view.byId.has(id));
     const arrived = view.objects.length > was.objects.length ? view.objects.filter((o) => !was.byId.has(o.id)) : [];
-    if (arrived.length && arrived.length <= POP_AT_ONCE) patch.landed = new Set([...landed, ...arrived.map((o) => o.id)]);
+    // Rooms' boards coming back land frame by frame; anything else that arrives pops in.
+    const landing = Date.now() < this.landingUntil ? landingOf(arrived, this.landingFrames) : null;
+    if (landing) patch.landing = landing;
+    const popping = landing ? arrived.filter((o) => !landing.has(o.id)) : arrived;
+    if (popping.length && popping.length <= POP_AT_ONCE) patch.landed = new Set([...landed, ...popping.map((o) => o.id)]);
     this.set(patch);
     if (patch.landed && this.sheet) this.later('landed', tokenMs(this.sheet, '--duration-2') * 2, () => this.set({ landed: NOTHING }));
+    if (landing) {
+      this.landed(landing);
+      this.showLanding();
+    }
     if (edit && !view.byId.has(edit)) {
       this.editTaken();
       const kind = was.byId.get(edit)?.k;
       const said = kind && DELETED[kind];
-      if (said) this.onSay?.(said);
+      if (said) this.onSay?.(said, 'trash');
     }
-    if (this.look.mini || (!was.objects.length && this.untouched && !this.allInView(view))) this.fitAll(false);
+    // What first arrives on a board nobody's moved round yet, as a template or a saved board's content does just after it opens,
+    // is framed as the canvas frames it, centred on what's there; and anything of yours that runs off the sheet is brought in.
+    // Drawn small or presented, what's shown is all there is.
+    if (this.look.mini || this.presented) this.fitShown(false);
+    else if (!was.objects.length && this.untouched && (heard || !this.allInView(view))) this.fitAll(false, true);
     this.settleNear();
   };
 
@@ -283,10 +404,10 @@ export class Board implements LiveStore<BoardState> {
     return done;
   }
 
-  /** Goes a step back or forward. If one can't finish, what went back stays back and the board carries on. */
-  private travel(step: (history: BoardHistory) => StepResult): void {
+  /** Goes a step back or forward, for whoever `may`. If one can't finish, what went back stays back and the board carries on. */
+  private travel(step: (history: BoardHistory) => StepResult, may = this.canEdit): void {
     const { history } = this;
-    if (!history || this.stepping || !this.canEdit) return;
+    if (!history || this.stepping || !may) return;
     const result = this.settle(() => step(history));
     if (!result.ok) log.error('undo failed', { err: result.error });
     this.set({ sel: [] });
@@ -297,9 +418,22 @@ export class Board implements LiveStore<BoardState> {
     this.travel((history) => history.undo());
   }
 
-  /** Takes back one change of this person's, wherever it is in their undo, if it hasn't been taken back already. */
+  /**
+   * Takes back one change of this person's, wherever it is in their undo, if it hasn't been taken back already. It's what a
+   * toast's Undo does, so a phone has it too for what it adds, though its bar has no Undo.
+   */
   undoStep(step: BoardStep): void {
-    this.travel((history) => history.undoStep(step));
+    this.travel((history) => history.undoStep(step), this.canAdd);
+  }
+
+  /**
+   * Moves something this person has just put on the board, as if it had gone there in the first place: undoing what put it
+   * there takes it away from where it is now, and no undo puts it back where it was (`BoardHistory.amend`). It glides there.
+   */
+  moveAsPut(id: string, to: { x: number; y: number }): void {
+    const { history } = this;
+    const move = (): void => moveObjects(this.doc, [{ id, x: to.x, y: to.y }], this.origin);
+    this.settle(() => (history ? history.amend(id, move) : move()));
   }
 
   redo(): void {
@@ -326,6 +460,12 @@ export class Board implements LiveStore<BoardState> {
     this.set({ ...CLOSED, tool, sel: [], hover: null, fly: tool === was && fly === options ? null : options });
   }
 
+  /** Night board: makes the board dark in any theme, for everyone, or lets it follow each person's theme again. */
+  toggleNight(): void {
+    if (!this.canAdd) return;
+    setNight(this.doc, !this.state.night, this.origin);
+  }
+
   /** More, beside the rail. */
   toggleMore(): void {
     this.set({ fly: this.state.fly === 'more' ? null : 'more' });
@@ -342,28 +482,37 @@ export class Board implements LiveStore<BoardState> {
 
   /** A press on the sheet closes whatever is open over it. */
   closeOver(): void {
-    const { fly, picking, menu, barMenu } = this.state;
-    if (fly || picking || menu || barMenu) this.set({ fly: null, picking: false, menu: false, barMenu: false });
+    const { fly, picking, menu, runMenu, barMenu } = this.state;
+    if (fly || picking || menu || runMenu || barMenu) this.set({ fly: null, picking: false, menu: false, runMenu: null, barMenu: false });
   }
 
-  /** The bar's More, beside the name. */
+  /** The bar's More: opens it, in place of anything else open over the sheet, or closes it. */
   toggleBarMenu(): void {
-    this.set({ barMenu: !this.state.barMenu, fly: null });
+    this.set({ ...CLOSED, barMenu: !this.state.barMenu });
+  }
+
+  /** The bar's Timer or Vote: opens its menu, in place of anything else open over the sheet, or closes it if it's open. */
+  toggleRunMenu(menu: BoardRunMenu): void {
+    this.set({ ...CLOSED, runMenu: this.state.runMenu === menu ? null : menu });
   }
 
   /* ---------- sort into themes ---------- */
 
   /**
-   * Sort into themes, on the stickies picked. `ask` asks confidential compute, which answers with the themes. They're written as
-   * this person's change, an undo of its own whatever they've started meanwhile, so the stickies travel into their themes together
-   * and one undo puts it all back. The toast says how many themes there are, and its Undo takes back the sort itself, whatever's
-   * been done since. A board that has closed meanwhile writes nothing, and one that couldn't be sorted says so.
+   * Sort into themes, on the stickies picked. `ask` is given what each of them says now, and asks confidential compute, which
+   * answers with the themes. They're written as this person's change, an undo of its own whatever they've started meanwhile, so
+   * the stickies travel into their themes together and one undo puts it all back. The toast says how many themes there are, and
+   * its Undo takes back the sort itself, whatever's been done since. A board that has closed meanwhile writes nothing, and one
+   * that couldn't be sorted says so.
    */
-  async sortIntoThemes(stickies: readonly string[], ask: (stickies: readonly string[]) => Promise<readonly BoardTheme[]>): Promise<void> {
+  async sortIntoThemes(stickies: readonly string[], ask: SortAsk): Promise<void> {
     if (!this.canEdit || this.state.sorting || stickies.length < 2) return;
     this.set({ sorting: true });
     try {
-      const themes = await ask(stickies);
+      const themes = await ask(stickies.flatMap((id) => {
+        const o = this.written.byId.get(id);
+        return o?.k === 'note' ? [{ id, text: o.t }] : [];
+      }));
       if (!this.sheet || !this.canEdit) return;
       // What's left of the answer: a sticky deleted meanwhile has nowhere to go, and a theme with none left isn't drawn.
       const found = themes.filter((t) => t.ids.some((id) => this.written.byId.get(id)?.k === 'note'));
@@ -375,8 +524,11 @@ export class Board implements LiveStore<BoardState> {
       this.set({ sel: [] });
       this.tell(`Sorted into ${found.length} ${found.length === 1 ? 'theme' : 'themes'}.`, { icon: 'group', ...(step ? { action: { label: 'Undo', onClick: () => this.undoStep(step) } } : {}) });
     } catch (e) {
-      log.warn('sort into themes failed', { code: errorCode(e), stickies: stickies.length });
-      if (this.sheet) this.tell('Couldn’t sort these into themes. Try again.');
+      // What was picked can't be sorted, and the answer says why; anything else is worth trying again.
+      const picked = errorCode(e) === 'invalid';
+      if (picked) log.info('sort into themes refused', { stickies: stickies.length });
+      else log.warn('sort into themes failed', { code: errorCode(e), stickies: stickies.length });
+      if (this.sheet) this.tell(picked ? errorMessage(e) : 'Couldn’t sort these into themes. Try again.');
     } finally {
       this.set({ sorting: false });
     }
@@ -389,8 +541,8 @@ export class Board implements LiveStore<BoardState> {
   /** Back to Select, dropping anything held. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
     const held = this.letGo();
-    const { tool, sel, following, fly, barMenu } = this.state;
-    if (!held && tool === 'select' && !sel.length && !following && !fly && !barMenu) return false;
+    const { tool, sel, following, fly, runMenu, barMenu } = this.state;
+    if (!held && tool === 'select' && !sel.length && !following && !fly && !runMenu && !barMenu) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
@@ -463,20 +615,64 @@ export class Board implements LiveStore<BoardState> {
     if (!this.canEdit || !objectText(this.doc, id, textField(this.state.view.byId.get(id)))) return;
     this.finishEdit();
     this.beginStep();
-    this.set({ edit: id, sel: [id], tool: 'select' });
+    this.set({ edit: id, cell: null, sel: [id], tool: 'select' });
+  }
+
+  /** Opens a table's cell for typing, in the words everyone has for it: they came with its row and column (`bindCell`). */
+  startCell(id: string, row: string, col: string): void {
+    const o = this.state.view.byId.get(id);
+    if (!this.canEdit || o?.k !== 'table' || !o.rows.some((r) => r.id === row) || !o.cols.some((c) => c.id === col)) return;
+    this.finishEdit();
+    this.beginStep();
+    this.cellBefore = o.cells[cellKey(row, col)] ?? '';
+    this.set({ edit: id, cell: { row, col }, sel: [id], tool: 'select' });
+  }
+
+  /**
+   * Moves focus off the field being typed in before the board puts another in its place, as Escape does. Taken away while it
+   * still has focus, a field gives it up in the middle of React's commit, and everything listening for that runs there: in a
+   * test it's user-event's own listener, whose act can't run inside React's, and in a browser anything else that listens.
+   */
+  private leaveField(): void {
+    const field = document.activeElement;
+    if (field instanceof HTMLTextAreaElement && this.sheet?.contains(field)) this.focusSheet();
+  }
+
+  /** Tab in a table: the next cell along, or the first of the next row; back with Shift. Off the end, it closes. */
+  nextCell(back: boolean): void {
+    const { edit, cell, view } = this.state;
+    const o = edit ? view.byId.get(edit) : undefined;
+    if (o?.k !== 'table' || !cell) return;
+    this.leaveField();
+    const keys = o.rows.flatMap((r) => o.cols.map((c) => ({ row: r.id, col: c.id })));
+    const at = keys.findIndex((k) => k.row === cell.row && k.col === cell.col);
+    const next = keys[at + (back ? -1 : 1)];
+    if (next) this.startCell(o.id, next.row, next.col);
+    else this.finishEdit();
   }
 
   /** Stops typing. A sticky made for this and left blank goes again, leaving nothing to undo, unless something hangs off it by then: taking that too couldn't be undone. */
   finishEdit(): void {
-    const { edit } = this.state;
+    const { edit, cell } = this.state;
     if (!edit) return;
     this.flushTyping?.();
+    const before = this.cellBefore;
+    this.cellBefore = null;
+    if (cell) {
+      // A cell opened empty and left empty has nothing in it to take back, even where opening it made a cell the table was missing.
+      const now = readBoard(this.doc, this.written).byId.get(edit);
+      const left = now?.k === 'table' ? now.cells[cellKey(cell.row, cell.col)] ?? '' : null;
+      this.set({ edit: null, cell: null });
+      if (before === '' && left === '') { this.stepping = false; this.history?.drop(); this.read(); return; }
+      this.endStep();
+      return;
+    }
     const text = objectText(this.doc, edit);
     const blank = this.fresh === edit && text !== null && !text.toString().trim() && !hangsOff(readBoard(this.doc, this.written), this.doc.getMap<unknown>(BOARD_COMMENTS), edit, this.freshLine);
     this.fresh = null;
     this.freshLine = null;
     if (blank) removeObjects(this.doc, [edit], this.origin);
-    this.set({ edit: null });
+    this.set({ edit: null, cell: null });
     if (!blank) {
       this.endStep();
       return;
@@ -512,6 +708,7 @@ export class Board implements LiveStore<BoardState> {
     const { edit, view } = this.state;
     const o = edit ? view.byId.get(edit) : undefined;
     if (!o || !hasBox(o)) return;
+    this.leaveField();
     if (this.doc.getMap<unknown>(BOARD_OBJECTS).size >= BOARD_LIMITS.objects) {
       this.refuse();
       return;
@@ -520,6 +717,173 @@ export class Board implements LiveStore<BoardState> {
     const colour = o.k === 'note' ? o.c : o.k === 'shape' && o.c ? o.c : undefined;
     this.finishEdit();
     this.newSticky(x, y, colour);
+  }
+
+  /* ---------- what More adds ---------- */
+
+  /**
+   * Where something from More lands, `w` by `h`, in board units: the middle of what this person sees, or the nearest place to
+   * it with nothing there, so it never lands on what's on the board.
+   */
+  middle(w: number, h: number): { x: number; y: number } {
+    if (!this.camera.width) return freeNear(this.state.view, { x: 0, y: 0 }, w, h);
+    const seen = this.camera.visible();
+    return freeNear(this.state.view, { x: Math.round(seen.x + seen.w / 2 - w / 2), y: Math.round(seen.y + seen.h / 2 - h / 2) }, w, h);
+  }
+
+  /** A table of three by three, in the middle of the view, with its first cell open for typing. */
+  addTable(): void {
+    if (!this.canEdit) return;
+    const cols = [0, 1, 2].map(() => ({ id: newId(), size: TABLE.col })), rows = [0, 1, 2].map(() => ({ id: newId(), size: TABLE.row }));
+    const w = TABLE.col * cols.length, h = TABLE.row * rows.length;
+    this.finishEdit();
+    const id = addObject(this.doc, { k: 'table', ...this.middle(w, h), w, h, rows, cols, cells: {} }, this.origin);
+    if (!id) { this.refuse(); return; }
+    this.read();
+    const [row] = rows, [col] = cols;
+    if (row && col) this.startCell(id, row.id, col.id);
+    this.reveal(id);
+  }
+
+  /** Another row or column at the end of a table, and the table that much bigger, all one undo. */
+  growTable(id: string, axis: TableAxis): void {
+    const o = this.state.view.byId.get(id);
+    if (!this.canEdit || o?.k !== 'table') return;
+    const lines = o[axis];
+    const size = lines.length ? lines.reduce((n, l) => n + l.size, 0) / lines.length : axis === 'cols' ? TABLE.col : TABLE.row;
+    // The new line takes its share of the table at the size the others have now on the board, so nothing else shrinks.
+    const scale = axis === 'cols' ? o.w / Math.max(1, lines.reduce((n, l) => n + l.size, 0)) : o.h / Math.max(1, lines.reduce((n, l) => n + l.size, 0));
+    this.finishEdit();
+    this.beginStep();
+    const added = addTableLine(this.doc, id, axis, lines.length, size, this.origin);
+    if (added) resizeObject(this.doc, id, axis === 'cols' ? { x: o.x, y: o.y, w: o.w + size * scale, h: o.h } : { x: o.x, y: o.y, w: o.w, h: o.h + size * scale }, this.origin);
+    this.endStep();
+    if (!added) { this.tell(`A table has at most ${lines.length} ${axis === 'cols' ? 'columns' : 'rows'}.`); return; }
+    this.read();
+  }
+
+  /** Takes a row or a column out of a table, and the table that much smaller. The last one stays. */
+  shrinkTable(id: string, axis: TableAxis, line: string): void {
+    const o = this.state.view.byId.get(id);
+    if (!this.canEdit || o?.k !== 'table' || o[axis].length < 2) return;
+    const total = Math.max(1, o[axis].reduce((n, l) => n + l.size, 0));
+    const share = (o[axis].find((l) => l.id === line)?.size ?? 0) / total;
+    this.finishEdit();
+    this.beginStep();
+    removeTableLine(this.doc, id, axis, line, this.origin);
+    resizeObject(this.doc, id, axis === 'cols' ? { x: o.x, y: o.y, w: Math.max(TABLE.col, o.w * (1 - share)), h: o.h } : { x: o.x, y: o.y, w: o.w, h: Math.max(TABLE.row, o.h * (1 - share)) }, this.origin);
+    this.endStep();
+    this.read();
+  }
+
+  /** A mind map's first idea, in the middle of the view, open for typing. */
+  addMindMap(): void {
+    if (!this.canEdit) return;
+    this.finishEdit();
+    this.beginStep();
+    // Room for its first branches too, so they land clear of what's there: the first idea at the left of it.
+    const at = this.middle(MAP_ROOM.w, MAP_ROOM.h);
+    const id = addMindMap(this.doc, { x: at.x + NODE.first.w / 2, y: at.y + MAP_ROOM.h / 2 }, this.origin);
+    this.openMade(id);
+  }
+
+  /** Tab on a mind map's idea: a new one branching from it, open for typing. */
+  branch(): void {
+    const { edit } = this.state;
+    if (!edit) return;
+    this.leaveField();
+    this.finishEdit();
+    this.beginStep();
+    this.openMade(addBranch(this.doc, edit, this.origin), true);
+  }
+
+  /** Enter on a mind map's idea: another beside it, from the same one, open for typing. */
+  nextIdea(): void {
+    const { edit } = this.state;
+    if (!edit) return;
+    this.leaveField();
+    this.finishEdit();
+    this.beginStep();
+    this.openMade(addSibling(this.doc, edit, this.origin), true);
+  }
+
+  /**
+   * Something just made, open for typing, which goes again if it's left with nothing in it. Or the board was full. A branch is
+   * kept apart from one someone else makes from the same idea at the same moment.
+   */
+  private openMade(id: string | null, branched = false): void {
+    if (!id) {
+      this.endStep();
+      this.refuse();
+      return;
+    }
+    this.read();
+    if (branched) this.justPut.watch([id]);
+    this.fresh = id;
+    this.set({ edit: id, cell: null, sel: [id], tool: 'select' });
+    this.reveal(id);
+  }
+
+  /**
+   * Brings something into view, clear of the bar, if it's out of sight: something just put on the board where the room it found
+   * was, or a sticky Tab has gone to in a vote. The view glides to it at the same zoom, or out as far as it takes to show all of
+   * it. Where it's in view already, nothing moves.
+   */
+  reveal(id: string): void {
+    const o = this.state.view.byId.get(id);
+    if (!o || !hasBox(o) || !this.camera.width) return;
+    const { z } = this.camera.getSnapshot();
+    const seen = this.camera.visible();
+    const top = (this.look.bar ? BAR_ROOM : 0) / z;
+    const room = { x: seen.x, y: seen.y + top, w: seen.w, h: seen.h - top };
+    if (contains(room, o.x, o.y) && contains(room, o.x + o.w, o.y + o.h)) return;
+    this.takeCamera();
+    const fits = o.w * z <= this.camera.width - 2 * EDGE && o.h * z <= this.camera.height - BAR_ROOM - 2 * EDGE;
+    this.glideTo(fits ? this.camera.centred({ x: o.x + o.w / 2, y: o.y + o.h / 2 - top / 2, z }) : this.camera.fitting(o, this.look.bar ? undefined : BARE_PAD));
+  }
+
+  /** A template from More, beside everything on the board, and the view goes to it. */
+  addTemplate(name: TemplateName): void {
+    if (!this.canEdit) return;
+    this.finishEdit();
+    const made = addTemplate(this.doc, name, this.origin);
+    this.read();
+    if (!made.length) {
+      if (name !== 'blank') this.refuse();
+      return;
+    }
+    const boxes = made.flatMap((id) => { const o = this.state.view.byId.get(id); return o && hasBox(o) ? [o] : []; });
+    this.set({ sel: made });
+    if (boxes.length) {
+      this.takeCamera();
+      this.glideTo(this.camera.fitting(bounds(boxes), this.look.bar ? undefined : BARE_PAD));
+    }
+  }
+
+  /**
+   * On a phone, a sticky from the sheet, where the sheet said it would go, kept apart from what someone else puts there at the
+   * same moment. It isn't picked up: nothing moves under a finger there.
+   */
+  addFromSheet(input: NewObject): string | null {
+    if (!this.canAdd) return null;
+    this.untouched = false;
+    const id = addObject(this.doc, input, this.origin);
+    if (!id) { this.refuse(); return null; }
+    this.read();
+    this.justPut.watch([id]);
+    return id;
+  }
+
+  /** Puts something on the board in the middle of the view, selected: a picture, or something from the workspace. */
+  addHere(input: NewObject): string | null {
+    if (!this.canEdit) return null;
+    this.finishEdit();
+    const id = addObject(this.doc, input, this.origin);
+    if (!id) { this.refuse(); return null; }
+    this.read();
+    this.set({ sel: [id], tool: 'select' });
+    this.reveal(id);
+    return id;
   }
 
   focusSheet(): void {
@@ -559,6 +923,58 @@ export class Board implements LiveStore<BoardState> {
     this.home = null;
     this.stopFollow();
     if (this.state.glide || this.state.slide) this.set({ glide: false, slide: null });
+    this.lookAround();
+  }
+
+  /** Taking the camera from a presentation is looking around: the camera's this person's from here, where they are. */
+  private lookAround(): void {
+    if (!this.presented) return;
+    this.presented = false;
+    this.ownView = null;
+    this.onLook?.();
+  }
+
+  /**
+   * What a presentation shows: a frame alone, filling the sheet, or everything, with none, held there as the sheet and the frame
+   * change, and once the frame arrives if it hasn't yet. Coming from a view of their own, where this person was is kept for when
+   * the presentation lets them go. A picture of a frame, such as the next one beside the presenter's, is the same, with no view
+   * of its own to keep.
+   */
+  present(slide: string | null): void {
+    if (!this.look.mini && !this.presented && this.ownView === null && this.framed) this.ownView = this.camera.getSnapshot();
+    this.stopFollow();
+    this.home = null;
+    this.untouched = false;
+    this.presented = true;
+    this.wanted = slide;
+    if (this.camera.width) this.fitShown(this.framed && !this.look.mini);
+  }
+
+  /**
+   * A presentation has let this person go: where they were comes back, or everything, if they came in during it. Someone who took
+   * the camera themselves is already where they want to be.
+   */
+  private ownAgain(): void {
+    const own = this.ownView, was = this.presented;
+    this.ownView = null;
+    this.presented = false;
+    this.wanted = null;
+    if (this.state.slide) this.set({ slide: null });
+    if (!was || !this.camera.width) return;
+    if (own) this.glideTo(own);
+    else this.fitAll();
+  }
+
+  /** Fits what's shown: the frame presented, alone, or else everything, or as it opens (`opening`), where it can be read. */
+  private fitShown(glide: boolean, opening = false): void {
+    const want = this.presented || this.look.mini ? this.wanted : null;
+    const frame = want ? this.state.view.byId.get(want) : undefined;
+    const slide = frame?.k === 'frame' ? frame.id : null;
+    if (this.state.slide !== slide) this.set({ slide });
+    if (frame?.k !== 'frame') { this.fitAll(glide, opening); return; }
+    const cam = this.camera.fitting(frame, SLIDE_PAD);
+    if (glide) this.glideTo(cam);
+    else this.camera.set(cam);
   }
 
   /** Whether all of this is on the sheet. */
@@ -567,15 +983,43 @@ export class Board implements LiveStore<BoardState> {
     return contains(seen, box.x, box.y) && contains(seen, box.x + box.w, box.y + box.h);
   }
 
-  fitAll(glide = true): void {
+  /**
+   * Shows all of the board, or (`opening`) frames it as it opens: on a sheet a phone's width, whoever's looking, that's where
+   * it can be read (`phoneCamera`) rather than all of it, too small to read. A picture of a board always shows all of it.
+   * Either way it's clear of the pill, while one shows.
+   */
+  fitAll(glide = true, opening = false): void {
     if (!this.camera.width) return;
     const boxes = drawn(this.state.view);
-    const cam = this.camera.fitting(boxes.length ? bounds(boxes) : BLANK, this.look.bar ? undefined : BARE_PAD);
+    const readable = opening && !this.look.mini && (this.look.phone || this.camera.width < PHONE_SHEET);
+    const pad = !this.look.bar ? BARE_PAD : this.pill !== null ? CLEAR : undefined;
+    const cam = readable ? phoneCamera(this.state.view, this.camera.width, this.camera.height, this.pill !== null) : this.camera.fitting(boxes.length ? bounds(boxes) : BLANK, pad);
     if (glide) this.glideTo(cam);
     else this.camera.set(cam);
   }
 
+  /** `pad`, and below the pill while one shows under the bar. */
+  private underPill(pad: Pad): Pad {
+    return this.pill !== null && this.look.bar ? { ...pad, t: Math.max(pad.t, CLEAR.t) } : pad;
+  }
+
+  /**
+   * Which pill shows now, if any. One coming or going frames a board nobody's moved round yet again, clear of it, as the size
+   * of the sheet settling does; not following or being presented to, whose pills come and go with them.
+   */
+  setPill(kind: PillKind | null): void {
+    const was = this.pill;
+    this.pill = kind;
+    if ((was === null) === (kind === null)) return;
+    const theirs = (k: PillKind | null) => k === 'following' || k === 'presenting';
+    if (!this.framed || !this.untouched || this.presented || this.look.mini || this.state.following !== null || theirs(was) || theirs(kind) || !this.camera.width) return;
+    this.fitShown(true, true);
+    // The board framing itself again isn't anyone touching it: it goes on framing what arrives on it, and as the sheet settles.
+    this.untouched = true;
+  }
+
   zoomBy(factor: number): void {
+    if (this.still) return;
     this.takeCamera();
     this.glideTo(this.camera.zoomed(factor, this.camera.width / 2, this.camera.height / 2));
   }
@@ -584,13 +1028,24 @@ export class Board implements LiveStore<BoardState> {
   zoomOut = (): void => this.zoomBy(1 / ZOOM_STEP);
 
   showEverything = (): void => {
+    if (this.still) return;
     this.takeCamera();
     this.fitAll();
   };
 
   goTo(place: BoardPlace): void {
+    if (this.still) return;
     if (this.state.slide) this.set({ slide: null });
+    this.lookAround();
     this.glideTo(this.camera.centred(place));
+  }
+
+  /** Fills the sheet with these frames, all of them: everything, when none of them is on the board. */
+  showFrames(ids: readonly string[]): void {
+    const frames = ids.flatMap((id) => { const f = this.state.view.byId.get(id); return f?.k === 'frame' ? [f] : []; });
+    if (!frames.length) { this.showEverything(); return; }
+    this.takeCamera();
+    this.glideTo(this.camera.fitting(bounds(frames), this.underPill(SLIDE_PAD)));
   }
 
   /** Fills the sheet with a frame, in the middle, with room above for its title and the pill. Presenting, it's all the sheet shows. */
@@ -599,13 +1054,13 @@ export class Board implements LiveStore<BoardState> {
     if (frame?.k !== 'frame') return;
     this.takeCamera();
     this.set({ slide: id });
-    this.glideTo(this.camera.fitting(frame, SLIDE_PAD));
+    this.glideTo(this.camera.fitting(frame, this.underPill(SLIDE_PAD)));
   }
 
   /** Follows someone. A tile doesn't: it's a picture of the board, with nothing on it to stop following by. */
   follow(id: string | null): void {
     if (id === null) this.stopFollow();
-    else if (!this.look.mini) this.set({ following: id });
+    else if (!this.look.mini && !this.still) this.set({ following: id });
   }
 
   stopFollow(): void {

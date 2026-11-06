@@ -5,11 +5,11 @@
  * corrected since shows as corrected, a reader who lost the note gets nothing, nobody reads here a transcript that isn't
  * theirs to read, and nothing derived is stored for anyone.
  */
-import type { Change, Decision, NoteAction, NoteDecision, NoteEvidence, NoteEvidenceFlag, NoteEvidenceMoment, NoteQuestion, NoteRoom, ScreenMoment, TranscriptLine } from '@alcove/api';
+import type { ActionItem, Change, Decision, NoteAction, NoteDecision, NoteEvidence, NoteEvidenceFlag, NoteEvidenceMoment, NoteQuestion, NoteRoom, ScreenMoment, TranscriptLine } from '@alcove/api';
 import type { NoteManifest } from './notes';
 
-/** What a decision, an open question and a follow-up have in common here. */
-type Entry = Pick<Decision, 'at' | 'screen' | 'lines' | 'against' | 'changes'> & { disputes?: Decision['disputes']; takenOn?: boolean };
+/** What a decision, an open question and a follow-up have in common here. `from`: a follow-up written on a board. */
+type Entry = Pick<Decision, 'at' | 'screen' | 'lines' | 'against' | 'changes'> & { disputes?: Decision['disputes']; takenOn?: boolean; from?: ActionItem['from'] };
 
 /** How far from an entry's moment a line can be and still be what it points at, for entries from before they kept their lines. */
 const NEAR_SECONDS = 20;
@@ -50,7 +50,8 @@ function evidenceOf(e: Entry, part: TranscriptLine[], lines: Map<string, Transcr
   // With no transcript to read (a call set not to keep it), whatever an entry pointed at is out of reach, which isn't the
   // same as nothing having backed it: only one that never pointed at anything can be said to have had nothing.
   const pointedAtNothing = !e.lines.length && e.at === undefined;
-  if (!behind.length && !shown && (part.length > 0 || pointedAtNothing)) flags.push('missing');
+  // A follow-up from a board rests on what's written there, which its heading says, so nothing said need back it.
+  if (!behind.length && !shown && e.from !== 'board' && (part.length > 0 || pointedAtNothing)) flags.push('missing');
   // Someone said otherwise whether or not the line that says so can still be read.
   if (e.against.length || e.disputes?.length) flags.push('conflict');
   if (behind.length && behind.every((l) => l.unsure) && !ref?.sure) flags.push('unsure');

@@ -3,7 +3,8 @@
  * content_jobs with the transcript already in it. A worker claims the job with a lease, has the
  * notes model draft the summary, decisions, open questions, follow-ups, chapters and suggested
  * questions, and each breakout room's own notes from that room's transcript (one request a room),
- * and then writes them into the note, charges the recorded minutes and deletes the job in one
+ * each part with the boards open for everyone in it that everyone the note went to can open, whose
+ * Actions frames' stickies become follow-ups (modules/workedOn.ts), and then writes them into the note, charges the recorded minutes and deletes the job in one
  * transaction. Only then is a call in a series compared with what earlier calls left standing: nothing
  * waits for that, and failing costs only the comparison. A failed attempt is tried again a little
  * later, up to three times; after the third, the note is finished without a summary, so its
@@ -13,7 +14,7 @@
  * for each job and wiped after it. The organizer can have the notes written again from a corrected
  * transcript (notes.rewrite): the same job, which keeps what people already settled.
  */
-import type { Change, Decision, InferenceEvidence, Person, RoomNote, ScreenMoment } from '@alcove/api';
+import { MAIN_PLACE, type Change, type Decision, type InferenceEvidence, type Person, type RoomNote, type ScreenMoment } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { id128, openJson, stateKey } from '../crypto';
@@ -26,13 +27,14 @@ import { getItem, lockItem, pruneRevisions } from '../vault';
 import { me, profile } from './account';
 import { purgeAudio, queueDelete, segments } from './audio';
 import * as billing from './billing';
-import { briefOf, draft, revisited, roomBriefOf, type NotesStyle, type Settled, type Written } from './drafting';
+import { briefOf, draft, revisited, roomBriefOf, type BriefBoard, type NotesStyle, type Settled, type Written } from './drafting';
 import { doneInNotes } from './liveNotes';
-import { NoteManifest, decisionsOf, roomChapters, updateNote, type Revisit } from './notes';
+import { NoteManifest, decisionsOf, everyoneWith, roomChapters, updateNote, type Revisit } from './notes';
 import { personOf } from './portraits';
 import * as screens from './screens';
 import { standing } from './series';
 import { verificationKey } from './transcripts';
+import { boardsToRead, type BoardRead } from './workedOn';
 
 const wlog = log.child({ component: 'writer' });
 const ATTEMPTS = 3;
@@ -103,20 +105,24 @@ function keepTouched<T extends Item>(was: T[], fresh: T[]): T[] {
 const keepSettled = (was: Settled, fresh: Settled): Settled =>
   ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: keepTouched(was.actions, fresh.actions) });
 
+/** The boards a part of the call's notes read: the ones open for everyone in it (`main`, or a breakout room's ID). */
+const boardsIn = (read: readonly BoardRead[]) => (place: string): BriefBoard[] =>
+  read.filter((x) => x.place === place).map((x, i) => ({ name: x.name, text: x.text, followUps: x.followUps.map((f) => ({ id: `${i}:${f.id}`, text: f.text })) }));
+
 /**
- * Each breakout room's notes, written from what was said in that room alone, in the same verified path as the call's:
+ * Each breakout room's notes, written from what was said in that room alone, and the boards open in it, in the same verified path as the call's:
  * one request a room. An answer that can't be used is asked for again, as many times as the job would try the call's,
  * and only then does the room go without. A room where nothing was said while notes were on keeps its section with no
  * notes, and nothing is sent for it.
  */
-async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: NotesStyle, renew: () => Promise<void>, ctx: Record<string, string | number>): Promise<RoomsWritten> {
+async function writeRooms(o: Owner, m: NoteManifest, organizer: Person, style: NotesStyle, boards: (place: string) => BriefBoard[], renew: () => Promise<void>, ctx: Record<string, string | number>): Promise<RoomsWritten> {
   const said = m.rooms.flatMap((r, i) => (r.transcript.length ? [{ r, i }] : []));
   const rooms = await inTurns(said, ROOMS_AT_ONCE, async ({ r, i }): Promise<RoomWritten> => {
     for (let tried = 1; ; tried++) {
       // Each request is a fresh lease on the job, so another worker doesn't take it while rooms are written.
       await renew();
       try {
-        return { id: r.id, notes: await draft(o.cfg, { ...roomBriefOf(m, r, organizer), ticks: m.ticked.filter((t) => t.room === r.id) }, tried > 1 ? { ...style, brief: true } : style) };
+        return { id: r.id, notes: await draft(o.cfg, { ...roomBriefOf(m, r, organizer), ticks: m.ticked.filter((t) => t.room === r.id), boards: boards(r.id) }, tried > 1 ? { ...style, brief: true } : style) };
       } catch (e) {
         // Waiting for the notes model, or a note deleted meanwhile, is the whole job's; anything else is this room's alone.
         if (e instanceof UnverifiedError || e instanceof UnansweredError || e instanceof NotFoundError) throw e;
@@ -308,8 +314,11 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
       const renew = async () => {
         await exec(d.pool, 'UPDATE content_jobs SET lease_until = now() + make_interval(secs => $3) WHERE owner_id = $1 AND job_id = $2', [job.owner_id, job.job_id, LEASE_SECONDS]);
       };
+      // The boards open for everyone in the call, as they are now, for the notes of the part each was open in: only those
+      // everyone the note went to can open, because one summary goes to them all, the people it was shared with since included.
+      const boards = boardsIn(await boardsToRead(o, note.manifest.workedOn, everyoneWith(note.manifest, organizer.email), at));
       // Each breakout room's notes, from what was said there alone.
-      const rooms = await writeRooms(o, note.manifest, organizer, style, renew, at);
+      const rooms = await writeRooms(o, note.manifest, organizer, style, boards, renew, at);
       if (!lines) {
         await settle(o, job.job_id, noteId, { rooms, readAt }, shown);
         wlog.info(rooms.evidence.length ? 'only breakout rooms were transcribed; their notes written' : 'nothing was transcribed; note finished without notes',
@@ -318,7 +327,7 @@ async function attempt(d: Deps, job: Claimed): Promise<void> {
         return;
       }
       await renew();
-      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown, ticks: note.manifest.ticked.filter((t) => t.room === null) }, style);
+      const notes = await draft(o.cfg, { ...briefOf(note.manifest, organizer, note.manifest.invited.map((e) => personOf(e))), screens: shown, ticks: note.manifest.ticked.filter((t) => t.room === null), boards: boards(MAIN_PLACE) }, style);
       await settle(o, job.job_id, noteId, { notes, rooms, readAt });
       wlog.info('notes written', {
         ...at, language: style.language, length: style.length, decisions: notes.decisions.length, actions: notes.actions.length, chapters: notes.chapters.length, screens: shown.length,
