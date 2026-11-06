@@ -73,7 +73,7 @@ export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera;
         { icon: 'bringToFront', label: 'Bring to front', onPick: act(() => stackSelected(board, 'front')) },
         { icon: 'sendToBack', label: 'Send to back', onPick: act(() => stackSelected(board, 'back')) }
       ] : undefined}
-      onSort={onSort && stickies.length > 1 ? () => { void board.sortIntoThemes(stickies, onSort); } : undefined} sorting={sorting}
+      onSort={onSort && stickies.length > 1 ? act(() => { void board.sortIntoThemes(stickies, onSort); }) : undefined} sorting={sorting}
       onTidy={arrangeable.length > 1 ? act(() => tidySelected(board)) : undefined} />
   );
 }
