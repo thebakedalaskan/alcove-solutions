@@ -28,6 +28,7 @@ import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
 import { atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
+import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
 
 /* ---------- how every answer comes back ---------- */
@@ -286,18 +287,6 @@ async function attest(nonce: string) {
 
 /* ---------- the stand-in ---------- */
 
-/** Story connections stay with the world's signed-in account and reset when a new story opens. */
-const agentConnections = new WeakMap<World, Map<string, AgentConnection[]>>();
-function agentsFor(w: World): { connections: AgentConnection[]; save(connections: AgentConnection[]): void } {
-  const ownerId = w.session?.ownerId;
-  if (!ownerId) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
-  let owners = agentConnections.get(w);
-  if (!owners) { owners = new Map(); agentConnections.set(w, owners); }
-  const connections = (owners.get(ownerId) ?? []).filter((connection) => Date.parse(connection.expiresAt) > Date.now());
-  owners.set(ownerId, connections);
-  return { connections, save: (next) => { owners.set(ownerId, next); } };
-}
-
 export const standIn: AlcoveApi = {
   auth: {
     getSession: () => answer((w) => w.session, 'anyone'),
@@ -322,7 +311,7 @@ export const standIn: AlcoveApi = {
       };
       return w.prefs;
     }),
-    delete: () => answer((w) => { agentConnections.delete(w); w.session = null; w.notes = []; w.meetings = []; })
+    delete: () => answer((w) => { forgetAgents(w); w.session = null; w.notes = []; w.meetings = []; })
   },
   agents: {
     list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
@@ -335,7 +324,7 @@ export const standIn: AlcoveApi = {
         createdAt: new Date(now).toISOString(), expiresAt: new Date(now + parsed.expiresInDays * 86_400_000).toISOString(), lastUsedAt: null
       };
       held.save([...held.connections, connection]);
-      return { connection, token: 'storybook-preview-token-not-valid-outside-this-story', endpoint: 'https://api.example.com/mcp' };
+      return { connection, token: PREVIEW_AGENT_TOKEN, endpoint: PREVIEW_MCP_ENDPOINT };
     }),
     revoke: (id) => answer((w) => {
       AgentConnectionIdSchema.parse(id);
@@ -344,11 +333,13 @@ export const standIn: AlcoveApi = {
     }),
     authorization: (requestId) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
+      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (!w.session) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
       return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: 'Workspace assistant', scopes: ['notes:read', 'meetings:read', 'calendar:read'], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
     }),
     decide: (requestId, decision) => answer((w) => {
       AgentAuthorizationIdSchema.parse(requestId);
+      if (requestId === EXPIRED_AGENT_REQUEST) throw refused('not-found', 'This connection request has expired.');
       if (decision.ownerId !== w.session?.ownerId) throw refused('conflict', 'Your account changed. Review this connection again.');
       // Story accounts have descriptive IDs, so compare those directly while parsing the actual permission choices.
       const allow = AgentDecisionInputSchema.shape.allow.parse(decision.allow);
