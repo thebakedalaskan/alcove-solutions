@@ -54,8 +54,11 @@ Application Load Balancer for production custom domains. See
 
 The static build emits `dist/client/index.html` through TanStack's SPA prerender output path `/index`.
 Pages' native SPA fallback serves the shell for client routes while matching existing assets directly;
-the deployment includes no catch-all `_redirects` or top-level `404.html`. Manage the www-to-apex
-redirect as a Cloudflare zone Single Redirect. See
+the deployment includes no catch-all `_redirects` or top-level `404.html`. The shell is the root route
+alone, so every address hydrates it and then renders its own route. An address no other route takes
+matches the catch-all `routes/$.tsx` (Nothing here, with the Drive offered), not a not-found component on
+the root route, which would render where the shell has none and fail hydration (React error #418).
+Manage the www-to-apex redirect as a Cloudflare zone Single Redirect. See
 [Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 **Opening offline.** A service worker, `apps/web/public/sw.js`, keeps the build in the browser, so the app's

@@ -1,6 +1,6 @@
-import { EmptyState, ThemeProvider, buttonClass, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
+import { ThemeProvider, ToastProvider, TooltipProvider, themeBootScript } from '@alcove/ui';
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { HeadContent, Link, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
 import { type ReactNode, useEffect } from 'react';
 import { RingHost } from '~/features/calls/RingHost';
 import { Arrival } from '~/features/onboarding/Arrival';
@@ -23,8 +23,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     scripts: [{ children: themeBootScript }]
   }),
   shellComponent: Document,
-  component: Root,
-  notFoundComponent: NotFound
+  component: Root
 });
 
 function Document({ children }: { children: ReactNode }) {
@@ -60,12 +59,4 @@ function Root() {
 function Notifications() {
   useNotifications();
   return null;
-}
-
-function NotFound() {
-  return (
-    <main className="grid min-h-screen place-items-center p-6">
-      <EmptyState title="Nothing here" action={<Link to="/" className={buttonClass()}>Go home</Link>}>That page doesn’t exist, or it was deleted.</EmptyState>
-    </main>
-  );
 }
