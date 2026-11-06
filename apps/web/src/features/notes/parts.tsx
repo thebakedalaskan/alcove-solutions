@@ -21,9 +21,10 @@ import { usePlayerAt, type PlayerState } from './Player';
 import { capital } from '~/lib/words';
 
 /** A part of the note, with its heading: what kind of thing it holds gives it its colour, and `count` says what's waiting. */
-export function Section({ title, count, kind, className, children }: { title: string; count?: ReactNode; kind?: 'decide' | 'follow' | undefined; className?: string | undefined; children: ReactNode }) {
+/** A part of a note under its heading. `id`: where a link goes to it, as a call's folder goes to a note's follow-ups. */
+export function Section({ title, count, kind, id, className, children }: { title: string; count?: ReactNode; kind?: 'decide' | 'follow' | undefined; id?: string | undefined; className?: string | undefined; children: ReactNode }) {
   return (
-    <section className={cn('nd-s', kind && `is-${kind}`, className)}>
+    <section id={id} className={cn('nd-s', kind && `is-${kind}`, className)}>
       <h2>{title}{count !== undefined && <span className="n">{count}</span>}</h2>
       {children}
     </section>

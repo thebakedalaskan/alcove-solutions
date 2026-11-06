@@ -18,14 +18,14 @@ export const PRESENCE_BEAT_MS = 10_000;
 const PRESENCE_WAIT_MS = 100;
 /** In Node (tests), timers mustn't keep the process alive. */
 export const unref = (t: unknown) => { if (t && typeof t === 'object' && 'unref' in t && typeof t.unref === 'function') t.unref(); };
-const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false };
+const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false, page: null };
 /** What this connection is called in `here`: a name it makes up, because a browser can have the same workspace open twice. */
 const newConnection = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
 type Ending = 'over' | 'ended' | 'failed';
 
 export class HttpWorkspaceLive implements WorkspaceLive {
-  private view: WorkspaceView = { status: 'connecting', tree: null, here: [] };
+  private view: WorkspaceView = { status: 'connecting', tree: null, here: [], mentions: [] };
   private readonly listeners = new Set<() => void>();
   private closed = false;
   private connection: AbortController | null = null;
@@ -39,7 +39,8 @@ export class HttpWorkspaceLive implements WorkspaceLive {
 
   constructor(
     private readonly open: (signal: AbortSignal) => AsyncIterable<WorkspaceLiveEvent>, private readonly quietMs: number,
-    private readonly tell: (body: PresenceBody, keepalive: boolean) => Promise<unknown>, private readonly beatMs: number
+    private readonly tell: (body: PresenceBody, keepalive: boolean) => Promise<unknown>, private readonly beatMs: number,
+    private readonly heard: (mention: string) => Promise<unknown>
   ) {
     void this.run();
   }
@@ -52,13 +53,18 @@ export class HttpWorkspaceLive implements WorkspaceLive {
     this.saying = setTimeout(() => { this.saying = undefined; this.say(); }, PRESENCE_WAIT_MS);
     unref(this.saying);
   };
+  /** It leaves the view at once. */
+  seen = async (mention: string) => {
+    this.set({ mentions: this.view.mentions.filter((m) => m.id !== mention) });
+    await this.heard(mention).catch(() => undefined);
+  };
   close = () => {
     this.closed = true;
     this.connection?.abort();
     this.stopWaiting?.();
     this.quiet();
     if (this.said) this.tell({ connection: this.name, gone: true }, true).catch(() => undefined);
-    this.set({ status: 'closed', tree: null, here: [] });
+    this.set({ status: 'closed', tree: null, here: [], mentions: [] });
   };
 
   private set(p: Partial<WorkspaceView>) {
@@ -71,6 +77,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
       this.set({ status: 'live', tree: e.tree });
       if (arrived) this.arrived();
     } else if (e.type === 'presence') this.set({ here: e.here });
+    else if (e.type === 'mention') { if (!this.view.mentions.some((m) => m.id === e.mention.id)) this.set({ mentions: [...this.view.mentions, e.mention] }); }
     else if (e.type === 'access' && this.view.tree) this.set({ tree: { ...this.view.tree, role: e.role } });
   }
 
@@ -138,7 +145,7 @@ export class HttpWorkspaceLive implements WorkspaceLive {
       if (ending === 'over') {
         this.closed = true;
         this.quiet();
-        this.set({ status: 'closed', tree: null, here: [] });
+        this.set({ status: 'closed', tree: null, here: [], mentions: [] });
         return;
       }
       if (ending === 'failed') this.set({ status: 'reconnecting' });

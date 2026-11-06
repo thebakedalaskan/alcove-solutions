@@ -4,7 +4,7 @@
  * the list writes straight to that document. A document's first title and line come from the server, which makes every
  * document from the same fixed bytes (`DOC_SEED` in `@alcove/api`), so nothing here or in the editor ever makes them.
  */
-import { newBlockId, retire } from '@alcove/api/retire';
+import { holdsNothing, newBlockId, retire } from '@alcove/api/retire';
 import { Fragment, type Node as PMNode } from 'prosemirror-model';
 import type { EditorState } from 'prosemirror-state';
 import { initProseMirrorDoc, ySyncPluginKey, type ProsemirrorBinding } from 'y-prosemirror';
@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import { FRAGMENT } from './names';
 import { blockFromJSON, inDocument, schema } from './schema';
 import type { BlockJSON } from './types';
-import { writeDocument, type ProsemirrorMapping } from './write';
+import { setAttr, writeDocument, type ProsemirrorMapping } from './write';
 
 export const contentOf = (doc: Y.Doc): Y.XmlFragment => doc.getXmlFragment(FRAGMENT);
 
@@ -61,6 +61,45 @@ export function appendBlocks(doc: Y.Doc, blocks: readonly BlockJSON[]): string[]
 export function removeBlockFrom(doc: Y.Doc, id: string): void {
   const found = elementOf(contentOf(doc), id);
   if (found) doc.transact(() => { retire(found.element, newBlockId(), ''); });
+}
+
+/** The blocks on the page carrying an upload's token (`upload`), wherever they've been moved to: not one that has left it. */
+export function uploadBlocks(doc: Y.Doc, token: string): Y.XmlElement[] {
+  return contentOf(doc).toArray().filter((c): c is Y.XmlElement => c instanceof Y.XmlElement && c.getAttribute('upload') === token && c.getAttribute('gone') === undefined);
+}
+
+/**
+ * Sets an upload's attributes from outside the page, open or not, on every block on the page carrying its token: what an
+ * upload says as it goes. Null takes one away. How many blocks there were: none while the block is off the page. `own` are
+ * attributes only the upload puts on its block: one of them on a copy someone retired as they moved the block was written
+ * after they took it, so it comes off again, or the old copy would come back holding just that.
+ */
+export function setUploadAttrs(doc: Y.Doc, token: string, attrs: Readonly<Record<string, unknown>>, own: readonly string[], origin: unknown): number {
+  const fragment = contentOf(doc);
+  const found = uploadBlocks(doc, token);
+  if (found.length === 0) return 0;
+  doc.transact(() => {
+    for (const element of found) {
+      for (const [key, value] of Object.entries(attrs)) {
+        if (value === null || value === undefined) { if (element.getAttribute(key) !== undefined) element.removeAttribute(key); }
+        else setAttr(element, key, value);
+      }
+      const id: unknown = element.getAttribute('id');
+      for (const child of fragment.toArray()) {
+        if (!(child instanceof Y.XmlElement) || child === element || typeof id !== 'string' || child.getAttribute('gone') !== id) continue;
+        for (const key of own) if (child.getAttribute(key) !== undefined) child.removeAttribute(key);
+      }
+    }
+  }, origin);
+  return found.length;
+}
+
+/** A document's first line, while nobody has written in it, leaves the page: what's put in a new document takes its place. */
+export function retireBlankStart(doc: Y.Doc): void {
+  const first = contentOf(doc).get(1);
+  if (first instanceof Y.XmlElement && first.nodeName === 'line' && first.getAttribute('gone') === undefined && holdsNothing(first)) {
+    doc.transact(() => { retire(first, newBlockId(), ''); });
+  }
 }
 
 /** The element a block is, by its stable ID. */

@@ -75,6 +75,8 @@ export abstract class LiveStream<L> implements RoomMember {
   }
   /** Who's here changed. */
   heard(): void { /* only a workspace's own stream shows it */ }
+  /** Someone tagged its reader. */
+  told(): void { /* the same */ }
   end(): void { this.over = true; this.poke(); }
   protected poke(): void { this.poked = true; this.wake?.(); }
 

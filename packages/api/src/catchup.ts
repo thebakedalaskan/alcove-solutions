@@ -101,6 +101,12 @@ export type CatchUp = z.infer<typeof CatchUpSchema>;
  */
 export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean() });
 export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;
+/**
+ * A follow-up someone in the call added in their own words (CallAction `follow-up-add`): nobody said it, so nothing backs it,
+ * and `owner` is whoever added it. It's ticked like the rest. `at`: when it was added, in seconds since the call started.
+ */
+export const AddedFollowUpSchema = LiveFollowUpSchema.extend({ at: z.number() });
+export type AddedFollowUp = z.infer<typeof AddedFollowUpSchema>;
 
 /**
  * A call's live notes (docs: Notes and inference › Live notes): kept sealed on the server for each part of the call and
@@ -114,6 +120,8 @@ export const LiveNotesSchema = z.object({
    * notes written only from what they may read: `read.whileHere` says so, and they can't be ticked.
    */
   notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
+  /** What people added to the follow-ups by hand, the oldest first, whether or not any notes are written yet. Only for people who get the notes. */
+  added: z.array(AddedFollowUpSchema),
   /** They're being refreshed now. */
   writing: z.boolean(),
   /** Says the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */

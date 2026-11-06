@@ -80,7 +80,7 @@ function FollowUps(args: ComponentProps<typeof WsFollowUps>) {
   const [draft, setDraft] = useState(args.draft);
   const yours = rows.filter((r) => r.person === ART);
   const add = () => {
-    args.onAdd();
+    args.onAdd?.();
     const text = draft.trim();
     if (!text) return;
     setRows((now) => [...now, { id: `f${now.length + 1}`, text, done: false, person: ART, name: first(ART), due: 'No date', source: 'Added by you' }]);

@@ -835,14 +835,20 @@ describe('notes that couldn’t be written', () => {
     expect(await job()).toBeUndefined();
     expect(await org.api.notes.get(noteId)).toMatchObject({ status: 'ready', summary: '', writtenAt: null, decisions: [] });
 
-    // Someone adds what they remember, and then the notes are written after all: what they added is still there.
+    // Someone adds what they remember, and then the notes are written after all: what they added is still there. The model
+    // is told it's settled, as for anything added before notes are first written, so it doesn't list it again; told that,
+    // like a model can, it words what it does list another way.
     await org.api.notes.proposeDecision(noteId, { text: 'Monday it is.' });
     await org.api.notes.proposeAction(noteId, { text: 'Tell the team', owner: org.email });
+    const asked = h.near.prompts.length;
     await org.api.notes.rewrite(noteId);
     await written(org.api, noteId);
+    const told = h.near.prompts.slice(asked).find((p) => p.includes('Already settled')) ?? '';
+    expect(told).toContain('Monday it is.');
+    expect(told).toContain('Tell the team');
     const note = await org.api.notes.get(noteId);
     expect(note.writtenAt).not.toBeNull();
-    expect(note.decisions.map((d) => d.text).sort()).toEqual(['Monday it is.', 'We agreed to ship on Monday.']);
+    expect(note.decisions.map((d) => d.text).sort()).toEqual(['Agreed: ship on Monday.', 'Monday it is.']);
     expect(note.actions.map((a) => [a.text, a.takenOn])).toEqual([['Tell the team', true]]);
   });
 });

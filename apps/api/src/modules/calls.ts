@@ -26,7 +26,7 @@ import * as capture from './capture';
 import { dropInvites, notesCanGo, syncAccess } from './access';
 import { lookupCode } from './codes';
 import { MeetingManifest, minutesOf, pickTime, updateManifest } from './meetings';
-import { callFor } from './repeats';
+import { callFor, zoneOf } from './repeats';
 import type { Loaded } from '../vault';
 import { findItem, getItem } from '../vault';
 import { blankNote, createNoteWithRecording, finishRecording, type HeldRoom } from './notes';
@@ -42,7 +42,7 @@ import * as screens from './screens';
 import * as series from './series';
 import * as transcripts from './transcripts';
 import { readerInCall, workspaceOwner, type CallRef } from './workspaceAccess';
-import { endSeat, endSeats } from './workspaces';
+import { endSeat, endSeats, makeHome } from './workspaces';
 import * as writer from './writer';
 import { log } from '../log';
 
@@ -381,6 +381,18 @@ export async function seatedIn(o: Owner, callId: string, place?: string | undefi
   return new Map(s.people.filter((j) => j.status === 'in' && (place === undefined || placeOf(s, j) === place)).map((j) => [seatOf(key, j), j.name]));
 }
 export const seated = (v: Viewer): Promise<Map<string, string>> => seatedIn(v.organizer, v.pass.callId);
+/** The addresses of everyone who's been in this viewer's call, the organizer's among them, lower-cased: whoever a quote or a follow-up from it can name. */
+export async function addressesIn(v: Viewer): Promise<Set<string>> {
+  const { state: s } = await load(v.organizer, v.organizer.pool, v.pass.callId);
+  const organizer = (await profile(v.organizer)).email;
+  return new Set([organizer, ...s.people.flatMap((j) => (j.email ? [j.email] : []))].map((e) => e.trim().toLowerCase()));
+}
+/** The address someone in a seat of this call signed in with, if the call kept one. */
+export async function addressIn(v: Viewer, seat: string): Promise<string | undefined> {
+  const { state: s } = await load(v.organizer, v.organizer.pool, v.pass.callId);
+  const key = seatKey(v.organizer, v.pass.callId);
+  return s.people.find((j) => seatOf(key, j) === seat)?.email?.toLowerCase();
+}
 
 async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
   const o = v.organizer;
@@ -467,7 +479,7 @@ async function view(v: Viewer, db: Db, callId: string): Promise<CallState> {
 }
 
 /** What someone who isn't in the call yet is told of its workspace: nothing. */
-const PRIVATE: CallWorkspace = { id: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' };
+const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' };
 
 /**
  * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the
@@ -876,8 +888,8 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
 
-/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking a follow-up, what goes by what you can open in the workspace and a board is whoever hosts' (the organizer's own besides, checked by the API). */
-export const anyone = (a: CallAction): boolean => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || space.anyonesAction(a) || boards.isBoardAction(a);
+/** Everything in `act` but a raised hand, an ask for notes, your own share's pointing, ticking or adding a follow-up, what goes by what you can open in the workspace and a board is whoever hosts' (the organizer's own besides, checked by the API). */
+export const anyone = (a: CallAction): boolean => a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || space.anyonesAction(a) || boards.isBoardAction(a);
 /**
  * Refused for a connection that doesn't host now (`who`: the connection that does, by default whoever hosts): checked
  * again where it counts, as the host may have changed since the request came in. The same 409 as the API's for a
@@ -889,7 +901,7 @@ function stillHosting(v: Viewer, s: Stored, ctx: Record<string, string | number 
 
 export async function act(v: Viewer, callId: string, a: CallAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'workspace-open') return openWorkspace(v, callId);
+  if (a.type === 'workspace-open') return openWorkspace(v, callId, a.timeZone);
   if (space.isSpaceAction(a)) return actOnWorkspace(v, callId, a);
   if (boards.isBoardAction(a)) return actOnBoard(v, callId, a);
   if (a.type === 'mute') {
@@ -903,6 +915,11 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
   }
   // Who may be rung is settled before the call's lock is taken: knowing the team can take a calendar read.
   if (a.type === 'ring') await rings.mayRing(o, (await load(o, o.pool, callId)).row.meeting_item_id, a.emails);
+  /**
+   * Who the invite took on (`add`) or let go of (`gone`), for the call's home to follow once the call's row is let go, and the
+   * workspaces made in the call (`made`), which do too.
+   */
+  const invite: { meetingId: string; add: string[]; gone: string[]; made: string[] } | null = a.type === 'ring' || a.type === 'remove' ? { meetingId: '', add: [], gone: [], made: [] } : null;
   await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, action: a.type } });
@@ -911,6 +928,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     const exact = tenthsIn(row.started_at);
     const settled = settle(state, row);
     let s = settled;
+    if (invite) invite.meetingId = row.meeting_item_id;
     let locked = row.locked;
     let gone: string[] = [];
     /** The seat of whoever this takes out of the call. */
@@ -926,6 +944,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       s = { ...s, othersPointOff: a.on ? off : [...off, v.pass.person] };
     } else if (a.type === 'follow-up') {
       await tickFollowUp(v, c, row, s, a);
+    } else if (a.type === 'follow-up-add') {
+      await addFollowUp(v, c, row, s, a, at);
     } else if (a.type === 'pointing') {
       if (a.on !== s.pointing) {
         s = notice({ ...s, pointing: a.on }, a.on ? 'The organizer turned on pointing at shared screens.' : 'The organizer turned off pointing at shared screens.', 'info');
@@ -1005,6 +1025,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       const stillIn = (e: string) => s.people.some((j) => j.email === e && j.status === 'in' && !s.removed.includes(j.person));
       if (v.isOrganizer && email && !stillIn(email) && await addedFromLink(o, c, row.meeting_item_id, email)) {
         await takeOffInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, email);
+        invite?.gone.push(email);
         clog.info('taken off the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId });
       }
     } else if (a.type === 'lock') {
@@ -1014,7 +1035,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       // Nobody new can come into a locked call, so nobody is rung into one. Someone already here has no need of a ring.
       if (locked) throw new ConflictError('This call is locked, so nobody new can join. Unlock it to ring someone.', { context: ctx });
       const here = new Set(s.people.flatMap((j) => (j.status === 'in' && j.email ? [j.email.toLowerCase()] : [])));
-      await rings.ring(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, a.emails.filter((e) => !here.has(e)));
+      invite?.add.push(...await rings.ring(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, a.emails.filter((e) => !here.has(e))));
     } else if (a.type === 'stop-ring') {
       await rings.stop(o, c, row.meeting_item_id, a.ringId);
     } else {
@@ -1032,11 +1053,14 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved,
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });
+    if (invite) invite.made = s.workspace.made;
     return { room: row.room_name, gone, moved, removed };
   }).then(async ({ room, gone, moved, removed }) => {
     if (room) for (const who of gone) await o.livekit.removeParticipant(room, who).catch((e: unknown) => clog.info('removed person already gone', { callId, err: e }));
     // What the call gave them in a workspace goes with them.
     if (removed) await endSeat(o, callId, removed);
+    // So does a place in a home made for the call that the invite gave them; someone rung is on the invite, so in it.
+    if (invite) await space.followHome(o, invite.meetingId, invite, invite.made);
     await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
   });
   return view(v, o.pool, callId);
@@ -1065,7 +1089,7 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
     const s = settle(state, row);
     const mine = s.people.find((j) => j.identity === v.pass.identity);
     const meeting = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-    return { row, state, changing: { v, reader, callId, meeting, s, place: mine ? placeOf(s, mine) : MAIN_PLACE, now: Date.now(), seatOf: seatOfJ } };
+    return { row, state, changing: { v, reader, callId, meeting, startedAt: row.started_at, s, place: mine ? placeOf(s, mine) : MAIN_PLACE, now: Date.now(), seatOf: seatOfJ } };
   };
   for (let tries = 1; ; tries++) {
     const apply = await space.prepare((await read(o.pool, false)).changing, a);
@@ -1075,7 +1099,7 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
       if (changed === 'again') return 'again';
       await save(o, c, callId, space.tidied(await roomsChanged(o, c, callId, state, changed.s)));
       clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
-      return { room: row.room_name, moved: changed.moved, ended: changed.ended, meetingId: row.meeting_item_id };
+      return { room: row.room_name, ended: changed.ended, made: changed.made, meetingId: row.meeting_item_id };
     });
     if (done === 'again') {
       if (tries < SPACE_TRIES) continue;
@@ -1083,10 +1107,7 @@ async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAction): 
     }
     // A grant to someone removed while it was made goes, as their removal took everything else.
     if (done.ended) await endSeat(o, callId, done.ended);
-    if (done.moved) {
-      await space.noteUsed(o, done.moved.to);
-      await space.carryForward(o, done.meetingId, done.moved.from, done.moved.to);
-    }
+    if (done.made) await space.followHome(o, done.meetingId, { add: done.made.guests }, [done.made.workspaceId]);
     await nudge(o, done.room, callId, { call: true, log: false });
     return view(v, o.pool, callId);
   }
@@ -1111,31 +1132,74 @@ async function stopLost(o: Owner, callId: string, lost: space.Lost): Promise<voi
 }
 
 /**
- * The workspace a call uses, settled the first time it's asked for, under the call's row so that everyone asking at once
- * gets the same one. A workspace deleted since it was chosen is settled again. Which one the organizer used last is asked
- * before the row is taken: nothing under it opens a workspace.
+ * The call's home, and this run of the call's folder in it, settled the first time anyone asks (docs: Calls and recordings ›
+ * The call's home): the meeting's, a workspace its organizer chose or its series has, while they can still make things in it
+ * and it has room for the folder; else a new one made for the call, named after it and the day where `timeZone` is. Under the
+ * call's row, so everyone asking at once gets the same: a new home is made there, since nobody else can reach it yet, and
+ * for a home that's there already the folder's ID is taken there, and the folder made in that workspace's own transaction
+ * with nothing of the call held. Everyone invited is let into a home made for the call once the call's row is let go. A home
+ * deleted since is settled again, and one with no room for the folder (`full`) gives way to a new one. Whose it is, and what's
+ * in it, the meeting's organizer decides: whoever asks first only settles it.
  */
-export async function settledWorkspace(o: Owner, callId: string): Promise<string> {
-  const { row } = await load(o, o.pool, callId);
-  const { workspaceId } = (await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest;
-  if (workspaceId && await workspaceOwner(o.pool, workspaceId)) return workspaceId;
-  const recent = await space.recentFor(o);
-  const chosen = await tx(o.pool, async (c) => {
+export async function settledHome(o: Owner, callId: string, timeZone?: string | undefined, full: string | null = null): Promise<{ workspaceId: string; folderId: string }> {
+  const { row, state } = await load(o, o.pool, callId);
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const had = state.workspace.home;
+  const chosen = meeting.manifest.workspaceId;
+  if (had?.made && had.workspaceId === chosen && await workspaceOwner(o.pool, chosen)) return had;
+  const organizer = (await profile(o)).email;
+  // Asked with nothing held: a home the organizer can no longer make things in is no home of theirs, nor one with no room.
+  const usable = chosen !== full && (await space.usableHome(o, organizer, chosen)) !== undefined;
+  const zone = timeZone ?? (meeting.manifest.seriesId ? await zoneOf(o, meeting.manifest.seriesId) : undefined) ?? 'UTC';
+  const name = space.homeName(meeting.manifest.title, row.started_at, zone);
+  const taken = await tx(o.pool, async (c) => {
     const held = await load(o, c, callId, true);
     if (held.row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'workspace' } });
-    const was = (await getItem(o, c, 'meeting', held.row.meeting_item_id, MeetingManifest, 'That meeting')).manifest.workspaceId;
-    if (was && await workspaceOwner(c, was)) return { id: was, was, room: null };
-    const id = recent && await workspaceOwner(c, recent) ? recent : await space.newFor(o, c);
-    await updateManifest(o, c, held.row.meeting_item_id, (m) => ({ ...m, workspaceId: id }));
-    clog.info('call settled on a workspace', { callId, workspaceId: id });
-    return { id, was, room: held.row.room_name };
+    const m = await getItem(o, c, 'meeting', held.row.meeting_item_id, MeetingManifest, 'That meeting');
+    const now = m.manifest.workspaceId;
+    const h = held.state.workspace.home;
+    if (now !== chosen) return { again: true } as const;
+    // Who's invited, as it stands under the call's row: whoever an invite change adds after this finds the home named.
+    const guests = m.manifest.guests;
+    if (now !== null && usable) {
+      if (h?.workspaceId === now) return { again: false, home: h, made: false, was: now, guests } as const;
+      const claim = { workspaceId: now, folderId: id128(), made: false };
+      await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home: claim } });
+      return { again: false, home: claim, made: false, was: now, guests } as const;
+    }
+    const folder = space.folderFor(o, organizer, callId, id128(), name, held.row.started_at);
+    const { id } = await makeHome(o, c, { name, madeFor: space.madeForCall(m, held.row.started_at), folder });
+    await updateManifest(o, c, m.itemId, (x) => ({ ...x, workspaceId: id }));
+    const home = { workspaceId: id, folderId: folder.id, made: true };
+    await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home } });
+    clog.info('call settled on a new home', { callId, workspaceId: id, full: full !== null });
+    return { again: false, home, made: true, was: now, room: held.row.room_name, guests } as const;
   });
-  if (chosen.id !== chosen.was) {
-    await space.noteUsed(o, chosen.id);
-    await space.carryForward(o, row.meeting_item_id, chosen.was, chosen.id);
-    await nudge(o, chosen.room, callId, { call: true, log: false });
+  // The meeting changed while this was asked: ask again, from what it says now.
+  if (taken.again) return settledHome(o, callId, timeZone, full);
+  const { home } = taken;
+  if (taken.made) {
+    // Everyone invited comes in now the call's row is let go, so a big invite never holds the call up.
+    await space.followHome(o, row.meeting_item_id, { add: taken.guests });
+    await space.carryForward(o, row.meeting_item_id, taken.was, home.workspaceId);
+    await nudge(o, taken.room, callId, { call: true, log: false });
+    return home;
   }
-  return chosen.id;
+  if (!home.made) {
+    const folder = space.folderFor(o, organizer, callId, home.folderId, name, row.started_at);
+    const put = await space.folderIn(o, home.workspaceId, folder);
+    if (put === 'gone') throw notFound('That workspace', { callId, workspaceId: home.workspaceId });
+    // No room for the folder: the call settles on a new home, and only a folder that's there is ever marked made.
+    if (put === 'full') return settledHome(o, callId, timeZone, home.workspaceId);
+    await tx(o.pool, async (c) => {
+      const held = await load(o, c, callId, true);
+      const h = held.state.workspace.home;
+      if (held.row.state === 'live' && h?.folderId === home.folderId && !h.made) await save(o, c, callId, { ...held.state, workspace: { ...held.state.workspace, home: { ...h, made: true } } });
+    });
+    await space.followHome(o, row.meeting_item_id, { add: taken.guests });
+    clog.info('call folder settled in its home', { callId, workspaceId: home.workspaceId });
+  }
+  return { workspaceId: home.workspaceId, folderId: home.folderId };
 }
 
 /**
@@ -1180,13 +1244,13 @@ async function agendaFor(o: Owner, callId: string): Promise<void> {
 }
 
 /**
- * Someone opens Workspace. A workspace that can't be made for a guest opening it is the organizer's to hear about, not
- * theirs, and an agenda that can't be made is no reason anyone can't open the rest.
+ * Someone opens Workspace. A home that can't be made for a guest opening it is the organizer's to hear about, not theirs,
+ * and an agenda that can't be made is no reason anyone can't open the rest.
  */
-async function openWorkspace(v: Viewer, callId: string): Promise<CallState> {
+async function openWorkspace(v: Viewer, callId: string, timeZone: string | undefined): Promise<CallState> {
   const o = v.organizer;
   try {
-    await settledWorkspace(o, callId);
+    await settledHome(o, callId, timeZone);
     await agendaFor(o, callId).catch((e: unknown) => clog.warn('next agenda not made', { callId, err: e }));
   } catch (e) {
     if (v.isOrganizer || !(e instanceof ConflictError)) throw e;
@@ -1195,7 +1259,7 @@ async function openWorkspace(v: Viewer, callId: string): Promise<CallState> {
   return view(v, o.pool, callId);
 }
 
-/** What changing the call's workspace would mean, for the organizer to decide. */
+/** What viewing another workspace in the call would mean, for the organizer to decide. */
 export async function previewWorkspace(v: Viewer, callId: string, workspaceId: string): Promise<CallWorkspaceSwitch> {
   return space.preview(v, await readerInCall(v), (await load(v.organizer, v.organizer.pool, callId)).state.people, workspaceId);
 }
@@ -1236,7 +1300,7 @@ async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Pro
     const { manifest } = await getItem(o, db, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
     return {
       row, state,
-      changing: { v, reader, callId, meeting: manifest, s, place: whereIs(v, s), here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' } }
+      changing: { v, reader, callId, meeting: manifest, viewed: space.viewedIn(manifest, s.workspace), s, place: whereIs(v, s), here: hereIn(o, callId, s), known: knownIn(o, callId, s), maker: { name: mine?.name ?? v.pass.name, email: mine?.email ?? '' } }
     };
   };
   const apply = await boards.prepare((await read(o.pool, false)).changing, a);
@@ -1267,7 +1331,7 @@ export async function boardCheck(v: Viewer, callId: string, documentId: string):
   if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId, what: 'board-check' } });
   const s = settle(state, row);
   const { manifest } = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
-  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, place: whereIs(v, s), here: hereIn(o, callId, s) }, documentId);
+  return boards.check(o, await readerInCall(v), { callId, meeting: manifest, viewed: space.viewedIn(manifest, s.workspace), place: whereIs(v, s), here: hereIn(o, callId, s) }, documentId);
 }
 
 /**
@@ -1708,6 +1772,8 @@ async function groupsFor(o: Owner, callId: string, row: Row, s: Stored): Promise
 export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof CallCommitBodySchema>): Promise<{ epoch: number }> {
   const o = v.organizer;
   const ctx = { callId, generation: b.generation, epoch: b.epoch, added: b.added.length, removed: b.removed.length, room: b.group !== MAIN_PLACE };
+  /** The meeting, and who this put on its invite: a home made for the call lets them in too, as does each workspace made in it. */
+  const invited: { meetingId: string; add: string[]; made: string[] } = { meetingId: '', add: [], made: [] };
   const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
@@ -1765,6 +1831,9 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
       const wanted = [...new Set(signedIn.map((x) => x.email))];
       const added = await addToInvite(o, c, { meetingId: row.meeting_item_id, noteId: s.notes.noteId }, wanted);
       for (const x of signedIn) if (added.includes(x.email)) s = withPerson(s, x.id, (j) => ({ ...j, role: 'invited' }));
+      invited.meetingId = row.meeting_item_id;
+      invited.add.push(...added);
+      invited.made = s.workspace.made;
       clog.info('added to the invite', { callId, meetingId: row.meeting_item_id, noteId: s.notes.noteId, people: added.length });
       // The invite is full: they're in the call, as guests, without the notes.
       if (added.length < wanted.length) clog.warn('invite full; let in without the notes', { callId, meetingId: row.meeting_item_id, people: wanted.length - added.length });
@@ -1774,6 +1843,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
     return row.room_name;
   });
   clog.info('call keys moved on', { ...ctx, next: b.epoch + 1, bytes: b.commit.length + (b.welcome?.length ?? 0) });
+  if (invited.add.length) await space.followHome(o, invited.meetingId, invited, invited.made);
   // Letting someone in doesn't wait for a workspace: a seat lands a moment later, and the call reads itself again when it does.
   if (b.added.length) void syncBoardSeats({ organizer: o, callId });
   await nudge(o, room, callId, { call: b.added.length > 0 || b.removed.length > 0, log: true });
@@ -2072,7 +2142,7 @@ export async function askEarlier(v: Viewer, callId: string, asker: Owner, questi
 /* ---------- the call's shared live notes: kept in modules/liveNotes.ts; who reads what, and when they're refreshed, is here ---------- */
 
 /** Nothing to read: until notes are written, for someone waiting to be let in, and once the call has ended and they're in the note. */
-const NO_NOTES: LiveNotes = { notes: null, writing: false, error: null };
+const NO_NOTES: LiveNotes = { notes: null, added: [], writing: false, error: null };
 /** As much of a whole call's follow-ups as its live notes keep from one refresh, as many as the notes at the end may have. */
 const FOLLOW_UPS_READ = 20;
 
@@ -2183,20 +2253,35 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
 }
 
 /**
- * A follow-up of the live notes of the part of the call someone is in, ticked or not, for everyone there, in the
- * caller's transaction, which holds the call's row, so the call can't end halfway through. It's for anyone in the call
- * who gets the notes, as `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is until the notes
- * are written. A guest with the link doesn't get them.
+ * Who's changing the follow-ups of the part of the call they're in, for everyone there, in the caller's transaction, which
+ * holds the call's row, so the call can't end halfway through. It's for anyone in the call who gets the notes, as
+ * `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is until the notes are written. A guest with
+ * the link doesn't get them.
  */
-async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up' }>): Promise<void> {
+async function changing(v: Viewer, c: Db, row: Row, s: Stored, what: CallAction['type']): Promise<{ mine: Joined; by: Changer; place: string; reader: liveNotes.Reader }> {
   const o = v.organizer;
   const mine = s.people.find((j) => j.identity === v.pass.identity);
   const meeting = await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
   const invited = invitedIn(meeting);
-  if (!mine || onlyHere(v, s, mine, row.started_at, invited) !== null) throw new ForbiddenError('The notes go to the people invited, so only they can tick follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what: a.type } });
+  if (!mine || onlyHere(v, s, mine, row.started_at, invited) !== null) throw new ForbiddenError('The notes go to the people invited, so only they can change follow-ups.', { context: { callId: row.call_id, role: v.pass.role, what } });
   const organizer = mine.role === 'host' ? await me(o) : undefined;
   const by: Changer = { id: organizer ? o.ownerId : null, name: organizer?.name ?? mine.name, email: organizer?.email ?? mine.email ?? '', as: organizer ? 'organizer' : 'invited' };
-  await liveNotes.tick(o, c, row.call_id, placeOf(s, mine), a.id, a.done, by, readerFor(v, s, mine, row.started_at, invited));
+  return { mine, by, place: placeOf(s, mine), reader: readerFor(v, s, mine, row.started_at, invited) };
+}
+
+/** A follow-up of the live notes, ticked or not, for everyone in that part of the call. */
+async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up' }>): Promise<void> {
+  const { by, place, reader } = await changing(v, c, row, s, a.type);
+  await liveNotes.tick(v.organizer, c, row.call_id, place, a.id, a.done, by, reader);
+}
+
+/** A follow-up nobody said, for whoever adds it. It goes into the note, so there has to be one. */
+async function addFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-add' }>, said: number): Promise<void> {
+  const o = v.organizer;
+  const { mine, by, place, reader } = await changing(v, c, row, s, a.type);
+  if (!s.notes.noteId) throw new ConflictError('Notes haven’t been on in this call, so there’s nowhere for this to go.', { context: { callId: row.call_id, what: a.type } });
+  const person = personFor(mine, mine.identity, mine.name, await me(o));
+  await liveNotes.add(o, c, row.call_id, place, { text: a.text, owner: { name: person.name, person }, by, said }, reader);
 }
 
 /** What this person can catch up on, for choosing what to read. */
@@ -2294,6 +2379,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   let room: string | null = null;
   let audio: string[] = [];
   let worked: WorkedDocument[] = [];
+  let home: CallSpace['home'] = null;
   let keptBoards = NO_BOARDS;
   let everyone: boards.Here[] = [];
   const end = await tx(o.pool, async (c) => {
@@ -2311,6 +2397,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
     const s = row.state === 'live' ? await roomsChanged(o, c, callId, state, relocate(state, closed, Date.now(), row.mls_seq)) : closed;
     if (row.state === 'live') {
       worked = s.workspace.worked;
+      home = s.workspace.home;
       keptBoards = s.board;
       everyone = knownIn(o, callId, s);
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
@@ -2321,8 +2408,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       // Who's invited lasts as long as the call does. Its note has its own list.
       await dropInvites(o, c, [row.meeting_item_id]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
-      // The live notes end with the call: what was ticked goes into the note, and the notes at the end take over.
-      const ticked = await liveNotes.finish(o, c, callId);
+      // The live notes end with the call: what was ticked and what people added go into the note, and the notes at the end take over.
+      const { ticked, added } = await liveNotes.finish(o, c, callId);
       if (s.notes.noteId) {
         // Ending while the host's browser is out of the call (it never came back): nothing was captured since it left.
         const gone = row.host_left_at && s.notes.status === 'on' ? tenthsIn(row.started_at, row.host_left_at.getTime()) : null;
@@ -2348,12 +2435,12 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
           gaps: capture.roomGaps(s.notes.history, offline, r.pauses, h.from, row.started_at, h.to, h.to)
         })));
-        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked, worked);
+        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked, worked, added.map((a) => ({ room: a.room, action: liveNotes.toNote(a, recorded(a.said)) })));
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
     clog.info(row.state === 'live' ? 'call ended' : 'left an ended call', { callId, meetingId: row.meeting_item_id, duration, noteId: s.notes.noteId });
-    return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration };
+    return { meetingId: row.meeting_item_id, pendingNoteId: s.notes.noteId, duration, startedAt: row.started_at, ended: row.state === 'live' };
   });
   if (!end) return null;
   await queueDelete(o, audio);
@@ -2367,8 +2454,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
   if (room) await o.livekit.deleteRoom(room).catch((e: unknown) => clog.warn('room not deleted', { callId, err: e }));
   // What's kept of the workspace is the last thing and nobody waits for it: it can take a worker as long as a worker has for
   // each document, and nothing about the call's end depends on it. It says itself when something didn't work.
-  void space.afterCall(o, callId, end.meetingId, worked);
-  return end;
+  if (end.ended) void space.afterCall(o, { callId, meetingId: end.meetingId, worked, noteId: end.pendingNoteId, home, startedAt: end.startedAt });
+  return { meetingId: end.meetingId, pendingNoteId: end.pendingNoteId, duration: end.duration };
 }
 
 /**

@@ -43,6 +43,11 @@ const ARCH_STRIP = 86;
 const TILE_STRIP = 128;
 /** Side panels floating in one column stay at least this tall. */
 const FLOAT_MIN_H = 240;
+/** The least that's worth keeping clear of a floating side panel. */
+const CLEAR_MIN = 240;
+/** Just the document: how far it stands from the window's edges, and how much is left at the bottom for the dock and the arches. */
+const ZEN_EDGE = 12;
+const ZEN_DOCK = 56;
 /** How far from the window's edge a drop means the edge. */
 const EDGE = 24;
 /** The width people take beside something else, unless dragged. */
@@ -116,8 +121,8 @@ export interface PanelFacts {
   front: Leaf | null;
   /** A phone: one thing at a time. */
   phone: boolean;
-  /** Just the document: everything else steps back. */
-  zen: boolean;
+  /** Just the document: everything else steps back, and it has this, past the bars that tuck away. */
+  zen: Box | null;
   /** The organizer's stage shows every breakout room, so it stays whole. */
   rooms: boolean;
   /** Room to keep at the top and bottom of the panels for the status bar and captions, once the stage has come apart. */
@@ -149,7 +154,8 @@ const mains = (f: PanelFacts): Leaf[] => { const open: Leaf[] = f.zen ? [] : [..
 function leafShown(id: Leaf, a: CallPanels, f: PanelFacts, A: Adapted): boolean {
   if (id === 'stage') return !A.apart;
   if (id === 'people') return A.apart && A.people !== 'hidden';
-  if (id === 'ws' || id === 'board') return A.apart && f[id] && (!A.tabs || A.front === id);
+  // The rooms keep the stage, and the workspace and the board stand beside it.
+  if (id === 'ws' || id === 'board') return (A.apart || f.rooms) && f[id] && (!A.tabs || A.front === id);
   if (isShareLeaf(id)) return A.apart && f.shown.includes(id) && !f.zen && (!A.tabs || A.front === id);
   const g = groupFor(a, id);
   return !!g && g.open && !f.zen && !A.float;
@@ -182,11 +188,21 @@ export function adapt(a: CallPanels, size: Size, f: PanelFacts): Adapted {
   const front = f.front && open.includes(f.front) ? f.front : open[0] ?? null;
   if (f.phone) return { apart, people: 'arches', list: false, float: false, tabs: open.length > 1, front, gave: ['phone'], phone: true };
   const A: Adapted = { apart, people: !apart ? 'tiles' : f.zen ? 'hidden' : a.people, list: a.list && f.ws && !f.zen, float: false, tabs: false, front, gave: [], phone: false };
+  /*
+   * A share shown beside the workspace or the board: the people fold to arches and the list tucks away, so both stay
+   * readable. Nothing of yours changes, so they're back as they were once the share goes back to a tile.
+   */
+  if (apart && !f.zen && f.shown.length > 0 && (f.ws || f.board)) {
+    if (A.people === 'tiles') { A.people = 'arches'; A.gave.push('people'); }
+    if (A.list) { A.list = false; A.gave.push('list'); }
+  }
   const fits = () => need(a.tree, a, f, A, false) <= size.w;
   if (!fits() && A.people === 'tiles' && apart) { A.people = 'arches'; A.gave.push('people'); }
   if (!fits() && A.list) { A.list = false; A.gave.push('list'); }
   if (!fits() && !f.zen && a.groups.some((g) => g.open)) { A.float = true; A.gave.push('side'); }
-  if (!fits() && open.length > 1) { A.tabs = true; A.gave.push('tabs'); }
+  // A column over two things side by side would sit on most of one of them, so they need room for it too.
+  const clear = () => need(a.tree, a, f, A, false) + (A.float ? SIDE_W + GAP : 0) <= size.w;
+  if (!clear() && open.length > 1) { A.tabs = true; A.gave.push('tabs'); }
   return A;
 }
 
@@ -241,8 +257,12 @@ function solvePhone(a: CallPanels, size: Size, f: PanelFacts, A: Adapted): Solve
   const body: Box = { x: 0, y: top, w: size.w, h: Math.max(0, size.h - top) };
   if (A.apart) {
     rects.people = { x: 8, y: 4, w: size.w - 16, h: 64 };
-    for (const id of mains(f)) rects[id] = body;
-  } else rects.stage = box;
+    for (const id of mains(f)) if (!A.tabs || id === A.front) rects[id] = body;
+  } else {
+    rects.stage = box;
+    // The rooms keep the stage, and what's open goes over it until it's closed: one thing at a time.
+    if (f.rooms) for (const id of mains(f)) rects[id] = box;
+  }
   const g = a.groups.find((x) => x.id === a.front && x.open) ?? a.groups.find((x) => x.open);
   if (g) rects[groupLeaf(g.id)] = body;
   return { A, rects, dividers: [], gave: A.gave, box };
@@ -251,7 +271,8 @@ function solvePhone(a: CallPanels, size: Size, f: PanelFacts, A: Adapted): Solve
 export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
   const A = adapt(a, size, f);
   if (A.phone) return solvePhone(a, size, f, A);
-  const box: Box = A.apart ? { x: 0, y: f.top, w: size.w, h: Math.max(0, size.h - f.top - f.bottom) } : { x: 0, y: 0, w: size.w, h: size.h };
+  const room: Box = f.zen ?? { x: 0, y: 0, w: size.w, h: size.h };
+  const box: Box = A.apart ? { ...room, y: room.y + f.top, h: Math.max(0, room.h - f.top - f.bottom) } : room;
   const rects: Solved['rects'] = {};
   const dividers: Divider[] = [];
   const tw = tileWidth(size.w);
@@ -297,11 +318,16 @@ export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
       const next = ks[j + 1];
       if (!next) return;
       const rest = ks.flatMap((x, m) => (px[m] === null && m !== j && m !== j + 1 ? [{ flex: weight(m, x.k), size: sizes[m] ?? 0 }] : []));
-      dividers.push({
-        key: `${firstShown(k)}|${firstShown(next.k)}`, path, ia: i, ib: next.i, pa: by[j]?.path ?? [], pb: by[j + 1]?.path ?? [], dir: n.dir, sa: s, sb: sizes[j + 1] ?? 0,
-        rect: whole(row ? { x: pos, y: r.y, w: GAP, h: r.h } : { x: r.x, y: pos, w: r.w, h: GAP }), a: firstShown(k), b: firstShown(next.k),
-        others: rest.length ? { flex: sum(rest.map((o) => o.flex)), size: sum(rest.map((o) => o.size)) } : null
-      });
+      const a = firstShown(k);
+      const b = firstShown(next.k);
+      // People folded for want of room have no room to give: a line beside them would only pretend.
+      if (!(A.gave.includes('people') && (a === 'people' || b === 'people'))) {
+        dividers.push({
+          key: `${a}|${b}`, path, ia: i, ib: next.i, pa: by[j]?.path ?? [], pb: by[j + 1]?.path ?? [], dir: n.dir, sa: s, sb: sizes[j + 1] ?? 0,
+          rect: whole(row ? { x: pos, y: r.y, w: GAP, h: r.h } : { x: r.x, y: pos, w: r.w, h: GAP }), a, b,
+          others: rest.length ? { flex: sum(rest.map((o) => o.flex)), size: sum(rest.map((o) => o.size)) } : null
+        });
+      }
       pos += GAP;
     });
   };
@@ -310,15 +336,19 @@ export function solve(a: CallPanels, size: Size, f: PanelFacts): Solved {
   if (rects.ws && rects.ws.w < 620 && A.list) { A.list = false; if (!A.gave.includes('list')) A.gave.push('list'); }
   if (A.float) {
     // Side panels with no room in the row share a column over the right of the screen, the panel you last brought up
-    // always among them. The stage makes room for it if it can, so nobody's covered.
+    // always among them. Whatever's under it makes room if it can, so nobody and no words are covered.
     const open = a.groups.filter((g) => g.open);
     const most = Math.max(1, Math.floor((box.h + GAP) / (FLOAT_MIN_H + GAP)));
     const shown = [...open.filter((g) => g.id !== a.front), ...open.filter((g) => g.id === a.front)].slice(-most);
     const people = rects.people && rects.people.x > size.w / 2 ? rects.people.w + GAP : 0;
     const h = (box.h - GAP * (shown.length - 1)) / shown.length;
-    open.filter((g) => shown.includes(g)).forEach((g, i) => { rects[groupLeaf(g.id)] = whole({ x: size.w - people - SIDE_W, y: box.y + i * (h + GAP), w: SIDE_W, h }); });
-    const st = rects.stage;
-    if (st && st.w - SIDE_W - GAP >= STAGE_MIN) rects.stage = { ...st, w: st.w - SIDE_W - GAP };
+    const x = size.w - people - SIDE_W;
+    open.filter((g) => shown.includes(g)).forEach((g, i) => { rects[groupLeaf(g.id)] = whole({ x, y: box.y + i * (h + GAP), w: SIDE_W, h }); });
+    for (const id of ['stage', 'ws', 'board', 'share:1', 'share:2'] as const) {
+      const r = rects[id];
+      const w = r ? x - GAP - r.x : 0;
+      if (r && w < r.w && w >= (id === 'stage' ? STAGE_MIN : CLEAR_MIN)) rects[id] = { ...r, w };
+    }
   }
   return { A, rects, dividers, gave: A.gave, box };
 }
@@ -329,8 +359,17 @@ export function mainRoom(s: Solved): Box {
   if (!boxes.length) return s.box;
   const x = Math.min(...boxes.map((b) => b.x));
   const y = Math.min(...boxes.map((b) => b.y));
-  return { x, y, w: Math.max(...boxes.map((b) => b.x + b.w)) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
+  const right = Math.max(...boxes.map((b) => b.x + b.w));
+  // A side panel floating over it with no room to make takes that much off what's clear, if enough is left to say anything in.
+  const floats = s.A.float ? CallPanelGroupIdSchema.options.flatMap((g) => { const r = s.rects[groupLeaf(g)]; return r ? [r.x] : []; }) : [];
+  const edge = Math.min(right, ...floats.map((f) => f - GAP));
+  return { x, y, w: (edge - x >= CLEAR_MIN ? edge : right) - x, h: Math.max(...boxes.map((b) => b.y + b.h)) - y };
 }
+
+/** The room for just the document, in the call's area: the bars have tucked away, so it reaches past it. */
+export const zenRoom = (size: Size, h: Horizon): Box => ({
+  x: ZEN_EDGE - h.left, y: ZEN_EDGE - h.top, w: size.w + 2 * (h.left - ZEN_EDGE), h: h.base + 10 - ZEN_DOCK + h.top - ZEN_EDGE
+});
 
 /* ---------- changing the arrangement ---------- */
 
@@ -692,10 +731,14 @@ export interface PeoplePlaced {
   more: (TileSpot & { n: number }) | null;
 }
 export interface Horizon {
-  /** Where the dock starts, in the call's area: the horizon stops short of it. */
+  /** Where the dock starts and ends, in the call's area: the horizon stops short of it. */
   dock: number;
+  dockEnd: number;
   /** The ground they stand on. */
   base: number;
+  /** How far the call's area is from the top and the left of the window. */
+  top: number;
+  left: number;
 }
 const TILE_GAP = 10;
 /** The smallest a tile gets before the rest wait behind a count. */

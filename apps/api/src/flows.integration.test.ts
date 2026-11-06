@@ -239,13 +239,13 @@ describe('signing in', () => {
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false },
+      notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
       pinned: [], groups: []
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false }
+      notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true }
     });
     expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
@@ -2709,8 +2709,8 @@ describe('deleting an account', () => {
     // A file she put in a workspace Ann keeps: it stays there, and what she uploaded today counts under her account.
     const shared = (await ann.api.workspaces.create('Shared')).id;
     await ann.api.workspaces.addPerson(shared, lena.email, 'edit');
-    const annsDoc = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
-    await b.api.workspaces.media.upload(shared, annsDoc, new File([new Uint8Array(16)], 'from-lena.png', { type: 'image/png' }));
+    const annPlan = (await ann.api.workspaces.items.create(shared, { kind: 'document', name: 'Plan', parent: null })).id;
+    await b.api.workspaces.media.upload(shared, annPlan, new File([new Uint8Array(16)], 'from-lena.png', { type: 'image/png' }));
     // A room recording whose notes are queued to be tried again...
     const rec = await b.api.recordings.start({ title: 'Waiting' });
     await rec.appendAudio(piece(audioBytes('leaving-room'), 0, 0));
@@ -2754,13 +2754,13 @@ describe('deleting an account', () => {
     expect(tables).toEqual([
       'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
-      'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspaces'
+      'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();
     // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
-    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_uses']);
+    const notAnAccounts = new Set(['object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
@@ -3158,10 +3158,6 @@ describe('privacy at rest', () => {
     await c.api.workspaces.items.rename(space.id, spaceDoc.id, 'CANARY-WSRENAMED');
     await c.api.workspaces.share.set(space.id, spaceDoc.id, [{ email: 'canary-ws-shared@canary.example' }], 'read');
     await c.api.workspaces.items.duplicate(space.id, spaceDoc.id);
-    // Brought to a call, which keeps an ID: its name is in no row and no receipt, whatever the answer said.
-    const library = (await c.api.documents.list()).workspaces.flatMap((w) => w.documents);
-    const bringing = library.find((d) => d.name === 'CANARY-WSRENAMED')?.id ?? '';
-    expect((await c.api.meetings.create({ title: 'CANARY-TITLE brought', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', documents: [bringing] })).documents[0]?.name).toBe('CANARY-WSRENAMED');
     // A file in it: its name and its bytes are sealed, and the URL it's read from reaches no log, whether that read works or not.
     const fileBytes = new TextEncoder().encode('CANARY-MEDIA-BYTES of a picture nobody else may see');
     const file = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([fileBytes], 'CANARY-MEDIA-NAME.png', { type: 'image/png' }));
@@ -3173,6 +3169,10 @@ describe('privacy at rest', () => {
     // One deleted says no more than one kept.
     const deleted = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([new TextEncoder().encode('CANARY-MEDIA-DELETED bytes')], 'CANARY-MEDIA-GONE.png', { type: 'image/png' }));
     await c.api.workspaces.media.remove(space.id, spaceDoc.id, deleted.id);
+    // Brought to a call, which keeps an ID: its name is in no row and no receipt, whatever the answer said.
+    const library = (await c.api.documents.list()).workspaces.flatMap((w) => w.documents);
+    const bringing = library.find((d) => d.name === 'CANARY-WSRENAMED')?.id ?? '';
+    expect((await c.api.meetings.create({ title: 'CANARY-TITLE brought', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off', documents: [bringing] })).documents[0]?.name).toBe('CANARY-WSRENAMED');
     await c.api.workspaces.items.trash(space.id, spaceFolder.id);
     // A refusal says nothing either: not the address, the name, or that anything's there.
     expect(await c.api.workspaces.addPerson(space.id, 'not-an-address-CANARY-WSREFUSED', 'read').catch((e: unknown) => code(e))).toBe('invalid');
@@ -3233,8 +3233,8 @@ describe('privacy at rest', () => {
       '"answer":"maybe"', 'CANARY-OWN-WORDS', 'CANARY-OWN-MARK', 'CANARY-OWN-ASKED', 'CANARY-OWN-ANSWER', 'CANARY-ADDED',
       'CANARY-PROPOSAL', 'CANARY-ROOMPROPOSAL', 'CANARY-FOLLOWUP', 'CANARY-DUE', 'CANARY-REWORD', 'needs a vote', 'brief the board', 'two votes',
       'CANARY-WORKSPACE', 'CANARY-WSFOLDER', 'CANARY-WSDOC', 'CANARY-WSBOARD', 'CANARY-WSRENAMED', 'CANARY-WSREFUSED', 'canary-ws-member', 'canary-ws-shared',
-      'CANARY-BOARDCALL', 'CANARY-BOARDGUEST',
-      'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED'
+      'CANARY-MEDIA-NAME', 'CANARY-MEDIA-BYTES', 'CANARY-MEDIA-GONE', 'CANARY-MEDIA-DELETED',
+      'CANARY-BOARDCALL', 'CANARY-BOARDGUEST'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

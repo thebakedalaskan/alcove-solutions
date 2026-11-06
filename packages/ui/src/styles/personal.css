@@ -70,13 +70,16 @@
    touch screens. */
 .tx-l { position: relative; }
 .tx-l.has-mark { padding-right: 30px; }
+.tx-l.has-put { padding-right: 30px; }
+.tx-l.has-mark.has-put { padding-right: 58px; }
+.tx-l .ws-put { position: absolute; right: 0; top: 2px; }
+.tx-l.has-mark .ws-put { right: 28px; }
 .tx-l .tx-mark { position: absolute; right: 0; top: 2px; width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
 .tx-l:hover .tx-mark, .tx-l:focus-within .tx-mark { opacity: 1; }
 @media (hover: none) { .tx-l .tx-mark { opacity: 1; } }
 .tx-l .tx-mark:hover { background: var(--sunk); color: var(--ink); }
-/* On a phone the dock has no room for it: it's in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
+/* On a phone the mark is in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
 @media (max-width: 560px) {
-  .ic-dockbar .d-mark { display: none; }
   .ic-side-head .ac-tab { padding: 0 6px; font-size: 13px; }
   .ic-side-head .ac-tab[aria-selected="true"]::after { left: 5px; right: 5px; }
 }

@@ -75,8 +75,11 @@ export interface Caret { client: number; top: number; left: number; height: numb
 /** A block being dragged. `line` is where it will land, relative to the editor, or null over somewhere it can't go. */
 export interface DragState { block: MovingBlock; at: Point; line: number | null; target: { id: string; side: 'before' | 'after' } | null; outside: boolean }
 
-/** Files coming in from the desktop: `line` is where they'd land, `after` the block that's below. */
-export interface FileDragState { line: number; after: string }
+/**
+ * Files coming in from the desktop: `line` is where they'd land, `after` the block that's below. Over an empty Photos
+ * block they fill it: that's `into`, and no line shows.
+ */
+export type FileDragState = { line: number; after: string } | { into: string };
 
 /** A comment thread, as the margin and the marks need it. */
 export interface ThreadView { open: boolean; count: number }

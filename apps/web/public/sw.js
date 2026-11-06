@@ -69,6 +69,7 @@ self.addEventListener('notificationclick', (event) => {
 function pathOf(open) {
   if (open?.to === 'call') return `/join/${encodeURIComponent(open.code)}`;
   if (open?.to === 'note') return `/notes/${encodeURIComponent(open.noteId)}`;
+  if (open?.to === 'document') return `/drive/${encodeURIComponent(open.workspaceId)}/${encodeURIComponent(open.documentId)}${open.block ? `#${encodeURIComponent(open.block)}` : ''}`;
   return open?.to === 'notes' ? '/notes' : '/home';
 }
 

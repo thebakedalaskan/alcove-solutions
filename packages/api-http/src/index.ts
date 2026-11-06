@@ -4,9 +4,9 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, SearchDocSchema, DocumentShareSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, BoardCheckSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, MediaTokenAnswerSchema, WorkspaceMediaSchema,
-  NoteFoundSchema, OPERATION_HEADER, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
-  SeriesAnswerPartSchema, SeriesSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, MediaTokenAnswerSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, BoardCheckSchema,
+  NoteFoundSchema, OPERATION_HEADER, PersonIdsSchema, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
+  SeriesAnswerPartSchema, SeriesSchema, isTimeZone,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
@@ -62,6 +62,15 @@ const audioPath = (id: string, segment: number, pieces: number) => `/notes/${enc
 const b64u = (b: Uint8Array) => btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const randomBytes = (n: number) => crypto.getRandomValues(new Uint8Array(n));
 const opId = () => b64u(randomBytes(16));
+/** Where this browser is, as an IANA name, when it knows and the API would too: the day a call's new home and folder are named after. */
+function hereZone(): { timeZone?: string } {
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return timeZone && isTimeZone(timeZone) ? { timeZone } : {};
+  } catch {
+    return {};
+  }
+}
 
 export function createHttpApi(o: HttpOptions): AlcoveApi {
   const f = o.fetch ?? globalThis.fetch.bind(globalThis);
@@ -113,18 +122,23 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     // A line can be a whole document, so what's come so far is looked through once, not again with every piece that arrives.
     let pieces: string[] = [];
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      let from = 0;
-      for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
-        pieces.push(value.slice(from, i));
-        const line = pieces.join('').trim();
-        pieces = [];
-        from = i + 1;
-        if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        let from = 0;
+        for (let i = value.indexOf('\n'); i >= 0; i = value.indexOf('\n', from)) {
+          pieces.push(value.slice(from, i));
+          const line = pieces.join('').trim();
+          pieces = [];
+          from = i + 1;
+          if (line) yield parse(schema, JSON.parse(line), `stream item from ${path}`);
+        }
+        if (from < value.length) pieces.push(value.slice(from));
       }
-      if (from < value.length) pieces.push(value.slice(from));
+    } finally {
+      // Whoever was reading may have stopped early, and the API lets go of a stream once nobody's there.
+      reader.cancel().catch(() => undefined);
     }
   }
   /** Every stream of rings this client has open, so an answer leaves them all at once. */
@@ -363,14 +377,19 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
         deleteForever: async (id, itemId) => { await req(z.unknown(), 'DELETE', itemIn(id, itemId)); }
       },
       share: {
-        list: (id, documentId) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`),
+        list: (id, documentId, w) => req(DocumentShareSchema, 'GET', `${itemIn(id, documentId)}/share`, undefined, withPass(w)),
         set: async (id, documentId, to, role, w) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/share`, { to, role }, withPass(w)); },
         remove: async (id, documentId, entryId) => { await req(z.unknown(), 'DELETE', `${itemIn(id, documentId)}/share/${encodeURIComponent(entryId)}`); },
         restrict: async (id, documentId, restricted) => { await req(z.unknown(), 'POST', `${itemIn(id, documentId)}/restrict`, { restricted }); }
       },
+      mention: async (id, documentId, tag, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/mentions`, tag, withPass(w)); },
+      ids: async (id, emails, w) => (await req(PersonIdsSchema, 'POST', `${space(id)}/ids`, { emails }, withPass(w))).ids,
+      mentions: () => req(z.array(MentionNoticeSchema), 'GET', '/mentions'),
+      mentionSeen: async (id, mentionId, w) => { await req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mentionId)}`, undefined, withPass(w)); },
       live: (id, w) => new HttpWorkspaceLive(
         (signal) => ndjson(WorkspaceLiveEventSchema, `${space(id)}/live`, signal, withPass(w)), o.liveQuietMs ?? QUIET_MS,
-        (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS
+        (body, keepalive) => req(z.unknown(), 'POST', `${space(id)}/presence`, body, withPass(w), keepalive), o.livePresenceMs ?? PRESENCE_BEAT_MS,
+        (mention) => req(z.unknown(), 'DELETE', `${space(id)}/mentions/${encodeURIComponent(mention)}`, undefined, withPass(w))
       ),
       // Yjs comes with the first document anyone opens, and stays out of everything else.
       document: async (id, documentId, opts) => {
@@ -1133,8 +1152,9 @@ class HttpCall extends Live<CallState> implements CallSession {
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
   setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
+  addFollowUp = async (text: string) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', text })); };
   private space = async (a: CallAction) => { this.take(await this.t.act(this.state.callId, a)); };
-  openWorkspace = () => this.space({ type: 'workspace-open' });
+  openWorkspace = () => this.space({ type: 'workspace-open', ...hereZone() });
   previewWorkspace = (workspaceId: string) => this.t.previewWorkspace(this.state.callId, workspaceId);
   setWorkspace = (workspaceId: string) => this.space({ type: 'workspace-set', workspaceId });
   newWorkspace = (name?: string | undefined) => this.space({ type: 'workspace-new', ...(name ? { name } : {}) });

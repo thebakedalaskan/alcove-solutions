@@ -24,7 +24,7 @@
  * however they've framed it, while they see it live.
  */
 import { CALL_SHARE_ROOM, CALL_SHARE_SPLIT, type CallPeopleMode, type Person, type SelfView, type StageCorner } from '@alcove/api';
-import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, cn, useToast, volumeTag } from '@alcove/ui';
+import { Avatar, Button, CallTile, CaptureSign, EmptyState, Icon, NotesSign, Tooltip, WsPersonCard, WsPopover, cn, useToast, volumeTag } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -41,6 +41,7 @@ import { MAX_FEATURED, arrange, fitGrid, isShareKey, isWaitKey, placeFrame, resl
 import { TileMenu, type PersonMenu } from './TileMenu';
 import { FeedVideo, type Feed } from './Video';
 import type { CallView } from './view';
+import type { CallTogether } from '~/features/workspace/context';
 import type { VolumeActions } from './volume';
 
 export interface StageParticipant {
@@ -55,6 +56,17 @@ export interface StageParticipant {
   /** In the call, but not yet in this browser's encrypted group, so none of their media plays here yet. */
   connecting: boolean;
 }
+/**
+ * What a tile shows of the workspace, by connection: Follow, Following, who's writing, and who was just tagged. On a phone,
+ * someone's arch opens their card instead, with Go there and Tag as well.
+ */
+export interface StageTogether extends CallTogether {
+  lit: string | null; onFollow: (connection: string) => void; onStop: () => void;
+  onGo: (connection: string) => void; onTag: (connection: string) => void;
+  /** A document is open here that you can write in, so you can tag someone in it. */
+  canTag: () => boolean;
+}
+
 /** Something shared: whose it is (their participant ID), its feed, and what it's called. */
 export interface StageShare {
   id: string;
@@ -76,6 +88,8 @@ export interface StageShare {
 }
 /** Someone rung who isn't in the call, waiting in a tile of their own: who, and what the tile shows. */
 export interface StageWaiter { id: string; person: Person; tile: ReactNode }
+/** About how wide "Aiko raised a hand" is. */
+const HZ_WORDS = 150;
 /** How long a share that just started keeps its glow class: longer than the glow itself (--duration-5), so it plays out. */
 const NEW_MS = 3000;
 /**
@@ -123,7 +137,7 @@ function cornerBy(c: StageCorner, key: string): StageCorner {
  * What the stage shows, worked out above it so the panels can make room for it: everyone and everything shared, in order,
  * which shares are big, and the seat each of those has among the panels.
  */
-export function useStagePlan({ people, waiting, shares, spotlight, view, part, paused, narrow, hold, apart }: {
+export function useStagePlan({ people, waiting, shares, spotlight, view, part, paused, narrow, hold, turns, apart }: {
   people: StageParticipant[];
   /** People rung who aren't in the call yet, each in a tile of their own after everyone who's here. */
   waiting: StageWaiter[];
@@ -139,6 +153,8 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
   narrow: boolean;
   /** The workspace or the board has the room: a share waits as a tile until you bring it in. */
   hold: boolean;
+  /** A phone: what's big takes turns, so a share that starts is seated at once, behind what's in front (stageLayout.ts). */
+  turns: boolean;
   /** You set the people and shares apart: with a share big, they're panels of their own. */
   apart: boolean;
 }) {
@@ -170,8 +186,8 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
   const shareIds = ordered.map((s) => s.id).join(' ');
   const wasBig = useRef<string[]>([]);
   // `people` changes on every render (who's speaking); the plan only needs who's here, which peopleKey says.
-  const raw = useMemo(() => arrange({ people: [...people, ...awaited], shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay, hold, kept: wasBig.current, apart }),
-    [peopleKey, shareIds, own, popped, fit, spotlight, talk.speaker, talk.dominant, prefs, lay, hold, apart]);
+  const raw = useMemo(() => arrange({ people: [...people, ...awaited], shares: shareIds ? shareIds.split(' ') : [], own, away: popped ? [popped] : [], fit, spotlight, speaker: talk.speaker, dominant: talk.dominant, prefs, layout: lay, hold, turns, kept: wasBig.current, apart }),
+    [peopleKey, shareIds, own, popped, fit, spotlight, talk.speaker, talk.dominant, prefs, lay, hold, turns, apart]);
   // While Alcove picks who leads (Speaker view), whoever steps down takes the place of whoever steps up.
   const strip = useRef<{ order: string; auto: boolean; rest: string[] }>({ order: '', auto: false, rest: [] });
   const orderKey = lay.order.join(' ');
@@ -192,9 +208,11 @@ export function useStagePlan({ people, waiting, shares, spotlight, view, part, p
 }
 export type StagePlan = ReturnType<typeof useStagePlan>;
 
-export function Stage({ staged, frame, live: sizing, phone, people, waiting, shares, marks, me, whoIs, spotlight, view, organizer, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped, onPeopleMode, onPickUp, onGrowShare, onMorePeople }: {
+export function Stage({ staged, frame, live: sizing, phone, people, waiting, shares, marks, me, whoIs, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onShareStarted, onShareStopped, onPeopleMode, onPickUp, onGrowShare, onMorePeople }: {
   /** What it shows (`useStagePlan`). */
   staged: StagePlan;
+  /** People working together in the workspace, by connection. */
+  together: StageTogether;
   /** Where the panels put it. */
   frame: StageFrame;
   /** A line is being dragged: everything follows it at once. */
@@ -289,6 +307,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
+  /** Whose card is open, from their arch on a phone: the same choices a tile gives you on a laptop, in a sheet. */
+  const [card, setCard] = useState<string | null>(null);
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const tabKey = focusKey && focusables.includes(focusKey) ? focusKey : focusables[0] ?? null;
   const els = useRef(new Map<string, HTMLDivElement>());
@@ -334,7 +354,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
     if (g && target !== undefined) reorder(g, id, target);
   };
   /** Shows a share big (beside what's big, or in place of the one that's been big longest when they don't all fit), or as a tile. */
-  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); onCustom(); };
+  const toggleShare = (id: string, big: boolean) => { if (big) view.hideShare(id, plan.featured); else view.showShare(id, plan.featured); if (!onGrowShare) onCustom(); };
   const toggleBig = (p: StageParticipant) => { view.setBig(p.seat, !lay.big.includes(p.seat)); onCustom(); };
   const focusTo = (k: string | undefined) => { if (k === undefined) return; setFocusKey(k); els.current.get(k)?.focus(); };
   /** How you look at someone else's share you see big here (zoom, a picture held still): ShareSurface.tsx. */
@@ -371,14 +391,14 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   };
 
   const liveShares = new Set(shares.map((s) => s.id));
-  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares });
-  latest.current = { L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares };
+  const latest = useRef({ L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares, beside: !!onGrowShare });
+  latest.current = { L, plan, view, onCustom, reorder, groupOf, fx, fy, w, h, live: liveShares, beside: !!onGrowShare };
   /** Shows a share big from a toast, later, beside whatever is big by then (unless it has stopped since). */
   const showLater = (id: string) => () => {
     const c = latest.current;
     if (!c.live.has(id)) return;
     c.view.showShare(id, c.plan.featured);
-    c.onCustom();
+    if (!c.beside) c.onCustom();
   };
 
   /* Someone else's share starting or stopping is told to the call screen, which says so when it isn't plain to see. */
@@ -520,7 +540,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
       ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),
       size: sizable && restGroup.includes(p.id) ? { big: lay.big.includes(p.seat), toggle: () => toggleBig(p) } : undefined,
       self: p.isMe ? { where: prefs.self, set: onSelf } : undefined,
-      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) }
+      volume: p.volume === null ? undefined : { level: p.volume, set: (level) => volumes.set(p.id, level), toggle: () => volumes.toggle(p.id) },
+      following: together.following === p.id ? { on: true, toggle: together.onStop } : together.followable.includes(p.id) ? { on: false, toggle: () => together.onFollow(p.id) } : undefined
     };
   };
   const nothing = !L.slots.size && !L.shares.size;
@@ -531,8 +552,11 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
   const loudOne = people.find((p) => p.hand) ?? people.find(talking);
   const onHorizon = !!panels && panels.mode === 'hidden';
   const ground = onHorizon ? [...L.slots.entries()].filter(([k]) => !L.off.has(k)).reduce((x, [, r]) => Math.max(x, r[0] + r[2]), 0) : 0;
+  // The line saying so stands beside them, or past the dock when there's no room this side of it.
+  const hzAt = !panels ? null : ground + 28 + HZ_WORDS < panels.horizon.dock ? ground + 28 : panels.horizon.dockEnd + 16 + HZ_WORDS < w ? panels.horizon.dockEnd + 16 : null;
   const peopleBar = L.people && canMove && !narrow && (panels ? panels.mode !== 'hidden' : plan.shape === 'side') && L.slots.size > 0;
   const folded = panels?.mode === 'arches';
+  const carded = card === null ? null : people.find((p) => p.id === card && !p.isMe) ?? null;
   return (
     <div ref={ref} className="ic-stage">
       <motion.div className="ic-frame" initial={false} animate={box([fx, fy, w, h])} transition={glide}>
@@ -594,7 +618,8 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
               <Avatar person={s.presenter} size={18} /><span className="tl">{panels && !s.mine ? s.name : s.label}</span>
               {s.sound && <Icon name={s.sound.muted ? 'speakerOff' : 'speaker'} size={14} className="snd" />}
             </span>
-            {!big && !away && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
+            {!big && !away && !panels && <span className="ic-sgrow" aria-hidden="true"><Icon name="grow" size={18} /></span>}
+            {!big && !away && panels && !tileMode && <button type="button" className="ic-showit" tabIndex={-1} onClick={() => toggleShare(s.id, false)}><Icon name="grow" size={13} /><span>Show it</span></button>}
             {big && panels && (
               <div className="ic-scr-ac">
                 {onGrowShare && seat && <Tooltip label="Make it bigger" side="bottom"><button type="button" tabIndex={-1} aria-label="Make it bigger" onClick={() => onGrowShare(seat)}><Icon name="grow" size={15} /></button></Tooltip>}
@@ -636,6 +661,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
         const growing = size?.id === p.seat;
         const pin = pinned.has(p.id);
         const spot = spotlight === p.id;
+        const following = together.following === p.id;
         const mode = L.modes.get(p.id);
         const here = dragging ? { left: drag.x, top: drag.y, width: r[2], height: r[3] } : growing ? { left: r[0], top: r[1], width: size.w, height: size.h } : box(r);
         const opens = opening.current.get(p.id);
@@ -645,14 +671,19 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
             className={cn('ic-slot', dragging && 'is-drag', growing && 'is-sizing', (corner || (handsOn && groupOf(p.id))) && 'can-drag', corner && 'is-corner', opens && 'rg-opens', mode && `is-${mode}`, mode === 'horizon' && (p.hand || talking(p)) && 'is-up', L.off.has(p.id) && 'is-off')}
             title={mode ? callName(p.person) : undefined}
             onPointerDown={(e) => startDrag(e, p.id, corner)}
-            onClick={mode ? (e) => { if (e.target instanceof Node && e.currentTarget.contains(e.target)) setMenu(p.id); } : undefined}
+            onClick={mode ? (e) => {
+              if (!(e.target instanceof Node && e.currentTarget.contains(e.target))) return;
+              if (phone && !p.isMe && (together.followable.includes(p.id) || together.following === p.id)) setCard(p.id);
+              else setMenu(p.id);
+            } : undefined}
             initial={opens ? { ...box(opens.from), opacity: 1, scale: 1 } : { ...here, opacity: 0, scale: 0.97 }} animate={{ ...here, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={instant || dragging || growing ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
               chrome={(
                 <>
                   {!corner && (
                     <div className="ic-tstate">
+                      {together.writing.includes(p.id) && <span className="ic-tpen" aria-label="Writing"><Icon name="pen" size={12} /></span>}
                       {spot && (
                         <span className="ic-tch is-spot"><Icon name="spotlight" size={13} /><span className="tl">Spotlight · everyone</span>
                           {organizer && <button type="button" className="tx" aria-label="Stop spotlight for everyone" onClick={() => onSpotlight(null)}><Icon name="x" size={12} /></button>}
@@ -669,6 +700,10 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
                         </span>
                       )}
                     </div>
+                  )}
+                  {following && !mode && <span className="ic-ton"><Icon name="navigate" size={12} />Following</span>}
+                  {!following && !mode && !corner && together.followable.includes(p.id) && (
+                    <button type="button" className="ic-tfl" tabIndex={-1} aria-label={`Follow ${callName(p.person)}`} onClick={() => together.onFollow(p.id)}><Icon name="navigate" size={13} /><span>Follow</span></button>
                   )}
                   <TileMenu who={p.person} me={p.isMe} open={menu === p.id} onOpenChange={(o) => setMenu(o ? p.id : null)} organizer={organizer} menu={menuFor(p, corner)} />
                   {sizable && restGroup.includes(p.id) && <span className="ic-rs" data-handle aria-hidden="true" onPointerDown={(e) => startGrow(e, p)}><Icon name="resize" size={14} /></span>}
@@ -703,12 +738,21 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, sha
       {peopleBar && L.people && (
         <div className="ic-ppl" role="toolbar" aria-label="People" style={{ left: L.people.x + L.people.w / 2, top: L.people.y + 6 }}>
           <button type="button" className="b is-grab" data-move="people" aria-label="Drag to move people" title="Drag to move"><Icon name="grip" size={14} /></button>
-          <button type="button" className="b" aria-label={folded ? 'Show as tiles' : 'Fold to arches'} title={folded ? 'Show as tiles' : 'Fold to arches'} onClick={() => onPeopleMode(folded ? 'tiles' : 'arches')}><Icon name={arches ? 'grow' : 'shrink'} size={14} /></button>
+          <button type="button" className="b" aria-label={folded ? 'Show as tiles' : 'Fold to arches'} title={folded ? 'Show as tiles' : 'Fold to arches'} onClick={() => onPeopleMode(folded ? 'tiles' : 'arches')}><Icon name={folded ? 'grow' : 'shrink'} size={14} /></button>
           <button type="button" className="b" aria-label="Hide people" title="Hide people (⇧P)" aria-keyshortcuts="Shift+P" onClick={() => onPeopleMode('hidden')}><Icon name="eyeOff" size={14} /></button>
         </div>
       )}
-      {onHorizon && panels && loudOne && ground + 28 + 150 < panels.horizon.dock && (
-        <span className="ic-hz" style={{ left: ground + 28, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
+      {onHorizon && panels && loudOne && hzAt !== null && (
+        <span className={cn('ic-hz', hzAt > panels.horizon.dock && 'is-past')} style={{ left: hzAt, top: panels.horizon.base - 24 }}>{callName(loudOne.person)} {loudOne.hand ? 'raised a hand' : 'is talking'}</span>
+      )}
+      {carded && (
+        <WsPopover open at={() => els.current.get(carded.id)?.getBoundingClientRect() ?? new DOMRect()} label={callName(carded.person)} onOpenChange={(o) => { if (!o) setCard(null); }}>
+          <WsPersonCard person={carded.person} where={together.where[carded.id] ?? 'Not in the workspace'} followed={together.following === carded.id}
+            onFollow={() => { setCard(null); together.onFollow(carded.id); }} onStop={() => { setCard(null); together.onStop(); }}
+            onGo={together.reachable.includes(carded.id) ? () => { setCard(null); together.onGo(carded.id); } : undefined}
+            onTag={together.canTag() ? () => { setCard(null); together.onTag(carded.id); } : undefined}
+            onOptions={() => { setCard(null); setMenu(carded.id); }} />
+        </WsPopover>
       )}
       {seenLooks.popped && popped && (() => {
         const s = ordered.find((x) => x.id === popped);

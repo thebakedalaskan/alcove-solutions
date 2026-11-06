@@ -23,8 +23,11 @@ import { page, type PageStory } from './page';
 import type { World } from './world';
 import { call, type CallSpec } from './world/build';
 
-/** A call the story puts in the world first: a call as `call()` writes it, started just now, or set up to join muted. */
-export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined }
+/**
+ * A call the story puts in the world first: a call as `call()` writes it, started just now, set up to join muted, or with a
+ * workspace chosen as its home when it was scheduled.
+ */
+export interface StoryCall extends CallSpec { instant?: boolean | undefined; joinMuted?: boolean | undefined; workspaceId?: string | undefined }
 /** The story's call: one of the scenario's own, by its link's code, or one of its own. */
 type Which = string | StoryCall;
 const codeOf = (c: Which): string => (typeof c === 'string' ? c : c.code);
@@ -34,7 +37,7 @@ function settle(...calls: Which[]): void {
   const w = current();
   for (const c of calls) {
     if (typeof c === 'string' || w.meetings.some((m) => m.code === c.code)) continue;
-    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false };
+    const m: Meeting = { ...call(c, me()), instant: c.instant ?? false, joinMuted: c.joinMuted ?? false, workspaceId: c.workspaceId ?? null };
     w.meetings.push(m);
   }
 }

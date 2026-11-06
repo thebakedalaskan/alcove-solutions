@@ -19,6 +19,7 @@ import { AskBar, ChapterList, Recipients, Section, Transcript, roomAnchor, type 
 import { RoomSections } from '~/features/notes/rooms';
 import { Decisions, FollowUps, Questions } from '~/features/notes/rows';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~/features/notes/screens';
+import { WorkedOn } from '~/features/notes/WorkedOn';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { noteWave } from '~/features/notes/wave';
 import { Additions, OwnNotesCard, useOwn } from '~/features/personal/OwnNotes';
@@ -320,14 +321,14 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
               <>
                 {writingAgain}
                 <p className="nd-sum">{note.summary}</p>
-                <Section title="Decided" kind="decide" count={toConfirm ? `${toConfirm} to confirm` : undefined}>
+                <Section title="Decided" kind="decide" id="decided" count={toConfirm ? `${toConfirm} to confirm` : undefined}>
                   {note.decisions.length > 0 ? <Decisions items={note.decisions} me={me} reader={reader} onChange={changeDecision} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything decided.</p>}
                   {decisionForm()}
                 </Section>
                 {note.questions.length > 0 && (
                   <Section title="Still open"><Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} shown={onScreen} /></Section>
                 )}
-                <Section title="Follow-ups" kind="follow" count={forYou ? `${forYou} for you` : undefined}>
+                <Section title="Follow-ups" kind="follow" id="follow-ups" count={forYou ? `${forYou} for you` : undefined}>
                   {note.actions.length > 0 ? <FollowUps actions={note.actions} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything to follow up.</p>}
                   {actionForm()}
                 </Section>
@@ -354,8 +355,10 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 {!live && progress && <Steps steps={progress.steps} />}
               </section>
             )}
+            {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
+            {!going && <WorkedOn worked={note.workedOn} />}
           </div>
-          <div className="nd-said">
+          <div className="nd-said" id="transcript">
             {lines.length > 0 && transcript(ready && written ? again : undefined)}
             {written && deleted && <p className="nd-kept is-doc"><Icon name="transcript" size={15} />The transcript was deleted after the notes were written.</p>}
             {noScreens}

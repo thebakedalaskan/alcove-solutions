@@ -6,7 +6,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { noCalendar, troubled } from './changes';
+import { noCalendar, standupTwice, troubled } from './changes';
 
 const meta = { title: 'Pages/Start a call', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -74,6 +74,12 @@ export const LetThemPick = page('/home', 'on-their-own', {
 /** Details: the name ready to type over, When and Who to step back to, notes, and Documents. */
 export const Details = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, useIt) });
 export const DetailsPhone = phone(Details);
+/** Where its notes go, with the standup's two homes from today: they share a name, so each says when its call started. */
+export const ChoosingAHome = page('/home', 'busy', {
+  beforeEach: changing(standupTwice),
+  play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^New workspace for this call/, 'Open New workspace for this call'),
+    press(/^Where its notes go/, 'Open Where its notes go. The standup’s two homes say when each call started'))
+});
 /** Documents steps out of Details, to the workspace, and back. */
 export const Documents = page('/home', 'busy', { play: playing(open, later, priyaAndKofi, findATime, useIt, press(/^Documents/, 'Open Documents')) });
 /** From someone's popover on Team: Schedule opens at When, with them picked. */

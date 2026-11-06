@@ -159,7 +159,7 @@
 .ic-call.is-ended .ic-main, .ic-call.is-ended .ic-dockbar { opacity: .35; transition: opacity var(--duration-3) var(--ease-out); }
 
 /* top bar */
-.ic-top { display: flex; align-items: center; gap: 14px; height: 64px; min-width: 0; }
+.ic-top { display: flex; align-items: center; gap: 14px; height: 64px; min-width: 0; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out); }
 .ic-top .ttl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.2 var(--font-sans); letter-spacing: -0.01em; color: var(--stage-ink); }
 .ic-top .clock { flex: none; color: var(--stage-ink-2); }
 .ic-top .vr { flex: none; width: 1px; height: 20px; background: rgb(255 255 255 / 0.1); }
@@ -223,6 +223,22 @@
 .ic-slot .ac-figure { pointer-events: none; }
 .ac-tile-name .you { color: var(--stage-ink-2); }
 .ic-tstate { position: absolute; z-index: 3; left: 8px; top: 8px; right: 44px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; pointer-events: none; }
+/* Working together in the workspace: who's writing, who you're following, and whose tile lights up for being tagged. */
+.ic-tpen { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--speak); pointer-events: none; animation: ic-pen 1.4s infinite; }
+@keyframes ic-pen { 50% { opacity: .55; } }
+.ic-ton, .ic-tfl { position: absolute; z-index: 3; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px; border-radius: 8px; font: 600 12px/1 var(--font-sans); }
+.ic-ton { height: 24px; padding: 0 8px; background: var(--speak); color: var(--stage); font-size: 11.5px; pointer-events: none; }
+.ic-tfl { height: 26px; padding: 0 9px; background: var(--stage-ink); color: var(--stage); opacity: 0; transition: opacity var(--duration-1); }
+.ac-tile:hover .ic-tfl, .ic-slot:focus-visible .ic-tfl, .ic-tfl:focus-visible { opacity: 1; }
+@media (hover: none) { .ic-tfl { opacity: 1; } }
+/* A small tile keeps its name and says this with the icon. */
+@container (max-width: 200px) { .ic-ton, .ic-tfl { gap: 0; padding: 0 6px; font-size: 0; } }
+/* On the layer over the picture: a ring under a tile's video doesn't show. */
+.ac-tile.is-followed::after { border-radius: inherit; box-shadow: inset 0 0 0 2px var(--speak); }
+.ac-tile.is-lit { animation: ic-lit 2.6s var(--ease-out); }
+.ac-tile.is-lit::after { border-radius: inherit; animation: ic-lit-ring 2.6s var(--ease-out); }
+@keyframes ic-lit { 0%, 60% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--speak) 22%, transparent); } 100% { box-shadow: 0 0 0 5px transparent; } }
+@keyframes ic-lit-ring { 0%, 60% { box-shadow: inset 0 0 0 2px var(--speak); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
 .ic-tstate > * { pointer-events: auto; }
 .ic-tch { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 3px 0 9px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 72%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
 .ic-tch.is-spot { background: var(--stage-ink); color: var(--stage); }
@@ -249,6 +265,17 @@
 .ic-scr.is-tile:hover .ic-sgrow, .ic-scr.is-tile:focus-visible .ic-sgrow { opacity: 1; transform: translate(-50%, -50%); }
 /* A share that just started: a soft ring that fades once, wherever the layout put it. */
 .ic-scr.is-new { animation: ic-arrive var(--duration-5) var(--ease-out) both; }
+/* A share landing as a tile while you're busy glows for 3 s where it lands. */
+.ic-scr.is-tile.is-new { animation: ic-lands 3s var(--ease-out) both; }
+@keyframes ic-lands {
+  0%, 84% { box-shadow: inset 0 0 0 2px var(--speak), 0 0 0 5px rgb(169 178 255 / 0.2); }
+  100% { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 0 0 0 rgb(169 178 255 / 0); }
+}
+/* What a tile waiting among the people offers. */
+.ic-showit { position: absolute; z-index: 3; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px; height: 26px; max-width: calc(100% - 16px); padding: 0 9px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
+.ic-showit:hover { background: var(--stage-ink-2); }
+/* A tile's name leaves room for its Show it, when it has one. */
+.ic-scr.is-tile:has(.ic-showit) .ac-tile-name { max-width: calc(100% - 96px); }
 @keyframes ic-arrive {
   from { box-shadow: inset 0 0 0 2px rgba(238, 237, 248, .85), 0 0 0 6px rgba(238, 237, 248, .16); }
   to { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 0 0 0 rgba(238, 237, 248, 0); }
@@ -388,6 +415,10 @@
 /* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
 .ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
 .ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
+/* A ring has to clear whoever's camera is on: it's drawn over the picture. */
+.ic-slot.is-arch > .ac-tile::after { border-radius: inherit; transition: box-shadow var(--duration-2) var(--ease-out); }
+.ic-slot.is-arch > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 2px var(--speak); }
+.ic-slot.is-arch > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 2px var(--gold); }
 .ic-slot.is-arch .ac-figure { height: 84%; }
 .ic-slot.is-arch, .ic-slot.is-horizon { cursor: pointer; }
 .ic-slot.is-arch :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate), .ic-slot.is-horizon :is(.ac-tile-name, .ac-tile-mic, .ac-tile-hand, .ac-tile-wait, .ic-tstate) { display: none; }
@@ -395,16 +426,23 @@
 .ic-slot.is-arch .ac-tile-face .ac-avatar { --size: 48px !important; }
 /* People on the horizon: small arches beside the dock. Whoever's talking, or has a hand up, rises. */
 .ic-slot.is-horizon { z-index: 3; }
-.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: transform var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
-.ic-slot.is-horizon > .ac-tile::after { display: none; }
+.ic-slot.is-horizon > .ac-tile { border-radius: 999px 999px 8px 8px; box-shadow: none; transition: transform var(--duration-2) var(--ease-out); }
+.ic-slot.is-horizon > .ac-tile::after { background: none; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); transition: box-shadow var(--duration-2) var(--ease-out); }
 .ic-slot.is-horizon .ac-figure { height: 92%; filter: none; }
 .ic-slot.is-horizon .ac-tile-face .ac-avatar { --size: 24px !important; }
-.ic-slot.is-horizon > .ac-tile.is-speaking { box-shadow: inset 0 0 0 1.5px var(--speak); }
-.ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: inset 0 0 0 1.5px var(--gold); }
+.ic-slot.is-horizon > .ac-tile.is-speaking, .ic-slot.is-horizon > .ac-tile.is-hand { box-shadow: none; }
+.ic-slot.is-horizon > .ac-tile.is-speaking::after { box-shadow: inset 0 0 0 1.5px var(--speak); }
+.ic-slot.is-horizon > .ac-tile.is-hand::after { box-shadow: inset 0 0 0 1.5px var(--gold); }
 .ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
 /* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
-body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
-.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; }
+/* With people on the horizon, the left of the dock is theirs, and toasts take the right. Above the dock they'd sit on the list's foot. */
+@media (min-width: 1280px) {
+  body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
+  body:has(.ic-call.is-zen) .ac-toasts.on-stage { bottom: 6px; }
+  /* The line that says who's up gives way there, and comes back when the toast goes: the arch still shows it. */
+  body:has(.ac-toasts.on-stage .ac-toast) .ic-hz.is-past { opacity: 0; }
+}
+.ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; transition: opacity var(--duration-2) var(--ease-out); }
 /* A share waiting among arches or on the horizon, and whoever there's no room for. */
 .ic-scr.is-arch { border-radius: 14px; }
 .ic-scr.is-horizon { z-index: 3; border-radius: 6px; }
@@ -471,11 +509,22 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-side.is-off { display: none; }
 /* The workspace and the board on the stage. */
 .ic-surface { position: absolute; z-index: 2; display: flex; min-width: 0; }
-.ic-surface.is-off { display: none; }
+/* Behind something else, or closed: out of sight and out of reach, with whatever's in it kept as it was. */
+.ic-surface.is-off, .ic-surface.is-closed { visibility: hidden; pointer-events: none; }
+.ic-surface.is-closed { transition: visibility 0s linear var(--duration-2); }
+/* The workspace, and while the call moves to another one, what was there: over what's coming until that's drawn, then gone, 240 ms. */
+.ic-wsx { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.ic-wsx-slot { display: flex; flex: 1; min-width: 0; min-height: 0; }
+.ic-wsx-slot:focus { outline: none; }
+.ic-wsx-slot.is-leaving { position: absolute; inset: 0; z-index: 1; transition: opacity var(--duration-2) var(--ease-out); }
+.ic-wsx-slot.is-leaving.is-gone { opacity: 0; }
 .ic-side-head { display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 8px 0 10px; border-bottom: 1px solid var(--line); flex: none; }
 /* All six tabs fit a side panel at the width it starts at. */
 .ic-side-head .ac-tabs { gap: 0; border: 0; flex: 1; min-width: 0; height: 52px; align-items: stretch; overflow-x: auto; scrollbar-width: none; }
 .ic-side-head .ac-tabs::-webkit-scrollbar { display: none; }
+.ic-side-head .ac-tabs.more-before { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px); mask-image: linear-gradient(90deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-after { -webkit-mask-image: linear-gradient(270deg, transparent, #000 24px); mask-image: linear-gradient(270deg, transparent, #000 24px); }
+.ic-side-head .ac-tabs.more-before.more-after { -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
 .ic-side-head .ac-tab { height: 52px; padding: 0 5px; font-size: 13px; flex: none; touch-action: pan-x; }
 .ic-side-head .ac-tab[aria-selected="true"]::after { left: 4px; right: 4px; bottom: 0; }
 .ic-side-head .ttl { flex: 1; padding-left: 8px; font: 600 14.5px/1.2 var(--font-sans); }
@@ -490,6 +539,8 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-nh .ac-notes-sign { height: 24px; padding: 0 10px 0 8px; font-size: 12px; }
 .ic-nh .m { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: var(--ink-3); }
 .ic-nh .ac-icon-btn { margin-left: auto; width: 32px; height: 32px; }
+.ic-nh .ic-page { color: var(--ink-3); }
+.ic-nh .ic-page + * .ac-icon-btn, .ic-nh .ic-page + .ac-icon-btn { margin-left: 0; }
 .ic-nb { display: grid; gap: 20px; padding: 16px 16px 20px; }
 .ic-sh { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ic-sh .ac-eyebrow { color: var(--ink-2); }
@@ -501,6 +552,9 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-nr .nr-due { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: 5px; background: var(--sunk); font: 500 11.5px/1 var(--font-sans); color: var(--ink-2); }
 .ic-nr .ac-time-chip { margin-top: 1px; }
 .ic-nr:has(> .ac-check) { grid-template-columns: 20px minmax(0, 1fr) auto; }
+.ic-nr:has(> .ws-put) { grid-template-columns: 18px minmax(0, 1fr) auto 26px; column-gap: 6px; }
+.ic-nr:has(> .ac-check):has(> .ws-put) { grid-template-columns: 20px minmax(0, 1fr) auto 26px; }
+.ic-nr > .mk, .ic-nr > .ac-check { margin-right: 4px; }
 .ic-nr .nr-text { overflow-wrap: anywhere; }
 .ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 /* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */
@@ -683,7 +737,6 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 .ic-menu .mi .ac-i { flex: none; color: var(--ink-2); }
 .ic-menu .mi .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-menu .mi:hover .ac-scope { background: var(--surface); }
-.ic-menu .only-narrow { display: none; }
 .ic-menu .scope { margin: -2px 0 4px; padding: 0 10px 6px; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .ic-menu .mi[disabled] { opacity: .45; pointer-events: none; }
 .ic-menu .mi .ac-kbd { flex: none; }
@@ -749,8 +802,16 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
 }
 
 /* the dock */
-.ic-dockbar { position: relative; display: flex; justify-content: center; align-items: center; height: 84px; }
+.ic-dockbar { --bar: 84px; position: relative; display: flex; justify-content: center; align-items: center; height: var(--bar); }
+.ic-dockbar .ac-dock { transition: transform var(--duration-3) var(--ease-out); }
 .ic-dockbar .ac-dock-leave { margin-left: 2px; }
+
+/*
+ * Just the document: the bars slide off and the page takes the room they leave (panels.ts places it past the call's area, so
+ * it glides there like any other panel). Your microphone, camera and everyone's arches stay, in a shorter strip at the foot.
+ */
+.ic-call.is-zen .ic-top { transform: translateY(-100%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out), visibility 0s linear var(--duration-3); }
+.ic-call.is-zen .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }
 
 /* choosing what to share */
 .ic-share { width: min(620px, calc(100vw - 32px)); }
@@ -796,11 +857,14 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
   .ic-swap button { padding: 0 8px; font-size: 12.5px; }
   .ic-share .pk-note { display: none; }
 }
+@media (max-width: 520px) {
+  .ic-top .ic-sign .ac-notes-sign, .ic-top .ic-sign .ac-capture-sign { gap: 0; padding: 0 9px; font-size: 0; }
+}
 @media (max-width: 760px) {
   .ic-top { height: 60px; }
   .ic-top .clock, .ic-top .vr.v1 { display: none; }
   .ic-faces .ac-faces .ac-avatar:nth-child(n+3), .ic-faces .ac-faces .more { display: none; }
-  .ic-dockbar { height: 76px; }
+  .ic-dockbar { --bar: 76px; }
   .ic-dockbar .ac-dock { gap: 2px; padding: 5px; }
   .ic-dockbar .ac-dock-btn { width: 38px; height: 38px; }
   .ic-dockbar .ac-dock-chev { height: 38px; width: 18px; }
@@ -811,14 +875,16 @@ body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { bottom: 96px; }
   .ic-sbar .sp-btn:not(.is-strong) { display: none; }
   .ic-spill.is-cams .tx2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
-@media (max-width: 560px) {
-  .ic-call { padding: 0 8px; }
-  .ic-dockbar .d-rooms, .ic-dockbar .ac-dock-sep:not(.ac-dock-sep ~ .ac-dock-sep) { display: none; }
-  .ic-menu .only-narrow { display: flex; }
-  .ic-catch, .ic-reset { display: none; }
+/* The phone's shorter dock (call.$code.tsx): the microphone, the camera, the workspace, More and Leave, with bigger targets. Devices are in More. */
+@media (max-width: 640px) {
+  .ic-dockbar .ac-dock { gap: 6px; padding: 6px; }
   .ic-dockbar .ac-dock-chev { display: none; }
   .ic-dockbar .ac-dock-split .ac-dock-btn { border-radius: 12px; }
-  .ic-dockbar .ac-dock-btn { width: 36px; height: 36px; }
+  .ic-dockbar .ac-dock-btn { width: 42px; height: 42px; }
+}
+@media (max-width: 560px) {
+  .ic-call { padding: 0 8px; }
+  .ic-catch, .ic-reset { display: none; }
 }
 /* The transcript in the panel: newest at the bottom, following along unless you scroll up. */
 .tx-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }

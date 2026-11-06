@@ -13,22 +13,26 @@ const meta = { title: 'Calls/Notes', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
+/** The phone's dock is shorter: Notes, Chat, captions and the rest are under More. */
+const MORE = 'More: chat, notes, settings';
 const CHECKING_IN: Present[] = [{ who: KOFI }, { who: AIKO }, { who: MAYA }];
 /** Notes on from the start: the panel opens beside the stage, and fills in as the design review goes. */
 export const NotesOn = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
-export const NotesOnPhone = { ...phone(NotesOn), play: press('Notes') };
+export const NotesOnPhone = { ...phone(NotesOn), play: press(MORE, { then: ['Notes'] }) };
 
 /** Seven minutes in: two things decided, the follow-ups handed out, and more coming. Anyone who gets the notes can tick one. */
 const LATE = { here: REVIEWERS, since: 7 * 60, earlier: REVIEW_TALK.slice(0, 9), talk: { lines: REVIEW_TALK.slice(9) }, summary: REVIEW_SUMMARY };
 export const DecidedAndFollowUps = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE });
-export const DecidedAndFollowUpsPhone = { ...phone(DecidedAndFollowUps), play: press('Notes') };
+export const DecidedAndFollowUpsPhone = { ...phone(DecidedAndFollowUps), play: press(MORE, { then: ['Notes'] }) };
 
 /** The live transcript, each line a moment after it's said. */
 export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW, script: LATE }, { play: press('Notes', { tab: 'Transcript' }) });
-export const TranscriptPhone = { ...phone(Transcript), play: press('Notes', { tab: 'Transcript' }) };
+export const TranscriptPhone = { ...phone(Transcript), play: press(MORE, { then: ['Notes'], tab: 'Transcript' }) };
 
 /** Captions: the newest line, under the stage. */
 export const Captions = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { play: press('Turn on captions') });
+/** On a phone, captions are turned on from More. */
+export const CaptionsPhone = { ...phone(Captions), play: press(MORE, { then: ['Turn on captions'] }) };
 
 /** Notes off: nothing is written down until the organizer, you, turns them on. */
 export const NotesOff = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK } } }, { play: press('Notes') });

@@ -11,6 +11,7 @@ import { BlockAttrsSchema } from '@alcove/api';
 import { KEPT_ATTRS, STRUCTURE, TAGS } from '@alcove/api/retire';
 import { tableNodes } from 'prosemirror-tables';
 import { log } from '~/lib/log';
+import { clockOf } from '../live/dates';
 import type { BlockJSON } from './types';
 
 const elog = log.child({ component: 'editor-schema' });
@@ -134,26 +135,26 @@ const nodes: Record<NodeName, NodeSpec> = {
 
   /* What can't be typed: drawn from attributes by React, with handlers from the Editor's props. */
   gallery: {
-    group: 'block', atom: true, attrs: { ...block, items: { default: [] }, up: { default: null }, failed: { default: null }, width: { default: 100 } },
+    group: 'block', atom: true, attrs: { ...block, items: { default: [] }, up: { default: null }, failed: { default: null }, upload: { default: null }, width: { default: 100 } },
     parseDOM: wholeBlock('gallery'), toDOM: (node) => copied(node, 'p', captionsOf(node).join(' · '))
   },
   file: {
-    group: 'block', atom: true, attrs: { ...block, media: { default: null }, name: { default: '' }, size: { default: null }, up: { default: null }, failed: { default: null } },
+    group: 'block', atom: true, attrs: { ...block, media: { default: null }, name: { default: '' }, size: { default: null }, up: { default: null }, failed: { default: null }, upload: { default: null } },
     parseDOM: wholeBlock('file'), toDOM: (node) => copied(node, 'p', textAttr(node, 'name') ?? '')
   },
   video: {
     group: 'block', atom: true,
-    attrs: { ...block, media: { default: null }, title: { default: '' }, poster: { default: null }, dur: { default: 0 }, width: { default: null }, height: { default: null }, up: { default: null }, failed: { default: null } },
+    attrs: { ...block, media: { default: null }, title: { default: '' }, poster: { default: null }, dur: { default: 0 }, width: { default: null }, height: { default: null }, up: { default: null }, failed: { default: null }, upload: { default: null } },
     parseDOM: wholeBlock('video'), toDOM: (node) => copied(node, 'p', textAttr(node, 'title') ?? '')
   },
   doclink: { group: 'block', atom: true, attrs: { ...block, doc: { default: '' } }, parseDOM: wholeBlock('doclink'), toDOM: (node) => copied(node, 'p', '') },
   live: {
-    group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] } },
+    group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] }, call: { default: null } },
     parseDOM: wholeBlock('live'), toDOM: (node) => copied(node, 'p', listOf(node, 'lines', 'text').join(' · '))
   },
   moment: {
-    group: 'block', atom: true, attrs: { ...block, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null } },
-    parseDOM: wholeBlock('moment'), toDOM: (node) => copied(node, 'blockquote', `${textAttr(node, 'text') ?? ''} (${textAttr(node, 'name') ?? ''}, ${textAttr(node, 'at') ?? ''})`)
+    group: 'block', atom: true, attrs: { ...block, person: { default: null }, name: { default: '' }, at: { default: '' }, text: { default: '' }, line: { default: null }, note: { default: null } },
+    parseDOM: wholeBlock('moment'), toDOM: (node) => copied(node, 'blockquote', `${textAttr(node, 'text') ?? ''} (${textAttr(node, 'name') ?? ''}, ${clockOf(textAttr(node, 'at') ?? '')})`)
   },
   /* A block from a newer Alcove. Kept as it is, because a browser that can't read a block must never delete it. */
   unsupported: { group: 'block', atom: true, attrs: { ...block, name: { default: '' } }, toDOM: () => ['p'] },

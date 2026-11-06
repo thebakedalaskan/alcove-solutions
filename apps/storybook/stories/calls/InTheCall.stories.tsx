@@ -5,7 +5,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { at, chats, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
-import { inCall, phone } from '../../src/call';
+import { inCall, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
@@ -53,6 +53,8 @@ export const ComingAndGoingPhone = phone(ComingAndGoing);
 /** The design review, everyone there and talking it through while notes are on. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
+/** A phone's shorter dock: the microphone, the camera, the workspace, More and Leave. Chat, Notes, a hand, captions and sharing are under More. */
+export const MorePhone = { ...phone(FourOfYou, 'More, on a phone'), play: press('More: chat, notes, settings') };
 
 /** The all-hands, six minutes in: twenty-four people, most of them muted, Priya talking, and a hand going up. */
 export const Many = inCall({

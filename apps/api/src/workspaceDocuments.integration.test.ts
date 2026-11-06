@@ -4,7 +4,7 @@
  * dropped connections, restarts and compactions, and nothing for anyone who can't open it.
  */
 import {
-  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind,
+  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, MAX_DOC_BYTES, MAX_DOC_ITEMS, MAX_DOC_UPDATE_BYTES, OPERATION_HEADER, toBase64Url, type CallState, type DocLiveEvent, type DocSession, type DocSessionOptions, type DocStatus, type ItemKind,
   type KeptUpdate, type KeptUpdates, type WorkspaceHere, type WorkspaceLive, type WorkspaceRole
 } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
@@ -1058,7 +1058,7 @@ describe('who can do what', () => {
     const raw = stream(h.baseUrl, theo.fetch, id, doc);
     const annLive = ann.api.workspaces.live(id);
     const theoLive = theo.api.workspaces.live(id);
-    theoLive.present({ document: doc, block: 'first', typing: false });
+    theoLive.present({ document: doc, block: 'first', typing: false, page: null });
     await until(() => annLive.getSnapshot().here.some((x) => x.document === doc), 'Ann to see where Theo is');
     await until(() => raw.lines.length > 0, 'the raw stream');
     line(t).insert(0, 'Theo was here. ');
@@ -1174,7 +1174,7 @@ describe('who can do what', () => {
       expect([real.status, fake.status]).toEqual([404, 404]);
     }
     inRoom.close();
-    const nowhere = await post(sam, `/workspaces/${id}/presence`, { connection: madeUp(), document: null, block: null, typing: false });
+    const nowhere = await post(sam, `/workspaces/${id}/presence`, { connection: madeUp(), document: null, block: null, typing: false, page: null });
     expect(nowhere.status).toBe(404);
     const live = await sam.api.workspaces.document(id, doc);
     await expect(live.ready).rejects.toMatchObject({ code: 'not-found' });
@@ -1213,7 +1213,7 @@ describe('who can do what', () => {
       expect((await post(ann, `${docPath(where, doc)}/awareness`, { update: 'AA' })).status).toBe(404);
       expect((await ann.fetch(`${h.baseUrl}/v1${docPath(where, doc)}/live`)).status).toBe(404);
     }
-    expect((await post(ann, `/workspaces/${mine}/presence`, { connection: madeUp(), document: docThere, block: null, typing: false })).status).toBe(404);
+    expect((await post(ann, `/workspaces/${mine}/presence`, { connection: madeUp(), document: docThere, block: null, typing: false, page: null })).status).toBe(404);
     expect(words(here)).toBe('Here');
     expect(words(there)).toBe('There');
   });
@@ -1406,12 +1406,12 @@ describe('presence', () => {
     expect(of(a, ann)?.isMe).toBe(true);
     expect(of(a, theo)?.person.email).toBe(theo.email);
 
-    t.present({ document: open1, block: 'first', typing: true });
+    t.present({ document: open1, block: 'first', typing: true, page: null });
     await until(() => of(a, theo)?.document === open1, 'Ann to see Theo in the document');
     expect(of(a, theo)).toMatchObject({ block: 'first', typing: true, elsewhere: false });
     await until(() => of(p, theo)?.document === open1, 'Priya to see the same');
 
-    a.present({ document: secret, block: 'b1', typing: true });
+    a.present({ document: secret, block: 'b1', typing: true, page: null });
     await until(() => of(a, ann)?.document === secret, 'Ann’s own connection to show');
     await until(() => of(t, ann)?.elsewhere === true, 'Theo to see Ann elsewhere');
     expect(of(t, ann)).toMatchObject({ document: null, block: null, typing: false, elsewhere: true });
@@ -1440,16 +1440,16 @@ describe('presence', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const secret = await make(ann, id, 'document', 'Secret');
     await ann.api.workspaces.share.restrict(id, secret, true);
-    const real = await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: secret, block: null, typing: false });
-    const fake = await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: madeUp(), block: null, typing: false });
+    const real = await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: secret, block: null, typing: false, page: null });
+    const fake = await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: madeUp(), block: null, typing: false, page: null });
     expect([real.status, fake.status]).toEqual([404, 404]);
-    expect((await post(theo, `/workspaces/${id}/presence`, { connection: 'short', document: null, block: null, typing: false })).status).toBe(400);
-    expect((await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: null, block: '<b>', typing: false })).status).toBe(400);
+    expect((await post(theo, `/workspaces/${id}/presence`, { connection: 'short', document: null, block: null, typing: false, page: null })).status).toBe(400);
+    expect((await post(theo, `/workspaces/${id}/presence`, { connection: madeUp(), document: null, block: '<b>', typing: false, page: null })).status).toBe(400);
 
     // Someone in the browser asks to be somewhere they lost: it quietly falls back to being in the workspace.
     const t = theo.api.workspaces.live(id);
     const a = ann.api.workspaces.live(id);
-    t.present({ document: secret, block: null, typing: false });
+    t.present({ document: secret, block: null, typing: false, page: null });
     await until(() => of(a, theo) !== undefined && of(a, theo)?.document === null, 'Theo to be here, in nothing');
   });
 
@@ -1464,9 +1464,9 @@ describe('presence', () => {
     const a = ann.api.workspaces.live(id);
     const t = theo.api.workspaces.live(id);
     const s = sam.api.workspaces.live(id);
-    a.present({ document: doc, block: null, typing: false });
-    t.present({ document: other, block: null, typing: false });
-    s.present({ document: doc, block: null, typing: false });
+    a.present({ document: doc, block: null, typing: false, page: null });
+    t.present({ document: other, block: null, typing: false, page: null });
+    s.present({ document: doc, block: null, typing: false, page: null });
     await until(() => of(s, ann)?.document === doc, 'Sam to see Ann in the document they share');
     await until(() => of(a, sam)?.document === doc, 'Ann to see Sam');
     // Theo is in the workspace, doing something Sam has no part in: for Sam, Theo isn't there at all.
@@ -1498,8 +1498,8 @@ describe('presence', () => {
     const o = org.api.workspaces.live(id, { pass: host.ticket.pass });
     const g = b.api.workspaces.live(id, { pass: guest.ticket.pass });
     const m = member.api.workspaces.live(id);
-    o.present({ document: doc, block: null, typing: false });
-    g.present({ document: doc, block: null, typing: false });
+    o.present({ document: doc, block: null, typing: false, page: null });
+    g.present({ document: doc, block: null, typing: false, page: null });
     await until(() => here(g).find((x) => x.person.name === org.name)?.document === doc, 'the guest to see the organizer');
     // In the same call, each is told the other's connection to it, so a tile can show where they are.
     expect(here(g).find((x) => x.person.name === org.name)?.callIdentity).toBe(host.ticket.identity);
@@ -1512,7 +1512,7 @@ describe('presence', () => {
 
     // Someone in a call who can't open what another is in sees them elsewhere: they've met.
     const secret = await make(org, id, 'document', 'CANARY-SECRET');
-    o.present({ document: secret, block: null, typing: false });
+    o.present({ document: secret, block: null, typing: false, page: null });
     await until(() => here(g).find((x) => x.person.name === org.name)?.elsewhere === true, 'the guest to see the organizer elsewhere');
     expect(JSON.stringify(here(g))).not.toContain(secret);
   });
@@ -1549,7 +1549,7 @@ describe('presence', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Doc');
     const a = ann.api.workspaces.live(id);
-    a.present({ document: doc, block: null, typing: false });
+    a.present({ document: doc, block: null, typing: false, page: null });
     await until(() => of(a, ann)?.document === doc, 'Ann to be placed');
     const second = await h.secondServer();
     const t = createHttpApi({ baseUrl: second.baseUrl, fetch: theo.fetch, livePresenceMs: 200 }).workspaces.live(id);
@@ -1820,7 +1820,8 @@ describe('reading a document on the server', () => {
       { id: 'fi', type: 'file', text: 'brief.pdf' }, { id: 'ga', type: 'gallery', text: 'A caption Another' }, { id: 'lk', type: 'paragraph', text: 'See ' }
     ]));
     expect(documentTodos(read, 'document')).toEqual([
-      { block: 'todo1', text: 'Send the brief to Priya Rao by 2026-11-06', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
+      // A follow-up's words read as a sentence: a tag inside one is part of it, and a date is a day.
+      { block: 'todo1', text: 'Send the brief to Priya Rao by 6 Nov', done: false, mentions: [{ id: 'p1', name: 'Priya Rao' }], dates: ['2026-11-06'] },
       { block: 'todo2', text: 'Nobody’s yet', done: true, mentions: [], dates: [] }
     ]);
     // A retired block isn't on the page, and a todo in one isn't anyone's, unless an edit landed in it after: then it's a block.
@@ -1955,7 +1956,7 @@ describe('what’s kept', () => {
       const a = await open(ann, id, doc);
       const t = await open(theo, id, doc);
       const live = ann.api.workspaces.live(id);
-      live.present({ document: doc, block: 'canary-doc-block', typing: true });
+      live.present({ document: doc, block: 'canary-doc-block', typing: true, page: null });
       title(a).insert(0, 'CANARY-DOC-TITLE');
       line(a).insert(0, 'CANARY-DOC-TEXT the merger closes');
       a.doc.transact(() => {
@@ -2918,6 +2919,24 @@ describe('restoring', () => {
     }
   });
 
+  it('leaves someone typing through one saving, not offline, and their words land on what was restored', async () => {
+    const { bob, id, doc } = await kept();
+    const b = await open(bob, id, doc);
+    const said: DocStatus['status'][] = [];
+    b.subscribe(() => { said.push(b.getSnapshot().status); });
+    const hold = (until: string) => h.pool.query(`UPDATE documents SET held_until = ${until} WHERE document_id = $1`, [doc]);
+    await hold(`now() + interval '1 minute'`);
+    line(b).insert(0, 'Typed through it. ');
+    // Long enough to be turned away more than once.
+    await until(() => said.includes('saving'), 'the words to be on their way');
+    await rest(1800);
+    expect(b.getSnapshot().status).toBe('saving');
+    await hold('NULL');
+    await saved(b);
+    expect(said).not.toContain('offline');
+    expect(words(await open(bob, id, doc))).toContain('Typed through it. ');
+  });
+
   it('won’t make a document bigger than it can be, so typing is never refused for it', async () => {
     const { ann, id, doc, a, version } = await kept();
     const second = await h.secondServer({ DOC_ITEMS_MAX: 400 });
@@ -3123,7 +3142,7 @@ describe('streams, read closely', () => {
   it('don’t open the tree for carets, for saying where someone is, or for updates while it hasn’t moved', async () => {
     const { ann, id, doc } = await together();
     const a = await open(ann, id, doc);
-    const here = { connection: madeUp(), document: doc, block: null, typing: true };
+    const here = { connection: madeUp(), document: doc, block: null, typing: true, page: null };
     line(a).insert(0, 'First');
     await saved(a);
     expect((await post(ann, `/workspaces/${id}/presence`, here)).status).toBe(200);
@@ -3175,9 +3194,9 @@ describe('streams, read closely', () => {
     const doc = await make(ann, id, 'document', 'Doc');
     await ann.api.workspaces.share.set(id, doc, [{ email: guest.email }], 'read');
     const mine = ann.api.workspaces.live(id);
-    mine.present({ document: doc, block: null, typing: false });
+    mine.present({ document: doc, block: null, typing: false, page: null });
     const theirs = guest.api.workspaces.live(id);
-    theirs.present({ document: doc, block: null, typing: false });
+    theirs.present({ document: doc, block: null, typing: false, page: null });
     await until(() => theirs.getSnapshot().here.some((e) => !e.isMe), 'the guest to see Ann');
     const seen = theirs.getSnapshot().here.find((e) => !e.isMe);
     expect(seen?.person.email).toBe('');

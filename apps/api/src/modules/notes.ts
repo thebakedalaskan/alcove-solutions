@@ -170,14 +170,15 @@ export interface HeldRoom { id: string; name: string; people: Speaker[]; from: n
 /**
  * The recording is complete: its live transcript moves into the note, the main room's lines into the transcript and
  * each breakout room's into that room's section (`rooms`), with the stretches nothing was captured in, what was on
- * shared screens (`shown`, the call's frames as screen moments) and the follow-ups ticked during the call. Everyone
- * invited gets the note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
+ * shared screens (`shown`, the call's frames as screen moments), the follow-ups ticked during the call, and the ones people
+ * added (`added`), which are theirs in the note from now on, whatever becomes of the notes. Everyone invited gets the
+ * note, and it's queued for the notes service (modules/writer.ts), which writes each room's notes too.
  * Runs in the stopping transaction, once the recording has stopped. A call set not to keep its recording loses its audio
  * here, after everything worked out from it (where lines fall, and the seconds billed) is in the note. Returns the
  * objects to delete once that transaction commits.
  */
 export async function finishRecording(o: Owner, db: Db, noteId: string, durationSeconds: number, breakouts: HeldRooms[] = [],
-  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = [], workedOn: WorkedDocument[] = []): Promise<string[]> {
+  speakerOf?: ((identity: string) => Speaker | undefined) | undefined, gaps: CaptureGap[] = [], shown: ScreenMoment[] = [], rooms: HeldRoom[] = [], ticked: Ticked[] = [], workedOn: WorkedDocument[] = [], added: { room: string | null; action: ActionItem }[] = []): Promise<string[]> {
   const { recordingId } = (await getItem(o, db, 'note', noteId, NoteManifest, 'Those notes')).manifest;
   const audio = await segments(o, recordingId, db);
   // Each line stays inside its own segment of the recording, so nothing said before a pause comes after it.
@@ -186,14 +187,14 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   // In a call, each line keeps whoever said it; a room recording names nobody.
   const sections: RoomNote[] = rooms.map((r) => ({
     id: r.id, name: r.name, people: r.people, from: r.from, to: r.to, gaps: r.gaps,
-    summary: '', decisions: [], questions: [], actions: [], chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
+    summary: '', decisions: [], questions: [], actions: added.flatMap((a) => (a.room === r.id ? [a.action] : [])), chapters: [], transcript: transcripts.spoken(all.filter((l) => l.room === r.id), speakerOf)
   }));
   const heardBy = await transcripts.heardBy(o, db, noteId);
   const next = await updateNote(o, db, noteId, (n) => ({
     ...n, status: 'pending', endedAt: new Date().toISOString(), duration: Math.max(n.duration, durationSeconds), breakouts, gaps, screens: shown,
     recorded: audio.reduce((total, s) => total + s.seconds, 0),
     // In a call, each line keeps whoever said it; a room recording names nobody.
-    transcript: transcripts.spoken(heard, speakerOf), rooms: sections,
+    transcript: transcripts.spoken(heard, speakerOf), rooms: sections, actions: [...n.actions, ...added.flatMap((a) => (sections.some((r) => r.id === a.room) ? [] : [a.action]))],
     inference: heardBy, ticked, workedOn
   }));
   await transcripts.clear(o, db, noteId);
@@ -202,7 +203,7 @@ export async function finishRecording(o: Owner, db: Db, noteId: string, duration
   await queueNotes(o, db, noteId, next.recordingId);
   nlog.info('notes job queued', {
     noteId, recordingId: next.recordingId, seconds: durationSeconds, lines: heard.length, screens: shown.length, invited: next.invited.length,
-    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length
+    rooms: sections.length, roomLines: sections.reduce((n, r) => n + r.transcript.length, 0), ticked: ticked.length, added: added.length
   });
   return next.keep.recording ? [] : purgeAudio(o, db, next.recordingId);
 }

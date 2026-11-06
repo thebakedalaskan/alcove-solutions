@@ -91,6 +91,32 @@ function draw(g: CanvasRenderingContext2D, s: Screen, t: number): void {
   g.fill();
 }
 
+/** One page of a share, still, as a PNG: what a screenshot of it pasted into a document is. */
+export async function stillOf(s: Screen, page = 0): Promise<Blob> {
+  await document.fonts.ready;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const g = canvas.getContext('2d');
+  if (!g) return new Blob([], { type: 'image/png' });
+  draw(g, s, page * PAGE_MS + 4000);
+  return new Promise((resolve) => { canvas.toBlob((b) => resolve(b ?? new Blob([], { type: 'image/png' })), 'image/png'); });
+}
+
+/** A few seconds of a share, recorded as WebM: what a walkthrough video in a document is. */
+export function clipOf(s: Screen, ms = 2500): Promise<Blob> {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported('video/webm')) return Promise.resolve(new Blob([], { type: 'video/webm' }));
+  const { stream, stop } = drawnScreen(s);
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  const parts: Blob[] = [];
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) parts.push(e.data); };
+  return new Promise((resolve) => {
+    recorder.onstop = () => { stop(); resolve(new Blob(parts, { type: 'video/webm' })); };
+    recorder.start(500);
+    setTimeout(() => recorder.stop(), ms);
+  });
+}
+
 /** A share as a live picture, drawn a few times a second until it's stopped. */
 export function drawnScreen(s: Screen): { stream: MediaStream; stop: () => void } {
   const canvas = document.createElement('canvas');

@@ -36,6 +36,13 @@ export type SpaceAsk = z.infer<typeof SpaceAsk>;
 const AgendaDraft = z.object({ workspaceId: z.string(), documentId: z.string(), until: z.number() });
 export type AgendaDraft = z.infer<typeof AgendaDraft>;
 
+/**
+ * This run of the call's folder in its home: the ID it's made as, taken under the call's row so that everyone opening Workspace
+ * at once makes one between them, and whether it's made. Made once: someone deleting it doesn't bring it back.
+ */
+const CallHome = z.object({ workspaceId: z.string(), folderId: z.string(), made: z.boolean() });
+export type CallHome = z.infer<typeof CallHome>;
+
 export const CallSpace = z.object({
   asks: z.array(SpaceAsk).default([]),
   present: z.array(Presenting).default([]),
@@ -43,12 +50,17 @@ export const CallSpace = z.object({
   worked: z.array(WorkedDocument).default([]),
   /** This run of the call has its agenda, or has found there's none to make, so nobody opening Workspace looks again. */
   agendaLooked: z.boolean().default(false),
-  agendaDraft: AgendaDraft.nullable().default(null)
+  agendaDraft: AgendaDraft.nullable().default(null),
+  /** The workspace everyone views, when the organizer switched from the home: the home's on the meeting. */
+  viewing: z.string().nullable().default(null),
+  home: CallHome.nullable().default(null),
+  /** The workspaces made in this run of the call (New workspace), the latest last: who's in them follows its invite while it's on. */
+  made: z.array(z.string()).default([])
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null };
+export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
-/** Nothing presented or playing is left: the call moved to another workspace. */
+/** Nothing presented or playing is left: everyone views another workspace. */
 export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });
 
 /** A board open in one part of the call: where it is, and who opened it. What it's called and what's on it stay in its workspace. */

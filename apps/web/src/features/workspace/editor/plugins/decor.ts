@@ -18,9 +18,9 @@ import { allBlocks, countLine } from '../commands';
 /** A range held by relative positions, so it stays on the same words while others type around it. */
 export interface HeldRange { anchor: Y.RelativePosition; head: Y.RelativePosition }
 
-interface DecorState { focused: boolean; flash: ReadonlySet<string>; appear: ReadonlySet<string>; ghost: string | null; held: HeldRange | null }
+interface DecorState { focused: boolean; flash: ReadonlySet<string>; appear: ReadonlySet<string>; ghost: string | null; held: HeldRange | null; asking: boolean }
 
-type DecorChange = Partial<Pick<DecorState, 'focused' | 'ghost' | 'held' | 'appear'>> & { flash?: { id: string; on: boolean } | undefined };
+type DecorChange = Partial<Pick<DecorState, 'focused' | 'ghost' | 'held' | 'appear' | 'asking'>> & { flash?: { id: string; on: boolean } | undefined };
 
 const key = new PluginKey<DecorState>('block-decor');
 
@@ -48,6 +48,18 @@ function heldRange(state: EditorState): { from: number; to: number } | null {
   return held ? rangeOf(state, held) : null;
 }
 
+/** Whether these words are the ones held now: something else may have taken over since. */
+export const holding = (state: EditorState, held: HeldRange): boolean => key.getState(state)?.held === held;
+
+/** The dots beside words Alcove is writing over. */
+function writingDots(): HTMLElement {
+  const dots = document.createElement('span');
+  dots.className = 'ac-dots wb-asking';
+  dots.setAttribute('aria-hidden', 'true');
+  dots.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
+  return dots;
+}
+
 /** Comments in a block, open ones only: the first thread's ID, and how many messages there are in all. */
 function threadsIn(block: PMNode, rt: EditorRuntime): { id: string; count: number } | null {
   if (rt.threads.get().size === 0) return null;
@@ -69,7 +81,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
   return new Plugin<DecorState>({
     key,
     state: {
-      init: () => ({ focused: false, flash: new Set(), appear: new Set(), ghost: null, held: null }),
+      init: () => ({ focused: false, flash: new Set(), appear: new Set(), ghost: null, held: null, asking: false }),
       apply(tr, was) {
         const change: DecorChange | undefined = tr.getMeta(key);
         if (!change) return was;
@@ -81,7 +93,8 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
           flash,
           appear: change.appear ?? was.appear,
           ghost: change.ghost === undefined ? was.ghost : change.ghost,
-          held: change.held === undefined ? was.held : change.held
+          held: change.held === undefined ? was.held : change.held,
+          asking: change.asking ?? was.asking
         };
       }
     },
@@ -107,6 +120,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
           if (b.id && s.flash.has(b.id)) classes.push('is-flash');
           if (b.id && s.appear.has(b.id)) classes.push('is-appear');
           if (b.id && b.id === s.ghost) classes.push('is-ghosted');
+          if (b.id && rt.props.changed?.has(b.id)) classes.push('is-added');
           const threads = threadsIn(b.node, rt);
           if (classes.length || threads || number !== null) {
             out.push(Decoration.node(b.pos, b.pos + b.node.nodeSize, classes.length ? { class: classes.join(' ') } : {}, { number, threadId: threads?.id, threadCount: threads?.count }));
@@ -115,6 +129,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
 
         const held = heldRange(state);
         if (held) out.push(Decoration.inline(held.from, held.to, { class: 'fs' }));
+        if (held && s.asking) out.push(Decoration.widget(held.to, writingDots, { key: 'asking', side: 1, ignoreSelection: true }));
         return DecorationSet.create(state.doc, out);
       },
       handleDOMEvents: {

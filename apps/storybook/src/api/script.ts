@@ -8,7 +8,7 @@
  * Times are seconds: in the call, from the moment you joined it (asking to join included); at the door, from when the
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
-import { RING_SECONDS, type CallCard, type CaptureMode, type CapturePart, type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply } from '@alcove/api';
+import { RING_SECONDS, type CallCard, type CallPage, type CaptureMode, type CapturePart, type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply } from '@alcove/api';
 import type { Screen } from '../media/screens';
 import type { World } from '../world';
 import { current, me } from './state';
@@ -72,6 +72,24 @@ export type Beat =
   /** The organizer's connection drops (someone invited hosts in their place ten seconds later), and they come back. */
   | { do: 'host-drops' }
   | { do: 'host-back' }
+  /**
+   * Someone in the call goes to a document in the call's workspace (null: its list), typing there or not, or to one of the
+   * call's own pages (`page`), which only the people in the call are told.
+   */
+  | { do: 'goes-to'; who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }
+  /** Someone presents a document in the call's workspace from a section, moves it on, and stops. */
+  | { do: 'present'; who: Person; document: string; section?: number | undefined }
+  | { do: 'move-presenting'; section: number }
+  | { do: 'stop-presenting' }
+  /** Someone plays a video in a document of the call's workspace for everyone, and stops it. */
+  | { do: 'play'; who: Person; document: string; media: string }
+  | { do: 'stop-playing' }
+  /** Someone who can open nothing in the call's workspace asks the organizer to see it. */
+  | { do: 'ask-to-see'; who: Person }
+  /** The organizer, when it isn't you, says not now to your ask to see the workspace. */
+  | { do: 'not-now-to-see' }
+  /** Someone tags you in a document of the call's workspace, on a line. */
+  | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /** Anything else the story needs at that moment, such as someone ringing you to another call. */
   | { do: 'run'; what: () => void };
 
@@ -94,8 +112,20 @@ export interface CallScript {
   answers?: Readonly<Record<string, { after: number; reply: RingReply | 'missed' }>> | undefined;
   /** What the live notes sum up, once anything has been said. */
   summary?: string | undefined;
+  /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */
+  workspace?: ScriptWorkspace | undefined;
   /** While you're at the door: the organizer isn't in yet (they come this many seconds after the story opened), someone hosts in their place, or it's locked. */
   door?: { hostArrives?: number | undefined; standIn?: Person | undefined; locked?: boolean | undefined } | undefined;
+}
+
+/**
+ * The call's workspace as you come in. Its home is the meeting's (`Meeting.workspaceId`, chosen when it was scheduled), else
+ * a new one, made the first time anyone opens Workspace. `brought` are documents in it brought to the call, by ID, and
+ * `where` is who's in it, on which document or page of the call's, once it's settled.
+ */
+export interface ScriptWorkspace {
+  brought?: readonly string[] | undefined;
+  where?: readonly { who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }[] | undefined;
 }
 
 /* ---------- writing a script ---------- */
@@ -115,6 +145,15 @@ export const chats = (who: Person, text: string): Beat => ({ do: 'chat', who, te
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
 export const run = (what: () => void): Beat => ({ do: 'run', what });
+export const goesTo = (who: Person, document: string | null, o: { typing?: boolean; page?: CallPage } = {}): Beat => ({ do: 'goes-to', who, document, ...o });
+/** Someone in the call opens one of the call's own pages: Notes, Follow-ups or the Transcript. */
+export const opensPage = (who: Person, page: CallPage): Beat => ({ do: 'goes-to', who, document: null, page });
+export const presents = (who: Person, document: string, section?: number): Beat => ({ do: 'present', who, document, section });
+export const movesPresenting = (section: number): Beat => ({ do: 'move-presenting', section });
+export const stopsPresenting = (): Beat => ({ do: 'stop-presenting' });
+export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
+export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
+export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });
 
 /** A line of the conversation. */
 export const line = (who: Person | 'me', text: string, more: Omit<Line, 'who' | 'text'> = {}): Line => ({ who, text, ...more });

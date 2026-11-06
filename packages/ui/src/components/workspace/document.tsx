@@ -198,6 +198,11 @@ export function WsReadOnlyBar({ show, organizer }: { show: boolean; organizer: s
   return <Bar show={show} className="wd-ro"><Icon name="eye" size={14} /><span>You can read this. Ask {organizer} to edit.</span></Bar>;
 }
 
+/** What's on the page is a version from History, and nothing can be changed here. `when`: "on Tue 3 Nov". */
+export function WsVersionBar({ when }: { when: string | null }) {
+  return <Bar show={when !== null} className="wd-ro"><Icon name="history" size={14} /><span>You’re reading this as it was {when}. Nothing changes unless you restore it.</span></Bar>;
+}
+
 /** What scrolls under the head and the bars. Scrolling stops following, so pass `onWheel`. */
 export const WsScroll = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(function WsScroll({ className, ...rest }, ref) {
   return <div ref={ref} className={cn('wd-scroll', className)} {...rest} />;
@@ -281,6 +286,15 @@ export function WsUnavailable() {
   );
 }
 
+/** A version from History that didn't arrive. `why`: what went wrong, in Alcove's words. */
+export function WsVersionFailed({ why }: { why: string }) {
+  return (
+    <EmptyState className="wd-none" title="This version didn’t open" art={<WsArch><path d="M24 40h18M24 47h18M24 54h11" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></WsArch>}>
+      {why}
+    </EmptyState>
+  );
+}
+
 /** A workspace that hasn't opened, and no connection to open it with. It opens by itself. */
 export function WsOfflineEmpty() {
   return (
@@ -354,10 +368,19 @@ export function WsTrash({ items }: { items: WsTrashItem[] }) {
 }
 
 /** The call's workspace, for someone who can't open it: it says it's private and nothing more. `organizer` is their first name. */
-export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; asked: boolean; onAsk: () => void }) {
+export function WsNoAccess({ organizer, asked, onAsk }: { organizer: string; asked: boolean; onAsk?: (() => void) | undefined }) {
   return (
-    <EmptyState className="wd-none" title={asked ? `You asked ${organizer}` : 'This call’s workspace is private'} art={<LockedArch />} action={asked ? undefined : <Button variant="primary" size="sm" onClick={onAsk}>Ask {organizer}</Button>}>
-      {asked ? 'This opens by itself as soon as they share something with you.' : `Ask ${organizer} and they can share what you need. You stay in the call either way.`}
+    <EmptyState className="wd-none" title={asked ? `You asked ${organizer}` : 'This call’s workspace is private'} art={<LockedArch />} action={asked || !onAsk ? undefined : <Button variant="primary" size="sm" onClick={onAsk}>Ask {organizer}</Button>}>
+      {asked ? 'This opens by itself as soon as they share something with you.' : onAsk ? `Ask ${organizer} and they can share what you need. You stay in the call either way.` : `${organizer} can share what you need. You stay in the call either way.`}
+    </EmptyState>
+  );
+}
+
+/** The call's organizer, taken out of the workspace it uses: the call keeps it for everyone else until they give it another. */
+export function WsLostSpace({ onNew }: { onNew: () => void }) {
+  return (
+    <EmptyState className="wd-none" title="You’re not in this call’s workspace any more" art={<LockedArch />} action={<Button variant="primary" size="sm" icon="plus" onClick={onNew}>New workspace</Button>}>
+      Make a new one and this call uses it. Nobody is disconnected.
     </EmptyState>
   );
 }

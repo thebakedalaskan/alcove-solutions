@@ -38,6 +38,12 @@ export const ShareInputSchema = z.object({
   group: z.string().trim().min(1).max(40).optional()
 });
 
+/**
+ * Words people type for a note: on one line, whitespace collapsed, so nothing typed can pass for another line of a
+ * transcript or a list where a prompt reads it.
+ */
+const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
+
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notes'), on: z.boolean() }),
@@ -59,6 +65,8 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
   /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
   z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
+  /** Anyone in the call who gets the notes: adds a follow-up nobody said to the part of the call they're in, in their own words, for themselves. Shared and ticked like the rest, and it goes into the note. */
+  z.object({ type: z.literal('follow-up-add'), text: oneLine(300) }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**
@@ -90,11 +98,17 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rooms-move'), email: z.string().trim().toLowerCase().max(254), roomId: z.string().max(64).nullable() }),
   /** The organizer pausing notes in one open room while the call's are on, or carrying on there: the call's notes are unchanged. */
   z.object({ type: z.literal('rooms-pause'), roomId: z.string().max(64), paused: z.boolean() }),
-  /** Anyone in the call, opening Workspace: the first time, which workspace the call uses is settled, and the next call in a series gets its agenda. */
-  z.object({ type: z.literal('workspace-open') }),
-  /** The organizer moves the call to a workspace they can edit in. Being organizer opens nothing, so anyone not in it sees that it's private. */
+  /**
+   * Anyone in the call, opening Workspace: the first time, the call's home is settled, with the call's folder in it, and the
+   * next call in a series gets its agenda. `timeZone`, where the browser is: the day a new home and folder are named after.
+   */
+  z.object({ type: z.literal('workspace-open'), timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.').optional() }),
+  /**
+   * The organizer has everyone view and edit a workspace they can edit in, or the call's home again. Its notes and transcript
+   * still go to its home. Being organizer opens nothing, so anyone not in it sees that it's private.
+   */
   z.object({ type: z.literal('workspace-set'), workspaceId: ItemIdSchema }),
-  /** The organizer makes a workspace, with just them in it, and moves the call to it. It's named after the call unless it's given a name. */
+  /** The organizer makes a workspace, with just them in it, and everyone views it. It's named after the call unless it's given a name. */
   z.object({ type: z.literal('workspace-new'), name: z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(120)).optional() }),
   /** Anyone who can open it brings a document in the call's workspace to the call, or takes it off. */
   z.object({ type: z.literal('workspace-bring'), documentId: ItemIdSchema, brought: z.boolean() }),
@@ -214,12 +228,6 @@ export type RevisitPatch = z.infer<typeof RevisitPatchSchema>;
 
 /** Asking across a series: the question, and the asker's time zone, which the calls' dates are read in. */
 export const SeriesAskBodySchema = AskBodySchema.extend({ timeZone: z.string().min(1).max(64).refine(isTimeZone, 'Not a time zone.') });
-/**
- * Words people type for a note: on one line, whitespace collapsed, so nothing typed can pass for another line of a
- * transcript or a list where a prompt reads it.
- */
-const oneLine = (max: number) => z.string().transform((s) => s.replace(/\s+/g, ' ').trim()).pipe(z.string().min(1).max(max));
-
 /** The words someone read when they agreed to them. If they've changed since, nothing they read is what they'd be agreeing to. */
 const SeenWords = z.object({ text: z.string().max(2000) });
 /**
