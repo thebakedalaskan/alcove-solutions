@@ -135,5 +135,5 @@ The server never holds a key that can move treasury money. By hand, in near.com,
   only what 1Click shows reached the treasury. If 1Click settles it cleanly within 30 days, it's credited by itself.
 - **A depeg (accepted risk).** Refunds, and every amount sent, are valued at face (1 token = 1 USD), so while a
   stablecoin trades below 1 USD people can buy credits below cost with it. Alcove accepts this. When one depegs, turn
-  top-ups off (unset `TREASURY_INTENTS_ACCOUNT` and redeploy) until it recovers. While they're off nothing is checked
+  top-ups off (take `TREASURY_INTENTS_ACCOUNT` out of the API's settings in `deploy.yml` and redeploy) until it recovers. While they're off nothing is checked
   or credited; once they're on again the watcher picks up every deposit it still watches.

@@ -155,6 +155,12 @@ with `NEAR_AI_BASE_URL=https://cloud-api.near.ai/v1` and the default models, spe
 or unset there is no binding and no placeholder secret version is needed: the API keeps recordings but
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
+Credit top-ups are on in production: the API service is deployed with `TREASURY_INTENTS_ACCOUNT=alcove-treasury.near`,
+the NEAR account whose Intents balance receives every top-up and refund, and without `ONECLICK_API_KEY`, so 1Click
+quotes at its own fee ([Payments and usage](payments-and-usage.md)). The migration job doesn't need either. To turn
+top-ups off, take the setting out and redeploy: nothing is checked or credited meanwhile, and once it's back the watcher
+picks up every deposit it still watches.
+
 With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
 (`whisper-large-v3.completions.near.ai` and `glm-5-3-flash.completions.near.ai`), where everything with
 content goes sealed, and the services that verify them before anything is sent: Intel's
