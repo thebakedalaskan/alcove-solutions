@@ -597,6 +597,31 @@ describe('who reads what of them', () => {
     await g.host.leave();
   });
 
+  it('reads nothing said while someone’s page was gone without a word, when they’re back before Alcove heard it go', async () => {
+    const g = await guestFromTheStart();
+    // The page goes and its goodbye never reaches Alcove (a crash, a dropped connection, a phone putting the tab to sleep):
+    // as far as the call knows, Sam is still in it.
+    g.sam.close();
+    await sleep(1200);
+    const AWAY = 'We agreed on the price while Sam was away.';
+    await sayNow(g.host, AWAY, 3000);
+    const back = await g.browser.calls.join(g.code, { mic: true, cam: false, name: 'Sam', previous: g.sam.ticket.pass });
+    await inGroup(back);
+    await sleep(300);
+    const NOW = 'We agreed on the date with Sam back.';
+    await sayNow(g.host, NOW, 6000);
+    await later(back);
+    const before = runs();
+    const stop = back.watchNotes();
+    const own = await notesOf(back, (n) => n.decided.some((d) => d.text === NOW));
+    stop();
+    // What was said while the page was last heard from is still Sam's; what came after never reaches the notes model for them.
+    expect(texts(own.decided)).toEqual([FIRST, NOW]);
+    expect(JSON.stringify(own)).not.toContain('while Sam was away');
+    expect(sentSince(before).join('\n')).not.toContain('while Sam was away');
+    await g.host.leave();
+  });
+
   it('tells someone with notes of their own when their first ones couldn’t be written', async () => {
     const { host, code: c } = await twoInCall();
     await say(host, 'We agreed on the budget before Sam came.');
@@ -1558,8 +1583,9 @@ describe('into the note', () => {
     const deck = followUp((await notesOf(kofi)).next, DECK);
     stop();
     await kofi.tickFollowUp(deck.id, true);
-    // Three unusable answers, and the note is finished without notes.
-    h.near.failNext(3, 'prose');
+    // Three unusable answers to this organizer's notes, and the note is finished without notes. Theirs alone: the upkeep
+    // below ends any call an earlier test left running and writes its notes, which mustn't take one of the three.
+    h.near.failNext(3, 'prose', `Organizer: ${org.session.user.name}`);
     const ended = await host.leave();
     const noteId = ended?.pendingNoteId ?? '';
     const dueNow = () => h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = (SELECT owner_id FROM items WHERE item_id = $1)`, [noteId]);
