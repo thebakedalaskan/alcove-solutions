@@ -1,1 +1,102 @@
-/* The welcome page's night (`lp-rec`, `lp-pv`): recording in the room offline, and what Alcove can see. Built by RecordScene.tsx and SealedScene.tsx. */
+/*
+ * The welcome page's night (`lp-rec`, `lp-pv`), built by RecordScene.tsx and SealedScene.tsx. Recording offline is Record's
+ * night, inset on the water like the call (`.lp-night`, welcome.css). The recorder on its horizon is the app's own
+ * RecorderSun (`rec-sun`, record.css), and the pill, the controls, what's heard and where it's kept wear Record's own
+ * classes (`rec-off`, `rec-ctl`, `rec-start`, `rec-say`, `rec-l`, `rec-said`); this file only places them. What Alcove can
+ * see is a window on its water. The part is `.dark`, so everything here is on the night tokens, in both themes. This file
+ * comes before record.css, so what it changes of Record's classes is said more specifically.
+ */
+
+/* ---- the sky: the recorder's state, the part's head and the controls, with the recorder for a sun ---- */
+.lp-rec { --orb: 58px; }
+/* Record's glow along the horizon; the scene's own sun and its light on the water give way to the recorder and its voice. */
+.lp-sky.lp-rec .hz[data-moment="record"] { --hz-glow: oklch(.46 .09 320 / .4); --hz-rim: oklch(.72 .06 60); --hz-glow-w: 1280px; --hz-glow-h: 300px; }
+.lp-rec .hz :is(.hz-sun, .hz-glint) { display: none; }
+/* No star on the words, as on Record (the stars are seeded, so these are always the ones), and on a narrower sky a few more. */
+.lp-rec .hz-star:is(:nth-child(7), :nth-child(11), :nth-child(13), :nth-child(16), :nth-child(17), :nth-child(18), :nth-child(19)) { display: none; }
+/* The recorder rests with the rest of the scene while its horizon is off screen. */
+.lp-sky.lp-rec:not(.is-on) .rec-sun * { animation-play-state: paused; }
+
+/* Above the recorder's glow, and as tall as the sky is: the horizon is where it ends. */
+.lp-rec-up { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding-block: clamp(76px, 8vw, 116px) calc(var(--orb) + 64px); }
+.lp-rec .lp-rec-state { margin: 0 0 18px; transition: opacity var(--duration-3) var(--ease-out); }
+.lp-rec .lp-rec-state.is-off { visibility: hidden; opacity: 0; }
+.lp-rec-t { margin-left: 2px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lp-rec-ctrl { display: grid; justify-items: center; gap: 14px; margin-top: 38px; }
+/* Focus waits here while the take plays again; it isn't something to press. */
+.lp-rec-ctrl:focus-visible { outline: none; }
+.lp-rec-name { font: 420 24px/1 var(--font-display); letter-spacing: -.01em; color: var(--ink); }
+.lp-rec .lp-rec-row { gap: 10px; margin-top: 0; }
+.lp-rec-row .ac-btn.is-secondary { background: color-mix(in oklch, var(--ink) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 16%, transparent); color: var(--ink); }
+.lp-rec-row .ac-btn.is-secondary:hover { background: color-mix(in oklch, var(--ink) 11%, transparent); }
+.lp-rec-row .ac-btn.is-pressed { transform: scale(.97); }
+.lp-rec .lp-rec-say { margin-top: 0; color: var(--ink-2); }
+
+/* ---- on the water: under the voice, what's heard, where it's kept, and the notes it leaves ---- */
+.lp-rec-water { position: relative; z-index: 1; padding-block: 170px clamp(64px, 6vw, 96px); text-align: center; }
+/* The recorder's part of the night, from the top of its sky down: the take only moves while some of it is on screen. */
+.lp-rec-whole { position: absolute; inset: calc(-1 * var(--hz)) 0 0; pointer-events: none; }
+.lp-rec-heard { display: grid; justify-items: center; gap: 10px; }
+.lp-rec-heard .rec-l { max-width: 34em; transition: opacity var(--duration-3) var(--ease-out), transform var(--duration-3) var(--ease-out); }
+.lp-rec-heard .rec-l[data-age="1"] { opacity: .62; }
+.lp-rec-heard .rec-l[data-age="2"] { opacity: .34; }
+.lp-rec-heard .rec-l.is-off { visibility: hidden; opacity: 0; transform: translateY(8px); }
+.lp-rec-saved { display: flex; justify-content: center; margin-top: 22px; transition: opacity var(--duration-3) var(--ease-out); }
+.lp-rec-saved.is-off { visibility: hidden; opacity: 0; }
+.lp-rec-saved .rec-said { align-items: center; font-size: 14px; line-height: 20px; }
+.lp-rec-saved .rec-said > .ac-i { margin-top: 0; color: var(--gold); }
+
+/* The session's notes rise once they're written. */
+.lp-rec-note { max-width: 820px; margin: 44px auto 0; padding: 24px 28px 26px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-3); text-align: left;
+  transition: opacity var(--duration-4) var(--ease-out), transform var(--duration-4) var(--ease-out); }
+.lp-rec-note.is-off { visibility: hidden; opacity: 0; transform: translateY(18px); }
+.lp-rec-note-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.lp-rec-note-top h3 { font: 420 24px/1.1 var(--font-display); letter-spacing: -.015em; }
+.lp-rec-note-top .ac-chip { background: color-mix(in oklch, var(--ink) 7%, transparent); }
+.lp-rec-note-top .when { margin-left: auto; color: var(--ink-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+.lp-rec-note dl { display: grid; margin: 18px 0 0; }
+.lp-rec-note dl > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); border-top: 1px solid var(--line); }
+.lp-rec-note dt, .lp-rec-note dd { margin: 0; padding: 11px 0; }
+.lp-rec-note dt { color: var(--ink-2); font: 600 13.5px/1.45 var(--font-sans); }
+.lp-rec-note dd { color: var(--ink); font: 400 15px/1.5 var(--font-sans); }
+.lp-rec-note-foot { margin-top: 14px; }
+
+/* ---- what Alcove can see: the note, and what the servers hold of it, in a window on the night water ---- */
+.lp-pv { border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-3); overflow: hidden; }
+.lp-pv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+/* The chosen view is raised off the window, which is the switch's own surface. */
+.lp-pv-top .ac-seg .pill { background: var(--surface-raised); }
+.lp-pv-say { margin-left: auto; color: var(--ink-2); font-size: 12.5px; }
+.lp-pv-rows { display: grid; margin: 0; }
+.lp-pv-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 16px; align-items: start; padding: 13px 20px; border-top: 1px solid var(--line); }
+.lp-pv-row:first-child { border-top: 0; }
+.lp-pv-row dt { padding-top: 2px; color: var(--ink-3); font: 600 12.5px/1.3 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-pv-row dd { position: relative; min-height: 22px; margin: 0; }
+.lp-pv-row :is(.plain, .sealed) { transition: opacity var(--duration-2) var(--ease-out); }
+.lp-pv-row .plain { display: block; color: var(--ink); font-size: 14.5px; line-height: 1.5; }
+/* A sealed record takes the place of what it seals: in IBM Plex Mono, because it's a record, not words. */
+.lp-pv-row .sealed { position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; color: var(--ink-2); font: 500 12.5px/1.3 var(--font-mono); white-space: nowrap; opacity: 0; }
+.lp-pv-row .sealed .ac-i { flex: none; color: var(--gold); }
+.lp-pv.is-sealed .lp-pv-row .plain { opacity: 0; }
+.lp-pv.is-sealed .lp-pv-row .sealed { opacity: 1; }
+.lp-pv-foot { padding: 14px 20px; border-top: 1px solid var(--line); }
+
+@media (max-width: 1024px) {
+  .lp-rec .hz-star:nth-child(3) { display: none; }
+}
+@media (max-width: 760px) {
+  .lp-rec { --orb: 50px; }
+  .lp-rec-note dl > div { grid-template-columns: minmax(0, 1fr); }
+  .lp-rec-note dt { padding-bottom: 0; }
+  .lp-rec-note dd { padding-top: 4px; }
+  /* On a phone the record replaces the words in the row's own flow, and wraps. */
+  .lp-pv-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .lp-pv-row .sealed { position: static; display: none; align-items: flex-start; white-space: normal; overflow-wrap: anywhere; }
+  .lp-pv-row .sealed .ac-i { margin-top: 1px; }
+  .lp-pv.is-sealed .lp-pv-row .plain { display: none; }
+  .lp-pv.is-sealed .lp-pv-row .sealed { display: flex; }
+}
+@media (max-width: 560px) {
+  .lp-rec-up { padding-bottom: calc(var(--orb) + 50px); }
+  .lp-rec .hz-star:is(:nth-child(2), :nth-child(8)) { display: none; }
+}
