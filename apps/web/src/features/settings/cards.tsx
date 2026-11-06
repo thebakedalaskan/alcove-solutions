@@ -251,7 +251,9 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
     const near = open[i + 1] ?? open[i - 1];
     cancel.mutate(t.id, {
       onSuccess: () => requestAnimationFrame(() => {
-        if (document.activeElement && document.activeElement !== document.body) return;
+        // Unless they've moved on: focus still on the cancelled row (it may not have gone yet), or nowhere, is moved.
+        const at = document.activeElement;
+        if (at && at !== document.body && at.isConnected && !at.closest(`[data-top-up="${t.id}"]`)) return;
         const row = near ? list.current?.querySelector<HTMLButtonElement>(`[data-top-up="${near.id}"] .set-conn`) : null;
         (row ?? add.current)?.focus();
       }),
