@@ -13,15 +13,15 @@ import {
   CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
-  BellRing, Bot, Coffee, Ear, Gauge, Headphones
+  CircleOff, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones
 } from 'lucide-react';
 import { cn } from '../cn';
 
 /* One icon family: Lucide, 1.8 stroke, round caps and joins, sized by the caller. Filled glyphs say so. */
 const ICONS = {
   shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
-  spline: Spline, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, map: MapIcon, 
-  workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform, 
+  spline: Spline, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, map: MapIcon,
+  workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform,
   chevronLeft: ChevronLeft, bringToFront: BringToFront, sendToBack: SendToBack,
   moment: AudioLines, plus: Plus, home: House, notes: NotebookText, search: Search, video: Video, videoOff: VideoOff, mic: Mic, micOff: MicOff,
   screen: MonitorUp, chat: MessageSquare, people: Users, leave: PhoneOff, pen: Pencil, dot: Circle, pause: Pause, stop: Square,
@@ -46,6 +46,7 @@ const ICONS = {
   link2: Link2, list: List, listChecks: ListChecks, listOrdered: ListOrdered, locate: LocateFixed, megaphone: Megaphone, message: MessageSquareText, minus: Minus,
   moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, table: Table,
   textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type, calClock: CalendarClock, stickyNote: StickyNote, hourglass: Hourglass, phoneCall: PhoneCall,
+  circleOff: CircleOff, droplets: Droplets,
   nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones
 } satisfies Record<string, LucideIcon>;
 

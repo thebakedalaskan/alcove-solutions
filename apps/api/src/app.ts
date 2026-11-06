@@ -9,6 +9,8 @@ import { registerCallRoutes } from './features/calls/routes';
 import { registerWorkspaceReaderRoutes } from './features/workspaces/reader-routes';
 import { registerOwnerMiddleware } from './http/authorization';
 import { registerReceiptMiddleware } from './http/receipts';
+import { registerAgentPublicRoutes, registerAgentRoutes } from './features/agents/routes';
+import { registerAccountSessionRoutes } from './features/account/session-routes';
 import { registerAccountRoutes } from './features/account/routes';
 import { registerMeetingRoutes } from './features/meetings/routes';
 import { registerDocumentLibraryRoute } from './features/workspaces/library-routes';
@@ -24,12 +26,15 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const runtime = createHttpRuntime(d, stopping);
 
   registerMiddleware(app, runtime);
+  registerAgentPublicRoutes(app, runtime);
   registerSystemRoutes(app, runtime);
   registerAuthRoutes(app, runtime);
   registerCallRoutes(app, runtime);
   registerWorkspaceReaderRoutes(app, runtime);
   registerOwnerMiddleware(app, runtime);
   registerReceiptMiddleware(app, runtime);
+  registerAccountSessionRoutes(app, runtime);
+  registerAgentRoutes(app, runtime);
   registerAccountRoutes(app, runtime);
   registerMeetingRoutes(app, runtime);
   registerDocumentLibraryRoute(app, runtime);

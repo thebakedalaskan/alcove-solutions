@@ -1,3 +1,4 @@
+import { DeviceGenerationSchema } from './devices';
 import { ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 import { PersonSchema } from './people';
@@ -57,3 +58,8 @@ export const AccountSignalSchema = z.discriminatedUnion('type', [
 ]);
 
 export type AccountSignal = z.infer<typeof AccountSignalSchema>;
+
+/** Synchronous cross-tab revocation: signing back in preserves the nonce, so older work stays revoked. */
+export const AccountDeviceStateSchema = z.object({ generation: DeviceGenerationSchema, activation: DeviceGenerationSchema, signedOut: z.boolean() });
+
+export type AccountDeviceState = z.infer<typeof AccountDeviceStateSchema>;

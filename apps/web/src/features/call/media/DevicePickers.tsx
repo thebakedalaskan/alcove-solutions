@@ -5,6 +5,7 @@
 import { Button, CallTile, DockChevron, Icon, Notice, Popover, Spinner, Switch, Tooltip, cn, type AvatarPerson, type IconName } from '@alcove/ui';
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { stateOf, troubles, type Trouble } from './access';
+import { BackgroundOptions } from './backgrounds/BackgroundOptions';
 import { TEST_SECONDS, canChooseSpeaker, testMicrophone, type Capture, type Device, type DeviceKind, type Devices, type TestPhase } from './devices';
 import type { LocalMedia, MediaSnapshot } from './media';
 import { Video, useLevels } from './Video';
@@ -115,6 +116,7 @@ export function PrejoinDevices({ media, m, devices }: { media: LocalMedia; m: Me
         : <DeviceSelect kind="mic" devices={devices.mic} value={m.micId} onChange={(id) => void media.chooseMic(id)} meter={<Level media={media} live={m.mic} />} />}
       {cam ? <DeviceState kind="cam" text={stateOf('cam', cam)} /> : <DeviceSelect kind="cam" devices={devices.cam} value={m.camId} onChange={(id) => void media.chooseCam(id)} />}
       {canChooseSpeaker() ? <DeviceSelect kind="speaker" devices={devices.speaker} value={m.speakerId} onChange={(id) => media.chooseSpeaker(id)} /> : <SystemSpeaker />}
+      {m.canBackground ? <PrejoinBackground media={media} m={m} /> : m.background.kind !== 'none' && <BackgroundRecovery media={media} />}
       <button type="button" className={cn('pj-test', phase !== 'idle' && 'on')} disabled={!track || !m.mic || phase !== 'idle'}
         title={!track ? 'Your microphone isn’t working yet' : m.mic ? 'Records a few seconds and plays them back here. Nothing is uploaded or kept.' : 'Turn your microphone on to test it'} onClick={() => void test()}>
         {phase === 'listening' ? <><i className="ac-rec-dot" />Say something… {left}</> : phase === 'playing' ? <><Icon name="speaker" size={15} />Playing it back</> : <><Icon name="mic" size={15} />Test microphone</>}
@@ -123,6 +125,28 @@ export function PrejoinDevices({ media, m, devices }: { media: LocalMedia; m: Me
       {said && !list.length && <p className="pj-dev-note" aria-live="polite"><Icon name={ICON[said.kind]} size={13} />{said.text}</p>}
       {list.length > 0 && <PrejoinTrouble list={list} onRetry={() => media.retry()} />}
     </div>
+  );
+}
+
+/** Before joining: what shows behind you, chosen before anyone sees you. */
+function PrejoinBackground({ media, m }: { media: LocalMedia; m: MediaSnapshot }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen} side="top" align="start" label="Background" className="ic-dmenu"
+      anchor={<button type="button" className={cn('pj-test', open && 'is-open')} aria-haspopup="dialog"><Icon name="image" size={15} />Background</button>}>
+      <div className="ac-eyebrow">Background</div>
+      <BackgroundOptions media={media} m={m} />
+    </Popover>
+  );
+}
+
+/** A remembered background can keep an unsupported browser's camera off; removing it is always an explicit choice. */
+function BackgroundRecovery({ media }: { media: LocalMedia }) {
+  return (
+    <Notice tone="caution" icon="videoOff">
+      <p>To use your camera without a background, choose None, then turn your camera on.</p>
+      <Button variant="secondary" size="sm" onClick={() => void media.setBackground({ kind: 'none' })}>Choose None</Button>
+    </Notice>
   );
 }
 
@@ -192,7 +216,7 @@ export function MicMenu({ open, onOpenChange, ...rest }: Omit<MicProps, 'live'> 
 
 interface CamProps { media: LocalMedia; m: MediaSnapshot; devices: Devices; me: AvatarPerson; preview?: boolean; onSwitched: (label: string) => void }
 
-/** Your own preview, which camera, and background blur where the browser can do it. */
+/** Your own preview, which camera, and what shows behind you where the browser can draw it. */
 export function CamOptions({ media, m, devices, me, preview = true, onSwitched }: CamProps) {
   const cam = current(devices.cam, m.camId);
   const trouble = troubles(m, ['cam'])[0];
@@ -208,10 +232,11 @@ export function CamOptions({ media, m, devices, me, preview = true, onSwitched }
       {devices.cam.length ? devices.cam.map((d) => (
         <Option key={d.id} on={d.id === cam} label={d.label} onPick={() => { if (d.id !== cam) void media.chooseCam(d.id).then((ok) => { if (ok) onSwitched(d.label); }); }} />
       )) : !trouble && <p className="ic-none">No camera found.</p>}
-      {m.canBlur && (
+      {(m.canBackground || m.background.kind !== 'none') && (
         <>
           <div className="ic-msep" />
-          <div className="ic-srow"><span>Blur my background</span><Switch className="end" checked={m.blur} label="Blur my background" onChange={(on) => void media.setBlur(on)} /></div>
+          <div className="ac-eyebrow">Background</div>
+          {m.canBackground ? <BackgroundOptions media={media} m={m} /> : <BackgroundRecovery media={media} />}
         </>
       )}
     </div>

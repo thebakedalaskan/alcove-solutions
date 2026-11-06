@@ -7,11 +7,13 @@ export interface AuthApi {
   /** The signed-in session, or null when signed out. */
   getSession(): Promise<Session | null>;
   /**
-   * Where the browser goes to sign in with Google. Google sends it back to the API, which opens
-   * the session and returns to the app: /ready for a new account, /home otherwise, or
-   * /welcome?signin=<reason> when it didn't work. `next: '/move'` comes back to a move being made instead.
-   */
-  signInUrl(provider: 'google', opts?: { next?: '/move' | undefined }): string;
+       * Where the browser goes to sign in with Google. Google sends it back to the API, which opens
+       * the session and returns to the app: /ready for a new account, /home otherwise, or
+       * /welcome?signin=<reason> when it didn't work. `next: '/move'` comes back to a move being made instead.
+       * `popup` returns only the outcome to /welcome in that popup, for its waiting tab to pick up.
+       */
+  signInUrl(provider: 'google', opts?: { next?: '/move' | undefined; popup?: string | undefined }): string;
+
   /** Signs in a demo identity with Microsoft or single sign-on (`email` picks who). */
   signIn(provider: DemoProvider, opts?: { email?: string | undefined }): Promise<SignInResult>;
   /** Ends this session. */

@@ -14,6 +14,8 @@
     "@alcove/api-http": "workspace:*",
     "@alcove/board": "workspace:*",
     "@alcove/ui": "workspace:*",
+    "@livekit/track-processors": "0.8.2",
+    "@mediapipe/tasks-vision": "0.10.14",
     "@tanstack/react-query": "^5.105.3",
     "@tanstack/react-router": "^1.170.46",
     "@tanstack/react-start": "^1.169.4",

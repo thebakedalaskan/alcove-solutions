@@ -136,7 +136,10 @@ export function InCall({ session }: { session: CallSession }) {
   const account = useQuery(q.session());
   // A call opens with the panels you left, closed on a phone. With none of them open, on a wide screen, Notes opens if notes are on.
   const startPanels = (p: CallPanels) => (innerWidth < PHONE_W ? closeAll(p) : !p.groups.some((g) => g.open) && on && innerWidth >= 1100 ? showView(p, 'notes') : p);
-  const layout = useCallView(state.callId, account.data ? account.data.ownerId : account.isPending ? undefined : null, startPanels);
+  const owner = account.data ? account.data.ownerId : account.isPending ? undefined : null;
+  const layout = useCallView(state.callId, owner, startPanels);
+  // Whose pictures can show behind the camera: a guest's none.
+  useEffect(() => { if (owner !== undefined) media.setAccount(owner); }, [media, owner]);
   const forgetLayout = layout.forget;
   const panels = layout.panels;
   // The call's state changes all the time; what it says about the workspace rarely does, and the workspace draws a lot. A

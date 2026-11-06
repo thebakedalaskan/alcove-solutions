@@ -1,8 +1,9 @@
 # Server feature ownership
 
-Read root `AGENTS.md`, `docs/engineering/folder-ownership.md`, privacy-keys-and-sessions.md and logging-and-errors.md.
+Read root `AGENTS.md`, `docs/engineering/folder-ownership.md`, `docs/engineering/privacy-keys-and-sessions.md`
+and `docs/engineering/logging-and-errors.md`.
 
-- Choose `account`, `meetings`, `calls`, `notes`, `recordings`, `workspaces` or `billing` as the owner.
+- Choose `account`, `agents`, `meetings`, `calls`, `notes`, `recordings`, `workspaces` or `billing` as the owner.
   Add a distinct owner only with an updated map, these rules and the structure policy. Never recreate `modules/`.
 - Feature HTTP registration belongs with the feature. `app.ts` composes registrars and shared HTTP infrastructure;
   it contains no feature handlers. Preserve registration order around public, guest-readable, signed-in and
@@ -21,3 +22,6 @@ Read root `AGENTS.md`, `docs/engineering/folder-ownership.md`, privacy-keys-and-
 - Run the full `pnpm check` for a completed stage and record the moved/extracted-file map.
 - Check graph indexing exclusions before concluding coverage is absent: `src/integration` can be skipped by the
   index. The Vitest/CI recursive source discovery and actual suites are authoritative for coverage.
+
+- Agent grants, OAuth and MCP tools belong in `agents`, including its `mcp/` implementation and integration suites.
+  Preserve the public OAuth/MCP registration phase and each tool's scope/owner enforcement; never colocate them under calls.

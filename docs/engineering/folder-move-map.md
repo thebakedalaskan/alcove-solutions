@@ -245,3 +245,29 @@ These are source relocations, not forwarding aliases. Old files are removed. A f
 - Vitest discovery preserves all 1,132 listed cases across 38 suites. CI shard plans contain 47 unique units and assign every listed case exactly once.
 - Manual browser verification passed local demo sign-in, workspace/document creation and saved-content reopen, muted/camera-off call join, in-call workspace display and end-call cleanup. The preview used a separate database and loopback hostname to avoid other local sessions. Camera/microphone capture and multi-person browser interactions were not exercised manually; existing real LiveKit integration flows cover the media protocol.
 - Both unmodified baseline and refactored source passed all 38 suites and 1,133 tests. Full refactored `pnpm check` passed all 11 tasks, including typing and builds. The final structure guard passed again after the policy audit. Details are recorded in the implementation plan.
+
+
+## Integration of newer main
+
+Main `b7f61754221b34b160dc4a524de9138859cb89ad` added camera backgrounds, popup Google sign-in and scoped agent/MCP access while this overhaul was being verified. Their implementations are preserved and placed under the amended owners. Original validation results above refer to the initial refactor stage; the combined branch is verified separately before merging.
+
+| Incoming main path | Owned path |
+| --- | --- |
+| `apps/web/src/features/call/BackgroundOptions.tsx` | `apps/web/src/features/call/media/backgrounds/BackgroundOptions.tsx` |
+| `apps/web/src/features/call/backdrop.ts` | `apps/web/src/features/call/media/backgrounds/backdrop.ts` |
+| `apps/web/src/features/call/backgrounds.ts` | `apps/web/src/features/call/media/backgrounds/backgrounds.ts` |
+| `apps/web/src/features/call/matte.ts` | `apps/web/src/features/call/media/backgrounds/matte.ts` |
+| `apps/web/src/features/call/matteGl.ts` | `apps/web/src/features/call/media/backgrounds/matteGl.ts` |
+| `apps/api/src/mcp/operations.ts` | `apps/api/src/features/agents/mcp/operations.ts` |
+| `apps/api/src/mcp/server.ts` | `apps/api/src/features/agents/mcp/server.ts` |
+| `apps/api/src/mcp/tools.ts` | `apps/api/src/features/agents/mcp/tools.ts` |
+| `apps/api/src/modules/agentOAuth.ts` | `apps/api/src/features/agents/oauth.ts` |
+| `apps/api/src/modules/agents.ts` | `apps/api/src/features/agents/service.ts` |
+| `packages/api/src/agentOAuth.ts` | `packages/api/src/agents/oauth.ts` |
+| `packages/api/src/agentTools.ts` | `packages/api/src/agents/tools.ts` |
+| `packages/api/src/agents.ts` | `packages/api/src/agents/schema.ts` |
+| `packages/api/src/googleSignIn.ts` | `packages/api/src/identity/google-sign-in.ts` |
+| `apps/api/src/agents.integration.test.ts` | `apps/api/src/features/agents/agents.integration.test.ts` |
+| `apps/api/src/mcp.integration.test.ts` | `apps/api/src/features/agents/mcp.integration.test.ts` |
+
+Frozen-main comparison preserved all 212 ordered HTTP registrations and callbacks, nine server module bodies, eight security helpers, 77 incoming contract declarations, and 41 incoming web/Storybook source/config/doc files. All 736 original and 71 new upstream public contract names remain available (807 total). The incoming migration and lockfile are byte-identical to main. Existing agent suites and popup-auth assertions are retained verbatim apart from import locations.

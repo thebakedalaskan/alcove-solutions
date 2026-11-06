@@ -87,6 +87,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
+| `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
 ## Add a component story
@@ -340,3 +341,9 @@ export const Voting = inCall({
   pointers and marks on a share go nowhere, and nothing anyone says is heard aloud.
 - A play's timings: Storybook says a story has rendered once its play is done and its animations have settled, so a
   script's times (counted from joining) can be well under way by then.
+
+
+Agent connection previews live under **Components / Settings**, **Pages / Connect an agent**, and Settings' Agents
+stories. **Journeys / 14 Agent access** shows creating a personal token, disconnecting a connection, and signing in to
+review an OAuth request. The last journey stops at the external-client hand-off. Tokens and request pointers in these
+stories are made-up preview values that cannot connect to a real Alcove account.

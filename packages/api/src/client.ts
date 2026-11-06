@@ -1,3 +1,4 @@
+import type { AgentsApi } from './agents/api';
 import { type CallsApi, type RingsApi } from './calls/api';
 import { type CreditsApi } from './credits/api';
 import { type AccountApi, type AuthApi, type PeopleApi } from './identity/api';
@@ -13,6 +14,7 @@ export type Patch<T> = { [K in keyof T]?: T[K] | undefined };
 export interface AlcoveApi {
   auth: AuthApi;
   account: AccountApi;
+  agents: AgentsApi;
   people: PeopleApi;
   meetings: MeetingsApi;
   calendar: CalendarApi;

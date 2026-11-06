@@ -1,3 +1,4 @@
+import { createAgentsApi } from './agents/api';
 import { createAccountApi } from './account/api';
 import { createCallsApi } from './calls/api';
 import { createMeetingsApi } from './meetings/api';
@@ -17,6 +18,7 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   const t = createHttpTransport(o);
   return {
     ...createAccountApi(t),
+    ...createAgentsApi(t),
     ...createMeetingsApi(t),
     ...createCallsApi(t, o),
     ...createRecordingsApi(t),

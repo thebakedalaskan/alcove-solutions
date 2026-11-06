@@ -197,7 +197,7 @@ The last of the light, with you in it, then one page. Change one thing and leave
 - **The band.** You stand on the horizon in your arch, with your name (Newsreader) and address. Take the tour and Sign out
   sit at the right.
 - **The page.** One long sheet with a sticky index beside it: Profile, Notes, Recording, Calendar, Devices, Notifications,
-  Appearance, Plan and credits, Privacy. A small sun on the index follows the part in view. At 1000px and narrower the index
+  Appearance, Agents, Plan and credits, Privacy. A small sun on the index follows the part in view. At 1000px and narrower the index
   becomes a strip.
 - **No cards.** Below the horizon the water goes still and becomes the page. Every row is a label, with help under it, then
   a control on one axis, so the eye runs straight down. Saved appears just left of that axis, where you pressed. Nothing is
@@ -205,6 +205,20 @@ The last of the light, with you in it, then one page. Change one thing and leave
 - **Sign out** signs you out at once. Only when recordings haven't uploaded does it ask first: the sky grows to hold the
   question, it says they'll be deleted, and Stay signed in is the filled answer.
 - **Delete account** opens in place, with what goes beside what stays. The shared demo account can't be deleted, and says so.
+- **Agents** stays on the same sheet: named connections with their permissions, expiry, last use and Disconnect. Creating
+  a personal token opens its fields in place; the token is shown once, masked, with Copy and Done. The shared
+  `AgentPermissions`, `AgentDisclosure` and `AgentTokenReveal` components live in `components/agents.tsx` and
+  `styles/agents.css`.
+
+## Connecting an agent
+
+`routes/connect.tsx`, `features/agents/permissions.ts`, `components/agents.tsx`, `styles/agents.css` (`ac-agent-`). The public
+page uses the theme's ground and one quiet sheet, with the mark above it. It names the requesting client and the signed-in
+account, then only the permissions the client requested, the readable-information disclosure, and Allow / Cancel.
+Missing or expired requests, sign-in, loading, and unavailable states use the same frame. The permission choices are
+shared with Settings. Storybook records both pages and their states under Pages, with the steps in **Journeys / 14 Agent
+access**; the design canvas has no board for this page yet.
+
 
 ## Starting and scheduling a call
 

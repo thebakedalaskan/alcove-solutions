@@ -12,3 +12,5 @@ Read root rules and `docs/engineering/folder-ownership.md`.
   exports or a second implementation hidden behind a compatibility flag.
 - Structural moves preserve method behavior, headers, errors, timing, state snapshots and cleanup. Validate
   through the real API/client integration suite; no isolated client/function tests.
+
+- Agent-connection management belongs in `src/agents`, composed by the root factory like the other feature APIs.

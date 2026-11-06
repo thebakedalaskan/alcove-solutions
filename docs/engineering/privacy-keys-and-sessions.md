@@ -50,7 +50,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
 | Media token key | `HKDF(KMASTER, "alcove/media-token/v1")` | Derived per use; signs the token in [a file's URL](#files) |
 | `Kservice` | 32 bytes from `KSERVICE` | Derives the billing key `HKDF(Kservice, "alcove/service/accounting/v1")`; cannot open owner content |
-| Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, and the first time an edit, is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding the recordings' database never has to give way to the edits' | That browser's IndexedDB (`alcove-offline`, `alcove-edits`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
+| Device keys | 256-bit AES-GCM, made in the browser the first time a room recording, an edit, or a camera background picture is kept there (`crypto.subtle.generateKey`, not extractable): one for each, so an old tab holding one database never has to give way to another's | That browser's IndexedDB (`alcove-offline`, `alcove-edits`, `alcove-backgrounds`), never sent anywhere; seal what [this device keeps](#on-this-device), and each is deleted with the last of what it seals |
 | Call MLS keys | Made in each browser in a call (an MLS key package and its private keys for each group it joins, then that group's secrets: one group for the main room and, while breakout rooms are open, one for each room), with each sender's media key per epoch `MLS-Exporter("alcove/call-media/v1", identity, 32)` from its group | Only in the browsers in the call, in memory: each browser holds its own part of the call's, the host's (the organizer's, or a stand-in's while the organizer is away) every part's. Never sent to the API or LiveKit ([Calls and recordings › End-to-end encryption](calls-and-recordings.md#end-to-end-encryption)) |
 | Call data keys | `HKDF(media key, "alcove/call-data/v1")` for each sender and epoch: seal what browsers send each other through LiveKit (pointers and marks on shared screens, and `board-shot/1`, telling someone a picture of their share went on the board) | Only in the browsers in the call, in memory ([Calls and recordings › Pointing at shared screens](calls-and-recordings.md#how-it-travels)) |
 
@@ -147,8 +147,14 @@ The hash is deterministic, so equal values show the same person across rows and 
    tolerance. Then it checks the nonce and accepts only `email_verified: true`, because notes are shared by
    email. The identity is `google:<sub>`, the lower-cased email, and Google's name and photo URL. A refusal
    sends the browser to `/welcome?signin=<reason>` (`cancelled`, `expired`, `unverified`, `unavailable`,
-   `busy` or `failed`) and signs nobody in. Someone can untick the calendar on Google's consent screen and
-   still sign in.
+   `busy` or `failed`) and signs nobody in. Welcome opens Google in a popup, keeping the page and its
+   animations running in the original tab. That attempt includes a random UUID `popup` channel; success
+   returns the popup to `/welcome?popup=<id>&next=<path>`, and refusals to
+   `/welcome?popup=<id>&signin=<reason>`. The completion page tells the original tab through a same-origin
+   `BroadcastChannel`, with only the destination or refusal. The original tab verifies its session with
+   the API before leaving Welcome. No tokens or personal information enter the completion URL or channel.
+   A blocked popup falls back to the same-tab redirect, as Calendar's Connect already uses. Someone can
+   untick the calendar on Google's consent screen and still sign in.
 2. **Demo sign-in.** `POST /v1/auth/sign-in` with `{provider, email?}`, where `provider` is `microsoft` or
    `sso`; `demo.ts` turns the request into an identity (Art Vandelay, or `demo:sso:<email>` with a name
    made from the address), marked as a demo (`sample`). Both ways in share one limit: 30 attempts a minute
@@ -167,6 +173,26 @@ The hash is deterministic, so equal values show the same person across rows and 
    the access check, and so does the notes worker for each job.
 
 ## Sessions
+
+### Delegated agents
+
+Agent credentials are separate from browser sessions. A person explicitly grants scopes through OAuth consent or
+Settings; the delegation cannot exceed their current note/meeting access. Opaque bearer values are stored only as
+SHA-256 hashes. Grant labels and scopes are sealed under the owner's state key `agent:<grantId>` with the record
+header `agent-grant` binding owner and grant. OAuth clients and anonymous consent requests are sealed under
+`serviceKey(KSERVICE, 'agents')` with `agent-client` and `agent-authorization` headers binding their IDs. Codes are
+hashed and their binding metadata is sealed under the grant key with an `agent-code` header binding owner, grant
+and code hash. Operation results contain only created IDs, sealed under `agent-operations:<grantId>` with an
+`agent-operation` header binding owner, grant and operation; arguments are represented by a keyed commitment.
+
+Tokens never enter browser storage or general response receipts. Consent identifies the server's current account
+and binds approval to that owner; a cookie change in another tab cannot authorize a different account silently.
+Disconnect physically deletes the grant and its credentials/codes/operations; account deletion cascades all of them.
+Expiry and OAuth refresh replay also end access. Signing out leaves independent agent delegations in place.
+
+The agent receives readable content allowed by its scopes. Its own provider can process or retain that content;
+Alcove's confidential inference does not extend to an external agent. Write-only results never include a full note,
+transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete boundary and expiry policy.
 
 - **Cookie.** `alcove_session`, or `__Host-alcove_session` when `WEB_ORIGIN` is HTTPS: HttpOnly,
   `SameSite=Strict`, path `/`, `Secure` over HTTPS, max-age 30 days. The value is a random 32-byte ID in
@@ -193,8 +219,12 @@ The hash is deterministic, so equal values show the same person across rows and 
 - **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
   HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
   HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
-  for consent, and where to land, sealed as a `sign-in-attempt` record, so the browser can neither read nor
-  change it. The callback deletes it whatever the outcome.
+  for consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
+  the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
+  The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
+  callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
+  A second consent pass retains the channel and destination. The callback deletes the cookie whatever
+  the outcome.
 - **The refresh token.** Every Google sign-in saves what Google granted as the account's `connection` item, a
   sealed manifest like any other: the scopes, when, and the refresh token. A new refresh token replaces the
   old one; without one, the old one stays. Google sends a refresh token only the first time someone agrees,
@@ -776,6 +806,18 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   order, the time and the size. It's deleted once Alcove has the update, or when someone chooses **Discard** for it, never
   because a document refused it or went; signing out, or deleting the account, on this browser deletes what's kept for
   it, and the key with the last of anyone's.
+- **Pictures to show behind your camera** (IndexedDB `alcove-backgrounds`, `KeptBackgroundSchema`): each one you add,
+  made into a 1920×1080 JPEG in the browser and sealed with AES-GCM under its own [device key](#key-inventory), a
+  fresh 12-byte IV each, with the account, the picture's ID and when it was added bound in. In the clear: those
+  IDs, the time and the size. They're never sent: only the camera picture with you in front of one reaches a call,
+  end-to-end encrypted like any other. Removing one deletes it; signing out, or deleting the account, on this
+  browser deletes all of the account's, and the key with the last of anyone's. Pending preparation, encryption and
+  decryption are fenced by opaque account tokens and the database's deletion revision: they cannot save a picture or
+  refill its decrypted cache after cleanup, including after another sign-in. The device store retains only opaque
+  revision and access markers after deletion. `alcove.account-state.<ownerId>` in localStorage holds revocation and
+  activation nonces and a signed-out flag, never picture content; unavailable coordination storage leaves pictures
+  closed. A fresh authenticated session can reopen access, while a session response started before revocation cannot.
+  Existing JPEG records, keys and their authenticated headers read unchanged; no database version upgrade is needed.
 - **Where you were in your workspaces** (`localStorage` `alcove.workspace.<ownerId>`, `WorkspacePlacesSchema`): the IDs of
   the workspace and documents last open, what was opened recently in each, the folders left open, and whether the list is
   hidden. Nothing readable. Signing out, or deleting the account, on this browser deletes it.

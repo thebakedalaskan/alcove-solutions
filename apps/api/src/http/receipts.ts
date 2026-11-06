@@ -24,6 +24,7 @@ import type { HttpRuntime } from './runtime';
  * comes before receipts altogether, so it isn't listed here: see the routes.
  */
 const NO_RECEIPT = [
+  /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
   /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,

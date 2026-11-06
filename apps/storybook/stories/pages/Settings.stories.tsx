@@ -1,5 +1,6 @@
 /* Settings: change one thing and leave. One long sheet with an index beside it (user-flows 11). */
 import type { Meta } from '@storybook/react-vite';
+import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { keptHere, noCalendar, sharedDemo, troubled } from './changes';
@@ -69,3 +70,31 @@ export const PartsDidntLoad = page('/settings', 'busy', { beforeEach: changing(t
 export const CalendarDidntAnswer = page('/settings#calendar', 'busy', { beforeEach: changing(troubled({ 'calendar.get': 'failed' })) });
 /** Opened without a connection: Settings needs one, and Record still works. */
 export const Offline = page('/settings', 'offline');
+
+/** The Agents part keeps credentials in its mounted view only; listing shows no token. */
+export const AgentsEmpty = page('/settings#agents', 'busy');
+export const AgentsConnected = page('/settings#agents', 'agents-connected');
+export const AgentsConnectedNight = page('/settings#agents', 'agents-connected', { globals: { theme: 'dark' } });
+export const AgentsConnectedPhone = phone(AgentsConnected);
+export const AgentsLoading = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'hold' })) });
+export const AgentsUnavailable = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.list': 'failed' })) });
+export const CreatingAgentToken = page('/settings#agents', 'busy', { play: pressing('Create a token', 'Open the token form and choose its permissions and expiry') });
+
+
+const issueAgentToken: NonNullable<PageStory['play']> = async ({ userEvent, step }) => {
+  await step('Name a connection and create a token with the default read permissions', async () => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Create a token' }, { timeout: 8000 }));
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Connection name' }, { timeout: 8000 }), 'Planning assistant');
+    await userEvent.click(screen.getByRole('button', { name: 'Create token' }));
+  });
+};
+export const AgentTokenIssued = page('/settings#agents', 'busy', { play: issueAgentToken });
+export const AgentTokenRefused = page('/settings#agents', 'busy', { beforeEach: changing(troubled({ 'agents.createToken': 'failed' })), play: issueAgentToken });
+export const AgentDisconnectRefused = page('/settings#agents', 'agents-connected', {
+  beforeEach: changing(troubled({ 'agents.revoke': 'failed' })),
+  play: async ({ userEvent, step }) => {
+    await step('Disconnect fails, so the connection stays in the list and a toast explains why', async () => {
+      await userEvent.click(within(await screen.findByRole('group', { name: 'Workspace assistant' }, { timeout: 8000 })).getByRole('button', { name: 'Disconnect' }));
+    });
+  }
+});

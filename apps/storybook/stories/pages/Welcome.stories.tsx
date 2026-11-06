@@ -57,6 +57,11 @@ export const GoogleTookTooLong = page('/welcome?signin=expired', 'signed-out');
 export const GoogleUnverified = page('/welcome?signin=unverified', 'signed-out');
 /** Google sign-in isn't set up on this server. */
 export const GoogleNotSetUp = page('/welcome?signin=unavailable', 'signed-out');
+/** The popup returns only its result; the original tab plays the account opening. */
+export const GooglePopupComplete = page('/welcome?popup=7a151ba8-dc46-4e52-94b7-010d095cabfa&next=%2Fready', 'signed-out');
+export const GooglePopupCompletePhone = phone(GooglePopupComplete);
+/** Google refused the popup sign-in; the waiting tab explains why in place. */
+export const GooglePopupCancelled = page('/welcome?popup=7a151ba8-dc46-4e52-94b7-010d095cabfa&signin=cancelled', 'signed-out');
 /** Too many attempts: wait a minute. */
 export const TooManyAttempts = page('/welcome?signin=busy', 'signed-out');
 /** Opened without a connection, by someone not signed in here: the welcome page, to sign in once back. */

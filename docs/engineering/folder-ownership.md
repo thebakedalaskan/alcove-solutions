@@ -10,7 +10,7 @@ This is the target map for [#144](https://github.com/thebakedalaskan/the-privacy
 | `apps/web/src/features/call` | An active call: session lifecycle, media, screen sharing, layout, notes/capture, rooms, workspaces, boards and playback. |
 | `apps/web/src/features/calls` | Making, scheduling, listing and entering calls: flow, scheduling, lobby, ringing and list presentation. |
 | `apps/web/src/lib` | App-wide API construction, query definitions, logging and shared browser infrastructure. |
-| `apps/api/src/features` | Feature behavior, HTTP registration and feature integration suites. The owners are account, meetings, calls, notes, recordings, workspaces and billing. |
+| `apps/api/src/features` | Feature behavior, HTTP registration and feature integration suites. The owners are account, agents, meetings, calls, notes, recordings, workspaces and billing. |
 | `apps/api/src/http` | Shared HTTP types, request parsing, middleware and request limits. |
 | `apps/api/src/testing` | Shared integration harness and external-provider fixtures, never production behavior. |
 | `apps/api/src/integration` | Flows that intentionally exercise several features and service infrastructure. |
@@ -43,6 +43,7 @@ apps/api/src/
   app.ts             shared middleware and feature-route composition
   features/
     account/         account, people and photos
+    agents/          scoped agent grants, OAuth, MCP operations and tools
     meetings/        schedule, invitations, calendar and repeats
     calls/           active-call lifecycle, state, rooms, MLS and notes/capture
     notes/           saved notes, additions, personal notes, series and writing
@@ -56,12 +57,12 @@ apps/api/src/
 packages/api/src/
   client.ts          aggregate interface
   errors.ts          shared client errors
-  identity/ meetings/ calls/ notes/ recordings/ workspaces/
+  identity/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
   trust/ credits/ telemetry/ shared/
 packages/api-http/src/
   index.ts           public exports and client composition
   transport/         request, parse, stream and client options
-  account/ meetings/ calls/ notes/ recordings/ workspaces/
+  account/ agents/ meetings/ calls/ notes/ recordings/ workspaces/
 ```
 
 Exact filenames follow the responsibility they implement; this map is not a request to fill every directory with scaffolding. Existing shared API infrastructure (`db`, `crypto`, `owners`, `sessions`, `objects`, configuration, logging, inference, attestation and maintenance) keeps its deliberately stable location. Server, migration, limits CLI and document-worker entry paths stay stable.
@@ -90,3 +91,7 @@ Prefer the codebase knowledge graph for discovery. Check the index's excluded-di
 ## Refactor verification
 
 The implementation plan and completed move/extraction inventory live in `docs/superpowers/plans/2026-11-06-feature-structure.md` and `docs/engineering/folder-move-map.md`. This reorganization changes no public wire shapes, stored formats, migrations or data. The existing real API/client integration flows cover access, encryption, deletion, reconnects and storage; no isolated function or browser tests are introduced.
+
+## Integration with newer main
+
+Before integrating main `b7f61754221b34b160dc4a524de9138859cb89ad`, the new agent feature is assigned to `apps/api/src/features/agents` (including its `mcp/` implementation), `packages/api/src/agents` and `packages/api-http/src/agents`. Its complete integration suites live beside that server owner. Camera background implementation belongs in `apps/web/src/features/call/media/backgrounds`; its existing UI assets stay in `packages/ui/src/backgrounds`. Google sign-in contract additions belong to `packages/api/src/identity`. Preserve the upstream implementations, stored formats and migration `0017_agent_grants.sql` byte-for-byte while adapting source ownership and composition.

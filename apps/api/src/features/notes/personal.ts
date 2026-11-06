@@ -231,6 +231,11 @@ export async function read(p: Place): Promise<PersonalNotes> {
 
 /** Puts something in your own notes. A bookmark of a line or a screen already bookmarked changes nothing. */
 export async function add(p: Place, input: PersonalInput): Promise<PersonalNotes> {
+  return (await addEntry(p, input)).notes;
+}
+
+/** The ID is selected under the same lock as insertion, so concurrent additions cannot swap receipts. */
+export async function addEntry(p: Place, input: PersonalInput): Promise<{ notes: PersonalNotes; entryId: string }> {
   const ctx = { noteId: p.noteId };
   const base = { id: id128(), at: new Date().toISOString(), shared: null };
   const made = async (): Promise<Entry> => {
@@ -246,13 +251,17 @@ export async function add(p: Place, input: PersonalInput): Promise<PersonalNotes
     return { ...base, kind: 'bookmark', label: input.label, anchor };
   };
   const entry = await made();
+  let entryId = entry.id;
   await change(p, (k) => {
-    if (entry.kind === 'bookmark' && entry.anchor.kind !== 'moment' && k.entries.some((e) => e.kind === 'bookmark' && JSON.stringify(e.anchor) === JSON.stringify(entry.anchor))) return k;
+    if (entry.kind === 'bookmark' && entry.anchor.kind !== 'moment') {
+      const existing = k.entries.find((e) => e.kind === 'bookmark' && JSON.stringify(e.anchor) === JSON.stringify(entry.anchor));
+      if (existing) { entryId = existing.id; return k; }
+    }
     if (k.entries.length >= MAX_PERSONAL_ENTRIES) throw new ConflictError('Your notes on this call are full. Delete something to keep more.', { context: { ...ctx, entries: k.entries.length } });
     return { entries: [...k.entries, entry] };
   });
   plog.info('own notes changed', { ...ctx, change: 'added' });
-  return read(p);
+  return { notes: await read(p), entryId };
 }
 
 /** Changes what you wrote, or what a bookmark is called. A kept answer stays as it was. */

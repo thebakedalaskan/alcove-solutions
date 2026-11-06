@@ -89,3 +89,7 @@
 - The moved migration suite's fixture path was reproduced failing in both flows, corrected for its new depth, and verified passing (2/2).
 - Structure policy passed 22 temporary negative probes and the clean fixture, without adding isolated tests or dependencies. Existing test/type/privacy guards, historical migrations and lockfile are unchanged.
 - Manual browser checks passed demo sign-in, workspace/document creation, saved-content reopen, camera/mic-off call join, in-call workspace and explicit end-call cleanup. A separate loopback hostname avoided cookies from other local apps. Camera/microphone capture and multiple simultaneous browser participants were not exercised manually. Temporary preview servers were stopped afterwards.
+
+## Merge integration stage
+
+The user authorized merging. Main advanced to `b7f61754221b34b160dc4a524de9138859cb89ad` with camera backgrounds, Google popup sign-in and scoped agent MCP. Preserve each feature while applying the amended ownership map before moving its newly introduced files. Resolve the combined branch, update scoped rules and guard owners, verify integration/type/build checks again and merge through the required pull request checks. GitHub connection currently needs reauthentication; the repository guard prohibits using the default account.

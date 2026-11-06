@@ -11,3 +11,5 @@ Read root rules and `docs/engineering/folder-ownership.md`.
   refinements, discriminators, record kinds and key labels unchanged. Avoid runtime schema import cycles.
 - Any real contract change updates server, client and existing app consumers together; a folder refactor changes
   no wire or stored shapes. Run typing/structure and real API/client integration checks.
+
+- Agent scopes, grants, OAuth and tool schemas belong in `src/agents`; Google sign-in wire shapes belong in `src/identity`.

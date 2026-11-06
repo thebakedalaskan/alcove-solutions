@@ -25,13 +25,13 @@ const TINT: Partial<Record<(typeof HEADLINE)[number][number], 'lp-cool' | 'lp-wa
 };
 const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy']] as const;
 const TOOLS = [
-  ['search_notes', 'Find what was said, across your calls'],
+  ['list_notes', 'Find what was said, across your calls'],
   ['get_note', 'Open one call’s notes, with its moments'],
   ['ask_notes', 'Answer from your notes, citing the moments'],
-  ['list_follow_ups', 'What’s yours to do, and when'],
-  ['find_time', 'When everyone is free'],
+  ['get_inbox', 'What’s yours to do, and when'],
+  ['get_availability', 'When people are busy, so your agent can find a time'],
   ['schedule_call', 'Book it, with notes on or off'],
-  ['read_document', 'Read or edit a document in your workspace']
+  ['update_action', 'Update your follow-ups and mark them done']
 ] as const;
 const FACTS: readonly (readonly [IconName, string])[] = [
   ['badgeCheck', 'Each model’s hardware is checked before it gets a word, and every note says what was checked.'],
@@ -171,7 +171,7 @@ export function Landing({ auth }: { auth: Auth }) {
           <section className="lp-wrap lp-agent" id="agents" aria-labelledby="agents-title">
             <div>
               <PartHead id="agents-title" title="Your agent can use Alcove">
-                Connect any agent that speaks MCP. It can search what was said, find a time and book the call, and read or edit your documents, with the access you have and no more.
+                Connect an agent that speaks MCP. It can search what was said, find a time, book a call and manage your follow-ups, with the permissions you choose and the access you have.
               </PartHead>
               <dl className="lp-tools">{TOOLS.map(([name, what]) => <div key={name}><dt><code>{name}</code></dt><dd>{what}</dd></div>)}</dl>
             </div>

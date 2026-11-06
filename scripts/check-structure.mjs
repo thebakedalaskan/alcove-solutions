@@ -17,7 +17,7 @@ const callHomes = {
   call: new Set(['session', 'media', 'screen-sharing', 'layout', 'notes', 'rooms', 'workspace', 'boards', 'playback']),
   calls: new Set(['flow', 'scheduling', 'lobby', 'ringing', 'list'])
 };
-const serverHomes = new Set(['account', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'billing']);
+const serverHomes = new Set(['account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'billing']);
 // Stable infrastructure and deployment entries, not a home for another feature implementation.
 const serverRoot = new Set([
   'app.ts', 'callPass.ts', 'config.ts', 'context.ts', 'crypto.ts', 'db.ts', 'demo.ts', 'dstack-images.ts',
@@ -28,8 +28,8 @@ const serverRoot = new Set([
 const contractRoot = new Set(['index.ts', 'client.ts', 'errors.ts', 'format.ts', 'search.ts']);
 const sourceHomes = {
   'apps/api/src': new Set(['features', 'http', 'integration', 'live', 'testing']),
-  'packages/api/src': new Set(['identity', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'credits', 'telemetry', 'shared']),
-  'packages/api-http/src': new Set(['transport', 'account', 'meetings', 'calls', 'notes', 'recordings', 'workspaces'])
+  'packages/api/src': new Set(['identity', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces', 'trust', 'credits', 'telemetry', 'shared']),
+  'packages/api-http/src': new Set(['transport', 'account', 'agents', 'meetings', 'calls', 'notes', 'recordings', 'workspaces'])
 };
 const owned = [
   'apps/api/src/features', 'apps/web/src/features/call', 'apps/web/src/features/calls',

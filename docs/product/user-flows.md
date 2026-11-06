@@ -14,8 +14,11 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    Alcove; recording in the room without a connection; and what Alcove can see. Each scene plays while it's on
    screen, and shows a still with reduced motion. Choose **Continue with Google**, **Continue with Microsoft** or
    **Use single sign-on**, at the top or the bottom of the page; single sign-on asks for a work email in place.
-2. **Google** goes to Google's account chooser and consent screen, which also asks for the calendar (events
-   only); unticking it still signs in. If the sign-in doesn't happen (cancelled, too slow, an email Google
+2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
+   only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
+   including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
+   page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
+   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google
    hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
 3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
@@ -302,7 +305,10 @@ put them, and one dock at the bottom.
   when the server's hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Blur my background**. A microphone or camera that can't work has a caution mark, and
+  browser can do it, **Background**: **None**, **Blur**, Alcove's pictures (**Balloons**, **Beach**, **Office**)
+  or up to six of your own (**Add image**; they stay in this browser, and a guest has none). The same choice is on
+  the pre-join screen, so you pick it before anyone sees you. Removing the picture you're using shows blur
+  instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
   microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own
@@ -1109,6 +1115,8 @@ goes back, with a toast saying why. Parts that don't load say so, with **Try aga
 - **Plan and credits**: the time of notes left, with a sun on the line under it: at the end of the line on a new
   account, back along it as notes are written, and set once there's none left. Then the minutes of notes used this month
   (since 00:00 UTC on the 1st). Calls without notes are free.
+- **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
+  **Disconnect** are described in flow 14.
 - **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
   verified when this browser could check it, or where your audio is opened and your notes are written.
 
@@ -1398,3 +1406,33 @@ said, only when everyone the notes went to can open it, because one summary goes
 says **Not everyone invited can open it, so the summary leaves it out.**, and only to people who can open it. A room's board's
 follow-ups are in that room's section of the notes, and the room's line says it had a board. The next call in a series brings
 the boards open in this one.
+
+
+## 14. Agent access
+
+An agent connection delegates only the signed-in person's existing access. Reading, editing, sharing and deleting notes
+are separate choices, as are reading calls, managing calls and reading calendar availability. Alcove explains that the
+agent can receive readable information and its provider handles it under its own policies. Signing out of a browser
+does not disconnect an agent; Disconnect, expiry and account deletion end its access.
+
+1. **Create a personal token.** In **Settings → Agents**, press **Create a token**, give the connection a name and choose
+   an expiry from 1–90 days (30 by default). Read permissions start selected. Choose any additional permissions explicitly;
+   sharing and deletion stay separate. **Create token** shows the token once, masked, with the MCP server address and
+   **Copy token**. **Done** removes it from the page and leaves the named connection, its permissions and expiry in the
+   list. If creation fails, the form stays open with the reason. If Copy is unavailable, the same view says so and keeps
+   the token available until Done.
+2. **Disconnect an agent.** Each connection lists its permissions, expiry and last use, or **Not used yet**. Press
+   **Disconnect** on that connection's row. It leaves the list and a toast says **Agent disconnected.** If the request
+   fails, the connection stays and the toast explains why. With no connections, the part shows **No agents connected**;
+   loading and unavailable states keep the rest of Settings usable.
+3. **Sign in and review requested access.** Start connecting from the external agent, which opens `/connect` with an
+   opaque request pointer. If signed out, choose an Alcove sign-in method first; the same request resumes afterward.
+   The page names the requesting client (a name supplied by that client), the signed-in account and only the requested
+   permissions. Remove any permission before **Allow selected access**. Access ends after 30 days, or sooner when
+   disconnected. **Cancel** declines access. Either answer hands control back to the validated external client. A request
+   that expired or was already answered says **This request ended** and asks you to start again from the agent. Opening
+   `/connect` without a request grants nothing and says to open the connection from the agent. A failed request or decision
+   stays on the page with a reason and a way to retry.
+
+Storybook's journeys use these numbers: **14.1 Create a personal token**, **14.2 Disconnect an agent**, and **14.3 Sign in
+and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.

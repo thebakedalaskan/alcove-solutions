@@ -16,9 +16,9 @@ const ASK = 'What did we decide about the onboarding launch? Then book 45 minute
  * this page.
  */
 const CALLS = [
-  { tool: 'search_notes', args: '“onboarding launch”', back: '3 notes' },
+  { tool: 'list_notes', args: '“onboarding launch”', back: '3 notes' },
   { tool: 'get_note', args: 'Launch planning · 5 Nov', back: '1 decision, 2 follow-ups' },
-  { tool: 'find_time', args: 'Priya, Kofi, you · 45 min · 9–13 Nov', back: 'Tue 10 Nov, 11:00' },
+  { tool: 'get_availability', args: 'Priya, Kofi, you · 9–13 Nov', back: 'Tue 10 Nov, 11:00 is free' },
   { tool: 'schedule_call', args: 'Onboarding review · notes on', back: 'Booked' }
 ] as const;
 const BEFORE = 'The new onboarding ships behind a flag on 18 November, and support gets the help article first.'.split(' ');
