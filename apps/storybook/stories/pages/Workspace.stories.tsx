@@ -1,9 +1,10 @@
 /*
  * A workspace, from the Drive: the list beside the page, or one at a time on a phone; sharing, Trash, a workspace you can
- * only read; tags, comments, photos, video and files in a document; and what the page says when Alcove won't take what's
- * written, with the words offered back (user-flows 12).
+ * only read; tags, comments, photos, video and files in a document; its History, grouped by call; and what the page says
+ * when Alcove won't take what's written, with the words offered back (user-flows 12).
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { itemId } from '../../src/api/scenarios';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
 
@@ -56,6 +57,20 @@ export const PhotosVideoAndAFilePhone = page(SHOTS, 'busy', { globals: PHONE });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */
 export const UploadingAndWhatDidnt = page(UPLOADS, 'busy');
 export const UploadingAndWhatDidntNight = page(UPLOADS, 'busy', { globals: { theme: 'dark' } });
+
+/** Opens History from the document's ⋯. */
+const history: PageStory['play'] = async ({ canvas, userEvent }) => {
+  await userEvent.click(await canvas.findByRole('button', { name: 'More for this document' }, { timeout: 8000 }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'History' }, { timeout: 5000 }));
+};
+/**
+ * History, grouped by call: Kofi's edits this afternoon on their own, then the standup the document was made in, under its
+ * note's title. A version's tags keep their faces.
+ */
+export const History = page(FIXES, 'busy', { play: history });
+export const HistoryNight = page(FIXES, 'busy', { globals: { theme: 'dark' }, play: history });
+/** A version kept while the walkthrough was still uploading and the recording had been refused: it shows neither. */
+export const HistorySkipsUploads = page(UPLOADS, 'busy', { play: history });
 
 /** Alcove wouldn't take Art's last edits: the words are on the page, with Copy text, Save as new document and Discard. */
 export const CouldntSave = page(at('ws-product', 'Pricing page copy'), 'unsaved');

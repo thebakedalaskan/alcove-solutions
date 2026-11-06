@@ -120,7 +120,7 @@ export function WsListHead({ name, picker, pickerLabel = 'This call’s workspac
     <div className="wt-head">
       {naming ? <SpaceName {...naming} /> : (
         <WsPopover open={picker.open} onOpenChange={picker.onOpenChange} label={pickerLabel} anchor={
-          <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n">{name}</span><Icon name="chevronsUpDown" size={14} /></button>
+          <button type="button" className="wt-space"><span className="wt-mark"><Icon name="folders" size={15} /></span><span className="n ac-clamp-1" title={name}>{name}</span><Icon name="chevronsUpDown" size={14} /></button>
         }>{picker.content}</WsPopover>
       )}
       {onFind && <IconButton icon="search" size={16} className="wt-ib" label="Find in this workspace" title="Find (⌘K)" onClick={onFind} />}

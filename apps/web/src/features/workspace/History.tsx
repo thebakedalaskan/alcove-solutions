@@ -19,6 +19,7 @@ import { useMediaView } from './DocumentMedia';
 import { Editor } from './editor/lazy';
 import type { EditorHandle } from './editor/types';
 import type { OpenVersion } from './editor/version';
+import { useTagPeople } from './tags';
 import { nameOf } from './tree';
 
 /** How long someone's browser says what it restored: long enough for everyone to hear, and gone before anyone new comes along. */
@@ -70,10 +71,14 @@ interface Stretch { key: string; kept: DocVersionSummary[] }
 const dayKey = (v: DocVersionSummary) => `day:${new Date(v.at).toDateString()}`;
 
 /**
- * Versions as stretches of work. The first edit of a call that keeps a version keeps what was there before it, so the oldest
- * a call has is what the document said going in: it's the work before the call, and the way back to it.
+ * Versions as stretches of work, grouped by the call they were kept in, and edits outside calls a day at a time. A version
+ * is what the document said before the edit that kept it, so the first a call keeps, at its first edit, is what the document
+ * said going in: work from before the call, and the way back to it. That's only so for a document that was there before the
+ * call started (`startOf`, when it's known): one made in the call has nothing from before it.
  */
-function stretchesOf(versions: readonly DocVersionSummary[]): Stretch[] {
+function stretchesOf(versions: readonly DocVersionSummary[], made: number, startOf: (callId: string, kept: readonly DocVersionSummary[]) => number | undefined): Stretch[] {
+  const byCall = new Map<string, DocVersionSummary[]>();
+  for (const v of versions) if (v.callId) byCall.set(v.callId, [...(byCall.get(v.callId) ?? []), v]);
   const out: Stretch[] = [];
   const add = (key: string, v: DocVersionSummary) => {
     const last = out.at(-1);
@@ -82,7 +87,8 @@ function stretchesOf(versions: readonly DocVersionSummary[]): Stretch[] {
   };
   versions.forEach((v, i) => {
     const older = versions[i + 1];
-    const goingIn = v.callId !== null && v.reason === 'edits' && older?.callId !== v.callId;
+    const start = v.callId ? startOf(v.callId, byCall.get(v.callId) ?? []) : undefined;
+    const goingIn = v.callId !== null && v.reason === 'edits' && older?.callId !== v.callId && start !== undefined && made < start;
     add(v.reason === 'restore' ? `restore:${v.id}` : v.callId && !goingIn ? `call:${v.callId}` : dayKey(v), v);
   });
   return out;
@@ -93,7 +99,13 @@ function stretchesOf(versions: readonly DocVersionSummary[]): Stretch[] {
  * one each, and everything else one a day, so a long morning's writing doesn't fill the list. A row shows the newest it holds.
  */
 function rowsOf({ versions, item, me, here, notes, call, now }: RowsFor): Row[] {
-  const stretches = stretchesOf(versions);
+  const startOf = (callId: string, kept: readonly DocVersionSummary[]): number | undefined => {
+    if (callId === call?.id) return Date.parse(call.startedAt);
+    const newest = kept[0], oldest = kept.at(-1);
+    const note = newest && oldest ? noteOf(notes, oldest.at, newest.at) : undefined;
+    return note ? Date.parse(note.startedAt) : undefined;
+  };
+  const stretches = stretchesOf(versions, Date.parse(item.createdAt), startOf);
   const rows: Row[] = [{ id: NOW, name: 'Now', sub: here.length ? `${joined(here)} and you` : 'You', at: hm(new Date(now)), version: null, before: null, from: null }];
   stretches.forEach(({ key, kept }, i) => {
     const newest = kept[0];
@@ -159,6 +171,9 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
   const [editor, setEditor] = useState<EditorHandle | null>(null);
   /* Its photos, videos and files as they are now: one deleted for good since says so, here too. */
   const { media } = useMediaView(ws, item.id);
+  /* Faces on its tags, as the page has them. */
+  const { faces: tagged } = useTagPeople(ws);
+  const faces = useMemo(() => [...tagged, ...ws.here.map((h) => h.person)], [tagged, ws.here]);
   /* What changed may be a long way down, and it's what someone came to see. */
   const firstChange = open ? [...open.changed][0] : undefined;
   useEffect(() => { if (editor && firstChange) editor.scrollToBlock(firstChange); }, [editor, firstChange]);
@@ -181,7 +196,7 @@ function Version({ ws, item, row }: { ws: Ws; item: WorkspaceItem; row: Row }) {
         <WsPage>
           {open && (
             <Suspense>
-              <Editor ref={setEditor} doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} changed={open.changed} documentName={documentName} media={media}
+              <Editor ref={setEditor} doc={open.doc} awareness={open.awareness} readOnly titleHint={item.name} people={faces} changed={open.changed} documentName={documentName} media={media}
                 byline={item.by ? <WsDocBy person={item.by} name={firstName(item.by.name)} edited={row.from ? `As it was ${asOf(row.from)}` : ''} /> : undefined} />
             </Suspense>
           )}

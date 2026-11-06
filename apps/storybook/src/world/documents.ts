@@ -4,11 +4,13 @@
  * pricing draft by Friday. Each page is the editor's own blocks (`BlockJSON`), under the document's title. The calls' homes
  * hold what was worked on in them: the standup's onboarding fixes, with tags and comments, and the design review's
  * screenshots, walkthrough and spec, drawn here (`src/media/screens.ts`), with what's still uploading and what couldn't.
+ * Their History has the call they were worked on in, and what was changed after it.
  */
 import type { Person } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Screen } from '../media/screens';
 import type { Page } from '.';
+import { iso } from './clock';
 import { AIKO, ART, KOFI, MAYA, PRIYA } from './people';
 
 const words = (text: string): BlockJSON[] => [{ type: 'text', text }];
@@ -32,6 +34,10 @@ const gallery = (items: { media: string; name: string; cap?: string }[]): BlockJ
   type: 'gallery',
   attrs: { items: items.map(({ media, name }) => ({ media, name, width: 1600, height: 900 })), ...Object.fromEntries(items.flatMap((i) => (i.cap ? [[`cap:${i.media}`, i.cap]] : []))) }
 });
+
+/** The calls the homes' documents were worked on in, by their IDs, for History to group what was kept in each. */
+const STANDUP_CALL = 'TeamStandupCall0000000';
+const REVIEW_CALL = 'DesignReviewCall000000';
 
 /* ---------- Product ---------- */
 
@@ -190,6 +196,11 @@ export const ONBOARDING_FIXES: Page = {
       says: [{ who: KOFI, text: 'Every phone, not only small ones: its last step is behind the tab bar.', hoursAgo: 6.5 }, { who: PRIYA, text: 'Then it ends on the tab bar. I’ll move it.', hoursAgo: 6 }]
     },
     { id: 'c-copy', on: 5, quote: 'nothing in the welcome copy changes', says: [{ who: MAYA, text: 'Not even the line about free minutes?', hoursAgo: 5 }] }
+  ],
+  versions: [
+    { at: iso(0, 14, 30), by: [KOFI], call: null, reason: 'edits' },
+    { at: iso(0, 9, 20), by: [PRIYA, KOFI, ART], call: STANDUP_CALL, reason: 'call' },
+    { at: iso(0, 9, 13), by: [PRIYA], call: STANDUP_CALL, reason: 'edits' }
   ]
 };
 
@@ -212,7 +223,9 @@ export const REVIEW_UPLOADS: Page = {
     { type: 'file', attrs: { name: 'Review recording.mov', size: 1_284_000_000, failed: 'Review recording.mov', upload: 'up-art-review-recording' } },
     line('The old sidebar, to compare:'),
     gallery([{ media: MEDIA.gone, name: 'Old sidebar.png' }])
-  ]
+  ],
+  /* Kept as the review ended, with the walkthrough on its way and the recording refused: a version shows neither. */
+  versions: [{ at: iso(-1, 11, 45), by: [AIKO], call: REVIEW_CALL, reason: 'call' }]
 };
 
 export const REVIEW_CHECKLIST: Page = {

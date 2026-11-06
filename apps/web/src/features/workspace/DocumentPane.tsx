@@ -100,7 +100,9 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
   const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
   /* Hearing a quote takes the notes, which take an account. */
   const signedIn = ws.owner !== null;
-  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} />, []);
+  /* In the call, the call says where a line it heard is, before its note can. */
+  const callSession = ws.call?.live.session;
+  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} call={callSession} />, [callSession]);
 
   /* What the title says is what the list says: a name that didn't get through, offline say, goes when it can. */
   const reachable = status.status !== 'offline';

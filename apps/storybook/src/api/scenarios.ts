@@ -70,10 +70,10 @@ function workspaces(): Space[] {
   const research = { parent: itemId('Research') };
   const reading = { role: 'read' } as const;
   return [
-    home('ws-standup', 'Team standup', STANDUP_AT, ART, 'admin', 4, 'n2', [item('Onboarding fixes', 'document', PRIYA, 6.8)]),
+    home('ws-standup', 'Team standup', STANDUP_AT, ART, 'admin', 4, 'n2', [item('Onboarding fixes', 'document', PRIYA, 7.15)]),
     home('ws-pricing', 'Pricing sync', PRICING_AT, MAYA, 'edit', 3, 'n3', [item('Pricing draft', 'document', MAYA, 24.6)]),
     home('ws-review', 'Design review', REVIEW_AT, ART, 'admin', 4, 'n4', [
-      item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28), item('Review checklist', 'document', ART, 28.6)
+      item('Sidebar screenshots', 'document', KOFI, 28.3), item('Review uploads', 'document', AIKO, 28.9), item('Review checklist', 'document', ART, 28.6)
     ]),
     {
       id: 'ws-product', name: 'Product', role: 'admin', people: 6, createdAt: iso(-120, 10, 0), call: null,

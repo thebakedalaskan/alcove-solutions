@@ -26,14 +26,17 @@
 .ws-pane.is-away .wd { visibility: hidden; }
 
 /* ------------------------------------------------------------ the list */
-.wt { flex: none; width: 244px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); transition: margin-left var(--duration-2) var(--ease-out), visibility 0s; }
-.ws-pane.tree-off .wt { margin-left: -244px; visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
+/* The list takes more of a wide pane, so a workspace's name has room to say itself. */
+.wt { --wt-w: 244px; flex: none; width: var(--wt-w); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); transition: margin-left var(--duration-2) var(--ease-out), visibility 0s; }
+@container ws-pane (min-width: 900px) { .wt { --wt-w: 264px; } }
+@container ws-pane (min-width: 1100px) { .wt { --wt-w: 292px; } }
+.ws-pane.tree-off .wt { margin-left: calc(-1 * var(--wt-w)); visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
 .ws-pane.tree-off.list-peek .wt { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; margin-left: 0; visibility: visible; box-shadow: var(--shadow-3); transition: none; }
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
 .wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
-.wt-space .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1 var(--font-sans); color: var(--ink); }
+.wt-space .n { text-align: left; font: 600 14px/18px var(--font-sans); color: var(--ink); }
 .wt-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); }
 .wt-ib { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
 .wt-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; scrollbar-width: thin; }
