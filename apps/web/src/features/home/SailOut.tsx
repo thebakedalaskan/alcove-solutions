@@ -41,7 +41,7 @@ function homeAt(page: HTMLElement): SailHome | null {
  */
 function startFrom(hero: SailOutStored['hero'], home: SailHome): SailFrom {
   const width = document.documentElement.clientWidth;
-  if (hero && Math.abs(hero.width - width) <= 1 && hero.line + hero.sun > home.line + 1) return { ...hero, width };
+  if (hero && Math.abs(hero.width - width) <= 1 && hero.line + hero.sun > home.line + 1) return { ...hero, width, seen: true };
   const line = Math.round(Math.max(document.documentElement.clientHeight * 0.7, home.line + 40));
   return { width, line, sky: line, foot: Math.round(HERO_COVE.foot(line)), sun: 0, r: clamp(width * 0.041, 44, 60), words: [], seed: HERO_COVE.seed };
 }
