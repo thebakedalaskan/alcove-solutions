@@ -34,7 +34,9 @@
 .lp-gap { height: clamp(90px, 9vw, 140px); }
 
 /* ---- type ---- */
-.lp-h1 { font: 390 clamp(46px, 7.2vw, 108px)/.96 var(--font-display); letter-spacing: -.032em; font-variation-settings: 'opsz' 72; max-width: 10.5em; text-wrap: balance; }
+.lp-h1 { font: 390 clamp(44px, 6.9vw, 100px)/.96 var(--font-display); letter-spacing: -.032em; font-variation-settings: 'opsz' 72; max-width: 11.8em; }
+/* A sentence a line where there's room, the longer just fitting; on a phone its words wrap inside it. */
+.lp-h1-line { display: block; }
 .lp-w { display: inline-block; padding-bottom: .06em; will-change: transform; }
 /* The warm words: the sunset's own walk from the sun to rose, across both of them. */
 .lp-warm { background: linear-gradient(100deg, var(--sun-text) 8%, var(--rose) 92%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }

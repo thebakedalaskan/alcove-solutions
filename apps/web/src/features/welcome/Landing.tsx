@@ -17,7 +17,10 @@ import { PartHead, Sky } from './Sky';
 import { TeamScene } from './TeamScene';
 import { WaysIn, type Auth } from './WaysIn';
 
-const HEADLINE = ['Meetings,', 'powered', 'by', 'confidential', 'AI.'] as const;
+/** The headline: two sentences, each its own line where there's room. */
+const HEADLINE = [['Your', 'meeting', 'superapp.'], ['Powered', 'by', 'confidential', 'AI.']] as const;
+/** The warm words, the sunset's walk across both of them. */
+const WARM: readonly string[] = ['confidential', 'AI.'];
 const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy']] as const;
 const TOOLS = [
   ['search_notes', 'Find what was said, across your calls'],
@@ -107,13 +110,21 @@ function Hero({ auth }: { auth: Auth }) {
   const rise = (i: number) => ({ initial: reduce ? false : { opacity: 0, y: 18 }, animate: { opacity: 1, y: 0 }, transition: { duration: 1, delay: 0.55 + i * 0.12, ease: EASE.out } });
   return (
     <div className="lp-wrap lp-hero-in">
-      <h1 className="lp-h1" aria-label={HEADLINE.join(' ')}>
-        {HEADLINE.map((w, i) => (
-          <Fragment key={w}>
-            <motion.span aria-hidden="true" className={cn('lp-w', i >= 3 && 'lp-warm')} initial={reduce ? false : { y: '42%', opacity: 0, rotate: 1.5 }}
-              animate={{ y: 0, opacity: 1, rotate: 0 }} transition={{ duration: 1.25, delay: 0.12 + i * 0.07, ease: EASE.out }}>{w}</motion.span>
-            {i < HEADLINE.length - 1 ? ' ' : ''}
-          </Fragment>
+      <h1 className="lp-h1" aria-label={HEADLINE.map((line) => line.join(' ')).join(' ')}>
+        {HEADLINE.map((line, l) => (
+          <span key={line.join(' ')} className="lp-h1-line">
+            {line.map((w, j) => {
+              /* Where the word comes in the headline: the words rise in turn, across both lines. */
+              const i = HEADLINE.slice(0, l).flat().length + j;
+              return (
+                <Fragment key={w}>
+                  <motion.span aria-hidden="true" className={cn('lp-w', WARM.includes(w) && 'lp-warm')} initial={reduce ? false : { y: '42%', opacity: 0, rotate: 1.5 }}
+                    animate={{ y: 0, opacity: 1, rotate: 0 }} transition={{ duration: 1.25, delay: 0.12 + i * 0.07, ease: EASE.out }}>{w}</motion.span>
+                  {j < line.length - 1 ? ' ' : ''}
+                </Fragment>
+              );
+            })}
+          </span>
         ))}
       </h1>
       <motion.p className="lp-lede" {...rise(0)}>
