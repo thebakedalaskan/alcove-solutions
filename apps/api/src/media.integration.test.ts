@@ -93,6 +93,87 @@ async function refused(who: { fetch: typeof fetch }, url: string, range?: string
   const { code: c, message } = Refused.parse(await res.json());
   return { status: res.status, code: c, message };
 }
+/** Someone with their session in hand, for a request of their own that says what `fetch` won't. */
+async function withCookie() {
+  const browser = cookieFetch(ORIGIN);
+  let cookie = '';
+  const tap: typeof fetch = async (input, init) => {
+    const res = await browser(input, init);
+    cookie = /(__Host-alcove_session=[^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1] ?? cookie;
+    return res;
+  };
+  const who = await account({ fetch: tap });
+  return { ...who, cookie: () => cookie };
+}
+/**
+ * How much of a response's body came on a connection, and whether all of it did: by its length, or, past 16 MiB where it
+ * has none, by the chunk that ends it.
+ */
+function bodyOf(all: Buffer): { body: number; whole: boolean } {
+  const at = all.indexOf('\r\n\r\n');
+  if (at < 0) return { body: 0, whole: false };
+  const head = all.subarray(0, at).toString('latin1');
+  const rest = all.subarray(at + 4);
+  const length = /\r\ncontent-length: *(\d+)/i.exec(head)?.[1];
+  if (length !== undefined) return { body: rest.length, whole: rest.length === Number(length) };
+  if (!/\r\ntransfer-encoding: *chunked/i.test(head)) return { body: rest.length, whole: false };
+  let body = 0;
+  for (let i = 0; ;) {
+    const eol = rest.indexOf('\r\n', i);
+    const size = eol < 0 ? Number.NaN : Number.parseInt(rest.subarray(i, eol).toString('latin1'), 16);
+    if (Number.isNaN(size)) return { body, whole: false };
+    if (size === 0) return { body, whole: true };
+    body += Math.min(size, rest.length - (eol + 2));
+    i = eol + 2 + size + 2;
+    if (i > rest.length) return { body, whole: false };
+  }
+}
+/** The status the server answered a request with, by the ID it was sent with, from its request line; 0 until it has. */
+const answered = (from: number, requestId: string): number => {
+  for (const raw of h.logs.slice(from)) {
+    if (!raw.includes(requestId)) continue;
+    const l = LogLine.safeParse(JSON.parse(raw));
+    if (l.success && ['request', 'request refused', 'request failed'].includes(l.data.msg)) return Number(l.data['status']);
+  }
+  return 0;
+};
+/**
+ * A read whose browser has stopped taking it, as a tab that stalled has: a connection of its own that sends the request
+ * and reads nothing back, so only what the operating system holds leaves the server, which is less than a piece. A
+ * fetch reads on into buffers of its own, and on Linux that can be the whole of a file of two pieces: the read ends by
+ * itself and gives its place back, and nothing has stopped. It's under way once the server has answered it, which its
+ * request line says, so that's what this waits for, not the answer reaching the browser.
+ */
+async function stopped(who: { cookie: () => string }, url: string) {
+  const requestId = randomBytes(12).toString('base64url');
+  const { hostname, port, pathname, host } = new URL(url);
+  const from = h.logs.length;
+  const socket = connect({ host: hostname, port: Number(port) });
+  socket.on('error', () => undefined);
+  socket.pause();
+  socket.write(`GET ${pathname} HTTP/1.1\r\nhost: ${host}\r\ncookie: ${who.cookie()}\r\n${REQUEST_ID_HEADER}: ${requestId}\r\nconnection: close\r\n\r\n`);
+  let status = 0;
+  await until(() => { status = answered(from, requestId); return status > 0; }, 'the server to answer a read');
+  let received = 0;
+  /**
+   * Takes the rest of the answer: all at once, or a chunk at a time `ms` apart, as a browser on a slow line does. How much
+   * of the body came, or `cut` when the connection ended short of its length.
+   */
+  const take = (ms = 0) => new Promise<number | 'cut'>((resolve) => {
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      if (ms) { socket.pause(); setTimeout(() => socket.resume(), ms).unref(); }
+    });
+    socket.once('close', () => {
+      const { body, whole } = bodyOf(Buffer.concat(chunks));
+      received = body;
+      resolve(whole ? body : 'cut');
+    });
+    socket.resume();
+  });
+  return { requestId, status, rest: () => take(), slowly: (ms: number) => take(ms), received: () => received, end: () => { socket.destroy(); } };
+}
 /** The answer for a URL nobody made: every refusal of a read must look just like it. */
 const nothing = () => refused({ fetch }, `${h.baseUrl}/v1/media/${randomBytes(120).toString('base64url')}.${randomBytes(32).toString('base64url')}`);
 const place = (id: string, doc: string) => `${h.baseUrl}/v1/workspaces/${id}/documents/${doc}/media`;
@@ -586,33 +667,23 @@ describe('a failure on the way', () => {
   });
 
   it('cuts a response off when a piece fails after the browser has been slow, as well as straight away', async () => {
-    const ann = await account();
+    const ann = await withCookie();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     const owner = await ownerOf(id);
     const m = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(4 * PIECE + 1)));
     const url = await ann.api.workspaces.media.url(id, doc, m.id);
     const third = (await objectsOf(owner))[2] ?? '';
-    const res = await ann.fetch(url);
-    const body = res.body?.getReader();
-    if (!body) throw new Error('no body');
-    // The browser takes a little and stops, so the server is waiting for it to catch up when the store goes.
-    let taken = (await body.read()).value?.length ?? 0;
+    // The browser takes no more than is on its way and stops, so the server is waiting for it to catch up when the store goes.
+    const paused = await stopped(ann, url);
     await new Promise((r) => setTimeout(r, 200));
     const get = h.deps.objects.get;
     h.deps.objects.get = async (o) => { if (o === third) throw new Error('the store has gone'); return get(o); };
     try {
-      const outcome = await (async () => {
-        for (;;) {
-          const { done, value } = await body.read();
-          if (done) return 'all of it';
-          taken += value.length;
-        }
-      })().catch(() => 'cut off');
-      expect(outcome).toBe('cut off');
+      expect(await paused.rest()).toBe('cut');
     } finally { h.deps.objects.get = get; }
     // It got as far as the piece that failed, and no further.
-    expect(taken).toBeLessThanOrEqual(2 * PIECE);
+    expect(paused.received()).toBeLessThanOrEqual(2 * PIECE);
     expect((await read(ann, url)).bytes.length).toBe(4 * PIECE + 1);
   });
 
@@ -1377,47 +1448,6 @@ describe('reusing a file', () => {
 describe('what a process takes on at once', () => {
   const { arriving, arrivingEach, arrivalMs, reading, readingEach, stalledMs, waiting, waitingEach, waitMs, working, readsAMinute } = MEDIA_LIMITS;
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  /** The status the server answered a request with, by the ID it was sent with, from its request line; 0 until it has. */
-  const answered = (from: number, requestId: string): number => {
-    for (const raw of h.logs.slice(from)) {
-      if (!raw.includes(requestId)) continue;
-      const l = LogLine.safeParse(JSON.parse(raw));
-      if (l.success && ['request', 'request refused', 'request failed'].includes(l.data.msg)) return Number(l.data['status']);
-    }
-    return 0;
-  };
-  /**
-   * A read whose browser has stopped taking it, as a tab that stalled has: a connection of its own that sends the request
-   * and reads nothing back, so only what the operating system holds leaves the server, which is less than a piece. A
-   * fetch reads on into buffers of its own, and on Linux that can be the whole of a file of two pieces: the read ends by
-   * itself and gives its place back, and nothing has stopped. It's under way once the server has answered it, which its
-   * request line says, so that's what this waits for, not the answer reaching the browser.
-   */
-  async function stopped(who: { cookie: () => string }, url: string) {
-    const requestId = randomBytes(12).toString('base64url');
-    const { hostname, port, pathname, host } = new URL(url);
-    const from = h.logs.length;
-    const socket = connect({ host: hostname, port: Number(port) });
-    socket.on('error', () => undefined);
-    socket.pause();
-    socket.write(`GET ${pathname} HTTP/1.1\r\nhost: ${host}\r\ncookie: ${who.cookie()}\r\n${REQUEST_ID_HEADER}: ${requestId}\r\nconnection: close\r\n\r\n`);
-    let status = 0;
-    await until(() => { status = answered(from, requestId); return status > 0; }, 'the server to answer a read');
-    /** Takes the rest of the answer now: how much of the body came, or `cut` when the connection ended short of its length. */
-    const rest = () => new Promise<number | 'cut'>((resolve) => {
-      const chunks: Buffer[] = [];
-      socket.on('data', (chunk: Buffer) => { chunks.push(chunk); });
-      socket.once('close', () => {
-        const all = Buffer.concat(chunks);
-        const at = all.indexOf('\r\n\r\n');
-        const length = Number(/\r\ncontent-length: *(\d+)/i.exec(all.subarray(0, Math.max(at, 0)).toString('latin1'))?.[1] ?? Number.NaN);
-        const got = at < 0 ? 0 : all.length - at - 4;
-        resolve(got === length ? got : 'cut');
-      });
-      socket.resume();
-    });
-    return { requestId, status, rest, end: () => { socket.destroy(); } };
-  }
   /** Someone with a file of three pieces and a URL to it. */
   async function reader() {
     const who = await withCookie();
@@ -1454,18 +1484,6 @@ describe('what a process takes on at once', () => {
   }
   /** How many reads have had a place since `from`, by the server's own word. */
   const placed = (from: number) => logsSince(from).filter((l) => l.msg === 'a read has its place').length;
-  /** Someone with their session in hand, for a request of their own that says what `fetch` won't. */
-  async function withCookie() {
-    const browser = cookieFetch(ORIGIN);
-    let cookie = '';
-    const tap: typeof fetch = async (input, init) => {
-      const res = await browser(input, init);
-      cookie = /(__Host-alcove_session=[^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1] ?? cookie;
-      return res;
-    };
-    const who = await account({ fetch: tap });
-    return { ...who, cookie: () => cookie };
-  }
   /** Says a piece is 4 MiB and sends what it's told to: this is what the process is about to hold. */
   const pieceFrom = (cookie: string, url: string, first: number) => {
     const req = request(url, { method: 'POST', agent: false, headers: { origin: ORIGIN, cookie, 'content-type': 'application/octet-stream', 'content-length': String(PIECE) } });
@@ -1691,17 +1709,10 @@ describe('what a process takes on at once', () => {
     const { cfg } = h.deps;
     h.deps.cfg = { ...cfg, MEDIA_READ_MS: 800 };
     try {
+      // One that stopped, and one that keeps taking a little at a time, too slowly to finish in time.
       const paused = await stopped(ann, ann.url);
-      const reading = (await ann.fetch(ann.url)).body?.getReader();
-      if (!reading) throw new Error('no body');
-      const outcome = await (async () => {
-        for (;;) {
-          const { done } = await reading.read();
-          if (done) return 'all of it';
-          await pause(100);
-        }
-      })().catch(() => 'cut off');
-      expect(outcome).toBe('cut off');
+      const going = await stopped(ann, ann.url);
+      expect(await going.slowly(100)).toBe('cut');
       expect(await paused.rest()).toBe('cut');
     } finally { h.deps.cfg = cfg; }
     const full = await Promise.all(Array.from({ length: readingEach }, () => read(ann, ann.url, 'bytes=0-9')));
