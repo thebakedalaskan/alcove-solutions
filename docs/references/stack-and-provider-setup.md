@@ -89,7 +89,8 @@ refused (401), which makes top-ups unavailable.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
   5 minutes (a cancelled one every 5 minutes throughout) until 24 hours after its address expires, when it's asked a
   last time (6 hours later, once, if it can't answer then, and hourly after that until it does); a minute after an
-  error. A failed, expired or cancelled deposit is asked hourly until 30 days after its address expired, and is
+  error. Past the deadline the checks thin out (hourly for a day, every 6 hours for a week, then daily), open deposits
+  are checked before that long tail, and a failed, expired or cancelled deposit is asked about until 30 days after its address expired, and is
   credited if 1Click settles it then. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as still
   arriving. A quote's `depositMemo` may be missing, null or empty: all mean no memo.
 - **Fees** (checked against live quotes, 5 November 2026): 0.01% on stablecoin pairs with a partner key (without one

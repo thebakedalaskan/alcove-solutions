@@ -403,7 +403,36 @@ describe('top-ups', () => {
     await h.pool.query("UPDATE deposits SET created_at = now() - interval '3 hours', check_after = now() WHERE deposit_id = $1", [t.id]);
     await watch(h.deps);
     about(await nextCheckIn(t.id), 300);
+
+    await h.pool.query("UPDATE deposits SET created_at = now() - interval '2 days', check_after = now() WHERE deposit_id = $1", [t.id]);
+    await watch(h.deps);
+    about(await nextCheckIn(t.id), 3600);
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'waiting', address: addr(t) });
+  });
+
+  it('thins out checks on the long tail, and checks open top-ups before it', async () => {
+    const { api } = await account();
+    const tail = await api.credits.startTopUp(BASE_USDC, 10_000);
+    await h.pool.query("UPDATE deposits SET state = 'expired', give_up_at = now() - interval '2 hours' WHERE deposit_id = $1", [tail.id]);
+    await dueOnly(tail.id);
+    await watch(h.deps);
+    about(await nextCheckIn(tail.id), 3600);
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '3 days', check_after = now() WHERE deposit_id = $1", [tail.id]);
+    await watch(h.deps);
+    about(await nextCheckIn(tail.id), 6 * 3600);
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '10 days', check_after = now() WHERE deposit_id = $1", [tail.id]);
+    await watch(h.deps);
+    about(await nextCheckIn(tail.id), 86_400);
+
+    // 25 long-tail deposits fell due before a fresh one: the fresh one is still checked in the first pass of 20.
+    const backlog = await Promise.all(Array.from({ length: 25 }, async () => (await account()).api.credits.startTopUp(BASE_USDC, 10_000)));
+    const ids = backlog.map((b) => b.id);
+    await h.pool.query("UPDATE deposits SET state = 'expired', give_up_at = now() - interval '2 hours' WHERE deposit_id = ANY($1)", [ids]);
+    const fresh = await api.credits.startTopUp(BASE_USDC, 10_000);
+    await dueOnly(...ids, fresh.id);
+    await h.pool.query("UPDATE deposits SET check_after = now() - interval '1 hour' WHERE deposit_id = ANY($1)", [ids]);
+    await watch(h.deps);
+    about(await nextCheckIn(fresh.id), 10);
   });
 
   it('asks 1Click once more at the deadline: credits a late payment, expires an empty one, fails a stuck or unknown one', async () => {

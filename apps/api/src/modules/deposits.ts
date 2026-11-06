@@ -437,7 +437,7 @@ function unanswered(d: Deps, ownerId: string, depositId: string, provider: Depos
       await exec(c, 'UPDATE deposits SET record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, unanswered: true }))]);
       dlog.error('top-up still open, its provider hasn’t answered since its deadline', { depositId, provider, state: r.state });
     }
-    await exec(c, "UPDATE deposits SET check_after = now() + interval '1 hour' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+    await exec(c, `UPDATE deposits SET check_after = ${TAIL} WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId]);
   });
 }
 
@@ -445,13 +445,21 @@ function unanswered(d: Deps, ownerId: string, depositId: string, provider: Depos
  * One pass of the watcher (server.ts runs it every 5 seconds). It claims up to 20 due deposits in one statement,
  * pushing each one's next check `LEASE_S` ahead so another API instance's pass skips them, and works on 4 at a time.
  * Each is checked with its provider and the answer applied, and its next check set: an open deposit every 10 seconds
- * for 15 minutes, every minute until 2 hours, then every 5 minutes until `give_up_at`; a cancelled one every 5
- * minutes; past `give_up_at`, or failed or expired, hourly. When the provider can't answer, the state stays (logged at
+ * for 15 minutes, every minute until 2 hours, every 5 minutes for the rest of its first day, then hourly until
+ * `give_up_at`; a cancelled one every 5 minutes for a day, then hourly; past `give_up_at`, or failed or expired, the
+ * thinning `TAIL` (hourly, then 6-hourly, then daily). Open deposits are claimed ahead of the rest. When the provider can't answer, the state stays (logged at
  * warn) and it's asked again in a minute (hourly once given up). Past `give_up_at` a settled answer is applied as
  * usual and anything else goes to `giveUp`; a provider that can't answer then gets 6 hours more, once, and after that
  * the deposit is asked about hourly until it answers. A failed, expired or cancelled deposit is watched until 30 days
  * after its address expired, so a payment settled late still credits; then it isn't asked about again.
  */
+/**
+ * When a deposit nobody is paying any more is next asked about: hourly for the first day after `give_up_at`, every 6
+ * hours for a week, then daily. Most of what the watcher asks about is this long tail, so it thins out over time.
+ */
+const TAIL = `now() + CASE WHEN now() - give_up_at < interval '1 day' THEN interval '1 hour'
+  WHEN now() - give_up_at < interval '7 days' THEN interval '6 hours' ELSE interval '1 day' END`;
+
 export async function watch(d: Deps): Promise<{ checked: number; credited: number }> {
   const all = depositProviders(d.cfg);
   if (!all) return { checked: 0, credited: 0 };
@@ -459,7 +467,9 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
     UPDATE deposits SET check_after = now() + make_interval(secs => $2)
     WHERE (owner_id, deposit_id) IN (
       SELECT owner_id, deposit_id FROM deposits WHERE state = ANY($3) AND check_after <= now()
-      ORDER BY check_after LIMIT $1 FOR UPDATE SKIP LOCKED)
+      -- Open deposits someone may have just paid go first, ahead of the long tail.
+      ORDER BY (state IN ('waiting', 'arriving', 'short') AND give_up_at > now()) DESC, check_after
+      LIMIT $1 FOR UPDATE SKIP LOCKED)
     RETURNING owner_id, deposit_id, provider, state, record_ciphertext, created_at, give_up_at <= now() AS given_up,
       give_up_at <= now() - interval '29 days' AS watched_enough`, [WATCH_BATCH, LEASE_S, WATCHED]);
   const done = await atMost(WATCH_AT_ONCE, due, async (r): Promise<TopUpState | undefined> => {
@@ -488,7 +498,7 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
           if (!(await extend(d, ownerId, depositId, provider))) await unanswered(d, ownerId, depositId, provider);
           return r.state;
         }
-        await exec(d.pool, `UPDATE deposits SET check_after = now() + CASE WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN interval '1 hour' ELSE interval '60 seconds' END
+        await exec(d.pool, `UPDATE deposits SET check_after = CASE WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN ${TAIL} ELSE now() + interval '60 seconds' END
           WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId]);
         return r.state;
       }
@@ -500,12 +510,13 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
         : applied;
       await exec(d.pool, `
         UPDATE deposits SET check_after = CASE
-          WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN now() + interval '1 hour'
-          WHEN state = 'cancelled' THEN LEAST(give_up_at, now() + interval '5 minutes')
+          WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN ${TAIL}
+          WHEN state = 'cancelled' THEN LEAST(give_up_at, now() + CASE WHEN now() - created_at < interval '1 day' THEN interval '5 minutes' ELSE interval '1 hour' END)
           ELSE LEAST(give_up_at, now() + CASE
             WHEN now() - created_at < interval '15 minutes' THEN interval '10 seconds'
             WHEN now() - created_at < interval '2 hours' THEN interval '60 seconds'
-            ELSE interval '5 minutes' END) END
+            WHEN now() - created_at < interval '1 day' THEN interval '5 minutes'
+            ELSE interval '1 hour' END) END
         WHERE owner_id = $1 AND deposit_id = $2 AND NOT state = ANY($3) AND check_after < 'infinity'`, [ownerId, depositId, FINAL]);
       return state;
     } catch (e) {
