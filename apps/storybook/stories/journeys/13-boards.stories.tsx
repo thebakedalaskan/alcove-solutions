@@ -86,9 +86,9 @@ export const UnderItsName: PageStory = {
       await userEvent.click(await nameOf(/^Launch retro/));
       await screen.findByRole('dialog', { name: 'The board' }, SOON);
     });
-    await step('Rename: the name becomes a field in its place. Enter keeps it, for everyone', async () => {
+    await step('Rename: the name becomes a field in its place, all of it picked to type over. Enter keeps it, for everyone', async () => {
       await userEvent.click(within(await screen.findByRole('dialog', { name: 'The board' }, SOON)).getByRole('button', { name: 'Rename' }));
-      await userEvent.keyboard('{Control>}a{/Control}Launch retro, November{Enter}');
+      await userEvent.keyboard('Launch retro, November{Enter}');
       await within(await screen.findByRole('tree', {}, SOON)).findByText('Launch retro, November', {}, SOON);
     });
     await step('Who can add to it: the workspace’s own share sheet, to share it beyond the workspace or close it to it', async () => {
