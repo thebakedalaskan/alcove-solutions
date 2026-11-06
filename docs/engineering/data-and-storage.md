@@ -30,7 +30,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
-| `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
+| `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `address_tag` (keyed hash of the provider, address and memo, unique: an address handed out twice is refused), `settlement_tag` (keyed hash of the provider and its settlement's intent hash, set when credited, unique: one payment credits one deposit), `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -63,7 +63,12 @@ route (chain, token, decimals, minimum), the deposit address and memo, the expir
 `minAmountIn` (token units), the credits promised and the rate they were priced at, the provider's whole signed quote,
 what the provider last said arrived while it was open (micro-USD), and once settled what was sent, what reached the treasury and what was refunded (micro-USD), the credits it added
 and the provider's reference, and whether its deadline was already pushed back once because the provider couldn't
-answer (`extended`, false in records written before it existed) ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)).
+answer (`extended`, false in records written before it existed), whether it was logged that the provider still couldn't
+answer after that (`unanswered`, default false), and why the provider's last finished answer wasn't credited (`doubt`,
+default null) ([Payments and usage › How a top-up works](payments-and-usage.md#how-a-top-up-works)). The two tags are
+HMAC-SHA256 under keys derived from `Kservice` with their own labels (`alcove/service/deposit-address-tag/v1`,
+`alcove/service/deposit-settlement-tag/v1`): without `Kservice` they say nothing, not even which deposits share a
+chain or token, so no column holds anything readable.
 
 ## Writes, reads and deletes
 

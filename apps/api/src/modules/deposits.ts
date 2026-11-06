@@ -1,18 +1,19 @@
 /*
  * Credit top-ups: payments into the treasury through a deposit provider (docs: payments-and-usage). What a deposit is
  * (route, address, memo, the provider's quote) is sealed under Kservice's accounting key, like billing state; its row
- * says only whose it is, its state, and when to look at it again.
+ * says only whose it is, its state, when to look at it again, and keyed hashes of its address and settlement, so
+ * neither can be used by two deposits.
  */
-import { TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
+import { MAX_TOP_UP_CREDITS, TopUpStateSchema, type TopUp, type TopUpRoutes, type TopUpState } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps } from '../context';
-import { id128, openJson, sealJson, serviceKey, toJson, unb64u } from '../crypto';
-import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
+import { id128, mac, openJson, sealJson, serviceKey, toJson, unb64u, utf8 } from '../crypto';
+import { bytea, exec, maybeOne, rows, STATEMENT_TIMEOUT_MS, timestamp, tx, type Db } from '../db';
 import { conflict, DatabaseError, invalid, notFound, NotFoundError, UnavailableError } from '../errors';
 import { log } from '../log';
 import {
-  depositProviders, formatUnits, fromMicroUsd, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName, type DepositProvider, type DepositRoute,
-  type OpenDepositState
+  depositProviders, formatUnits, fromMicroUsd, PROVIDER_TIMEOUT_MS, toMicroUsd, type DepositAddress, type DepositCheck, type DepositProviderName,
+  type DepositProvider, type DepositRoute, type DoubtReason, type OpenDepositState
 } from '../payments/provider';
 import { PER_MINUTE, TIERS, credit, creditsAt, creditsForUsd, priceFor, rateFor, type Rate } from './billing';
 
@@ -21,22 +22,28 @@ const dlog = log.child({ component: 'deposits' });
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 /** How long after its address expires a deposit is still watched, for a payment that was on its way. */
 const GIVE_UP_AFTER_MS = 24 * 3_600_000;
-/** How many top-ups one owner may have waiting for a payment at once. */
+/** How many top-ups one owner may have waiting for a payment at once, and open in any 24 hours (cancelled ones too). */
 const MAX_WAITING = 15;
-/** Opening a top-up asks the provider about it at most this often. */
-const CHECK_EVERY_MS = 5_000;
-/** A refund below this, in micro-USD, isn't credited: the deposit is held instead. */
+const MAX_A_DAY = 30;
+/**
+ * The least of what was sent that must have reached the treasury (swapped out, or refunded to it) for a settled deposit
+ * to credit, in basis points: 1Click's fee and up to 1% slippage on a swap between stablecoins, with room to spare.
+ */
+const REACHED_BPS = 9_850n;
 /** Amounts of credits the app offers first. */
 const PRESETS = [10_000, 50_000, 100_000];
 const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
 const isOpen = (s: TopUpState): s is OpenDepositState => s === 'waiting' || s === 'arriving' || s === 'short';
 /**
- * Asked about until `give_up_at`: open, or cancelled, since 1Click can't cancel a quote and a payment sent to a
- * cancelled top-up's address must still be credited.
+ * Not given up on: open, or cancelled, since 1Click can't cancel a quote and a payment sent to a cancelled top-up's
+ * address must still be credited. Past `give_up_at` these are the ones that get 6 hours more when the provider can't answer.
  */
-type WatchedState = OpenDepositState | 'cancelled';
-const isWatched = (s: TopUpState): s is WatchedState => isOpen(s) || s === 'cancelled';
+type PendingState = OpenDepositState | 'cancelled';
+const isPending = (s: TopUpState): s is PendingState => isOpen(s) || s === 'cancelled';
 const key = (d: Pick<Deps, 'cfg'>) => serviceKey(unb64u(d.cfg.KSERVICE, 32), 'accounting');
+/** A keyed hash of `parts` (a provider's name, then what it names), so a column can be unique without being readable. */
+const tag = (d: Pick<Deps, 'cfg'>, purpose: 'deposit-address-tag' | 'deposit-settlement-tag', parts: string[]) =>
+  mac(serviceKey(unb64u(d.cfg.KSERVICE, 32), purpose), utf8(parts.join('\u0000')));
 const header = (ownerId: string, depositId: string) => ({ v: 1 as const, kind: 'deposit', ownerId, depositId, keyVersion: '1' });
 const units = z.string().regex(/^\d+$/);
 
@@ -66,7 +73,11 @@ export const DepositRecord = z.object({
   settled: z.object({ sentMicroUsd: units, outMicroUsd: units, refundedMicroUsd: units, credits: z.number().int(), providerRef: z.string() })
     .nullable().default(null),
   /** Whether `give_up_at` was already pushed back because the provider couldn't answer then (it is, at most once). */
-  extended: z.boolean().default(false)
+  extended: z.boolean().default(false),
+  /** Whether it was logged that the provider still couldn't answer after that, so it's logged once. */
+  unanswered: z.boolean().default(false),
+  /** Why the provider's last finished answer wasn't credited, so each reason is logged at error once. */
+  doubt: z.string().nullable().default(null)
 });
 export type DepositRecord = z.infer<typeof DepositRecord>;
 
@@ -106,17 +117,33 @@ export async function routes(d: Deps): Promise<TopUpRoutes> {
 
 const count = new Intl.NumberFormat('en-US');
 /**
+ * Refuses another top-up while the owner has 15 waiting for a payment to an address that hasn't expired, or opened 30
+ * in the last 24 hours (cancelled ones count: each was a quote, and is watched until its address expires). Counted in
+ * Postgres, so it holds across API instances.
+ */
+async function withinLimits(db: Db, ownerId: string): Promise<void> {
+  const n = await maybeOne(db, z.object({ waiting: z.number().int(), today: z.number().int() }), `
+    SELECT count(*) FILTER (WHERE state = 'waiting' AND give_up_at > now() + interval '24 hours')::int AS waiting,
+           count(*) FILTER (WHERE created_at > now() - interval '24 hours')::int AS today
+    FROM deposits WHERE owner_id = $1`, [ownerId]);
+  const waiting = n?.waiting ?? 0;
+  const today = n?.today ?? 0;
+  if (waiting >= MAX_WAITING) {
+    throw conflict(`You already have ${MAX_WAITING} top-ups waiting for a payment. Use or cancel one of those, or wait for them to expire.`, { reason: 'too-many-waiting', waiting });
+  }
+  if (today >= MAX_A_DAY) {
+    throw conflict(`You’ve opened ${MAX_A_DAY} top-ups in the last 24 hours, the most there can be. Try again later.`, { reason: 'too-many-today', today });
+  }
+}
+
+/**
  * Opens a top-up for `credits` on a route: the provider quotes an address paying the treasury for exactly their price,
- * and the deposit is kept sealed with what was asked for and promised.
+ * and the deposit is kept sealed with what was asked for and promised. The limits are checked before asking for a
+ * quote, and again under a lock on the owner in the transaction that inserts it, so concurrent requests can't pass them.
  */
 export async function start(d: Deps, ownerId: string, routeId: string, credits: number): Promise<TopUp> {
   const all = providers(d);
-  // Only top-ups whose address can still be paid count: an expired one is just watched for a late payment.
-  const waiting = await maybeOne(d.pool, z.object({ n: z.number().int() }),
-    "SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1 AND state = 'waiting' AND give_up_at > now() + interval '24 hours'", [ownerId]);
-  if ((waiting?.n ?? 0) >= MAX_WAITING) {
-    throw conflict(`You already have ${MAX_WAITING} top-ups waiting for a payment. Use or cancel one of those, or wait for them to expire.`, { reason: 'too-many-waiting', waiting: waiting?.n ?? 0 });
-  }
+  await withinLimits(d.pool, ownerId);
   const found = (await Promise.all(all.map(async (p) => ({ p, route: (await p.routes()).find((r) => r.id === routeId) })))).find((x) => x.route);
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
   const least = minimumCredits(found.route);
@@ -131,15 +158,25 @@ export async function start(d: Deps, ownerId: string, routeId: string, credits: 
     address: opened.address, memo: opened.memo, expiresAt: opened.expiresAt,
     asked: opened.amountIn.toString(), minAmountIn: opened.minAmountIn.toString(), credits,
     rate: { num: rate.num.toString(), den: rate.den.toString() },
-    quote: opened.quote, seenMicroUsd: null, settled: null, extended: false
+    quote: opened.quote, seenMicroUsd: null, settled: null, extended: false, unanswered: false, doubt: null
   };
   const giveUpAt = new Date(Date.parse(opened.expiresAt) + GIVE_UP_AFTER_MS);
   try {
-    await exec(d.pool, 'INSERT INTO deposits (owner_id, deposit_id, provider, state, give_up_at, record_ciphertext) VALUES ($1,$2,$3,$4,$5,$6)',
-      [ownerId, depositId, found.p.name, 'waiting', giveUpAt, sealJson(key(d), header(ownerId, depositId), toJson(record))]);
+    await tx(d.pool, async (c) => {
+      await exec(c, "SELECT pg_advisory_xact_lock(hashtext('alcove/deposits'), hashtext($1))", [ownerId]);
+      await withinLimits(c, ownerId);
+      await exec(c, 'INSERT INTO deposits (owner_id, deposit_id, provider, state, give_up_at, address_tag, record_ciphertext) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
+        ownerId, depositId, found.p.name, 'waiting', giveUpAt, tag(d, 'deposit-address-tag', [found.p.name, opened.address, opened.memo ?? '']),
+        sealJson(key(d), header(ownerId, depositId), toJson(record))
+      ]);
+    });
   } catch (e) {
     // The account was deleted while the quote was being made.
     if (e instanceof DatabaseError && e.context['pgCode'] === '23503') throw notFound('That account', { reason: 'account-gone' });
+    // The provider handed out an address it had handed out before: two deposits would share one payment.
+    if (e instanceof DatabaseError && e.context['pgCode'] === '23505') {
+      throw new UnavailableError('Adding credits isn’t available right now. Try again in a minute.', { cause: e, level: 'error', context: { provider: found.p.name, reason: 'deposit-address-reused' } });
+    }
     throw e;
   }
   dlog.info('top-up opened', { depositId, provider: found.p.name, state: 'waiting' });
@@ -152,17 +189,28 @@ const open = (d: Deps, ownerId: string, r: z.infer<typeof Row>) => toTopUp(r.dep
 /** Where the deposit is paid, to ask its provider about it. */
 const addressOf = (r: DepositRecord): DepositAddress => ({ route: { ...r.route, minimum: BigInt(r.route.minimum) }, address: r.address, memo: r.memo });
 
-const Checked = Row.extend({ checked_at: timestamp.nullable() });
-const find = (db: Db, ownerId: string, depositId: string) => ID128.test(depositId)
-  ? maybeOne(db, Checked, 'SELECT deposit_id, state, record_ciphertext, created_at, checked_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId])
-  : Promise.resolve(undefined);
+const find = (db: Db, ownerId: string, depositId: string) =>
+  maybeOne(db, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+/** States a deposit never leaves: whatever its provider says later, nothing changes. */
+const FINAL: readonly TopUpState[] = ['credited', 'held'];
 
-/** A top-up, asking its provider first while it's open and hasn't been asked in the last 5 seconds. */
+/**
+ * A top-up, asking its provider first while it's still watched and hasn't been asked in the last 5 seconds. The
+ * 5-second slot is claimed in one statement before asking, so requests at once ask the provider once between them.
+ */
 export async function get(d: Deps, ownerId: string, depositId: string): Promise<TopUp> {
   const all = providers(d); // off here: unavailable, even for a top-up opened before
-  const r = await find(d.pool, ownerId, depositId);
-  if (!r) throw notFound('That top-up');
-  if (!isWatched(r.state) || (r.checked_at && Date.now() - r.checked_at.getTime() < CHECK_EVERY_MS)) return open(d, ownerId, r);
+  if (!ID128.test(depositId)) throw notFound('That top-up');
+  const r = await maybeOne(d.pool, Row, `
+    UPDATE deposits SET checked_at = now()
+    WHERE owner_id = $1 AND deposit_id = $2 AND NOT state = ANY($3) AND check_after < 'infinity'
+      AND (checked_at IS NULL OR checked_at < now() - interval '5 seconds')
+    RETURNING deposit_id, state, record_ciphertext, created_at`, [ownerId, depositId, FINAL]);
+  if (!r) {
+    const now = await find(d.pool, ownerId, depositId);
+    if (!now) throw notFound('That top-up');
+    return open(d, ownerId, now);
+  }
   const rec = record(d, ownerId, r);
   const p = all.find((x) => x.name === rec.route.provider);
   if (!p) return toTopUp(depositId, rec, r.state);
@@ -200,24 +248,50 @@ function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state:
   if (s.outMicroUsd > 0n || s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
   return creditsForUsd(s.refundedMicroUsd);
 }
+/**
+ * Why a settled answer can't be credited, or null when it can. Credits go by what was sent, so what reached the
+ * treasury (swapped out, plus refunded to it) must be nearly all of it, and no more can be sent than one top-up buys.
+ */
+function doubtAbout(s: Extract<DepositCheck, { state: 'settled' }>): DoubtReason | null {
+  if (s.sentMicroUsd <= 0n) return 'nothing-sent';
+  if (s.sentMicroUsd > priceFor(MAX_TOP_UP_CREDITS)) return 'more-than-a-top-up-buys';
+  if ((s.outMicroUsd + s.refundedMicroUsd) * 10_000n < s.sentMicroUsd * REACHED_BPS) return 'less-reached-treasury-than-sent';
+  return null;
+}
 
 /**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
- * however many watchers and requests race on it: a final state is never changed again, and `arriving` never goes back
- * to `waiting`; a cancelled one moves on only when a payment reaches it, and is then due for the watcher at once (it
- * may have stopped being checked at its deadline). A settled deposit credits by `creditsForSettled`, or is held when
- * that comes to no credits. A status the provider doesn't explain leaves the deposit as it is.
+ * however many watchers and requests race on it. A settled answer that can be trusted credits by `creditsForSettled`
+ * (or is held when that comes to no credits) from any state but `credited` or `held`: a payment 1Click settles after
+ * the deposit failed, expired or was cancelled is still credited. Its settlement is tagged in the same transaction, so
+ * one settlement credits one deposit. A doubtful answer credits nothing: the deposit is `arriving` (a failed or expired
+ * one `failed`), logged at error once per reason, and reaches support at its deadline. Otherwise `arriving` never goes
+ * back to `waiting`, a cancelled one moves on only when a payment reaches it (and is then due for the watcher at once),
+ * and a failed or expired one stays as it is. A status the provider doesn't explain leaves the deposit as it is.
  */
 export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
   return tx(d.pool, async (c) => {
     const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
     if (!r) throw notFound('That top-up');
-    if (!isWatched(r.state)) return r.state;
+    if (FINAL.includes(r.state)) return r.state;
     const rec = record(d, ownerId, r);
     const provider = rec.route.provider;
+    const late = r.state === 'failed' || r.state === 'expired';
     const save = (state: TopUpState, next: DepositRecord) => exec(c, 'UPDATE deposits SET state = $3, checked_at = now(), record_ciphertext = $4 WHERE owner_id = $1 AND deposit_id = $2',
       [ownerId, depositId, state, sealJson(key(d), header(ownerId, depositId), toJson(next))]);
+    const touch = () => exec(c, 'UPDATE deposits SET checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+    const doubted = async (reason: DoubtReason): Promise<TopUpState> => {
+      const state: TopUpState = late ? 'failed' : 'arriving';
+      await save(state, { ...rec, doubt: reason });
+      if (r.state === 'cancelled') await exec(c, 'UPDATE deposits SET check_after = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+      // Money came and isn't credited: support needs to hear of it, once, not on every check until the deadline.
+      if (rec.doubt !== reason || state !== r.state) dlog.error('top-up not credited, its provider’s answer can’t be trusted', { depositId, provider, reason, was: r.state, state });
+      else dlog.debug('top-up still not credited', { depositId, provider, reason, state });
+      return state;
+    };
     if (check.state === 'settled') {
+      const reason = doubtAbout(check) ?? await claimSettlement(c, d, ownerId, depositId, provider, check.providerRef);
+      if (reason) return doubted(reason);
       const credits = creditsForSettled(rec, check);
       const state: TopUpState = credits > 0 ? 'credited' : 'held';
       if (credits > 0) await credit(d, c, ownerId, { amount: credits, label: `Credits added, ${formatUnits(check.sentMicroUsd, 6)} ${rec.route.token}` });
@@ -228,8 +302,14 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
           credits, providerRef: check.providerRef
         }
       });
-      dlog.info('top-up settled', { depositId, provider, state });
+      if (late) dlog.warn('top-up settled after it was given up', { depositId, provider, was: r.state, state });
+      else dlog.info('top-up settled', { depositId, provider, state });
       return state;
+    }
+    if (check.state === 'doubtful') return doubted(check.reason);
+    if (late) {
+      await touch();
+      return r.state;
     }
     if (check.state === 'failed') {
       await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, 'failed']);
@@ -237,7 +317,7 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
       return 'failed';
     }
     if (check.state === 'unknown') {
-      await exec(c, 'UPDATE deposits SET checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
+      await touch();
       return r.state;
     }
     // A payment once seen stays seen, and a cancelled top-up stays cancelled: a stale answer never shows the address again.
@@ -251,12 +331,38 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
   });
 }
 
+/**
+ * Tags the deposit with its settlement, inside `apply`'s transaction. The tag is unique across deposits, so a
+ * settlement another deposit was already credited for (or is being credited for right now) can't credit this one:
+ * that's 'settlement-already-used', and the transaction goes on without the tag.
+ */
+async function claimSettlement(c: Db, d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, ref: string): Promise<DoubtReason | null> {
+  await exec(c, 'SAVEPOINT settlement');
+  try {
+    await exec(c, 'UPDATE deposits SET settlement_tag = $3 WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, tag(d, 'deposit-settlement-tag', [provider, ref])]);
+  } catch (e) {
+    if (!(e instanceof DatabaseError && e.context['pgCode'] === '23505')) throw e;
+    await exec(c, 'ROLLBACK TO SAVEPOINT settlement');
+    return 'settlement-already-used';
+  }
+  await exec(c, 'RELEASE SAVEPOINT settlement');
+  return null;
+}
+
 /** How many due deposits one watcher pass takes on, and how many of them it works on at once. */
 const WATCH_BATCH = 20;
 const WATCH_AT_ONCE = 4;
+/**
+ * How far ahead a pass pushes the next check of each deposit it claims, so another instance's pass skips it: longer
+ * than the pass can take. A pass works through its batch in ceil(20 / 4) = 5 rounds; in each, one deposit takes at
+ * most one provider call (15 s) and up to 8 statements (15 s each, lock waits included). Half as much again on top.
+ */
+const LEASE_S = Math.ceil((Math.ceil(WATCH_BATCH / WATCH_AT_ONCE) * (PROVIDER_TIMEOUT_MS + 8 * STATEMENT_TIMEOUT_MS) * 1.5) / 1000);
+/** Every state the watcher asks about; `credited` and `held` are never asked about again. */
+const WATCHED: readonly TopUpState[] = ['waiting', 'arriving', 'short', 'cancelled', 'failed', 'expired'];
 const Due = z.object({
   owner_id: z.string(), deposit_id: z.string(), provider: z.literal('oneclick'), state: TopUpStateSchema, record_ciphertext: bytea,
-  created_at: timestamp, given_up: z.boolean()
+  created_at: timestamp, given_up: z.boolean(), watched_enough: z.boolean()
 });
 
 /** Runs `fn` over `items` with at most `n` in flight, so a pass neither takes the whole pool nor floods a provider. */
@@ -271,28 +377,34 @@ async function atMost<T, R>(n: number, items: readonly T[], fn: (item: T) => Pro
 }
 
 /**
- * Gives up on a deposit past `give_up_at`. `seen` is what the provider said at the last check ('unreadable' when the
- * record no longer opens, 'unknown' for a status Alcove doesn't know, null when the provider couldn't answer). Waiting
- * by both the row and the last check, nothing came and it has expired; arriving or short by either, a status nobody
- * knows, or its record no longer opening, something is wrong, so it fails with an error log and reaches support
- * instead of being checked for ever. A cancelled one that nothing reached stays cancelled, and isn't due again.
+ * Gives up on a deposit past `give_up_at`, by what the provider said at this check ('unreadable' when the record no
+ * longer opens). Only a definite "nothing arrived" (the provider says it's still waiting for a payment) lets it end
+ * quietly: a waiting deposit is `expired`, and a cancelled or expired one stays as it is. Anything else (arriving,
+ * short, failed, a status nobody knows, an answer that can't be trusted) means money may have come and something is
+ * wrong, so it is `failed`, logged at error, and reaches support. A record that doesn't open can't be asked about
+ * again, so that one isn't watched any more; every other given-up deposit still is, hourly (see `watch`).
  */
-function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: OpenDepositState | 'unknown' | 'unreadable' | null): Promise<TopUpState | undefined> {
+function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName, seen: Exclude<DepositCheck['state'], 'settled'> | 'unreadable'): Promise<TopUpState | undefined> {
   return tx(d.pool, async (c) => {
-    const r = await maybeOne(c, z.object({ state: TopUpStateSchema }), 'SELECT state FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
-    if (!r || !isWatched(r.state)) return r?.state;
-    const empty = (r.state === 'waiting' || r.state === 'cancelled') && (seen === null || seen === 'waiting');
-    if (empty && r.state === 'cancelled') {
-      await exec(c, "UPDATE deposits SET checked_at = now(), check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
-      dlog.info('top-up cancelled, nothing arrived', { depositId, provider });
-      return r.state;
+    const r = await maybeOne(c, z.object({ state: TopUpStateSchema, first: z.boolean() }),
+      'SELECT state, (checked_at IS NULL OR checked_at < give_up_at) AS first FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+    if (!r || FINAL.includes(r.state)) return r?.state;
+    if (seen === 'unreadable') {
+      await exec(c, "UPDATE deposits SET state = 'failed', checked_at = now(), check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+      dlog.error('top-up failed, its record doesn’t open', { depositId, was: r.state });
+      return 'failed';
     }
-    const state: TopUpState = empty ? 'expired' : 'failed';
-    await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
-    if (seen === 'unreadable') dlog.error('top-up failed, its record doesn’t open', { depositId });
-    else if (state === 'failed') dlog.error('top-up failed', { depositId, provider, was: r.state, seen });
-    else dlog.info('top-up expired', { depositId, provider });
-    return state;
+    if (r.state === 'failed') return r.state;
+    if (seen === 'waiting' && r.state !== 'arriving' && r.state !== 'short') {
+      const state: TopUpState = r.state === 'waiting' ? 'expired' : r.state;
+      await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
+      if (r.state === 'waiting') dlog.info('top-up expired', { depositId, provider });
+      else if (r.state === 'cancelled' && r.first) dlog.info('top-up cancelled, nothing arrived', { depositId, provider });
+      return state;
+    }
+    await exec(c, "UPDATE deposits SET state = 'failed', checked_at = now() WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+    dlog.error('top-up failed', { depositId, provider, was: r.state, seen });
+    return 'failed';
   });
 }
 
@@ -303,7 +415,7 @@ function giveUp(d: Deps, ownerId: string, depositId: string, provider: DepositPr
 function extend(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName): Promise<boolean> {
   return tx(d.pool, async (c) => {
     const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
-    if (!r || !isWatched(r.state)) return false;
+    if (!r || !isPending(r.state)) return false;
     const rec = record(d, ownerId, r);
     if (rec.extended) return false;
     await exec(c, "UPDATE deposits SET give_up_at = now() + interval '6 hours', check_after = now() + interval '60 seconds', record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, extended: true }))]);
@@ -313,32 +425,58 @@ function extend(d: Deps, ownerId: string, depositId: string, provider: DepositPr
 }
 
 /**
+ * The provider still couldn't answer after the extension. Without its answer nobody knows whether money came, so the
+ * deposit stays as it is (never `expired`) and is asked about hourly until the provider answers; logged at error once.
+ */
+function unanswered(d: Deps, ownerId: string, depositId: string, provider: DepositProviderName): Promise<void> {
+  return tx(d.pool, async (c) => {
+    const r = await maybeOne(c, Row, 'SELECT deposit_id, state, record_ciphertext, created_at FROM deposits WHERE owner_id = $1 AND deposit_id = $2 FOR UPDATE', [ownerId, depositId]);
+    if (!r || !isPending(r.state)) return;
+    const rec = record(d, ownerId, r);
+    if (!rec.unanswered) {
+      await exec(c, 'UPDATE deposits SET record_ciphertext = $3 WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, sealJson(key(d), header(ownerId, depositId), toJson({ ...rec, unanswered: true }))]);
+      dlog.error('top-up still open, its provider hasn’t answered since its deadline', { depositId, provider, state: r.state });
+    }
+    await exec(c, "UPDATE deposits SET check_after = now() + interval '1 hour' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+  });
+}
+
+/**
  * One pass of the watcher (server.ts runs it every 5 seconds). It claims up to 20 due deposits in one statement,
- * pushing each one's next check 120 seconds ahead as a lease (longer than a pass can take, with every provider call
- * timing out), so another API instance's pass skips them, and works on 4 at a time. Each is checked with its provider and the answer applied, and its next check set by its age: every 10
- * seconds for 15 minutes, every minute until 2 hours, then every 5 minutes until `give_up_at`. When the provider can't
- * answer, the state stays (logged at warn) and it's asked again in a minute. Past `give_up_at` it's asked once more:
- * a finished swap is applied as usual, and anything else gives up on it; a provider that can't answer then gets 6
- * hours more, once. Cancelled deposits are watched the same way, until a payment reaches them or `give_up_at`.
+ * pushing each one's next check `LEASE_S` ahead so another API instance's pass skips them, and works on 4 at a time.
+ * Each is checked with its provider and the answer applied, and its next check set: an open deposit every 10 seconds
+ * for 15 minutes, every minute until 2 hours, then every 5 minutes until `give_up_at`; a cancelled one every 5
+ * minutes; past `give_up_at`, or failed or expired, hourly. When the provider can't answer, the state stays (logged at
+ * warn) and it's asked again in a minute (hourly once given up). Past `give_up_at` a settled answer is applied as
+ * usual and anything else goes to `giveUp`; a provider that can't answer then gets 6 hours more, once, and after that
+ * the deposit is asked about hourly until it answers. A failed, expired or cancelled deposit is watched until 30 days
+ * after its address expired, so a payment settled late still credits; then it isn't asked about again.
  */
 export async function watch(d: Deps): Promise<{ checked: number; credited: number }> {
   const all = depositProviders(d.cfg);
   if (!all) return { checked: 0, credited: 0 };
   const due = await rows(d.pool, Due, `
-    UPDATE deposits SET check_after = now() + interval '120 seconds'
+    UPDATE deposits SET check_after = now() + make_interval(secs => $2)
     WHERE (owner_id, deposit_id) IN (
-      SELECT owner_id, deposit_id FROM deposits WHERE state IN ('waiting','arriving','short','cancelled') AND check_after <= now()
+      SELECT owner_id, deposit_id FROM deposits WHERE state = ANY($3) AND check_after <= now()
       ORDER BY check_after LIMIT $1 FOR UPDATE SKIP LOCKED)
-    RETURNING owner_id, deposit_id, provider, state, record_ciphertext, created_at, give_up_at <= now() AS given_up`, [WATCH_BATCH]);
+    RETURNING owner_id, deposit_id, provider, state, record_ciphertext, created_at, give_up_at <= now() AS given_up,
+      give_up_at <= now() - interval '29 days' AS watched_enough`, [WATCH_BATCH, LEASE_S, WATCHED]);
   const done = await atMost(WATCH_AT_ONCE, due, async (r): Promise<TopUpState | undefined> => {
     const { deposit_id: depositId, owner_id: ownerId, provider } = r;
+    const settledLate = r.state === 'failed' || r.state === 'expired';
     try {
-      if (!isWatched(r.state)) return r.state;
+      // `give_up_at` is a day after the address expired (later when pushed back), so this is at least 30 days after.
+      if ((settledLate || r.state === 'cancelled') && r.watched_enough) {
+        await exec(d.pool, "UPDATE deposits SET check_after = 'infinity' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+        dlog.info('top-up no longer watched', { depositId, provider, state: r.state });
+        return r.state;
+      }
       let rec: DepositRecord;
       try {
         rec = record(d, ownerId, r);
       } catch (e) {
-        if (r.given_up) return await giveUp(d, ownerId, depositId, provider, 'unreadable');
+        if (r.given_up || settledLate) return await giveUp(d, ownerId, depositId, provider, 'unreadable');
         throw e;
       }
       let check: DepositCheck;
@@ -346,21 +484,29 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
         check = await all[provider].check(addressOf(rec));
       } catch (e) {
         dlog.warn('top-up check failed', { depositId, provider, err: e });
-        if (r.given_up) {
-          if (await extend(d, ownerId, depositId, provider)) return r.state;
-          return await giveUp(d, ownerId, depositId, provider, null);
+        if (r.given_up && isPending(r.state)) {
+          if (!(await extend(d, ownerId, depositId, provider))) await unanswered(d, ownerId, depositId, provider);
+          return r.state;
         }
-        await exec(d.pool, "UPDATE deposits SET check_after = now() + interval '60 seconds' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+        await exec(d.pool, `UPDATE deposits SET check_after = now() + CASE WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN interval '1 hour' ELSE interval '60 seconds' END
+          WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId]);
         return r.state;
       }
-      if (r.given_up && check.state !== 'settled' && check.state !== 'failed') return await giveUp(d, ownerId, depositId, provider, check.state);
-      const state = await apply(d, ownerId, depositId, check);
+      // A finished swap is applied first, even past `give_up_at`: it credits, or (when it can't be trusted) is recorded
+      // and logged with its reason before the deposit is given up on.
+      const applied = check.state === 'settled' || check.state === 'doubtful' || !r.given_up ? await apply(d, ownerId, depositId, check) : r.state;
+      const state = r.given_up && !FINAL.includes(applied)
+        ? await giveUp(d, ownerId, depositId, provider, check.state === 'settled' ? 'doubtful' : check.state)
+        : applied;
       await exec(d.pool, `
-        UPDATE deposits SET check_after = LEAST(give_up_at, now() + CASE
-          WHEN now() - created_at < interval '15 minutes' THEN interval '10 seconds'
-          WHEN now() - created_at < interval '2 hours' THEN interval '60 seconds'
-          ELSE interval '5 minutes' END)
-        WHERE owner_id = $1 AND deposit_id = $2`, [ownerId, depositId]);
+        UPDATE deposits SET check_after = CASE
+          WHEN state IN ('failed', 'expired') OR give_up_at <= now() THEN now() + interval '1 hour'
+          WHEN state = 'cancelled' THEN LEAST(give_up_at, now() + interval '5 minutes')
+          ELSE LEAST(give_up_at, now() + CASE
+            WHEN now() - created_at < interval '15 minutes' THEN interval '10 seconds'
+            WHEN now() - created_at < interval '2 hours' THEN interval '60 seconds'
+            ELSE interval '5 minutes' END) END
+        WHERE owner_id = $1 AND deposit_id = $2 AND NOT state = ANY($3) AND check_after < 'infinity'`, [ownerId, depositId, FINAL]);
       return state;
     } catch (e) {
       // Its account was deleted during the pass, taking the deposit with it.
@@ -374,8 +520,8 @@ export async function watch(d: Deps): Promise<{ checked: number; credited: numbe
 
 /**
  * Cancels a top-up nothing has reached: its address stops being shown and it no longer counts as waiting. 1Click
- * can't cancel a quote, so the address still takes a payment until it expires; the watcher keeps asking about it, and
- * one that arrives is credited as for any top-up. In one transaction with the row locked, like `apply`, so it can't
+ * can't cancel a quote, so the address still takes a payment until it expires; the watcher keeps asking about it,
+ * every 5 minutes, and one that arrives is credited as for any top-up. In one transaction with the row locked, like `apply`, so it can't
  * race a credit.
  */
 export async function cancel(d: Deps, ownerId: string, depositId: string): Promise<TopUp> {
@@ -391,7 +537,7 @@ export async function cancel(d: Deps, ownerId: string, depositId: string): Promi
         : 'This top-up can’t be cancelled any more: a payment has already reached it.';
       throw conflict(why, { reason: 'not-waiting', state: r.state });
     }
-    await exec(c, "UPDATE deposits SET state = 'cancelled' WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
+    await exec(c, "UPDATE deposits SET state = 'cancelled', check_after = LEAST(give_up_at, now() + interval '5 minutes') WHERE owner_id = $1 AND deposit_id = $2", [ownerId, depositId]);
     dlog.info('top-up cancelled', { depositId });
     return open(d, ownerId, { ...r, state: 'cancelled' });
   });

@@ -50,7 +50,10 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
   const prefs = useQuery(q.prefs()).data;
   const credits = useQuery(q.balance()).data;
   const calendar = useQuery(q.calendar()).data;
-  const paying = useQuery(q.topUps()).data?.some(topUpOpen) ?? false;
+  const topUps = useQuery(q.topUps()).data;
+  const paying = topUps?.some(topUpOpen) ?? false;
+  // 1Click can't cancel a quote: a cancelled top-up's address still takes a payment until it expires.
+  const takesPayment = topUps?.some((t) => t.state === 'cancelled' && Date.parse(t.expiresAt) > Date.now()) ?? false;
   const navigate = useNavigate();
   const toast = useToast();
   const del = useDeleteAccount(() => {
@@ -101,6 +104,7 @@ function DeleteStep({ id, onClose }: { id: string; onClose: () => void }) {
       <b id={title}>Delete your account for good?</b>
       <ul>{goes.map((g) => <li key={g}>{g}</li>)}</ul>
       {paying && <Notice tone="caution">You have a payment on its way. If it arrives after you delete your account, it can’t be added to anything.</Notice>}
+      {!paying && takesPayment && <Notice tone="caution">A top-up you cancelled can still take a payment until its address expires. If one arrives after you delete your account, it can’t be added to anything.</Notice>}
       <p>Notes other people gave you stay with them, without you. This can’t be undone.</p>
       <div role="status" className="set-step-status">{problem && <p className="set-refused"><Icon name="alert" size={18} />{problem.text}</p>}</div>
       <div className="btns">

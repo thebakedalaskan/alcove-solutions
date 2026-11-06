@@ -21,10 +21,12 @@ export interface DepositProvider {
   open(route: DepositRoute, amount: bigint): Promise<OpenedDeposit>;
   /**
    * What the provider says has happened to a deposit so far, in Alcove's terms; `unknown` for a status Alcove doesn't
-   * know, and a finished swap it can't read is `arriving`. Throws UnavailableError if it won't answer.
+   * know, and `doubtful` for a finished swap it can't read or trust. Throws UnavailableError if it won't answer.
    */
   check(deposit: DepositAddress): Promise<DepositCheck>;
 }
+/** How long one call to a provider may take before it counts as no answer. */
+export const PROVIDER_TIMEOUT_MS = 15_000;
 /** The states of a deposit that money can still be on its way to. */
 export type OpenDepositState = 'waiting' | 'arriving' | 'short';
 
@@ -40,12 +42,19 @@ export interface OpenedDeposit extends DepositAddress { expiresAt: string; amoun
 /**
  * What has happened to a deposit so far, in Alcove's terms. Amounts are micro-USD; `sentMicroUsd` on an open deposit
  * is what the provider has seen arrive, when it says; `providerRef` is the provider's name for the settlement.
+ * `doubtful`: the provider says the swap finished, but its answer doesn't read, isn't about this deposit, or its
+ * amounts don't agree with themselves. Money came, so the deposit is `arriving`, and nothing is credited on it.
  */
 export type DepositCheck =
   | { state: OpenDepositState; sentMicroUsd?: bigint | undefined }
   | { state: 'unknown' }
   | { state: 'settled'; sentMicroUsd: bigint; outMicroUsd: bigint; refundedMicroUsd: bigint; providerRef: string }
+  | { state: 'doubtful'; reason: DoubtReason }
   | { state: 'failed'; reason: string };
+/** Why a finished swap isn't credited: a short code, logged with the deposit's ID and never with what it is about. */
+export type DoubtReason =
+  | 'unreadable-finished-swap' | 'amounts-disagree-with-formatted' | 'status-for-another-quote'
+  | 'nothing-sent' | 'less-reached-treasury-than-sent' | 'more-than-a-top-up-buys' | 'settlement-already-used';
 
 /** An amount of a USD stablecoin, at face value, in micro-USD (rounded down). */
 export function toMicroUsd(amount: bigint, decimals: number): bigint {

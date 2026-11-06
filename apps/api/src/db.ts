@@ -23,9 +23,11 @@ async function query(db: Db, sql: string, params: unknown[]) {
 const pgCode = (e: unknown) => (e instanceof Error && 'code' in e && typeof e.code === 'string' ? e.code : undefined);
 
 export type Db = pg.Pool | pg.PoolClient;
+/** The longest one statement may run, lock waits included. */
+export const STATEMENT_TIMEOUT_MS = 15_000;
 
 export function createPool(url: string): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: 15_000 });
+  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: STATEMENT_TIMEOUT_MS });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
   return pool;
 }

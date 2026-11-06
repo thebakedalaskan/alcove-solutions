@@ -133,8 +133,10 @@ export function createApp(d: Deps) {
   const moveCheckLimiter = rateLimit(240, 60_000);
   const moveSecretCheckLimiter = rateLimit(240, 60_000);
   const moveSecretChangeLimiter = rateLimit(60, 60_000);
-  /** Opening a top-up, per account: each one asks 1Click for a quote with the partner key and is watched for a day after its address expires. */
+  /** Opening a top-up, per account: each one asks 1Click for a quote with the partner key and is watched until well after its address expires. */
   const topUpLimiter = rateLimit(10, 60_000);
+  /** Following a top-up, per account: the app asks every 5 s while one is open, and each ask may ask 1Click. */
+  const topUpCheckLimiter = rateLimit(60, 60_000);
   /** Request bodies are read whole, so each route takes no more than it needs. */
   const capped = (maxSize: number) => bodyLimit({ maxSize, onError: () => { throw new ValidationError('That request is too large.', { context: { maxSize } }); } });
   /** Captions ask for each new line in someone's language, so they get their own, larger allowance. */
@@ -678,7 +680,10 @@ export function createApp(d: Deps) {
     return c.json(await deposits.start(d, c.get('owner').ownerId, routeId, credits));
   });
   app.post('/v1/credits/top-ups/:id/cancel', async (c) => c.json(await deposits.cancel(d, c.get('owner').ownerId, c.req.param('id'))));
-  app.get('/v1/credits/top-ups/:id', async (c) => c.json(await deposits.get(d, c.get('owner').ownerId, c.req.param('id'))));
+  app.get('/v1/credits/top-ups/:id', async (c) => {
+    topUpCheckLimiter(c.get('owner').ownerId, 'top-up-check');
+    return c.json(await deposits.get(d, c.get('owner').ownerId, c.req.param('id')));
+  });
   app.get('/v1/credits/top-ups', async (c) => c.json(await deposits.list(d, c.get('owner').ownerId)));
 
   return app;

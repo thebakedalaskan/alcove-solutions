@@ -73,7 +73,11 @@ export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Arra
 export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-result/v1');
 /** Proves an unwrapped root is the owner's without storing anything that reveals it. */
 export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(live(root), unb64u(ownerId, 32), 'alcove/root-check/v1'), utf8(ownerId));
-export const serviceKey = (kservice: Uint8Array, purpose: 'accounting'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
+/**
+ * Keys under Kservice: `accounting` seals billing and deposit records; the deposit tags are keyed hashes that let the
+ * database refuse a deposit address, or a settlement, used twice without storing either.
+ */
+export const serviceKey = (kservice: Uint8Array, purpose: 'accounting' | 'deposit-address-tag' | 'deposit-settlement-tag'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
 /** Seals what a browser carries between leaving to sign in with a provider and coming back. */
 export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
 /** Names a provider's photo by an opaque token, so browsers fetch it from Alcove and never from the provider. */
