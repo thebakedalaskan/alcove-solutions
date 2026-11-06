@@ -199,8 +199,8 @@ The hash is deterministic, so equal values show the same person across rows and 
 - **The attempt cookie.** `__Host-alcove_google` when `WEB_ORIGIN` is HTTPS (`alcove_google` otherwise):
   HttpOnly, `SameSite=Lax` (Google's redirect back is a cross-site navigation), path `/`, `Secure` over
   HTTPS, max-age 10 minutes. It holds the `state`, `nonce`, PKCE verifier, expiry, whether this pass asked
-  for consent, where to land, and an optional popup channel UUID, sealed as a `sign-in-attempt` record, so
-  the browser can neither read nor change it. Older attempt records without a popup channel still open.
+  for consent, where to land, and a popup channel UUID (null when there is no popup), sealed as a `sign-in-attempt` record, so
+  the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
   The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
   callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
   A second consent pass retains the channel and destination. The callback deletes the cookie whatever

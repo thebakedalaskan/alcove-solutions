@@ -10,6 +10,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config';
+import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from './crypto';
+import { masterKey } from './owners';
 import { cookieName } from './sessions';
 import { startFakeDstack } from './testing/fake-dstack';
 import { PNG, type GoogleUser, type Spoil } from './testing/fake-google';
@@ -271,6 +273,32 @@ describe('signing in', () => {
 });
 
 describe('signing in with Google', () => {
+
+  it('writes an explicit absent popup channel and completes an attempt cookie stored before popup sign-in', async () => {
+    const who: GoogleUser = { sub: `before-popup-${seq++}`, email: unique('before-popup') };
+    h.google.next(who);
+    const start = await h.browser().fetch(`${h.baseUrl}/v1/auth/google`, { redirect: 'manual' });
+    const cookie = start.headers.getSetCookie().find((s) => s.startsWith('__Host-alcove_google='))?.split(';')[0]?.slice('__Host-alcove_google='.length);
+    if (!cookie) throw new Error('Google sign-in did not set an attempt cookie.');
+
+    // The prior release wrote exactly these fields, with no popup property. Re-seal that stored shape.
+    const beforePopup = z.object({
+      state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
+      consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional()
+    });
+    const header = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
+    const key = signInAttemptKey(masterKey(h.deps));
+    const current = openJson(key, header, unb64u(cookie), beforePopup.extend({ popup: z.null() }));
+    const { next, ...prior } = beforePopup.parse(current);
+    const oldCookie = b64u(sealJson(key, header, { ...prior, ...(next ? { next } : {}) }));
+    const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+    const b = h.browser();
+    const end = await b.fetch(google.headers.get('location') ?? '', {
+      redirect: 'manual', headers: { cookie: `__Host-alcove_google=${oldCookie}` }
+    });
+    expect(end.headers.get('location')).toBe(`${ORIGIN}/ready`);
+    expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+  });
 
   it('returns popup sign-ins to their own completion channel with an authenticated session', async () => {
     const who: GoogleUser = { sub: `popup-${seq++}`, email: unique('popup'), name: 'Popup Person' };
