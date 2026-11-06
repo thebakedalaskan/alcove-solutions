@@ -14,7 +14,7 @@ import type { Deps, Owner } from './context';
 import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, unb64u, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, TooLargeError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
-import { addLogContext, log, withLogContext } from './log';
+import { addLogContext, log, withLogContext, type Level } from './log';
 import * as google from './google';
 import { inference } from './inference';
 import { CALL_PASS_HEADER, readPass } from './callPass';
@@ -47,7 +47,7 @@ import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
 
-type Env = { Bindings: HttpBindings; Variables: { owner: Owner; viewer: calls.Viewer; requestId: string; receipt: string | undefined } };
+type Env = { Bindings: HttpBindings; Variables: { owner: Owner; viewer: calls.Viewer; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
 const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
 /**
@@ -275,7 +275,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       const status = c.res.status;
       const line = { status, ms };
       if (QUIET.has(c.req.path) && status < 400) rlog.debug('request', line);
-      else if (status >= 500) rlog.error('request failed', line);
+      // A 5xx is us failing, unless what answered it says it's an ordinary refusal: a browser that went mid-piece, say.
+      else if (status >= 500 && c.get('refusedAt') !== 'info') rlog.error('request failed', line);
       else if (status >= 400) rlog.info('request refused', line);
       else rlog.info('request', line);
     });
@@ -312,6 +313,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     // Stacks and cause chains for anything unexpected; a one-liner for ordinary refusals.
     const withStack = err.level !== 'info' && !(e instanceof ZodError);
     rlog.at(err.level, err.message, { errorClass: err.name, code: err.code, status: err.status, ...err.context, ...(withStack ? { err } : {}) });
+    c.set('refusedAt', err.level);
     return c.json({ code: err.code, message: err.message, requestId, ...(issues ? { issues } : {}) }, err.status);
   });
 

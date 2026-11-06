@@ -1936,7 +1936,7 @@ describe('asking Alcove about a selection', () => {
     expect(await code(collect(art.api.workspaces.ask(id, plan, body)))).toBe('allowed');
   });
 
-  it('holds accounts that cost nothing to make to one limit between them', async () => {
+  it('holds accounts that cost nothing to make to the limit any account has, each its own', async () => {
     const second = await h.secondServer();
     try {
       const answers: string[] = [];
@@ -1947,8 +1947,8 @@ describe('asking Alcove about a selection', () => {
         const api = createHttpApi({ baseUrl: second.baseUrl, fetch: who.fetch });
         for (let i = 0; i < 15; i++) answers.push(await code(collect(api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' }))));
       }
-      expect(answers.filter((x) => x === 'allowed').length).toBe(60);
-      expect(answers.filter((x) => x === 'unavailable').length).toBe(15);
+      // Fifteen each is under one account's limit, and nobody shares theirs: none is refused for what the others asked.
+      expect(answers.filter((x) => x === 'allowed').length).toBe(75);
     } finally {
       await second.close();
     }
