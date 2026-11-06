@@ -151,25 +151,31 @@ function Close({ auth }: { auth: Auth }) {
 
 /**
  * The ways in, remembering the hero's cove as it stands on screen as one is pressed, for signing in to sail out of. The sun
- * keeps the lift pointing at Google gave it while Google opens (`held`).
+ * keeps the lift pointing at Google gave it while Google opens (`held`). When the hero was in view (`sailing`), the sky and
+ * its cove stay on screen while Home loads, so Home sails out of the very cove that was there, with nothing blank between.
  */
-function useSailing(auth: Auth): { ways: Auth; held: boolean } {
+function useSailing(auth: Auth): { ways: Auth; held: boolean; sailing: boolean } {
+  const reduce = useReducedMotion() ?? false;
   const [lifted, setLifted] = useState(false);
+  const [inView, setInView] = useState(false);
   const keep = () => {
     const hero = document.getElementById('top');
-    keepSailOut(hero ? coveOnScreen(hero, HERO_COVE) : null);
+    const at = hero ? coveOnScreen(hero, HERO_COVE) : null;
+    keepSailOut(at);
+    setInView(at !== null);
     setLifted(Boolean(hero?.querySelector('.lp-hero-in .lp-go')?.matches(':hover, :focus-visible')));
   };
   return {
     ways: { ...auth, google: () => { keep(); auth.google(); }, go: (provider, email) => { keep(); return auth.go(provider, email); } },
-    held: lifted && auth.busy !== null
+    held: lifted && auth.busy !== null,
+    sailing: inView && !reduce && auth.busy !== null
   };
 }
 
 export function Landing({ auth }: { auth: Auth }) {
-  const { ways, held } = useSailing(auth);
+  const { ways, held, sailing } = useSailing(auth);
   return (
-    <motion.div className="lp" animate={{ opacity: auth.leaving ? 0 : 1 }} transition={{ duration: 0.3, ease: EASE.in }}>
+    <motion.div className={cn('lp', auth.leaving && sailing && 'is-sailing')} animate={{ opacity: auth.leaving && !sailing ? 0 : 1 }} transition={{ duration: 0.3, ease: EASE.in }}>
       <Nav auth={ways} />
       <main>
         <Sky moment="home" className={cn('lp-hero', held && 'is-going')} id="top" sun="set" cove={HERO_COVE} sky={<Hero auth={ways} />}>
