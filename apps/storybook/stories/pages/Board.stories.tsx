@@ -18,8 +18,8 @@ const meta = { title: 'Pages/Board', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
 const RETRO_ID = itemId('Launch retro');
-const RETRO = `/workspace/ws-product/${RETRO_ID}`;
-const FLOW = `/workspace/ws-design/${itemId('Onboarding flow')}`;
+const RETRO = `/drive/ws-product/${RETRO_ID}`;
+const FLOW = `/drive/ws-design/${itemId('Onboarding flow')}`;
 const PHONE = { viewport: { value: 'phone' } };
 
 /** The launch retro in Product, as the world has it, changed. */
@@ -56,7 +56,7 @@ const underTheName: PageStory['play'] = async ({ userEvent }) => {
 /** The launch retro, with Priya and Kofi on it: the board is the page, with its name and its seal at the top of it. */
 export const ABoard = page(RETRO, 'busy');
 /** A board nobody has added to yet: one line says how to start. */
-export const Blank = page(`/workspace/ws-product/${BLANK_ID}`, 'busy', { beforeEach: changing(blank) });
+export const Blank = page(`/drive/ws-product/${BLANK_ID}`, 'busy', { beforeEach: changing(blank) });
 /** The connection's gone: you keep working, and what you add goes when it's back. */
 export const Reconnecting = page(RETRO, 'busy', { beforeEach: changing(standing('offline')) });
 /** Alcove wouldn't take what was added here: it's only on this screen, and Try again sends it again. */

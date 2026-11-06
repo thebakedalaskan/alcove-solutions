@@ -17,8 +17,8 @@ export default meta;
 type Play = NonNullable<PageStory['play']>;
 type UserEvent = Parameters<Play>[0]['userEvent'];
 
-const RETRO = `/workspace/ws-product/${itemId('Launch retro')}`;
-const PLAN = `/workspace/ws-product/${itemId('Launch plan')}`;
+const RETRO = `/drive/ws-product/${itemId('Launch retro')}`;
+const PLAN = `/drive/ws-product/${itemId('Launch plan')}`;
 
 /** The board itself, named for it: where everything on it is pressed. */
 const sheet = (name: string) => screen.findByRole('application', { name }, SOON);
@@ -62,7 +62,7 @@ const reading = (w: World): void => {
 
 export const MakeABoard: PageStory = {
   name: '13.1 Make a board',
-  ...page('/workspace/ws-product', 'busy'),
+  ...page('/drive/ws-product', 'busy'),
   play: async ({ userEvent, step }) => {
     await step('Press + at the top of the list: New document, New folder and New board', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'New document, folder or board' }, SOON));
@@ -139,6 +139,8 @@ export const CommentOnASticky: PageStory = {
     await step('Pick another sticky and press K: a comment of your own, with your face on its corner', async () => {
       await userEvent.keyboard('{Escape}');
       await press(userEvent, 'No rollbacks');
+      // Single keys sleep for a moment after a key goes into a field (`typing`, lib/keys.ts), as a person's K would come later.
+      await pause(1600);
       await userEvent.keyboard('k');
       await userEvent.click(await screen.findByRole('textbox', { name: 'Comment' }, SOON));
       await userEvent.keyboard('Worth keeping for the next launch{Enter}');
