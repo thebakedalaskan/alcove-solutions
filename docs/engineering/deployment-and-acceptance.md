@@ -32,7 +32,13 @@ Application Load Balancer for production custom domains. See
    - **Build:** web, API bundle and API container.
    - **Integration tests:** the real API against Postgres and an S3-compatible store, signing in the way
      the web app does, with local stand-ins for Google (an OpenID provider and the Calendar API) and for
-     NEAR AI Cloud.
+     NEAR AI Cloud. They're split across ten runners, each with its own Postgres, object store and LiveKit,
+     by how long each file took (`scripts/ci-tests.mjs`, timings in `scripts/ci-test-times.json`); a file
+     longer than a runner's share is split at its top-level `describe` blocks. The check fails unless every
+     test vitest lists ran once and passed. A pull request that only changes `apps/web`, `apps/storybook`,
+     `packages/ui`, `docs` or top-level Markdown skips them, since they test the API; pushes to `main`
+     always run them. When the runners drift apart, refresh the timings from a run's artifacts with
+     `node scripts/ci-tests.mjs times <dir>`.
 2. **Merge gate.** Import `.github/rulesets/main.json` to require pull requests and all four checks
    on an up-to-date branch. The checked-in ruleset is a configuration artifact; verify its live status.
 3. **Deploy** (`.github/workflows/deploy.yml`) requires repository variable `DEPLOY_ENABLED=true`.

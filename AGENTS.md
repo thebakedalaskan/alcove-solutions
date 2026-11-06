@@ -79,6 +79,8 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
   checks nothing.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
+- CI splits the integration tests across ten runners (`scripts/ci-tests.mjs`) and fails unless every test ran once.
+  Keep test files independent of each other: each runs on whichever runner its timing puts it on.
 - When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
   `*.integration.test.ts`) with the flow it enables. Tests sign in through the real API
   (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out
