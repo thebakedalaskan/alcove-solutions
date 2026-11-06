@@ -9,7 +9,7 @@
  *
  * The small things here run on the event loop too, for what's too small to be worth a trip to a worker.
  */
-import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SearchDocSchema, randomClient } from '@alcove/api';
+import { DOC_FRAGMENT, DOC_SEED, ItemKindSchema, PortraitStyleSchema, SERVER_CLIENT, SearchDocSchema, isServerClient, randomClient } from '@alcove/api';
 import { bytesOnPage, itemsOnPage, settleUndone, undoMayDelete } from '@alcove/api/retire';
 import * as Y from 'yjs';
 import { z } from 'zod';
@@ -297,11 +297,14 @@ function backTo(current: Y.Doc, version: Uint8Array, kind: ContentKind, as: numb
   past.destroy();
   return update;
 }
-/** A restore as one update, and the client what's new in it is written as, which the log mustn't have had. */
-function restore(i: SealedLog & { version: z.infer<typeof VersionParts>; kind: ContentKind }) {
+/**
+ * A restore as one update, and the client what's new in it is written as, `as`, which the log mustn't have had. It's chosen by
+ * whoever asks, outside the worker, so that the check that it's new is the one place it's settled.
+ */
+function restore(i: SealedLog & { version: z.infer<typeof VersionParts>; kind: ContentKind; as: number }) {
   const l = openLog(i);
   const b = build(l);
-  const as = randomClient();
+  const { as } = i;
   const update = backTo(b.doc, openParts(i, i.version), i.kind, as);
   Y.applyUpdate(b.doc, update);
   const shape = shapeOf(b.doc, Y.encodeStateAsUpdate(b.doc));
@@ -378,6 +381,8 @@ function copy(i: SealedLog & { name: string | null }) {
   b.doc.destroy();
   return { state, shape, seen: seenOf(state), found: found(b, l) };
 }
+/** How far the seed goes as its own client: all of the server's own clients that rescued words may hold. */
+const SEED_REACH = Y.decodeStateVector(Y.encodeStateVectorFromUpdate(DOC_SEED)).get(SERVER_CLIENT.seed) ?? 0;
 /**
  * Someone's words from another document, as this one's first state (`saveCopy`). It's judged as anything from a browser is,
  * and goes through a Y.Doc, so what's kept is a state proved to open, holding nothing that waits for what never came, whose
@@ -385,10 +390,11 @@ function copy(i: SealedLog & { name: string | null }) {
  * from a document that never opened here come without it, and its title is where the name goes.
  */
 function adopt(i: { state: Uint8Array; items: number; kind: ContentKind; name: string | null }) {
-  // A document's carries the seed, which the new one already holds. What it holds as the server's own clients is where the new
-  // one starts, and the server never writes as a client a log has had, so nothing is ever written over it.
+  // A document's carries the seed, which the new one already holds, and nothing else of the server's own clients: anything else
+  // written as one is refused, as it is from any browser, so nothing rescued takes a template's place or a client kept for later.
   const { seen, why } = inspect(i.state, { ...browserCaps(i.items), asServer: true });
   if (!seen) return { why };
+  if (seen.blocks.some((b) => isServerClient(b.client) && !(i.kind === 'document' && b.client === SERVER_CLIENT.seed && b.to <= SEED_REACH))) return { why: 'server-client' };
   const doc = workingDoc();
   if (i.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, i.state);
@@ -415,7 +421,7 @@ export const DOC_TASKS = {
   fold: task(SealedLog.extend({ through: z.number(), keep: Keep.nullable() }), z.object({
     snapshot: Bytes, editors: Bytes, shape: Shape, found: Found, version: z.object({ info: Bytes, parts: z.array(Bytes), bytes: z.number() }).nullable()
   }), fold),
-  restore: task(SealedLog.extend({ version: VersionParts, kind: Kind }), z.object({ update: Bytes, as: z.number(), title: z.string(), shape: Shape, seen: SeenSchema, found: Found }), restore),
+  restore: task(SealedLog.extend({ version: VersionParts, kind: Kind, as: z.number().int() }), z.object({ update: Bytes, as: z.number(), title: z.string(), shape: Shape, seen: SeenSchema, found: Found }), restore),
   reset: task(z.object({ at: AtSchema, key: Bytes, through: z.number(), version: VersionParts }), z.object({ snapshot: Bytes, editors: Bytes, shape: Shape, seen: SeenSchema }), reset),
   read: task(SealedLog.extend({ op: ReadName, args: z.unknown() }), z.object({ value: z.unknown(), found: Found }), read),
   searchLine: task(SealedLog.extend({ id: z.string(), itemKind: ItemKindSchema, name: z.string(), kind: Kind }), z.object({ line: Bytes, found: Found }), searchLine),

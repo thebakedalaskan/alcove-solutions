@@ -67,11 +67,12 @@ function retitle(doc: Y.Doc, name: string): void {
 
 /**
  * Puts a template on an empty board, once. It's written as `SERVER_CLIENT.template`, the same client on every board and never
- * a browser's, so a board says itself whether it has had its template, and so does a copy of one. Its bytes are the same every
- * time for the board, as `seed` is its id. Asking again finds the template's client in the board and changes nothing; so does
- * the second of two asks at the same moment, as `writeDocument` won't write as a client the log has had by then: it works that
- * one out again, and finds the first. A board someone has put something on is left as it is, and a document isn't a board.
- * Whether this put the template on: blank puts nothing.
+ * a browser's, so a board says itself whether it has had its template, and so does a copy of one. Its ids come from `seed`,
+ * the board's id. Asking again finds the template's client in the board and changes nothing; so does the second of two asks
+ * at the same moment, as `writeDocument` won't write as a client the log has had by then: it works that one out again, and finds
+ * the first. That, not the bytes, is what makes it land once: two worked out at once can differ, and only one is written. A
+ * board someone has put something on is left as it is, and a document isn't a board: `kind` is the tree's, as `writeDocument`
+ * checks. Whether this put the template on: blank puts nothing.
  */
 function boardTemplate(doc: Y.Doc, kind: ContentKind, template: TemplateName, seed: string): boolean {
   if (kind !== 'board' || Y.getState(doc.store, SERVER_CLIENT.template) > 0) return false;

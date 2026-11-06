@@ -6,7 +6,7 @@
  * and nothing of what's on it anywhere but with the people who can open it.
  */
 import {
-  AlcoveApiError, DOC_UPDATE_TYPE, DocLiveEventSchema, SERVER_CLIENT, isServerClient, type BoardTemplate, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type KeptUpdate,
+  AlcoveApiError, DOC_SEED, DOC_UPDATE_TYPE, DocLiveEventSchema, SERVER_CLIENT, isServerClient, type BoardTemplate, type DocLiveEvent, type DocSession, type DocSessionOptions, type ItemKind, type KeptUpdate,
   type KeptUpdates, type WorkspaceRole
 } from '@alcove/api';
 import {
@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { blindIndex } from './crypto';
 import { exec, type Db } from './db';
 import { AppError, ClientTakenError } from './errors';
+import type { DocPool } from './live/docPool';
 import { workspaceFor } from './modules/workspaceAccess';
 import { keepVersion, readDocument, writeDocument, type Held } from './modules/workspaceDocuments';
 import { masterKey } from './owners';
@@ -106,6 +107,17 @@ function type(t: Tab, id: string, words: string, field = 't'): void {
 }
 /** Who a comment in these tests is from, as the page writes it. */
 const SAYS = { by: '', name: 'Priya' };
+/** Who someone is in a workspace, as the workspace's stream says it: what the server stamps on their pointer, and what a comment keeps. */
+async function whoIn(who: Account, id: string): Promise<{ by: string; name: string }> {
+  const live = who.api.workspaces.live(id);
+  try {
+    await until(() => live.getSnapshot().here.some((h) => h.isMe), 'the stream to say who they are');
+    const me = live.getSnapshot().here.find((h) => h.isMe)?.person;
+    return { by: me?.id ?? '', name: me?.name ?? '' };
+  } finally {
+    live.close();
+  }
+}
 const words = (t: { doc: Y.Doc }, id: string, field = 't') => objectText(t.doc, id, field)?.toString() ?? '';
 function boxOf(t: { doc: Y.Doc }, id: string): Box {
   const o = view(t).byId.get(id);
@@ -177,6 +189,9 @@ const docPath = (id: string, doc: string) => `/workspaces/${id}/documents/${doc}
 const send = (who: { fetch: typeof fetch }, id: string, doc: string, update: Uint8Array) =>
   who.fetch(`${h.baseUrl}/v1${docPath(id, doc)}/updates`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: new Uint8Array(update) });
 const post = (who: { fetch: typeof fetch }, path: string, sent: unknown) => who.fetch(`${h.baseUrl}/v1${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(sent) });
+/** A rescue: words a browser couldn't get into one document, posted as a new one's first state, as `saveCopy` does. */
+const adopt = (who: { fetch: typeof fetch }, id: string, doc: string, state: Uint8Array) =>
+  who.fetch(`${h.baseUrl}/v1${docPath(id, doc)}/adopt`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: new Uint8Array(state) });
 /** A board update from nobody's session: a sticky, written as a browser of its own would write it, or as `client`. */
 function aSticky(words: string, client?: number): Uint8Array {
   const doc = new Y.Doc();
@@ -651,16 +666,23 @@ describe('who can do what', () => {
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const board = await make(ann, id, 'Board');
+    const objectsBefore = await objectCount();
     const a = await open(ann, id, board);
     const t = await open(theo, id, board);
     sticky(a, 'Before the version', 0, 0);
+    // A picture on it: its file is kept in pieces, in the object store, reached through the board.
+    const picture = await ann.api.workspaces.media.upload(id, board, new File([new Uint8Array(randomBytes(4 * 1024 * 1024 + 1))], 'harbour.png', { type: 'image/png' }), { width: 1600, height: 900 });
+    add(a, { k: 'image', x: 300, y: 300, w: 320, h: 180, media: picture.id });
+    const pieces = (await h.pool.query<{ object_id: string }>('SELECT object_id FROM workspace_media_pieces WHERE media_id = $1', [picture.id])).rows.map((r) => r.object_id);
+    expect(pieces).toHaveLength(2);
+    const stored = (object: string) => h.objects.get(object).then(() => true, () => false);
+    for (const piece of pieces) expect(await stored(piece)).toBe(true);
     await saved(a);
     await versionNow(ann, id, board);
     sticky(t, 'After it', 300, 0);
     await saved(t);
     await agree([a, t], 'both to have both');
     const before = shown(a);
-    const objectsBefore = await objectCount();
 
     await ann.api.workspaces.items.trash(id, board);
     await until(() => a.s.getSnapshot().trashed && t.s.getSnapshot().trashed, 'Trash to show');
@@ -681,7 +703,11 @@ describe('who can do what', () => {
     await until(() => [a, t, late].every((x) => x.s.getSnapshot().closed === 'deleted'), 'every session to end');
     const tables = ['documents', 'document_updates', 'document_snapshots', 'document_versions', 'document_version_parts', 'document_clients', 'document_access'];
     for (const table of tables) expect(await count(`SELECT count(*)::int AS n FROM ${table} WHERE document_id = $1`, [board]), table).toBe(0);
-    // A board's content is all in rows: nothing was put in the object store for it, and nothing's waiting to be deleted there.
+    // Its picture goes with it, as nothing else has it: its rows, each of its pieces, and the bytes they were counted as.
+    for (const table of ['workspace_media', 'workspace_media_pieces', 'workspace_media_uses']) expect(await count(`SELECT count(*)::int AS n FROM ${table} WHERE media_id = $1`, [picture.id]), table).toBe(0);
+    for (const piece of pieces) expect(await stored(piece), piece).toBe(false);
+    expect(await code(ann.api.workspaces.media.url(id, board, picture.id))).toBe('not-found');
+    // The rest of a board's content is all in rows: the object store is as it was before it, and nothing's waiting to be deleted there.
     expect(await objectCount()).toBe(objectsBefore);
     expect(await count('SELECT count(*)::int AS n FROM object_gc')).toBe(0);
     expect(await code(open(ann, id, board))).toBe('not-found');
@@ -824,10 +850,13 @@ describe('a template', () => {
     expect(await logged(blank)).toBe(0);
     expect(view(await open(ann, id, blank)).objects).toEqual([]);
 
-    // What it's put on is said by its kind: a document gets nothing, and a board something stray was written into still gets it.
+    // What it's put on is said by its kind, which is the tree's: a document gets nothing, whatever it's called by whoever asks,
+    // and a board something stray was written into still gets it.
     const doc = await make(ann, id, 'A document', 'document');
     expect((await writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { kind: 'document', template: 'retro', seed: doc })).result).toBe(false);
+    expect(await refusalOnServer(writeDocument(await heldBy(ann, id), doc, 'boardTemplate', { kind: 'board', template: 'retro', seed: doc }))).toEqual({ code: 'invalid', message: 'That’s not a board.' });
     expect(await logged(doc)).toBe(0);
+    expect(readBoard(await onServer(await heldBy(ann, id), doc)).objects).toEqual([]);
     const strayed = await make(ann, id, 'Strayed');
     const s = await open(ann, id, strayed);
     s.doc.getXmlFragment('content').insert(0, [new Y.XmlText('Not a board’s')]);
@@ -928,7 +957,7 @@ describe('copies and versions', () => {
     const outside = sticky(t, 'Outside it', 800, 0, 'rose');
     const line = add(t, { k: 'line', style: 'curve', from: { on: inside, side: 'r' }, to: { on: outside, side: 'l' } });
     const grid = table(t, [['Owner', 'Due'], ['Priya', 'Friday']], { x: 800, y: 300 });
-    add(t, { k: 'ink', x: 0, y: 900, w: 200, h: 100, tool: 'pen', c: 'horizon', pts: [0, 0, 50, 50, 100, 20, 200, 100] });
+    add(t, { k: 'ink', x: 0, y: 900, w: 200, h: 100, tool: 'pen', c: 'horizon', pts: [0, 0, 0.25, 0.5, 0.5, 0.2, 1, 1] });
     add(t, { k: 'shot', x: 300, y: 900, w: 320, h: 200, media: 'media0001', caption: 'The login screen' });
     type(t, inside, ', with Theo’s words');
     await saved(t);
@@ -1002,6 +1031,55 @@ describe('copies and versions', () => {
     await until(() => words(a, inside).endsWith('?'), 'Theo’s typing to reach Ann');
     expect(refusals(board)).toEqual([]);
   });
+  it('restores only as a client the log hasn’t had: one it had before a version took its place is worked out again', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const board = await make(ann, id, 'Board');
+    const a = await open(ann, id, board);
+    sticky(a, 'In the version', 0, 0);
+    const goes = sticky(a, 'Taken off since', 300, 0);
+    await saved(a);
+    const version = await versionNow(ann, id, board);
+    // A browser of its own writes as a client nothing else has, after the version.
+    const lost = 515_151_515;
+    expect((await send(ann, id, board, aSticky('Lost with the log', lost))).status).toBe(200);
+    a.s.close();
+    // Then what it holds won't open, and the version takes its place: the log no longer holds what that client wrote, but has had it.
+    await h.pool.query("UPDATE document_snapshots SET snapshot_ciphertext = 'not a record' WHERE document_id = $1", [board]);
+    await h.pool.query('DELETE FROM document_updates WHERE document_id = $1', [board]);
+    const shut = await ann.api.workspaces.document(id, board);
+    await expect(shut.ready).rejects.toBeTruthy();
+    await until(() => shut.getSnapshot().closed !== null, 'it to say so');
+    await ann.api.workspaces.restoreVersion(id, board, version);
+    expect(await clientOf(board, lost)).not.toBeNull();
+
+    // Taken off again, then the version put back once more: that writes it again, and its first try is given the client the log
+    // has had, as a random one could happen to be, which nothing in the board says it's had.
+    const b = await open(ann, id, board);
+    removeObjects(b.doc, [goes], b.me);
+    await saved(b);
+    const docs: DocPool = h.deps.docs;
+    const real = docs.run.bind(docs);
+    let tries = 0;
+    const given: DocPool['run'] = (task, input, o) => {
+      if (task !== 'restore') return real(task, input, o);
+      tries += 1;
+      return real(task, tries === 1 ? Object.assign({}, input, { as: lost }) : input, o);
+    };
+    docs.run = given;
+    try {
+      await ann.api.workspaces.restoreVersion(id, board, version);
+    } finally {
+      docs.run = real;
+    }
+    expect(tries).toBe(2);
+    expect(reworked(board).filter((l) => l.includes('"what":"restore"'))).toHaveLength(1);
+    const notes = (t: Tab) => view(t).objects.flatMap((o) => (o.k === 'note' ? [o.t] : [])).sort();
+    await until(() => notes(b).join() === 'In the version,Taken off since', 'the version to be back');
+    expect(notes(await open(ann, id, board))).toEqual(['In the version', 'Taken off since']);
+    expect(refusals(board)).toEqual([]);
+  });
+
   it('copies a board with its template, which the copy can’t have again, and gives one copied before its template its own', async () => {
     const ann = await account();
     const id = await workspace(ann, 'Ours');
@@ -1202,6 +1280,43 @@ describe('the server’s own clients', () => {
     expect(b.frames).toHaveLength(3);
     expect(b.objects.flatMap((o) => (o.k === 'note' ? [o.t] : [])).sort()).toEqual(['Mine', 'Mine too']);
   });
+
+  it('refuses a rescue written as one of the server’s clients, as every browser update is, and takes the seed a document’s words sit on', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    // A board nobody has written to, so a rescue could be its first state: its template's client is refused, and so is any of the server's.
+    const board = await make(ann, id, 'Retro');
+    for (const client of [SERVER_CLIENT.template, SERVER_CLIENT.seed, 15]) {
+      const forged = new Y.Doc();
+      forged.clientID = client;
+      addObject(forged, { k: 'frame', x: 0, y: 0, w: 360, h: 530, c: 'butter', role: '', hint: '', sub: '', sorted: false, title: 'Not the template' }, null);
+      expect((await adopt(theo, id, board, Y.encodeStateAsUpdate(forged))).status, `client ${client}`).toBe(400);
+    }
+    expect(refusals(board).filter((l) => l.includes('server-client'))).toHaveLength(3);
+    expect(await logged(board)).toBe(0);
+    // So the template still goes on, as the server's, once.
+    expect(await fill(ann, id, board)).toBe(true);
+    expect(view(await open(ann, id, board)).frames.map((f) => f.title)).toEqual(['Went well', 'Could improve', 'Actions']);
+
+    // A document's rescued words sit on the seed, which is the server's: that much of it is taken, and nothing more of the server's.
+    const doc = await make(ann, id, 'Plan', 'document');
+    const words = (client: number) => {
+      const d = new Y.Doc();
+      Y.applyUpdate(d, DOC_SEED);
+      d.clientID = client;
+      const line = new Y.XmlElement('line');
+      line.insert(0, [new Y.XmlText('Kept words')]);
+      d.getXmlFragment('content').insert(1, [line]);
+      return Y.encodeStateAsUpdate(d);
+    };
+    expect((await adopt(theo, id, doc, words(SERVER_CLIENT.seed))).status).toBe(400);
+    expect((await adopt(theo, id, doc, words(3))).status).toBe(400);
+    expect(await logged(doc)).toBe(0);
+    expect((await adopt(theo, id, doc, words(987654321))).status).toBe(200);
+    expect(await logged(doc)).toBe(1);
+    expect(await clientOf(doc, 3)).toBeNull();
+  });
 });
 
 describe('what an honest browser sends', () => {
@@ -1304,7 +1419,10 @@ describe('what’s kept', () => {
       add(t, { k: 'shot', x: 800, y: 1200, w: 320, h: 200, media: 'media0003', caption: 'CANARY-BOARD-CAPTION' });
       add(a, { k: 'shape', x: 0, y: 1600, w: 170, h: 76, s: 'rect', c: '', t: 'CANARY-BOARD-SHAPE' });
       add(a, { k: 'node', x: 300, y: 1600, w: 160, h: 60, parent: '', t: 'CANARY-BOARD-NODE' });
-      addThread(t.doc, note, 'CANARY-BOARD-COMMENT', SAYS, t.me);
+      // Theo's, as the page writes one: what he's known by in the workspace and his name, both kept with it.
+      const theoIs = await whoIn(theo, id);
+      expect(theoIs.by).not.toBe('');
+      addThread(t.doc, note, 'CANARY-BOARD-COMMENT', theoIs, t.me);
       a.s.awareness.setLocalStateField('edit', note);
       await saved(a);
       await saved(t);
@@ -1330,7 +1448,7 @@ describe('what’s kept', () => {
       expect(await count('SELECT count(*)::int AS n FROM document_versions WHERE document_id = $1', [board])).toBeGreaterThan(0);
       expect(notices.some((n) => n.includes(board))).toBe(true);
       const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
-      const canaries = ['CANARY-BOARD', 'canary-board', 'launch slips', ann.name, theo.name];
+      const canaries = ['CANARY-BOARD', 'canary-board', 'launch slips', ann.name, theo.name, theoIs.by];
       for (const canary of canaries) {
         for (const enc of encodings(canary)) {
           expect(rows.includes(enc), `${canary} as ${enc} in a table`).toBe(false);
@@ -1361,17 +1479,6 @@ async function objectCount(): Promise<number> {
 }
 
 describe('a board’s own page', () => {
-  /** Who someone is in a workspace, as the workspace's stream says it: what the server stamps on their pointer, and what a comment keeps. */
-  async function whoIn(who: Account, id: string): Promise<{ by: string; name: string }> {
-    const live = who.api.workspaces.live(id);
-    try {
-      await until(() => live.getSnapshot().here.some((h) => h.isMe), 'the stream to say who they are');
-      const me = live.getSnapshot().here.find((h) => h.isMe)?.person;
-      return { by: me?.id ?? '', name: me?.name ?? '' };
-    } finally {
-      live.close();
-    }
-  }
   /** Comments aren't anyone's change to the board: the page writes them under an origin of their own. */
   const COMMENTS = { comments: true };
   /** A browser's connection, which drops and comes back. */
@@ -1424,19 +1531,40 @@ describe('a board’s own page', () => {
     }
   });
 
-  it('shares a board beyond the workspace to add to, or only to look at, and that person has that board and nothing else', async () => {
+  it('shares a board beyond the workspace to add to, or only to look at, and that person has that board and nothing that names the rest', async () => {
     const ann = await account();
     const theo = await account();
+    const lena = await account(unique('canary-outside-lena'));
     const una = await account();
-    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const id = await workspace(ann, 'CANARY-OUTSIDE-SPACE', [[theo, 'edit'], [lena, 'edit']]);
     const board = await make(ann, id, 'Launch retro');
-    await make(ann, id, 'Plan', 'document');
+    const plan = await make(ann, id, 'CANARY-OUTSIDE-DOC', 'document');
     const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
+    // Lena is in the workspace too, on another document.
+    const l = await open(lena, id, plan);
+    const lenas = lena.api.workspaces.live(id);
 
-    // Who can add to it: Una, from outside the workspace.
+    // Who can add to it: Una, from outside the workspace. What she's given names neither the workspace nor anything else in it.
     await ann.api.workspaces.share.set(id, board, [{ email: una.email }], 'edit');
-    expect((await una.api.workspaces.get(id)).items.map((i) => [i.id, i.kind])).toEqual([[board, 'board']]);
+    const got = await una.api.workspaces.get(id);
+    expect(got).toMatchObject({ name: null, people: null });
+    expect(got.items.map((i) => [i.id, i.kind])).toEqual([[board, 'board']]);
     const u = await open(una, id, board);
+    const hersLive = una.api.workspaces.live(id);
+    await until(() => (hersLive.getSnapshot().tree?.items.length ?? 0) > 0 && hersLive.getSnapshot().here.some((x) => x.isMe), 'Una’s stream');
+    await until(() => lenas.getSnapshot().here.some((x) => x.isMe), 'Lena to be here');
+    await rest(1000);
+    const seen = JSON.stringify({ tree: hersLive.getSnapshot().tree, here: hersLive.getSnapshot().here, list: await una.api.workspaces.list() });
+    for (const canary of ['CANARY-OUTSIDE', 'canary-outside', lena.email, lena.name]) expect(seen, canary).not.toContain(canary);
+    let searched = '';
+    for await (const d of una.api.workspaces.searchText(id)) searched += JSON.stringify(d);
+    expect(searched).not.toContain('CANARY-OUTSIDE');
+    // Who else has it, and who's in the workspace, are for the workspace's own people.
+    expect(await code(una.api.workspaces.share.list(id, board))).not.toBe('allowed');
+    expect(await code(una.api.workspaces.people(id))).not.toBe('allowed');
+    hersLive.close();
+    lenas.close();
+    l.s.close();
     expect(u.s.getSnapshot()).toMatchObject({ role: 'edit', closed: null });
     const hers = sticky(u, 'From outside the workspace', 0, 0);
     await saved(u);

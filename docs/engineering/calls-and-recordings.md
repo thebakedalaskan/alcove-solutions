@@ -1130,11 +1130,14 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   they keep, as they keep the note. Back in the call, a board made from then on goes to their address, and one made while they
   were out is a seat, for that call. A call can let everyone into 50 boards, the ones it made included. That's asked before a
   board is made, with nothing of the call held, so two made at once can take it one past.
-- **Filling one from its template** is `fillBoard`, once the board is made and before the call says it's open: the server
-  writes the template through the board's log, as the template's own Yjs client, with the board's id as its seed, so everyone
-  gets the same frames and nobody's undo can take them away ([Data and storage › Documents](data-and-storage.md#documents)).
-  It's written once however often it's asked, and blank writes nothing. One that can't be filled is logged, and the board opens
-  as it is: a board left as it started is still a board.
+- **Filling one from its template** is `fillBoard`, at the end of the first step, once the board is made in its workspace and
+  before the call's row says it's open: nobody can know of the board until then, so whoever reads the call and opens it finds
+  its template on, however busy the workers are, and nobody can put anything there first. The server writes the template
+  through the board's log, as the template's own Yjs client, with the board's id as its seed, so everyone gets the same frames
+  and nobody's undo can take them away ([Data and storage › Documents](data-and-storage.md#documents)). It's written once
+  however often it's asked, and blank writes nothing. One that can't be filled is logged at warn (`board not filled from its
+  template`), and the board opens as it is: a board left as it started is still a board. The call's row is held only for the
+  second step, so nothing of the call waits on the fill.
 - **A saved board** (`board-open` with `documentId` and `letIn`) is one brought to the call, or in the workspace it uses. Bringing
   one needs `edit` on it, and it opens from where it is, whichever workspace the call has moved to since. Someone who can only
   read it gets `403`, and one in Trash is `409`. Anything else is the same `404` in the same words, whatever it was: someone else's

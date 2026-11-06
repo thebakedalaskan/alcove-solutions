@@ -150,11 +150,16 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   two people typing there first type in the same text. A board starts with nothing. Its template, when it's started from
   one, is the server's: `writeDocument(w, id, 'boardTemplate', { kind, template, seed })`, with the board's id as the seed,
   puts it on as an update like anyone's, so everyone gets the same frames and nobody's undo can take them away, and only on a
-  board nobody has put anything on yet. A call's new board is filled this way before the call says it's open (`fillBoard`).
-  It's written as the Yjs client kept for it, `SERVER_CLIENT.template`, 2 on every board, in the same bytes every time for
-  that board, so the board itself says whether it has had its template: asking again changes nothing, nor does a second ask
-  at the same moment or one after a compaction, a copy of a board carries its template and can't have another, and a board
-  put back to before its template doesn't get it back by itself or by asking. A
+  board nobody has put anything on yet. `kind` has to be what the tree says the item is, as for every operation that takes one,
+  or it's refused (`invalid`), so a board's frames never go on a document whatever its caller says. A call's new board is filled
+  this way at the end of making it, before the call's row says it's open (`fillBoard`): nobody can know of it until then, so
+  whoever opens it finds its template on. It's written as the Yjs client kept for it, `SERVER_CLIENT.template`, 2 on every board.
+  What makes it land once is that the server writes only as clients the log hasn't had (`requireNewClients`, below): the first
+  fill takes client 2, and every later one finds it taken. So the board itself says whether it has had its template: asking
+  again changes nothing, nor does a second ask at the same moment or one after a compaction, a copy of a board carries its
+  template and can't have another, and a board put back to before its template doesn't get it back by itself or by asking. Two
+  fills worked out at once needn't be the same bytes (a board that had something on it and lost it again hangs the template
+  off what it lost), and they don't have to be: only one is ever written. A
   copy starts from the seed under the workspace's lock, and what the original holds becomes its first update afterwards,
   outside it, one document at a time, with a document's title changed to say what the tree calls the copy. A copy holds only
   each map key's last value, since nobody can be behind it. If the workers stay busy it waits about 15 seconds and then
@@ -231,7 +236,10 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   change that finds a client of its taken by then is worked out again on what's there now, in three tries at most, then `409`
   (`ClientTakenError`): a random client gets past that at once, and a fixed one finds what was written as it, which is how a
   template lands once. A fixed client the log had already when the change was worked out, in a row that won't open or from
-  before a version took a board's place, would be the same every time, so that's refused for good, at once. The server's own
+  before a version took a board's place, would be the same every time, so that's refused for good, at once. "Already" is judged
+  against where the log the change was worked out on ended, read from that log itself, so an update that landed while it was
+  being read is something to work the change out again on, not a reason to refuse it. A restore's client is chosen as it's
+  asked for, outside the worker, so the check is the one place it's settled. The server's own
   clients are 1 to 15 (`SERVER_CLIENT` in `@alcove/api`: 1 the seed, 2 a board's template, the rest kept), and what the server
   works on otherwise writes as a random client outside them. What starts a log isn't a change: the seed, a copy and words
   rescued into a new document hold what they hold, and the new document is the server's from there. `searchText` streams everything
@@ -282,8 +290,10 @@ What can be told from the update alone is checked with nothing held, in a worker
   refused, because Yjs would carry it pending for ever, in every snapshot.
 - Nothing written as one of the server's own clients, 1 to 15 (`server-client`, `400`), whether or not the server has
   written as it yet: what's written as one is fixed, so anything else there would say two things at one clock, or take a
-  template's place before it came. A browser's are random 32-bit numbers outside them. Words rescued into a new document may
-  hold the seed's, and are let through, as they start a log rather than change one.
+  template's place before it came. A browser's are random 32-bit numbers outside them. Words rescued into a new document
+  (`POST …/adopt`) may hold the seed's, and only as far as the seed goes, as they start a log on top of it: anything else
+  written as one of the server's clients is refused there too, on a document or a board, so no rescue takes a template's
+  place or a client kept for later. The app's rescue writes its own words as a random client (`randomClient`).
 
 What depends on the log is checked under the document's lock, against `document_clients`, without opening the document:
 

@@ -2,9 +2,9 @@
  * What a new board can start from. Sizes, positions, hints and colours are the design canvas's, and so are its words
  * wherever they suit any meeting. Where the canvas's were about its fictional launch, they're generic: Flow's shapes
  * read as what each kind is for. A template fills in one transaction, and the server makes that update, so everyone
- * gets the same frames and nobody's undo can take them away. The server writes it as one fixed Yjs client, so two fills
- * at once come to the same thing: that needs a fill to be the same bytes every time, so nothing in it is random, its ids
- * come from the board's id, and it only ever fills an empty board, as a list entry lands after whatever's last.
+ * gets the same frames and nobody's undo can take them away. The server writes it as one fixed Yjs client, and only as a
+ * client the board's log hasn't had, so of two fills at once only one is ever written. Nothing in it is random: its ids
+ * come from the board's id, so a template says the same thing on every try, and it only ever fills an empty board.
  */
 import type * as Y from 'yjs';
 import { sides } from './routes';

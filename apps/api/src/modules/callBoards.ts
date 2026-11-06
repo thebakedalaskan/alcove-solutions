@@ -251,13 +251,11 @@ export interface Changing<S extends Boarded> {
   maker: Maker;
 }
 /**
- * What came of it: the call as it is now; for a new board, what's left to fill it from its template; the seats given to people
- * taken out of the call meanwhile, for the caller to take back once the call's row is let go; and what happened, to log once
- * it's saved.
+ * What came of it: the call as it is now; the seats given to people taken out of the call meanwhile, for the caller to take back
+ * once the call's row is let go; and what happened, to log once it's saved.
  */
 export interface Changed<S> {
   s: S;
-  made?: { w: HeldWorkspace; documentId: string; template: BoardTemplate } | undefined;
   ended: string[];
   done: { what: 'board opened'; workspaceId: string; documentId: string; made: boolean; letIn: boolean; invited: number; here: number } | { what: 'board closed'; workspaceId: string; documentId: string };
 }
@@ -277,7 +275,9 @@ const opening = <S extends Boarded>(s: S, open: OpenBoard, letIn: BoardLetIn[] =
  * still on it when the call ends. Nobody taken out of the call and still out is given what's opened after they went, though they
  * stay on the invite: what they had before, they keep, as they keep the note. An address it goes to is never given a seat too:
  * what someone does to that entry is theirs to do. It's all done in the workspace's own transaction, with nothing of the call
- * held; anyone let in before the call's row is taken is seated by `syncBoardSeats` after.
+ * held; anyone let in before the call's row is taken is seated by `syncBoardSeats` after. Then it's filled from its template,
+ * still before the call's row says it's open: until then nobody can know it's there, so whoever opens it finds its template on.
+ * A board left as it started is still a board, so a fill that fails is said in the log and refuses nobody.
  */
 async function prepareNew<S extends Boarded>(x: Changing<S>, template: BoardTemplate): Promise<Apply<S>> {
   const { v, s, callId, meeting } = x;
@@ -299,10 +299,10 @@ async function prepareNew<S extends Boarded>(x: Changing<S>, template: BoardTemp
     const { entry, seats } = await letInHere(w, c, callId, { workspaceId, documentId, by: null, seen: invited.map((e) => e.toLowerCase()) }, x.here, x.known);
     return { w, documentId, entry, seats, invited: invited.length };
   });
+  await fillBoard(made.w, made.documentId, template).catch((e: unknown) => blog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
   const by = controllerOf(v, x.reader);
   return (y) => ({
     s: opening(y.s, { workspaceId, documentId: made.documentId, by }, [...y.s.board.letIn, made.entry]),
-    made: { w: made.w, documentId: made.documentId, template },
     ended: removedFrom(y.known, made.seats),
     done: { what: 'board opened', workspaceId, documentId: made.documentId, made: true, letIn: true, invited: made.invited, here: made.entry.seen.length }
   });
@@ -362,6 +362,6 @@ export async function prepare<S extends Boarded>(x: Changing<S>, a: BoardAction)
  * same frames and nobody's undo can take them away. It's the server's, written once however often it's asked, with the board's
  * id as its seed, and only on a board nobody has put anything on yet (documentOps.ts's `boardTemplate`). Blank writes nothing.
  */
-export async function fillBoard(w: HeldWorkspace, documentId: string, template: BoardTemplate): Promise<void> {
+async function fillBoard(w: HeldWorkspace, documentId: string, template: BoardTemplate): Promise<void> {
   await writeDocument(w, documentId, 'boardTemplate', { kind: 'board', template, seed: documentId });
 }

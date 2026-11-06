@@ -16,7 +16,7 @@
  * hasn't had (`requireNewClients`). What starts a log (the seed, a copy, words rescued into a new document) isn't a change.
  */
 import {
-  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, isServerClient, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart
+  DOC_SEED, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, isServerClient, randomClient, type DocClosed, type DocLiveEvent, type DocVersionReason, type DocVersionSummary, type DocAskBody, type DocAskPart
 } from '@alcove/api';
 import type { StreamingApi } from 'hono/utils/stream';
 import * as decoding from 'lib0/decoding';
@@ -92,6 +92,18 @@ function requireContent(w: Held, documentId: string): void {
   const item = w.state.items[documentId];
   if (!item || item.kind === 'folder') throw notFound('That document', { workspaceId: w.workspaceId, documentId });
 }
+/** What an operation says it's for, when it says. */
+const SaysKind = z.object({ kind: z.enum(['document', 'board']) });
+/**
+ * An operation that goes by what kind of thing it's working on is for that kind: what the tree says this is, whatever the caller
+ * says. A board's template written on a document would be frames beside its words.
+ */
+function requireKind(w: Held, documentId: string, args: unknown): void {
+  const said = SaysKind.safeParse(args), item = w.state.items[documentId];
+  if (said.success && item && said.data.kind !== kindOf(item)) throw new ValidationError(`That’s not a ${said.data.kind}.`, { context: { workspaceId: w.workspaceId, documentId, kind: said.data.kind } });
+}
+/** Where a log read ends: the next seq after its last row, or after its snapshot when it has none. */
+const markOf = (log: SealedLog): number => (log.rows.at(-1)?.seq ?? log.base?.throughSeq ?? 0) + 1;
 
 /* ---------- records ---------- */
 
@@ -158,14 +170,15 @@ async function knownClients(c: Db, p: Place, documentId: string, seen: Inspected
  * change, and both ask this first, of the clients they write as. A client that's taken is `ClientTakenError`, for working the
  * change out again on what's there now: a random one gets past that, and a fixed one (`SERVER_CLIENT`) finds what was written
  * as it, which is how it's written once. A fixed one the log had already when the change was worked out, in a row that won't
- * open or from before a version was put back, is the same every time, so that's refused for good. `read`: the row as it was then.
+ * open or from before a version was put back, is the same every time, so that's refused for good. `read`: where the log the
+ * change was worked out on ended (`markOf`), from that log itself, so nothing that landed while it was being read counts as before.
  */
-async function requireNewClients(c: Db, p: Place, documentId: string, locked: DocRow, x: { read: DocRow; clients: number[]; what: string }): Promise<void> {
+async function requireNewClients(c: Db, p: Place, documentId: string, locked: DocRow, x: { read: number; clients: number[]; what: string }): Promise<void> {
   if (!x.clients.length) return;
   const taken = (await rows(c, z.object({ client_id: bigintText }), 'SELECT client_id FROM document_clients WHERE owner_id = $1 AND document_id = $2 AND client_id = ANY($3::bigint[])', [p.owner.ownerId, documentId, x.clients])).map((r) => r.client_id);
   if (!taken.length) return;
   const context = { workspaceId: p.workspaceId, documentId, what: x.what, taken: taken.length };
-  if (locked.next_seq === x.read.next_seq && taken.some(isServerClient)) throw new ConflictError('This document has had this change already, so it can’t have it again.', { context });
+  if (locked.next_seq === x.read && taken.some(isServerClient)) throw new ConflictError('This document has had this change already, so it can’t have it again.', { context });
   throw new ClientTakenError(undefined, { context });
 }
 /** How often a change from the server is worked out again because a client it was written as was taken first. */
@@ -553,6 +566,7 @@ export async function documentsAt(db: Db, ownerId: string, documentIds: string[]
 /** Asks a document something, for code that has decided the reader may have it (`requireDocument`). What can be asked is in documentOps.ts. */
 export async function readDocument<N extends keyof Reads>(w: Held, documentId: string, op: N, args: ArgsOf<Reads[N]>): Promise<ResultOf<Reads[N]>> {
   requireContent(w, documentId);
+  requireKind(w, documentId, args);
   const row = await documentRow(w, documentId);
   const done = await working(w, documentId, row, async () => w.owner.docs.run('read', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row)));
   report(w, documentId, done.found);
@@ -563,7 +577,8 @@ export async function readDocument<N extends keyof Reads>(w: Held, documentId: s
  * Changes a document on the server, for code that has decided it may be: what can be done is in documentOps.ts, and it's done
  * to the document as it stands, as a browser would, and the update is appended and reaches everyone like any other. Anyone
  * typing meanwhile merges with it. A change that changes nothing writes nothing. `by` is who it's for, if anyone. `holding`
- * runs in the transaction that writes it, for what must still hold by then. Refused in Trash, like an edit.
+ * runs in the transaction that writes it, for what must still hold by then. Refused in Trash, like an edit, and refused for
+ * something it isn't for: what kind of thing it's working on is the tree's to say (`requireKind`).
  *
  * It's written only as Yjs clients the log hasn't had (`requireNewClients`). One that finds a client taken by then is worked out
  * again on the document as it now stands, `holding`'s part taken back with it, in three tries at most: so an operation written as
@@ -573,10 +588,16 @@ export async function writeDocument<N extends keyof Edits>(
   w: Held, documentId: string, op: N, args: ArgsOf<Edits[N]>, opts: { by?: Editor | null | undefined; callId?: string | null | undefined; holding?: ((c: Db) => Promise<void>) | undefined } = {}
 ): Promise<{ seq: number; result: ResultOf<Edits[N]> }> {
   requireContent(w, documentId);
+  requireKind(w, documentId, args);
   if (trashOf(w.state, documentId)) throw new ConflictError('This is in Trash. Restore it to change it.', { context: { workspaceId: w.workspaceId, documentId } });
   for (let tries = 1; ; tries++) {
     const row = await documentRow(w, documentId);
-    const done = await working(w, documentId, row, async () => w.owner.docs.run('edit', { ...(await sealedLog(w, documentId)), op, args }, jobFor(w, documentId, row)));
+    let read = row.next_seq;
+    const done = await working(w, documentId, row, async () => {
+      const log = await sealedLog(w, documentId);
+      read = markOf(log);
+      return w.owner.docs.run('edit', { ...log, op, args }, jobFor(w, documentId, row));
+    });
     report(w, documentId, done.found);
     const result = edits[op].result.parse(done.value);
     const { update, seen } = done;
@@ -586,7 +607,7 @@ export async function writeDocument<N extends keyof Edits>(
         await opts.holding?.(c);
         const locked = await lockDocument(c, w, documentId);
         if (locked.held) throw restoring(w, documentId);
-        await requireNewClients(c, w, documentId, locked, { read: row, clients: seen.blocks.map((b) => b.client), what: op });
+        await requireNewClients(c, w, documentId, locked, { read, clients: seen.blocks.map((b) => b.client), what: op });
         requireRoom(w, documentId, locked, update.length, seen, done.weighed);
         const landed = await append(c, w, documentId, locked, update, opts.by ?? null, seen, nobody);
         return { seq: landed, tending: tendingAfter(w, locked, landed, update.length, opts.callId ?? null) };
@@ -850,7 +871,8 @@ export async function restoreVersion(d: Deps, reader: Reader, workspaceId: strin
     // What's new in it is written as a client of its own, as anything the server changes is: one taken by chance is worked out again.
     for (let tries = 1; ; tries++) {
       const row = await documentRow(w, documentId);
-      const made = await d.docs.run('restore', { ...(await sealedLog(w, documentId)), version: { versionId, parts }, kind }, jobFor(w, documentId, row, limitKey(reader)));
+      const log = await sealedLog(w, documentId);
+      const made = await d.docs.run('restore', { ...log, version: { versionId, parts }, kind, as: randomClient() }, jobFor(w, documentId, row, limitKey(reader)));
       report(w, documentId, made.found);
       if (byLimits(w, made.shape.bytes, made.shape.items - made.shape.retired)) throw tooLong(w, documentId, made.shape.bytes, made.shape.items);
       const name = made.title.replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -859,7 +881,7 @@ export async function restoreVersion(d: Deps, reader: Reader, workspaceId: strin
           const { item } = requireDocument(reader, locked, documentId, 'edit');
           const at = await lockDocument(c, locked, documentId);
           if (made.seen.blocks.length || made.seen.deletes.length) {
-            await requireNewClients(c, locked, documentId, at, { read: row, clients: made.seen.blocks.some((b) => b.client === made.as) ? [made.as] : [], what: 'restore' });
+            await requireNewClients(c, locked, documentId, at, { read: markOf(log), clients: made.seen.blocks.some((b) => b.client === made.as) ? [made.as] : [], what: 'restore' });
             await append(c, locked, documentId, at, made.update, editorOf(locked.owner, reader), made.seen, nobody);
           }
           await letGo(c, locked, documentId);
