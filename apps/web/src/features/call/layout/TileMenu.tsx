@@ -124,13 +124,11 @@ export interface ShareWindowMenu { open: boolean; toggle: (() => void) | null; w
  * A shared screen's menu: see it big or as a tile, look closer, open it in its own window, and mute its sound, for you;
  * and point at it, which everyone sees. Beside the board, Make it big swaps them, as pressing the share does.
  */
-export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, onSwap, sound, look, own, point, onMove, onPut }: {
+export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle, onSwap, sound, look, own, point, onPut }: {
   presenter: Person; label: string; open: boolean; onOpenChange: (o: boolean) => void; big: boolean; onToggle: () => void;
   /** Beside the board: makes it big and the board a live tile over the faces, as pressing it or P does. */
   onSwap?: (() => void) | undefined;
   sound: { muted: boolean; toggle: () => void } | null;
-  /** Picks it up to move it with the arrow keys, as a panel of its own. */
-  onMove?: (() => void) | undefined;
   /** With a board open: puts a picture of what this browser shows of it on the board. */
   onPut?: (() => void) | undefined;
   /** Shown big: zoom, freeze, earlier pictures. */
@@ -146,7 +144,7 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
 }) {
   const pointing = point !== null && point.closed === null && (point.can || point.on);
   const press = useSettledPress([
-    ...(onSwap ? ['swap'] : []), ...(own?.open ? [] : ['size']), ...(onPut ? ['put'] : []), ...(onMove ? ['move'] : []),
+    ...(onSwap ? ['swap'] : []), ...(own?.open ? [] : ['size']), ...(onPut ? ['put'] : []),
     ...(look ? ['zoom-in', ...(look.zoomed ? ['zoom-out', 'whole'] : []), 'freeze', 'earlier', ...(look.held ? ['later'] : [])] : []),
     ...(own ? ['window'] : []), ...(sound ? ['sound'] : []), ...(look?.zoomed ? ['zoom-hint'] : []), ...(look ? ['look-hint'] : []), ...(own?.why ? ['window-hint'] : []),
     ...(pointing ? ['point'] : [])
@@ -160,7 +158,6 @@ export function ShareMenu({ presenter, label, open, onOpenChange, big, onToggle,
       {onSwap && <Item key="swap" icon="grow" label="Make it big" kb="P" keys="P" onPick={pick(onSwap)} />}
       {!own?.open && <Item key="size" icon={big ? 'shrink' : 'grow'} label={big ? 'Show as a tile' : 'Show it big'} kb={onSwap ? undefined : 'P'} keys={onSwap ? undefined : 'P'} onPick={pick(onToggle)} />}
       {onPut && <Item key="put" icon="image" label="Put on the board" onPick={pick(onPut)} />}
-      {onMove && <Item key="move" icon="grip" label="Move it" kb="G" keys="G" onPick={pick(onMove)} />}
       {look && (
         <>
           <Item key="zoom-in" icon="zoomIn" label="Zoom in" kb={LOOK_KEYS.zoomIn.shown} keys={LOOK_KEYS.zoomIn.aria} disabled={look.max} onPick={pick(look.zoomIn)} />

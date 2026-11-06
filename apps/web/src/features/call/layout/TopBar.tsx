@@ -1,67 +1,115 @@
 /*
- * The call's top bar: the title and clock, the notes sign everyone sees (which opens what's captured), what's showing
- * when the workspace, the board and the shares have to take turns, then Reset my view once there's anything to reset,
- * your own view control, a private catch-up, the confidential-compute shield and who is here (with how many are asking
- * to join, for the organizer).
+ * The call's top bar. On the left, the call: its title and clock, the notes sign everyone sees (which opens what's captured),
+ * the confidential-compute shield, Reconnecting while the connection finds its way back, and what's showing when the
+ * workspace, the board and the shares have to take turns. On the right, what's only yours: View, then Board and Workspace,
+ * which open on your stage, then Notes and Chat, which open in your side, then who's here, which opens People. Each is lit
+ * while it's open, and pressed again puts it away. On a phone it's the title, the notes sign, Chat and who's here: the rest is
+ * in More.
  */
 import { clock, type Person } from '@alcove/api';
-import { Dots, Faces, Icon, Popover, Tooltip, cn } from '@alcove/ui';
+import { BoardMenu, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardMenuContent } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
-import { AnimatePresence, motion } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
 import { q, trustLine } from '~/lib/queries';
 import { hm } from '~/lib/time';
+import type { SideView } from './side';
 
-const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
+/** Board, at the top right. */
+export interface TopBoard {
+  /** A board is on your stage, or the Board menu is open. */
+  on: boolean;
+  onPress: () => void;
+  /** The Board menu, opening under it, while that's how a board starts. Pressing Board opens it through `onPress`. */
+  menu?: { open: boolean; onClose: () => void; content: BoardMenuContent; reach?: (() => void) | undefined } | undefined;
+}
+/** Workspace, at the top right: lit while it's on your stage, with how much has been brought to this call. */
+export interface TopWorkspace { on: boolean; count: number; onPress: () => void }
+/** Notes, Chat and who's here, which open your side: what it shows now, and how much chat you haven't seen. */
+export interface TopSide { view: SideView | null; toggle: (v: SideView) => void; unread: number }
 
-export function TopBar({ title, elapsed, sign, swap, view, custom, people, asking, reconnecting, peopleOpen, screens, onReset, onCatchUp, onPeople }: {
+const BOARD_TIP = 'Open a board, just for you · O';
+const WORKSPACE_TIP = 'Open the workspace, just for you · W';
+
+export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, phone, board, workspace, side }: {
   title: string; elapsed: number;
   /** The notes sign: what the call captures, the same for everyone. */
   sign: ReactNode;
   /** What's showing, when there isn't room for all of it at once. */
   swap: ReactNode;
-  /** Your view's controls (ViewMenu). */
+  /** View: your view's controls (ViewMenu). */
   view: ReactNode;
-  custom: boolean; people: Person[];
+  people: Person[];
   /** People asking to join (the organizer's to let in). */
   asking: number;
   /** The call's media connection dropped and is coming back. */
   reconnecting: boolean;
-  peopleOpen: boolean;
   /** Shared screens are read for the notes (or will be once they resume), so frames of them are sealed too. */
   screens: boolean;
-  onReset: () => void; onCatchUp: () => void; onPeople: () => void;
+  phone: boolean;
+  /** Null for someone who can't start a board while none is open: a guest. */
+  board: TopBoard | null;
+  workspace: TopWorkspace;
+  side: TopSide;
 }) {
-  const label = asking ? `People in this call. ${asking} asking to join` : 'People in this call';
+  const peopleOpen = side.view === 'people';
+  const chatOpen = side.view === 'chat';
+  const notesOpen = side.view === 'notes';
+  const faces = (
+    <Tooltip label={asking ? `${asking} asking to join` : peopleOpen ? 'People' : 'People · only you'} side="bottom">
+      <button type="button" className={cn('ic-yb is-faces', peopleOpen && 'is-on')} data-side="people" aria-pressed={peopleOpen}
+        aria-label={asking ? `People in this call. ${asking} asking to join` : 'People in this call'} onClick={() => side.toggle('people')}>
+        <Faces people={people} size={24} max={phone ? 2 : 4} />{!phone && <span className="n">{people.length}</span>}
+        {asking > 0 && <span className="ask" aria-hidden="true">{asking}</span>}
+      </button>
+    </Tooltip>
+  );
+  const chat = (
+    <Tooltip label={chatOpen ? 'Chat' : 'Chat · only you'} side="bottom">
+      <CallTopButton icon="chat" word={phone ? undefined : 'Chat'} label={side.unread && !chatOpen ? `Chat, ${side.unread} new` : 'Chat'} on={chatOpen} badge={side.unread}
+        data-side="chat" aria-keyshortcuts="C" onClick={() => side.toggle('chat')} />
+    </Tooltip>
+  );
+  if (phone) {
+    return (
+      <header className="ic-top is-phone">
+        <span className="ttl">{title}</span>
+        <div className="nz">{sign}</div>
+        {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
+        <div className="end">{chat}{faces}</div>
+      </header>
+    );
+  }
+  const boardButton = (more: { onClick?: () => void; onPointerEnter?: (() => void) | undefined }) => (
+    <CallTopButton icon="presentation" word="Board" label="Board" on={board?.on} aria-keyshortcuts="O" {...more} />
+  );
   return (
     <header className="ic-top">
       <span className="ttl">{title}</span>
       <span className="ac-time clock">{clock(elapsed)}</span>
-      {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       <span className="vr v1" />
       <div className="nz">{sign}</div>
+      <Shield screens={screens} />
+      {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       {swap}
       <div className="end">
-        <AnimatePresence initial={false}>
-          {custom && (
-            <motion.span key="reset" initial={{ opacity: 0, x: 6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={UI}>
-              <Tooltip label="Back to the call’s layout" side="bottom">
-                <button type="button" className="ic-reset" aria-label="Reset my view" onClick={onReset}><Icon name="reset" size={15} /><span className="rtxt">Reset my view</span></button>
-              </Tooltip>
-            </motion.span>
-          )}
-        </AnimatePresence>
         {view}
-        <Tooltip label="A private recap of what you missed" side="bottom">
-          <button type="button" className="ac-btn is-secondary is-sm ic-catch" onClick={onCatchUp}><Icon name="history" size={16} /><span className="catchtxt">Catch up</span></button>
-        </Tooltip>
-        <Shield screens={screens} />
-        <Tooltip label={asking ? `${asking} asking to join` : 'People in this call'} side="bottom">
-          <button type="button" className={cn('ic-faces', peopleOpen && 'is-on')} aria-label={label} onClick={onPeople}>
-            <Faces people={people} size={26} max={6} /><span className="n">{people.length}</span>
-            {asking > 0 && <span className="badge" aria-hidden="true">{asking}</span>}
-          </button>
-        </Tooltip>
+        <CallTopGroup label="Just for you">
+          {board && (board.menu ? (
+            <BoardMenu open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu?.onClose(); }} tip={BOARD_TIP}
+              anchor={boardButton({ onPointerEnter: board.menu.reach })} {...board.menu.content} />
+          ) : <Tooltip label={BOARD_TIP} side="bottom">{boardButton({ onClick: board.onPress })}</Tooltip>)}
+          <Tooltip label={WORKSPACE_TIP} side="bottom">
+            <CallTopButton icon="folderOpen" word="Workspace" label={!workspace.on && workspace.count > 0 ? `Workspace, ${workspace.count} in this call` : 'Workspace'}
+              on={workspace.on} badge={workspace.count} aria-keyshortcuts="W" onClick={workspace.onPress} />
+          </Tooltip>
+          <CallTopRule />
+          <Tooltip label={notesOpen ? 'Notes' : 'Notes · only you'} side="bottom">
+            <CallTopButton icon="notesPen" word="Notes" label="Notes" on={notesOpen} data-side="notes" onClick={() => side.toggle('notes')} />
+          </Tooltip>
+          {chat}
+          <CallTopRule />
+          {faces}
+        </CallTopGroup>
       </div>
     </header>
   );
@@ -78,7 +126,7 @@ function Shield({ screens }: { screens: boolean }) {
   const hide = () => { if (later.current) clearTimeout(later.current); later.current = setTimeout(() => { if (!pinned.current) setOpen(false); }, 160); };
   const verified = trust?.tee === 'dstack' && trust.bound;
   return (
-    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="end" label="Confidential compute" className="ic-seal" takeFocus={false}
+    <Popover open={open} onOpenChange={(o) => { pinned.current = o; setOpen(o); }} side="bottom" align="start" label="Confidential compute" className="ic-seal" takeFocus={false}
       anchor={(
         <button type="button" className={cn('ic-sicon', open && 'is-on')} aria-label={verified ? 'Confidential compute, verified' : 'Confidential compute'}
           onPointerEnter={(e) => { if (e.pointerType !== 'touch') show(); }} onPointerLeave={hide} onFocus={show} onBlur={hide}>

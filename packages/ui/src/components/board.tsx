@@ -1041,11 +1041,13 @@ export function BoardMenuBody({ inRoom = false, recents, access, busy = false, o
  * hover, as a dock button's does. `inRoom` says it's only for this room, and leaves the saved boards out. `busy`: something
  * chosen is on its way, so nothing else can be.
  */
-export function BoardMenu({ open, onOpenChange, anchor, tip, className, ...content }: BoardMenuContent & {
-  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode; className?: string | undefined;
+export function BoardMenu({ open, onOpenChange, anchor, tip, side = 'bottom', align = 'end', className, ...content }: BoardMenuContent & {
+  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode;
+  /** Where it opens from its button: under Board at the top right of the call. */
+  side?: 'top' | 'bottom' | undefined; align?: 'start' | 'center' | 'end' | undefined; className?: string | undefined;
 }) {
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="top" align="center" label="Open a board" className={cn('bl', content.busy && 'is-busy', className)}>
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side={side} align={align} label="Open a board" className={cn('bl', content.busy && 'is-busy', className)}>
       <BoardMenuBody {...content} />
     </Popover>
   );

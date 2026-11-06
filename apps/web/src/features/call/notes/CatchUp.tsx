@@ -13,7 +13,7 @@ import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel } from '~/lib/capture';
 import { spokenName } from '~/lib/people';
 import { hm, hms } from '~/lib/time';
-import { useDraft, type Draft } from '../layout/PanelHost';
+import { useDraft, type Draft } from '../layout/side';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 

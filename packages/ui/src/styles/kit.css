@@ -131,7 +131,9 @@
 .ac-dock-btn { position: relative; display: inline-grid; place-items: center; flex: none; line-height: 0; width: 42px; height: 42px; border: 0; border-radius: 12px; background: transparent; color: var(--stage-ink); cursor: pointer; transition: background-color var(--duration-1); }
 .ac-dock-btn:hover { background: rgba(255, 255, 255, .08); }
 .ac-dock-btn.is-off { background: var(--stage-ink); color: var(--stage); }
-.ac-dock-btn.is-on { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
+.ac-dock-btn.is-on { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+/* The one control the dock names, Share: its icon and its word. */
+.ac-dock-btn.has-word { display: inline-flex; gap: 8px; width: auto; padding: 0 15px 0 12px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; }
 .ac-dock-btn[disabled] { opacity: .5; pointer-events: none; }
 .ac-dock-btn .badge { position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--speak); color: var(--stage); font: 700 10px/16px var(--font-sans); text-align: center; }
 /* A device that can't work right now: the stage's caution, ringed in the button's own colour. */

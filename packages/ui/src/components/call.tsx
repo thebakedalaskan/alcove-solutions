@@ -1,4 +1,7 @@
-/* The call stage, always night: tiles, the dock, captions, pointers on a share, and how loud someone is for you. */
+/*
+ * The call stage, always night: tiles, the dock and More, what's yours at the top right, captions, pointers on a share, and
+ * how loud someone is for you.
+ */
 import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
@@ -59,17 +62,19 @@ export function CallDock({ children, label = 'Call controls', tucked = false, cl
 }
 
 /**
- * One dock control. `off`: a switched-off device turns solid. `on`: an open panel or a running share.
- * `alert`: a device that can't work right now (blocked or unplugged) gets a caution mark; say why in the label.
+ * One dock control. `off`: a switched-off device turns solid. `on`: something of yours running, such as a share, or what it
+ * opens, open. `alert`: a device that can't work right now (blocked or unplugged) gets a caution mark; say why in the label.
+ * `word` is said beside the icon, for the one control the dock names (Share); on a phone it's the icon alone.
  * `tip` shows above it on hover and focus, in place of the browser's own title.
  */
 export const DockButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
-  icon: IconName; label: string; off?: boolean; on?: boolean; alert?: boolean; badge?: number; tip?: ReactNode;
-}>(function DockButton({ icon, label, off = false, on = false, alert = false, badge = 0, tip, className, type = 'button', ...rest }, ref) {
+  icon: IconName; label: string; off?: boolean; on?: boolean; alert?: boolean; badge?: number; tip?: ReactNode; word?: string | undefined;
+}>(function DockButton({ icon, label, off = false, on = false, alert = false, badge = 0, tip, word, className, type = 'button', ...rest }, ref) {
   const button = (
     <button ref={ref} type={type} aria-label={label} title={tip ? undefined : label} aria-pressed={off ? false : on || undefined}
-      className={cn('ac-dock-btn', off && 'is-off', on && 'is-on', className)} {...rest}>
-      <Icon name={icon} size={20} />
+      className={cn('ac-dock-btn', off && 'is-off', on && 'is-on', word && 'has-word', className)} {...rest}>
+      <Icon name={icon} size={word ? 19 : 20} />
+      {word && <span className="w" aria-hidden="true">{word}</span>}
       {badge > 0 && <span className="badge">{badge}</span>}
       {alert && <span className="alert" aria-hidden="true" />}
     </button>
@@ -99,6 +104,45 @@ export const DockWords = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes
 /** Leave: the last item in the dock and its only text button. Where a dock has no room for its word, the word is hidden only from sight, so it's still Leave's name. */
 export const DockLeave = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(function DockLeave({ className, children = 'Leave', type = 'button', ...rest }, ref) {
   return <button ref={ref} type={type} className={cn('ac-dock-leave', className)} {...rest}><Icon name="signOut" size={18} /><span className="lt">{children}</span></button>;
+});
+
+/**
+ * What's yours at the top right of the call: one group of buttons, each lit while what it opens is open, and pressed again
+ * to put it away, with a hairline between kinds (`CallTopRule`). Only your screen changes.
+ */
+export const CallTopGroup = ({ label, children, className }: { label: string; children: ReactNode; className?: string | undefined }) => (
+  <div className={cn('ic-yours', className)} role="group" aria-label={label}>{children}</div>
+);
+export const CallTopRule = () => <span className="ic-ysep" aria-hidden="true" />;
+
+/**
+ * One of them: an icon and its word, which goes where there's no room for it (the label still says it), and a count of
+ * what's new while it's closed. `on`: what it opens is open.
+ */
+export const CallTopButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
+  icon: IconName; label: string; word?: string | undefined; on?: boolean | undefined; badge?: number | undefined;
+}>(function CallTopButton({ icon, label, word, on = false, badge = 0, className, type = 'button', ...rest }, ref) {
+  return (
+    <button ref={ref} type={type} aria-label={label} aria-pressed={on} className={cn('ic-yb', word && 'has-word', on && 'is-on', className)} {...rest}>
+      <Icon name={icon} size={18} />
+      {word && <span className="yl" aria-hidden="true">{word}</span>}
+      {badge > 0 && !on && <span className="badge" aria-hidden="true">{badge}</span>}
+    </button>
+  );
+});
+
+/** More's grid, on a phone: what sits at the top right on a wider screen, as tiles a thumb can reach. */
+export const CallMoreGrid = ({ children }: { children: ReactNode }) => <div className="ic-mgrid">{children}</div>;
+export const CallMoreTile = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
+  icon: IconName; word: string; label?: string | undefined; badge?: number | undefined;
+}>(function CallMoreTile({ icon, word, label, badge = 0, className, type = 'button', ...rest }, ref) {
+  return (
+    <button ref={ref} type={type} aria-label={label ?? word} className={cn('ic-mg', className)} {...rest}>
+      <Icon name={icon} size={22} />
+      <span aria-hidden="true">{word}</span>
+      {badge > 0 && <span className="badge" aria-hidden="true">{badge}</span>}
+    </button>
+  );
 });
 
 /** A live caption. Translated lines carry a language tag and keep the original underneath. */

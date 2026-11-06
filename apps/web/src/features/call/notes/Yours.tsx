@@ -1,11 +1,11 @@
 /*
- * Your own notes in a call: the panel's Yours view and "mark this" from anywhere in the call. They're your account's, on
- * the call's note, so nothing here is for someone with only the link. Nothing goes into the call or to anyone's screen:
- * they're read from the server when the view opens, and each change answers with all of them. The draft lives here, so
- * moving around the panel neither loses it nor carries it anywhere else.
+ * Your own notes in a call: Yours, at the foot of the Notes tab, and "mark this" from anywhere in the call. They're your
+ * account's, on the call's note, so nothing here is for someone with only the link. Nothing goes into the call or to anyone's
+ * screen: they're read from the server while the notes show, and each change answers with all of them. The draft lives here,
+ * so moving around your side neither loses it nor carries it anywhere else.
  */
 import { errorMessage, type CallAnswer, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type TranscriptMoment } from '@alcove/api';
-import { Button, EmptyState, Icon, Scope, useToast } from '@alcove/ui';
+import { Icon, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { OwnComposer, OwnEntries } from '~/features/personal/parts';
 import { log } from '~/lib/log';
@@ -34,7 +34,7 @@ export interface OwnInCall {
 }
 
 /**
- * `showing`: the Yours view is open. `line`: the newest line of the transcript, which can fill in a moment you marked.
+ * `showing`: the notes are showing, with Yours at their foot. `line`: the newest line of the transcript, which can fill in a moment you marked.
  * `place`: the part of the call you're in, which decides what your bookmarks may open: they're read again when it changes.
  */
 export function useOwnInCall(session: CallSession, o: { role: CallState['role']; noteId: string | null; showing: boolean; line: string | undefined; place: string | null; onOpen: () => void }): OwnInCall {
@@ -87,31 +87,33 @@ export function useOwnInCall(session: CallSession, o: { role: CallState['role'];
 /** What says a bookmark doesn't open from here, in a call. */
 const away = (reach: 'later' | 'none') => (reach === 'later' ? 'Said somewhere you aren’t now. It opens when you’re back there, and in the notes after the call.' : 'Nothing’s transcribed at that moment.');
 
-export function YoursView({ own, state, me, onOpen }: { own: OwnInCall; state: CallState; me: string | undefined; onOpen: (e: TranscriptMoment) => void }) {
+/**
+ * Yours, at the foot of the notes: what you wrote, marked and kept, for you alone, and a line to write more. `shown` counts the
+ * times something asked to see it (the toast after marking a moment), and brings it into view each time.
+ */
+export function Yours({ own, state, me, shown, onOpen }: { own: OwnInCall; state: CallState; me: string | undefined; shown: number; onOpen: (e: TranscriptMoment) => void }) {
   const times = callTimes(state.startedAt);
   const noNote = state.notes.noteId === null;
+  const part = useRef<HTMLElement>(null);
+  // Only the notes' own scroll moves: the call around it never scrolls.
+  useEffect(() => {
+    const el = part.current;
+    const box = el?.closest('.ic-scroll');
+    if (shown > 0 && el && box) box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+  }, [shown]);
   return (
-    <>
-      <div className="own-head">
-        <span className="t">Your notes</span>
-        <Scope>Only you</Scope>
-        <Button size="sm" variant="secondary" icon="bookmark" disabled={noNote} onClick={() => own.mark()}>Mark this</Button>
-      </div>
-      <div className="ic-scroll ic-pad">
-        {noNote ? (
-          <EmptyState title="Notes aren’t on" className="ic-empty">Your own notes stay beside the call’s, so they start when notes do.</EmptyState>
-        ) : own.entries && own.entries.length > 0 ? (
+    <section ref={part} className="ic-own" aria-label="Yours, only you">
+      <div className="ic-sh"><span className="ac-eyebrow">Yours</span><span className="only"><Icon name="lock" size={13} />Only you</span></div>
+      {noNote ? <p className="ic-quiet">Your own notes stay beside the call’s, so they start when notes do.</p>
+        : own.entries && own.entries.length > 0 ? (
           <OwnEntries entries={own.entries} me={me} actions={own} away={away} moment={(m) => (
             <>
               {m.line && <Moments evidence={[{ kind: 'transcript', lineId: m.line.id, said: m.at }]} times={times} onOpen={onOpen} />}
               {m.room && <span className="own-room"><Icon name="door" size={12} />{m.room.name}</span>}
             </>
           )} />
-        ) : own.entries && (
-          <EmptyState title="Nothing here yet" className="ic-empty">Write something for yourself, mark a moment, or keep an answer. After the call they’re beside its notes, and nobody else can read them.</EmptyState>
-        )}
-      </div>
-      {!noNote && <div className="ic-foot"><OwnComposer value={own.draft} onChange={own.setDraft} onSend={own.write} busy={own.busy} /></div>}
-    </>
+        ) : own.entries && <p className="ic-quiet">Write something for yourself, mark a moment, or keep an answer. After the call they’re beside its notes, and nobody else can read them.</p>}
+      {!noNote && <OwnComposer value={own.draft} onChange={own.setDraft} onSend={own.write} busy={own.busy} said />}
+    </section>
   );
 }
