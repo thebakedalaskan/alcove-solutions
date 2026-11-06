@@ -1,0 +1,215 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-06T15:30:00Z"
+ },
+ "title": "The call, rethought",
+ "launch": {
+  "view": "canvas",
+  "page": "idea"
+ },
+ "pages": [
+  {
+   "id": "idea",
+   "name": "The idea"
+  },
+  {
+   "id": "journeys",
+   "name": "Every journey"
+  },
+  {
+   "id": "compare",
+   "name": "Before and after"
+  },
+  {
+   "id": "parts",
+   "name": "Parts"
+  }
+ ],
+ "boards": {
+  "Idea.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1680,
+   "h": 1340,
+   "title": "The idea",
+   "page": "idea"
+  },
+  "Main.dc.html": {
+   "x": 1760,
+   "y": 0,
+   "w": 1520,
+   "h": 1250,
+   "title": "Play the call",
+   "page": "idea",
+   "is_interactive": true
+  },
+  "Before.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1616,
+   "h": 5040,
+   "title": "Before and after",
+   "page": "compare"
+  },
+  "Where.dc.html": {
+   "x": 1696,
+   "y": 0,
+   "w": 1520,
+   "h": 2450,
+   "title": "Where everything went",
+   "page": "compare"
+  },
+  "Call.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 900,
+   "title": "The call, one moment at a time",
+   "page": "parts",
+   "is_interactive": true
+  },
+  "Thing.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1100,
+   "h": 690,
+   "title": "What’s shared, inside its frame",
+   "page": "parts"
+  },
+  "Faces.dc.html": {
+   "x": 2700,
+   "y": 0,
+   "w": 1000,
+   "h": 420,
+   "title": "People in the arch",
+   "page": "parts"
+  },
+  "Strip.dc.html": {
+   "x": 0,
+   "y": 1020,
+   "w": 4668,
+   "h": 820,
+   "title": "A journey, step by step",
+   "page": "parts"
+  },
+  "Sizes.dc.html": {
+   "x": 0,
+   "y": 6690,
+   "w": 1554,
+   "h": 1350,
+   "title": "One moment, at every size",
+   "page": "journeys"
+  },
+  "J-ws.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 4668,
+   "h": 820,
+   "title": "1 · Open the workspace, then present it",
+   "page": "journeys"
+  },
+  "J-board.dc.html": {
+   "x": 0,
+   "y": 940,
+   "w": 5432,
+   "h": 820,
+   "title": "2 · Open a board, then present it",
+   "page": "journeys"
+  },
+  "J-watch.dc.html": {
+   "x": 0,
+   "y": 1880,
+   "w": 4668,
+   "h": 820,
+   "title": "3 · When someone else presents",
+   "page": "journeys"
+  },
+  "J-screen.dc.html": {
+   "x": 0,
+   "y": 2820,
+   "w": 3904,
+   "h": 820,
+   "title": "4 · Share your screen",
+   "page": "journeys"
+  },
+  "J-notes.dc.html": {
+   "x": 0,
+   "y": 3760,
+   "w": 4668,
+   "h": 820,
+   "title": "5 · Notes, the transcript and chat, apart",
+   "page": "journeys"
+  },
+  "J-more.dc.html": {
+   "x": 0,
+   "y": 4700,
+   "w": 4668,
+   "h": 820,
+   "title": "6 · Everything else",
+   "page": "journeys"
+  },
+  "J-phone.dc.html": {
+   "x": 0,
+   "y": 5640,
+   "w": 1848,
+   "h": 930,
+   "title": "7 · On a phone",
+   "page": "journeys"
+  }
+ },
+ "order": [
+  "Idea.dc.html",
+  "Main.dc.html",
+  "J-ws.dc.html",
+  "J-board.dc.html",
+  "J-watch.dc.html",
+  "J-screen.dc.html",
+  "J-notes.dc.html",
+  "J-more.dc.html",
+  "J-phone.dc.html",
+  "Sizes.dc.html",
+  "Before.dc.html",
+  "Where.dc.html",
+  "Call.dc.html",
+  "Thing.dc.html",
+  "Faces.dc.html",
+  "Strip.dc.html"
+ ],
+ "notes": {
+  "idea-title": {
+   "x": 0,
+   "y": -300,
+   "text": "The call, rethought",
+   "kind": "title1",
+   "maxW": 3280,
+   "page": "idea"
+  },
+  "j-title": {
+   "x": 0,
+   "y": -300,
+   "text": "Every journey, step by step",
+   "kind": "title1",
+   "maxW": 5432,
+   "page": "journeys"
+  },
+  "c-title": {
+   "x": 0,
+   "y": -300,
+   "text": "Today, and what changes",
+   "kind": "title1",
+   "maxW": 3216,
+   "page": "compare"
+  },
+  "p-title": {
+   "x": 0,
+   "y": -300,
+   "text": "Parts",
+   "kind": "title1",
+   "maxW": 3700,
+   "page": "parts"
+  }
+ },
+ "designSystems": []
+}
