@@ -2207,10 +2207,13 @@ function nesting(client: number) {
     }
   };
 }
-/** A: one item. R: a run after it. T: `n` more, each after A, each naming something further along R as what's to its right. */
+/**
+ * A: one item. R: a run after it. T: `n` more, each after A, each naming something further along R as what's to its right. R and
+ * T are browsers' clients, past the server's own, and small enough to take a byte each.
+ */
 function conflicting(n: number): Uint8Array {
-  const R = 9;
-  const T = 8;
+  const R = 100;
+  const T = 99;
   const run: Struct[] = [item({ root: 'attack', text: 'a' })];
   for (let i = 1; i <= n; i++) run.push(item({ origin: [R, i - 1], text: 'r' }));
   const after: Struct[] = [];

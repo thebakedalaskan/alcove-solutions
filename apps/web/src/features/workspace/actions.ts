@@ -57,13 +57,13 @@ export function useTreeActions(input: ActionsInput): TreeActions {
       if (open?.id === id) { setTitle(open.doc, name); return; }
       await withDocument(s().workspaceId, id, s().owner, s().pass, (doc) => { setTitle(doc, name); });
     };
+    /** One press, one document or board, however quick the second press. */
     let making = false;
     const place = (id: string, to: ItemPlace) => s().change({ kind: 'move', id, to }, () => s().changes.move.mutateAsync({ id, to })).catch(failed);
     const restored = (id: string) => s().change({ kind: 'restore', id }, () => s().changes.restore.mutateAsync(id));
 
     return {
       newDocument: (parent) => {
-        // One press, one document, however quick the second press.
         if (making) return;
         making = true;
         s().changes.create.mutateAsync({ kind: 'document', parent }).then(({ id }) => {
@@ -86,6 +86,17 @@ export function useTreeActions(input: ActionsInput): TreeActions {
           s().go({ kind: 'document', id });
           return uploadInto({ workspaceId: s().workspaceId, documentId: id, owner: s().owner, pass: s().pass }, files, name || null);
         }).catch(failed).finally(() => { making = false; });
+      },
+      newBoard: (parent, how) => {
+        if (making) return Promise.resolve(null);
+        making = true;
+        const name = 'Untitled board';
+        return s().changes.create.mutateAsync({ kind: 'board', name, parent }).then(({ id }) => {
+          arrived(made(id, 'board', name, parent), { parent });
+          if (parent) s().openFolders([parent]);
+          if (!how?.stay) s().go({ kind: 'document', id });
+          return id;
+        }, (e: unknown) => { failed(e); return null; }).finally(() => { making = false; });
       },
       newFolder: (parent, name) => {
         s().changes.create.mutateAsync({ kind: 'folder', name, parent }).then(({ id }) => {

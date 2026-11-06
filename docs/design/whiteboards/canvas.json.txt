@@ -1,0 +1,332 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-04T20:30:00Z"
+ },
+ "title": "Whiteboards in a call",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 1040,
+   "title": "Play it \u00b7 in the main call",
+   "is_interactive": true
+  },
+  "Rooms.dc.html": {
+   "x": 1520,
+   "y": 0,
+   "w": 1440,
+   "h": 1040,
+   "title": "Play it \u00b7 in breakout rooms",
+   "is_interactive": true
+  },
+  "Sandbox.dc.html": {
+   "x": 0,
+   "y": 1460,
+   "w": 1440,
+   "h": 1032,
+   "title": "Use it \u00b7 a live board",
+   "is_interactive": true
+  },
+  "Anatomy.dc.html": {
+   "x": 1600,
+   "y": 1460,
+   "w": 1392,
+   "h": 1210,
+   "title": "Every part of the board"
+  },
+  "Compare.dc.html": {
+   "x": 0,
+   "y": 3000,
+   "w": 1520,
+   "h": 2914,
+   "title": "Side by side"
+  },
+  "Tools.dc.html": {
+   "x": 1600,
+   "y": 3000,
+   "w": 1520,
+   "h": 1540,
+   "title": "Every tool and object"
+  },
+  "Motion.dc.html": {
+   "x": 3200,
+   "y": 3000,
+   "w": 1520,
+   "h": 1046,
+   "title": "Every animation"
+  },
+  "States.dc.html": {
+   "x": 1600,
+   "y": 4660,
+   "w": 1920,
+   "h": 989,
+   "title": "Every other state"
+  },
+  "Strip.dc.html": {
+   "x": 0,
+   "y": 6380,
+   "w": 4096,
+   "h": 600,
+   "title": "Start a board"
+  },
+  "JTogether.dc.html": {
+   "x": 0,
+   "y": 7100,
+   "w": 4724,
+   "h": 600,
+   "title": "Work together"
+  },
+  "JHelp.dc.html": {
+   "x": 0,
+   "y": 7820,
+   "w": 3468,
+   "h": 600,
+   "title": "Let the call help"
+  },
+  "JRun.dc.html": {
+   "x": 0,
+   "y": 8540,
+   "w": 2840,
+   "h": 600,
+   "title": "Timer and votes"
+  },
+  "JPresent.dc.html": {
+   "x": 0,
+   "y": 9260,
+   "w": 2840,
+   "h": 600,
+   "title": "Present"
+  },
+  "JJoined.dc.html": {
+   "x": 0,
+   "y": 9980,
+   "w": 2840,
+   "h": 600,
+   "title": "When someone else starts it"
+  },
+  "JSaved.dc.html": {
+   "x": 0,
+   "y": 10700,
+   "w": 2212,
+   "h": 600,
+   "title": "Open a saved board"
+  },
+  "JAfter.dc.html": {
+   "x": 0,
+   "y": 11420,
+   "w": 3468,
+   "h": 600,
+   "title": "Close it, and after the call"
+  },
+  "RSetup.dc.html": {
+   "x": 0,
+   "y": 12560,
+   "w": 2840,
+   "h": 600,
+   "title": "Give rooms a board"
+  },
+  "RIn.dc.html": {
+   "x": 0,
+   "y": 13280,
+   "w": 4096,
+   "h": 600,
+   "title": "Inside a room"
+  },
+  "RNoBoard.dc.html": {
+   "x": 0,
+   "y": 14000,
+   "w": 2212,
+   "h": 600,
+   "title": "Start a board in a room"
+  },
+  "ROversee.dc.html": {
+   "x": 0,
+   "y": 14720,
+   "w": 1584,
+   "h": 600,
+   "title": "While rooms are open"
+  },
+  "RClose.dc.html": {
+   "x": 0,
+   "y": 15440,
+   "w": 2840,
+   "h": 600,
+   "title": "When rooms close"
+  },
+  "RShared.dc.html": {
+   "x": 0,
+   "y": 16160,
+   "w": 2840,
+   "h": 600,
+   "title": "One board for every room"
+  },
+  "RNotes.dc.html": {
+   "x": 0,
+   "y": 16880,
+   "w": 1584,
+   "h": 600,
+   "title": "In the notes"
+  },
+  "JPhone.dc.html": {
+   "x": 0,
+   "y": 18020,
+   "w": 1273,
+   "h": 800,
+   "title": "On a phone"
+  },
+  "JDark.dc.html": {
+   "x": 1360,
+   "y": 18020,
+   "w": 1584,
+   "h": 600,
+   "title": "In the dark"
+  },
+  "Scene.dc.html": {
+   "x": 0,
+   "y": 19240,
+   "w": 1280,
+   "h": 800,
+   "title": "The product, one moment at a time"
+  },
+  "Paper.dc.html": {
+   "x": 1360,
+   "y": 19240,
+   "w": 1114,
+   "h": 674,
+   "title": "The board"
+  },
+  "Sidebar.dc.html": {
+   "x": 2554,
+   "y": 19240,
+   "w": 272,
+   "h": 800,
+   "title": "Side panel"
+  },
+  "Faces.dc.html": {
+   "x": 2906,
+   "y": 19240,
+   "w": 1000,
+   "h": 820,
+   "title": "People in the arch"
+  },
+  "Icon.dc.html": {
+   "x": 3986,
+   "y": 19240,
+   "w": 1200,
+   "h": 1100,
+   "title": "Icons"
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Rooms.dc.html",
+  "Sandbox.dc.html",
+  "Anatomy.dc.html",
+  "Compare.dc.html",
+  "Tools.dc.html",
+  "Motion.dc.html",
+  "States.dc.html",
+  "Strip.dc.html",
+  "JTogether.dc.html",
+  "JHelp.dc.html",
+  "JRun.dc.html",
+  "JPresent.dc.html",
+  "JJoined.dc.html",
+  "JSaved.dc.html",
+  "JAfter.dc.html",
+  "RSetup.dc.html",
+  "RIn.dc.html",
+  "RNoBoard.dc.html",
+  "ROversee.dc.html",
+  "RClose.dc.html",
+  "RShared.dc.html",
+  "RNotes.dc.html",
+  "JPhone.dc.html",
+  "JDark.dc.html",
+  "Scene.dc.html",
+  "Paper.dc.html",
+  "Sidebar.dc.html",
+  "Faces.dc.html",
+  "Icon.dc.html"
+ ],
+ "notes": {
+  "play": {
+   "x": 0,
+   "y": -300,
+   "text": "Play the journeys",
+   "kind": "title1",
+   "maxW": 2960
+  },
+  "try": {
+   "x": 0,
+   "y": 1160,
+   "text": "Try the board",
+   "kind": "title1",
+   "maxW": 1440
+  },
+  "anat": {
+   "x": 1600,
+   "y": 1160,
+   "text": "The board, named",
+   "kind": "title1",
+   "maxW": 1392
+  },
+  "both": {
+   "x": 0,
+   "y": 2700,
+   "text": "Main call and rooms",
+   "kind": "title1",
+   "maxW": 1520
+  },
+  "tools": {
+   "x": 1600,
+   "y": 2700,
+   "text": "Tools and objects",
+   "kind": "title1",
+   "maxW": 1520
+  },
+  "move": {
+   "x": 3200,
+   "y": 2700,
+   "text": "How it moves",
+   "kind": "title1",
+   "maxW": 1520
+  },
+  "main": {
+   "x": 0,
+   "y": 6080,
+   "text": "In the main call, step by step",
+   "kind": "title1",
+   "maxW": 4724
+  },
+  "rooms": {
+   "x": 0,
+   "y": 12260,
+   "text": "In breakout rooms, step by step",
+   "kind": "title1",
+   "maxW": 4096
+  },
+  "else": {
+   "x": 0,
+   "y": 17720,
+   "text": "On a phone, and in the dark",
+   "kind": "title1",
+   "maxW": 2940
+  },
+  "blocks": {
+   "x": 0,
+   "y": 18940,
+   "text": "Building blocks",
+   "kind": "title1",
+   "maxW": 3992
+  }
+ },
+ "designSystems": []
+}

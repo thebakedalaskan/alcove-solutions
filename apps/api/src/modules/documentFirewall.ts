@@ -11,11 +11,12 @@
  * It can't catch everything: Yjs's conflict scan is quadratic in shapes that need the whole document to see. What's left is
  * for workers to contain (live/docPool.ts).
  */
+import { isServerClient } from '@alcove/api';
 import * as decoding from 'lib0/decoding';
 
 /** Why an update isn't something an honest client sends. It goes in logs, so it says what was wrong and nothing of what was in it. */
 export type Refusal =
-  | 'unreadable' | 'too-many-items' | 'too-many-deletes' | 'client-out-of-range' | 'client-repeated' | 'client-empty' | 'zero-length' | 'skip' | 'content'
+  | 'unreadable' | 'too-many-items' | 'too-many-deletes' | 'client-out-of-range' | 'client-repeated' | 'client-empty' | 'server-client' | 'zero-length' | 'skip' | 'content'
   | 'clock-out-of-range' | 'shared-origin' | 'too-deep' | 'waiting-for-ever' | 'trailing-bytes' | 'not-theirs' | 'gap' | 'unknown-reference' | 'unknown-delete';
 /**
  * What's too much, as opposed to what no honest client could send. A browser can't do anything about the second. Taking
@@ -24,17 +25,20 @@ export type Refusal =
 const TOO_MUCH: ReadonlySet<string> = new Set<Refusal>(['too-many-items', 'too-many-deletes', 'shared-origin', 'too-deep']);
 export const isTooMuch = (why: string): boolean => TOO_MUCH.has(why);
 
-/** What one update may hold, so what's read never costs more than this. */
-export interface Caps { items: number; sharedOrigin: number; nesting: number }
+/**
+ * What one update may hold, so what's read never costs more than this. `asServer`: whether it may hold structs written as the
+ * server's own clients (`SERVER_CLIENT`), which only what the server made or already holds can.
+ */
+export interface Caps { items: number; sharedOrigin: number; nesting: number; asServer: boolean }
 /**
  * What a browser's update may hold: as much as a document may, in `items`, so nothing fits in a document and not in an
  * update. Any number of clients, as what's waiting in a browser can have been written by any number of sessions, and each
  * of them brings an item. Items with the same left neighbour make Yjs's conflict scan quadratic, and a browser only writes
  * them by inserting again and again without the caret moving, so a thousand is far past anything typed.
  */
-export const browserCaps = (items: number): Caps => ({ items, sharedOrigin: 1024, nesting: 1024 });
+export const browserCaps = (items: number): Caps => ({ items, sharedOrigin: 1024, nesting: 1024, asServer: false });
 /** For what the server made or already holds: it's read to know its shape, not to judge it. */
-export const SERVER_CAPS: Caps = { items: Infinity, sharedOrigin: Infinity, nesting: Infinity };
+export const SERVER_CAPS: Caps = { items: Infinity, sharedOrigin: Infinity, nesting: Infinity, asServer: true };
 /**
  * How deep types may nest, whatever's in them. Deleting a type recurses into what's in it, in every browser, so this stays
  * well inside anyone's stack. Nothing written by hand comes within a hundredth of it.
@@ -283,6 +287,8 @@ function read(update: Uint8Array, caps: Caps): Inspection {
     if (items > caps.items) return refused('too-many-items');
     const client = decoding.readVarUint(d);
     if (client > MAX_CLIENT) return refused('client-out-of-range');
+    // Only the server writes as its own clients, and what it writes as one is fixed: anything else under one would say two things at one clock.
+    if (!caps.asServer && isServerClient(client)) return refused('server-client');
     if (seenClients.has(client)) return refused('client-repeated');
     seenClients.add(client);
     const r = readBlock(d, caps, count, client, origins);

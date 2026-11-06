@@ -12,8 +12,9 @@ const deleting = (name: string, open: boolean): WsPop => ({ open, onOpenChange: 
 /** What's in Trash, for someone who can change the workspace; `asking` has its Delete forever open. */
 const binned = (asking?: string): WsTrashItem[] => [
   { id: 'roadmap', name: 'Old roadmap', sub: `${first(PRIYA.name)}, yesterday · 29 days left` },
-  { id: 'research', name: 'Old research', sub: `${first(LENA.name)}, Monday · 28 days left`, folder: true },
-  { id: 'draft', name: 'Launch plan, first draft', sub: `${first(ART.name)}, Sunday · 27 days left` }
+  { id: 'research', name: 'Old research', sub: `${first(LENA.name)}, Monday · 28 days left`, kind: 'folder' as const },
+  { id: 'draft', name: 'Launch plan, first draft', sub: `${first(ART.name)}, Sunday · 27 days left` },
+  { id: 'retro', name: 'Launch retro', sub: `${first(PRIYA.name)}, Sunday · 27 days left`, kind: 'board' as const }
 ].map((t): WsTrashItem => ({ ...t, onOpen: did(`open ${t.name}`), onRestore: did(`restore ${t.name}`), onDelete: deleting(t.name, t.id === asking) }));
 
 const meta = {
@@ -30,5 +31,5 @@ export const ThreeThings: Story = {};
 /** Delete forever asks once, starting on Keep it. */
 export const DeleteAsks: Story = { args: { items: binned('roadmap') } };
 /** Someone who can only read: what's there, and nothing to press but opening it. */
-export const Reading: Story = { args: { items: binned().map((t): WsTrashItem => ({ id: t.id, name: t.name, sub: t.sub, folder: t.folder, onOpen: t.onOpen })) } };
+export const Reading: Story = { args: { items: binned().map((t): WsTrashItem => ({ id: t.id, name: t.name, sub: t.sub, kind: t.kind, onOpen: t.onOpen })) } };
 export const Empty: Story = { args: { items: [] } };

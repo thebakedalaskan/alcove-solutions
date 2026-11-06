@@ -1,0 +1,34 @@
+<!-- title: In the main call, and in a room -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="cp" data-theme="light" style="width: 1520px">
+<div class="cp-h"><span></span>
+<b><dc-import name="Faces" who="art" size="32" ring="transparent" hint-size="32px,35px"></dc-import><span>In the main call<small>Everyone in the call sees it</small></span></b>
+<b><dc-import name="Faces" who="priya" size="32" ring="transparent" hint-size="32px,35px"></dc-import><span>In a breakout room<small>Only that room sees it, until rooms close</small></span></b>
+</div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<div class="cp-r">
+<div><h3>{{r.t}}</h3><p>{{r.p}}</p></div>
+<div class="st-th"><div class="st-z"><dc-import name="Scene" node="{{r.a}}" hint-size="1280px,800px"></dc-import></div></div>
+<div class="st-th"><div class="st-z"><dc-import name="Scene" node="{{r.b}}" hint-size="1280px,800px"></dc-import></div></div>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1520,"height":3309}}'>
+var ROWS = [
+  { t: 'Who starts it', p: 'Anyone invited, with the Board button. In rooms, the organizer can also set one up for every room before they open.', a: 'open', b: 'rs1' },
+  { t: 'The menu', p: 'The same button and the same menu. In a room it says who will see the board.', a: 'open2', b: 'rn1' },
+  { t: 'When it opens', p: 'In the main call everyone is there at once. In a room you arrive with the board already open.', a: 'b0', b: 'ri1' },
+  { t: 'With a shared screen', p: 'The board and the screen sit side by side, with the same line between them as any share. What’s shared in a room stays in the room.', a: 'sc3', b: 'ri6' },
+  { t: 'At the top of the board', p: 'Sealed says who can see it. The pill says the room’s name and time, and turns amber near the end.', a: 'timer1', b: 'ri4' },
+  { t: 'The organizer', p: 'On the board with everyone, or watching rooms from the main room. A room’s board is only visible by joining it.', a: 'full', b: 'rl2' },
+  { t: 'When it’s over', p: 'A main board simply stays. Room boards come back and land side by side for everyone.', a: 'free', b: 'rc1b' },
+  { t: 'In the notes', p: 'The call’s note carries its board. Each room’s sub-note carries that room’s board.', a: 'note1', b: 'note2' }
+];
+class Component extends DCLogic {
+  renderVals() { return { rows: ROWS }; }
+}
+</script>

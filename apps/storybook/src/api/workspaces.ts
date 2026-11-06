@@ -5,15 +5,20 @@
  * this browser wrote: its session opens couldn't-save, with those words on the page, until they're copied, saved as a new
  * document or discarded. Files are kept in the world (`media`) and read back as the browser's own object URLs; a tag waits
  * in the world (`mentions`) until it's seen.
+ *
+ * A board starts empty, as the API makes one, and holds what the world's `boards` draws on it. Whoever the world has on it
+ * is on its awareness, as the server would say they are, with their pointer where the world puts it, and in the workspace's
+ * own list of who's here. Its `standing` opens it Reconnecting, Couldn't save, or taken from under you.
  */
 import {
-  AlcoveApiError, DOC_SEED, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
+  AlcoveApiError, DOC_SEED, randomClient, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
   type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice,
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
   type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceReadOptions, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage, newBlockId } from '@alcove/api/retire';
-import { Awareness } from 'y-protocols/awareness';
+import { NO_PRESENCE } from '@alcove/board';
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { COMMENTS } from '~/features/workspace/editor/names';
 import { setTitle } from '~/features/workspace/editor/title';
@@ -183,12 +188,24 @@ export function hereIn(id: string, here: WorkspaceHere[]): void {
 }
 
 const watching = new Set<LiveWorkspace>();
+/**
+ * Who's in a workspace now, as the server tells it: you, whoever the world has on its boards, each on one connection with the
+ * board they have open, and whoever a call says is here.
+ */
+function hereNow(id: string): WorkspaceHere[] {
+  const you: WorkspaceHere = { person: me(), connection: 'standin-you', callIdentity: null, document: null, block: null, typing: false, page: null, elsewhere: false, isMe: true };
+  const boards = treeOf(id).items.filter((i) => i.kind === 'board' && i.trashedAt === null);
+  return [you, ...boards.flatMap((b) => (current().boards[b.id]?.here ?? []).map(({ who }): WorkspaceHere => ({
+    person: who, connection: `standin-${b.id}-${who.id}`, callIdentity: null, document: b.id, block: null, typing: false, page: null, elsewhere: false, isMe: false
+  }))), ...(presence.get(id) ?? [])];
+}
+
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   constructor(private readonly id: string) {
-    super({ status: 'live', tree: structuredClone(treeFor(id)), here: presence.get(id) ?? [], mentions: mentionsIn(id) });
+    super({ status: 'live', tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) });
     watching.add(this);
   }
-  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: presence.get(id) ?? [], mentions: mentionsIn(id) })); }
+  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: hereNow(id), mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
     await pause(60);
@@ -292,6 +309,12 @@ export function removeMedia(id: string, documentId: string, mediaId: string, o: 
 }
 
 const docs = new Map<string, Y.Doc>();
+/** A document as a browser holds one: on a Yjs client of its own, never one of those only the API writes as. */
+function ownDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  doc.clientID = randomClient();
+  return doc;
+}
 const lineOf = (text: string): BlockJSON => ({ type: 'line', content: [{ type: 'text', text }] });
 /** The ID someone has in a workspace's documents, by their address. */
 const idIn = (workspace: string, email: string): string => { const lower = email.toLowerCase(); return idsIn(workspace, [lower])[lower] ?? ''; };
@@ -338,7 +361,11 @@ const SOMEONE_ELSE = 424242;
  * would be.
  */
 function documentOf(item: WorkspaceItem, workspace: string): Y.Doc {
-  const doc = new Y.Doc();
+  const doc = ownDoc();
+  if (item.kind === 'board') {
+    current().boards[item.id]?.draw?.(doc);
+    return doc;
+  }
   Y.applyUpdate(doc, DOC_SEED);
   if (item.kind !== 'document') return doc;
   setTitle(doc, item.name);
@@ -351,21 +378,64 @@ function documentOf(item: WorkspaceItem, workspace: string): Y.Doc {
   }
   return doc;
 }
+/** How a session opens: as the world's page or board says it stands. */
+function statusOf(item: WorkspaceItem): DocStatus {
+  const base: DocStatus = { status: 'saved', refused: null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: false };
+  const refused = current().pages[item.id]?.refused ?? null;
+  if (refused) return { ...base, status: 'failed', refused: refused.why, unsent: true };
+  const standing = item.kind === 'board' ? current().boards[item.id]?.standing : undefined;
+  if (standing === 'offline') return { ...base, status: 'offline', unsent: true };
+  if (standing === 'failed') return { ...base, status: 'failed', refused: 'too-large', unsent: true };
+  if (standing === 'gone') return { ...base, closed: 'access' };
+  return base;
+}
+
+/**
+ * How often someone else on a board moves their pointer a little, as a person reading does: a pointer that stays still for
+ * six seconds fades, and Awareness lets go of anyone quiet for thirty.
+ */
+const DRIFT_MS = 3_500;
+
+/** The people the world has on a board, on its awareness, as the server would stamp them: who they are, and where they point. */
+function othersOn(awareness: Awareness, item: WorkspaceItem): () => void {
+  const here = item.kind === 'board' ? current().boards[item.id]?.here ?? [] : [];
+  if (!here.length) return () => undefined;
+  let beat = 0;
+  const them = here.map(({ who, x, y }, i) => {
+    const theirs = new Awareness(ownDoc());
+    const point = () => { const d = ((beat + i) % 3) * 6; theirs.setLocalState({ ...NO_PRESENCE, at: { x: x + d, y: y + d / 2 }, user: { id: who.id, name: who.name } }); };
+    return { theirs, point };
+  });
+  const say = () => {
+    for (const { theirs, point } of them) {
+      point();
+      applyAwarenessUpdate(awareness, encodeAwarenessUpdate(theirs, [theirs.clientID]), 'standin');
+    }
+    beat += 1;
+  };
+  say();
+  const again = setInterval(say, DRIFT_MS);
+  return () => {
+    clearInterval(again);
+    for (const { theirs } of them) { theirs.destroy(); theirs.doc.destroy(); }
+  };
+}
+
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
   readonly ready: Promise<void>;
   private readonly id: string;
+  private readonly leave: () => void;
   constructor(item: WorkspaceItem, workspace: string) {
-    const page = current().pages[item.id];
-    const refused = page?.refused ?? null;
-    super({ status: refused ? 'failed' : 'saved', refused: refused?.why ?? null, role: item.role, trashed: item.trashedAt !== null, closed: null, unsent: refused !== null });
+    super(statusOf(item));
     this.id = item.id;
     const known = docs.get(item.id);
     this.doc = known ?? documentOf(item, workspace);
     if (!known) docs.set(item.id, this.doc);
     this.awareness = new Awareness(this.doc);
-    const sending = sendingIn(page?.blocks ?? []);
+    this.leave = othersOn(this.awareness, item);
+    const sending = sendingIn(current().pages[item.id]?.blocks ?? []);
     if (sending.length > 0) this.awareness.states.set(SOMEONE_ELSE, { uploading: sending });
     this.ready = Promise.resolve();
   }
@@ -386,7 +456,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.close();
     return Promise.resolve();
   }
-  override close(): void { this.awareness.destroy(); super.close(); }
+  override close(): void { this.leave(); this.awareness.destroy(); super.close(); }
 }
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
@@ -399,7 +469,7 @@ export function openDocument(id: string, documentId: string): DocSession {
  */
 export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): { id: string } {
   const made = createItem(id, input);
-  const doc = new Y.Doc();
+  const doc = ownDoc();
   if (input.kind === 'document') Y.applyUpdate(doc, DOC_SEED);
   Y.applyUpdate(doc, input.state);
   if (input.kind === 'document' && input.name) setTitle(doc, input.name);

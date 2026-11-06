@@ -23,4 +23,5 @@ export * from './components/settings';
 export * from './components/guidance';
 export * from './components/workspace';
 export * from './components/qr';
+export * from './components/board';
 export * from './components/flow';

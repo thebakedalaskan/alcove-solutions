@@ -15,6 +15,7 @@ import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, qk } from '~/lib/queries';
 import { useTreeActions } from './actions';
+import { BoardPane } from './BoardPane';
 import { useLaidOver } from './changes';
 import { WsContext, type FolderDraft, type OpenPage, type Ws, type WorkspacePlace, type WorkspaceProps } from './context';
 import { DocumentPane } from './DocumentPane';
@@ -92,14 +93,14 @@ function useToasts() {
 }
 
 /** What just arrived in the list or moved in it, for everyone, glows. */
-function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
+function useGlow(sent: WorkspaceTree | null, mode: WorkspaceProps['mode']): ReadonlySet<string> {
   const [glowing, setGlowing] = useState<ReadonlySet<string>>(new Set());
   const before = useRef<Tree | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
   useEffect(() => { const t = timers.current; return () => { t.forEach(clearTimeout); }; }, []);
   useEffect(() => {
     if (!sent) return;
-    const now = treeOf(sent.items);
+    const now = treeOf(sent.items, mode === 'page');
     const was = before.current;
     before.current = now;
     if (!was) return;
@@ -111,7 +112,7 @@ function useGlow(sent: WorkspaceTree | null): ReadonlySet<string> {
       setGlowing((on) => new Set([...on].filter((id) => !lit.includes(id))));
     }, GLOW_MS);
     timers.current.add(t);
-  }, [sent]);
+  }, [sent, mode]);
   return glowing;
 }
 
@@ -177,10 +178,10 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const owner = session?.ownerId ?? null;
   const me = session?.user ?? null;
   const { items, change } = useLaidOver(view.tree);
-  const tree = useMemo(() => treeOf(items), [items]);
+  const tree = useMemo(() => treeOf(items, mode === 'page'), [items, mode]);
   const { toasts, say: sayHere } = useToasts();
   const say = call?.say ?? sayHere;
-  const glowing = useGlow(view.tree);
+  const glowing = useGlow(view.tree, mode);
   const { open, setOpen, openAll } = useFolders(owner, workspaceId);
   const [draft, setDraft] = useState<FolderDraft | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -194,8 +195,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const openDoc = useRef<Ws['openDoc']['current']>(null);
   const page = useRef<OpenPage | null>(null);
   /* What the list last called each document, for a copy of someone's words in one that's gone. */
-  const known = useRef(new Map<string, string>());
-  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, nameOf(it)); }, [items]);
+  const known = useRef(new Map<string, { name: string; board: boolean }>());
+  useEffect(() => { for (const it of items) if (it.kind !== 'folder') known.current.set(it.id, { name: nameOf(it), board: it.kind === 'board' }); }, [items]);
   /* Its pictures, read for whatever shows them and let go of with it; an upload that outlives the page says how it went here. */
   const pictures = useMemo(() => new Pictures(workspaceId, pass), [workspaceId, pass]);
   useEffect(() => () => pictures.close(), [pictures]);
@@ -356,21 +357,23 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /*
    * N and ⇧N make something outside any folder, and sleep while you're typing, and while a new document is opening: what's
-   * typed then was meant for its title. ⌘\ shows or hides the list.
+   * typed then was meant for its title. On a board, N is the board's: a sticky, as the blank board says. ⌘\ shows or hides
+   * the list.
    */
+  const onBoard = item?.kind === 'board';
   const asleep = call?.closed ?? false;
   useEffect(() => {
     if (asleep) return;
     const keys = (e: KeyboardEvent) => {
       if (withMod(e) && e.key === '\\') { e.preventDefault(); toggleList(); return; }
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || overlayOpen() || !canChange || onBoard || justMade.current !== null || e.key.toLowerCase() !== 'n') return;
       e.preventDefault();
       if (e.shiftKey) newFolder();
       else actions.newDocument(null);
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
-  }, [actions, canChange, newFolder, toggleList, asleep]);
+  }, [actions, canChange, onBoard, newFolder, toggleList, asleep]);
 
   const find = useFindKeys(asleep, call?.finding ?? false, call?.onFinding);
   useWordsFollow(workspaceId, pass, view);
@@ -390,7 +393,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     return (
       <>
         <WsPane page={isPage}>
-          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
+          <WsDoc>{documentId === null ? <WsCantOpen what="workspace" action={back} /> : <KeptHere workspaceId={workspaceId} documentId={documentId} what={known.current.get(documentId)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say} back={back} />}</WsDoc>
         </WsPane>
         {!call && <WsToasts toasts={toasts} />}
       </>
@@ -409,11 +412,12 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
      <LiveHostContext value={host}>
       <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
         <List drags={{ drag, arm, ended }} />
-        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
+        {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
             {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
-            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} owner={owner} pass={pass} say={say}
-              copyTo={canChange && owner !== null ? { workspaceId, name: () => known.current.get(at.id) ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
+            {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
+            <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
+              copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
               back={<Button size="sm" onClick={() => go({ kind: 'home' }, { replace: true })}>Back to {spaceName}</Button>} />
           </WsDoc>
         ) : (

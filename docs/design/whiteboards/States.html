@@ -1,0 +1,30 @@
+<!-- title: Every other state -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="sg" data-theme="light">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+<div class="sg-c">
+<div class="st-th"><div class="st-z"><dc-import name="Scene" node="{{r.n}}" hint-size="1280px,800px"></dc-import></div></div>
+<h3>{{r.t}}</h3><p>{{r.p}}</p>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1920,"height":1432}}'>
+var ROWS = [
+  { n: 'blank', t: 'A blank board', p: 'One line says how to start, and fades after the first sticky.' },
+  { n: 'reconnect', t: 'Reconnecting', p: 'You keep working. What you add goes up when the connection comes back, once, with nothing lost or doubled.' },
+  { n: 'failed', t: 'Couldn’t save', p: 'Says how many changes are only on this screen, and retries on its own as well.' },
+  { n: 'viewonly', t: 'View only', p: 'For anyone given view access. The tools go away, and they can still look round, follow people and talk.' },
+  { n: 'flowNo', t: 'A board you can’t open', p: 'If the organizer opens without you, you never see its name or what’s on it. You can ask for access.' },
+  { n: 'shareIn', t: 'A share starts while you’re on the board', p: 'It comes in beside the board and takes the top of the column. Nothing you’re doing stops.' },
+  { n: 'notesOpen', t: 'With notes or chat open', p: 'The panel slides in as it does today, and the board makes room.' },
+  { n: 'capt', t: 'With captions on', p: 'Captions sit under the board, the same as under anything else on the stage.' },
+  { n: 'ptile', t: 'Faces first', p: 'Anyone can drop the board to a live tile and keep faces big. Only their own view changes.' }
+];
+class Component extends DCLogic {
+  renderVals() { return { rows: ROWS }; }
+}
+</script>

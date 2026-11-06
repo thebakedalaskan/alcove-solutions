@@ -1,10 +1,11 @@
 /* Popovers and menus: what they sit on, one menu for everything, and each menu's rows in the canvas's words. */
 import { Popover as RPopover } from 'radix-ui';
-import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, type AvatarPerson } from '../people';
 import { Kbd } from '../primitives';
+import { useSettledPress } from '../settle';
 import { canTakeFocus, focusedNow } from './shared';
 
 /** A place on the screen, in window coordinates: where someone right-clicked. */
@@ -34,7 +35,9 @@ function edges(): { top: number; right: number; bottom: number; left: number } {
  * over 140 ms, closes on Esc or a click outside, and puts focus back where it was, or leaves it where someone clicked.
  * On a phone it's a sheet at the bottom of the window. `takeFocus={false}` for one that opens while someone's typing.
  */
-export function WsPopover({ open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+export function WsPopover({ id, open, onOpenChange, anchor, at, label, side = 'bottom', align = 'start', takeFocus = true, className, children }: {
+  /** For what says it controls this, such as a comment's pin, when that isn't `anchor`. */
+  id?: string | undefined;
   open: boolean; onOpenChange: (open: boolean) => void;
   anchor?: ReactElement | undefined; at?: WsPoint | (() => DOMRect) | undefined;
   /** Names it for assistive tech. */
@@ -50,7 +53,7 @@ export function WsPopover({ open, onOpenChange, anchor, at, label, side = 'botto
       {anchor && <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>}
       {place && <RPopover.Anchor virtualRef={place} />}
       <RPopover.Portal>
-        <RPopover.Content side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
+        <RPopover.Content id={id} side={side} align={align} sideOffset={side === 'left' || side === 'right' ? 10 : 6} collisionPadding={open ? edges() : 8} aria-label={label}
           className={cn('ws-pop', className)} onInteractOutside={() => { away.current = true; }}
           onOpenAutoFocus={(e) => {
             back.current = focusedNow();
@@ -124,29 +127,16 @@ function moveInMenu(e: KeyboardEvent<HTMLDivElement>) {
 }
 
 /**
- * How long a menu ignores presses after its rows move, as when a list comes in under an open menu: the row under the
- * pointer then may not be the one someone aimed at, so they press again once they've seen where things are.
- */
-const SETTLE_MS = 400;
-
-/**
  * A menu: rows, headings, separators and lines of text. `className` for a wider one. `swapped`: it took another menu's place
  * in an open popover, so nothing else gives it the keyboard. Rows are told apart by their `id`, and for a moment after they
- * move (`SETTLE_MS`) a press does nothing.
+ * move a press does nothing (`useSettledPress`).
  */
 export function WsMenu({ rows, label, className, swapped = false }: { rows: WsMenuRow[]; label: string; className?: string | undefined; swapped?: boolean | undefined }) {
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => { if (swapped) box.current?.querySelector<HTMLElement>('.wm-r')?.focus(); }, [swapped]);
   /* Where each row is, by what it is: a change once the menu is open is a move. */
-  const order = rows.map((row, i) => (row.type === undefined || row.type === 'item' ? `item:${row.id}` : `${row.type}:${i}`)).join('\n');
-  const was = useRef(order);
-  const moved = useRef(-Infinity);
-  useLayoutEffect(() => {
-    if (was.current === order) return;
-    was.current = order;
-    moved.current = performance.now();
-  }, [order]);
-  const press = (row: WsMenuItem) => () => { if (performance.now() - moved.current >= SETTLE_MS) row.onSelect(); };
+  const settled = useSettledPress(rows.map((row, i) => (row.type === undefined || row.type === 'item' ? `item:${row.id}` : `${row.type}:${i}`)).join('\n'));
+  const press = (row: WsMenuItem) => settled(row.onSelect);
   return (
     <div ref={box} className={cn('wm', className)} role="menu" aria-label={label} onKeyDown={moveInMenu}>
       <div className="wm-list">
@@ -162,11 +152,12 @@ export function WsMenu({ rows, label, className, swapped = false }: { rows: WsMe
 }
 
 /** Plus at the top of the list, and on a folder: what you can make. */
-export function WsNewMenu({ onDocument, onFolder, onUpload }: { onDocument: () => void; onFolder: () => void; onUpload?: (() => void) | undefined }) {
+export function WsNewMenu({ onDocument, onFolder, onBoard, onUpload }: { onDocument: () => void; onFolder: () => void; onBoard?: (() => void) | undefined; onUpload?: (() => void) | undefined }) {
   const rows: WsMenuRow[] = [
     { id: 'document', icon: 'filePlus', label: 'New document', hint: 'N', onSelect: onDocument },
     { id: 'folder', icon: 'folderPlus', label: 'New folder', hint: '⇧N', onSelect: onFolder }
   ];
+  if (onBoard) rows.push({ id: 'board', icon: 'presentation', label: 'New board', onSelect: onBoard });
   if (onUpload) rows.push({ type: 'sep' }, { id: 'upload', icon: 'cloudUpload', label: 'Upload files', onSelect: onUpload });
   return <WsMenu label="New" rows={rows} />;
 }

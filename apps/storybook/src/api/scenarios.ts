@@ -15,7 +15,8 @@ import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
-import { CREDITS, PREFS, WELCOME_CREDITS, session, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { CREDITS, PREFS, WELCOME_CREDITS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
+import { FLOW, RETRO } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
   PRICING_DRAFT, REVIEW_CHECKLIST, REVIEW_UPLOADS, SHOWN, SIDEBAR_SHOTS, WORKED, WORKING_FROM_HOME
@@ -82,7 +83,7 @@ function workspaces(): Space[] {
       items: [
         item('Launch plan', 'document', PRIYA, 2, { made: 76 }), item('Launch checklist', 'document', MAYA, 5), item('Research', 'folder', LENA, 300),
         item('Interview notes', 'document', LENA, 120, research), item('Competitor notes', 'document', LENA, 170, research),
-        item('Pricing page copy', 'document', LENA, 26, { restricted: true }),
+        item('Pricing page copy', 'document', LENA, 26, { restricted: true }), item('Launch retro', 'board', PRIYA, 1),
         item('Old roadmap', 'document', PRIYA, 900, { trashed: { hoursAgo: 20, by: PRIYA } }),
         item('Launch plan, first draft', 'document', ART, 260, { trashed: { hoursAgo: 70, by: ART } })
       ]
@@ -107,6 +108,9 @@ function pages(): Record<string, Page> {
   ];
   return Object.fromEntries(named.map(([name, page]) => [itemId(name), page]));
 }
+/** What the boards hold, and who's on them: the launch retro in Product, and the onboarding flow in Design. */
+const boards = (): Record<string, BoardSpec> => ({ [itemId('Launch retro')]: RETRO, [itemId('Onboarding flow')]: FLOW });
+
 /**
  * The files: in the design review's home its screenshots, drawn, its walkthrough, recorded, and the spec, a download; and in
  * the Launch plan two photos from the offsite and the timeline as a file, from Priya, this week.
@@ -171,7 +175,7 @@ function busy(): World {
   }
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },
-    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(),
+    meetings: busyCalls(), calendar: connected(busyEvents()), credits: CREDITS, documents: library(), workspaces: workspaces(), pages: pages(), shares: shares(), boards: boards(),
     mentions: structuredClone(TAGGED), media: files(), rings: [], writing: null
   };
 }
@@ -238,7 +242,7 @@ function onTheirOwn(): World {
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
     meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
-    workspaces: [], pages: {}, shares: {}, mentions: [], media: [], rings: [], writing: null
+    workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
   };
 }
 
@@ -251,7 +255,7 @@ export const SCENARIOS: Record<ScenarioName, Scenario> = {
     make: () => ({
       world: {
         session: session({ createdAt: iso(0, 16, 5) }), prefs: PREFS, team: teamOf(DIRECTORY.filter((c) => c.person !== INES && c.person !== AIKO).map((c): Colleague => ({ ...c, onAlcove: false, invited: false }))),
-        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, mentions: [], media: [], rings: [], writing: null
+        notes: [], personal: {}, meetings: [], calendar: notConnected, credits: WELCOME_CREDITS, documents: library(), workspaces: [], pages: {}, shares: {}, boards: {}, mentions: [], media: [], rings: [], writing: null
       },
       opening: { tourSeen: false }
     })

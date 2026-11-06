@@ -42,6 +42,9 @@
 .ac-icon-btn:hover { background: var(--sunk); color: var(--ink); }
 .ac-icon-btn.is-on { background: var(--sun-soft); color: var(--sun-text); }
 .ac-icon-btn[disabled] { opacity: .4; pointer-events: none; }
+/* Disabled, and saying why in its tip, which a disabled button can't show. */
+.ac-icon-btn[aria-disabled="true"] { opacity: .4; cursor: default; }
+.ac-icon-btn[aria-disabled="true"]:hover { background: transparent; color: var(--ink-2); }
 
 /* ---- ProviderButton ---- */
 .ac-provider { position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; height: 52px; padding: 0 20px; border: 0; border-radius: var(--radius-pill); background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font-sans); box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); cursor: pointer; transition: background-color var(--duration-1), transform var(--duration-1); }

@@ -132,11 +132,11 @@ export function WsTagWords({ children }: { children: ReactNode }) {
   return <span className="wn-w">{children}</span>;
 }
 
-/** A new comment on selected words. `person` is who's writing it. */
+/** A new comment on selected words, or on something on a board. `person` is who's writing it. An empty `quote` shows nothing above the field. */
 export function WsCommentCompose({ quote, person, value, onChange, onSend, tagging }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined }) {
   return (
     <div className="wv-cmt">
-      <div className="q"><span className="ac-clamp-2">{quote}</span></div>
+      {quote && <div className="q"><span className="ac-clamp-2">{quote}</span></div>}
       <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} tagging={tagging} autoFocus /></div>
     </div>
   );
@@ -146,8 +146,8 @@ export function WsCommentCompose({ quote, person, value, onChange, onSend, taggi
 export interface WsComment { id: string; person: AvatarPerson; name: string; text: ReactNode }
 
 /**
- * A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms.
- * Someone who can only read gets the thread and nothing to press: leave out `onSend` and `onResolve`.
+ * A thread on some words, or on something on a board: what they are, Resolve, what's been said and the reply field. A reply
+ * rises 8 px, 240 ms. Someone who can only read gets the thread and nothing to press: leave out `onSend` and `onResolve`.
  */
 export function WsCommentThread({ quote, messages, value = '', onChange, onSend, onResolve, tagging }: {
   quote: string; messages: WsComment[]; value?: string | undefined; onChange?: ((v: string) => void) | undefined; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined; tagging?: WsTagging | undefined;
@@ -158,7 +158,7 @@ export function WsCommentThread({ quote, messages, value = '', onChange, onSend,
   useEffect(() => { const box = said.current; if (box) box.scrollTop = box.scrollHeight; }, [messages.length]);
   return (
     <div className="wv-cmt">
-      <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>
+      {(quote || onResolve) && <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>}
       <div ref={said} className="wv-ms">
         <AnimatePresence initial={false}>
           {messages.map((m) => (

@@ -6,6 +6,7 @@ import { EmptyState } from '../empty';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
 import { Button, IconButton, RecDot } from '../primitives';
+import { WS_ITEM_ICONS } from './list';
 import { WsPopover, type WsPop } from './popover';
 import { useMove } from './shared';
 
@@ -110,11 +111,11 @@ export function WsOfflineBar({ show }: { show: boolean }) {
  * leave `onRestore` out for someone who can't. `who` is their first name. `unsent`: something written here hasn't reached
  * Alcove, and goes once it's back.
  */
-export function WsGoneBar({ who, onRestore, unsent = false }: { who: string | null; onRestore?: (() => void) | undefined; unsent?: boolean | undefined }) {
+export function WsGoneBar({ who, what = 'document', onRestore, unsent = false }: { who: string | null; what?: 'document' | 'board' | undefined; onRestore?: (() => void) | undefined; unsent?: boolean | undefined }) {
   return (
     <Bar show={who !== null} className="wd-gone">
       <Icon name="trash" size={14} />
-      <span>{who} moved this document to Trash. {unsent ? 'What you wrote that didn’t save is safe in this browser, and saves once it’s restored.' : 'You can keep reading it.'}</span>
+      <span>{who} moved this {what} to Trash. {unsent ? 'What you wrote that didn’t save is safe in this browser, and saves once it’s restored.' : 'You can keep reading it.'}</span>
       {onRestore && <Button size="xs" onClick={onRestore}>Restore it</Button>}
     </Bar>
   );
@@ -176,15 +177,17 @@ export function WsRescue({ onCopy, onSaveAsNew, saving = false, discard }: {
 
 /**
  * Asks once before letting go of what didn't save. The keyboard starts on keeping it, so Enter twice loses nothing.
- * `gone`: the document can't be opened any more, so there's nothing for it to carry on from.
+ * `gone`: the document can't be opened any more, so there's nothing for it to carry on from. On a board, what goes is every
+ * change made on it, not only words.
  */
-export function WsDiscardAsk({ onDiscard, onKeep, gone = false }: { onDiscard: () => void; onKeep: () => void; gone?: boolean | undefined }) {
+export function WsDiscardAsk({ onDiscard, onKeep, gone = false, what = 'document' }: { onDiscard: () => void; onKeep: () => void; gone?: boolean | undefined; what?: 'document' | 'board' | undefined }) {
   const keep = useRef<HTMLButtonElement>(null);
   useEffect(() => { keep.current?.focus({ preventScroll: true }); }, []);
+  const only = what === 'board' ? 'Your changes on the board, moves and all, are only in this browser, so they go for good.' : 'It’s only in this browser, so it goes for good.';
   return (
     <div className="wv-switch">
       <b>Discard what didn’t save?</b>
-      <p>{gone ? 'It’s only in this browser, so it goes for good.' : 'It’s only in this browser, so it goes for good. The document carries on from what Alcove has.'}</p>
+      <p>{gone ? only : `${only} The ${what} carries on from what Alcove has.`}</p>
       <div className="ac">
         <Button variant="primary" size="sm" onClick={onDiscard}>Discard</Button>
         <Button ref={keep} variant="quiet" size="sm" onClick={onKeep}>Keep it</Button>
@@ -266,9 +269,10 @@ const LockedArch = () => <WsArch><path d="M24 44h18v14H24zM28 44v-5a5 5 0 0 1 10
  * something deleted and something that never was. `action` is the way back.
  */
 /** `unsent`: something written in it here didn't reach Alcove, and `action` is what can be done with it (`WsRescue`). */
-export function WsCantOpen({ what, action, unsent = false }: { what: 'document' | 'workspace'; action?: ReactNode; unsent?: boolean | undefined }) {
-  const gone = what === 'document' ? 'It was deleted, or it isn’t shared with you any more.' : 'It was deleted, or you aren’t in it any more.';
-  const next = unsent ? 'What you wrote in it that didn’t reach Alcove is safe in this browser.' : what === 'document' ? 'Ask whoever shared it.' : 'Ask whoever added you.';
+export function WsCantOpen({ what, action, unsent = false }: { what: 'document' | 'board' | 'workspace'; action?: ReactNode; unsent?: boolean | undefined }) {
+  const gone = what === 'workspace' ? 'It was deleted, or you aren’t in it any more.' : 'It was deleted, or it isn’t shared with you any more.';
+  const kept = what === 'board' ? 'What you changed on it that didn’t reach Alcove is safe in this browser.' : 'What you wrote in it that didn’t reach Alcove is safe in this browser.';
+  const next = unsent ? kept : what === 'workspace' ? 'Ask whoever added you.' : 'Ask whoever shared it.';
   return (
     <EmptyState className="wd-none" title={`You can’t open this ${what}`} art={<LockedArch />} action={action}>
       {gone} {next}
@@ -316,7 +320,7 @@ export function WsPickDocument({ onDocument }: { onDocument?: (() => void) | und
 }
 
 /** Something in Trash. `sub`: who sent it there, when, and how long it has left. `onRestore` and `onDelete` for someone who can edit it. */
-export interface WsTrashItem { id: string; name: string; sub: string; folder?: boolean | undefined; onOpen?: (() => void) | undefined; onRestore?: (() => void) | undefined; onDelete?: WsPop | undefined }
+export interface WsTrashItem { id: string; name: string; sub: string; kind?: keyof typeof WS_ITEM_ICONS | undefined; onOpen?: (() => void) | undefined; onRestore?: (() => void) | undefined; onDelete?: WsPop | undefined }
 
 /** What Delete forever asks, in place of the button. */
 /** Asks once before deleting for good. The keyboard starts on keeping it, so Enter twice loses nothing. */
@@ -350,7 +354,7 @@ export function WsTrash({ items }: { items: WsTrashItem[] }) {
       <p className="wl-s">Kept for 30 days, then deleted for good. Anyone in the workspace can bring it back.</p>
       <ul className="wx-l">
         {items.map((t) => {
-          const line = <><Icon name={t.folder ? 'folder' : 'fileText'} size={16} /><span className="m"><b>{t.name}</b><small>{t.sub}</small></span></>;
+          const line = <><Icon name={WS_ITEM_ICONS[t.kind ?? 'document']} size={16} /><span className="m"><b>{t.name}</b><small>{t.sub}</small></span></>;
           return (
             <li key={t.id} className="wx-r">
               {t.onOpen ? <button type="button" className="wx-o" onClick={t.onOpen}>{line}</button> : <span className="wx-o">{line}</span>}

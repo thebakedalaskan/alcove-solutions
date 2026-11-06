@@ -4,17 +4,19 @@
  */
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
-/** Whether `e` holds this platform's shortcut key (⌘ on a Mac, Ctrl elsewhere) and no other modifier. */
-export const withMod = (e: KeyboardEvent): boolean => (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey;
+/** Whether `e` holds this platform's shortcut key (⌘ on a Mac, Ctrl elsewhere), with Shift or without, and no other modifier: what ⌘Z and ⇧⌘Z share. */
+export const withShortcutKey = (e: KeyboardEvent): boolean => (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey;
+/** Whether `e` holds this platform's shortcut key and no other modifier. */
+export const withMod = (e: KeyboardEvent): boolean => withShortcutKey(e) && !e.shiftKey;
 /** The same with Shift held too. */
-export const withModShift = (e: KeyboardEvent): boolean => (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && e.shiftKey;
+export const withModShift = (e: KeyboardEvent): boolean => withShortcutKey(e) && e.shiftKey;
 /** A shortcut as its hint shows it: "⌘K" on a Mac, "Ctrl K" elsewhere. */
 export const shortcut = (key: string): string => (mac ? `⌘${key}` : `Ctrl ${key}`);
 /** The same shortcut for `aria-keyshortcuts`: "Meta+K" or "Control+K". */
 export const ariaShortcut = (key: string): string => `${mac ? 'Meta' : 'Control'}+${key}`;
 
 /** Something keys type into: a field, a select or editable text. */
-const editable = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+export const editable = (t: EventTarget | null): boolean => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
 
 /**
  * How long single-key shortcuts sleep after a key goes into something editable. Whoever's typing keeps typing for a moment
@@ -66,5 +68,11 @@ export function moveFocusOut(from: Element | null, to: HTMLElement | null): void
  * after one was, or since whoever was typing lost their caret to the page going inert.
  */
 export const typing = (t: EventTarget | null): boolean => editable(t) || performance.now() - typedAt < TYPING_MS || stranded;
+/**
+ * Whoever was typing lost their caret to the page going inert or away, and hasn't clicked, tapped, or moved on with Tab or
+ * Escape since: the rest of their sentence may still be coming. `typing` without its moment's pause, for keys that may act at
+ * once after typing but never on what someone typed into a field they lost.
+ */
+export const caretTaken = (): boolean => stranded;
 /** A dialog, a menu or a list of choices is open: shortcuts leave the page alone, and nothing opens on top. */
 export const overlayOpen = (): boolean => !!document.querySelector('[role="dialog"], [role="listbox"], [role="menu"]');

@@ -137,6 +137,7 @@ export function List({ drags }: { drags: ListDrag }) {
   const uploadTo = useRef<string | null>(null);
   const newIn = (parent: string | null) => (
     <WsNewMenu onDocument={() => { setAdding(undefined); actions.newDocument(parent); }} onFolder={() => { setAdding(undefined); if (parent) ws.setOpen(parent, true); ws.setDraft({ parent }); }}
+      onBoard={tree.boards ? () => { setAdding(undefined); void actions.newBoard(parent); } : undefined}
       onUpload={() => { setAdding(undefined); uploadTo.current = parent; if (field.current) { field.current.value = ''; field.current.click(); } }} />
   );
   const menuFor = (item: WorkspaceItem, area: WorkspaceArea): WsPop | undefined => {
@@ -208,14 +209,14 @@ export function List({ drags }: { drags: ListDrag }) {
     const key = `${area}:${item.id}`;
     if (ws.renaming === item.id && area === 'tree') {
       return (
-        <WsRenameRow key={key} name={item.name} kind={folder ? 'folder' : 'document'} depth={depth} placeholder={folder ? 'Name this folder' : 'Name this document'}
+        <WsRenameRow key={key} name={item.name} kind={item.kind} depth={depth} placeholder={`Name this ${item.kind}`}
           onCancel={() => { ws.setRenaming(null); focusRow(item.id); }} onCommit={(name) => { ws.setRenaming(null); actions.rename(item.id, name); focusRow(item.id); }} />
       );
     }
     const faces = folder ? [] : facesIn(ws.here, item.id);
     const first = faces[0];
     return (
-      <WsRow key={key} id={item.id} name={nameOf(item)} kind={folder ? 'folder' : 'document'} depth={depth} open={open} area={area} faces={faces}
+      <WsRow key={key} id={item.id} name={nameOf(item)} kind={item.kind} depth={depth} open={open} area={area} faces={faces}
         facesCard={first && { open: card === key, onOpenChange: (to) => setCard(to ? key : null), content: card === key ? <PersonCard person={first} onDone={() => setCard(null)} /> : null }}
         current={currentIn(area, item.id)} flash={ws.glowing.has(item.id) || (area === 'pins' && justBrought.has(item.id))}
         into={(drag?.spot?.kind === 'place' && drag.spot.into === item.id) || (area === 'tree' && ws.blockInto === item.id)} ghosted={drag?.id === item.id}
@@ -237,7 +238,7 @@ export function List({ drags }: { drags: ListDrag }) {
     const pages = row.open && row.item.call ? [<CallPages key={`pages:${row.item.id}`} call={row.item.call} depth={row.depth + 1} />] : [];
     return [rowOf(row.item, 'tree', row.depth, row.open), ...pages];
   });
-  const trash = trashIn(ws.items);
+  const trash = trashIn(ws.items, ws.tree.boards);
   /* The call's own pages, unless the list has the call's folder, which holds them. */
   const top = ws.items.some((i) => i.call?.here === true && i.trashedAt === null) ? undefined : call?.top;
 
@@ -245,7 +246,7 @@ export function List({ drags }: { drags: ListDrag }) {
     <>
     <WsList listKey={ws.workspaceId} onKeyDown={rowKeys} empty={rows.length > 0 ? false : !member ? 'shared' : ws.canChange ? 'yours' : 'others'} foot={<>{member && <WsTrashRow count={trash.length} current={ws.at.kind === 'trash'} into={drag?.spot?.kind === 'trash'} onOpen={() => ws.go({ kind: 'trash' })} />}{call?.foot}</>}
       head={member || ws.mode === 'page' ? (
-        <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind}
+        <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind} createLabel={tree.boards ? 'New document, folder or board' : undefined}
           create={canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(null) : null } : undefined} />
       ) : undefined}>
       {(top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}

@@ -412,6 +412,22 @@ function DocLink({ node }: { node: PMNode }) {
   );
 }
 
+/**
+ * A board in the document: a small picture of a board with its name on it, which opens it. Only its ID is kept here, so its
+ * name comes from the reader's own list, and someone who can't open it is told no more than that.
+ */
+function BoardBlock({ node }: { node: PMNode }) {
+  const rt = useRuntime();
+  const board = textAttr(node, 'board') ?? '';
+  const name = rt.props.documentName?.(board);
+  return (
+    <button type="button" className="wb-board" disabled={name === undefined} aria-label={name === undefined ? 'A board you can’t open' : `Open ${name}`} onClick={() => rt.props.onOpenDocument?.(board)}>
+      <span className="st a" /><span className="st b" /><span className="st c" /><span className="st d" />
+      <span className="wb-bn"><Icon name={name === undefined ? 'lock' : 'presentation'} size={15} />{name ?? 'A board you can’t open'}</span>
+    </button>
+  );
+}
+
 function Live({ node }: { node: PMNode }) {
   const rt = useRuntime();
   const decided = textAttr(node, 'what') !== 'followups';
@@ -462,6 +478,7 @@ export function MediaBlock({ node, getPos }: { node: PMNode; getPos: () => numbe
     case 'file': return <FileRow node={node} />;
     case 'video': return <VideoBlock node={node} />;
     case 'doclink': return <DocLink node={node} />;
+    case 'board': return <BoardBlock node={node} />;
     case 'live': return <Live node={node} />;
     case 'moment': return <Moment node={node} />;
     default: return <p className="wb-unknown">This block needs a newer Alcove. Reload to see it.</p>;

@@ -99,7 +99,8 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
   const sections = useCallback((query: string, { docsOnly }: { docsOnly: boolean }): MentionSection[] => {
     const words = query.toLowerCase();
     const has = (s: string) => s.toLowerCase().includes(words);
-    const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
+    // Only a document is linked with `@`: a board is a `/` Board of its own.
+    const documents: MentionItem[] = documentsIn(ws.tree).filter((d) => d.kind === 'document' && d.id !== item.id && has(nameOf(d))).slice(0, docsOnly ? 8 : 3).map((d) => ({ kind: 'document', id: d.id, name: nameOf(d) }));
     if (docsOnly) return [{ title: 'Documents', items: documents }];
     const shown = new Set<string>(myEmail ? [myEmail] : []);
     const pick = (list: readonly Person[]): MentionItem[] => list.filter((p) => {

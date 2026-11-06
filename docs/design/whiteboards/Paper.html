@@ -1,0 +1,206 @@
+<!-- title: The board -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="bz {{v.zCls}}">
+<sc-if value="{{v.rail2}}" hint-placeholder-val="{{true}}">
+<div class="ac-dock bz-rail" role="toolbar" aria-label="Tools">
+<sc-for list="{{v.rail}}" as="t" hint-placeholder-count="7">
+<button type="button" class="ac-dock-btn {{t.cls}} {{t.hot}}" aria-label="{{t.label}}" aria-pressed="{{t.on}}" title="{{t.label}}" onClick="{{t.go}}" data-tool="{{t.tool}}"><ic d="{{t.d}}" s="20"></ic></button>
+</sc-for>
+<span class="ac-dock-sep"></span>
+<button type="button" class="ac-dock-btn {{v.h.toolMore}}" aria-label="More: images, documents, templates" title="More" onClick="{{v.c.toolMore}}"><ic n="plus" s="20"></ic></button>
+</div>
+</sc-if>
+<div class="bd {{v.cls}}" data-theme="{{v.theme}}" ref="{{root}}" tabIndex="0" style="--dot: {{v.dot}}px; --dx: {{v.cam.x}}px; --dy: {{v.cam.y}}px; --fc: {{v.fc}}" onPointerDown="{{pd}}" onPointerMove="{{pm}}" onPointerUp="{{pu}}" onDoubleClick="{{dbl}}" onKeyDown="{{kd}}">
+<div class="bd-w" style="transform: translate({{v.cam.x}}px, {{v.cam.y}}px) scale({{v.cam.z}})">
+<sc-for list="{{v.frames}}" as="f" hint-placeholder-count="0">
+<div class="bf {{f.cls}}" data-id="{{f.id}}" style="left: {{f.x}}px; top: {{f.y}}px; width: {{f.w}}px; height: {{f.h}}px; --d: {{f.d}}">
+<div class="bf-h">{{f.t}}<span class="sub">{{f.sub}}</span></div>
+<sc-if value="{{f.hasHint}}" hint-placeholder-val="{{false}}"><p class="bf-hint">{{f.hint}}</p></sc-if>
+</div>
+</sc-for>
+<svg class="bd-svg" aria-hidden="true">
+<sc-for list="{{v.links}}" as="l" hint-placeholder-count="0"><path class="{{l.cls}}" d="{{l.d}}"></path></sc-for>
+</svg>
+<sc-for list="{{v.items}}" as="o" hint-placeholder-count="0">
+<div class="bo {{o.cls}}" data-id="{{o.id}}" style="left: {{o.x}}px; top: {{o.y}}px; width: {{o.w}}px; height: {{o.h}}px; --pc: {{o.pc}}; --d: {{o.d}}">
+<svg class="bo-sh" viewBox="0 0 {{o.w}} {{o.h}}" preserveAspectRatio="none" aria-hidden="true"><path d="{{o.path}}"></path></svg>
+<sc-if value="{{o.editing}}" hint-placeholder-val="{{false}}"><textarea class="bo-edit" aria-label="Edit this sticky" ref="{{edit.ref}}" value="{{edit.value}}" onChange="{{edit.change}}" onBlur="{{edit.blur}}" onKeyDown="{{edit.key}}" onPointerDown="{{edit.stop}}"></textarea></sc-if>
+<sc-if value="{{o.shot}}" hint-placeholder-val="{{false}}"><span class="bo-shot"><mock></mock></span></sc-if>
+<p class="bo-t">{{o.t}}</p>
+<b class="bo-v"><ic n="vote" s="11"></ic>{{o.votes}}</b>
+<sc-if value="{{o.hasDots}}" hint-placeholder-val="{{false}}"><span class="bo-dots"><sc-for list="{{o.dots}}" as="dd" hint-placeholder-count="0"><i></i></sc-for></span></sc-if>
+</div>
+</sc-for>
+<sc-for list="{{v.cursors}}" as="c" hint-placeholder-count="0">
+<div class="bc {{c.cls}}" style="transform: translate({{c.x}}px, {{c.y}}px) scale({{c.iz}}); --stage-point: {{c.pc}}; transform-origin: 0 0">
+<span class="ac-pointer"><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.04 4.69a.5.5 0 0 1 .65-.65l16 6.5a.5.5 0 0 1-.06.95l-6.13 1.58a2 2 0 0 0-1.43 1.43l-1.58 6.13a.5.5 0 0 1-.95.06z"></path></svg><span class="ac-ptag"><dc-import name="Faces" who="{{c.id}}" size="16" ring="transparent" hint-size="16px,18px"></dc-import><span class="n">{{c.name}}</span><sc-if value="{{c.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if><sc-if value="{{c.type}}" hint-placeholder-val="{{false}}"><span class="bc-type" aria-hidden="true"><i></i><i></i><i></i></span></sc-if></span></span>
+</div>
+</sc-for>
+</div>
+
+<sc-if value="{{v.hasBox}}" hint-placeholder-val="{{false}}">
+<div class="bs" style="left: {{v.box.x}}px; top: {{v.box.y}}px; width: {{v.box.w}}px; height: {{v.box.h}}px"><sc-if value="{{v.handles}}" hint-placeholder-val="{{true}}"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></sc-if></div>
+</sc-if>
+<sc-if value="{{v.hasPoints}}" hint-placeholder-val="{{false}}"><sc-for list="{{v.points}}" as="p" hint-placeholder-count="0"><span class="bs-p" data-p="{{p.dir}}" style="left: {{p.x}}px; top: {{p.y}}px"></span></sc-for></sc-if>
+<sc-if value="{{hasGuides}}" hint-placeholder-val="{{false}}"><sc-for list="{{guides}}" as="g" hint-placeholder-count="0"><i class="bg" style="{{g.s}}"></i></sc-for></sc-if>
+<sc-if value="{{hasMarquee}}" hint-placeholder-val="{{false}}"><div class="bm" style="left: {{marquee.x}}px; top: {{marquee.y}}px; width: {{marquee.w}}px; height: {{marquee.h}}px"></div></sc-if>
+<sc-if value="{{v.hasSpot}}" hint-placeholder-val="{{false}}"><button type="button" class="bspot {{v.spotCls}} {{v.h.spot}}" aria-label="{{v.spot.label}}" onClick="{{v.c.spot}}" style="left: {{v.spot.x}}px; top: {{v.spot.y}}px; width: {{v.spot.w}}px; height: {{v.spot.h}}px"></button></sc-if>
+
+<sc-if value="{{v.isEmpty}}" hint-placeholder-val="{{false}}">
+<div class="bd-empty">
+<svg width="66" height="74" viewBox="0 0 66 74" aria-hidden="true"><defs><linearGradient id="bde" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".45" stop-color="#5847DA"></stop><stop offset=".72" stop-color="#C470A9"></stop><stop offset=".9" stop-color="#FFA06A"></stop></linearGradient><clipPath id="bda"><path d="M7 72V32a26 26 0 0 1 52 0v40z"></path></clipPath></defs><g clip-path="url(#bda)"><rect width="66" height="74" fill="url(#bde)"></rect><circle cx="33" cy="54" r="12" fill="#FFD58A"></circle><rect y="56" width="66" height="18" fill="#231C5E"></rect></g></svg>
+<b>Double-click anywhere to add a sticky</b>
+<span>Or press N. Everyone here can add to this board.</span>
+</div>
+</sc-if>
+<sc-if value="{{v.chrome}}" hint-placeholder-val="{{true}}">
+<div class="bd-head">
+<button type="button" class="nm {{v.h.title}}" onClick="{{v.c.title}}" title="Rename, move or copy this board"><ic n="presentation" s="16"></ic><span>{{v.title}}</span><ic n="down" s="14"></ic></button>
+<sc-if value="{{v.hasSeal}}" hint-placeholder-val="{{true}}"><button type="button" class="sv {{v.h.seal}}" onClick="{{v.c.seal}}" title="Sealed. Alcove can’t read this board."><ic d="{{v.sealD}}" s="15"></ic><span>{{v.seal}}</span></button></sc-if>
+<span class="sp"></span>
+<sc-if value="{{v.showRail}}" hint-placeholder-val="{{true}}">
+<button type="button" class="bt {{v.h.undo}}" aria-label="Undo" title="Undo your last change · ⌘Z" disabled="{{v.undoOff}}" onClick="{{v.c.undo}}"><ic n="undo" s="17"></ic></button>
+<button type="button" class="bt {{v.h.redo}}" aria-label="Redo" title="Redo · ⇧⌘Z" disabled="{{v.redoOff}}" onClick="{{v.c.redo}}"><ic n="redo" s="17"></ic></button>
+<span class="vr"></span>
+</sc-if>
+<button type="button" class="bt {{v.h.zoomOut}}" aria-label="Zoom out" title="Zoom out" onClick="{{v.c.zoomOut}}"><ic n="minus" s="16"></ic></button>
+<button type="button" class="pct" title="Show everything · ⇧1" onClick="{{v.c.fit}}">{{v.pct}}</button>
+<button type="button" class="bt {{v.h.zoomIn}}" aria-label="Zoom in" title="Zoom in" onClick="{{v.c.zoomIn}}"><ic n="plus" s="16"></ic></button>
+<button type="button" class="bt {{v.h.map}}" aria-label="Map" title="Map" aria-pressed="{{mapOn}}" onClick="{{v.c.map}}"><ic n="map" s="16"></ic></button>
+<sc-if value="{{v.showActs}}" hint-placeholder-val="{{true}}">
+<span class="vr"></span>
+<button type="button" class="bt {{v.h.timer}}" aria-label="Timer" title="Timer" onClick="{{v.c.timer}}"><ic n="timer" s="17"></ic></button>
+<button type="button" class="bt {{v.h.vote}}" aria-label="Vote" title="Vote" onClick="{{v.c.vote}}"><ic n="vote" s="17"></ic></button>
+<button type="button" class="bt {{v.h.present}}" aria-label="Present" title="Present" onClick="{{v.c.present}}"><ic n="play" s="15"></ic></button>
+<button type="button" class="bt {{v.h.more}}" aria-label="More" title="More" onClick="{{v.c.more}}"><ic n="more" s="17"></ic></button>
+</sc-if>
+</div>
+<sc-if value="{{v.hasMap}}" hint-placeholder-val="{{false}}">
+<div class="bi bd-map" aria-hidden="true"><sc-for list="{{v.map.blocks}}" as="k" hint-placeholder-count="3"><i style="{{k.s}}"></i></sc-for><b style="{{v.map.view}}"></b></div>
+</sc-if>
+
+<sc-if value="{{v.flyNote}}" hint-placeholder-val="{{false}}">
+<div class="bfly" style="top: {{flyTop.note}}px"><div class="row">
+<sc-for list="{{v.swatches}}" as="s" hint-placeholder-count="6"><button type="button" class="sw {{s.cls}}" aria-label="{{s.k}} sticky" aria-pressed="{{s.on}}" onClick="{{s.pick}}"><i class="swatch"></i></button></sc-for>
+</div></div>
+</sc-if>
+<sc-if value="{{v.flyShape}}" hint-placeholder-val="{{false}}">
+<div class="bfly" style="top: {{flyTop.shape}}px"><div class="row">
+<button type="button" class="bt" aria-label="Rectangle" aria-pressed="{{shapeOn.rect}}" onClick="{{pickShape.rect}}"><ic n="square" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Ellipse" aria-pressed="{{shapeOn.ellipse}}" onClick="{{pickShape.ellipse}}"><ic n="circle" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Diamond" aria-pressed="{{shapeOn.diamond}}" onClick="{{pickShape.diamond}}"><ic n="diamond" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Pill" aria-pressed="{{shapeOn.pill}}" onClick="{{pickShape.pill}}"><svg class="ac-i" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2" y="7" width="20" height="10" rx="5"></rect></svg></button>
+</div></div>
+</sc-if>
+<sc-if value="{{v.flyLine}}" hint-placeholder-val="{{false}}">
+<div class="bfly" style="top: {{flyTop.line}}px"><div class="row">
+<button type="button" class="bt" aria-label="Elbow arrow" aria-pressed="true"><ic n="elbow" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Straight arrow" aria-pressed="false"><ic n="line" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Curved line" aria-pressed="false"><ic n="spline" s="19"></ic></button>
+</div></div>
+</sc-if>
+<sc-if value="{{v.flyPen}}" hint-placeholder-val="{{false}}">
+<div class="bfly" style="top: {{flyTop.pen}}px"><div class="row">
+<button type="button" class="bt" aria-label="Pen" aria-pressed="true"><ic n="pencil" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Highlighter" aria-pressed="false"><ic n="highlighter" s="19"></ic></button>
+<button type="button" class="bt" aria-label="Eraser" aria-pressed="false"><ic n="eraser" s="19"></ic></button>
+</div></div>
+</sc-if>
+<sc-if value="{{v.flyMore}}" hint-placeholder-val="{{false}}">
+<div class="bfly" style="top: {{flyTop.more}}px">
+<button type="button" class="item"><ic n="image" s="18"></ic>Image</button>
+<button type="button" class="item"><ic n="fileText" s="18"></ic>From your workspace</button>
+<button type="button" class="item"><ic n="table" s="18"></ic>Table</button>
+<button type="button" class="item"><ic n="workflow" s="18"></ic>Mind map</button>
+<button type="button" class="item"><ic n="comment" s="18"></ic>Comment<kbd>K</kbd></button>
+<button type="button" class="item"><ic n="layoutTemplate" s="18"></ic>Templates</button>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{v.hasPill}}" hint-placeholder-val="{{false}}">
+<div class="bd-pill {{v.pill.cls}}" role="status">
+<sc-if value="{{v.pill.hasIcon}}" hint-placeholder-val="{{true}}"><ic d="{{v.pill.d}}" s="16"></ic></sc-if>
+<sc-if value="{{v.pill.hasB}}" hint-placeholder-val="{{false}}"><b>{{v.pill.b}}</b></sc-if>
+<sc-if value="{{v.pill.hasText}}" hint-placeholder-val="{{false}}"><span>{{v.pill.text}}</span></sc-if>
+<sc-if value="{{v.pill.sep}}" hint-placeholder-val="{{false}}"><span class="sep"></span></sc-if>
+<sc-if value="{{v.pill.hasT}}" hint-placeholder-val="{{false}}"><span class="t">{{v.pill.t}}</span></sc-if>
+<sc-if value="{{v.pill.hasAct}}" hint-placeholder-val="{{false}}"><button type="button" class="{{v.h.pillAct}}" onClick="{{v.c.pillAct}}">{{v.pill.act}}</button></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasCtx}}" hint-placeholder-val="{{false}}">
+<div class="bx" style="left: {{v.ctx.x}}px; top: {{v.ctx.y}}px; translate: -50% 0" role="toolbar" aria-label="Selected">
+<sc-if value="{{v.ctx.multi}}" hint-placeholder-val="{{false}}">
+<span class="n">{{v.ctx.n}} stickies</span>
+<span class="bd-sep v"></span>
+<button type="button" class="wide {{v.h.ctxSort}}" onClick="{{v.c.ctxSort}}" title="Written in confidential compute"><ic n="group" s="17"></ic>Sort into themes</button>
+<button type="button" class="wide {{v.h.ctxTidy}}" onClick="{{v.c.ctxTidy}}"><ic n="grid" s="16"></ic>Tidy</button>
+<span class="bd-sep v"></span>
+</sc-if>
+<sc-if value="{{v.ctx.colour}}" hint-placeholder-val="{{true}}"><button type="button" class="sw {{v.h.ctxColor}} {{v.ctx.c}}" aria-label="Colour" title="Colour" onClick="{{v.c.ctxColor}}"><i></i></button></sc-if>
+<sc-if value="{{v.ctx.note}}" hint-placeholder-val="{{false}}"><button type="button" class="bt {{v.h.ctxText}}" aria-label="Text size" title="Text size" onClick="{{v.c.ctxText}}"><ic n="textSize" s="18"></ic></button></sc-if>
+<sc-if value="{{v.ctx.shape}}" hint-placeholder-val="{{false}}"><button type="button" class="bt {{v.h.ctxText}}" aria-label="Text size" title="Text size" onClick="{{v.c.ctxText}}"><ic n="textSize" s="18"></ic></button></sc-if>
+<button type="button" class="bt {{v.h.ctxLink}}" aria-label="Draw a line from this" title="Draw a line from this" onClick="{{v.c.ctxLink}}"><ic n="line" s="17"></ic></button>
+<button type="button" class="bt {{v.h.ctxDup}}" aria-label="Duplicate" title="Duplicate · ⌘D" onClick="{{v.c.ctxDup}}"><ic n="copy" s="17"></ic></button>
+<button type="button" class="bt {{v.h.ctxDelete}}" aria-label="Delete" title="Delete" onClick="{{v.c.ctxDelete}}"><ic n="trash" s="17"></ic></button>
+<button type="button" class="bt {{v.h.ctxMore}}" aria-label="More" title="More" onClick="{{v.c.ctxMore}}"><ic n="more" s="18"></ic></button>
+</div>
+<sc-if value="{{v.ctx.sw}}" hint-placeholder-val="{{false}}">
+<div class="bx-sw" style="left: {{v.ctx.x}}px; top: {{swTop}}px; translate: -50% 0">
+<sc-for list="{{v.swatches}}" as="s" hint-placeholder-count="6"><button type="button" class="{{s.cls}}" aria-label="{{s.k}}" aria-pressed="{{s.on}}" onClick="{{s.pick}}"><i class="swatch"></i></button></sc-for>
+</div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{v.hasHeard}}" hint-placeholder-val="{{false}}">
+<button type="button" class="bd-heard {{v.h.heard}}" onClick="{{v.c.heard}}"><ic n="waveform" s="16"></ic>{{v.heardText}}</button>
+</sc-if>
+<sc-if value="{{v.hasTray}}" hint-placeholder-val="{{false}}">
+<div class="bd-tray" role="dialog" aria-label="Ideas from the call">
+<div class="hd"><ic n="waveform" s="16"></ic>From the call<span class="sp"><ic n="sealed" s="13"></ic>Written in confidential compute</span><button type="button" class="bt {{v.h.trayClose}}" style="width: 32px; height: 32px" aria-label="Close" onClick="{{v.c.trayClose}}"><ic n="x" s="16"></ic></button></div>
+<sc-for list="{{v.tray}}" as="l" hint-placeholder-count="3">
+<div class="ln"><dc-import name="Faces" who="{{l.who}}" size="24" ring="transparent" hint-size="24px,26px"></dc-import><p>{{l.t}}<small>{{l.sub}}</small></p><button type="button" class="ac-btn is-secondary is-sm {{l.hot}}" onClick="{{l.go}}">{{l.label}}</button></div>
+</sc-for>
+<div class="ft"><button type="button" class="ac-btn is-primary is-sm {{v.h.addAll}}" onClick="{{v.c.addAll}}">Add all three</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{v.hasPop}}" hint-placeholder-val="{{false}}">
+<div class="bp" style="{{v.pop.style}}" role="dialog">
+<sc-if value="{{v.pop.hasHd}}" hint-placeholder-val="{{false}}"><div class="hd">{{v.pop.hd}}</div></sc-if>
+<sc-if value="{{v.pop.hasSub}}" hint-placeholder-val="{{false}}"><div class="sub">{{v.pop.sub}}</div></sc-if>
+<sc-if value="{{v.pop.hasRows}}" hint-placeholder-val="{{false}}"><div class="rows"><sc-for list="{{v.pop.rows}}" as="r" hint-placeholder-count="2"><div><ic d="{{r.d}}" s="15"></ic><span>{{r.t}}</span></div></sc-for></div></sc-if>
+<sc-if value="{{v.pop.hasOpts}}" hint-placeholder-val="{{false}}"><div class="opts"><sc-for list="{{v.pop.opts}}" as="o" hint-placeholder-count="3"><button type="button" class="opt {{o.hot}}" aria-pressed="{{o.on}}" onClick="{{o.go}}">{{o.t}}</button></sc-for></div></sc-if>
+<sc-if value="{{v.pop.hasItems}}" hint-placeholder-val="{{false}}"><sc-for list="{{v.pop.items}}" as="i" hint-placeholder-count="3"><button type="button" class="mi {{i.hot}}" onClick="{{i.go}}"><ic d="{{i.d}}" s="17"></ic><span>{{i.t}}</span><small>{{i.small}}</small></button></sc-for></sc-if>
+<sc-if value="{{v.pop.hasGo}}" hint-placeholder-val="{{false}}"><div class="ft"><button type="button" class="ac-btn is-primary {{v.pop.goHot}}" onClick="{{v.pop.goFn}}">{{v.pop.goLabel}}</button></div></sc-if>
+</div>
+</sc-if>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"m":{"editor":null},"w":{"editor":"int","default":1052},"h":{"editor":"int","default":674},"hot":{"editor":null,"default":""},"live":{"editor":"boolean","default":false},"follow":{"editor":null,"default":""},"jump":{"editor":null,"default":""},"shot":{"editor":null,"default":""},"onGo":{"editor":null},"onLive":{"editor":null},"$preview":{"width":1114,"height":674}}'>
+class Component extends DCLogic {
+  isLive() { return this.props.live === true || this.props.live === 'true'; }
+  componentDidMount() { if (this.isLive()) { this.L = window.AL.make(this); this.L.mount(); this.forceUpdate(); } }
+  componentDidUpdate(prev) { if (this.L) this.L.props(prev); }
+  componentWillUnmount() { if (this.L) this.L.unmount(); }
+  renderVals() {
+    var W = Number(this.props.w) || 1052, H = Number(this.props.h) || 674;
+    var L = this.L;
+    var m = L ? L.model() : (this.props.m || { board: 'retro' });
+    var v = window.AP.vm(m, W, H, this.props.hot || '', L ? L.act : this.props.onGo);
+    var base = {
+      v: v, root: L ? L.ref : undefined, hasGuides: false, guides: [], hasMarquee: false, marquee: { x: 0, y: 0, w: 0, h: 0 },
+      flyTop: { note: H / 2 - 112, shape: H / 2 - 28, line: H / 2 + 14, pen: H / 2 + 56, more: H / 2 - 82 }, swTop: v.ctx ? v.ctx.y + 48 : 0, mapOn: v.hasMap ? 'true' : 'false',
+      shapeOn: { rect: 'true', ellipse: 'false', diamond: 'false', pill: 'false' }, pickShape: {},
+      edit: { value: '' }
+    };
+    v.swatches.forEach(function (s) { s.pick = function () {}; });
+    return L ? L.decorate(base, v) : base;
+  }
+}
+</script>

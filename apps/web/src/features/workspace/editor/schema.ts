@@ -18,7 +18,7 @@ const elog = log.child({ component: 'editor-schema' });
 
 type NodeName =
   | 'doc' | 'title' | 'line' | 'toggle' | 'toggleSummary' | 'toggleBody'
-  | 'divider' | 'code' | 'table' | 'table_row' | 'table_cell' | 'table_header' | 'gallery' | 'file' | 'video' | 'doclink' | 'live' | 'moment'
+  | 'divider' | 'code' | 'table' | 'table_row' | 'table_cell' | 'table_header' | 'gallery' | 'file' | 'video' | 'doclink' | 'board' | 'live' | 'moment'
   | 'unsupported' | 'unsupportedInline' | 'text' | 'hardBreak' | 'mention' | 'dateChip' | 'docref';
 type MarkName = 'bold' | 'italic' | 'strike' | 'inlineCode' | 'link' | 'highlight' | 'comment';
 
@@ -148,6 +148,8 @@ const nodes: Record<NodeName, NodeSpec> = {
     parseDOM: wholeBlock('video'), toDOM: (node) => copied(node, 'p', textAttr(node, 'title') ?? '')
   },
   doclink: { group: 'block', atom: true, attrs: { ...block, doc: { default: '' } }, parseDOM: wholeBlock('doclink'), toDOM: (node) => copied(node, 'p', '') },
+  /** A board in the workspace, by its ID alone: its name is whatever the reader's list calls it, if they can open it. */
+  board: { group: 'block', atom: true, attrs: { ...block, board: { default: '' } }, parseDOM: wholeBlock('board'), toDOM: (node) => copied(node, 'p', '') },
   live: {
     group: 'block', atom: true, attrs: { ...block, what: { default: 'decided' }, lines: { default: [] }, call: { default: null } },
     parseDOM: wholeBlock('live'), toDOM: (node) => copied(node, 'p', listOf(node, 'lines', 'text').join(' · '))

@@ -7,6 +7,7 @@ import type {
   Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MentionNotice, MoveIn, MoveMedia, Note, Person, PersonalEntry, Preferences, Session, ShareEntry, Team,
   WorkspaceMedia, WorkspaceSummary, WorkspaceTree
 } from '@alcove/api';
+import type * as Y from 'yjs';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Troubles } from '../api/trouble';
 import type { BrowserSetup } from '../browser';
@@ -36,6 +37,17 @@ export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined;
 export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
 /** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
 export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
+
+/**
+ * A board as the story opens: what's on it (drawn with @alcove/board's own writers), who else has it open and where their
+ * pointer is, and how it stands for this browser: no connection (`offline`), Alcove refusing what was added here (`failed`),
+ * or taken from under you while it's open (`gone`).
+ */
+export interface BoardSpec {
+  draw?: ((doc: Y.Doc) => void) | undefined;
+  here?: { who: Person; x: number; y: number }[] | undefined;
+  standing?: 'offline' | 'failed' | 'gone' | undefined;
+}
 
 /** A call on its way here from another device: the claim this device holds it by, and the move as it sees it. */
 export interface MoveSpec {
@@ -71,6 +83,8 @@ export interface World {
   pages: Record<string, Page>;
   /** Who each document is shared with besides its workspace's own people, by its ID. */
   shares: Record<string, ShareEntry[]>;
+  /** What each board holds and who's on it, by its ID. One without one here is blank. */
+  boards: Record<string, BoardSpec>;
   /** Where you've been tagged and haven't said you've seen it, the newest first. */
   mentions: MentionNotice[];
   /** The files in your workspaces' documents. */

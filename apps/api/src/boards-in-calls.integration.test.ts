@@ -3,12 +3,15 @@
  * store and the local LiveKit server: who can open one and who sees it, closing it, bringing a saved board and who's let in,
  * the workspace it's saved in, and what someone left out is told, which is nothing that names it.
  */
-import { AlcoveApiError, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole, type WorkspaceTree } from '@alcove/api';
+import { AlcoveApiError, DOC_UPDATE_TYPE, SERVER_CLIENT, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole, type WorkspaceTree } from '@alcove/api';
+import { addObject, readBoard } from '@alcove/board';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
 import { z } from 'zod';
 import { openJson, sealJson, stateKey, toJson } from './crypto';
+import type { DocPool } from './live/docPool';
 import { startHarness, type Browser, type Harness } from './testing/harness';
 import { connect, disposeLiveKit, type TestParticipant } from './testing/livekit';
 import { reconcile } from './modules/calls';
@@ -171,6 +174,113 @@ describe('a new board', () => {
     for (const who of [kofi, priya]) expect((await who.api.workspaces.get(id)).items.map((x) => [x.id, x.kind, x.name, x.role])).toEqual([[board, 'board', 'Launch review', 'edit']]);
     expect(await code(jamie.api.workspaces.get(id, pass))).toBe('unauthenticated');
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
+  });
+
+  it('fills a new board from its template before the call says it’s open, once, as the server’s, for everyone in it', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
+    const k = await invited(host, c, kofi);
+    const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
+    const asTemplate = (board: string) => count('SELECT count(*)::int AS n FROM document_clients WHERE document_id = $1 AND client_id = $2 AND octet_length(people) = 0', [board, SERVER_CLIENT.template]);
+
+    await k.openBoard({ template: 'retro' });
+    const board = k.getSnapshot().board.open?.documentId ?? '';
+    // By the time it's open it's in the board's log: one update, written as the template's client, which is nobody's.
+    expect(await logged(board)).toBe(1);
+    expect(await asTemplate(board)).toBe(1);
+    const [hers, his] = await Promise.all([open(art, id, board), open(kofi, id, board, { pass: k.ticket.pass })]);
+    for (const page of [hers, his]) expect(readBoard(page.doc).frames.map((f) => [f.title, f.role])).toEqual([['Went well', ''], ['Could improve', ''], ['Actions', 'actions']]);
+    // Opened again for everyone, it isn't filled again.
+    await host.openBoard({ documentId: board, letIn: false });
+    expect(await logged(board)).toBe(1);
+    // Blank writes nothing.
+    await host.openBoard({ template: 'blank' });
+    const blank = host.getSnapshot().board.open?.documentId ?? '';
+    expect(blank).not.toBe(board);
+    expect(await logged(blank)).toBe(0);
+    expect(await asTemplate(blank)).toBe(0);
+  });
+
+  it('says it’s open only once its template is on, however long the workers take: whoever reads the call then finds it filled', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
+    const k = await invited(host, c, kofi);
+    const logged = (board: string) => count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board]);
+    // The instance's workers are busy, as on a loaded instance: each change waits its turn.
+    const docs: DocPool = h.deps.docs;
+    const real = docs.run.bind(docs);
+    const busy: DocPool['run'] = async (task, input, o) => { if (task === 'edit') await rest(1500); return real(task, input, o); };
+    docs.run = busy;
+    try {
+      const opening = k.openBoard({ template: 'retro' });
+      // Art's call reads the call as any browser's does, over and over, while Kofi's opens it.
+      let board = '';
+      await until(async () => { board = (await opened(host))?.documentId ?? ''; return board !== ''; }, 'Art’s call to have the board');
+      const atFirstSight = await logged(board);
+      const s = await open(art, id, board);
+      const onOpening = readBoard(s.doc).frames.map((f) => f.title);
+      await opening;
+      expect({ atFirstSight, onOpening }).toEqual({ atFirstSight: 1, onOpening: ['Went well', 'Could improve', 'Actions'] });
+      s.close();
+    } finally {
+      docs.run = real;
+    }
+  });
+
+  it('opens a new board whose template wouldn’t go on, as the board it is, and says so once in the log, at warn', async () => {
+    const art = await account();
+    const id = await workspace(art, 'Product');
+    const { host } = await callBy(art, { home: id });
+    const docs: DocPool = h.deps.docs;
+    const real = docs.run.bind(docs);
+    const failing: DocPool['run'] = async (task, input, o) => { if (task === 'edit') throw new Error('the workers are gone'); return real(task, input, o); };
+    docs.run = failing;
+    const from = h.logs.length;
+    try {
+      await host.openBoard({ template: 'retro' });
+    } finally {
+      docs.run = real;
+    }
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    expect(board).not.toBe('');
+    expect(await count('SELECT next_seq::int - 1 AS n FROM documents WHERE document_id = $1', [board])).toBe(0);
+    const warned = linesSince(from).filter((l) => l.msg === 'board not filled from its template');
+    expect(warned.map((l) => l.level)).toEqual([40]);
+    // It's a board all the same, for everyone in the call to start on.
+    expect(readBoard((await open(art, id, board)).doc).objects).toEqual([]);
+  });
+
+  it('lets nobody take a new board’s template from it with a rescue: by the time anyone can know of the board, the template’s there', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product');
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
+    const k = await invited(host, c, kofi);
+    const docs: DocPool = h.deps.docs;
+    const real = docs.run.bind(docs);
+    const busy: DocPool['run'] = async (task, input, o) => { if (task === 'edit') await rest(1500); return real(task, input, o); };
+    docs.run = busy;
+    let adopted = 0;
+    try {
+      const opening = host.openBoard({ template: 'retro' });
+      let board = '';
+      await until(async () => { board = (await opened(k))?.documentId ?? ''; return board !== ''; }, 'Kofi’s call to have the board');
+      // Kofi, invited by address, can edit it: he posts his own "template", written as the template's client, as a rescue.
+      const forged = new Y.Doc();
+      forged.clientID = SERVER_CLIENT.template;
+      addObject(forged, { k: 'frame', x: 0, y: 0, w: 1160, h: 530, c: 'rose', role: '', hint: '', sub: '', sorted: false, title: 'Kofi’s instead' }, null);
+      adopted = (await kofi.fetch(`${h.baseUrl}/v1/workspaces/${id}/documents/${board}/adopt`, { method: 'POST', headers: { 'content-type': DOC_UPDATE_TYPE }, body: new Uint8Array(Y.encodeStateAsUpdate(forged)) })).status;
+      await opening;
+    } finally {
+      docs.run = real;
+    }
+    expect(adopted).toBe(409);
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    expect(readBoard((await open(art, id, board)).doc).frames.map((f) => f.title)).toEqual(['Went well', 'Could improve', 'Actions']);
   });
 
   it('takes every template, and nothing else', async () => {
