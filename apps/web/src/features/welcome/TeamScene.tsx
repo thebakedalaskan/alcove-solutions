@@ -3,11 +3,12 @@
  * water. Press people and they step up; the week gives each of them a lane with when they're busy (never what), and
  * where everyone is free. Pick a free time, and Schedule. The first time the week comes on screen a pointer plays it once:
  * three people step up, the free times appear, it picks Thursday at 15:00 and schedules. Touching anything stops it, and
- * from then on it's yours. With reduced motion it's the picture just before Schedule.
+ * from then on it's yours. With reduced motion it's the picture just before Schedule. What the pointer does is shown, not
+ * said: only scheduling it yourself moves focus to what took Schedule's place, which is where it's read out.
  */
 import { Avatar, Button, CheckDraw, EASE, Faces, GhostArch, Icon, Segmented, Switch, cn, useSceneLoop, type Choice } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { CAST, firstOf } from '~/features/notes/cast';
 import { Sky } from './Sky';
 import { CLOSES, DAYS, LINE, OPENS, busyOn, clock, freeOn, type Member, type Span } from './week';
@@ -156,6 +157,15 @@ function Week({ plan, box, go, pointer, onPick, onLength, onNotes, onBook, onTou
   onPick: (day: number, from: number) => void; onLength: (l: Length) => void; onNotes: (on: boolean) => void; onBook: () => void; onTouch: () => void;
 }) {
   const reduce = useReducedMotion() ?? false;
+  const done = useRef<HTMLDivElement>(null);
+  /** Whether you pressed Schedule, rather than the pointer playing the week. */
+  const pressed = useRef(false);
+  /* Scheduling takes away the button you pressed: focus moves to what took its place, not the page. */
+  useEffect(() => {
+    if (!plan.booked || !pressed.current) return;
+    pressed.current = false;
+    done.current?.focus({ preventScroll: true });
+  }, [plan.booked]);
   const everyone = everyoneIn(plan);
   const people = everyone.map((who) => CAST[who]);
   const free = freeIn(plan);
@@ -217,14 +227,13 @@ function Week({ plan, box, go, pointer, onPick, onLength, onNotes, onBook, onTou
         </div>
         <div className="lp-wk-sw"><span>Write notes</span><Switch checked={plan.notes} onChange={onNotes} label="Write notes" /></div>
         <div className="lp-wk-act">
-          {!plan.booked && <Button ref={go} variant="primary" className="lp-wk-go" disabled={!at || everyone.length < 2} onClick={onBook}>Schedule</Button>}
-          <div role="status">
-            {plan.booked && (
-              <motion.div className="lp-wk-done" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: EASE.out }}>
-                <Icon name="circleCheck" size={18} /><span>Scheduled. The invite goes out from your calendar.</span>
-              </motion.div>
-            )}
-          </div>
+          {plan.booked ? (
+            <motion.div ref={done} tabIndex={-1} className="lp-wk-done" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease: EASE.out }}>
+              <Icon name="circleCheck" size={18} /><span>Scheduled. The invite goes out from your calendar.</span>
+            </motion.div>
+          ) : (
+            <Button ref={go} variant="primary" className="lp-wk-go" disabled={!at || everyone.length < 2} onClick={() => { pressed.current = true; onBook(); }}>Schedule</Button>
+          )}
         </div>
       </div>
       {pointer && (

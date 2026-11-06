@@ -7,8 +7,9 @@
  *
  * The first time it comes on screen it writes itself: the summary a word at a time, then each row. Then the sun visits
  * each moment in turn, lighting its row and moving the transcript while the time plays on. A moment, a press on the line
- * or the arrow keys go somewhere and stay there a while; Play and Pause stop and start the tour. With reduced motion it's
- * a still at the first decision until someone presses Play. Off screen nothing runs.
+ * or the arrow keys go somewhere and stay there a while; Play and Pause stop and start the tour. While someone is in the
+ * note from the keyboard, the tour holds still. With reduced motion it's a still at the first decision until someone
+ * presses Play. Off screen nothing runs.
  */
 import { Avatar, Button, Check, Chip, Dots, EASE, Faces, Icon, SealedBadge, TranscriptLine, Unsure, Words, buttonClass, cn, useSceneLoop } from '@alcove/ui';
 import { animate, motion, useReducedMotion, type Transition } from 'motion/react';
@@ -46,6 +47,11 @@ const MARKS: readonly Mark[] = [...DECIDED.map((d): Mark => ({ at: d.at, kind: '
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const pct = (at: number) => `${((at / LENGTH) * 100).toFixed(3)}%`;
 const nameOf = (id: CastId) => (id === 'art' ? 'You' : firstOf(id));
+/**
+ * Whether focus on `el` holds the tour: keyboard focus anywhere in the note but Play and Pause, which are the tour's own
+ * controls. A press with a pointer doesn't hold it: it plays on from where it went, as it always has.
+ */
+const holds = (el: EventTarget | null) => el instanceof Element && el.matches(':focus-visible') && !el.closest('.lp-nw-play');
 /** The next moment the sun visits after `t`, going round to the first after the last. */
 const nextStop = (t: number) => STOPS.find((s) => s > t + 0.5) ?? STOPS[0] ?? START;
 /** The line being said at `t`: the last to have started, or the first before any has. */
@@ -67,6 +73,7 @@ export function NoteScene() {
   const [here, setHere] = useState<Here>({ t: START, pin: START, glide: 'jump' });
   const [mine, setMine] = useState<readonly boolean[]>(() => DECIDED.map(() => false));
   const [done, setDone] = useState<readonly boolean[]>(() => FOLLOW_UPS.map((f) => f.done));
+  const [held, setHeld] = useState(false);
   const now = useRef(START);
   const hold = useRef(0);
   const ready = reduce || written;
@@ -101,7 +108,11 @@ export function NoteScene() {
     setWritten(true);
   }, !reduce && !written);
 
-  /* Then the time plays on at each moment, and the sun goes on to the next, unless someone has just gone somewhere. */
+  /*
+   * Then the time plays on at each moment, and the sun goes on to the next, unless someone has just gone somewhere. While
+   * someone is in the note from the keyboard it holds: what has focus stays in view, and the time a screen reader reads out
+   * doesn't change under it.
+   */
   useSceneLoop(box, async (c) => {
     for (;;) {
       for (let s = 0; s < DWELL || Date.now() < hold.current; s++) {
@@ -113,13 +124,14 @@ export function NoteScene() {
       go(nextStop(now.current), 'tour');
       await c.sleep(1500);
     }
-  }, ready && playing);
+  }, ready && playing && !held);
 
   const shown = ready ? ROWS : risen;
   const lit = (at: number) => here.t >= at && here.t < at + LIT;
   const playFrom = (at: number) => seek(at, 'seek');
   return (
-    <div ref={box} className="lp-nw">
+    <div ref={box} className="lp-nw" onFocus={(e) => setHeld(holds(e.target))}
+      onBlur={(e) => { if (!(e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget))) setHeld(false); }}>
       <div className="lp-nw-band">
         <div className="lp-nw-head">
           <h3 className="lp-nw-title">{HEAD.title}</h3>
@@ -148,7 +160,7 @@ export function NoteScene() {
                   <span className="lp-nw-t">{d.text}<small>Proposed by {d.proposer}{by && ` · confirmed by ${by}`}</small></span>
                   <Moment at={d.at} onPlay={playFrom} />
                   <span className="lp-nw-end">
-                    {by ? <span className="lp-nw-done"><Icon name="check" size={14} />Confirmed</span>
+                    {by ? <Confirmed took={mine[i] ?? false} />
                       : <Button size="xs" onClick={() => setMine((m) => m.map((v, j) => v || j === i))}>Confirm</Button>}
                   </span>
                 </div>
@@ -186,6 +198,16 @@ function State({ ready, reduce }: { ready: boolean; reduce: boolean }) {
       </motion.span>
     </span>
   );
+}
+
+/** Confirmed, where the Confirm button was. Pressing Confirm takes the button away: focus moves here, not to the page. */
+function Confirmed({ took }: { took: boolean }) {
+  const el = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const at = document.activeElement;
+    if (took && (at === null || at === document.body)) el.current?.focus({ preventScroll: true });
+  }, [took]);
+  return <span ref={el} className="lp-nw-done" tabIndex={-1}><Icon name="check" size={14} />Confirmed</span>;
 }
 
 /** A moment as a chip that plays from there. */
@@ -324,7 +346,7 @@ function Transcript({ current, reduce, onLine }: { current: number; reduce: bool
           ))}
         </div>
       </div>
-      <div className="lp-nw-ask"><Icon name="ask" size={17} /><span>Ask about this call</span><Chip icon="lock">Only you</Chip></div>
+      <div className="lp-nw-ask" aria-hidden="true"><Icon name="ask" size={17} /><span>Ask about this call</span><Chip icon="lock">Only you</Chip></div>
     </aside>
   );
 }

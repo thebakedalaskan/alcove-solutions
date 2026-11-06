@@ -45,7 +45,11 @@ function Jump({ to, children, current = false }: { to: string; children: ReactNo
   return <a href={`#${to}`} onClick={go} aria-current={current ? 'true' : undefined}>{children}</a>;
 }
 
-/** Where the page is: scrolled past its top, which part is in the middle of the window, and whether night is under the nav. */
+/**
+ * Where the page is: scrolled past its top, which part is in the middle of the window, and whether night is under the nav.
+ * Parts hold parts (Find a time holds Agents and Offline, and Offline holds Privacy), so the part in the middle is the
+ * innermost of those there: the last of them in the page's order.
+ */
 function usePlace() {
   const [scrolled, setScrolled] = useState(false);
   const [part, setPart] = useState<string | null>(null);
@@ -54,7 +58,11 @@ function usePlace() {
     const on = () => setScrolled(scrollY > 8);
     on();
     addEventListener('scroll', on, { passive: true });
-    const parts = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) setPart(e.target.id); }), { rootMargin: '-45% 0px -50% 0px' });
+    const middle = new Set<string>();
+    const parts = new IntersectionObserver((es) => {
+      es.forEach((e) => { if (e.isIntersecting) middle.add(e.target.id); else middle.delete(e.target.id); });
+      setPart(PARTS.findLast(([id]) => middle.has(id))?.[0] ?? null);
+    }, { rootMargin: '-45% 0px -50% 0px' });
     PARTS.forEach(([id]) => { const el = document.getElementById(id); if (el) parts.observe(el); });
     const under = new Set<Element>();
     let nights: IntersectionObserver | null = null;
