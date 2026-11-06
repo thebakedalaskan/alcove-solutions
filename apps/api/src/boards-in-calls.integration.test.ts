@@ -1477,6 +1477,6 @@ describe('what the previous release stored', () => {
     const { callId } = host.ticket;
     expect(JSON.stringify((await storedCall(art.ownerId, callId)).state['board'])).toContain(art.name);
     await host.leave();
-    expect((await storedCall(art.ownerId, callId)).state['board']).toEqual({ open: {}, letIn: [] });
+    expect((await storedCall(art.ownerId, callId)).state['board']).toEqual({ open: {}, letIn: [], rooms: [], landing: null, ideas: {} });
   });
 });

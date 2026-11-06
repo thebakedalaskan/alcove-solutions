@@ -77,7 +77,13 @@ export const StoredItem = z.object({
    */
   restrictedBy: z.string().nullable().default(null),
   /** On a call's folder only. */
-  call: StoredCall.nullable().default(null)
+  call: StoredCall.nullable().default(null),
+  /**
+   * A board made for a breakout room, while its call goes on (the organizer's owner, and the call): only seats for whoever's in
+   * that room open it, and they come and go, so it isn't stranded when there's nobody in it for a moment. Once the call is over
+   * it's a restricted board like any other. Null on anything else, and on what was stored before rooms had boards.
+   */
+  room: z.object({ ownerId: z.string(), callId: z.string() }).nullable().default(null)
 });
 export type StoredItem = z.infer<typeof StoredItem>;
 /**

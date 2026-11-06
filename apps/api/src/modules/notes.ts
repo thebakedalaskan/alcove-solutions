@@ -829,7 +829,7 @@ export async function proposeAction(o: Owner, noteId: string, p: ActionProposal)
       const to = p.owner === undefined ? undefined : assignable(p.owner, organizer, holding, owner, { noteId });
       const a: ActionItem = {
         id: id128(), text: p.text, ...(to ? { owner: to } : {}), takenOn: !!p.owner && same(p.owner, by.email), ...(p.due ? { due: p.due } : {}), done: false,
-        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }]
+        ...linesOf(part.lines, p.lines, noteId), against: [], changes: [{ by, at, what: 'proposed' }], from: null
       };
       added = true;
       return part.put({ actions: inOrder([...part.actions, a]) });

@@ -424,7 +424,7 @@ export async function draft(cfg: Config, b: Brief, style: NotesStyle): Promise<W
       const id = id128();
       const tick = a.ticked ? tickOf(a.ticked) : undefined;
       if (tick) ticks.set(id, tick);
-      return { id, text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...backed(a), done: false, ...onScreen(shown, a), changes: [] };
+      return { id, text: clip(a.text.trim(), 300), ...(who ? { owner: who } : {}), takenOn: false, ...(due ? { due: clip(due, 40) } : {}), ...backed(a), done: false, ...onScreen(shown, a), changes: [], from: null };
     }),
     ticks,
     chapters,

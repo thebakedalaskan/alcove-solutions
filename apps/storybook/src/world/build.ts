@@ -112,7 +112,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     if (owner && a.done) changes.push({ by: changer(owner, roleOf(owner)), at: addMinutes(settled, 60), what: 'done' });
     const item: ActionItem = {
       id: a.id, text: a.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: a.takenOn ?? false, ...(a.due ? { due: a.due } : {}),
-      ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes
+      ...(a.at ? { at: mmss(a.at) } : {}), done: a.done ?? false, lines, against: [], changes, from: null
     };
     return { ...item, evidence: evidenceOf(lines) };
   });

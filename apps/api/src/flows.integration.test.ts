@@ -1021,7 +1021,7 @@ describe('live transcript and written notes', () => {
     expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', disputes: [], changes: [], ...backedBy('We agreed') }]);
     expect(note.actions).toEqual([{
       id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
-      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], ...backedBy('Kofi will')
+      takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], from: null, ...backedBy('Kofi will')
     }]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
@@ -2749,12 +2749,16 @@ describe('deleting an account', () => {
     const hers = await b.api.workspaces.create('Hers');
     const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
     await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
+    // And beside a frame of a board of hers, kept as the next release keeps it: this one only has the table.
+    const retro = await b.api.workspaces.items.create(hers.id, { kind: 'board', name: 'Retro' });
+    const space = (await h.pool.query<{ owner_id: string }>('SELECT owner_id FROM workspaces WHERE workspace_id = $1', [hers.id])).rows[0]?.owner_id ?? '';
+    await h.pool.query('INSERT INTO presenter_frame_notes (owner_id, workspace_owner_id, document_id, frame_index, body_ciphertext) VALUES ($1, $2, $3, $4, $5)', [ownerId, space, retro.id, randomBytes(32), randomBytes(64)]);
 
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
       'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
+      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));

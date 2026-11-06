@@ -30,7 +30,7 @@ export function exampleNote(me: Person): Note {
     actions: [{
       id: 'screens', text: 'Send the new screens', owner: { name: kofi.name, person: kofi }, takenOn: true, due: 'Wed', at: 982, done: false, lines: ['l3'], against: [],
       evidence: said('l3', 982, kofi, 'I’ll send the new screens by Wednesday.'),
-      changes: [{ by: { id: null, name: kofi.name, email: kofi.email, as: 'invited' }, at: started.toISOString(), what: 'took-on' }]
+      changes: [{ by: { id: null, name: kofi.name, email: kofi.email, as: 'invited' }, at: started.toISOString(), what: 'took-on' }], from: null
     }],
     gaps: [],
     chapters: [

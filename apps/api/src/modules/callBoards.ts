@@ -305,7 +305,7 @@ async function prepareNew<S extends Boarded>(x: Changing<S>, template: BoardTemp
   await fillBoard(made.w, made.documentId, template).catch((e: unknown) => blog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
   const by = controllerOf(v, x.reader);
   return (y) => ({
-    s: opening(y.s, { workspaceId, documentId: made.documentId, by }, [...y.s.board.letIn, made.entry]),
+    s: opening(y.s, { workspaceId, documentId: made.documentId, by, timer: null, vote: null }, [...y.s.board.letIn, made.entry]),
     ended: removedFrom(y.known, made.seats),
     done: { what: 'board opened', workspaceId, documentId: made.documentId, made: true, letIn: true, invited: made.invited, here: made.entry.seen.length }
   });
@@ -324,7 +324,7 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, documentId: strin
   if (letIn && !there && s.board.letIn.length >= MAX_BOARDS) throw fullUp(callId);
   if (!letIn) {
     const { workspaceId } = await bringable(o, reader, { documents: x.meeting.documents, viewed: x.viewed }, documentId, { letIn: false, db: o.pool });
-    return (y) => ({ s: opening(y.s, { workspaceId, documentId, by }), ended: [], done: { what: 'board opened', workspaceId, documentId, made: false, letIn: false, invited: 0, here: 0 } });
+    return (y) => ({ s: opening(y.s, { workspaceId, documentId, by, timer: null, vote: null }), ended: [], done: { what: 'board opened', workspaceId, documentId, made: false, letIn: false, invited: 0, here: 0 } });
   }
   const r = await tx(o.pool, async (c) => {
     const w = await bringable(o, reader, { documents: x.meeting.documents, viewed: x.viewed }, documentId, { letIn: true, db: c, lock: 'change' });
@@ -332,7 +332,7 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, documentId: strin
     return { workspaceId: w.workspaceId, ...await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: decided, seen: [] }, x.here, x.known) };
   });
   return (y) => ({
-    s: opening(y.s, { workspaceId: r.workspaceId, documentId, by }, [...y.s.board.letIn.filter((e) => e.documentId !== documentId), r.entry]),
+    s: opening(y.s, { workspaceId: r.workspaceId, documentId, by, timer: null, vote: null }, [...y.s.board.letIn.filter((e) => e.documentId !== documentId), r.entry]),
     ended: removedFrom(y.known, r.seats),
     done: { what: 'board opened', workspaceId: r.workspaceId, documentId, made: false, letIn: true, invited: 0, here: r.entry.seen.length }
   });

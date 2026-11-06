@@ -559,7 +559,9 @@ export const ActionItemSchema = z.object({
   screen: ScreenRefSchema.optional(),
   ...Grounds,
   /** Who took it on, said it wasn't theirs, gave it to someone, changed it or ticked it, oldest first. */
-  changes: z.array(ChangeSchema)
+  changes: z.array(ChangeSchema),
+  /** Where it was written down, when not in what was said: a board's Actions frame, which puts it under "Follow-ups from the board". */
+  from: z.enum(['board']).nullable().default(null)
 });
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
