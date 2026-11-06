@@ -6,7 +6,8 @@
  */
 import { AccountSignalSchema, type AccountSignal } from '@alcove/api';
 
-const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('alcove-account');
+/* Only in a browser: prerendering runs this in Node, where an open channel with a listener keeps the build from ever exiting. */
+const channel = typeof window === 'undefined' || typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('alcove-account');
 const gone = new Set<string>();
 const listeners = new Set<(owner: string, deleted: boolean) => void>();
 

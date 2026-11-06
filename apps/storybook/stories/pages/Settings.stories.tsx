@@ -10,3 +10,6 @@ export const FirstDay = page('/settings', 'first-day');
 export const OnTheirOwn = page('/settings', 'on-their-own');
 /** Opened at the minutes, from the side panel. */
 export const Minutes = page('/settings#plan', 'busy');
+/** Opened at notifications: being tagged in a document you can open, while you're somewhere else, is one of them. */
+export const Notifications = page('/settings#notifications', 'busy');
+export const NotificationsNight = page('/settings#notifications', 'busy', { globals: { theme: 'dark' } });

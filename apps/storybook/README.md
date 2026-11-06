@@ -50,10 +50,15 @@ aren't.
 
 **The demo world** is the design canvas's (`docs/design/canvas/appdata.js` and `data-*.js`): Vandelay Industries, you are
 Art Vandelay, and everyone is made up. Never write a real person's name. It's written the way the canvas writes it, with
-the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its workspaces
-are Product (Art runs it: a folder, a document closed to the workspace, two things in Trash), Design (he edits) and the
-company handbook (he can only read). What each document says is in `src/world/documents.ts`, in the editor's own blocks,
-and who it's shared with in the world's `shares`; a page can say what Alcove refused of it, which opens it couldn't-save.
+the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its Drive holds
+the homes of the day's calls (the standup's, the pricing sync's and the design review's, each with the call's folder at its
+top, opening the call's note), then Product (Art runs it: a folder, a document closed to the workspace, two things in
+Trash), Design (he edits) and the company handbook (he can only read). What each document says is in
+`src/world/documents.ts`, in the editor's own blocks: tags name people by address and the stand-in writes in their IDs,
+comment threads are written as the app writes them, and photos, a video and a file are drawn and recorded here
+(`src/media/screens.ts`) and kept in the world's `media`. Who a document's shared with is in `shares`, a tag waiting for Art
+in `mentions`, and what a call worked on in its note's `workedOn`. A page can say what Alcove refused of it, which opens it
+couldn't-save, and a block can say someone else is still uploading it.
 
 ## Scenarios
 
