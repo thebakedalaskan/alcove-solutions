@@ -3,7 +3,7 @@
  * starts every document with and written with the editor's own blocks (the world's `pages`), so the editor opens it as it
  * opens any other; what's typed stays in this story. Nobody else is ever in it. A page can say Alcove refused some of what
  * this browser wrote: its session opens couldn't-save, with those words on the page, until they're copied, saved as a new
- * document or discarded.
+ * document or discarded. Files are kept in the world (`media`) and read back as the browser's own object URLs.
  *
  * A board starts empty, as the API makes one, and holds what the world's `boards` draws on it. Whoever the world has on it
  * is on its awareness, as the server would say they are, with their pointer where the world puts it, and in the workspace's
@@ -12,7 +12,7 @@
 import {
   AlcoveApiError, DOC_SEED, randomClient, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary, type DocumentRole,
   type DocumentShare, type ItemInput, type ItemPlace, type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceHere, type WorkspaceItem, type WorkspaceLive,
-  type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  type WorkspacePerson, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere, servedType, type MediaPictureOptions, type MediaUploadOptions, type WorkspaceMedia, type WorkspaceReadOptions
 } from '@alcove/api';
 import { itemsOnPage } from '@alcove/api/retire';
 import { NO_PRESENCE } from '@alcove/board';
@@ -21,8 +21,9 @@ import * as Y from 'yjs';
 import { setTitle } from '~/features/workspace/editor/title';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import { appendBlocks, contentOf } from '~/features/workspace/editor/ydoc';
+import { isOnline } from '../browser';
 import { personAt } from '../world/people';
-import { Pushed } from './live';
+import { Pushed, pause } from './live';
 import { current, me, nextId } from './state';
 
 const notFound = () => new AlcoveApiError('not-found', 'That workspace isn’t there, or you can’t open it.');
@@ -136,6 +137,100 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   override close(): void { watching.delete(this); super.close(); }
 }
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
+
+/* ---------- files (from 519a0327, the workspace session's stand-in, in this branch's words) ---------- */
+
+/** The limit in force, as the API has it unless it's changed. */
+const MOST_BYTES = 512 * 1024 * 1024;
+/** How an upload goes here: a few pieces, a moment each, so a block shows it uploading. */
+const UPLOAD_PIECES = 6;
+const PIECE_MS = 450;
+/** Where each file is read from, once it's been asked for: a player keeps it. They go with the story. */
+const urls = new Map<string, string>();
+const noFile = () => new AlcoveApiError('not-found', 'That file doesn’t exist, or you don’t have access to it.');
+
+/** The documents you can open in a workspace now. */
+const openable = (tree: WorkspaceTree): Set<string> => new Set(tree.items.filter((i) => i.kind !== 'folder' && i.trashedAt === null).map((i) => i.id));
+/** A document or board you can edit, or why not, in the API's words. */
+function editable(id: string, documentId: string): WorkspaceItem {
+  const item = treeOf(id).items.find((i) => i.id === documentId);
+  if (!item || item.kind === 'folder') throw new AlcoveApiError('not-found', 'That document doesn’t exist, or you don’t have access to it.');
+  if (item.role !== 'edit') throw new AlcoveApiError('forbidden', 'You can read this, but not change it.');
+  return item;
+}
+/** A file, as one of the documents you reach it through has it. */
+function fileIn(id: string, documentId: string, mediaId: string) {
+  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId && m.media.documents.includes(documentId));
+  if (!kept) throw noFile();
+  return kept;
+}
+/** Keeps a file in a document, a piece at a time: through a lost connection it waits, and a stopped upload leaves nothing. */
+export async function upload(id: string, documentId: string, file: File, o: MediaUploadOptions = {}): Promise<WorkspaceMedia> {
+  editable(id, documentId);
+  if (file.size > MOST_BYTES) throw new AlcoveApiError('invalid', 'This file is bigger than 512 MiB, the most a file can be.');
+  const stopped = () => new AlcoveApiError('network', 'That upload was stopped.');
+  for (let piece = 1; piece <= UPLOAD_PIECES; piece++) {
+    await pause(PIECE_MS);
+    while (!isOnline()) { if (o.signal?.aborted) throw stopped(); await pause(500); }
+    if (o.signal?.aborted) throw stopped();
+    o.onProgress?.({ sent: Math.round((file.size * piece) / UPLOAD_PIECES), total: file.size });
+  }
+  const media: WorkspaceMedia = {
+    id: nextId('media').padEnd(22, '0'), name: file.name.replace(/\s+/g, ' ').trim() || 'File', type: servedType(file.type), size: file.size,
+    width: o.width ?? null, height: o.height ?? null, createdAt: new Date().toISOString(), documents: [documentId]
+  };
+  current().media.unshift({ workspace: id, media, body: () => Promise.resolve(file) });
+  return structuredClone(media);
+}
+/** Where to read a file through a document, for a player or a download: the same while the story lasts. */
+export async function urlOf(id: string, documentId: string, mediaId: string): Promise<string> {
+  const kept = fileIn(id, documentId, mediaId);
+  const known = urls.get(mediaId);
+  if (known) return known;
+  const url = URL.createObjectURL(await kept.body());
+  urls.set(mediaId, url);
+  return url;
+}
+/** A picture, as a URL of its own: whoever asked for it lets it go. */
+export async function pictureOf(id: string, documentId: string, mediaId: string, o: MediaPictureOptions = {}): Promise<string> {
+  const kept = fileIn(id, documentId, mediaId);
+  const body = await kept.body();
+  if (o.signal?.aborted) throw new AlcoveApiError('network', 'That picture was stopped.');
+  return URL.createObjectURL(body);
+}
+/** Reuses a file from another document of the same workspace, for someone who can edit this one. */
+export function attach(id: string, documentId: string, mediaId: string): void {
+  editable(id, documentId);
+  const open = openable(treeOf(id));
+  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId && m.media.documents.some((d) => open.has(d)));
+  if (!kept) throw noFile();
+  if (!kept.media.documents.includes(documentId)) kept.media.documents = [...kept.media.documents, documentId];
+}
+/** Every file you can reach in a workspace, the newest first, each with the documents you reach it through. */
+export function mediaIn(id: string): WorkspaceMedia[] {
+  const open = openable(treeOf(id));
+  return current().media
+    .filter((m) => m.workspace === id && m.media.documents.some((d) => open.has(d)))
+    .map((m) => ({ ...m.media, documents: m.media.documents.filter((d) => open.has(d)) }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+/**
+ * Deletes a file for good, for everyone, as the API does: refused for someone in only through a seat in a call (a pass,
+ * and no place in the workspace), and for anyone who can't edit every document that has it, seen or not, in words that
+ * name none of them. Every document that had it shows it removed from then on.
+ */
+export function removeMedia(id: string, documentId: string, mediaId: string, o: WorkspaceReadOptions = {}): void {
+  editable(id, documentId);
+  if (o.pass && treeOf(id).role === null) throw new AlcoveApiError('forbidden', 'You can work on this in the call, but you can’t delete its files for good.');
+  const kept = fileIn(id, documentId, mediaId);
+  const items = treeOf(id).items;
+  if (kept.media.documents.some((d) => items.find((i) => i.id === d)?.role !== 'edit')) throw new AlcoveApiError('forbidden', 'This file is also in a document you can’t edit.');
+  const w = current();
+  w.media = w.media.filter((m) => !(m.workspace === id && m.media.id === mediaId));
+  const url = urls.get(mediaId);
+  if (url) URL.revokeObjectURL(url);
+  urls.delete(mediaId);
+}
 
 const docs = new Map<string, Y.Doc>();
 /** A document as a browser holds one: on a Yjs client of its own, never one of those only the API writes as. */
@@ -262,11 +357,13 @@ export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): 
   docs.set(made.id, doc);
   return made;
 }
-/** The documents kept for this story go when it does. */
+/** The documents and files kept for this story go when it does. */
 export function forgetDocuments(): void {
   for (const d of docs.values()) d.destroy();
   docs.clear();
   watching.clear();
+  for (const url of urls.values()) URL.revokeObjectURL(url);
+  urls.clear();
 }
 
 export const noVersions = (): DocVersionSummary[] => [];

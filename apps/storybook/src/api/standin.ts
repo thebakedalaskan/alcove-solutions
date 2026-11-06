@@ -569,6 +569,14 @@ export const standIn: AlcoveApi = {
       get: () => answer(() => ({ text: '' })),
       set: () => answer(() => undefined)
     },
+    media: {
+      upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
+      url: async (id: ID, documentId: ID, mediaId: ID) => { await answer(() => null); return spaces.urlOf(id, documentId, mediaId); },
+      picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.pictureOf(id, documentId, mediaId, o); },
+      attach: (id: ID, documentId: ID, mediaId: ID) => answer(() => spaces.attach(id, documentId, mediaId)),
+      list: (id: ID) => answer(() => spaces.mediaIn(id)),
+      remove: (id: ID, documentId: ID, mediaId: ID, o) => answer(() => spaces.removeMedia(id, documentId, mediaId, o))
+    },
     ask: (_id: ID, _documentId: ID, body: DocAskBody) => (async function* (): AsyncIterable<DocAskPart> {
       if (body.action === 'checklist') { for (const line of body.text.split(/[.\n]+/).map((x) => x.trim()).filter(Boolean)) yield { type: 'todo', text: line }; return; }
       yield { type: 'text', text: body.text.split(/(?<=\.)\s/)[0] ?? body.text };

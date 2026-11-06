@@ -47,13 +47,13 @@ flowchart TB
 | `apps/web/src/features/workspace` | The list and document pair, `<Workspace mode="page" \| "call" />`, driven by `api.workspaces.live`: it takes where it is (`at`) and says where to go (`onGo`), so a route or a call keeps the address, and it has no theme of its own (in a call the `.stage` makes the whole document night). A change to the tree shows at once (`changes.ts`) and reaches everyone on the stream. The editor (`editor/`, loaded through `editor/lazy.ts`) mounts after the document's first sync. `keep.ts` is what a session keeps until Alcove has it, sealed in IndexedDB; `sendKept.ts` sends it even if the document isn't opened again, and says so once if it can't get there. `Rescue.tsx` offers what didn't reach Alcove (copy it, save it as a new document, or discard it) wherever it may not get there by itself. |
 | `apps/api` | The API (`@alcove/server`): Hono on Node, raw SQL via `pg` with zod-parsed rows, crypto via `@noble/ciphers` and `@noble/hashes`, objects via the S3 client, Google ID tokens via `jose`, logs via pino. |
 | `packages/api` | The contract: domain types as zod schemas, the `AlcoveApi` interface, live-session interfaces, wire shapes. |
-| `packages/api-http` | The browser client: REST, NDJSON streams, raw audio and speech uploads, live call and recording sessions, documents being worked on. |
+| `packages/api-http` | The browser client: REST, NDJSON streams, raw audio, speech and file uploads, live call and recording sessions, documents being worked on. |
 | `packages/board` | A whiteboard's Y.Doc and the logic the app and the API share: its shape, reading and writing it, connector routes, templates, its text, and landing rooms' boards. Pure TypeScript on plain `Y.Doc`s. `apps/web/src/features/board` draws a board with it, on a board's own page in the workspace (`src/features/workspace/BoardPane.tsx`, loaded the first time a board opens), and the API reads a board's words and puts its template on with it, in the workers that open documents (`documentText.ts`, `documentOps.ts`). |
 | `packages/ui` | The design system. |
 | `infra`, `.github/workflows` | GCP bootstrap, deployment guide, CI and deploy pipelines. |
 
 The API is one application with modules (account, people, meetings, calendar, calls, moves, rings, recordings, audio,
-transcripts, notes, drafting, writer, series, repeats, billing, workspaces, workspaceAccess, workspaceDocuments, documentFirewall, documentWork, documentOps, documentText), not separate services. Modules share one database pool and
+transcripts, notes, drafting, writer, series, repeats, billing, workspaces, media, workspaceAccess, workspaceDocuments, documentFirewall, documentWork, documentOps, documentText), not separate services. Modules share one database pool and
 one object store, and receive the owner context (the account's keys, opened for this request) explicitly. A transaction
 reads on its own connection, never through the pool: ten at once each waiting for a second one would wait for ever. Nothing
 waits for a connection longer than 10 seconds, and comes back as an error if it would.
@@ -81,12 +81,13 @@ which browsers edit together through the API ([Data and storage › Documents](d
    middleware assigns a request ID (or keeps a well-formed `x-request-id`), returns it as a header, and
    binds it to every log line for the request ([Logging and errors](logging-and-errors.md)).
 2. CORS answers only `WEB_ORIGIN`. A state-changing request must come from `WEB_ORIGIN` with a JSON or
-   audio body.
+   audio body, or on its own route, a shared-screen frame or a piece of a file.
 3. Public routes come first: `GET /health` and `/healthz`, `GET /v1/session`, `POST /v1/auth/sign-in`
    (the demo providers), `GET /v1/auth/google` and `GET /v1/auth/google/callback`, `GET /v1/attestation`
    ([what's running](privacy-keys-and-sessions.md#moving-to-confidential-computing)) and `POST /v1/telemetry`.
 4. Calls and workspaces come next, each by what it takes: a call pass, or for a workspace a session or a call pass
-   (`modules/workspaceAccess.ts`), since guests have no session. Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
+   (`modules/workspaceAccess.ts`), since guests have no session, or for reading a file, the token in its URL and the browser's cookie
+   ([Privacy › Files](privacy-keys-and-sessions.md#files)). Auth middleware looks the session up in Postgres by the hash of the cookie. No session, or an ended one:
    `401 unauthenticated`, and the app returns to the welcome screen. Otherwise it opens the account's keys
    for this request (`openOwner`) and adds `ownerId` to the log context.
 5. Mutations carry `x-alcove-operation` (a random Id128). The idempotency middleware stores an HMAC
@@ -133,6 +134,7 @@ which browsers edit together through the API ([Data and storage › Documents](d
 | Presenter notes | 20,000 characters on each document, saved 120 times a minute per person |
 | Asking about a selection | At most 8,000 characters, 20 a minute per person, and 60 a minute on each instance for every demo account together; a checklist of at most 40 lines |
 | Carets and presence | A caret of at most 4 KiB, 1,800 a minute per person; presence 600 a minute per person, said every 10 seconds and forgotten after 30 |
+| File in a workspace | At most 512 MiB, in pieces of 4 MiB; a workspace 100 GiB and 20 GiB a day per person, guests included, all of which change without a deploy (`limits.ts`); 600 pieces a minute per person; 240 reads a minute per person, each URL and each piece opened; a URL lasts 12 hours; an answer to a range sends at most 16 MiB; in a process, 16 pieces arriving (4 per person), 32 reads open (8 per person) with 48 waiting up to 10 seconds, and 4 pieces sealed or opened at once; an unfinished upload goes after a day |
 | API instances | Any number: sessions and keys come from Postgres on every request, and notes jobs are claimed with leases. Rings go through Postgres, read by each instance's own ticker, and workspace streams hear of changes from other instances the same way. The rate-limit counters, Google access tokens and the timers that retry notes are per process. The prepared deploy runs one, taking 500 requests at once: an open tab holds one for its stream of rings, and a process holds at most 300 of those, 8 for any one account. |
 
 ## Local versus production

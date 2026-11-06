@@ -11,7 +11,7 @@ import type { LiveKitEvent } from '../livekit';
 import { b64u, id128, mac, openJson, openRecord, sealJson, sealRecord, stateKey, toJson, unb64u, utf8 } from '../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, UnavailableError, ValidationError, notFound } from '../errors';
-import { openOwner } from '../owners';
+import { findOwner, openOwner } from '../owners';
 import { me, profile } from './account';
 import { CallBoards, CallSpace, NO_BOARDS, NO_SPACE, withWorked, type WorkedBy, type WorkedDocument } from './callSpace';
 import * as space from './callWorkspace';
@@ -361,6 +361,18 @@ const seatFor = (key: Uint8Array, role: Joined['role'], person: string) => b64u(
 const seatOf = (key: Uint8Array, j: Joined) => seatFor(key, j.role, j.person);
 /** The seat of whoever a pass belongs to. */
 export const seatOfViewer = (v: Viewer): string => seatFor(seatKey(v.organizer, v.pass.callId), v.pass.role, v.pass.person);
+/**
+ * Whether someone's in a seat now, known only by its name: the call is going on, and whoever has the seat is let in and
+ * wasn't taken out. It's what a pass's viewer says, for what carries a seat in place of a pass.
+ */
+export async function inSeat(d: Deps, at: { callId: string; organizer: string; seat: string }): Promise<boolean> {
+  const o = await findOwner(d, at.organizer, undefined);
+  if (!o) return false;
+  const found = await load(o, o.pool, at.callId).catch((e: unknown) => { if (e instanceof NotFoundError) return undefined; throw e; });
+  if (found?.row.state !== 'live') return false;
+  const key = seatKey(o, at.callId);
+  return found.state.people.some((j) => j.status === 'in' && !found.state.removed.includes(j.person) && seatOf(key, j) === at.seat);
+}
 /** Everyone in the call now or, with `place`, in that part of it, by seat, with the name they're in it under. */
 export async function seatedIn(o: Owner, callId: string, place?: string | undefined): Promise<Map<string, string>> {
   const { row, state } = await load(o, o.pool, callId);
