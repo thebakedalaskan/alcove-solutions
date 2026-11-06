@@ -643,7 +643,7 @@ export const BoardComment = memo(function BoardComment({ id, x, y, person, name,
   open?: boolean | undefined;
   /** Its thread is open, wherever that's shown: `controls` names what shows it. */
   expanded?: boolean | undefined; controls?: string | undefined;
-  /** It hangs down from where it's pinned instead of standing over it, to keep clear of what's above. */
+  /** It hangs down from where it's pinned, inside the corner, instead of standing over it, to keep clear of what's above. */
   under?: boolean | undefined;
   onOpen?: ((id: string) => void) | undefined;
 }) {

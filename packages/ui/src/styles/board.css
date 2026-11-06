@@ -181,9 +181,12 @@
 .bo-pin { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); cursor: pointer; animation: bo-pop var(--duration-2) var(--ease-out) both; }
 .bo-pin:hover, .bo-pin[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--horizon), var(--shadow-2); }
 .bo-pin .n { position: absolute; right: -7px; top: -6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11px/1 var(--font-sans); }
-/* Under the corner it's on, where standing over it would cover a frame's title and count. */
-.bo-at.is-under .bo-pin { top: -6px; bottom: auto; border-radius: 4px 999px 999px 999px; }
-.bo-at.is-under .bo-pin .n { top: auto; bottom: -6px; }
+/*
+ * Under the corner it's on, and inside it, where standing over it would cover a frame's title and count: it covers the corner of
+ * what it's pinned to rather than what's beside it.
+ */
+.bo-at.is-under .bo-pin { top: -6px; bottom: auto; left: auto; right: -6px; border-radius: 999px 4px 999px 999px; }
+.bo-at.is-under .bo-pin .n { top: auto; bottom: -6px; right: auto; left: -7px; }
 .bo-at.is-under .bo-th { top: -4px; bottom: auto; }
 /* Waiting for what a comment goes on: the next press picks it. */
 .bo-pick { position: absolute; inset: 0; z-index: 7; cursor: crosshair; }

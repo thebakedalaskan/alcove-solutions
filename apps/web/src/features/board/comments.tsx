@@ -120,8 +120,8 @@ const PIN = { left: 6, right: 28, up: 30, down: 6 } as const;
 const TITLE = { up: 36, wider: 20 } as const;
 
 /**
- * Whether a pin on this corner would stand over a frame's title or its count. Then it hangs under the corner instead, which keeps
- * it on what it's pinned to, below the frame's top edge. `z` is the camera's zoom: a pin is one size on the screen at any zoom.
+ * Whether a pin on this corner would stand over a frame's title or its count. Then it hangs under the corner, inside what it's
+ * pinned to, below the frame's top edge. `z` is the camera's zoom: a pin is one size on the screen at any zoom.
  */
 function overATitle(x: number, y: number, frames: readonly FrameObject[], z: number): boolean {
   const left = x - PIN.left / z, right = x + PIN.right / z, top = y - PIN.up / z, bottom = y + PIN.down / z;
