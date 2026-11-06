@@ -103,7 +103,7 @@ function NameMenu({ items, onClose }: { items: { icon: IconName; label: string; 
 
 /** What the seal says when it's pressed: how the board stands now. */
 function SealPop({ title, rows, onClose }: { title: string; rows: PopRow[]; onClose: () => void }) {
-  const { ref, top } = usePopOnSheet(onClose, '.bd-head .sv');
+  const { ref, top } = usePopOnSheet(onClose, '.bd-head .sv', title);
   return <BoardPop ref={ref} left={12} top={top} title={title} rows={rows} />;
 }
 
@@ -113,19 +113,21 @@ const UNDER_PILL = 8;
 
 /**
  * A pop over the sheet: focus goes into it, and Escape, or a press anywhere but on it or the bar's name and seal, closes it.
- * Escape gives the keys back to what opened it, `opener` on the bar, so the board's keys go on working. It sits under the pill.
+ * Escape gives the keys back to what opened it, `opener` on the bar, so the board's keys go on working. It sits under the pill,
+ * found again whenever `standing` changes, as that's when a pill comes or goes.
  */
-function usePopOnSheet(close: () => void, opener: string) {
+function usePopOnSheet(close: () => void, opener: string, standing = '') {
   const ref = useRef<HTMLDivElement>(null);
   const latest = useRef(close);
   latest.current = close;
   const [top, setTop] = useState(POP_TOP);
   useLayoutEffect(() => {
     const el = ref.current, sheet = el?.offsetParent;
-    const pill = sheet?.querySelector('.bd-pill');
-    if (!(sheet instanceof HTMLElement) || !pill) return;
-    setTop(Math.max(POP_TOP, Math.ceil(pill.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top) + UNDER_PILL));
-  }, []);
+    if (!(sheet instanceof HTMLElement)) return;
+    // By its layout, not how it's drawn now: a pill that has just come is still easing in, smaller than it will be.
+    const pill = sheet.querySelector('.bd-pill');
+    setTop(pill instanceof HTMLElement ? Math.max(POP_TOP, pill.offsetTop + pill.offsetHeight + UNDER_PILL) : POP_TOP);
+  }, [standing]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
