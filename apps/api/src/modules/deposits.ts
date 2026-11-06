@@ -26,7 +26,6 @@ const MAX_WAITING = 5;
 /** Opening a top-up asks the provider about it at most this often. */
 const CHECK_EVERY_MS = 5_000;
 /** A refund below this, in micro-USD, isn't credited: the deposit is held instead. */
-const REFUND_FLOOR = 1_000_000n;
 /** Amounts of credits the app offers first. */
 const PRESETS = [10_000, 50_000, 100_000];
 const OPEN: readonly TopUpState[] = ['waiting', 'arriving', 'short'];
@@ -189,11 +188,11 @@ function creditsForSwap(rec: DepositRecord, sentMicroUsd: bigint): number {
 /**
  * Credits for a settled deposit. When anything was swapped (even with part refunded, which reaches the treasury too),
  * the whole amount sent follows `creditsForSwap`. When nothing was, the refund is credited for what it buys by
- * itself, if it's at least 1 USD.
+ * itself, however small (held only when that rounds down to no credits).
  */
 function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state: 'settled' }>): number {
   if (s.outMicroUsd > 0n || s.refundedMicroUsd === 0n) return creditsForSwap(rec, s.sentMicroUsd);
-  return s.refundedMicroUsd >= REFUND_FLOOR ? creditsForUsd(s.refundedMicroUsd) : 0;
+  return creditsForUsd(s.refundedMicroUsd);
 }
 
 /**

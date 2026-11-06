@@ -45,7 +45,7 @@ export function topUpLine(t: TopUp, now = Date.now()): string {
     case 'arriving': return 'Payment seen, adding your credits';
     case 'short': return `${t.received?.amount ?? 'Less than asked'} of ${t.asked.amount} ${token} arrived. Send the other ${rest(t)} ${token} to the same address by ${byWhen(t.expiresAt, now)} for your ${number.format(t.asked.credits)} credits. If you don’t, what arrived is added as credits then.`;
     case 'credited': return `Added ${number.format(t.received?.credits ?? 0)} credits`;
-    case 'held': return `Too small to add: under 1 ${token}`;
+    case 'held': return 'Too little arrived to add any credits';
     case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';
     case 'expired': return 'This address expired. Nothing arrived.';
   }
@@ -217,7 +217,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
     );
   }
   const { token, chainName } = t.route;
-  const hours = (credits: number) => (perMinute ? `~${hoursAndMinutes(credits / perMinute)}` : null);
+  const hours = (credits: number) => (perMinute && credits > 0 ? `~${hoursAndMinutes(credits / perMinute)}` : null);
   const left = minutesUntil(t.expiresAt, now);
   // The server shows the address only while it can take money; past its expiry it can't, whatever the state says yet.
   const address = left > 0 ? t.address : null;
@@ -229,13 +229,16 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
 
   // What's sent and what it buys: what's still to send while it can be, what arrived once it's settled.
   const send = done && r ? { label: 'You sent', amount: r.amount, more: null }
-    : short ? { label: 'You send', amount: rest(t), more: `more · ${r?.amount ?? 'Part'} of ${t.asked.amount} arrived` }
+    : t.state === 'arriving' ? { label: 'You sent', amount: r?.amount ?? t.asked.amount, more: null }
+    : short ? { label: 'Send another', amount: rest(t), more: `${r?.amount ?? 'Part'} of ${t.asked.amount} ${token} arrived` }
     : { label: 'You send', amount: t.asked.amount, more: null };
   const credits = done && r ? r.credits ?? 0 : t.asked.credits;
 
   // How it stands: a chip, and a line on what happens next.
   let chip: ReactNode;
   let next: ReactNode;
+  /** Where support is needed: the reference to give them, on its own line. */
+  let ref = false;
   if (lapsed && t.state === 'waiting') {
     chip = <Chip icon="clock">Address expired</Chip>;
     next = 'Nothing arrived. To add credits, start a new top-up.';
@@ -253,10 +256,12 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
     next = 'They’re in your balance now.';
   } else if (t.state === 'held') {
     chip = <Chip tone="caution" icon="alert">Too small to add</Chip>;
-    next = <>Under 1 {token} arrived, which is too little to add as credits. If you think that’s wrong, contact support with this reference: <RequestRef id={t.id} /></>;
+    next = 'What arrived is too little to add any credits. If you think that’s wrong, contact support with this reference.';
+    ref = true;
   } else if (t.state === 'failed') {
     chip = <Chip tone="caution" icon="alert">Something went wrong</Chip>;
-    next = <>This payment needs a person to look at it. Contact support with this reference: <RequestRef id={t.id} /></>;
+    next = 'This payment needs a person to look at it. Contact support with this reference.';
+    ref = true;
   } else {
     chip = <Chip icon="clock">Address expired</Chip>;
     next = 'Nothing arrived. To add credits, start a new top-up.';
@@ -269,8 +274,9 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
         <div className="set-topup-sum">
           <div>
             <span className="ac-eyebrow">{send.label}</span>
-            <p className="amt"><b>{send.amount}</b> {token}{send.more && <small>{send.more}</small>}</p>
+            <p className="amt"><b>{send.amount}</b> {token}</p>
             <p className="on"><CryptoMark name={t.route.chain} />on {chainName}</p>
+            {send.more && <p className="so-far">({send.more})</p>}
           </div>
           <div className="get">
             <span className="ac-eyebrow">{done ? 'You got' : 'You get'}</span>
@@ -295,7 +301,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
             <Notice tone="caution" icon="alert">Only send <b>{routeName(t.route)}</b>. Anything else may be lost.</Notice>
           </>
         ) : (
-          <div className="set-topup-how" role="status">{chip}<p>{next}</p></div>
+          <div className="set-topup-how" role="status">{chip}<p>{next}</p>{ref && <RequestRef id={t.id} />}</div>
         )}
       </div>
       <div className="set-topup-f is-split">

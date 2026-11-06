@@ -92,7 +92,8 @@
 .set-topup-sum .get { justify-items: end; text-align: right; }
 .set-topup-sum .amt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); font: 500 16px/1.2 var(--font-sans); color: var(--ink-2); }
 .set-topup-sum .amt b { font: 600 32px/1.1 var(--font-sans); letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
-.set-topup-sum .amt small { flex-basis: 100%; font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+/* What arrived so far on a short top-up, under the chain, in the secondary ink. */
+.set-topup-sum .so-far { font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
 .set-topup-sum .on { display: flex; align-items: center; gap: var(--space-2); font-size: 13.5px; color: var(--ink-2); }
 .set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
 .set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
@@ -101,7 +102,6 @@
 .set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
 .set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
 .set-topup-scan .how .exp { display: flex; align-items: center; gap: var(--space-2); font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
-.set-topup-how .ac-ref, .set-topup-scan .ac-ref { margin-top: var(--space-2); }
 .set-topup-dest { display: grid; gap: var(--space-2); }
 .set-topup-dest .h { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
 .set-topup-dest .h .ac-chip { height: 24px; font-size: 12px; }

@@ -266,7 +266,7 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 50_000);
   });
 
-  it('credits a refund of at least 1 USD at the tier it reaches, holds a smaller one, and adds a swapped part', async () => {
+  it('credits a refund at the tier it reaches, however small, holds one worth no credits, and adds a swapped part', async () => {
     const { api } = await account();
     // 46 USD by itself buys 51,111 credits: past 50,000, so at 10,000/9.
     const big = await api.credits.startTopUp(TRON_USDT, 50_000);
@@ -276,14 +276,20 @@ describe('top-ups', () => {
 
     const small = await api.credits.startTopUp(TRON_USDT, 10_000);
     h.oneclick.set(addr(small), 'REFUNDED', { depositedAmount: '400000', amountOut: '0', refundedAmount: '400000', intentHashes: ['h04'] });
-    expect(await api.credits.topUp(small.id)).toMatchObject({ state: 'held', address: null, received: { amount: '0.4', credits: 0 } });
-    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111);
+    expect(await api.credits.topUp(small.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '0.4', credits: 400 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400);
+
+    // Half a thousandth of a USD buys no whole credit: held.
+    const dust = await api.credits.startTopUp(TRON_USDT, 10_000);
+    h.oneclick.set(addr(dust), 'REFUNDED', { depositedAmount: '500', amountOut: '0', refundedAmount: '500', intentHashes: ['h0005'] });
+    expect(await api.credits.topUp(dust.id)).toMatchObject({ state: 'held', address: null, received: { amount: '0.0005', credits: 0 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400);
 
     // 80 sent for 100,000 credits, 60 swapped and 20 refunded: the whole 80 reached the treasury, so it's the promise.
     const part = await api.credits.startTopUp(TRON_USDT, 100_000);
     h.oneclick.set(addr(part), 'REFUNDED', { depositedAmount: '80000000', amountOut: '59990000', refundedAmount: '20000000', intentHashes: ['h80'] });
     expect(await api.credits.topUp(part.id)).toMatchObject({ state: 'credited', received: { amount: '80', credits: 100_000 } });
-    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 100_000);
+    expect((await api.credits.balance()).balance).toBe(10_000 + 51_111 + 400 + 100_000);
   });
 
   it('marks a failed swap and logs only its ID', async () => {

@@ -23,8 +23,8 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
   exactly the credits promised.
 - **Below the band**, or a swap refunded in full: 1Click doesn't swap it and refunds it to the treasury at the
   address's deadline. It's credited as what it buys by itself (`creditsForUsd`: the best tier it reaches, so 46 USD is
-  51,111 credits and 30 USD is 30,000); a refund under 1 USD is held. Addresses take one payment: there's no "send
-  the rest".
+  51,111 credits and 30 USD is 30,000), however small; it's held only when it buys no whole credit. Until the
+  deadline the address stays shown, and anything else sent to it is added to what arrived and swapped as a whole.
 - **Refunded in part** (some swapped): the whole amount sent, which all reached the treasury, by the first three rules.
 
 ## Status
@@ -88,7 +88,7 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
 | `PENDING_DEPOSIT` | `waiting` | keep watching |
 | `KNOWN_DEPOSIT_TX`, `PROCESSING` | `arriving` | keep watching |
 | `INCOMPLETE_DEPOSIT` | `short`: less than the band arrived. The address stays shown with what is left to send: 1Click adds anything else sent to it before its deadline and swaps the total (credited as `SUCCESS`); otherwise it refunds what arrived to the treasury at the deadline, and that is credited then (as `REFUNDED`). Nothing is credited before the money reaches the treasury | keep watching |
-| `SUCCESS`, `REFUNDED` | `credited`, or `held` when nothing creditable arrived (a refund under 1 USD) | done |
+| `SUCCESS`, `REFUNDED` | `credited`, or `held` when what arrived buys no whole credit | done |
 | `FAILED` | `failed` | done; logged at error |
 | none at the last check, 24 h after the address expires (or 1Click can't answer it, 6 h after that) | `expired` | done |
 | `arriving` or `short` then, by the deposit's row or by that last answer, a status Alcove doesn't know then, or the deposit's record no longer opens | `failed` | done; logged at error |
