@@ -1,1 +1,260 @@
-/* The welcome page's call (`lp-tour`, `lp-st`): the steps and the call they play, night in both themes. Built by CallTour.tsx. */
+/*
+ * The welcome page's call (`lp-tour`, `lp-st`), built by CallTour.tsx and TourStage.tsx: eight steps beside a call that
+ * plays each one, night in both themes (the part is `.dark`, the stage `.ac-stage`). The stage is drawn at 1120 × 700
+ * design pixels inside Fit, so everything under `.lp-st` is in those pixels. Raw colours appear only on the stage: its
+ * shared screen, sticky notes and the raised night surfaces of its menus. While the tour is off screen (`:not(.is-on)`)
+ * the stage's loops hold still.
+ */
+
+/* ---- the steps on one side, the call held in view on the other while they scroll past ---- */
+.lp-tour { display: grid; grid-template-columns: minmax(270px, .74fr) minmax(0, 1.55fr); gap: clamp(28px, 4vw, 76px); align-items: start; }
+.lp-tour-steps { padding-block: 16vh 36vh; }
+.lp-tour-step { min-height: 64vh; display: flex; flex-direction: column; justify-content: center; gap: 14px; max-width: 25em; opacity: .32; transition: opacity .6s var(--ease-out); }
+.lp-tour-step.is-on { opacity: 1; }
+.lp-tour-ic { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgb(255 255 255 / .07); color: var(--ink-2); transition: background-color .5s var(--ease-out), color .5s var(--ease-out); }
+.lp-tour-step.is-on .lp-tour-ic { background: color-mix(in oklch, var(--sun) 16%, transparent); color: var(--sun); }
+.lp-tour-step h3 { font-size: clamp(28px, 2.5vw, 38px); }
+.lp-tour-step p { color: var(--ink-2); font-size: 17px; line-height: 1.58; text-wrap: pretty; }
+.lp-tour-stage { position: sticky; top: var(--lp-nav); height: calc(100vh - var(--lp-nav)); height: calc(100dvh - var(--lp-nav)); display: flex; align-items: center; }
+/* The stage's 26px corners, at whatever size it's drawn: a share of its width across and of its height down. */
+.lp-tour-fit { border-radius: 2.3214% / 3.7143%; box-shadow: 0 0 0 1px rgb(255 255 255 / .07), 0 52px 90px -38px rgb(0 0 0 / .85); }
+.lp-tour:not(.is-on) .lp-st *, .lp-tour:not(.is-on) .lp-st *::before, .lp-tour:not(.is-on) .lp-st *::after { animation-play-state: paused; }
+
+@media (max-width: 1080px) {
+  /* One column: the call sticks under the nav on a strip of night, and the steps scroll under it with their words low. */
+  .lp-tour { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+  .lp-tour-stage { order: -1; z-index: 3; height: auto; padding-block: 10px 14px;
+    margin-inline: calc(-1 * max(var(--lp-x), env(safe-area-inset-left, 0px))) calc(-1 * max(var(--lp-x), env(safe-area-inset-right, 0px)));
+    padding-inline: max(var(--lp-x), env(safe-area-inset-left, 0px)) max(var(--lp-x), env(safe-area-inset-right, 0px));
+    background: linear-gradient(to bottom, var(--stage) 86%, transparent); }
+  .lp-tour-fit { width: min(100%, 72vh); margin-inline: auto; }
+  .lp-tour-steps { padding-block: 4vh 30vh; }
+  .lp-tour-step { min-height: 58vh; justify-content: flex-end; padding-bottom: 6vh; max-width: 36em; }
+}
+
+/* ---- the stage ---- */
+.lp-st { position: absolute; inset: 0; overflow: hidden; border-radius: 26px; background: var(--stage); color: var(--stage-ink); font: 400 14px/1.4 var(--font-sans); user-select: none; }
+.lp-st-top { position: absolute; left: 0; right: 0; top: 0; height: 56px; display: flex; align-items: center; gap: 14px; padding: 0 18px; }
+.lp-st-title { font: 600 15px/1 var(--font-sans); }
+.lp-st-clock { color: var(--stage-ink-2); font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-st-top .ac-notes-sign { height: 26px; }
+.lp-st-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.lp-st-count { margin-left: 6px; color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); }
+.lp-st-tb { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border-radius: 10px; background: rgb(255 255 255 / .06); color: var(--stage-ink); font: 500 13px/1 var(--font-sans); white-space: nowrap; transition: background-color .2s; }
+.lp-st-tb.is-hi { background: rgb(255 255 255 / .14); }
+.lp-st-tb.is-sealed { color: var(--gold); }
+
+/* People: tiles placed in design pixels, gliding when the layout changes. Folded to arches, they stand small on a horizon. */
+.lp-st-tile { position: absolute; z-index: 2; transition: left .75s var(--ease-in-out), top .75s var(--ease-in-out), width .75s var(--ease-in-out), height .75s var(--ease-in-out); }
+.lp-st-tile > .ac-tile { position: absolute; inset: 0; border-radius: 14px; background: transparent; transition: border-radius .75s var(--ease-in-out), box-shadow .3s var(--ease-out); }
+.lp-st-tile > .ac-tile::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 18%, #1B273D, var(--stage-tile)); transition: opacity .5s; }
+.lp-st-tile > .ac-tile::after { transition: opacity .5s; }
+.lp-st-tile .ac-tile-name { transition: opacity .4s; }
+.lp-st-face { position: absolute; z-index: 1; left: 50%; top: 50%; line-height: 0; transform: translate(-50%, -54%); transition: left .75s var(--ease-in-out), transform .75s var(--ease-in-out), translate .3s var(--ease-out), opacity .5s, filter .5s; }
+/* In a short tile the face stands to the right, clear of the name. */
+.lp-st-tile.is-short .lp-st-face { left: 64%; }
+.lp-st-face .ac-avatar { transition: width .75s var(--ease-in-out), height .75s var(--ease-in-out), border-radius .75s var(--ease-in-out), box-shadow .3s var(--ease-out); }
+.lp-st-tile.is-arch > .ac-tile { overflow: visible; border-radius: 0; box-shadow: none; }
+.lp-st-tile.is-arch > .ac-tile::before, .lp-st-tile.is-arch > .ac-tile::after,
+.lp-st-tile.is-arch :is(.ac-tile-name, .ac-tile-mic, .lp-st-status, .lp-st-more, .lp-st-left, .lp-st-mute) { opacity: 0; }
+.lp-st-tile.is-arch .lp-st-face { transform: translate(-50%, -50%); }
+/* On a horizon, whoever's talking rises, as they do in the call. */
+.lp-st-tile.is-up .lp-st-face { translate: 0 -8px; }
+.lp-st-tile.is-arch .ac-tile.is-speaking .ac-avatar { --ring: var(--speak); }
+.lp-st-tile.is-away .lp-st-face { opacity: .42; filter: saturate(.4); }
+.lp-st-status { position: absolute; z-index: 2; left: 10px; top: 10px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--stage) 66%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 500 12px/1 var(--font-sans); white-space: nowrap;
+  opacity: 0; transform: translateY(-4px); transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
+.lp-st-status .ac-i { color: var(--dusk-sun); }
+.lp-st-status.is-on { opacity: 1; transform: none; }
+/* Away: the time left, as a line along the tile's edge that shortens until you're back. */
+.lp-st-left { position: absolute; z-index: 2; left: 14px; right: 14px; bottom: 6px; height: 1.5px; border-radius: 1px; background: color-mix(in srgb, var(--stage-ink) 14%, transparent); opacity: 0; transition: opacity .4s; }
+.lp-st-left i { position: absolute; inset: 0; border-radius: 1px; background: linear-gradient(to right, color-mix(in srgb, var(--dusk-sun) 35%, transparent), var(--dusk-sun)); transform-origin: 0 50%; }
+.lp-st-tile.is-away .lp-st-left { opacity: 1; }
+/* Longhands, so the tour's pause off screen (animation-play-state) still holds. */
+.lp-st-tile.is-away .lp-st-left i { animation-name: lp-st-left; animation-duration: 26s; animation-timing-function: linear; animation-fill-mode: forwards; }
+.lp-st.is-still .lp-st-tile.is-away .lp-st-left i { animation-name: none; transform: scaleX(.6); }
+@keyframes lp-st-left { from { transform: scaleX(1); } to { transform: scaleX(.2); } }
+.lp-st-mute { position: absolute; z-index: 4; left: 50%; top: 14px; display: inline-flex; align-items: center; gap: 9px; height: 34px; padding: 0 6px 0 12px; border-radius: 11px;
+  background: #2A3852; box-shadow: 0 10px 24px -8px rgb(0 0 0 / .6), inset 0 0 0 1px rgb(255 255 255 / .1); font: 600 12.5px/1 var(--font-sans); white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -6px); transition: opacity .4s var(--ease-out), transform .4s var(--ease-out); }
+.lp-st-mute .ac-i { color: var(--dusk-sun); }
+.lp-st-mute.is-on { opacity: 1; transform: translate(-50%, 0); }
+.lp-st-unmute { height: 24px; padding: 0 9px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12px/24px var(--font-sans); }
+.lp-st-more { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: grid; place-items: center; width: 28px; height: 24px; border-radius: 8px;
+  background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); opacity: 0; transition: opacity .25s; }
+.lp-st-tile.is-hover .lp-st-more { opacity: 1; }
+.lp-st-horizon { position: absolute; z-index: 1; left: 0; right: 0; top: 655px; height: 1.5px; opacity: 0; transition: opacity .6s;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--dusk-sun) 50%, transparent) 30%, color-mix(in srgb, var(--dusk-sun) 50%, transparent) 70%, transparent); }
+.lp-st-horizon.is-on { opacity: 1; }
+
+/* Kofi's shared screen. */
+.lp-st-share { position: absolute; z-index: 1; border-radius: 14px; overflow: hidden; background: #F3F7FC; opacity: 0;
+  transition: left .75s var(--ease-in-out), top .75s var(--ease-in-out), width .75s var(--ease-in-out), height .75s var(--ease-in-out), opacity .5s; }
+.lp-st-share.is-on { opacity: 1; }
+.lp-st-share svg { display: block; width: 100%; height: 100%; }
+.lp-st-share-tag { position: absolute; left: 10px; bottom: 10px; display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 4px; border-radius: 8px;
+  background: color-mix(in srgb, var(--stage) 72%, transparent); color: var(--stage-ink); font: 500 12px/1 var(--font-sans); }
+
+.lp-st-dock { position: absolute; z-index: 12; left: 50%; top: 628px; transform: translateX(-50%); }
+
+/* Panels the dock opens, at the stage's right. */
+.lp-st-panel { position: absolute; z-index: 10; left: 776px; top: 60px; width: 328px; height: 552px; display: flex; flex-direction: column; overflow: hidden; border-radius: 18px;
+  background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); opacity: 0; transform: translateX(26px); transition: opacity .45s var(--ease-out), transform .6s var(--ease-out); }
+.lp-st-panel.is-on { opacity: 1; transform: none; }
+.lp-st-panel-head { display: flex; align-items: center; gap: 10px; flex: none; height: 54px; padding: 0 16px; border-bottom: 1px solid rgb(255 255 255 / .07); font: 600 14px/1 var(--font-sans); }
+.lp-st-x { margin-left: auto; color: var(--stage-ink-2); }
+.lp-st-panel-body { flex: 1; min-height: 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+.lp-st-panel-foot { flex: none; padding: 12px 16px; border-top: 1px solid rgb(255 255 255 / .07); }
+.lp-st-k { display: flex; align-items: center; gap: 7px; font: 600 12.5px/1 var(--font-sans); color: var(--stage-ink-2); }
+.lp-st-k.is-decided { color: var(--rose); }
+.lp-st-k.is-follow { color: var(--horizon); }
+.lp-st-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; margin-top: 9px; padding: 10px 11px; border-radius: 11px; background: rgb(255 255 255 / .05); font: 500 13.5px/1.4 var(--font-sans); }
+.lp-st-item small { display: block; margin-top: 3px; color: var(--stage-ink-2); font: 400 12px/1.3 var(--font-sans); }
+.lp-st-sum { margin-top: 8px; font: 400 13.5px/1.55 var(--font-sans); color: var(--stage-ink); }
+.lp-st-w { transition: opacity .35s; }
+.lp-st-w.is-off { opacity: 0; }
+.lp-st-rv { transition: opacity .55s var(--ease-out), transform .6s var(--ease-out); }
+.lp-st-rv:not(.is-in) { opacity: 0; transform: translateY(8px); }
+.lp-st-tabs { display: flex; gap: 4px; padding: 10px 12px 0; }
+.lp-st-tab { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 9px; color: var(--stage-ink-2); font: 600 12.5px/1 var(--font-sans); transition: background-color .25s, color .25s; }
+.lp-st-tab.is-on { background: rgb(255 255 255 / .1); color: var(--stage-ink); }
+.lp-st-tab.is-hi { background: rgb(255 255 255 / .16); }
+.lp-st-msg { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 9px; }
+.lp-st-msg b { font: 600 12.5px/1.2 var(--font-sans); }
+.lp-st-msg b span { margin-left: 6px; color: var(--stage-ink-2); font-weight: 500; font-variant-numeric: tabular-nums; }
+.lp-st-msg p { margin-top: 3px; font: 400 13.5px/1.42 var(--font-sans); color: var(--stage-ink); }
+.lp-st-thread { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px; color: var(--horizon); font: 600 12px/1 var(--font-sans); }
+.lp-st-replies { display: grid; gap: 10px; margin: 10px 0 0 2px; padding-left: 12px; border-left: 1.5px solid rgb(255 255 255 / .1); }
+.lp-st-lock { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 10px; background: rgb(255 255 255 / .05); color: var(--stage-ink-2); font: 500 12.5px/1.35 var(--font-sans); }
+.lp-st-lock .ac-i { color: var(--gold); }
+.lp-st-compose { display: flex; align-items: center; height: 40px; padding: 0 6px 0 14px; border-radius: 12px; background: rgb(255 255 255 / .06); color: var(--stage-ink-2); font: 400 13.5px/1 var(--font-sans); }
+.lp-st-typed { color: var(--stage-ink); white-space: nowrap; overflow: hidden; }
+.lp-st-caret { display: inline-block; flex: none; width: 1.5px; height: 16px; margin: 0 7px 0 1px; background: var(--stage-ink); animation: lp-st-blink 1s steps(1) infinite; }
+@keyframes lp-st-blink { 50% { opacity: 0; } }
+.lp-st-send { margin-left: auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: rgb(255 255 255 / .08); color: var(--stage-ink); }
+.lp-st-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); }
+.lp-st-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: rgb(255 255 255 / .06); }
+.lp-st-seg span { height: 26px; padding: 0 10px; border-radius: 8px; color: var(--stage-ink-2); font: 600 12px/26px var(--font-sans); }
+.lp-st-seg span.is-on { background: rgb(255 255 255 / .12); color: var(--stage-ink); }
+.lp-st-room { display: grid; gap: 9px; padding: 11px 12px; border-radius: 12px; background: rgb(255 255 255 / .05); }
+.lp-st-room-top { display: flex; align-items: center; justify-content: space-between; font: 600 13.5px/1 var(--font-sans); }
+.lp-st-room-top small { color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); }
+.lp-st-room .ac-faces .ac-avatar { --ring: var(--stage-raised); }
+.lp-st-open { width: 100%; height: 40px; }
+.lp-st-open.is-hi { filter: brightness(1.06); transform: scale(.98); }
+
+/* Menus, over the stage. */
+.lp-st-pop { position: absolute; z-index: 20; min-width: 230px; padding: 6px; border-radius: 14px; background: #26334B; box-shadow: 0 22px 44px -14px rgb(0 0 0 / .75), inset 0 0 0 1px rgb(255 255 255 / .09);
+  opacity: 0; transform: translateY(6px) scale(.98); transform-origin: var(--from, 50% 0); transition: opacity .25s var(--ease-out), transform .3s var(--ease-out); }
+.lp-st-pop.is-on { opacity: 1; transform: none; }
+.lp-st-pop-label { padding: 8px 10px 6px; color: var(--stage-ink-2); font: 600 11.5px/1 var(--font-sans); }
+.lp-st-pop-div { height: 1px; margin: 5px 4px; background: rgb(255 255 255 / .08); }
+.lp-st-opt { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 9px; color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; transition: background-color .2s; }
+.lp-st-opt > .ac-i { color: var(--stage-ink-2); }
+.lp-st-opt.is-hi { background: rgb(255 255 255 / .1); }
+.lp-st-opt-end { margin-left: auto; display: inline-flex; color: var(--stage-ink-2); font-size: 12px; }
+.lp-st-opt > .lp-st-tick { margin-left: auto; color: var(--sun); opacity: 0; }
+.lp-st-opt-end + .lp-st-tick { margin-left: 0; }
+.lp-st-opt.is-picked > .lp-st-tick { opacity: 1; }
+.lp-st-chips { display: flex; gap: 4px; padding: 4px 6px 6px; }
+.lp-st-chips span { flex: 1; display: grid; place-items: center; height: 30px; border-radius: 8px; background: rgb(255 255 255 / .06); color: var(--stage-ink-2); font: 600 12px/1 var(--font-sans); transition: background-color .2s, color .2s; }
+.lp-st-chips span.is-on { background: color-mix(in srgb, var(--sun) 20%, transparent); color: var(--sun); }
+
+/* What the call says over itself: a toast, a caption, a note that only you see the change. */
+.lp-st-toast { position: absolute; z-index: 22; left: 50%; top: 70px; display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 14px 0 10px; border-radius: 12px;
+  background: #26334B; box-shadow: 0 18px 36px -12px rgb(0 0 0 / .7), inset 0 0 0 1px rgb(255 255 255 / .09); font: 500 13.5px/1 var(--font-sans); white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -8px); transition: opacity .35s var(--ease-out), transform .4s var(--ease-out); }
+.lp-st-toast .ac-i { color: var(--dusk-sun); }
+.lp-st-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.lp-st-cap { position: absolute; z-index: 15; left: 50%; top: 486px; width: 660px; max-width: none; padding: 14px 18px 15px; opacity: 0; transform: translate(-50%, 8px);
+  transition: opacity .4s var(--ease-out), transform .45s var(--ease-out); }
+.lp-st-cap.is-on { opacity: 1; transform: translate(-50%, 0); }
+.lp-st-cap .who { font-weight: 600; }
+.lp-st-cap .lang { margin-left: auto; }
+.lp-st-cap p { margin-top: 8px; font: 500 19px/1.38 var(--font-sans); }
+.lp-st-cap .orig { margin-top: 5px; font: 400 14px/1.4 var(--font-sans); }
+.lp-st-chip { position: absolute; z-index: 16; left: 50%; top: 586px; height: 28px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .08); color: var(--stage-ink-2);
+  transform: translateX(-50%); opacity: 0; transition: opacity .4s; }
+.lp-st-chip .ac-i { color: var(--gold); }
+.lp-st-chip.is-on { opacity: 1; }
+
+/* The pointer that shows each click, and the ring of a press. */
+.lp-st-cur { position: absolute; z-index: 40; left: 0; top: 0; width: 26px; height: 26px; pointer-events: none; filter: drop-shadow(0 3px 5px rgb(0 0 0 / .45)); }
+.lp-st-cur svg { display: block; width: 26px; height: 26px; fill: var(--stage-ink); stroke: var(--stage); stroke-width: 1.4; stroke-linejoin: round; }
+.lp-st-tap { position: absolute; left: -9px; top: -11px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--sun) 80%, transparent); opacity: 0; animation: lp-st-tap .5s var(--ease-out); }
+@keyframes lp-st-tap { from { opacity: 1; transform: scale(.4); } to { opacity: 0; transform: scale(1.4); } }
+
+/* Breakout rooms: each room an alcove, with its people on its horizon and the rooms' one timer under them. */
+.lp-st-alcove { position: absolute; z-index: 1; top: 96px; width: 300px; height: 470px; border-radius: 150px 150px 20px 20px; background: linear-gradient(to bottom, #111B2E, #18233A 70%, #1E2A44);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07); opacity: 0; transform: translateY(14px); transition: opacity .6s var(--ease-out), transform .7s var(--ease-out); }
+.lp-st-alcove.is-on { opacity: 1; transform: none; }
+.lp-st-alcove::before { content: ""; position: absolute; left: 22px; right: 22px; top: 368px; height: 1.5px; background: linear-gradient(to right, transparent, color-mix(in srgb, var(--dusk-sun) 55%, transparent), transparent); }
+.lp-st-alcove-name { position: absolute; left: 0; right: 0; top: 118px; text-align: center; font: 420 26px/1.1 var(--font-display); letter-spacing: -.015em; }
+.lp-st-alcove-who { position: absolute; left: 0; right: 0; top: 152px; text-align: center; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); }
+.lp-st-alcove-msg { position: absolute; left: 24px; right: 24px; top: 186px; display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; background: rgb(255 255 255 / .07);
+  font: 500 12.5px/1.4 var(--font-sans); opacity: 0; transform: translateY(-6px); transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
+.lp-st-alcove-msg .ac-i { flex: none; margin-top: 1px; color: var(--dusk-sun); }
+.lp-st-alcove.is-told .lp-st-alcove-msg { opacity: 1; transform: none; }
+.lp-st-alcove-time { position: absolute; left: 30px; right: 30px; top: 410px; height: 1.5px; background: color-mix(in srgb, var(--stage-ink) 12%, transparent); }
+.lp-st-alcove-time i { position: absolute; inset: 0; background: linear-gradient(to right, color-mix(in srgb, var(--dusk-sun) 30%, transparent), var(--dusk-sun)); transform-origin: 0 50%; transform: scaleX(.92); }
+.lp-st-alcove.is-on .lp-st-alcove-time i { animation-name: lp-st-rooms; animation-duration: 40s; animation-timing-function: linear; animation-fill-mode: forwards; }
+.lp-st.is-still .lp-st-alcove-time i { animation-name: none; }
+@keyframes lp-st-rooms { from { transform: scaleX(.92); } to { transform: scaleX(.55); } }
+.lp-st-alcove-time b { position: absolute; left: 0; right: 0; top: 14px; text-align: center; color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-st-rbar { position: absolute; z-index: 5; left: 50%; top: 62px; display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 5px 0 14px; border-radius: 12px;
+  background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); font: 500 13px/1 var(--font-sans); white-space: nowrap;
+  opacity: 0; transform: translate(-50%, -6px); transition: opacity .4s, transform .4s var(--ease-out); }
+.lp-st-rbar.is-on { opacity: 1; transform: translate(-50%, 0); }
+.lp-st-rbar-left { color: var(--stage-ink-2); font-variant-numeric: tabular-nums; }
+.lp-st-rbar .lp-st-tb { height: 26px; font-size: 12.5px; }
+
+/* The workspace in the call: the launch plan and the board, night like the rest of it. */
+.lp-st-ws { position: absolute; z-index: 1; left: 16px; top: 60px; width: 900px; height: 552px; overflow: hidden; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .07);
+  opacity: 0; transform: translateY(10px); transition: opacity .55s var(--ease-out), transform .6s var(--ease-out); }
+.lp-st-ws.is-on { opacity: 1; transform: none; }
+.lp-st-ws-top { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 12px; border-bottom: 1px solid rgb(255 255 255 / .07); }
+.lp-st-ws-tab { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 9px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); transition: background-color .25s, color .25s; }
+.lp-st-ws-tab.is-on { background: rgb(255 255 255 / .09); color: var(--stage-ink); }
+.lp-st-ws-tab.is-hi { background: rgb(255 255 255 / .15); }
+.lp-st-ws-top .ac-faces { margin-left: auto; }
+.lp-st-ws-top .ac-faces .ac-avatar { --ring: var(--surface); }
+.lp-st-ws-live { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; color: var(--stage-ink-2); font: 500 12px/1 var(--font-sans); }
+.lp-st-ws-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--horizon); }
+.lp-st-ws-view { position: absolute; left: 0; right: 0; top: 48px; bottom: 0; opacity: 0; transition: opacity .45s var(--ease-out); }
+.lp-st-ws-view.is-on { opacity: 1; }
+/* The page leaves a margin on its right for comments. */
+.lp-st-doc { padding: 30px 286px 30px 56px; color: var(--stage-ink); font: 400 15px/1.6 var(--font-sans); }
+.lp-st-doc p { color: #DCE3EC; }
+.lp-st-doc-title { font: 420 30px/1.1 var(--font-display); letter-spacing: -.015em; }
+.lp-st-doc-by { margin-top: 8px; color: var(--stage-ink-2); font-size: 12.5px; }
+.lp-st-doc-h { margin: 22px 0 6px; font: 600 15px/1.3 var(--font-sans); }
+.lp-st-mark { padding: 0 1px; border-radius: 3px; background: var(--hl); box-shadow: inset 0 -2px 0 var(--gold); }
+.lp-st-todo { display: flex; align-items: center; gap: 11px; height: 34px; }
+.lp-st-box { display: grid; place-items: center; flex: none; width: 18px; height: 18px; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: transparent; }
+.lp-st-box.is-on { background: var(--horizon); box-shadow: none; color: #0E1E35; }
+.lp-st-todo-who { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; color: var(--stage-ink-2); font-size: 12.5px; }
+/* Someone else's caret, as the editor draws it: a line in the pointer's colour with whose it is. */
+.lp-st-rcaret { position: relative; display: inline-block; width: 2px; height: 19px; margin-left: 1px; vertical-align: -4px; border-radius: 1px; background: var(--stage-point); box-shadow: 0 0 0 .5px color-mix(in srgb, var(--stage-ink) 50%, transparent); }
+.lp-st-rcaret .ac-ptag { position: absolute; left: 6px; top: -2px; }
+.lp-st-comment { position: absolute; right: 22px; top: 130px; width: 230px; padding: 12px 13px; border-radius: 13px; background: var(--surface-raised);
+  box-shadow: 0 16px 30px -12px rgb(0 0 0 / .6), inset 0 0 0 1px rgb(255 255 255 / .08); opacity: 0; transform: translateX(10px); transition: opacity .45s var(--ease-out), transform .45s var(--ease-out); }
+.lp-st-comment.is-on { opacity: 1; transform: none; }
+.lp-st-comment .lp-st-msg p { font-size: 13px; }
+.lp-st-board { position: absolute; inset: 0; background-color: #13213A; background-image: radial-gradient(rgb(255 255 255 / .09) 1px, transparent 1.2px); background-size: 22px 22px; }
+.lp-st-links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* Each connector draws itself in once (pathLength 1). */
+.lp-st-links path { fill: none; stroke: var(--horizon); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 1 2; stroke-dashoffset: 1; transition: stroke-dashoffset .9s var(--ease-in-out); }
+.lp-st-links path.is-on { stroke-dashoffset: 0; }
+.lp-st-shape { position: absolute; display: grid; place-items: center; height: 54px; padding: 0 12px; border-radius: 14px; background: #1F3150; box-shadow: inset 0 0 0 1.5px #3B5578;
+  color: var(--stage-ink); font: 600 13.5px/1.25 var(--font-sans); text-align: center; transition: box-shadow .3s; }
+.lp-st-shape.is-held { box-shadow: inset 0 0 0 2px var(--sun); }
+.lp-st-shape.is-ask { width: 132px; height: 70px; background: #2A2F4F; box-shadow: inset 0 0 0 1.5px #6A5C93; }
+.lp-st-sticky { position: absolute; width: 150px; padding: 12px 13px 14px; border-radius: 4px 4px 14px 4px; color: #2A201B; font: 500 13px/1.4 var(--font-sans); box-shadow: 0 12px 22px -12px rgb(0 0 0 / .6);
+  transform: rotate(var(--rot, -2deg)); transition: opacity .4s var(--ease-out), transform .5s var(--ease-out); }
+.lp-st-sticky small { display: block; margin-top: 8px; font: 600 11px/1 var(--font-sans); opacity: .62; }
+.lp-st-sticky.is-off { opacity: 0; transform: rotate(var(--rot, -2deg)) translateY(8px) scale(.94); }
+.lp-st-tools { position: absolute; left: 12px; top: 50%; display: grid; gap: 4px; padding: 6px; border-radius: 13px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); transform: translateY(-50%); }
+.lp-st-tools span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--stage-ink-2); }
+.lp-st-tools span.is-on { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
+.lp-st-pc { z-index: 6; transition: transform 1s var(--ease-in-out); }
