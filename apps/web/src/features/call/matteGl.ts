@@ -87,6 +87,29 @@ void main() {
   color = vec4(mix(behind, texture(frame, uv).rgb, person(uv)), 1.0);
 }`;
 
+/**
+ * The debug view, in quarters as the (mirrored) self-view shows them: top left the model's reading, top right the settled mask (both as the model's own
+ * pixels), bottom left the edge as drawn, bottom right the camera with what's taken as room tinted magenta.
+ */
+const DEBUG = `${HEAD}${PERSON}
+uniform sampler2D reading;
+uniform ivec2 maskSize;
+float cell(sampler2D t, vec2 at) { return texelFetch(t, clamp(ivec2(at * vec2(maskSize)), ivec2(0), maskSize - 1), 0).r; }
+void main() {
+  vec2 at = fract(uv * 2.0);
+  // Laid out for the self-view, which is mirrored: what's drawn on the left shows on the right there.
+  bool right = uv.x < 0.5;
+  bool bottom = uv.y >= 0.5;
+  vec3 c;
+  if (!bottom && !right) c = vec3(cell(reading, at));
+  else if (!bottom) c = vec3(cell(mask, at));
+  else if (!right) c = vec3(person(at));
+  else c = mix(vec3(0.85, 0.1, 0.85), texture(frame, at).rgb, max(person(at), 0.35));
+  // A line between the quarters.
+  vec2 seam = abs(uv - 0.5) * vec2(textureSize(frame, 0));
+  color = vec4(min(seam.x, seam.y) < 1.5 ? vec3(1.0, 0.8, 0.2) : c, 1.0);
+}`;
+
 /** The tunables the drawing takes each frame. */
 export interface Edges { colorSigma: number; lo: number; hi: number }
 
@@ -131,6 +154,8 @@ function texture(gl: WebGL2RenderingContext): WebGLTexture {
 export class MatteGl {
   private readonly blur: WebGLProgram;
   private readonly composite: WebGLProgram;
+  private readonly debug: WebGLProgram;
+  private readonly reading: WebGLTexture;
   private readonly triangle: WebGLBuffer;
   private readonly vao: WebGLVertexArrayObject;
   private readonly frame: WebGLTexture;
@@ -142,6 +167,7 @@ export class MatteGl {
   constructor(private readonly gl: WebGL2RenderingContext) {
     this.blur = program(gl, BLUR);
     this.composite = program(gl, COMPOSITE);
+    this.debug = program(gl, DEBUG);
     const b = gl.createBuffer();
     const vao = gl.createVertexArray();
     if (!b || !vao) throw new Error('WebGL made no buffer.');
@@ -156,6 +182,7 @@ export class MatteGl {
     this.frame = texture(gl);
     this.mask = texture(gl);
     this.picture = texture(gl);
+    this.reading = texture(gl);
   }
 
   /** The picture to show behind, or none (blur). */
@@ -168,8 +195,11 @@ export class MatteGl {
     this.pictureSize = { w: bitmap.width, h: bitmap.height };
   }
 
-  /** Draws `frame` with the person in `mask` (w×h, 0–1, top row first) over the background, at w×h of the canvas. */
-  draw(frame: VideoFrame, mask: Float32Array, maskW: number, maskH: number, width: number, height: number, blurSigma: number, edges: Edges): void {
+  /**
+   * Draws `frame` with the person in `mask` (w×h, 0–1, top row first) over the background, at w×h of the canvas. With
+   * `reading` (this frame's own, before settling) it draws the debug view instead.
+   */
+  draw(frame: VideoFrame, mask: Float32Array, maskW: number, maskH: number, width: number, height: number, blurSigma: number, edges: Edges, reading: Float32Array | null = null): void {
     const gl = this.gl;
     // MediaPipe or LiveKit may have left state behind on a shared context: set everything this draw relies on.
     gl.disable(gl.BLEND);
@@ -186,6 +216,7 @@ export class MatteGl {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.mask);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, maskW, maskH, 0, gl.RED, gl.FLOAT, mask);
+    if (reading) { this.drawDebug(reading, maskW, maskH, width, height, edges); return; }
 
     const picture = this.pictureSize;
     gl.activeTexture(gl.TEXTURE2);
@@ -237,13 +268,34 @@ export class MatteGl {
     gl.bindVertexArray(null);
   }
 
+  private drawDebug(reading: Float32Array, maskW: number, maskH: number, width: number, height: number, edges: Edges): void {
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.reading);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, maskW, maskH, 0, gl.RED, gl.FLOAT, reading);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, width, height);
+    const p = this.debug;
+    gl.useProgram(p);
+    gl.uniform1i(this.uniform(p, 'frame'), 0);
+    gl.uniform1i(this.uniform(p, 'mask'), 1);
+    gl.uniform1i(this.uniform(p, 'reading'), 3);
+    gl.uniform2i(this.uniform(p, 'maskSize'), maskW, maskH);
+    gl.uniform2f(this.uniform(p, 'maskTexel'), 1 / maskW, 1 / maskH);
+    gl.uniform1f(this.uniform(p, 'colorSigma'), edges.colorSigma);
+    gl.uniform2f(this.uniform(p, 'edge'), edges.lo, edges.hi);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+  }
+
   destroy(): void {
     const gl = this.gl;
     gl.deleteProgram(this.blur);
     gl.deleteProgram(this.composite);
+    gl.deleteProgram(this.debug);
     gl.deleteBuffer(this.triangle);
     gl.deleteVertexArray(this.vao);
-    for (const t of [this.frame, this.mask, this.picture]) gl.deleteTexture(t);
+    for (const t of [this.frame, this.mask, this.picture, this.reading]) gl.deleteTexture(t);
     this.dropTargets();
   }
 

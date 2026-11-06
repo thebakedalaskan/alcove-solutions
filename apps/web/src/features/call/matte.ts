@@ -14,6 +14,7 @@
 import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
 import { VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
 import { log } from '~/lib/log';
+import { matteDebug, type MatteFlicker } from './matteDebug';
 import { MatteGl, type Edges } from './matteGl';
 
 const mlog = log.child({ component: 'matte' });
@@ -41,6 +42,9 @@ const BLUR_SIGMA = 14;
 /** How many frames between debug lines with the time each took. */
 const REPORT_EVERY = 300;
 
+/** Frames each flicker reading is averaged over. */
+const FLICKER_EVERY = 15;
+
 const smoothstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 export class Matte extends VideoTransformer<MatteOptions> {
@@ -55,6 +59,9 @@ export class Matte extends VideoTransformer<MatteOptions> {
   private picture: { path: string; bitmap: ImageBitmap } | null = null;
   private failed = false;
   private timing = { frames: 0, ms: 0 };
+  /** For the debug view: the last reading and settled mask, the last drawn edge, and sums toward the next flicker. */
+  private last: { reading: Float32Array; settled: Float32Array; edge: Float32Array } | null = null;
+  private sums = { frames: 0, reading: 0, settled: 0, edge: 0 };
 
   constructor(options: MatteOptions) {
     super();
@@ -104,8 +111,11 @@ export class Matte extends VideoTransformer<MatteOptions> {
       const height = frame.displayHeight;
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
       this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
-      const steady = this.settle(this.personIn(this.small, started));
-      this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES);
+      const reading = this.personIn(this.small, started);
+      const steady = this.settle(reading);
+      const debug = matteDebug.on();
+      if (debug) this.measure(reading, steady);
+      this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES, debug ? reading : null);
       controller.enqueue(new VideoFrame(canvas, { timestamp: frame.timestamp }));
       frame.close();
       this.timed(performance.now() - started);
@@ -136,7 +146,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
   /** `reading` folded into the settled mask, which it returns. */
   private settle(reading: Float32Array): Float32Array {
     const steady = this.steady;
-    if (!steady || steady.length !== reading.length) { this.steady = reading; return reading; }
+    if (!steady || steady.length !== reading.length) { const first = reading.slice(); this.steady = first; return first; }
     for (let i = 0; i < reading.length; i++) {
       const now = reading[i] ?? 0;
       const was = steady[i] ?? 0;
@@ -144,6 +154,35 @@ export class Matte extends VideoTransformer<MatteOptions> {
       steady[i] = was + k * (now - was);
     }
     return steady;
+  }
+
+  /** Adds this frame's movement at the edge to the debug view's flicker numbers. The edge is the settled mask put
+   * through the same fade as the drawing (without the colour-guided upsample, which only runs on the GPU). */
+  private measure(reading: Float32Array, settled: Float32Array): void {
+    const edge = new Float32Array(settled.length);
+    for (let i = 0; i < settled.length; i++) edge[i] = smoothstep(EDGES.lo, EDGES.hi, settled[i] ?? 0);
+    const last = this.last;
+    this.last = { reading: reading.slice(), settled: settled.slice(), edge };
+    if (!last || last.reading.length !== reading.length) return;
+    let n = 0;
+    let r = 0;
+    let s = 0;
+    let e = 0;
+    for (let i = 0; i < reading.length; i++) {
+      const was = last.settled[i] ?? 0;
+      if (was < 0.1 || was > 0.9) continue;
+      n += 1;
+      r += Math.abs((reading[i] ?? 0) - (last.reading[i] ?? 0));
+      s += Math.abs((settled[i] ?? 0) - was);
+      e += Math.abs((edge[i] ?? 0) - (last.edge[i] ?? 0));
+    }
+    if (n === 0) return;
+    this.sums = { frames: this.sums.frames + 1, reading: this.sums.reading + r / n, settled: this.sums.settled + s / n, edge: this.sums.edge + e / n };
+    if (this.sums.frames < FLICKER_EVERY) return;
+    const f = this.sums.frames;
+    const flicker: MatteFlicker = { reading: this.sums.reading / f, settled: this.sums.settled / f, edge: this.sums.edge / f };
+    this.sums = { frames: 0, reading: 0, settled: 0, edge: 0 };
+    matteDebug.report(flicker);
   }
 
   private timed(ms: number): void {
@@ -201,6 +240,7 @@ export class Matte extends VideoTransformer<MatteOptions> {
     this.small = null;
     this.smallCtx = null;
     this.steady = null;
+    this.last = null;
   }
 }
 
