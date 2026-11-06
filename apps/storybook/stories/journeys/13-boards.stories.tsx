@@ -139,8 +139,6 @@ export const CommentOnASticky: PageStory = {
     await step('Pick another sticky and press K: a comment of your own, with your face on its corner', async () => {
       await userEvent.keyboard('{Escape}');
       await press(userEvent, 'No rollbacks');
-      // Single keys sleep for a moment after a key goes into a field (`typing`, lib/keys.ts), as a person's K would come later.
-      await pause(1600);
       await userEvent.keyboard('k');
       await userEvent.click(await screen.findByRole('textbox', { name: 'Comment' }, SOON));
       await userEvent.keyboard('Worth keeping for the next launch{Enter}');

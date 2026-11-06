@@ -68,5 +68,11 @@ export function moveFocusOut(from: Element | null, to: HTMLElement | null): void
  * after one was, or since whoever was typing lost their caret to the page going inert.
  */
 export const typing = (t: EventTarget | null): boolean => editable(t) || performance.now() - typedAt < TYPING_MS || stranded;
+/**
+ * Whoever was typing lost their caret to the page going inert or away, and hasn't clicked, tapped, or moved on with Tab or
+ * Escape since: the rest of their sentence may still be coming. `typing` without its moment's pause, for keys that may act at
+ * once after typing but never on what someone typed into a field they lost.
+ */
+export const caretTaken = (): boolean => stranded;
 /** A dialog, a menu or a list of choices is open: shortcuts leave the page alone, and nothing opens on top. */
 export const overlayOpen = (): boolean => !!document.querySelector('[role="dialog"], [role="listbox"], [role="menu"]');

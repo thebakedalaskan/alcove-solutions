@@ -16,6 +16,7 @@ import {
 import { createContext, forwardRef, memo, useContext, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type * as Y from 'yjs';
+import { typing } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { CommentPins, CommentSheets, BoardCommentsStore, type BoardCommenting } from './comments';
 import { BoardTyping } from './editing';
@@ -408,8 +409,9 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     if (!s || !w) return undefined;
     const stopBoard = board.attach(s, w);
     const stopSheet = watchSheet(board, s);
-    // "Or press N" should be true from the start, unless someone is busy elsewhere.
-    if (board.canEdit && document.activeElement === document.body) board.focusSheet();
+    // "Or press N" should be true from the start, unless someone is busy elsewhere: typing a moment ago, or in a field the page
+    // took from them, the rest of their sentence isn't for the board.
+    if (board.canEdit && document.activeElement === document.body && !typing(document.body)) board.focusSheet();
     return () => {
       stopSheet();
       stopBoard();

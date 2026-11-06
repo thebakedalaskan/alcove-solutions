@@ -1150,7 +1150,10 @@ it says **Nothing on this board yet**. What's added reaches everyone on it as it
 the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
 **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
 it again for the highlighter) and **Frame** (F). The **+** under them holds only what can be done here: on a board's page,
-**Comment**. Two people typing in one sticky both keep what they typed.
+**Comment**. Two people typing in one sticky both keep what they typed. The board's keys work as soon as the typing stops:
+straight after **Esc** finishes a sticky, **N** picks the next. The call's letters still sleep for a moment after typing, as
+everywhere. If what you're typing in goes from under you, as the board closes or a presentation comes over it, the board's
+keys wait until you click or press **Esc**, so the rest of a sentence never makes or deletes anything.
 
 **Changing what's there.** Click something and a small bar sits above it: its colour, its size, a line from it, copy (**⌘D**)
 and delete (**Delete**), with handles to size it. Drag it to move it; a frame takes what's in it along. Drag round several, or

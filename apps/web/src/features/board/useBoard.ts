@@ -18,6 +18,7 @@ import { editable } from '~/lib/keys';
 import { log as rootLog } from '~/lib/log';
 import { BoardCameraStore, tokenMs, type BoardPlace, type SheetPoint } from './camera';
 import { STICKY, holdKeys, nextSpot, textField } from './editing';
+import { holdBoardKeys } from './keys';
 import { BoardOverlay } from './overlay';
 import { MOUNT_ALL, NO_GUIDES, drawn, everything, hangsOff, reachHolds, reachOf, sameIds } from './selection';
 import { BOARD_LOOKS, type BoardFly, type BoardLook, type BoardMode, type BoardMoreItems, type BoardState } from './state';
@@ -486,9 +487,15 @@ export class Board implements LiveStore<BoardState> {
     this.read();
   }
 
-  /** Typing ended without this person asking. They may not know yet, so what they type next waits, or it would go to the call. */
+  /**
+   * Typing ended without this person asking. They may not know yet, so what they type next waits, or it would go to the call,
+   * and the board's keys sleep until they click or press Esc, or the rest of it would reach the tools.
+   */
   private editTaken(): void {
-    if (this.state.edit && editable(document.activeElement) && this.sheet?.contains(document.activeElement)) holdKeys(() => this.focusSheet());
+    if (this.state.edit && editable(document.activeElement) && this.sheet?.contains(document.activeElement)) {
+      holdKeys(() => this.focusSheet());
+      holdBoardKeys();
+    }
     this.finishEdit();
   }
 
@@ -496,6 +503,7 @@ export class Board implements LiveStore<BoardState> {
   fieldLost(): void {
     if (!this.state.edit) return;
     holdKeys(() => this.focusSheet());
+    holdBoardKeys();
     this.finishEdit();
   }
 

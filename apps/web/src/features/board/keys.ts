@@ -1,13 +1,28 @@
 /*
  * The board's keys. M, V and C stay the call's, in every mode, so nobody turns their camera off by reaching for a tool.
- * That's why Select is Esc. Nothing here takes a key going into a field, such as a sticky being typed in, and a single key
- * also sleeps for a moment after one did (`typing`), so the rest of a sentence never makes or deletes anything. Escape and
- * the ⌘ keys never type, so ⌘Z straight after Esc is the board's undo. A key the board acted on goes no further, so the call
- * and the app don't act on it too, and anything else is left for them.
+ * That's why Select is Esc. Nothing here takes a key going into a field, such as a sticky being typed in. Otherwise the
+ * board's keys work at once whenever the sheet has the keys, straight after Esc finishes a sticky too: the moment's pause
+ * after typing (`typing`, lib/keys.ts) is for the call's keys and the app's, which the board leaves alone. A field taken from
+ * under someone still typing, by the board or by the page, counts as still being typed in until they click, tap or press Esc
+ * (`holdBoardKeys`, `caretTaken`), so the rest of their sentence never makes or deletes anything. A key the board acted on goes
+ * no further, so the call and the app don't act on it too, and anything else is left for them.
  */
 import type { BoardTool } from '@alcove/ui';
-import { editable, typing, withShortcutKey } from '~/lib/keys';
+import { caretTaken, editable, withShortcutKey } from '~/lib/keys';
 import type { Board } from './useBoard';
+
+/**
+ * A field someone was typing in was taken from them by the board, as a sticky deleted under them or the board closing or
+ * going out of reach, and they haven't clicked, tapped or pressed Esc since: they may not know yet.
+ */
+let held = false;
+if (typeof window !== 'undefined') {
+  /* Before the sheet hears the key or the press. */
+  addEventListener('pointerdown', () => { held = false; }, true);
+  addEventListener('keydown', (e) => { if (e.key === 'Escape') held = false; }, true);
+}
+/** The board took a field from someone typing in it: its keys sleep until they click, tap or press Esc. */
+export const holdBoardKeys = (): void => { held = true; };
 
 interface BoardKey {
   /** It changes the board, so it's not for someone who can only look. */
@@ -63,8 +78,9 @@ export function keyDown(board: Board, e: KeyboardEvent): void {
   const mod = withShortcutKey(e);
   if (!mod && (e.metaKey || e.ctrlKey)) return;
   const k = e.key.toLowerCase();
-  if (!mod && k !== 'escape' && typing(e.target)) return;
   if (!mod && CALL_KEYS.has(k)) return;
+  /* Esc has already ended both by the time it gets here. */
+  if (!mod && (held || caretTaken())) return;
   if (k === ' ' && !mod) {
     if (onControl(e.target)) return;
     e.preventDefault();
