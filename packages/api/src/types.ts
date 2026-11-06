@@ -867,7 +867,7 @@ export type TopUpRoutes = z.infer<typeof TopUpRoutesSchema>;
 /** The most credits one top-up can add. */
 export const MAX_TOP_UP_CREDITS = 10_000_000;
 export const StartTopUpBodySchema = z.object({ routeId: z.string().min(1).max(200), credits: z.number().int().min(1).max(MAX_TOP_UP_CREDITS) });
-export const TopUpStateSchema = z.enum(['waiting', 'arriving', 'short', 'credited', 'held', 'failed', 'expired']);
+export const TopUpStateSchema = z.enum(['waiting', 'arriving', 'short', 'credited', 'held', 'failed', 'expired', 'cancelled']);
 export type TopUpState = z.infer<typeof TopUpStateSchema>;
 /** One payment for credits: what to send and where, and what has happened to it so far. */
 export const TopUpSchema = z.object({

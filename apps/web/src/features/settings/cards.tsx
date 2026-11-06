@@ -5,7 +5,7 @@
  */
 import { errorMessage, type CreditBalance, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SignInProvider, type SummaryLength } from '@alcove/api';
 import {
-  Avatar, Button, Chip, Icon, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
+  Avatar, Button, Chip, Icon, IconButton, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
   type SelectOption, type ThemeChoice
 } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
 import { askToNotify, useNotifyPermission, type NotifyPermission } from '~/features/shell/notify';
 import { useLive } from '~/lib/live';
-import { calendarConnectUrl, q, topUpOpen, useDisconnectCalendar } from '~/lib/queries';
+import { calendarConnectUrl, q, topUpOpen, useCancelTopUp, useDisconnectCalendar } from '~/lib/queries';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
 import { plural, sizeLabel } from '~/lib/words';
 import { Named, useSave } from './save';
@@ -231,12 +231,15 @@ export function AppearanceCard() {
 
 /**
  * Minutes left, and adding credits when the server takes payments. Top-ups still on their way are listed under the
- * balance, each opening the sheet on it, so closing the sheet loses none.
+ * balance, each opening the sheet on it, so closing the sheet loses none; one nothing has reached yet can be cancelled
+ * from its row.
  */
 export function PlanCard({ credits }: { credits: CreditBalance }) {
   const routes = useQuery(q.topUpRoutes());
   // Top-ups on their way show whether or not 1Click answers right now; a server without payments has none to show.
   const open = useQuery(q.topUps()).data?.filter(topUpOpen) ?? [];
+  const cancel = useCancelTopUp();
+  const toast = useToast();
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
   return (
     <MinutesCard id="plan" title="Plan and credits" className="ac-set-card" left={hoursAndMinutes(credits.balance / credits.perMinute)}
@@ -245,12 +248,15 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
       {open.length > 0 && (
         <ul className="set-topups" aria-label="Payments on their way">
           {open.map((t) => (
-            <li key={t.id}>
+            <li key={t.id} className={t.state === 'waiting' ? 'is-cancellable' : undefined}>
               <button type="button" className="set-conn" onClick={() => setSheet({ open: true, topUpId: t.id })}>
                 <span className="mark"><Icon name="coins" size={20} /></span>
                 <span className="txt"><b>{t.asked.amount} {routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
-                <Icon name="chevron" size={18} />
+                {t.state !== 'waiting' && <Icon name="chevron" size={18} />}
               </button>
+              {t.state === 'waiting' && (
+                <IconButton icon="x" label="Cancel top-up" disabled={cancel.isPending && cancel.variables === t.id} onClick={() => cancel.mutate(t.id, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) })} />
+              )}
             </li>
           ))}
         </ul>

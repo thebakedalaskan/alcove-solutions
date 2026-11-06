@@ -30,7 +30,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `screen_frames` | owner, note item, frame ID, object ID, ciphertext SHA-256 and length | `frame_tag` (keyed hash of the share and the image's digest, so a retried frame is kept once), `info_ciphertext` (whose share, when, the segment, the frame's size, and what the notes model read on it), and the object (the JPEG, sealed under the recording's key) |
 | `note_access` | owner (the organizer), note item, role (`invited`/`shared`), created | `email_index` |
 | `billing_accounts` | owner, `version` | `state_ciphertext` (balance and history, under `Kservice`) |
-| `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
+| `deposits` | owner, deposit, provider (`oneclick`), state (`waiting`/`arriving`/`short`/`credited`/`held`/`failed`/`expired`/`cancelled`), created, when to check next (`check_after`), last checked, when to give up | `record_ciphertext` (a `deposit` record under `Kservice`'s accounting key, below) |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
 The migration runner adds `schema_migrations`, which records each applied file by name.
@@ -105,7 +105,8 @@ answer (`extended`, false in records written before it existed) ([Payments and u
   (see [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). A deleted account leaves no row keyed by
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
 - **Top-ups** are inserted `waiting` when opened and change state only under a row lock, crediting the balance in
-  the same transaction; a final state never changes again. The watcher claims due ones with a one-minute lease
+  the same transaction; a final state never changes again. A `cancelled` one is still watched until its deadline, and
+  moves on if a payment reaches it; with nothing then, its next check is set to `infinity`. The watcher claims due ones with a one-minute lease
   (`check_after`) and sets the next check by age.
 - **Credits used this month** are summed from the sealed billing history when the balance is read
   (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).

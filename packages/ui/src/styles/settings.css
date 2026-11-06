@@ -51,7 +51,10 @@
 
 /* ---- Plan and credits: top-ups on their way, each opening the sheet on it ---- */
 .set-topups { margin: 0; padding: 0; list-style: none; }
-.set-topups .set-conn { width: 100%; padding-inline: 0; text-align: left; color: inherit; }
+/* A row: the button opening the sheet, and on a waiting one, the button cancelling it beside it. */
+.set-topups li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; border-top: 1px solid var(--line); }
+.set-topups .set-conn { width: 100%; padding-inline: 0; border-top: 0; text-align: left; color: inherit; }
+.set-topups .is-cancellable .set-conn { grid-template-columns: 40px minmax(0, 1fr); }
 .set-topups .set-conn > .ac-i { color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
 .set-topups .set-conn:hover > .ac-i { transform: translateX(2px); color: var(--ink-2); }
 .set-topups .set-conn:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--radius-md); }

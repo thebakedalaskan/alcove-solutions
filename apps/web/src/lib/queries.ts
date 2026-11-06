@@ -260,6 +260,19 @@ export function useStartTopUp() {
   });
 }
 
+/** Cancels a top-up nothing has reached: it leaves the open ones on Plan and credits. */
+export function useCancelTopUp() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.credits.cancelTopUp(id),
+    onSuccess: (t) => {
+      qc.setQueryData(q.topUp(t.id).queryKey, t);
+      void qc.invalidateQueries({ queryKey: qk.topUps });
+      void qc.invalidateQueries({ queryKey: qk.balance });
+    }
+  });
+}
+
 /* ---------- calls ---------- */
 
 export function useScheduleCall() {

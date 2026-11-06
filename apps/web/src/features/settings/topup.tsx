@@ -7,7 +7,7 @@ import { errorMessage, MAX_TOP_UP_CREDITS, type CreditTier, type TopUp, type Top
 import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
-import { q, useStartTopUp } from '~/lib/queries';
+import { q, useCancelTopUp, useStartTopUp } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay } from '~/lib/time';
 
 const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
@@ -48,6 +48,7 @@ export function topUpLine(t: TopUp, now = Date.now()): string {
     case 'held': return 'Too little arrived to add any credits';
     case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';
     case 'expired': return 'This address expired. Nothing arrived.';
+    case 'cancelled': return 'Cancelled';
   }
 }
 
@@ -204,6 +205,7 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
 /** One top-up: what to send and where while a payment is awaited, and how it stands, read again until it's done. */
 function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose: () => void }) {
   const topUp = useQuery(q.topUp(id));
+  const cancel = useCancelTopUp();
   const perMinute = useQuery(q.balance()).data?.perMinute;
   const now = useMinute();
   const t = topUp.data;
@@ -262,16 +264,21 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
     chip = <Chip tone="caution" icon="alert">Something went wrong</Chip>;
     next = 'This payment needs a person to look at it. Contact support with this reference.';
     ref = true;
+  } else if (t.state === 'cancelled') {
+    chip = <Chip icon="x">Cancelled</Chip>;
+    next = 'This top-up is cancelled. If you already sent a payment to its address, it’s still added when it arrives.';
   } else {
     chip = <Chip icon="clock">Address expired</Chip>;
     next = 'Nothing arrived. To add credits, start a new top-up.';
   }
+  /** Nothing has reached it and its address can still be paid: it can be cancelled. */
+  const cancellable = t.state === 'waiting' && !lapsed;
   const expires = address !== null && <p className="exp"><Icon name="clock" size={15} />Expires {byWhen(t.expiresAt, now)}</p>;
 
   return (
     <>
       <div className="set-topup-body">
-        <div className={`set-topup-sum${t.state === 'expired' || (lapsed && t.state === 'waiting') ? ' is-void' : ''}`}>
+        <div className={`set-topup-sum${t.state === 'expired' || t.state === 'cancelled' || (lapsed && t.state === 'waiting') ? ' is-void' : ''}`}>
           <div>
             <span className="ac-eyebrow">{send.label}</span>
             <p className="amt"><b>{send.amount}</b> {token}</p>
@@ -303,9 +310,12 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
         ) : (
           <div className="set-topup-how" role="status">{chip}<p>{next}</p>{ref && <RequestRef id={t.id} />}</div>
         )}
+        <div role="status">{cancel.isError && <Notice tone="caution">{errorMessage(cancel.error)}</Notice>}</div>
       </div>
       <div className="set-topup-f">
-        <Button variant="quiet" onClick={onNew}>Start a new top-up</Button>
+        {cancellable
+          ? <Button variant="quiet" loading={cancel.isPending} onClick={() => cancel.mutate(t.id)}>{cancel.isPending ? 'Cancelling' : 'Cancel top-up'}</Button>
+          : <Button variant="quiet" onClick={onNew}>Start a new top-up</Button>}
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </div>
     </>

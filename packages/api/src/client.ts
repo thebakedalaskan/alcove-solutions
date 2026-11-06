@@ -161,6 +161,11 @@ export interface AlcoveApi {
     startTopUp(routeId: string, credits: number): Promise<TopUp>;
     /** A top-up as it stands now. */
     topUp(id: ID): Promise<TopUp>;
+    /**
+     * Cancels a top-up nothing has reached yet: its address stops being shown. A payment sent to it anyway is still
+     * added when it arrives. Refused once a payment has reached it.
+     */
+    cancelTopUp(id: ID): Promise<TopUp>;
     /** Top-ups still open, and the last 10 finished, newest first. */
     topUps(): Promise<TopUp[]>;
   };

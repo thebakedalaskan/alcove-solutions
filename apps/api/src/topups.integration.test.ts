@@ -40,7 +40,7 @@ const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r 
 const forgetCheck = (id: string) => h.pool.query('UPDATE deposits SET checked_at = NULL WHERE deposit_id = $1', [id]);
 /** Makes only these top-ups due for the watcher; every other open one waits an hour, so a pass sees just these. */
 const dueOnly = (...ids: string[]) => h.pool.query(
-  "UPDATE deposits SET check_after = CASE WHEN deposit_id = ANY($1) THEN now() ELSE now() + interval '1 hour' END WHERE state IN ('waiting','arriving','short')", [ids]);
+  "UPDATE deposits SET check_after = CASE WHEN deposit_id = ANY($1) THEN now() ELSE now() + interval '1 hour' END WHERE state IN ('waiting','arriving','short','cancelled')", [ids]);
 /** Seconds until the watcher looks at this top-up again. */
 const nextCheckIn = async (id: string) =>
   Number((await h.pool.query<{ s: string }>('SELECT extract(epoch FROM check_after - now())::text AS s FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.s);
@@ -50,6 +50,21 @@ const about = (got: number, want: number) => { expect(got).toBeGreaterThanOrEqua
 const giveUpIn = async (id: string) =>
   Number((await h.pool.query<{ s: string }>('SELECT extract(epoch FROM give_up_at - now())::text AS s FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.s);
 const stateOf = async (id: string) => (await h.pool.query<{ state: string }>('SELECT state FROM deposits WHERE deposit_id = $1', [id])).rows[0]?.state;
+/**
+ * Opens 15 top-ups for one person, the most that can wait at once: 10 through the test server and 5 through a second
+ * one on the same database, since each API instance lets an account open 10 a minute. `second` is signed in as them.
+ */
+async function fifteen() {
+  const email = unique();
+  const { api } = await account(email);
+  const server = await h.secondServer();
+  const second: AlcoveApi = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN) });
+  await second.auth.signIn('sso', { email });
+  const opened: TopUp[] = [];
+  for (let i = 0; i < 10; i++) opened.push(await api.credits.startTopUp(BASE_USDC, 10_000));
+  for (let i = 0; i < 5; i++) opened.push(await second.credits.startTopUp(BASE_USDC, 10_000));
+  return { api, second, opened, close: () => server.close() };
+}
 const depositRows = async (ownerId: string) => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1', [ownerId])).rows[0]?.n;
 
 describe('top-ups', () => {
@@ -92,8 +107,6 @@ describe('top-ups', () => {
       const t = await api.credits.startTopUp(BASE_USDC, credits);
       expect(h.oneclick.quotes.at(-1)?.amount).toBe(amount);
       expect(t.asked).toEqual({ amount: shown, credits });
-      // Only 5 can wait at once; this one is done with.
-      await h.pool.query("UPDATE deposits SET state = 'expired' WHERE deposit_id = $1", [t.id]);
     }
     const bnb = await api.credits.startTopUp(BNB_USDC, 50_000);
     expect(h.oneclick.quotes.at(-1)?.amount).toBe('45000000000000000000');
@@ -476,36 +489,153 @@ describe('top-ups', () => {
     expect(logsSince(from).filter((l) => l.line.includes('canary-deposit-address'))).toEqual([]);
   });
 
-  it('opens at most 5 top-ups waiting for a payment, and 10 a minute', async () => {
-    const { api } = await account();
-    const opened: TopUp[] = [];
-    for (let i = 0; i < 5; i++) opened.push(await api.credits.startTopUp(BASE_USDC, 10_000));
-    const quotes = h.oneclick.quotes.length;
-    const e = await api.credits.startTopUp(BASE_USDC, 10_000).catch((x: unknown) => x);
-    expect(code(e)).toBe('conflict');
-    expect(e instanceof AlcoveApiError ? e.message : '').toBe('You already have 5 top-ups waiting for a payment. Use one of those, or wait for them to expire.');
-    expect(h.oneclick.quotes.length).toBe(quotes);
-    // One of them is on its way now, so there's room for another.
-    const first = opened[0];
-    if (!first) throw new Error('no top-up opened');
-    h.oneclick.set(addr(first), 'PROCESSING');
-    expect(await api.credits.topUp(first.id)).toMatchObject({ state: 'arriving' });
-    expect((await api.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
-    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
-    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
-    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
-    // The eleventh attempt in a minute.
-    expect(await failure(api.credits.startTopUp(BASE_USDC, 10_000))).toBe('unavailable');
+  it('opens at most 15 top-ups waiting for a payment, and 10 a minute', async () => {
+    const { api, second, opened, close } = await fifteen();
+    try {
+      const quotes = h.oneclick.quotes.length;
+      const e = await second.credits.startTopUp(BASE_USDC, 10_000).catch((x: unknown) => x);
+      expect(code(e)).toBe('conflict');
+      expect(e instanceof AlcoveApiError ? e.message : '').toBe('You already have 15 top-ups waiting for a payment. Use one of those, or wait for them to expire.');
+      expect(h.oneclick.quotes.length).toBe(quotes);
+      // One of them is on its way now, so there's room for another.
+      const first = opened[0];
+      if (!first) throw new Error('no top-up opened');
+      h.oneclick.set(addr(first), 'PROCESSING');
+      expect(await api.credits.topUp(first.id)).toMatchObject({ state: 'arriving' });
+      expect((await second.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
+      expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
+      expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
+      expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
+      // The eleventh attempt in a minute on that server.
+      expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('unavailable');
+    } finally {
+      await close();
+    }
   });
 
-  it('doesn’t count top-ups whose address has expired against the 5 waiting', async () => {
+  it('doesn’t count top-ups whose address has expired against the 15 waiting', async () => {
+    const { second, opened, close } = await fifteen();
+    try {
+      // Their addresses expired an hour ago; they're still watched, for a day, for a late payment.
+      await h.pool.query("UPDATE deposits SET give_up_at = now() + interval '23 hours' WHERE deposit_id = ANY($1)", [opened.map((t) => t.id)]);
+      expect((await second.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
+      expect(new Set(await Promise.all(opened.map((t) => stateOf(t.id))))).toEqual(new Set(['waiting']));
+    } finally {
+      await close();
+    }
+  });
+
+  it('cancels a waiting top-up: no address, not counted toward the 15 waiting, among the finished ones', async () => {
+    const { api, second, opened, close } = await fifteen();
+    try {
+      expect(await failure(second.credits.startTopUp(BASE_USDC, 10_000))).toBe('conflict');
+      const first = opened[0];
+      if (!first) throw new Error('no top-up opened');
+      const from = h.logs.length;
+      const cancelled = await api.credits.cancelTopUp(first.id);
+      expect(cancelled).toMatchObject({ id: first.id, state: 'cancelled', address: null, memo: null, received: null });
+      expect(await api.credits.topUp(first.id)).toEqual(cancelled);
+      expect(logsSince(from).some((l) => l.msg === 'top-up cancelled' && l.line.includes(first.id))).toBe(true);
+      expect(logsSince(from).filter((l) => l.line.includes('canary-deposit-address'))).toEqual([]);
+      const another = await second.credits.startTopUp(BASE_USDC, 10_000);
+      expect(another.state).toBe('waiting');
+      // The open part lists the 15 waiting ones; the cancelled one comes after them, among the finished.
+      const list = await api.credits.topUps();
+      expect(list.length).toBe(16);
+      expect(new Set(list.slice(0, 15).map((t) => t.id))).toEqual(new Set([another.id, ...opened.slice(1).map((t) => t.id)]));
+      expect(list.at(-1)).toEqual(cancelled);
+    } finally {
+      await close();
+    }
+  });
+
+  it('cancels only a top-up nothing has reached, and only the owner’s', async () => {
     const { api } = await account();
-    const opened: TopUp[] = [];
-    for (let i = 0; i < 5; i++) opened.push(await api.credits.startTopUp(BASE_USDC, 10_000));
-    // Their addresses expired an hour ago; they're still watched, for a day, for a late payment.
-    await h.pool.query("UPDATE deposits SET give_up_at = now() + interval '23 hours' WHERE deposit_id = ANY($1)", [opened.map((t) => t.id)]);
-    expect((await api.credits.startTopUp(BASE_USDC, 10_000)).state).toBe('waiting');
-    expect(await Promise.all(opened.map((t) => stateOf(t.id)))).toEqual(['waiting', 'waiting', 'waiting', 'waiting', 'waiting']);
+    const short = await api.credits.startTopUp(BASE_USDC, 10_000);
+    const arriving = await api.credits.startTopUp(BASE_USDC, 10_000);
+    const credited = await api.credits.startTopUp(BASE_USDC, 10_000);
+    h.oneclick.set(addr(short), 'INCOMPLETE_DEPOSIT', { depositedAmount: '3000000' });
+    h.oneclick.set(addr(arriving), 'PROCESSING');
+    h.oneclick.set(addr(credited), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hc10'] });
+    expect((await api.credits.topUp(short.id)).state).toBe('short');
+    expect((await api.credits.topUp(arriving.id)).state).toBe('arriving');
+    expect((await api.credits.topUp(credited.id)).state).toBe('credited');
+    const e = await api.credits.cancelTopUp(short.id).catch((x: unknown) => x);
+    expect(code(e)).toBe('conflict');
+    expect(e instanceof AlcoveApiError ? e.message : '').toBe('This top-up can’t be cancelled any more: a payment has already reached it.');
+    expect(await failure(api.credits.cancelTopUp(arriving.id))).toBe('conflict');
+    expect(await failure(api.credits.cancelTopUp(credited.id))).toBe('conflict');
+    expect([await stateOf(short.id), await stateOf(arriving.id), await stateOf(credited.id)]).toEqual(['short', 'arriving', 'credited']);
+
+    const waiting = await api.credits.startTopUp(BASE_USDC, 10_000);
+    expect((await api.credits.cancelTopUp(waiting.id)).state).toBe('cancelled');
+    expect(await failure(api.credits.cancelTopUp(waiting.id))).toBe('conflict');
+
+    const other = await account();
+    const theirs = await other.api.credits.startTopUp(BASE_USDC, 10_000);
+    expect(await failure(api.credits.cancelTopUp(theirs.id))).toBe('not-found');
+    expect(await failure(api.credits.cancelTopUp('not-a-top-up'))).toBe('not-found');
+    expect(await stateOf(theirs.id)).toBe('waiting');
+    expect((await api.credits.balance()).balance).toBe(10_000 + 10_000);
+  });
+
+  it('credits a payment that reaches a cancelled top-up anyway, and a stale answer leaves it cancelled', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC, 20_000);
+    const address = addr(t);
+    await api.credits.cancelTopUp(t.id);
+
+    // 1Click still says it's waiting: it stays cancelled, without its address, by the watcher and the app.
+    h.oneclick.set(address, 'PENDING_DEPOSIT');
+    await dueOnly(t.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
+    expect(await stateOf(t.id)).toBe('cancelled');
+    await forgetCheck(t.id);
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'cancelled', address: null });
+
+    // Sent from an exchange before it was cancelled: it moves on and is credited the promise.
+    h.oneclick.set(address, 'PROCESSING');
+    await dueOnly(t.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
+    expect(await stateOf(t.id)).toBe('arriving');
+    h.oneclick.set(address, 'SUCCESS', { depositedAmount: '20000000', amountOut: '20000000', intentHashes: ['hcx20'] });
+    await dueOnly(t.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '20', credits: 20_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 20_000);
+
+    // Straight from cancelled to settled, as the app sees it.
+    const direct = await api.credits.startTopUp(BASE_USDC, 10_000);
+    await api.credits.cancelTopUp(direct.id);
+    h.oneclick.set(addr(direct), 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hcd10'] });
+    await forgetCheck(direct.id);
+    expect(await api.credits.topUp(direct.id)).toMatchObject({ state: 'credited', received: { amount: '10', credits: 10_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 20_000 + 10_000);
+  });
+
+  it('keeps a cancelled top-up nothing reached cancelled at the deadline, and stops checking it; fails one 1Click says is arriving then', async () => {
+    const { api } = await account();
+    const quiet = await api.credits.startTopUp(BASE_USDC, 10_000);
+    const stuck = await api.credits.startTopUp(BASE_USDC, 10_000);
+    await api.credits.cancelTopUp(quiet.id);
+    await api.credits.cancelTopUp(stuck.id);
+    h.oneclick.set(addr(stuck), 'PROCESSING');
+    const ids = [quiet.id, stuck.id];
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = ANY($1)", [ids]);
+    await dueOnly(...ids);
+    const from = h.logs.length;
+    expect(await watch(h.deps)).toEqual({ checked: 2, credited: 0 });
+    expect(await api.credits.topUp(quiet.id)).toMatchObject({ state: 'cancelled', address: null });
+    expect(await api.credits.topUp(stuck.id)).toMatchObject({ state: 'failed', address: null });
+    const lines = logsSince(from);
+    expect(lines.some((l) => l.level === 30 && l.line.includes(quiet.id))).toBe(true);
+    expect(lines.some((l) => l.level >= 50 && l.line.includes(quiet.id))).toBe(false);
+    expect(lines.some((l) => l.level === 50 && l.line.includes(stuck.id))).toBe(true);
+    // Never due again: the next pass doesn't take it.
+    expect(await nextCheckIn(quiet.id)).toBe(Infinity);
+    await h.pool.query("UPDATE deposits SET check_after = now() + interval '1 hour' WHERE state IN ('waiting','arriving','short','cancelled') AND deposit_id <> $1", [quiet.id]);
+    expect(await watch(h.deps)).toEqual({ checked: 0, credited: 0 });
+    expect(await stateOf(quiet.id)).toBe('cancelled');
   });
 
   it('credits once when the watcher and the app race', async () => {

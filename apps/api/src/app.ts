@@ -677,6 +677,7 @@ export function createApp(d: Deps) {
     const { routeId, credits } = await body(c, StartTopUpBodySchema);
     return c.json(await deposits.start(d, c.get('owner').ownerId, routeId, credits));
   });
+  app.post('/v1/credits/top-ups/:id/cancel', async (c) => c.json(await deposits.cancel(d, c.get('owner').ownerId, c.req.param('id'))));
   app.get('/v1/credits/top-ups/:id', async (c) => c.json(await deposits.get(d, c.get('owner').ownerId, c.req.param('id'))));
   app.get('/v1/credits/top-ups', async (c) => c.json(await deposits.list(d, c.get('owner').ownerId)));
 
