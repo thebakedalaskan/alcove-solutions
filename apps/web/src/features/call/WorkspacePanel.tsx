@@ -10,7 +10,7 @@ import { errorMessage, firstName, type CallSession, type CallWorkspace, type Per
 import { DURATION, WsLostSpace, WsNoAccess, WsPane, cn, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useReducedMotion } from 'motion/react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { CallPerson, CallTogether, SpaceHead, WorkspaceCall, WorkspacePlace, WorkspacePlaying, WorkspacePresenting, WorkspaceTogether } from '~/features/workspace/context';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
@@ -233,8 +233,10 @@ function editing(t: EventTarget | null): boolean {
 const LIVE_ROWS = <LiveRows />;
 
 /** The workspace as the panels say it stands, in a call. The call's screen renders far more often than this changes, so nothing here is drawn again unless it has to be. */
-export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, listWanted, live, act, reach, people, invited, presenting, playing, onToggleList, onShowList, onToggleZen }: {
+export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organizer, pass, at, settled, showing, finding, zen, listOff, listPeek, listWanted, live, act, reach, people, invited, presenting, playing, foot, onToggleList, onShowList, onToggleZen }: {
   workspace: CallWorkspace;
+  /** What the call puts at the foot of the list (`WorkspaceCall.foot`). Keep it the same element while it's the same, or the panel draws again. */
+  foot: ReactNode;
   /** What's presented where you are, and what you're doing about it (presenting.ts). */
   presenting: WorkspacePresenting;
   /** What's playing for everyone (PlayTogether.tsx). */
@@ -271,11 +273,11 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} act={act} home={home} /> : undefined), [organizer, act, home]);
   /* Watching a presentation, your own page is under it: out of sight, as far as it knows. */
   const call = useMemo((): WorkspaceCall => ({
-    top: LIVE_ROWS, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
+    top: LIVE_ROWS, foot, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList, wanted: listWanted },
     presenting, playing
-  }), [ home, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, listWanted, onToggleList, onShowList, presenting, playing ]);
+  }), [ foot, home, workspace.id, live, documents, act, picker, reach, people, invited, organizer, chooser, showing, finding, zen, onToggleZen, listOff, listPeek, listWanted, onToggleList, onShowList, presenting, playing ]);
   /* In a call the picker says what happens, and nothing else goes to another workspace. */
   const switchNowhere = useCallback(() => undefined, []);
   /*

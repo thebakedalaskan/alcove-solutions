@@ -81,6 +81,11 @@ export interface WorkspaceCall {
    * holds them; someone who can't see that folder, such as a guest shared one document, still has them here.
    */
   top?: ReactNode;
+  /**
+   * What the call puts at the foot of the list, under Trash: the organizer's link for anyone to ask to join, while they're on
+   * their own. In the list's own flow it covers none of it, where over the stage it would cover the list.
+   */
+  foot?: ReactNode;
   /** The call's home, where its notes go and its folder is, if you can open anything in it. */
   home: string | null;
   /** What's been brought to the call, in order, by its ID in this workspace. */
