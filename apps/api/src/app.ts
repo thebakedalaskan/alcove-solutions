@@ -1,7 +1,7 @@
 import {
   ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MAX_MEDIA_PREVIEW_BYTES, MEDIA_PIECE_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, BoardSortBodySchema, DocFollowUpTickSchema, PresenterFrameNoteBodySchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
-  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
+  ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, GoogleSignInPopupIdSchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
 } from '@alcove/api';
 import type { HttpBindings } from '@hono/node-server';
 import { Hono, type Context } from 'hono';
@@ -144,7 +144,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const limiter = rateLimit(30, 60_000);
   /* Carries the sealed sign-in attempt to Google and back. Lax, because Google's redirect back is a cross-site navigation. */
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
-  const backToWelcome = (reason: google.Refusal) => `${d.cfg.WEB_ORIGIN}/welcome?signin=${reason}`;
+  const backToWelcome = (reason: google.Refusal, popup?: string) => `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ ...(popup ? { popup } : {}), signin: reason })}`;
   const telemetryLimiter = rateLimit(60, 60_000);
   const attestLimiter = rateLimit(30, 60_000);
   /*
@@ -362,8 +362,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     try { limiter(clientAddress(c), 'sign-in'); return true; } catch { rlog.info('google sign-in refused', { reason: 'busy' }); return false; }
   };
   app.get('/v1/auth/google', async (c) => {
-    if (!allowed(c)) return c.redirect(backToWelcome('busy'), 302);
-    if (!google.configured(d.cfg)) return c.redirect(backToWelcome('unavailable'), 302);
+    const parsedPopup = GoogleSignInPopupIdSchema.safeParse(c.req.query('popup'));
+    const popup = parsedPopup.success ? parsedPopup.data : undefined;
+    if (!allowed(c)) return c.redirect(backToWelcome('busy', popup), 302);
+    if (!google.configured(d.cfg)) return c.redirect(backToWelcome('unavailable', popup), 302);
     try {
       // ?consent=1 asks Google again, e.g. to connect the calendar of the account already signed in.
       const consent = c.req.query('consent') === '1';
@@ -371,21 +373,22 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       const hint = s ? (await account.profile(await openOwner(d, s.ownerId, s))).email : undefined;
       // ?next=/move comes back to a move to this device that was waiting for its owner to sign in here.
       const next = c.req.query('next') === '/move' ? '/move' as const : s ? '/home' as const : undefined;
-      const { url, attempt } = await google.begin(d, { consent, hint, ...(next ? { next } : {}) });
+      const { url, attempt } = await google.begin(d, { consent, hint, next, popup });
       setCookie(c, ATTEMPT, attempt, { httpOnly: true, sameSite: 'Lax', path: '/', secure, maxAge: google.ATTEMPT_MINUTES * 60 });
       return c.redirect(url, 302);
     } catch (e) {
       rlog.warn('google sign-in could not start', { err: e });
-      return c.redirect(backToWelcome('failed'), 302);
+      return c.redirect(backToWelcome('failed', popup), 302);
     }
   });
   app.get('/v1/auth/google/callback', async (c) => {
     const attempt = getCookie(c, ATTEMPT);
     deleteCookie(c, ATTEMPT, { path: '/', secure });
-    if (!allowed(c)) return c.redirect(backToWelcome('busy'), 302);
+    const popup = google.popupFor(d, c.req.query(), attempt);
+    if (!allowed(c)) return c.redirect(backToWelcome('busy', popup), 302);
     try {
       const r = await google.finish(d, c.req.query(), attempt);
-      if (!r.ok) return c.redirect(backToWelcome(r.reason), 302);
+      if (!r.ok) return c.redirect(backToWelcome(r.reason, popup), 302);
       const s = await account.signIn(d, r.identity, 'google');
       const conn = await calendar.connect(s.owner, r.grant);
       startSession(c, s.sessionId);
@@ -393,14 +396,14 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       // Google sends a refresh token only the first time someone agrees. If it remembered an earlier
       // yes, ask once more, explicitly, so the calendar keeps working after this hour.
       if (r.grant.scopes.includes(google.CALENDAR_SCOPE) && !conn.refreshToken && !r.consented) {
-        const again = await google.begin(d, { consent: true, hint: r.identity.email, next });
+        const again = await google.begin(d, { consent: true, hint: r.identity.email, next, popup });
         setCookie(c, ATTEMPT, again.attempt, { httpOnly: true, sameSite: 'Lax', path: '/', secure, maxAge: google.ATTEMPT_MINUTES * 60 });
         return c.redirect(again.url, 302);
       }
-      return c.redirect(`${d.cfg.WEB_ORIGIN}${next}`, 302);
+      return c.redirect(popup ? `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ popup, next })}` : `${d.cfg.WEB_ORIGIN}${next}`, 302);
     } catch (e) {
       rlog.error('google sign-in failed', { err: e });
-      return c.redirect(backToWelcome('failed'), 302);
+      return c.redirect(backToWelcome('failed', popup), 302);
     }
   });
 

@@ -9,6 +9,7 @@
  * Google's consent screen and still sign in.
  */
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { GoogleSignInPopupIdSchema } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from './config';
 import type { Deps } from './context';
@@ -53,7 +54,9 @@ const Claims = z.object({
 const Attempt = z.object({
   state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
   /** A second pass that asked Google for consent again, and where it should land afterwards. */
-  consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional()
+  consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional(),
+  /** A random completion channel, absent from attempts made before popup sign-in was introduced. */
+  popup: GoogleSignInPopupIdSchema.optional()
 });
 const HEADER = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
 
@@ -111,11 +114,11 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
  * `consent`, Google asks again even if the person agreed before, which is the only way to get a new
  * refresh token; `hint` picks the account so they aren't asked which one.
  */
-export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined } = {}): Promise<{ url: string; attempt: string }> {
+export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined; popup?: string | undefined } = {}): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
-  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}) };
+  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}), ...(o.popup ? { popup: o.popup } : {}) };
   const url = new URL(endpoints.authorization_endpoint);
   url.search = new URLSearchParams({
     client_id: cfg.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(cfg), response_type: 'code', scope: SCOPE,
@@ -186,6 +189,12 @@ function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attemp
     glog.info('google sign-in attempt cookie rejected', { err: e });
     return null;
   }
+}
+
+/** Only an authentic attempt with its matching state can choose a completion channel, even for an expired refusal. */
+export function popupFor(d: Deps, q: Record<string, string>, cookie: string | undefined): string | undefined {
+  const attempt = openAttempt(d, cookie);
+  return attempt && same(q['state'] ?? '', attempt.state) ? attempt.popup : undefined;
 }
 
 /** Checks what came back from Google. Refusals are expected (a cancel, a stale tab) and returned, not thrown. */

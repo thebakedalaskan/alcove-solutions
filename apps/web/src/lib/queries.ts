@@ -1,7 +1,7 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
@@ -12,6 +12,7 @@ import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
+import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
 
 export const qk = {
   session: ['session'] as const,
@@ -201,9 +202,53 @@ export function useCallSeries(code: string, on: boolean): Series | null {
 
 /* ---------- account ---------- */
 
-/** Where the browser goes to sign in with Google; it comes back to /ready, /home or /welcome?signin=… */
-/** Where Google sign-in starts. `next: '/move'` comes back to a move to this device that was waiting for it. */
-export const googleSignInUrl = (next?: '/move' | undefined) => api.auth.signInUrl('google', next ? { next } : undefined);
+/** Google signs in in a popup; the API, rather than its completion message, confirms the session. */
+export function useGoogleSignIn() {
+  const qc = useQueryClient();
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), []);
+  const mutation = useMutation({
+    mutationFn: async ({ finished, signal }: { finished: ReturnType<typeof openGoogleSignIn>; signal: AbortSignal }) => {
+      try {
+        const result = await finished;
+        if (signal.aborted) return null;
+        if (!result || result === 'redirecting' || result.type !== 'complete') return result;
+        await waitForGoogleReturn(signal);
+        if (signal.aborted) return null;
+        const session = await api.auth.getSession();
+        if (signal.aborted) return null;
+        if (!session) throw new AlcoveApiError('unauthenticated', 'Google sign-in didn’t open a session. Try again.');
+        return { next: result.next, session };
+      } catch (e) {
+        if (signal.aborted) return null;
+        throw e;
+      }
+    },
+    onSuccess: (r, { signal }) => {
+      if (signal.aborted || !r || r === 'redirecting' || !('session' in r)) return;
+      forgetWords();
+      announceSignIn(r.session.ownerId);
+      qc.clear();
+      qc.setQueryData(qk.session, r.session);
+      // Signing in rotates background access; refresh through the session query to reopen its picture fence.
+      void qc.fetchQuery({ ...q.session(), staleTime: 0 }).catch((e: unknown) => {
+        log.child({ component: 'account' }).warn('session could not be refreshed after sign-in', { err: e });
+      });
+    }
+  });
+  return {
+    start: async (next?: '/move') => {
+      pending.current?.abort();
+      const controller = new AbortController();
+      pending.current = controller;
+      // Open before handing the promise to the mutation, while the browser still has the button press.
+      const finished = openGoogleSignIn((popup) => api.auth.signInUrl('google', { next, popup }), controller.signal);
+      const result = await mutation.mutateAsync({ finished, signal: controller.signal });
+      return controller.signal.aborted ? null : result;
+    },
+    cancel: () => pending.current?.abort()
+  };
+}
 
 /** Signing in or out changes whose data everything is, so the cache starts over. */
 export function useSignIn() {

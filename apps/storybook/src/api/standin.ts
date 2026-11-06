@@ -289,8 +289,8 @@ async function attest(nonce: string) {
 export const standIn: AlcoveApi = {
   auth: {
     getSession: () => answer((w) => w.session, 'anyone'),
-    // Google's own pages can't open in Storybook: going there stays on this page.
-    signInUrl: () => '#signing-in-with-google',
+    // No provider in Storybook: the button previews waiting/cancellation; return pages have their own stories.
+    signInUrl: (_provider, opts) => opts?.popup ? 'about:blank' : '#signing-in-with-google',
     signIn: (provider: DemoProvider, opts) => answer((w): SignInResult => {
       const email = provider === 'sso' ? opts?.email?.trim().toLowerCase() : undefined;
       const s = sessionFor(email ? { user: personAt(email), ownerId: `o-${email}`, provider: 'sso', sample: true } : { provider: 'microsoft', sample: true });

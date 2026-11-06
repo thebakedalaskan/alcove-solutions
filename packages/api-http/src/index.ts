@@ -241,7 +241,12 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
   return {
     auth: {
       getSession: () => req(SessionSchema.nullable(), 'GET', '/session'),
-      signInUrl: (provider, opts) => `${base}/auth/${provider}${opts?.next ? `?next=${encodeURIComponent(opts.next)}` : ''}`,
+      signInUrl: (provider, opts) => {
+        const search = new URLSearchParams();
+        if (opts?.next) search.set('next', opts.next);
+        if (opts?.popup) search.set('popup', opts.popup);
+        return `${base}/auth/${provider}${search.size ? `?${search}` : ''}`;
+      },
       signIn: (provider, opts) => req(SignInResultSchema, 'POST', '/auth/sign-in', { provider, ...(opts?.email ? { email: opts.email } : {}) }),
       signOut: async () => { await req(z.unknown(), 'POST', '/session/sign-out', {}); }
     },
