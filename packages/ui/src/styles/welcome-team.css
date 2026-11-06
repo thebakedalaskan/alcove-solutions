@@ -1,1 +1,139 @@
-/* The welcome page's team and agent (`lp-team`, `lp-wk`, `lp-ag`): the team on the horizon, their week, and an agent at work. Built by TeamScene.tsx and AgentScene.tsx. */
+/*
+ * The welcome page's team and agent (`lp-team`, `lp-wk`, `lp-ag`), built by TeamScene.tsx and AgentScene.tsx. The team
+ * stands on the Team moment's horizon, feet on the line and names on the water, with the low sun just past the left end
+ * of the line (--lp-sun-at, measured by the scene). Their week is a window on the water (`lp-wk`; the app's own WeekGrid
+ * is `wk-`), and the agent's is beside what it can do (`lp-ag`).
+ */
+
+/* ---- the team on the horizon ---- */
+.lp-team .hz[data-moment="team"] { --hz-sun-x: var(--lp-sun-at, -300px); }
+.lp-team-up { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: clamp(110px, 11vw, 160px); }
+.lp-team-line { display: flex; justify-content: center; align-items: flex-end; gap: clamp(10px, 1.5vw, 24px); margin-top: clamp(64px, 7vw, 100px); }
+.lp-team-p { --lp-s: clamp(46px, 4.6vw, 66px); position: relative; display: grid; justify-items: center; padding: 0; border-radius: 0; color: var(--ink); }
+.lp-team-p :is(.ac-avatar, .ac-ghost) { --size: var(--lp-s) !important; transition: transform var(--duration-3) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
+.lp-team-p .ac-ghost { border-color: color-mix(in oklch, var(--ink) 40%, transparent); color: var(--ink-2); }
+.lp-team-p.is-on .ac-avatar { transform: translateY(-12px); box-shadow: 0 0 0 2px var(--sun); }
+.lp-team-p .ck { position: absolute; top: -6px; right: -6px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--sun); color: var(--on-sun); opacity: 0; transform: translateY(-12px) scale(.6); transition: opacity var(--duration-2) var(--ease-out), transform var(--duration-3) var(--ease-out); }
+.lp-team-p.is-on .ck { opacity: 1; transform: translateY(-12px); }
+.lp-team-p .nm { position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-50%); white-space: nowrap; color: var(--ink-2); font: 500 13px/1 var(--font-sans); transition: color var(--duration-2); }
+.lp-team-p.is-on .nm { color: var(--ink); font-weight: 600; }
+button.lp-team-p:hover .ac-avatar { transform: translateY(-5px); }
+button.lp-team-p.is-on:hover .ac-avatar { transform: translateY(-12px); }
+/* The ring goes round the arch, wherever it has stepped to. */
+button.lp-team-p:focus-visible { outline: 0; }
+button.lp-team-p:focus-visible .ac-avatar { outline: 2px solid var(--focus); outline-offset: 3px; }
+
+/* ---- their week, a window on the water ---- */
+.lp-team-water { padding-top: clamp(96px, 9vw, 130px); }
+.lp-wk { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 330px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-3); overflow: hidden; }
+.lp-wk-main { min-width: 0; padding: 22px 24px 24px; container: lp-wk / inline-size; }
+.lp-wk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.lp-wk-head h3 { font: 600 16px/1.3 var(--font-sans); letter-spacing: 0; }
+.lp-wk-head .end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.lp-wk-wk { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font: 600 13.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.lp-wk-grid { --hh: 34px; display: grid; grid-template-columns: 50px repeat(5, minmax(0, 1fr)); margin-top: 18px; }
+.lp-wk-dh { padding: 0 8px 10px; font: 600 13px/1.2 var(--font-sans); color: var(--ink); }
+.lp-wk-dh small { display: block; color: var(--ink-3); font: 500 11.5px/1.3 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-wk-hours { position: relative; height: calc(var(--rows) * var(--hh)); }
+.lp-wk-hours span { position: absolute; right: 10px; top: calc(var(--at) * var(--hh) + 3px); color: var(--ink-3); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-wk-day { position: relative; height: calc(var(--rows) * var(--hh)); border-left: 1px solid var(--line); background-image: linear-gradient(to bottom, var(--line) 1px, transparent 1px); background-size: 100% var(--hh); }
+.lp-wk-lanes { position: absolute; inset: 0 6px; display: flex; gap: 3px; }
+.lp-wk-lane { position: relative; flex: 1 1 0; min-width: 0; }
+.lp-wk-busy { position: absolute; left: 0; right: 0; top: calc(var(--at) * var(--hh) + 1px); height: calc(var(--for) * var(--hh) - 2px); border-radius: 5px; background: color-mix(in oklch, var(--ink) 11%, transparent); }
+/* Where everyone is free: the warmth of the sun on the week, and a time to press. */
+.lp-wk-free { position: absolute; z-index: 2; left: 3px; right: 3px; top: calc(var(--at) * var(--hh) + 1px); height: calc(var(--for) * var(--hh) - 2px); display: flex; align-items: flex-start; padding: 6px 7px; border-radius: 7px; background: color-mix(in oklch, var(--sun-soft) 88%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sun-text) 22%, transparent); color: var(--sun-text); font: 600 11.5px/1.1 var(--font-sans); font-variant-numeric: tabular-nums; text-align: left; white-space: nowrap; overflow: hidden; transition: box-shadow var(--duration-2) var(--ease-out); }
+.lp-wk-free .short { display: none; }
+.lp-wk-free:hover { box-shadow: inset 0 0 0 1.5px var(--sun-text); }
+.lp-wk-free[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--sun-text); }
+.lp-wk-free:focus-visible { outline-offset: 1px; border-radius: 7px; }
+.lp-wk-key { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; color: var(--ink-2); font-size: 12.5px; }
+.lp-wk-key span { display: inline-flex; align-items: center; gap: 7px; }
+.lp-wk-key i { width: 14px; height: 10px; border-radius: 3px; }
+.lp-wk-key .is-busy { background: color-mix(in oklch, var(--ink) 11%, transparent); }
+.lp-wk-key .is-free { background: var(--sun-soft); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--sun-text) 22%, transparent); }
+
+/* The new call, beside the week. */
+.lp-wk-side { min-width: 0; display: flex; flex-direction: column; gap: 18px; padding: 24px 22px; border-left: 1px solid var(--line); background: color-mix(in oklch, var(--sunk) 45%, var(--surface)); }
+.lp-wk-side .lbl { color: var(--ink-2); font: 600 12.5px/1 var(--font-sans); }
+.lp-wk-call { display: grid; gap: 14px; }
+.lp-wk-call h4 { font: 420 26px/1.1 var(--font-display); letter-spacing: -.015em; }
+.lp-wk-when { display: flex; align-items: center; gap: 9px; font: 600 15px/1.2 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-wk-when .ac-i { color: var(--sun-text); }
+.lp-wk-call.is-wait .lp-wk-when { color: var(--ink-2); font-weight: 500; }
+.lp-wk-call.is-wait .lp-wk-when .ac-i { color: var(--ink-3); }
+.lp-wk-who { display: flex; align-items: center; gap: 10px; min-height: 28px; color: var(--ink-2); font-size: 13.5px; }
+.lp-wk-who .ac-faces .ac-avatar { --ring: color-mix(in oklch, var(--sunk) 45%, var(--surface)); }
+.lp-wk-sw { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-block: 1px solid var(--line); font-size: 14px; }
+.lp-wk-go { width: 100%; }
+.lp-wk-done { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--sun-soft); color: var(--ink); font: 500 13.5px/1.4 var(--font-sans); }
+.lp-wk-done .ac-i { color: var(--sun-text); }
+
+/* The pointer that plays the week the first time, and the ring of its press. */
+.lp-wk-cur { position: absolute; z-index: 30; left: 0; top: 0; pointer-events: none; filter: drop-shadow(0 3px 5px color-mix(in oklch, var(--frame) 35%, transparent)); }
+.lp-wk-cur .ac-i { display: block; fill: var(--ink); stroke: var(--surface); stroke-width: 1.4; }
+.lp-wk-tap { position: absolute; left: -9px; top: -9px; width: 26px; height: 26px; border: 2px solid var(--sun-text); border-radius: 50%; }
+
+/* ---- your agent: a window beside what it can do ---- */
+.lp-ag { display: flex; flex-direction: column; min-width: 0; min-height: 560px; border-radius: var(--radius-xl); background: var(--surface); box-shadow: var(--shadow-3); overflow: hidden; }
+.lp-ag-top { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 18px; border-bottom: 1px solid var(--line); font: 600 14.5px/1 var(--font-sans); }
+.lp-ag-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); }
+.lp-ag-top .ac-chip { margin-left: auto; }
+.lp-ag-top .ok { width: 7px; height: 7px; border-radius: 50%; background: var(--horizon); }
+.lp-ag-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 22px 22px 18px; }
+.lp-ag-you { align-self: flex-end; max-width: 84%; padding: 12px 16px; border-radius: 18px 18px 6px 18px; background: var(--sunk); font-size: 15px; line-height: 1.5; }
+/* A tool call: what it called and with what in Plex Mono, the result in words once it's back. */
+.lp-ag-call { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 12px; border-radius: 11px; background: color-mix(in oklch, var(--sunk) 55%, transparent); box-shadow: inset 0 0 0 1px var(--line); font: 500 12.5px/1.35 var(--font-mono); color: var(--ink); }
+.lp-ag-call .st { display: grid; place-items: center; color: var(--horizon); }
+.lp-ag-call .st > * { grid-area: 1 / 1; }
+.lp-ag-call .ac-spin { width: 14px; height: 14px; color: var(--ink-2); }
+.lp-ag-call code { font: inherit; }
+.lp-ag-call .q { color: var(--ink-2); }
+.lp-ag-call .res { color: var(--ink-2); font: 500 12.5px/1.2 var(--font-sans); white-space: nowrap; }
+.lp-ag-say { font-size: 15.5px; line-height: 1.62; color: var(--ink); }
+.lp-ag-say .lp-ag-mc { height: 24px; padding: 0 8px; border-radius: 7px; gap: 5px; font: 600 12px/1 var(--font-sans); font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.lp-ag-booked { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.lp-ag-booked .d { display: grid; place-items: center; flex: none; width: 44px; height: 46px; border-radius: 10px; background: var(--sun-soft); color: var(--sun-text); font: 600 11px/1.1 var(--font-sans); text-align: center; }
+.lp-ag-booked .d b { display: block; font: 600 18px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-ag-booked .t { min-width: 0; font: 600 14.5px/1.3 var(--font-sans); }
+.lp-ag-booked .t small { display: block; margin-top: 2px; color: var(--ink-2); font: 500 12.5px/1.35 var(--font-sans); font-variant-numeric: tabular-nums; }
+.lp-ag-booked .ac-faces { margin-left: auto; }
+.lp-ag-foot { display: flex; align-items: center; gap: 10px; margin: 0 18px 18px; height: 46px; padding: 0 6px 0 16px; border-radius: 14px; box-shadow: inset 0 0 0 1px var(--line-control); color: var(--ink-3); font-size: 14px; }
+.lp-ag-foot .snd { margin-left: auto; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); }
+
+/* ---- narrower: the call goes under the week; on a phone the far ones step off the line and all five days fit ---- */
+@media (max-width: 1080px) {
+  .lp-wk { grid-template-columns: minmax(0, 1fr); }
+  .lp-wk-side { border-left: 0; border-top: 1px solid var(--line); }
+}
+/* Under the week with room to spare, the call reads on the left and is set and scheduled on the right. */
+@media (min-width: 720px) and (max-width: 1080px) {
+  .lp-wk-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); align-items: end; gap: 14px 40px; }
+  .lp-wk-side .lbl { grid-column: 1 / -1; }
+  .lp-wk-call { grid-row: 2 / span 2; }
+  .lp-wk-sw, .lp-wk-act { grid-column: 2; }
+}
+@container lp-wk (max-width: 540px) {
+  .lp-wk-grid { --hh: 30px; grid-template-columns: 34px repeat(5, minmax(0, 1fr)); }
+  .lp-wk-dh { padding: 0 2px 8px 5px; font-size: 12px; }
+  .lp-wk-dh small { font-size: 10.5px; }
+  .lp-wk-hours span { right: 5px; font-size: 10.5px; }
+  .lp-wk-lanes { inset: 0 3px; gap: 2px; }
+  .lp-wk-free { left: 2px; right: 2px; padding: 4px 3px; font-size: 10px; }
+  .lp-wk-free .full { display: none; }
+  .lp-wk-free .short { display: inline; }
+}
+@media (max-width: 560px) {
+  .lp-team-line { gap: 8px; }
+  .lp-team-p { --lp-s: 46px; }
+  .lp-team-p.is-far { display: none; }
+  .lp-team-p .nm { font-size: 12px; }
+  .lp-wk-main { padding: 18px 14px; }
+  .lp-wk-head .end { margin-left: 0; width: 100%; justify-content: space-between; }
+  .lp-wk-side { padding: 20px 16px; }
+  .lp-ag-body { padding: 18px 14px 14px; }
+  .lp-ag-call { grid-template-columns: 18px minmax(0, 1fr); align-items: start; row-gap: 3px; }
+  .lp-ag-call .st { height: 17px; }
+  .lp-ag-call .res { grid-column: 2; }
+  .lp-ag-foot { margin: 0 14px 14px; }
+}
