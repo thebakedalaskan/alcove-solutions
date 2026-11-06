@@ -184,7 +184,8 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   };
   const items = [
     ...(item.role === 'edit' && !trashed ? [{ icon: 'pen' as const, label: 'Rename', onPick: () => { closePop(); setNaming(name); } }] : []),
-    { icon: 'folderOpen' as const, label: `Saved in ${ws.spaceName}`, onPick: () => { closePop(); showInList(); } },
+    // Someone it's shared with from outside the workspace isn't told what the workspace is called.
+    ...(member ? [{ icon: 'folderOpen' as const, label: `Saved in ${ws.spaceName}`, onPick: () => { closePop(); showInList(); } }] : []),
     ...(canShare ? [{ icon: 'people' as const, label: 'Who can add to it', onPick: () => setPop('share') }] : []),
     { icon: 'link' as const, label: 'Copy link', onPick: () => { closePop(); ws.actions.copyLink(item.id); } }
   ];
@@ -218,7 +219,7 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
               ? <BoardPill icon={standing.pill.icon} title={standing.pill.title} text={standing.pill.text} action={standing.pill.action?.label} onAction={standing.pill.action?.run} />
               : following && <FollowingPill person={following} onStop={stop} />}>
             {pop === 'name' && <NameMenu items={items} onClose={closePop} />}
-            {pop === 'seal' && <SealPop title="Sealed" rows={[{ icon: 'lock', text: `Saved in ${ws.spaceName}.` }, { icon: 'sealed', text: 'Alcove can’t read it.' }]} onClose={closePop} />}
+            {pop === 'seal' && <SealPop title="Sealed" rows={[...(member ? [{ icon: 'lock' as const, text: `Saved in ${ws.spaceName}.` }] : []), { icon: 'sealed', text: 'Alcove can’t read it.' }]} onClose={closePop} />}
           </BoardSurface>
         </Suspense>
         {pop === 'share' && (
