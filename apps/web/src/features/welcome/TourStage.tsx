@@ -214,7 +214,7 @@ function Alcoves({ s }: { s: Stage }) {
     <div key={r.name} className={cn('lp-st-alcove', s.rooms.open && 'is-on', s.rooms.told > i && 'is-told')} style={{ left: alcoveX(i) }}>
       <div className="lp-st-alcove-name">{r.name}</div>
       <div className="lp-st-alcove-who">{r.who.map(nameOf).join(' and ')}</div>
-      <div className="lp-st-alcove-msg"><Icon name="megaphone" size={15} /><span>Art: Two minutes, then everyone’s back in the main room.</span></div>
+      <div className="lp-st-alcove-msg"><Icon name="megaphone" size={15} /><span>You: Two minutes, then everyone’s back in the main room.</span></div>
       <div className="lp-st-alcove-time"><i /><b>{clock(s.rooms.left)} left</b></div>
     </div>
   ));
