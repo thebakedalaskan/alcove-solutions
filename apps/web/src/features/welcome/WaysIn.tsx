@@ -7,7 +7,7 @@ import { Button, EASE, Field, ProviderButton, ProviderMark, Spinner, useToast } 
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { clearReturn, returnToCall } from '~/lib/afterSignIn';
+import { clearReturn, returnToAgent, returnToCall } from '~/lib/afterSignIn';
 import { isEmail } from '~/lib/people';
 import { googleSignInUrl, useSignIn } from '~/lib/queries';
 
@@ -20,7 +20,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
  * call's join page, which carries on there (Google comes back to it) instead of going to Home.
  */
-export function useAuth(o: { call?: string | undefined } = {}): Auth {
+export function useAuth(o: { call?: string | undefined; agent?: string | undefined } = {}): Auth {
   const signIn = useSignIn();
   const navigate = useNavigate();
   const toast = useToast();
@@ -30,20 +30,21 @@ export function useAuth(o: { call?: string | undefined } = {}): Auth {
   /* Coming back with the browser's Back button restores this page as it was left: busy, and a Google sign-in started from a
      join page may have been left there, so its way back is forgotten. */
   useEffect(() => {
-    const on = (e: PageTransitionEvent) => { if (!e.persisted) return; setBusy(null); if (o.call) clearReturn(); };
+    const on = (e: PageTransitionEvent) => { if (!e.persisted) return; setBusy(null); if (o.call || o.agent) clearReturn(); };
     addEventListener('pageshow', on);
     return () => removeEventListener('pageshow', on);
-  }, [o.call]);
+  }, [o.call, o.agent]);
 
   return {
     busy, leaving,
-    google: () => { setBusy('google'); if (o.call) returnToCall(o.call); location.assign(googleSignInUrl()); },
+    google: () => { setBusy('google'); if (o.call) returnToCall(o.call); if (o.agent) returnToAgent(o.agent); location.assign(googleSignInUrl()); },
     go: async (provider, email) => {
       setBusy(provider);
       try {
         const r = await signIn.mutateAsync({ provider, email: provider === 'sso' ? email?.trim() : undefined });
         // From a join page: it shows the account now, and joining goes on from there; no Google sign-in is coming back.
         if (o.call) { clearReturn(); setBusy(null); return; }
+        if (o.agent) { clearReturn(); setBusy(null); await navigate({ to: '/connect', search: { request: o.agent }, replace: true }); return; }
         setLeaving(true);
         await sleep(300);
         await navigate({ to: r.isNew ? '/ready' : '/home', replace: true });

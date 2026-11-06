@@ -3,16 +3,18 @@
  * page to return to waits in this tab's sessionStorage: not in the sign-in URL, because a call's code is its link's
  * secret and the API's request logs keep URLs. It lasts ten minutes, like the sign-in attempt itself, and is used once.
  */
-import { CallReturnStoredSchema } from '@alcove/api';
+import { AgentReturnStoredSchema, CallReturnStoredSchema } from '@alcove/api';
 import { log } from './log';
 
 const alog = log.child({ component: 'after-sign-in' });
 const KEY = 'alcove.after-sign-in';
+const AGENT_KEY = 'alcove.agent-after-sign-in';
 const MINUTES = 10;
 
 /** Signing in from this call's join page: come back to it afterwards. */
 export function returnToCall(code: string): void {
   try {
+    sessionStorage.removeItem(AGENT_KEY);
     sessionStorage.setItem(KEY, JSON.stringify({ code, until: Date.now() + MINUTES * 60_000 }));
   } catch (e) {
     // Private browsing and the like: after signing in this tab lands on Home, and the link still works.
@@ -24,8 +26,31 @@ export function returnToCall(code: string): void {
 export function clearReturn(): void {
   try {
     sessionStorage.removeItem(KEY);
+    sessionStorage.removeItem(AGENT_KEY);
   } catch (e) {
     alog.debug('join page to go back to not cleared', { err: e });
+  }
+}
+
+/** A consent request is a pointer, never a bearer credential; keep it in this tab for one sign-in. */
+export function returnToAgent(requestId: string): void {
+  try {
+    sessionStorage.removeItem(KEY);
+    sessionStorage.setItem(AGENT_KEY, JSON.stringify({ requestId, until: Date.now() + MINUTES * 60_000 }));
+  } catch (e) {
+    alog.debug('agent consent not kept for after sign-in', { err: e });
+  }
+}
+export function takeAgentReturn(): string | null {
+  try {
+    const raw = sessionStorage.getItem(AGENT_KEY);
+    if (raw === null) return null;
+    sessionStorage.removeItem(AGENT_KEY);
+    const parsed = AgentReturnStoredSchema.safeParse(JSON.parse(raw));
+    return parsed.success && parsed.data.until > Date.now() ? parsed.data.requestId : null;
+  } catch (e) {
+    alog.debug('agent consent to go back to not readable', { err: e });
+    return null;
   }
 }
 

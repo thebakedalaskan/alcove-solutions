@@ -1,6 +1,7 @@
 import type { CallCard, CallSession, LiveStore, NoteProgress, RoomRecording, RoomRecordingInput } from './live';
 import type { MediaPictureOptions, MediaUploadOptions, WorkspaceMedia } from './media';
 import type { CallMoveIn } from './moves';
+import type { AgentAuthorization, AgentConnection, AgentDecisionInput, AgentDecisionResult, AgentTokenInput, AgentTokenResult } from './agents';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
@@ -39,6 +40,18 @@ export interface AlcoveApi {
      * taken off the notes other people gave it. Signing in again starts a new account.
      */
     delete(): Promise<void>;
+  };
+  agents: {
+    /** Active connections, including their permissions, expiry and last use. Credentials are never returned here. */
+    list(): Promise<AgentConnection[]>;
+    /** Creates a named personal token and reveals its bearer once. */
+    createToken(input: AgentTokenInput): Promise<AgentTokenResult>;
+    /** Disconnects a connection for good, with its credentials. */
+    revoke(id: ID): Promise<void>;
+    /** The validated client's request, for a signed-in person to review before deciding. */
+    authorization(requestId: string): Promise<AgentAuthorization>;
+    /** Grants a subset of the requested permissions, or declines, returning the validated callback URL. */
+    decide(requestId: string, decision: AgentDecisionInput): Promise<AgentDecisionResult>;
   };
   people: {
     /** Colleagues, people you've had calls with, and any email address typed in full. */

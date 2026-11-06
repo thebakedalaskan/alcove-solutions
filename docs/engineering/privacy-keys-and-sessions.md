@@ -168,6 +168,26 @@ The hash is deterministic, so equal values show the same person across rows and 
 
 ## Sessions
 
+### Delegated agents
+
+Agent credentials are separate from browser sessions. A person explicitly grants scopes through OAuth consent or
+Settings; the delegation cannot exceed their current note/meeting access. Opaque bearer values are stored only as
+SHA-256 hashes. Grant labels and scopes are sealed under the owner's state key `agent:<grantId>` with the record
+header `agent-grant` binding owner and grant. OAuth clients and anonymous consent requests are sealed under
+`serviceKey(KSERVICE, 'agents')` with `agent-client` and `agent-authorization` headers binding their IDs. Codes are
+hashed and their binding metadata is sealed under the grant key with an `agent-code` header binding owner, grant
+and code hash. Operation results contain only created IDs, sealed under `agent-operations:<grantId>` with an
+`agent-operation` header binding owner, grant and operation; arguments are represented by a keyed commitment.
+
+Tokens never enter browser storage or general response receipts. Consent identifies the server's current account
+and binds approval to that owner; a cookie change in another tab cannot authorize a different account silently.
+Disconnect physically deletes the grant and its credentials/codes/operations; account deletion cascades all of them.
+Expiry and OAuth refresh replay also end access. Signing out leaves independent agent delegations in place.
+
+The agent receives readable content allowed by its scopes. Its own provider can process or retain that content;
+Alcove's confidential inference does not extend to an external agent. Write-only results never include a full note,
+transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete boundary and expiry policy.
+
 - **Cookie.** `alcove_session`, or `__Host-alcove_session` when `WEB_ORIGIN` is HTTPS: HttpOnly,
   `SameSite=Strict`, path `/`, `Secure` over HTTPS, max-age 30 days. The value is a random 32-byte ID in
   base64url (43 characters), and the browser holds the only copy.

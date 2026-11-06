@@ -17,6 +17,7 @@ import type { Deps } from './context';
 import { exec, rows } from './db';
 import { log } from './log';
 import { deleteQueued } from './modules/audio';
+import { sweep as sweepAgents } from './modules/agents';
 import { reconcile } from './modules/calls';
 import { sweep as sweepLiveNotes } from './modules/liveNotes';
 import { pruneUploadDays, sweepUploads } from './modules/media';
@@ -35,6 +36,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   /* What's old enough to go is as old as it was when upkeep started: the sweeps before one don't move its line. */
   const started = Date.now();
   const sessions = await sweepSessions(d);
+  const agents = await sweepAgents(d);
   const receipts = await exec(d.pool, `DELETE FROM operations WHERE completed_at < now() - interval '24 hours'`);
 
   const retried = await deleteQueued(d);
@@ -62,5 +64,5 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { sessions, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };
+  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };
 }

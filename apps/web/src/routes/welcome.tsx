@@ -3,7 +3,7 @@ import { useToast } from '@alcove/ui';
 import { useEffect, useRef } from 'react';
 import { Landing } from '~/features/welcome/Landing';
 import { useAuth } from '~/features/welcome/WaysIn';
-import { takeReturn } from '~/lib/afterSignIn';
+import { takeAgentReturn, takeReturn } from '~/lib/afterSignIn';
 import { signedInHere } from '~/lib/device';
 import { sessionOrOffline } from '~/lib/guards';
 
@@ -44,6 +44,8 @@ function Welcome() {
     if (!signin || handled.current === signin) return;
     handled.current = signin;
     toast(REFUSED[signin], { icon: 'x', ms: 5200 });
+    const agent = takeAgentReturn();
+    if (agent) { void navigate({ to: '/connect', search: { request: agent }, replace: true }); return; }
     const call = takeReturn();
     void navigate(call ? { to: '/join/$code', params: { code: call }, replace: true } : { to: '/welcome', search: {}, replace: true });
   }, [signin, toast, navigate]);

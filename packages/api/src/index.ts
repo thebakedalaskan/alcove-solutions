@@ -17,3 +17,6 @@ export * from './workspaceEditor';
 export * from './callWorkspace';
 export * from './media';
 export * from './callBoards';
+export * from './agents';
+export * from './agentOAuth';
+export * from './agentTools';

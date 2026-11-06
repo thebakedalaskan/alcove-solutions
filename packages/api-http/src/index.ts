@@ -7,6 +7,7 @@ import {
   AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, HEARD_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, MediaTokenAnswerSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, PresenterFrameNotesSchema, BoardCheckSchema, BoardThemesSchema, IdeasWatchedSchema,
   NoteFoundSchema, OPERATION_HEADER, PersonIdsSchema, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema, isTimeZone,
+  AgentAuthorizationIdSchema, AgentAuthorizationSchema, AgentConnectionIdSchema, AgentConnectionSchema, AgentDecisionInputSchema, AgentDecisionResultSchema, AgentTokenInputSchema, AgentTokenResultSchema,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
   type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type LineAudio, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
@@ -249,6 +250,13 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       preferences: () => req(PreferencesSchema, 'GET', '/account/preferences'),
       updatePreferences: (p) => req(PreferencesSchema, 'PATCH', '/account/preferences', p),
       delete: async () => { await req(z.unknown(), 'DELETE', '/account'); }
+    },
+    agents: {
+      list: () => req(z.array(AgentConnectionSchema), 'GET', '/agents'),
+      createToken: (input) => req(AgentTokenResultSchema, 'POST', '/agents/tokens', AgentTokenInputSchema.parse(input)),
+      revoke: async (id) => { await req(z.object({ revoked: z.literal(true) }), 'DELETE', `/agents/${AgentConnectionIdSchema.parse(id)}`); },
+      authorization: (id) => req(AgentAuthorizationSchema, 'GET', `/agents/authorization/${AgentAuthorizationIdSchema.parse(id)}`),
+      decide: (id, decision) => req(AgentDecisionResultSchema, 'POST', `/agents/authorization/${AgentAuthorizationIdSchema.parse(id)}`, AgentDecisionInputSchema.parse(decision))
     },
     people: {
       // The query goes in the body so it never appears in URLs or access logs.

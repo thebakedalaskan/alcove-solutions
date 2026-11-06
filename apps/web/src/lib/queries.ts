@@ -1,4 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
+import type { AgentDecisionInput, AgentTokenInput } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
@@ -14,6 +15,8 @@ import { log } from './log';
 import { weekOn } from './time';
 
 export const qk = {
+  agents: ['agents'] as const,
+  agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   team: ['team'] as const,
@@ -91,6 +94,8 @@ export function trustLine(t: Trust | undefined): string {
 }
 
 export const q = {
+  agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
+  agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
@@ -745,4 +750,17 @@ export function useWorkspacePeople(workspaceId: string) {
     setRole: useMutation({ mutationFn: (v: { id: string; role: WorkspaceRole }) => w.setRole(workspaceId, v.id, v.role), onSuccess: reread }),
     remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: reread })
   };
+}
+
+/** Credentials live in the active form only, never in a query or a persisted mutation. */
+export function useCreateAgentToken() {
+  const qc = useQueryClient();
+  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+}
+export function useRevokeAgent() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.agents.revoke(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+}
+export function useAgentDecision(requestId: string) {
+  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
 }

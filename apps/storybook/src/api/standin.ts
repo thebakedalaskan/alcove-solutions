@@ -9,7 +9,7 @@
  */
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
-  AlcoveApiError, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AnswerPart, type Busy, type CallCard,
+  AlcoveApiError, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
@@ -286,6 +286,18 @@ async function attest(nonce: string) {
 
 /* ---------- the stand-in ---------- */
 
+/** Story connections stay with the world's signed-in account and reset when a new story opens. */
+const agentConnections = new WeakMap<World, Map<string, AgentConnection[]>>();
+function agentsFor(w: World): { connections: AgentConnection[]; save(connections: AgentConnection[]): void } {
+  const ownerId = w.session?.ownerId;
+  if (!ownerId) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
+  let owners = agentConnections.get(w);
+  if (!owners) { owners = new Map(); agentConnections.set(w, owners); }
+  const connections = (owners.get(ownerId) ?? []).filter((connection) => Date.parse(connection.expiresAt) > Date.now());
+  owners.set(ownerId, connections);
+  return { connections, save: (next) => { owners.set(ownerId, next); } };
+}
+
 export const standIn: AlcoveApi = {
   auth: {
     getSession: () => answer((w) => w.session, 'anyone'),
@@ -310,7 +322,41 @@ export const standIn: AlcoveApi = {
       };
       return w.prefs;
     }),
-    delete: () => answer((w) => { w.session = null; w.notes = []; w.meetings = []; })
+    delete: () => answer((w) => { agentConnections.delete(w); w.session = null; w.notes = []; w.meetings = []; })
+  },
+  agents: {
+    list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
+    createToken: (input) => answer((w) => {
+      const parsed = AgentTokenInputSchema.parse(input);
+      const held = agentsFor(w);
+      const now = Date.now();
+      const connection: AgentConnection = {
+        id: nextId('agent').padEnd(22, '_'), name: parsed.name, kind: 'token', scopes: parsed.scopes,
+        createdAt: new Date(now).toISOString(), expiresAt: new Date(now + parsed.expiresInDays * 86_400_000).toISOString(), lastUsedAt: null
+      };
+      held.save([...held.connections, connection]);
+      return { connection, token: 'storybook-preview-token-not-valid-outside-this-story', endpoint: 'https://api.example.com/mcp' };
+    }),
+    revoke: (id) => answer((w) => {
+      AgentConnectionIdSchema.parse(id);
+      const held = agentsFor(w);
+      held.save(held.connections.filter((connection) => connection.id !== id));
+    }),
+    authorization: (requestId) => answer((w) => {
+      AgentAuthorizationIdSchema.parse(requestId);
+      if (!w.session) throw new AlcoveApiError('unauthenticated', 'Sign in to Alcove first.');
+      return { ownerId: w.session.ownerId, accountEmail: w.session.user.email, clientName: 'Workspace assistant', scopes: ['notes:read', 'meetings:read', 'calendar:read'], expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() };
+    }),
+    decide: (requestId, decision) => answer((w) => {
+      AgentAuthorizationIdSchema.parse(requestId);
+      if (decision.ownerId !== w.session?.ownerId) throw refused('conflict', 'Your account changed. Review this connection again.');
+      // Story accounts have descriptive IDs, so compare those directly while parsing the actual permission choices.
+      const allow = AgentDecisionInputSchema.shape.allow.parse(decision.allow);
+      const scopes = AgentDecisionInputSchema.shape.scopes.parse(decision.scopes);
+      const requested = new Set(['notes:read', 'meetings:read', 'calendar:read']);
+      if (scopes.some((scope) => !requested.has(scope)) || new Set(scopes).size !== scopes.length || (allow && !scopes.length)) throw refused('invalid', 'Choose only permissions this agent requested.');
+      return { redirectUrl: `https://agent.example/callback?${allow ? 'code=storybook-preview' : 'error=access_denied'}` };
+    })
   },
   people: {
     search: (query: string) => answer((w) => {
