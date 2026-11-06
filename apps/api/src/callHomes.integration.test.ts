@@ -86,7 +86,7 @@ async function fill(workspaceId: string): Promise<void> {
     if (!w) throw new Error('no workspace');
     const now = new Date().toISOString();
     const items: Record<string, StoredItem> = { ...w.state.items };
-    for (let i = Object.keys(items).length; i < 5000; i++) items[id128()] = { kind: 'document', name: `Planning notes ${i}`, parent: null, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
+    for (let i = Object.keys(items).length; i < 5000; i++) items[id128()] = { kind: 'document', name: `Planning notes ${i}`, parent: null, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null };
     w.state = { ...w.state, items };
     await saveState(w, c);
   });

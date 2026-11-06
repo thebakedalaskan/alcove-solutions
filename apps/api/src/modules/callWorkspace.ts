@@ -628,7 +628,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
 /** What's kept of something worked on in a call, once it's known what it is. Nothing, if it's gone. */
 export async function workedEntry(d: Deps, at: Pick<WorkedDocument, 'workspaceId' | 'documentId'>): Promise<Omit<WorkedDocument, 'by'> | undefined> {
   const item = (await serverWorkspace(d, at.workspaceId))?.state.items[at.documentId];
-  return item ? { workspaceId: at.workspaceId, documentId: at.documentId, kind: kindOf(item) } : undefined;
+  return item ? { workspaceId: at.workspaceId, documentId: at.documentId, kind: kindOf(item), open: null } : undefined;
 }
 
 /* ---------- the call's follow-ups ---------- */

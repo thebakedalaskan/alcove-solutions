@@ -112,7 +112,7 @@ function stream(base: string, f: typeof fetch, id: string, pass?: string, slowMs
 const fill = (workspaceId: string, who: Account, n: number) => rewrite(workspaceId, (s) => {
   const at = new Date().toISOString();
   const items = { ...s.items };
-  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
+  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null };
   return { ...s, items };
 });
 const treeOf = (l: WorkspaceLive) => l.getSnapshot().tree;
@@ -342,7 +342,7 @@ describe('the tree', () => {
       const at = new Date().toISOString();
       const items = { ...s.items };
       for (let i = 0; i < 4998; i++) {
-        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
+        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null };
       }
       return { ...s, items };
     });
@@ -397,7 +397,7 @@ describe('the tree', () => {
     const ids = Array.from({ length: 4900 }, () => madeUp());
     await rewrite(id, (s) => {
       const items = { ...s.items };
-      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null }; });
+      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null }; });
       return { ...s, items };
     });
     expect(await itemsOf(theo.api, id)).toHaveLength(4901);

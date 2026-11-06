@@ -457,7 +457,7 @@ export const standIn: AlcoveApi = {
         ...n, totalActions: n.totalActions + 1, openActions: n.openActions + 1,
         actions: [...n.actions, {
           id: nextId('a'), text: p.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: owner?.email === me().email, ...(p.due ? { due: p.due } : {}),
-          done: false, lines: p.lines ?? [], against: [], changes: [changeBy(n, 'proposed')], evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] }
+          done: false, lines: p.lines ?? [], against: [], changes: [changeBy(n, 'proposed')], from: null, evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] }
         }]
       };
     }),

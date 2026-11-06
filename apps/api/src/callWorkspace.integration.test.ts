@@ -198,7 +198,7 @@ async function seedTree(workspaceId: string, n: number, parent: string | null = 
     if (!w) throw new Error('no workspace');
     const now = new Date().toISOString();
     const items: Record<string, StoredItem> = { ...w.state.items };
-    for (let i = 0; i < n; i++) items[id128()] = { kind: 'document', name: `Quarterly planning notes for team ${i}, second draft`, parent, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
+    for (let i = 0; i < n; i++) items[id128()] = { kind: 'document', name: `Quarterly planning notes for team ${i}, second draft`, parent, pos: `a${String(i).padStart(6, '0')}`, by: null, createdAt: now, editedAt: now, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null };
     w.state = { ...w.state, items };
     await saveState(w, c);
   });

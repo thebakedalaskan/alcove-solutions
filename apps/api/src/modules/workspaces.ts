@@ -295,7 +295,7 @@ export const create = (o: Owner, name: string): Promise<{ id: string }> => tx(o.
 /** A call's folder, as its home keeps it. */
 export interface CallFolder { id: string; name: string; call: StoredCall }
 const folderOf = (f: CallFolder, pos: string, at: string): StoredItem => ({
-  kind: 'folder', name: f.name, parent: null, pos, by: null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: f.call
+  kind: 'folder', name: f.name, parent: null, pos, by: null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: f.call, room: null
 });
 /** The people invited to a call, as a home keeps them: lower-cased, once each, without its organizer. */
 const inviteesOf = (invited: string[], organizer: string): string[] => [...new Set(invited.map((e) => e.trim().toLowerCase()))].filter((e) => e && e !== organizer.trim().toLowerCase());
@@ -511,7 +511,7 @@ async function addItem(w: HeldWorkspace, c: Db, input: NewItem, by: Maker): Prom
   const id = id128();
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
-    kind: input.kind, name: input.name, parent: input.parent, pos: positionIn(w.state, input.parent, input.after), by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null
+    kind: input.kind, name: input.name, parent: input.parent, pos: positionIn(w.state, input.parent, input.after), by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null, room: null
   });
   if (holdsContent(input.kind)) await addDocuments(w, c, [id]);
   if (input.kind === 'document') await startContent(w, c, [id]);
@@ -572,7 +572,7 @@ export async function addBeside(w: HeldWorkspace, db: Db, like: string, name: st
   if (Object.keys(w.state.items).length >= MAX_ITEMS) throw new ConflictError('This workspace is full. Delete something from it first.', { context: { workspaceId: w.workspaceId } });
   const at = new Date().toISOString();
   w.state = withItem(w.state, id, {
-    kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy, call: null
+    kind: 'document', name, parent: from.parent, pos: positionIn(w.state, from.parent, like), by: from.by, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: from.restricted, restrictedBy: from.restrictedBy, call: null, room: null
   });
   await addDocuments(w, db, [id]);
   await startContent(w, db, [id]);
@@ -595,7 +595,7 @@ function copied(reader: Reader, w: Workspace, id: string, parent: string | null,
   for (let x = stack.pop(); x !== undefined; x = stack.pop()) {
     const source = w.state.items[x.from];
     if (!source) continue;
-    out.push({ from: x.from, id: x.copy, item: { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null, call: null } });
+    out.push({ from: x.from, id: x.copy, item: { ...source, name: x.name, parent: x.parent, pos: x.pos, by: makerOf(reader), createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restrictedBy: null, call: null, room: null } });
     for (const child of kids.get(x.from) ?? []) {
       if (!child.item.trashedAt && roleOf(reader, w, child.id, child.item)) stack.push({ from: child.id, copy: id128(), parent: x.copy, pos: child.item.pos, name: child.item.name });
     }
@@ -768,7 +768,9 @@ async function held(d: Deps, db: Db, ownerId: string): Promise<HeldWorkspace | u
  * Each address is hashed once however many things carry it, and this reads under the lock, so it stays one pass.
  */
 async function strandedIn(w: HeldWorkspace, db: Db): Promise<string[]> {
-  const restricted = Object.entries(w.state.items).filter(([, x]) => x.restricted);
+  // A board made for a breakout room is its call's to give: to whoever's in the room while it's open, and to everyone invited
+  // as it ends. This release never makes one, nor strands one that the release after it made.
+  const restricted = Object.entries(w.state.items).filter(([, x]) => x.restricted && !x.room);
   if (!restricted.length) return [];
   const members = new Set((await rows(db, z.object({ email_index: bytea }), 'SELECT email_index FROM workspace_members WHERE owner_id = $1', [w.owner.ownerId])).map((r) => b64u(r.email_index)));
   const given = new Set((await rows(db, z.object({ document_id: z.string() }), 'SELECT DISTINCT document_id FROM document_access WHERE owner_id = $1 AND document_id = ANY($2::text[])', [w.owner.ownerId, restricted.map(([id]) => id)])).map((r) => r.document_id));

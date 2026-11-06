@@ -393,7 +393,7 @@ export async function finish(o: Owner, c: Db, callId: string): Promise<{ ticked:
  */
 export const toNote = (a: Added, at: number): ActionItem => ({
   id: a.id, text: a.text, owner: a.owner, takenOn: true, at, done: a.tick !== null, lines: [], against: [],
-  changes: [{ by: a.by, at: a.at, what: 'proposed' }, ...(a.tick ? [{ ...a.tick, what: 'done' as const }] : [])]
+  changes: [{ by: a.by, at: a.at, what: 'proposed' }, ...(a.tick ? [{ ...a.tick, what: 'done' as const }] : [])], from: null
 });
 
 /**
@@ -414,7 +414,7 @@ export function doneInNotes(actions: ActionItem[], ticks: Ticked[], said: Readon
   const added = ticks.filter((t) => !found.has(t.id)).map((t): ActionItem => {
     const behind = lines.filter((l) => t.lines.includes(l.id));
     const at = behind[0]?.at;
-    return { id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), lines: behind.map((l) => l.id), against: [], done: true, changes: [change(t)] };
+    return { id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), lines: behind.map((l) => l.id), against: [], done: true, changes: [change(t)], from: null };
   });
   return added.length ? [...written, ...added].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY)) : written;
 }

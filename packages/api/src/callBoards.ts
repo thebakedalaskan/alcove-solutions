@@ -41,6 +41,17 @@ export const BoardNewSchema = z.object({ template: BoardTemplateSchema });
 export const BoardSavedSchema = z.object({ documentId: ItemIdSchema, letIn: z.boolean() });
 export type BoardOpen = z.infer<typeof BoardNewSchema> | z.infer<typeof BoardSavedSchema>;
 
+/**
+ * What breakout rooms have to work on, the rooms panel's Board row (docs: Calls and recordings › Boards in breakout rooms).
+ * `none`: nothing set up, though anyone sent to a room can start one there. `each`: a board for every room, made as they
+ * open, from `template`, sealed to that room. `shared`: the main board, with a frame for each room, which everyone stays on;
+ * with no board open in the main room, one is made from `template`.
+ */
+export const BreakoutBoardModeSchema = z.enum(['none', 'each', 'shared']);
+export type BreakoutBoardMode = z.infer<typeof BreakoutBoardModeSchema>;
+export const BreakoutBoardSchema = z.object({ mode: BreakoutBoardModeSchema, template: BoardTemplateSchema });
+export type BreakoutBoard = z.infer<typeof BreakoutBoardSchema>;
+
 /** What opening a saved board would mean, for the menu to ask before anything opens. */
 export const BoardCheckSchema = z.object({
   /** The first names of people in the call who can't open it. */

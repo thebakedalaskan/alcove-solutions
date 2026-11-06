@@ -988,7 +988,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (placed.some((e) => !invited.has(e))) throw new ValidationError('Only people invited to this call can be sent to a room.', { context: { ...ctx, rooms: a.rooms.length } });
       if (new Set(placed).size !== placed.length) throw new ValidationError('Someone is in two rooms. Each person goes to one room.', { context: { ...ctx, rooms: a.rooms.length } });
       // Each room gets its own MLS group: everyone sent to one leaves the main room's group and joins the room's.
-      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] })), from: exact, until: exact + a.minutes * 60, message: null, visiting: null } } };
+      s = { ...s, spotlight: null, breakouts: { ...s.breakouts, open: { rooms: a.rooms.map((r) => ({ id: id128(), name: r.name, emails: r.emails, epoch: 0, pauses: [], scribes: [], seen: [] })), from: exact, until: exact + a.minutes * 60, message: null, visiting: null, board: { mode: 'none', template: 'blank' } } } };
     } else if (a.type === 'rooms-close') {
       s = closeRooms(s, exact, row.started_at.getTime());
     } else if (a.type === 'rooms-rename') {
