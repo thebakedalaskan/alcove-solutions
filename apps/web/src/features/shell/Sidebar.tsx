@@ -15,7 +15,7 @@ import { useNow, useOnline } from '~/lib/live';
 import { sameEmail } from '~/lib/people';
 import { q, trustLine } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, minutesUntil, untilLabel } from '~/lib/time';
-import { NAV, places, useCounts } from './places';
+import { NAV, inWorkspace, places, useCounts } from './places';
 
 const KEY = 'alcove-side-panel';
 const slog = log.child({ component: 'shell' });
@@ -83,8 +83,9 @@ export function Sidebar({ hidden, hideRef, onHide, onNew, onPin }: {
           <IconButton ref={hideRef} icon="panel" label="Hide the side panel" onClick={onHide} />
         </div>
         <Offline className="sb-offline" />
-        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts="N" data-tour="new-call">
-          <Icon name="video" size={18} /><span>Start a call</span><Kbd>N</Kbd>
+        {/* In the workspace, N makes a document. */}
+        <button type="button" className={cn(buttonClass(), 'sb-new')} onClick={onNew} aria-label="Start a call" aria-haspopup="dialog" aria-keyshortcuts={inWorkspace(path) ? undefined : 'N'} data-tour="new-call">
+          <Icon name="video" size={18} /><span>Start a call</span>{!inWorkspace(path) && <Kbd>N</Kbd>}
         </button>
         <SidebarNav>
           {places(NAV, team).map((p) => <Link key={p.to} to={p.to} className="ac-nav-item" data-tour={p.tour}><NavItemContent icon={p.icon} label={p.label} count={p.count && counts[p.count]} /></Link>)}

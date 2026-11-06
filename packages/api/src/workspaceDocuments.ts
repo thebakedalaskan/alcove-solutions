@@ -17,13 +17,29 @@ export const DOC_FRAGMENT = 'content';
 export const DOC_COMMENTS = 'comments';
 
 /**
- * The start of every document, the same bytes for everyone: its title and first line, written under one fixed client that
- * no real client gets (theirs are random 32-bit numbers). A document's title is the first element of its fragment, so two
- * browsers each making their own would merge into two titles, and a browser that can only read mustn't write. So the API
- * writes these bytes when a document is made, and the first `sync` always carries them. They merge into one, whoever
- * applies them and however often. Each of the two has an empty text in it, so whoever types there first types in the text
- * that's there: two people each making one would sit side by side, and y-prosemirror merges those by deleting one. They're
- * fixed for good: every document holds them.
+ * The Yjs clients only the API writes as, 1 to 15, which no browser ever does: `seed` writes every document's start and
+ * `template` a board's template, and the rest are kept for what comes. What each writes depends on nothing but what it's for
+ * (a template on its board and its name), so a client and its clocks say one thing in every log, version and browser, and the
+ * API turns away anything a browser writes as one. A browser's are random 32-bit numbers outside these (`randomClient`).
+ */
+export const SERVER_CLIENT = { seed: 1, template: 2 } as const;
+const LAST_SERVER_CLIENT = 15;
+export const isServerClient = (client: number): boolean => client >= 1 && client <= LAST_SERVER_CLIENT;
+/** A Yjs client for anyone but the server: random, as Yjs makes them, and never one of the server's. */
+export function randomClient(): number {
+  for (;;) {
+    const [client = 0] = crypto.getRandomValues(new Uint32Array(1));
+    if (!isServerClient(client)) return client;
+  }
+}
+
+/**
+ * The start of every document, the same bytes for everyone: its title and first line, written as `SERVER_CLIENT.seed`. A
+ * document's title is the first element of its fragment, so two browsers each making their own would merge into two titles,
+ * and a browser that can only read mustn't write. So the API writes these bytes when a document is made, and the first `sync`
+ * always carries them. They merge into one, whoever applies them and however often. Each of the two has an empty text in it,
+ * so whoever types there first types in the text that's there: two people each making one would sit side by side, and
+ * y-prosemirror merges those by deleting one. They're fixed for good: every document holds them.
  */
 export const DOC_SEED: Uint8Array = new Uint8Array([
   1, 5, 1, 0, 7, 1, 7, 99, 111, 110, 116, 101, 110, 116, 3, 5, 116, 105, 116, 108, 101, 7, 0, 1, 0, 6, 135, 1, 0, 3, 4, 108, 105, 110, 101, 7, 0, 1, 2, 6, 40, 0, 1, 2, 2, 105, 100, 1, 119, 5, 102, 105, 114, 115, 116, 0

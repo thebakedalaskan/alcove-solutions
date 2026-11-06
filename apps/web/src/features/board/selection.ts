@@ -16,7 +16,7 @@ export const NO_GUIDES: readonly Guide[] = [];
 /** Past this many objects, only those near the view are mounted. */
 export const MOUNT_ALL = 500;
 /** What floats over the sheet. It has its own controls, so the board leaves a press on it alone. */
-export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit';
+export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit, .bo-at, .bo-pick';
 /** How far a press can wander, in screen pixels, and still be a click. */
 export const CLICK_SLOP = 3;
 

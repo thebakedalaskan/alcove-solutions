@@ -104,6 +104,23 @@ export type LinkObject = z.output<typeof LinkSchema>;
 /** Everything with a box. A line has none: it goes where its ends go. */
 export type PlacedObject = Exclude<BoardObject, LineObject>;
 
+/**
+ * Who wrote a comment: `by`, what they're known by in the workspace, which finds their face, and their name as it was then.
+ * A reply from before comments said who wrote them reads as nobody's.
+ */
+export const BoardAuthorSchema = z.object({ by: z.string().max(64).catch(''), name: z.string().max(200).catch('') });
+export type BoardAuthor = z.output<typeof BoardAuthorSchema>;
+/** One message in a comment thread. `at`: when it was written, in ms since the epoch. */
+export const BoardReplySchema = z.object({ id: BoardIdSchema, text: TextSchema, at: z.number(), ...BoardAuthorSchema.shape });
+export type BoardReply = z.output<typeof BoardReplySchema>;
+/** A comment thread, pinned to the object `on`, with what's been said, oldest first. A resolved thread stays, and isn't shown. */
+export interface BoardThread {
+  id: string;
+  on: string;
+  resolved: boolean;
+  replies: BoardReply[];
+}
+
 export interface Box {
   x: number;
   y: number;

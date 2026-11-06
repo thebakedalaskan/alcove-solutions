@@ -54,11 +54,11 @@ function CommentField({ label, placeholder, value, onChange, onSend, autoFocus =
   </>;
 }
 
-/** A new comment on selected words. `person` is who's writing it. */
+/** A new comment on selected words, or on something on a board. `person` is who's writing it. An empty `quote` shows nothing above the field. */
 export function WsCommentCompose({ quote, person, value, onChange, onSend }: { quote: string; person: AvatarPerson; value: string; onChange: (v: string) => void; onSend: () => void }) {
   return (
     <div className="wv-cmt">
-      <div className="q"><span className="ac-clamp-2">{quote}</span></div>
+      {quote && <div className="q"><span className="ac-clamp-2">{quote}</span></div>}
       <div className="in"><Avatar person={person} size={24} /><CommentField label="Comment" placeholder="Comment, or @ someone" value={value} onChange={onChange} onSend={onSend} autoFocus /></div>
     </div>
   );
@@ -67,14 +67,17 @@ export function WsCommentCompose({ quote, person, value, onChange, onSend }: { q
 /** One message in a thread. `name` is their first name. */
 export interface WsComment { id: string; person: AvatarPerson; name: string; text: string }
 
-/** A thread on some words: what they are, Resolve, what's been said and the reply field. A reply rises 8 px, 240 ms. */
+/**
+ * A thread on some words, or on something on a board: what they are, Resolve, what's been said and the reply field. A reply
+ * rises 8 px, 240 ms. Someone who can only read it has neither `onSend` nor `onResolve`, and sees what's been said.
+ */
 export function WsCommentThread({ quote, messages, value, onChange, onSend, onResolve }: {
-  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend: () => void; onResolve: () => void;
+  quote: string; messages: WsComment[]; value: string; onChange: (v: string) => void; onSend?: (() => void) | undefined; onResolve?: (() => void) | undefined;
 }) {
   const move = useMove();
   return (
     <div className="wv-cmt">
-      <div className="wv-th"><span className="q1">{quote}</span><Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button></div>
+      {(quote || onResolve) && <div className="wv-th"><span className="q1">{quote}</span>{onResolve && <Button variant="quiet" size="xs" onClick={onResolve}><Icon name="check" size={14} />Resolve</Button>}</div>}
       <AnimatePresence initial={false}>
         {messages.map((m) => (
           <motion.div key={m.id} className="wv-m" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={move(2)}>
@@ -82,13 +85,13 @@ export function WsCommentThread({ quote, messages, value, onChange, onSend, onRe
           </motion.div>
         ))}
       </AnimatePresence>
-      <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>
+      {onSend && <div className="in"><CommentField label="Reply" placeholder="Reply" value={value} onChange={onChange} onSend={onSend} /></div>}
     </div>
   );
 }
 
 /** What someone can do with a document, and what they can change it to. Without `options` it's only said. */
-export interface WsShareRole { label: string; options?: { label: string; caution?: boolean | undefined; onSelect: () => void }[] | undefined }
+export interface WsShareRole { label: string; options?: { label: string; sub?: string | undefined; caution?: boolean | undefined; ticked?: boolean | undefined; onSelect: () => void }[] | undefined }
 /** Someone or a group with this document. */
 export interface WsShareRow { id: string; people: AvatarPerson[]; name: string; sub: string; role: WsShareRole }
 /** Someone the field found, not added yet. */
@@ -96,8 +99,8 @@ export interface WsShareMatch { id: string; person: AvatarPerson; sub: string; o
 
 function RolePicker({ role, who }: { role: WsShareRole; who: string }) {
   const [open, setOpen] = useState(false);
-  if (!role.options) return <span className="role">{role.label}<Icon name="down" size={13} /></span>;
-  const rows = role.options.map((o): WsMenuRow => ({ label: o.label, tone: o.caution ? 'caution' : undefined, onSelect: () => { o.onSelect(); setOpen(false); } }));
+  if (!role.options) return <span className="role">{role.label}</span>;
+  const rows = role.options.map((o): WsMenuRow => ({ label: o.label, sub: o.sub, ticked: o.ticked, tone: o.caution ? 'caution' : undefined, onSelect: () => { o.onSelect(); setOpen(false); } }));
   return (
     <WsPopover open={open} onOpenChange={setOpen} label={`What ${who} can do`} align="end" anchor={<button type="button" className="role" aria-label={`${who}: ${role.label}`}>{role.label}<Icon name="down" size={13} /></button>}>
       <WsMenu label={`What ${who} can do`} rows={rows} className="is-role" />
@@ -106,11 +109,12 @@ function RolePicker({ role, who }: { role: WsShareRole; who: string }) {
 }
 
 /**
- * Share, at the top of a document. `name` is the document's. `rows`: who has it. `guest`: someone in this call who can't
- * open it, with Let them read. `matches`: who the field found, as you type.
+ * Share, at the top of a document, and the same sheet for who's in a workspace. `title` is its heading. `rows`: who has
+ * it. `guest`: someone in this call who can't open it, with Let them read. `matches`: who the field found, as you type.
+ * Someone who can't add people has no field: leave `onQuery` out.
  */
-export function WsShareSheet({ name, query, onQuery, onAdd, matches = [], rows, guest }: {
-  name: string; query: string; onQuery: (q: string) => void;
+export function WsShareSheet({ title, query = '', onQuery, onAdd, matches = [], rows, guest }: {
+  title: string; query?: string | undefined; onQuery?: ((q: string) => void) | undefined;
   /** Enter in the field, with an email address or a name. */
   onAdd?: (() => void) | undefined;
   matches?: WsShareMatch[] | undefined; rows: WsShareRow[];
@@ -118,18 +122,22 @@ export function WsShareSheet({ name, query, onQuery, onAdd, matches = [], rows, 
 }) {
   return (
     <div className="wv-share">
-      <div className="wv-h"><b>Share {name}</b></div>
-      <label className="wv-f">
-        <Icon name="search" size={15} />
-        <input type="text" placeholder="Add people by name or email" aria-label="Add people by name or email" value={query} onChange={(e) => onQuery(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && onAdd) { e.preventDefault(); onAdd(); } }} />
-      </label>
+      <div className="wv-h"><b>{title}</b></div>
+      {onQuery && (
+        <label className="wv-f">
+          <Icon name="search" size={15} />
+          <input type="text" autoFocus placeholder="Add people by name or email" aria-label="Add people by name or email" autoComplete="off" spellCheck={false} value={query} onChange={(e) => onQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && onAdd) { e.preventDefault(); onAdd(); } }} />
+        </label>
+      )}
       {matches.map((m) => (
         <button key={m.id} type="button" className="wm-r" onClick={m.onAdd}><Avatar person={m.person} size={24} /><span className="t"><span className="l">{m.person.name}</span><small>{m.sub}</small></span></button>
       ))}
-      {rows.map((r) => (
-        <div key={r.id} className="wv-pr"><Faces people={r.people} size={26} max={3} /><span className="m"><b>{r.name}</b><small>{r.sub}</small></span><RolePicker role={r.role} who={r.name} /></div>
-      ))}
+      <div className="wv-rows">
+        {rows.map((r) => (
+          <div key={r.id} className="wv-pr"><Faces people={r.people} size={26} max={3} /><span className="m"><b>{r.name}</b><small>{r.sub}</small></span><RolePicker role={r.role} who={r.name} /></div>
+        ))}
+      </div>
       {guest && <>
         <div className="wv-sep" />
         <span className="ac-eyebrow">In this call</span>

@@ -93,6 +93,15 @@
   --stage-sun: #F6E8CC;
   /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
   --stage-point: #215DB3;
+  /* Each person's colour on a board, the same in both themes: their pointer, the ring on what they're writing in, and the ring
+     round a view that's theirs. Deep enough for white words, outlined in white on any sheet, and never the only way to tell
+     who: a pointer carries a face and a name. No green. */
+  --who-1: #5B4BE0;
+  --who-2: #C2406E;
+  --who-3: #2F6FD6;
+  --who-4: #96600F;
+  --who-5: #8A4FD0;
+  --who-6: #9C4A86;
   /* The sky: illustration, tour art and covers only */
   --dawn-1: #17294A;
   --dawn-2: #483963;

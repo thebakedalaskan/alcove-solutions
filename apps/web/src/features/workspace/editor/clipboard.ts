@@ -18,6 +18,7 @@ import type { InsertAt } from './types';
 
 const n = schema.nodes;
 const CANT_OPEN = 'A document you can’t open';
+const CANT_OPEN_BOARD = 'A board you can’t open';
 
 /* -------- out, as HTML */
 
@@ -72,7 +73,8 @@ export function cleanSerializer(rt: EditorRuntime): DOMSerializer {
     ...DOMSerializer.nodesFromSchema(schema),
     docref: (node) => { const doc = textAttr(node, 'doc') ?? ''; return ['span', { 'data-docref': doc }, name(doc)]; },
     dateChip: (node) => { const date = textAttr(node, 'date') ?? ''; return ['time', { 'data-chip': '', datetime: date }, dateLabel(date)]; },
-    doclink: (node) => { const doc = textAttr(node, 'doc') ?? ''; return ['p', { 'data-alcove-block': 'doclink', 'data-attrs': JSON.stringify({ doc }) }, name(doc)]; }
+    doclink: (node) => { const doc = textAttr(node, 'doc') ?? ''; return ['p', { 'data-alcove-block': 'doclink', 'data-attrs': JSON.stringify({ doc }) }, name(doc)]; },
+    board: (node) => { const board = textAttr(node, 'board') ?? ''; return ['p', { 'data-alcove-block': 'board', 'data-attrs': JSON.stringify({ board }) }, rt.props.documentName?.(board) ?? CANT_OPEN_BOARD]; }
   };
   const { comment: _comment, ...marks } = DOMSerializer.marksFromSchema(schema);
   return new CleanSerializer(nodes, marks);
@@ -122,6 +124,7 @@ function blockText(node: PMNode, rt: EditorRuntime, number: number, marked: bool
     case 'file': return [textAttr(node, 'name') ?? ''];
     case 'video': return [textAttr(node, 'title') ?? ''];
     case 'doclink': return [rt.props.documentName?.(textAttr(node, 'doc') ?? '') ?? CANT_OPEN];
+    case 'board': return [rt.props.documentName?.(textAttr(node, 'board') ?? '') ?? CANT_OPEN_BOARD];
     case 'live': return liveLines(node).map((l) => l.text);
     case 'moment': return [`“${textAttr(node, 'text') ?? ''}” ${textAttr(node, 'name') ?? ''}, ${textAttr(node, 'at') ?? ''}`];
     default: return [text];

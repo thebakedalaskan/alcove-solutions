@@ -91,7 +91,7 @@ export function decorPlugin(rt: EditorRuntime): Plugin {
         if (!s) return null;
         const out: Decoration[] = [];
         const title = state.doc.child(0);
-        if (title.content.size === 0) out.push(Decoration.node(0, title.nodeSize, { class: 'is-empty' }));
+        if (title.content.size === 0) out.push(Decoration.node(0, title.nodeSize, { class: 'is-empty', 'data-ph': rt.props.titleHint || 'Untitled' }));
         out.push(Decoration.widget(title.nodeSize, rt.byline, { key: 'byline', side: -1, ignoreSelection: true, stopEvent: () => true }));
 
         /* A placeholder shows on the line you're on, while you're in the document. */

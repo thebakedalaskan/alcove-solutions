@@ -129,6 +129,8 @@ export interface EditorProps {
   /** Each state may hold `user: { id, name }`; `id` is looked up in `people` for the face. */
   awareness: Awareness;
   readOnly?: boolean | undefined;
+  /** What the title says while nobody has written one: a document can be made with a name and an empty title. */
+  titleHint?: string | undefined;
   /** Everyone who may show up in this document, for faces on carets, tags, quotes and live lines. */
   people?: readonly Person[] | undefined;
   /** What `@` offers for what's been typed after it. With `docsOnly`, just documents, for Link to a document. */
@@ -137,6 +139,8 @@ export interface EditorProps {
   documentName?: ((id: string) => string | undefined) | undefined;
   /** A tag or a link to another document was pressed. */
   onOpenDocument?: ((id: string) => void) | undefined;
+  /** Makes a board beside this document, for `/` Board to show. Resolves with its ID, or null if it wasn't made. Without it, `/` has no Board. */
+  onNewBoard?: (() => Promise<string | null>) | undefined;
   /** A person's name in the text was pressed. */
   onOpenPerson?: ((id: string, rect: Rect) => void) | undefined;
   /** Someone was just tagged: tell them, or ask before sharing. */
@@ -171,8 +175,10 @@ export interface EditorProps {
   onToast?: ((toast: EditorToast) => void) | undefined;
   /** Sits between the title and the first block: who wrote this and when. */
   byline?: ReactNode | undefined;
-  /** Sits under the last block, above the space that adds a line: what a new document can start from. */
+  /** Sits under the last block, above the space that adds a line. */
   below?: ReactNode | undefined;
+  /** Takes `below`'s place while nothing is written under the title: what a new document can start from. */
+  whenBlank?: ReactNode | undefined;
   /** Where the caret starts when the document opens. */
   autoFocus?: 'title' | 'end' | undefined;
   ref?: Ref<EditorHandle> | undefined;
@@ -195,6 +201,8 @@ export interface EditorHandle {
   selectionBlock: () => string | null;
   /** A block as plain data, for sending it somewhere else. */
   blockJSON: (id: string) => BlockJSON | null;
+  /** Where a block is now, to put it back there: after the block before it, or at the start. */
+  placeOf: (id: string) => InsertAt;
   /** Writes what every `live` block of this kind shows. Only writes if it changed, so any browser in the call can do this. */
   setLiveLines: (what: LiveWhat, lines: LiveLine[]) => void;
   /** Opens `/` or `@` at the caret, for a phone's keyboard bar. */

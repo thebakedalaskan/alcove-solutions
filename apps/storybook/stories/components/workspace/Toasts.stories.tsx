@@ -29,12 +29,17 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   addedTo: wsToast.addedTo('Launch plan', go),
   restoredVersion: wsToast.restoredVersion('Wed 28 Oct', undo),
   restored: wsToast.restored(),
+  deleted: wsToast.deleted('Old roadmap'),
+  failed: wsToast.failed('That workspace isn’t there, or you can’t open it.'),
   stoppedPresenting: wsToast.stoppedPresenting(),
   switched: wsToast.switched('Design', did('onBack')),
   newSpace: wsToast.newSpace(NEW_SPACE.name),
   askedForNotes: wsToast.askedForNotes(first(PRIYA)),
   notesOn: wsToast.notesOn(),
   backOnline: wsToast.backOnline(),
+  copiedText: wsToast.copiedText(),
+  savedAsNew: wsToast.savedAsNew(did('onOpen')),
+  discarded: wsToast.discarded(),
   sharing: wsToast.sharing(KOFI, first(KOFI), did('onShow'))
 };
 const ALL = Object.entries(EVERY);

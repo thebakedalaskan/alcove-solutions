@@ -180,6 +180,11 @@ export const NewMenu: StoryObj<typeof WsNewMenu> = {
   name: 'New menu', args: { onDocument: did('onDocument'), onFolder: did('onFolder'), onUpload: did('onUpload') },
   render: (args) => <PopSurface ws><WsNewMenu {...args} /></PopSurface>
 };
+/** On a page, where boards are in the list: New board makes Untitled board there and opens it. */
+export const NewMenuWithBoard: StoryObj<typeof WsNewMenu> = {
+  name: 'New menu: with New board', args: { onDocument: did('onDocument'), onFolder: did('onFolder'), onBoard: did('onBoard'), onUpload: did('onUpload') },
+  render: (args) => <PopSurface ws><WsNewMenu {...args} /></PopSurface>
+};
 /** From the list's +: a document opens at once, a folder is named in its row. */
 export const NewMenuOpen: Story = { name: 'New menu: from the list’s +', args: { label: 'New', rows: [] }, ...WIDE, render: () => <ListWith opened={{ key: 'new' }} call={false} /> };
 

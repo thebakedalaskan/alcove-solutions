@@ -7,13 +7,14 @@
  * (WsTemplates). A workspace with nothing in it (WsEmpty) and one you can't open (WsNoAccess) draw in WsArch.
  */
 import {
-  WS_TEMPLATES, WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsMovePicker, WsNoAccess, WsOfflineBar,
+  WsArch, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFollowBar, WsGoneBar, WsMovePicker, WsNoAccess, WsOfflineBar,
   WsPage, WsPane, WsPersonCard, WsPresentPreview, WsReadOnlyBar, WsSaveState, WsScroll, WsTail, WsTemplates, WsToasts, wsToast,
   type WsFace, type WsPop, type WsSave
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { useArgs } from 'storybook/preview-api';
+import { TEMPLATES } from '~/features/workspace/editor/templates';
 import { Box, Row, Stack, did } from '../../../src/component';
 import { ART, KOFI, PRIYA } from '../../../src/world/people';
 import { CALL, DocOf, FIRST_LINE, NotesLive, PRODUCT_ITEMS, PageText, SECTIONS, ShareFor, TEMPLATE_LINES, TEXT, first, useToasts, useWorkspace, type Line } from './parts';
@@ -55,7 +56,7 @@ function NewPage({ height = 640 }: { height?: number | undefined }) {
           <WsScroll>
             <WsPage>
               <PageText title="" by={ART} edited="Edited just now" lines={lines ?? [FIRST_LINE]}
-                after={lines ? <WsTail onClick={did('onTail')} /> : <WsTemplates onPick={(id) => { did('onPick')(id); setLines(TEMPLATE_LINES.get(id) ?? null); }} />} />
+                after={lines ? <WsTail onClick={did('onTail')} /> : <WsTemplates templates={TEMPLATES} onPick={(id) => { did('onPick')(id); setLines(TEMPLATE_LINES.get(id) ?? null); }} />} />
             </WsPage>
           </WsScroll>
         </WsDoc>
@@ -111,7 +112,7 @@ function HeadIn({ args, update, parts, opened: startOpened = null, width = '100%
       <WsPane page={!has('present')}>
         <WsDoc>
           <WsDocHead {...args} faces={faces}
-            share={has('share') ? pop('share', <ShareFor name={name} call={has('present')} />) : undefined}
+            share={has('share') ? pop('share', <ShareFor title={`Share ${name}`} call={has('present')} />) : undefined}
             present={has('present') ? pop('present', <WsPresentPreview name={name} sections={SECTIONS.length} onStart={close} />) : undefined}
             more={has('more') ? pop('more', more) : undefined}
             onZen={has('zen') ? () => update({ zen: !args.zen }) : undefined} />
@@ -225,7 +226,7 @@ function Gone(args: ComponentProps<typeof WsGoneBar>) {
   const { toasts, say } = useToasts();
   return (
     <>
-      <BarFrame><WsGoneBar who={who} onRestore={() => { args.onRestore(); setWho(null); say(wsToast.restored()); }} /></BarFrame>
+      <BarFrame><WsGoneBar who={who} onRestore={() => { args.onRestore?.(); setWho(null); say(wsToast.restored()); }} /></BarFrame>
       <WsToasts toasts={toasts} />
     </>
   );
@@ -263,7 +264,7 @@ export const DocBy: StoryObj<typeof WsDocBy> = {
 };
 /** The four ways to start, on their own at the width of a page. */
 export const Templates: StoryObj<typeof WsTemplates> = {
-  name: 'Templates', args: { templates: WS_TEMPLATES, onPick: did('onPick') }, argTypes: { templates: { control: false } },
+  name: 'Templates', args: { templates: TEMPLATES, onPick: did('onPick') }, argTypes: { templates: { control: false } },
   render: ({ templates, onPick }) => <Box width={616} height="auto"><WsTemplates templates={templates} onPick={onPick} /></Box>
 };
 /** Under a new page: picking one fills it in. */
@@ -295,7 +296,7 @@ function EmptyFrame(args: ComponentProps<typeof WsEmpty>) {
       <WsPane>
         <WsDoc>
           <WsDocHead crumbs={[args.space]} save="quiet" onToggleList={did('onToggleList')} />
-          <WsEmpty space={args.space} onDocument={() => { args.onDocument(); setWriting(true); }} onFolder={args.onFolder} />
+          <WsEmpty space={args.space} onDocument={() => { args.onDocument?.(); setWriting(true); }} onFolder={args.onFolder} />
         </WsDoc>
       </WsPane>
     </Box>

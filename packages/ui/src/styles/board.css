@@ -35,12 +35,20 @@
 .bz.is-page .bz-rail .ac-dock-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--sun) 16%, transparent); color: var(--sun); }
 .bz.is-page .bz-rail .ac-dock-sep { background: var(--line); }
 .bz.is-page .bd { border-radius: 18px; box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
-.bz.is-page .bd-head { padding-right: 262px; }
 
 /* Who else is here, and bringing the board to a call, at the end of the page's bar */
-.bpg-acts { position: absolute; z-index: 12; right: 22px; top: 16px; display: flex; align-items: center; gap: 10px; }
+.bpg-acts { flex: none; display: flex; align-items: center; gap: 10px; margin-left: 8px; }
 .bpg-acts .ac-faces .ac-avatar { --ring: var(--bd-ground); }
 .bpg-acts .ac-btn { height: 36px; padding: 0 14px; font-size: 13.5px; }
+
+/* A board's own page in the workspace, beside its list, under the head that says where it is: it fills where a document would be. */
+.wd.is-board { background: var(--ground); }
+.wd.is-board > .bpg { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.wd.is-board .bz.is-page { padding-top: 0; }
+@container (max-width: 640px) { .wd.is-board .bz.is-page { padding: 0 8px 8px; gap: 8px; } }
+/* A narrow bar: who else is here gives way first, then Start a call here keeps only its camera. */
+@container (max-width: 700px) { .bd-head .bpg-acts .ac-faces { display: none; } }
+@container (max-width: 560px) { .bd-head .bpg-acts .ac-btn { width: 36px; padding: 0; justify-content: center; } .bd-head .bpg-acts .ac-btn .lb { display: none; } }
 
 /* On a phone the sheet is the whole space between the faces and the dock, and nothing sits above it. */
 .bz.is-phone { padding: 0; background: none; }
@@ -167,8 +175,15 @@
 .bo.k-shape.is-live-edit .bo-t:empty::before { content: "\200b"; }
 
 /* A comment: a pin with their face on it, and what they said */
-.bo-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
-.bo-th { position: absolute; z-index: 5; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
+/* A comment's pin: its point on the corner of what it's on, one size however near the camera is, as a pointer is. */
+.bo-at { --iz: inherit; position: absolute; z-index: 5; width: 0; height: 0; scale: var(--iz, 1); transform-origin: 0 0; }
+.bd.is-glide .bo-at { transition: scale var(--duration-3) var(--ease-in-out); }
+.bo-pin { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: 34px; height: 36px; border-radius: 999px 999px 999px 4px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); cursor: pointer; animation: bo-pop var(--duration-2) var(--ease-out) both; }
+.bo-pin:hover, .bo-pin[aria-expanded="true"] { box-shadow: 0 0 0 2px var(--horizon), var(--shadow-2); }
+.bo-pin .n { position: absolute; right: -7px; top: -6px; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: var(--ground); font: 600 11px/1 var(--font-sans); }
+/* Waiting for what a comment goes on: the next press picks it. */
+.bo-pick { position: absolute; inset: 0; z-index: 7; cursor: crosshair; }
+.bo-th { position: absolute; left: 34px; bottom: -4px; width: 150px; padding: 9px 11px; border-radius: 12px; background: var(--surface); box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); color: var(--ink); }
 .bo-th b { display: block; font: 600 12.5px/1.3 var(--font-sans); }
 .bo-th p { margin-top: 3px; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
 
@@ -213,6 +228,8 @@
 /* Room below the line for descenders, without touching the line: a taller line would lift the name a pixel. */
 .bd-head .nm span { min-width: 0; margin: -3px 0; padding: 3px 0; overflow: hidden; text-overflow: ellipsis; }
 .bd-head .nm .ac-i { flex: none; color: var(--ink-3); }
+/* The name being changed: the name's own type, in its place, ringed as a field with the keyboard is. */
+.bd-head .nm-in { flex: 0 1 auto; min-width: 140px; max-width: min(360px, 46cqw); height: 34px; margin: 0; padding: 0 9px; border: 0; border-radius: 9px; outline: none; background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--focus); font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); field-sizing: content; }
 .bd-head .sv { flex: none; display: inline-flex; align-items: center; gap: 6px; min-width: 75px; height: 34px; padding: 0 9px 0 6px; border-radius: 9px; color: var(--ink-3); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; }
 .bd-head .sv:hover { background: var(--sunk); color: var(--ink-2); }
 .bd-head .sv span { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
@@ -229,6 +246,10 @@
 @container (max-width: 760px) { .bd-head.is-full .sv { flex-shrink: 1; } .bd-head.is-full .nm { max-width: 220px; } }
 @container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
 @container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
+/* A phone's bar keeps the name, the seal, undo, redo, how near you are and More: a pinch zooms, and the map and running a session are for bigger screens. */
+@container (max-width: 480px) { .bd-head .zm, .bd-head .run { display: none; } }
+/* On a board's own page the name keeps room to be read, however narrow, and the page's own button comes in close. */
+@container (max-width: 480px) { .bd-head .nm { min-width: 84px; } .bd-head .vr { display: none; } .bd-head .bpg-acts { margin-left: 2px; } }
 
 /* The board's own button, on top of IconButton */
 .bt { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
@@ -255,6 +276,11 @@
 .bd-pill.has-act { padding-right: 5px; }
 .bd-pill button { flex: none; height: 28px; margin-left: 3px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); }
 .bd-pill button:hover { background: rgb(255 255 255 / .2); }
+/* A board's own page on a phone: what the pill says wraps rather than being cut, since the seal has only its icon there. */
+@container (max-width: 480px) {
+  .bd.is-page .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
+  .bd.is-page .bd-pill > b, .bd.is-page .bd-pill > span:not(.sep, .t) { overflow: visible; }
+}
 
 /* Anything small that floats over the sheet is night, like the dock beside it */
 .bx, .bx-sw, .bfly, .bd-heard { color: var(--stage-ink); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 16px 30px -14px rgb(6 13 26 / .55); }
@@ -376,6 +402,7 @@
 .bl-q p { font-size: 13.5px; line-height: 1.4; color: var(--ink); }
 .bl-q .acts { display: flex; gap: 8px; margin-top: 10px; }
 .bl-q .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
+.bl.is-busy { cursor: progress; }
 
 /* ---------------------------------------------------------------- a live tile */
 /* The board as a tile on the stage, when someone keeps faces big. `is-col` is the smaller one above the tiles beside a big share. */

@@ -1,12 +1,14 @@
 /*
  * The boards in the demo world, from the whiteboards design canvas: Art's Product group in a launch retro on Wednesday
  * 4 November, the ideas it sorted, an onboarding flow from the workspace, and what three breakout rooms brought back. Each
- * is written into an in-memory Y.Doc by the board package's own writes, as people's browsers write them, so the surface
- * reads them exactly as it would in a call. Positions, colours and words are the canvas's.
+ * is written by the board package's own writes, as people's browsers write them, so the surface reads them exactly as it
+ * would in a call. Positions, colours and words are the canvas's. The board stories make each on an in-memory Y.Doc of their
+ * own; the stand-in's workspaces draw the retro and the flow into the documents it keeps (`RETRO`, `FLOW`).
  */
 import type { Person, ScreenMoment } from '@alcove/api';
-import { addObject, applyThemes, fillTemplate, readBoard, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
+import { addObject, addThread, applyThemes, fillTemplate, readBoard, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
+import type { BoardSpec } from './index';
 import { LAUNCH_CHECKLIST } from './notes';
 import { AIKO, ART, KOFI, LENA, MAYA, PRIYA, SAM, THEO } from './people';
 
@@ -76,12 +78,19 @@ export function templateBoard(name: TemplateName): Y.Doc {
 
 const WELL: Spot = { x: 0, y: 0 }, FIX: Spot = { x: 400, y: 0 }, ACT: Spot = { x: 800, y: 0 };
 
+interface RetroOptions { links?: boolean | undefined; only?: readonly string[] | undefined }
+
 /**
  * The launch retro a few minutes in: what went well, what could improve, and the actions, three of them linked to what they
  * fix. `only` keeps the stickies named, as the canvas does while it fills up. The ids come back by the canvas's names for them.
  */
-export function launchRetro({ links = true, only }: { links?: boolean | undefined; only?: readonly string[] | undefined } = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
+export function launchRetro(options: RetroOptions = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
   const doc = new Y.Doc();
+  return { doc, ids: writeRetro(doc, options) };
+}
+
+/** Writes the launch retro onto `doc`, which has nothing on it yet. */
+function writeRetro(doc: Y.Doc, { links = true, only }: RetroOptions = {}): ReadonlyMap<string, string> {
   fillTemplate(doc, 'retro', SEED, 'story-launch-retro');
   const { put, ids } = adding(doc);
   // The template's frames, by their titles.
@@ -107,7 +116,7 @@ export function launchRetro({ links = true, only }: { links?: boolean | undefine
     link(doc, ids, 'f2', 'a2');
     link(doc, ids, 'f4', 'a3');
   }
-  return { doc, ids };
+  return ids;
 }
 
 /** Priya's screen as a picture of it on the board keeps it: launch day's timeline, with the changelog going out after the post. */
@@ -148,6 +157,11 @@ export function launchIdeas({ sorted = false }: { sorted?: boolean | undefined }
 /** Onboarding as a flow, brought in from the workspace, with Aiko's question on the step people stop at. */
 export function onboardingFlow(): Y.Doc {
   const doc = new Y.Doc();
+  writeOnboarding(doc);
+  return doc;
+}
+
+function writeOnboarding(doc: Y.Doc): void {
   const { put, ids } = adding(doc);
   const shape = (key: string, s: 'rect' | 'ellipse' | 'diamond' | 'pill', t: string, x: number, y: number, w: number, h: number, c: StickyColour | '' = ''): void => put(key, { k: 'shape', s, t, x, y, w, h, c });
   shape('s1', 'pill', 'Sign up', 0, 130, 170, 76, 'sky');
@@ -164,8 +178,26 @@ export function onboardingFlow(): Y.Doc {
   link(doc, ids, 's3', 's4');
   link(doc, ids, 's3', 's5');
   link(doc, ids, 's5', 's6');
-  return doc;
 }
+
+/** Comments are nobody's change to the board, as the surface writes them: no undo takes these back. */
+const SAID = { comments: true };
+
+/**
+ * The launch retro in the stand-in's Product workspace, with Priya and Kofi on it, as the canvas's page has them, and Maya's
+ * question on the sticky nobody owned. Comments here keep who wrote them by who they are in the workspace.
+ */
+export const RETRO: BoardSpec = {
+  draw: (doc) => {
+    const owned = writeRetro(doc).get('f3');
+    if (owned) addThread(doc, owned, 'Who looks after it once we’ve launched?', { by: MAYA.id, name: MAYA.name }, SAID);
+  },
+  here: [{ who: PRIYA, x: 560, y: 300 }, { who: KOFI, x: 1010, y: 520 }]
+};
+/** The onboarding flow in the stand-in's Design workspace, with Aiko looking at it. */
+export const FLOW: BoardSpec = { draw: writeOnboarding, here: [{ who: AIKO, x: 600, y: 200 }] };
+/** A board nobody has added to yet. */
+export const BLANK: BoardSpec = {};
 
 /** The canvas's three breakout rooms: who was in each, and what they said happened, why, and what next. */
 export const ROOMS: readonly { name: string; who: readonly FolkId[]; rows: readonly (readonly [string, string])[] }[] = [

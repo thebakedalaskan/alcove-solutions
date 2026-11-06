@@ -12,7 +12,7 @@
  */
 import * as Y from 'yjs';
 import { placesIn, rootList } from './places';
-import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BoardObjectSchema, PLACE_FIELDS, TABLE_MAX, TableLinesSchema, cut, hasBox, isAttached, layerOf, type BoardObject, type BoardView, type FrameObject, type LineEnd, type Place, type TableLine } from './shape';
+import { BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BoardIdSchema, BoardObjectSchema, BoardReplySchema, PLACE_FIELDS, TABLE_MAX, TableLinesSchema, cut, hasBox, isAttached, layerOf, type BoardObject, type BoardThread, type BoardView, type FrameObject, type LineEnd, type Place, type TableLine } from './shape';
 
 /** A root as a map, or null if this browser already opened it as something else, where `getMap` would throw. */
 export function rootMap(doc: Y.Doc, name: string): Y.Map<unknown> | null {
@@ -197,6 +197,35 @@ export function readBoard(doc: Y.Doc, prev?: BoardView): BoardView {
   const objects = [...frames, ...held.filter((o) => o.k !== 'frame')];
   if (prev && objects.length === prev.objects.length && objects.every((o, i) => o === prev.objects[i])) return prev;
   return { objects, byId: new Map(objects.map((o) => [o.id, o])), frames };
+}
+
+/**
+ * The comment threads on something still on the board, the oldest first. A thread on something that's gone isn't read, and
+ * neither is a reply that doesn't parse: a thread left with none isn't either.
+ */
+export function readThreads(doc: Y.Doc, view: BoardView): BoardThread[] {
+  const out: BoardThread[] = [];
+  rootMap(doc, BOARD_COMMENTS)?.forEach((value, id) => {
+    const thread = mapOf(value);
+    const on = thread?.get('on');
+    if (!thread || !BoardIdSchema.safeParse(id).success || typeof on !== 'string' || !view.byId.has(on)) return;
+    const stored = thread.get('replies');
+    const replies = (stored instanceof Y.Array ? stored.toArray() : []).flatMap((reply: unknown) => {
+      const parsed = BoardReplySchema.safeParse(reply);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (replies.length) out.push({ id, on, resolved: thread.get('resolved') === true, replies });
+  });
+  return out.sort((a, b) => (a.replies[0]?.at ?? 0) - (b.replies[0]?.at ?? 0));
+}
+
+/** Calls `onChange` after any change to the comments, and only to them. Returns how to stop. */
+export function observeComments(doc: Y.Doc, onChange: () => void): () => void {
+  const comments = rootMap(doc, BOARD_COMMENTS);
+  if (!comments) return () => undefined;
+  const changed = (): void => onChange();
+  comments.observeDeep(changed);
+  return () => comments.unobserveDeep(changed);
 }
 
 /** Calls `onChange` after any change to what's on the board, where it is, or its comments. Returns how to stop. */

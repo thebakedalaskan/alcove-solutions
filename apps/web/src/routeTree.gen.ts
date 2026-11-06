@@ -23,7 +23,12 @@ import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
 import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes.$noteId'
+import { Route as AppWorkspaceIndexRouteImport } from './routes/_app/workspace.index'
+import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app/workspace.$workspaceId'
 import { Route as AppNotesSeriesSeriesIdRouteImport } from './routes/_app/notes.series.$seriesId'
+import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app/workspace.$workspaceId.index'
+import { Route as AppWorkspaceWorkspaceIdDocumentIdRouteImport } from './routes/_app/workspace.$workspaceId.$documentId'
+import { Route as AppWorkspaceWorkspaceIdTrashRouteImport } from './routes/_app/workspace.$workspaceId.trash'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -94,11 +99,39 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
   path: '/notes/$noteId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
+  id: '/workspace/',
+  path: '/workspace/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
+  id: '/workspace/$workspaceId',
+  path: '/workspace/$workspaceId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
   id: '/notes/series/$seriesId',
   path: '/notes/series/$seriesId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspaceWorkspaceIdIndexRoute =
+  AppWorkspaceWorkspaceIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
+  } as any)
+const AppWorkspaceWorkspaceIdDocumentIdRoute =
+  AppWorkspaceWorkspaceIdDocumentIdRouteImport.update({
+    id: '/$documentId',
+    path: '/$documentId',
+    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
+  } as any)
+const AppWorkspaceWorkspaceIdTrashRoute =
+  AppWorkspaceWorkspaceIdTrashRouteImport.update({
+    id: '/trash',
+    path: '/trash',
+    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -113,8 +146,13 @@ export interface FileRoutesByFullPath {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/notes/': typeof AppNotesIndexRoute
+  '/workspace/': typeof AppWorkspaceIndexRoute
   '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
+  '/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
+  '/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
+  '/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -130,7 +168,11 @@ export interface FileRoutesByTo {
   '/record/live': typeof RecordLiveRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
   '/notes': typeof AppNotesIndexRoute
+  '/workspace': typeof AppWorkspaceIndexRoute
   '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
+  '/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
+  '/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
+  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -147,8 +189,13 @@ export interface FileRoutesById {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/_app/notes/': typeof AppNotesIndexRoute
+  '/_app/workspace/': typeof AppWorkspaceIndexRoute
   '/_app/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
+  '/_app/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
+  '/_app/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
+  '/_app/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -165,8 +212,13 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/notes/$noteId'
+    | '/workspace/$workspaceId'
     | '/notes/'
+    | '/workspace/'
     | '/notes/series/$seriesId'
+    | '/workspace/$workspaceId/$documentId'
+    | '/workspace/$workspaceId/trash'
+    | '/workspace/$workspaceId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -182,7 +234,11 @@ export interface FileRouteTypes {
     | '/record/live'
     | '/notes/$noteId'
     | '/notes'
+    | '/workspace'
     | '/notes/series/$seriesId'
+    | '/workspace/$workspaceId/$documentId'
+    | '/workspace/$workspaceId/trash'
+    | '/workspace/$workspaceId'
   id:
     | '__root__'
     | '/'
@@ -198,8 +254,13 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/_app/notes/$noteId'
+    | '/_app/workspace/$workspaceId'
     | '/_app/notes/'
+    | '/_app/workspace/'
     | '/_app/notes/series/$seriesId'
+    | '/_app/workspace/$workspaceId/$documentId'
+    | '/_app/workspace/$workspaceId/trash'
+    | '/_app/workspace/$workspaceId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -313,6 +374,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNotesNoteIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workspace/': {
+      id: '/_app/workspace/'
+      path: '/workspace'
+      fullPath: '/workspace/'
+      preLoaderRoute: typeof AppWorkspaceIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/workspace/$workspaceId': {
+      id: '/_app/workspace/$workspaceId'
+      path: '/workspace/$workspaceId'
+      fullPath: '/workspace/$workspaceId'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/notes/series/$seriesId': {
       id: '/_app/notes/series/$seriesId'
       path: '/notes/series/$seriesId'
@@ -320,8 +395,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNotesSeriesSeriesIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workspace/$workspaceId/': {
+      id: '/_app/workspace/$workspaceId/'
+      path: '/'
+      fullPath: '/workspace/$workspaceId/'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdIndexRouteImport
+      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
+    }
+    '/_app/workspace/$workspaceId/$documentId': {
+      id: '/_app/workspace/$workspaceId/$documentId'
+      path: '/$documentId'
+      fullPath: '/workspace/$workspaceId/$documentId'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdDocumentIdRouteImport
+      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
+    }
+    '/_app/workspace/$workspaceId/trash': {
+      id: '/_app/workspace/$workspaceId/trash'
+      path: '/trash'
+      fullPath: '/workspace/$workspaceId/trash'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdTrashRouteImport
+      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
+    }
   }
 }
+
+interface AppWorkspaceWorkspaceIdRouteChildren {
+  AppWorkspaceWorkspaceIdDocumentIdRoute: typeof AppWorkspaceWorkspaceIdDocumentIdRoute
+  AppWorkspaceWorkspaceIdTrashRoute: typeof AppWorkspaceWorkspaceIdTrashRoute
+  AppWorkspaceWorkspaceIdIndexRoute: typeof AppWorkspaceWorkspaceIdIndexRoute
+}
+
+const AppWorkspaceWorkspaceIdRouteChildren: AppWorkspaceWorkspaceIdRouteChildren =
+  {
+    AppWorkspaceWorkspaceIdDocumentIdRoute:
+      AppWorkspaceWorkspaceIdDocumentIdRoute,
+    AppWorkspaceWorkspaceIdTrashRoute: AppWorkspaceWorkspaceIdTrashRoute,
+    AppWorkspaceWorkspaceIdIndexRoute: AppWorkspaceWorkspaceIdIndexRoute,
+  }
+
+const AppWorkspaceWorkspaceIdRouteWithChildren =
+  AppWorkspaceWorkspaceIdRoute._addFileChildren(
+    AppWorkspaceWorkspaceIdRouteChildren,
+  )
 
 interface AppRouteChildren {
   AppHomeRoute: typeof AppHomeRoute
@@ -329,7 +444,9 @@ interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRoute
   AppTeamRoute: typeof AppTeamRoute
   AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
+  AppWorkspaceWorkspaceIdRoute: typeof AppWorkspaceWorkspaceIdRouteWithChildren
   AppNotesIndexRoute: typeof AppNotesIndexRoute
+  AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
   AppNotesSeriesSeriesIdRoute: typeof AppNotesSeriesSeriesIdRoute
 }
 
@@ -339,7 +456,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRoute,
   AppTeamRoute: AppTeamRoute,
   AppNotesNoteIdRoute: AppNotesNoteIdRoute,
+  AppWorkspaceWorkspaceIdRoute: AppWorkspaceWorkspaceIdRouteWithChildren,
   AppNotesIndexRoute: AppNotesIndexRoute,
+  AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,
   AppNotesSeriesSeriesIdRoute: AppNotesSeriesSeriesIdRoute,
 }
 

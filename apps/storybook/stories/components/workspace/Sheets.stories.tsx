@@ -36,7 +36,7 @@ const WIDE = { parameters: { layout: 'padded' } };
 
 /* ---------- share ---------- */
 
-const SHARE = { name: 'Launch plan', query: '', onQuery: did('onQuery'), rows: [] };
+const SHARE = { title: 'Share Launch plan', query: '', onQuery: did('onQuery'), rows: [] };
 const shareTypes: Story['argTypes'] = {
   rows: { table: { disable: true } }, matches: { table: { disable: true } }, guest: { table: { disable: true } }, onQuery: { table: { disable: true } }, onAdd: { table: { disable: true } }
 };
@@ -44,13 +44,13 @@ const shareTypes: Story['argTypes'] = {
  * Who has the document: everyone in the workspace, and anyone it was shared with, each with what they can do, which
  * the arrow beside it changes. Typing finds people to add; Enter adds the first.
  */
-export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} /></PopSurface> };
+export const Share: Story = { name: 'Share sheet', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
 /** People the field found as you typed, not added yet: pressing one adds them. */
-export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} /></PopSurface> };
+export const ShareMatches: Story = { name: 'Share sheet: finding people as you type', args: { ...SHARE, query: 's' }, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} /></PopSurface> };
 /** In a call, a guest who can't open it is offered too: Let them read shares it with them for the call. */
-export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call query={query} /></PopSurface> };
+export const ShareGuest: Story = { name: 'Share sheet: a guest in the call', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call query={query} /></PopSurface> };
 /** Only the people added here: the workspace can't open it, and whoever made it always can. */
-export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ name, query }) => <PopSurface ws><ShareFor key={query} name={name} call={false} query={query} restricted /></PopSurface> };
+export const ShareRestricted: Story = { name: 'Share sheet: only people added here', args: SHARE, argTypes: shareTypes, render: ({ title, query }) => <PopSurface ws><ShareFor key={query} title={title} call={false} query={query} restricted /></PopSurface> };
 
 /* ---------- someone's card ---------- */
 
@@ -133,11 +133,11 @@ function Thread({ quote, messages: said, value: start, onSend, onResolve, onChan
   const send = () => {
     const text = value.trim();
     if (!text) return;
-    onSend();
+    onSend?.();
     setMessages((now) => [...now, { id: `c${now.length + 1}`, person: ART, name: first(ART), text }]);
     setValue('');
   };
-  const resolve = () => { onResolve(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
+  const resolve = () => { onResolve?.(); setResolved(true); say(wsToast.resolved(() => setResolved(false))); };
   return (
     <>
       {resolved
@@ -168,6 +168,16 @@ export const CommentCompose: StoryObj<typeof WsCommentCompose> = {
 export const CommentThread: StoryObj<typeof WsCommentThread> = {
   name: 'Comment: a thread', args: { quote: QUOTE, messages: THREAD, value: '', onChange: did('onChange'), onSend: did('onSend'), onResolve: did('onResolve') }, argTypes: { messages: { control: false } },
   render: (args) => <Thread key={args.quote} {...args} />
+};
+/** Someone who can only read it, on a board they can only look at: what's been said, with no field and no Resolve. */
+export const CommentThreadReading: StoryObj<typeof WsCommentThread> = {
+  name: 'Comment: a thread, only to read', args: { quote: 'Nobody owned the status page', messages: THREAD, value: '', onChange: did('onChange') }, argTypes: { messages: { control: false } },
+  render: (args) => <PopSurface ws><WsCommentThread {...args} /></PopSurface>
+};
+/** On a board, a comment on a picture of a screen or anything else with no words of its own quotes nothing. */
+export const CommentComposeNoQuote: StoryObj<typeof WsCommentCompose> = {
+  name: 'Comment: a new one, on something with no words', args: { quote: '', person: ART, value: '', onChange: did('onChange'), onSend: did('onSend') }, argTypes: { person: { control: false } },
+  render: (args) => <Compose key="no-quote" {...args} />
 };
 
 /* ---------- switching the call's workspace ---------- */

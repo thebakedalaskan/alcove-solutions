@@ -54,7 +54,7 @@ export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', s
 /** A board you can't open: if the organizer opens without you, you never see its name or what's on it. You can ask for access. */
 export const NoAccess: BoardStory = {
   name: 'No access',
-  render: () => <BoardNoAccess owner="Aiko" onAsk={did('ask Aiko for access')} />
+  render: () => <BoardNoAccess who="Aiko" onAsk={did('ask Aiko for access')} />
 };
 
 /** Night board, from the bar's More: the sheet goes dark, whatever the theme. */

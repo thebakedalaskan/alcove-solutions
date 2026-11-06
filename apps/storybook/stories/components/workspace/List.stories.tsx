@@ -80,8 +80,12 @@ export const InTheApp: Story = { name: 'List: in the app', render: () => <Live c
  * the documents brought to it, each with the faces of whoever's in it. A document there is in Documents too.
  */
 export const InACall: Story = { name: 'List: in a call', render: () => <Live call /> };
-/** Nothing made yet: the list says what will appear. */
-export const Empty: Story = { name: 'List: empty', args: { empty: true, label: 'Documents' }, render: (args) => <Nothing {...args} /> };
+/** Nothing made yet, in a workspace you can make things in: the list says what will appear. */
+export const Empty: Story = { name: 'List: empty', args: { empty: 'yours', label: 'Documents' }, render: (args) => <Nothing {...args} /> };
+/** Nothing in it yet, for someone who can only read it: what appears once someone makes something. */
+export const EmptyReading: Story = { name: 'List: empty, for a reader', args: { empty: 'others', label: 'Documents' }, render: (args) => <Nothing {...args} /> };
+/** Someone outside the workspace with nothing shared with them yet. */
+export const EmptyShared: Story = { name: 'List: empty, shared with you', args: { empty: 'shared', label: 'Documents' }, render: (args) => <Nothing {...args} /> };
 /** Changing workspace cross-fades the list (240 ms), because its `listKey` changes. */
 export const Switching: Story = { name: 'List: switching workspace', render: () => <Live call={false} switcher /> };
 
@@ -126,7 +130,7 @@ export const SectionInto: SectionStory = { name: 'Section: something dragged ont
 
 type RowStory = StoryObj<typeof WsRow>;
 const rowTypes: RowStory['argTypes'] = {
-  kind: { control: 'inline-radio', options: ['document', 'folder', 'live'] },
+  kind: { control: 'inline-radio', options: ['document', 'folder', 'board', 'live'] },
   area: { control: 'inline-radio', options: ['tree', 'pins'] },
   icon: { control: 'select', options: ICON_NAMES },
   depth: { control: { type: 'number', min: 0, max: 6 } },
@@ -190,6 +194,8 @@ export const RowDocument: RowStory = { name: 'Row: a document', args: ROW, argTy
 /** Pressing the twist, or the name, opens it. */
 export const RowFolderClosed: RowStory = { name: 'Row: a folder, closed', args: { ...ROW, id: 'research', name: 'Research', kind: 'folder' }, argTypes: rowTypes, render: inList() };
 export const RowFolderOpen: RowStory = { name: 'Row: a folder, open', args: { ...ROW, id: 'research', name: 'Research', kind: 'folder', open: true }, argTypes: rowTypes, render: inList() };
+/** A board, with a board's icon: it opens on its own page, as a document does. */
+export const RowBoard: RowStory = { name: 'Row: a board', args: { ...ROW, id: 'retro', name: 'Launch retro', kind: 'board' }, argTypes: rowTypes, render: inList() };
 /** One of the call's own pages, in the rec colour while notes are on. Hovering shows Open beside the document. */
 export const RowLive: RowStory = {
   name: 'Row: a page of the call', args: { ...ROW, id: '$notes', name: 'Notes', kind: 'live', icon: 'notes', area: 'pins', onBeside: did('onBeside') }, argTypes: rowTypes, render: inList()

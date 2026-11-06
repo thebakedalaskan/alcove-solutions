@@ -13,7 +13,7 @@ import { rootList, setPlace, tidyPlaces } from './places';
 import { listOf, mapOf, readBoard, recordOf, rootMap, same } from './read';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardObjectSchema, LineEndSchema, PLACE_FIELDS, PlaceSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
-  type BoardObject, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type Place, type PlacedObject, type ShapeKind, type StickyColour
+  type BoardAuthor, type BoardObject, type BoardReply, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type Place, type PlacedObject, type ShapeKind, type StickyColour
 } from './shape';
 
 /** Where an object was let go. */
@@ -553,28 +553,35 @@ export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: re
   });
 }
 
-const replyOf = (text: string): { id: string; text: string; at: number } => ({ id: newId(), text: cut(text), at: Date.now() });
+const replyOf = (text: string, who: BoardAuthor): BoardReply => ({ id: newId(), text: cut(text), at: Date.now(), by: who.by, name: who.name });
 
 /** Writes a thread from plain values, under its id. Like `put`, it's what adds one and what brings one back. */
 export function putThread(comments: Y.Map<unknown>, id: string, fields: Record<string, unknown>): void {
   const thread = new Y.Map<unknown>();
   thread.set('on', fields['on']);
+  if (fields['resolved'] === true) thread.set('resolved', true);
   thread.set('replies', arrayOf(fields['replies']));
   comments.set(id, thread);
 }
 
-/** Starts a comment thread pinned to an object, and returns its id. */
-export function addThread(doc: Y.Doc, on: string, text: string, origin: unknown): string {
+/** Starts a comment thread pinned to an object, written by `who`, and returns its id. */
+export function addThread(doc: Y.Doc, on: string, text: string, who: BoardAuthor, origin: unknown): string {
   const id = newId();
   const comments = rootMap(doc, BOARD_COMMENTS);
-  if (comments) doc.transact(() => putThread(comments, id, { on, replies: [replyOf(text)] }), origin);
+  if (comments) doc.transact(() => putThread(comments, id, { on, replies: [replyOf(text, who)] }), origin);
   return id;
 }
 
-/** Adds a reply to a thread, if it's still there. */
-export function addReply(doc: Y.Doc, thread: string, text: string, origin: unknown): void {
+/** Adds `who`'s reply to a thread, if it's still there. */
+export function addReply(doc: Y.Doc, thread: string, text: string, who: BoardAuthor, origin: unknown): void {
   const replies = mapOf(rootMap(doc, BOARD_COMMENTS)?.get(thread))?.get('replies');
-  if (replies instanceof Y.Array) doc.transact(() => replies.push([replyOf(text)]), origin);
+  if (replies instanceof Y.Array) doc.transact(() => replies.push([replyOf(text, who)]), origin);
+}
+
+/** Resolves a thread, or opens it again with `false`. Nothing in it goes: resolving only stops it showing. */
+export function resolveThread(doc: Y.Doc, thread: string, resolved: boolean, origin: unknown): void {
+  const found = mapOf(rootMap(doc, BOARD_COMMENTS)?.get(thread));
+  if (found && (found.get('resolved') === true) !== resolved) doc.transact(() => found.set('resolved', resolved), origin);
 }
 
 function tableOf(objects: Y.Map<unknown>, id: string): { rows: Y.Array<unknown>; cols: Y.Array<unknown>; cells: Y.Map<unknown> } | null {

@@ -1240,7 +1240,7 @@ async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Pro
   for (const seat of changed.ended) await endSeat(o, callId, seat);
   // A board left as it started is still a board, so nothing about filling it is worth refusing the person who opened it.
   const made = changed.made;
-  if (made) await boards.fillBoard(o, made.w, made.documentId, made.template).catch((e: unknown) => clog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
+  if (made) await boards.fillBoard(made.w, made.documentId, made.template).catch((e: unknown) => clog.warn('board not filled from its template', { callId, documentId: made.documentId, err: e }));
   // Anyone let in while it was being opened.
   if (a.type === 'board-open') void syncBoardSeats({ organizer: o, callId });
   await nudge(o, room, callId, { call: true, log: false });

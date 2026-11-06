@@ -10,7 +10,7 @@
  * the workspace's own transaction, and the call's row is held only to save what came of it.
  */
 import { MAIN_PLACE, firstName, type BoardCheck, type BoardTemplate, type CallAction, type CallBoard, type DocumentRole } from '@alcove/api';
-import type { Deps, Owner } from '../context';
+import type { Owner } from '../context';
 import { tx, type Db } from '../db';
 import { AppError, ConflictError, ForbiddenError, NotFoundError, notFound } from '../errors';
 import { log } from '../log';
@@ -26,6 +26,7 @@ import {
   workspaceForCall,
   type Grant, type HeldWorkspace, type Maker, type Reader, type Who, type Workspace, type WorkspaceAs
 } from './workspaceAccess';
+import { writeDocument } from './workspaceDocuments';
 import { addBoard } from './workspaces';
 
 const blog = log.child({ component: 'call-boards' });
@@ -357,9 +358,10 @@ export async function prepare<S extends Boarded>(x: Changing<S>, a: BoardAction)
 }
 
 /**
- * Fills a new board from its template: the one thing here still to complete. It waits for `@alcove/board`, which isn't on this
- * branch. Yjs work happens in worker threads, so this will be `writeDocument` naming an edit in `documentOps.ts`, a pure function
- * of that package's, with plain arguments, so everyone gets the same frames and nobody's undo can take them away. Until then a
- * board starts empty, and the template is stored nowhere.
+ * Fills a new board from its template, through its log like any change, so whoever has it open sees it arrive, everyone gets the
+ * same frames and nobody's undo can take them away. It's the server's, written once however often it's asked, with the board's
+ * id as its seed, and only on a board nobody has put anything on yet (documentOps.ts's `boardTemplate`). Blank writes nothing.
  */
-export const fillBoard = (_d: Deps, _workspace: HeldWorkspace, _documentId: string, _template: BoardTemplate): Promise<void> => Promise.resolve();
+export async function fillBoard(w: HeldWorkspace, documentId: string, template: BoardTemplate): Promise<void> {
+  await writeDocument(w, documentId, 'boardTemplate', { kind: 'board', template, seed: documentId });
+}

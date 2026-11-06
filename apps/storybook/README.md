@@ -57,7 +57,13 @@ aren't.
 
 **The demo world** is the design canvas's (`docs/design/canvas/appdata.js` and `data-*.js`): Vandelay Industries, you are
 Art Vandelay, and everyone is made up. Never write a real person's name. It's written the way the canvas writes it, with
-the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts.
+the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its workspaces
+are Product (Art runs it: a folder, a document closed to the workspace, the launch retro board, two things in Trash),
+Design (he edits; the onboarding flow board) and the company handbook (he can only read). What each document says is in
+`src/world/documents.ts`, in the editor's own blocks, and who it's shared with in the world's `shares`; a page can say what
+Alcove refused of it, which opens it couldn't-save. What each board holds is in `src/world/boards.ts`, drawn with
+`@alcove/board`'s own writers, with who else is on it (their pointers, and their faces in the workspace) and how it stands
+for this browser (`standing`: Reconnecting, Couldn't save, or taken away while it's open).
 
 ## Scenarios
 
@@ -71,6 +77,7 @@ the builders in `src/world/build.ts`, and checked against the contract's schemas
 | `call-soon` | Wednesday at 10:26: the design review starts in four minutes |
 | `lots` | Thirty people on Alcove, three months of notes, eight pins, a dozen groups, long names |
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
+| `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
 ## Add a component story
