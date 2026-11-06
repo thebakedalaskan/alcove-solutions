@@ -267,9 +267,13 @@ export function useCancelTopUp() {
     mutationFn: (id: string) => api.credits.cancelTopUp(id),
     onSuccess: (t) => {
       qc.setQueryData(q.topUp(t.id).queryKey, t);
+      // It leaves the open ones at once, before the list is read again.
+      qc.setQueryData(topUpsKey, (list) => list?.map((x) => (x.id === t.id ? t : x)));
       void qc.invalidateQueries({ queryKey: qk.topUps });
       void qc.invalidateQueries({ queryKey: qk.balance });
-    }
+    },
+    // Refused because a payment just reached it, say: read it again, so the address goes now.
+    onError: (_e, id) => { void qc.invalidateQueries({ queryKey: qk.topUp(id) }); void qc.invalidateQueries({ queryKey: qk.topUps }); }
   });
 }
 

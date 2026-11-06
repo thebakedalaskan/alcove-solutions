@@ -3,7 +3,7 @@
  * notifications, how Alcove looks and your minutes. Devices and Privacy have their own files. Each control saves as
  * it changes (save.tsx).
  */
-import { errorMessage, type CreditBalance, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SignInProvider, type SummaryLength } from '@alcove/api';
+import { errorMessage, type CreditBalance, type TopUp, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SignInProvider, type SummaryLength } from '@alcove/api';
 import {
   Avatar, Button, Chip, Icon, IconButton, MinutesCard, ProviderMark, Segmented, Select, SettingRow, SettingsCard, Switch, ThemePreview, buttonClass, useTheme, useToast,
   type SelectOption, type ThemeChoice
@@ -240,22 +240,40 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
   const open = useQuery(q.topUps()).data?.filter(topUpOpen) ?? [];
   const cancel = useCancelTopUp();
   const toast = useToast();
+  const list = useRef<HTMLUListElement>(null);
+  const add = useRef<HTMLButtonElement>(null);
   const [sheet, setSheet] = useState<{ open: boolean; topUpId: string | null }>({ open: false, topUpId: null });
+  /** Only one nothing has reached, whose address can still be paid, can be cancelled: as in the sheet. */
+  const cancellable = (t: TopUp) => t.state === 'waiting' && Date.parse(t.expiresAt) > Date.now();
+  /** Cancels a top-up; its row goes, and focus moves to the row after it (or before it), else to Add credits. */
+  const cancelRow = (t: TopUp) => {
+    const i = open.findIndex((x) => x.id === t.id);
+    const near = open[i + 1] ?? open[i - 1];
+    cancel.mutate(t.id, {
+      onSuccess: () => requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        const row = near ? list.current?.querySelector<HTMLButtonElement>(`[data-top-up="${near.id}"] .set-conn`) : null;
+        (row ?? add.current)?.focus();
+      }),
+      onError: (e) => toast(errorMessage(e), { icon: 'x' })
+    });
+  };
   return (
     <MinutesCard id="plan" title="Plan and credits" className="ac-set-card" left={hoursAndMinutes(credits.balance / credits.perMinute)}
       share={credits.balance / Math.max(1, credits.granted)}
       used={credits.usedThisMonth > 0 ? `${hoursAndMinutes(credits.usedThisMonth / credits.perMinute)} used this month` : 'None used this month yet'}>
       {open.length > 0 && (
-        <ul className="set-topups" aria-label="Payments on their way">
+        <ul ref={list} className="set-topups" aria-label="Payments on their way">
           {open.map((t) => (
-            <li key={t.id} className={t.state === 'waiting' ? 'is-cancellable' : undefined}>
+            <li key={t.id} data-top-up={t.id} className={cancellable(t) ? 'is-cancellable' : undefined}>
               <button type="button" className="set-conn" onClick={() => setSheet({ open: true, topUpId: t.id })}>
                 <span className="mark"><Icon name="coins" size={20} /></span>
                 <span className="txt"><b>{t.asked.amount} {routeName(t.route)}</b><small className="ac-clamp-2">{topUpLine(t)}</small></span>
-                {t.state !== 'waiting' && <Icon name="chevron" size={18} />}
+                {!cancellable(t) && <Icon name="chevron" size={18} />}
               </button>
-              {t.state === 'waiting' && (
-                <IconButton icon="x" label="Cancel top-up" disabled={cancel.isPending && cancel.variables === t.id} onClick={() => cancel.mutate(t.id, { onError: (e) => toast(errorMessage(e), { icon: 'x' }) })} />
+              {cancellable(t) && (
+                <IconButton icon="x" label={`Cancel the ${t.asked.amount} ${routeName(t.route)} top-up`}
+                  disabled={cancel.isPending && cancel.variables === t.id} onClick={() => cancelRow(t)} />
               )}
             </li>
           ))}
@@ -263,7 +281,7 @@ export function PlanCard({ credits }: { credits: CreditBalance }) {
       )}
       {routes.data !== undefined && (
         <SettingRow label="Add credits" help="Pay with a stablecoin from any wallet or exchange."
-          control={<Button variant="primary" size="sm" icon="plus" onClick={() => setSheet({ open: true, topUpId: null })}>Add credits</Button>} />
+          control={<Button ref={add} variant="primary" size="sm" icon="plus" onClick={() => setSheet({ open: true, topUpId: null })}>Add credits</Button>} />
       )}
       <SettingRow label="Calls without notes" help="Never use minutes." control={fact('check', 'Free')} />
       <AddCreditsSheet open={sheet.open} topUpId={sheet.topUpId} onOpenChange={(o) => setSheet((s) => ({ ...s, open: o }))} />

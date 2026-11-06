@@ -106,7 +106,7 @@ answer (`extended`, false in records written before it existed) ([Payments and u
   its ID, except an `object_gc` entry until maintenance deletes an object the store refused.
 - **Top-ups** are inserted `waiting` when opened and change state only under a row lock, crediting the balance in
   the same transaction; a final state never changes again. A `cancelled` one is still watched until its deadline, and
-  moves on if a payment reaches it; with nothing then, its next check is set to `infinity`. The watcher claims due ones with a one-minute lease
+  moves on if a payment reaches it; with nothing then, its next check is set to `infinity`, and back to now if a payment is found on it later. The watcher claims due ones with a one-minute lease
   (`check_after`) and sets the next check by age.
 - **Credits used this month** are summed from the sealed billing history when the balance is read
   (`GET /v1/credits`): nothing about usage is stored in the clear ([Payments and usage](payments-and-usage.md)).

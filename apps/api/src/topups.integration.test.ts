@@ -495,7 +495,7 @@ describe('top-ups', () => {
       const quotes = h.oneclick.quotes.length;
       const e = await second.credits.startTopUp(BASE_USDC, 10_000).catch((x: unknown) => x);
       expect(code(e)).toBe('conflict');
-      expect(e instanceof AlcoveApiError ? e.message : '').toBe('You already have 15 top-ups waiting for a payment. Use one of those, or wait for them to expire.');
+      expect(e instanceof AlcoveApiError ? e.message : '').toBe('You already have 15 top-ups waiting for a payment. Use or cancel one of those, or wait for them to expire.');
       expect(h.oneclick.quotes.length).toBe(quotes);
       // One of them is on its way now, so there's room for another.
       const first = opened[0];
@@ -636,6 +636,46 @@ describe('top-ups', () => {
     await h.pool.query("UPDATE deposits SET check_after = now() + interval '1 hour' WHERE state IN ('waiting','arriving','short','cancelled') AND deposit_id <> $1", [quiet.id]);
     expect(await watch(h.deps)).toEqual({ checked: 0, credited: 0 });
     expect(await stateOf(quiet.id)).toBe('cancelled');
+  });
+
+  it('watches a cancelled top-up again when a payment shows up after its deadline, and credits it without the app open', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC, 10_000);
+    const address = addr(t);
+    await api.credits.cancelTopUp(t.id);
+    // At the deadline 1Click hadn't seen the payment yet: it stays cancelled and stops being checked.
+    h.oneclick.set(address, 'PENDING_DEPOSIT');
+    await h.pool.query("UPDATE deposits SET give_up_at = now() - interval '1 second' WHERE deposit_id = $1", [t.id]);
+    await dueOnly(t.id);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 0 });
+    expect(await nextCheckIn(t.id)).toBe(Infinity);
+
+    // Opened later, 1Click now sees it arriving: it's due for the watcher again.
+    h.oneclick.set(address, 'PROCESSING');
+    await forgetCheck(t.id);
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'arriving', address: null });
+    about(await nextCheckIn(t.id), 0);
+
+    // The app is closed; the watcher alone credits it once it settles.
+    h.oneclick.set(address, 'SUCCESS', { depositedAmount: '10000000', amountOut: '10000000', intentHashes: ['hlate10'] });
+    await h.pool.query("UPDATE deposits SET check_after = now() + interval '1 hour' WHERE state IN ('waiting','arriving','short','cancelled') AND deposit_id <> $1", [t.id]);
+    expect(await watch(h.deps)).toEqual({ checked: 1, credited: 1 });
+    expect(await stateOf(t.id)).toBe('credited');
+    expect((await api.credits.balance()).balance).toBe(10_000 + 10_000);
+  });
+
+  it('moves a cancelled top-up on to short, showing the address again, or failed', async () => {
+    const { api } = await account();
+    const short = await api.credits.startTopUp(BASE_USDC, 10_000);
+    const failed = await api.credits.startTopUp(BASE_USDC, 10_000);
+    await api.credits.cancelTopUp(short.id);
+    await api.credits.cancelTopUp(failed.id);
+    h.oneclick.set(addr(short), 'INCOMPLETE_DEPOSIT', { depositedAmount: '3000000' });
+    h.oneclick.set(addr(failed), 'FAILED');
+    await forgetCheck(short.id);
+    await forgetCheck(failed.id);
+    expect(await api.credits.topUp(short.id)).toMatchObject({ state: 'short', address: short.address, received: { amount: '3', credits: null } });
+    expect(await api.credits.topUp(failed.id)).toMatchObject({ state: 'failed', address: null });
   });
 
   it('credits once when the watcher and the app race', async () => {

@@ -115,7 +115,7 @@ export async function start(d: Deps, ownerId: string, routeId: string, credits: 
   const waiting = await maybeOne(d.pool, z.object({ n: z.number().int() }),
     "SELECT count(*)::int AS n FROM deposits WHERE owner_id = $1 AND state = 'waiting' AND give_up_at > now() + interval '24 hours'", [ownerId]);
   if ((waiting?.n ?? 0) >= MAX_WAITING) {
-    throw conflict(`You already have ${MAX_WAITING} top-ups waiting for a payment. Use one of those, or wait for them to expire.`, { reason: 'too-many-waiting', waiting: waiting?.n ?? 0 });
+    throw conflict(`You already have ${MAX_WAITING} top-ups waiting for a payment. Use or cancel one of those, or wait for them to expire.`, { reason: 'too-many-waiting', waiting: waiting?.n ?? 0 });
   }
   const found = (await Promise.all(all.map(async (p) => ({ p, route: (await p.routes()).find((r) => r.id === routeId) })))).find((x) => x.route);
   if (!found?.route) throw invalid('That way to pay isn’t offered.');
@@ -204,8 +204,9 @@ function creditsForSettled(rec: DepositRecord, s: Extract<DepositCheck, { state:
 /**
  * Records what the provider says, in one transaction with the deposit row locked, so a deposit credits at most once
  * however many watchers and requests race on it: a final state is never changed again, and `arriving` never goes back
- * to `waiting`; a cancelled one moves on only when a payment reaches it. A settled deposit credits by `creditsForSettled`, or is held when that comes to no credits. A status
- * the provider doesn't explain leaves the deposit as it is.
+ * to `waiting`; a cancelled one moves on only when a payment reaches it, and is then due for the watcher at once (it
+ * may have stopped being checked at its deadline). A settled deposit credits by `creditsForSettled`, or is held when
+ * that comes to no credits. A status the provider doesn't explain leaves the deposit as it is.
  */
 export async function apply(d: Deps, ownerId: string, depositId: string, check: DepositCheck): Promise<TopUpState> {
   return tx(d.pool, async (c) => {
@@ -244,6 +245,7 @@ export async function apply(d: Deps, ownerId: string, depositId: string, check: 
     const seen = check.sentMicroUsd?.toString() ?? rec.seenMicroUsd;
     if (seen !== rec.seenMicroUsd) await save(state, { ...rec, seenMicroUsd: seen });
     else await exec(c, 'UPDATE deposits SET state = $3, checked_at = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId, state]);
+    if (r.state === 'cancelled' && state !== 'cancelled') await exec(c, 'UPDATE deposits SET check_after = now() WHERE owner_id = $1 AND deposit_id = $2', [ownerId, depositId]);
     if (state !== r.state) dlog.info('top-up moved', { depositId, provider, state });
     return state;
   });

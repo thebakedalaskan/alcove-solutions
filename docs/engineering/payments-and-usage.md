@@ -93,7 +93,7 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
 | `SUCCESS`, `REFUNDED` | `credited`, or `held` when what arrived buys no whole credit | done |
 | `FAILED` | `failed` | done; logged at error |
 | none at the last check, 24 h after the address expires (or 1Click can't answer it, 6 h after that) | `expired` | done |
-| cancelled by the person while `waiting` (`POST /v1/credits/top-ups/:id/cancel`) | `cancelled`: the address is no longer shown. A later `PENDING_DEPOSIT` leaves it `cancelled`; any other status moves it on as for a `waiting` deposit | keep watching until the last check; with nothing then, done (still `cancelled`) |
+| cancelled by the person while `waiting` (`POST /v1/credits/top-ups/:id/cancel`) | `cancelled`: the address is no longer shown. A later `PENDING_DEPOSIT` leaves it `cancelled`; any other status moves it on as for a `waiting` deposit | keep watching until the last check; with nothing then, done (still `cancelled`), unless opening it later finds a payment: then it moves on and the watcher takes it up again at once |
 | `arriving` or `short` then, by the deposit's row or by that last answer, a status Alcove doesn't know then, or the deposit's record no longer opens | `failed` | done; logged at error |
 
 Logs about a deposit carry its ID, provider, states, counts and durations, never the address, amounts, hashes or
