@@ -63,7 +63,10 @@
 .set-topup-body { display: grid; gap: 14px; min-height: 0; overflow-y: auto; padding: 10px 24px 20px; }
 .set-topup-lead, .set-topup-tiers, .set-topup-route { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
 .set-topup-tiers, .set-topup-route { color: var(--ink-3); font-size: 13.5px; }
-.set-topup-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+/* Pay with: the token, then a network it's offered on. */
+.set-topup-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.set-topup-pick legend { margin-bottom: 8px; padding: 0; font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.set-topup-pick small { flex-basis: 100%; }
 .set-topup-pick small { font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
 .set-topup-pick small.is-below { color: var(--caution); }
 /* How many credits: the presets and "Your own amount", each a card with its radio. */

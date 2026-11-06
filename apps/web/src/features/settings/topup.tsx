@@ -3,7 +3,7 @@
  * payment of exactly their price, sent from any wallet or exchange. The sheet follows the payment on its own until
  * it's added (or isn't), and opens again on any top-up from Plan and credits, so closing it loses nothing.
  */
-import { errorMessage, MAX_TOP_UP_CREDITS, type CreditTier, type TopUp } from '@alcove/api';
+import { errorMessage, MAX_TOP_UP_CREDITS, type CreditTier, type TopUp, type TopUpRoute } from '@alcove/api';
 import { Button, Chip, CopyField, Dots, Field, Icon, IconButton, Notice, QrCode, RequestRef, Select, Sheet, Spinner, type SelectOption } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
@@ -98,13 +98,20 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const routes = useQuery(q.topUpRoutes());
   const start = useStartTopUp();
   const group = useId();
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
+  const [token, setToken] = useState<TopUpRoute['token'] | undefined>(undefined);
+  const [chain, setChain] = useState<string | undefined>(undefined);
   const [amount, setAmount] = useState<number | 'own' | null>(null);
   const [own, setOwn] = useState('');
   const data = routes.data;
   const list = data?.routes ?? [];
-  const route = list.find((r) => r.id === chosen) ?? list[0];
-  const options: SelectOption<string>[] = list.map((r) => ({ value: r.id, label: routeName(r) }));
+  // Nothing is chosen for them: the token first, then a network it's offered on.
+  const tokenOptions: SelectOption<TopUpRoute['token']>[] = [...new Set(list.map((r) => r.token))].map((t) => ({ value: t, label: t }));
+  const chainOptions: SelectOption<string>[] = list.filter((r) => r.token === token).map((r) => ({ value: r.chain, label: r.chainName }));
+  const route = list.find((r) => r.token === token && r.chain === chain);
+  const pickToken = (t: TopUpRoute['token']) => {
+    setToken(t);
+    if (!list.some((r) => r.token === t && r.chain === chain)) setChain(undefined);
+  };
   const presets = data?.presets ?? [];
   const picked = amount ?? presets[0] ?? 'own';
   const credits = picked === 'own' ? typedCredits(own) : picked;
@@ -112,9 +119,9 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
   const tooMany = credits !== null && credits > MAX_TOP_UP_CREDITS;
   /** "about 6 h 40 min · 10 USDC" */
   const what = (n: number) => {
-    if (!data || !route) return null;
+    if (!data) return null;
     const price = priceOf(n, data.tiers);
-    return { hours: `about ${hoursAndMinutes(n / data.perMinute)}`, price: price === null ? null : `${tokens.format(price)} ${route.token}` };
+    return { hours: `about ${hoursAndMinutes(n / data.perMinute)}`, price: price === null ? null : `${tokens.format(price)} ${token ?? 'USD'}` };
   };
   const ownWhat = picked === 'own' && credits !== null ? what(credits) : null;
   const ownOff = data && credits !== null ? percentOff(credits, data.tiers) : 0;
@@ -124,7 +131,7 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
       <div className="set-topup-body">
         <p className="set-topup-lead">Pay from any wallet or exchange. Your credits are added once the payment arrives.</p>
         {routes.isPending ? <p className="set-topup-wait" role="status"><Dots />Looking up how you can pay</p>
-          : data && route ? (
+          : data && list.length > 0 ? (
             <>
               <fieldset className="set-topup-amounts">
                 <legend>How many credits</legend>
@@ -146,16 +153,19 @@ function Pick({ onStarted }: { onStarted: (id: string) => void }) {
                 </label>
               </fieldset>
               {picked === 'own' && (
-                <Field label="Credits" inputMode="numeric" autoComplete="off" placeholder={number.format(route.minimumCredits)} value={own}
+                <Field label="Credits" inputMode="numeric" autoComplete="off" placeholder={number.format(route?.minimumCredits ?? Math.min(...list.map((r) => r.minimumCredits)))} value={own}
                   onChange={(e) => setOwn(e.target.value)}
                   hint={tooMany ? `At most ${number.format(MAX_TOP_UP_CREDITS)} credits at once`
                     : ownWhat ? <>{ownWhat.hours}{ownWhat.price && ` · ${ownWhat.price}`}{ownOff > 0 && ` · ${ownOff}% off`}</>
                     : 'A whole number of credits'} />
               )}
-              <div className="set-topup-pick">
-                <Select<string> label="Token and network" value={route.id} options={options} onChange={setChosen} />
-                <small className={below ? 'is-below' : undefined}>At least {number.format(route.minimumCredits)} credits with {routeName(route)}</small>
-              </div>
+              <fieldset className="set-topup-pick">
+                <legend>Pay with</legend>
+                <Select<TopUpRoute['token']> label="Token" placeholder="Choose a token" value={token} options={tokenOptions} onChange={pickToken} />
+                <Select<string> label="Network" placeholder={token ? 'Choose a network' : 'Choose a token first'} value={chain}
+                  options={chainOptions} onChange={setChain} disabled={!token} />
+                {route && <small className={below ? 'is-below' : undefined}>At least {number.format(route.minimumCredits)} credits with {routeName(route)}</small>}
+              </fieldset>
             </>
           ) : <Notice tone="caution">{routes.isError ? errorMessage(routes.error) : 'There’s no way to pay right now. Try again later.'}</Notice>}
         <div role="status">{start.isError && <Notice tone="caution">{errorMessage(start.error)}</Notice>}</div>
