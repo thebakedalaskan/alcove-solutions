@@ -151,12 +151,12 @@ export function NoteScene() {
         <div className="lp-nw-main">
           <p className={cn('lp-nw-sum', !(begun || reduce) && 'is-held')}><Words text={SUMMARY} /></p>
           <div className="lp-nw-list">
-            <h4 className="lp-nw-k is-decide"><Icon name="decision" size={16} />Decided<span className="n">{DECIDED.length}</span></h4>
+            <h4 className="lp-nw-k is-decide"><Icon name="diamond" size={16} />Decided<span className="n">{DECIDED.length}</span></h4>
             {DECIDED.map((d, i) => {
               const by = d.confirmedBy ?? (mine[i] ? 'you' : null);
               return (
                 <div key={d.at} className={cn('lp-nw-row', i >= shown && 'is-out', lit(d.at) && 'is-lit')} inert={i >= shown}>
-                  <span className="lp-nw-ic"><Icon name="decision" size={13} /></span>
+                  <span className="lp-nw-ic"><Icon name="diamond" size={13} /></span>
                   <span className="lp-nw-t">{d.text}<small>Proposed by {d.proposer}{by && ` · confirmed by ${by}`}</small></span>
                   <Moment at={d.at} onPlay={playFrom} />
                   <span className="lp-nw-end">

@@ -25,7 +25,7 @@ const STATUS: Partial<Record<Who, { icon: IconName; text: string }>> = {
   maya: { icon: 'listening', text: 'Listening only' },
   art: { icon: 'away', text: 'Be right back · 14:37' }
 };
-const BOARD_TOOLS: readonly IconName[] = ['pointer', 'stickyNote', 'board', 'connector', 'type', 'pen'];
+const BOARD_TOOLS: readonly IconName[] = ['pointer', 'stickyNote', 'shapes', 'spline', 'type', 'pen'];
 const GLIDE = { duration: 0.8, ease: EASE.inOut };
 
 /** Words that appear one at a time: the first `shown` are in. */
@@ -184,7 +184,7 @@ const WsTop = memo(function WsTop({ board, boardHi }: { board: boolean; boardHi:
   return (
     <div className="lp-st-ws-top">
       <span className={cn('lp-st-ws-tab', !board && 'is-on')}><Icon name="fileText" size={15} />Launch plan</span>
-      <span className={cn('lp-st-ws-tab', board && 'is-on', boardHi && 'is-hi')} data-at="ws:board"><Icon name="board" size={15} />Onboarding flow</span>
+      <span className={cn('lp-st-ws-tab', board && 'is-on', boardHi && 'is-hi')} data-at="ws:board"><Icon name="shapes" size={15} />Onboarding flow</span>
       <Faces people={[CAST.priya, CAST.kofi, CAST.maya, CAST.aiko]} size={22} />
       <span className="lp-st-ws-live"><i />4 editing</span>
     </div>
@@ -296,7 +296,7 @@ const NotesPanel = memo(function NotesPanel({ on, noted, summed }: { on: boolean
     <Panel on={on} icon="notes" title="Notes" foot={<SealedBadge inline title="Written in confidential compute" />}>
       <div className="lp-st-panel-body">
         <div>
-          <div className="lp-st-k is-decided"><Icon name="decision" size={14} />Decided</div>
+          <div className="lp-st-k is-decided"><Icon name="diamond" size={14} />Decided</div>
           <Item on={noted >= 1} title="The launch moves to Wed 18 Nov" by="Proposed by Priya" at={372} />
         </div>
         <div>

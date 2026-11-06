@@ -46,7 +46,7 @@ const ICONS = {
   link2: Link2, list: List, listChecks: ListChecks, listOrdered: ListOrdered, locate: LocateFixed, megaphone: Megaphone, message: MessageSquareText, minus: Minus,
   moon: Moon, navigate: Navigation, panelRight: PanelRight, para: Pilcrow, presentation: Presentation, quote: Quote, strike: Strikethrough, sun: Sun, table: Table,
   textLines: TextAlignStart, textQuote: TextQuote, todo: SquareCheckBig, todos: ListTodo, toggle: ListCollapse, type: Type, calClock: CalendarClock, stickyNote: StickyNote, hourglass: Hourglass, phoneCall: PhoneCall,
-  nudge: BellRing, agent: Bot, away: Coffee, decision: Diamond, hear: Ear, pace: Gauge, listening: Headphones, board: Shapes, connector: Spline
+  nudge: BellRing, agent: Bot, away: Coffee, hear: Ear, pace: Gauge, listening: Headphones
 } satisfies Record<string, LucideIcon>;
 
 const FILLED = new Set<IconName>(['dot', 'stop', 'play']);
