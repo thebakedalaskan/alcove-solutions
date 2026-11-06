@@ -6,8 +6,8 @@
  * call's shared live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone
  * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, VolumeControl, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallReaction, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
@@ -328,9 +328,10 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
  * Chat, decrypted in this browser. Who sent each message comes from the call's encryption; their name, from
  * the people here. Each part of the call (the main room, each breakout room) has its own chat, readable only by
  * the people in it: the view marks where the conversation moved, and chat sent somewhere before you got there
- * can't be read here, which the view says.
+ * can't be read here, which the view says. Hovering a message (or reaching it with the keyboard) offers a reaction;
+ * pressing one under it adds yours, or takes it back.
  */
-export function ChatView({ chat, missed, ready, moving, here, placeName, who, draft, onSend }: {
+export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, onSend, onReact }: {
   chat: CallChatMessage[];
   /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
@@ -343,8 +344,13 @@ export function ChatView({ chat, missed, ready, moving, here, placeName, who, dr
   /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
   placeName: (place: string) => string;
   who: (id: string) => Person;
+  /** The part of the call you're in: only its messages can be reacted to, since only its group reads a reaction. */
+  place: string;
+  /** Your identity in the call, to mark your own reactions. */
+  me: string;
   draft: Draft;
   onSend: (text: string) => Promise<void>;
+  onReact: (messageId: string, reaction: CallReaction, on: boolean) => Promise<void>;
 }) {
   const [text, setText] = useDraft(draft);
   const toast = useToast();
@@ -355,6 +361,9 @@ export function ChatView({ chat, missed, ready, moving, here, placeName, who, dr
     setText('');
     void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); draft.text ||= t; setText((now) => now || t); });
   };
+  const react = (id: string) => (r: CallReaction, on: boolean) => { void onReact(id, r, on).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); };
+  const shown = (c: CallChatMessage): ReactionShown[] =>
+    c.reactions.map((r) => ({ name: r.reaction, names: r.by.map((id) => (id === me ? 'You' : callName(who(id)))), mine: r.by.includes(me) }));
   // Marks only matter once the conversation has been in more than one part of the call.
   const marked = new Set(chat.map((c) => c.place)).size > 1;
   const to = here ?? 'everyone';
@@ -367,12 +376,18 @@ export function ChatView({ chat, missed, ready, moving, here, placeName, who, dr
             {chat.map((c, i) => {
               const from = who(c.from);
               const moved = marked && chat[i - 1]?.place !== c.place;
+              const reactions = shown(c);
+              const canReact = ready && !c.sending && c.place === place;
               return (
                 <Fragment key={c.id}>
                   {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
                   <motion.div className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
                     <Avatar person={from} size={28} />
-                    <div><div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p></div>
+                    <div>
+                      <div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p>
+                      <Reactions reactions={reactions} onToggle={react(c.id)} canReact={canReact} />
+                    </div>
+                    {canReact && !reactions.length && <div className="ic-msg-acts"><ReactionAdd mine={reactions.filter((r) => r.mine).map((r) => r.name)} onPick={react(c.id)} /></div>}
                   </motion.div>
                 </Fragment>
               );

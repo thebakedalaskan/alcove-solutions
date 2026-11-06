@@ -636,7 +636,15 @@
 .ic-qa .a .cu-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-3); }
 .ic-qa .a.is-catch { padding: 14px 16px; border-radius: var(--radius-md); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); }
 .ic-chat { display: grid; gap: 16px; }
-.ic-msg { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; }
+.ic-msg { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; margin: -6px -8px; padding: 6px 8px; border-radius: var(--radius-sm); transition: background-color var(--duration-1); }
+.ic-msg:hover, .ic-msg:has(:focus-visible) { background: var(--sunk); }
+/* Add a reaction: over the message's top right corner while it's hovered or focused, or its picker is open; always there for a finger. */
+.ic-msg-acts { position: absolute; top: -12px; right: 8px; display: flex; padding: 2px; border-radius: var(--radius-pill); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
+.ic-msg:hover .ic-msg-acts, .ic-msg:has(:focus-visible) .ic-msg-acts, .ic-msg-acts:has(.is-on) { opacity: 1; pointer-events: auto; }
+/* Once a message has reactions, the one way to add another is at the end of them, shown the same way. */
+.ic-msg .ac-reacts .ac-react-add { opacity: 0; transition: opacity var(--duration-1); }
+.ic-msg:hover .ac-reacts .ac-react-add, .ic-msg:has(:focus-visible) .ac-reacts .ac-react-add, .ic-msg .ac-reacts .ac-react-add.is-on { opacity: 1; }
+@media (hover: none) { .ic-msg-acts { position: static; grid-column: 2; justify-self: start; opacity: 1; pointer-events: auto; padding: 0; background: none; box-shadow: none; } .ic-msg .ac-reacts .ac-react-add { opacity: 1; } }
 .ic-msg .meta { display: flex; align-items: baseline; gap: 8px; font-size: 13.5px; }
 .ic-msg .meta b { font-weight: 600; }
 .ic-msg .meta .ac-time { font-size: 12px; color: var(--ink-3); }

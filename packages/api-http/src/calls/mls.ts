@@ -1,4 +1,4 @@
-import { CALL_CHAT_MAX } from '@alcove/api';
+import { CALL_CHAT_MAX, type CallReaction, CallReactionSchema } from '@alcove/api';
 import { type CiphersuiteImpl, type ClientConfig, type ClientState, type IncomingMessageCallback, type KeyPackage, type MLSMessage, type PrivateKeyPackage, type PrivateMessage, type Proposal, type RatchetTree } from 'ts-mls';
 import { z } from 'zod';
 
@@ -63,8 +63,12 @@ function lib(): Promise<Lib> {
   return loading;
 }
 
-
-const ChatPayloadSchema = z.object({ text: z.string().min(1).max(CALL_CHAT_MAX), at: z.number() });
+/** What goes inside an application message: a chat line, or a reaction to one (by its ID in the log) added or taken back. */
+const ChatPayloadSchema = z.union([
+  z.object({ text: z.string().min(1).max(CALL_CHAT_MAX), at: z.number() }),
+  z.object({ react: z.object({ target: z.string().min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }), at: z.number() }),
+]);
+export type ChatPayload = z.infer<typeof ChatPayloadSchema>;
 
 
 function identityOf(cred: { credentialType: string; identity?: Uint8Array }): string | undefined {
@@ -205,7 +209,11 @@ export interface PendingCommit {
 export type Applied = 'applied' | 'skipped' | 'refused' | 'removed' | 'behind';
 
 /** Chat from the log, read: who sent it as MLS vouches for it, or why it can't be read here. */
-export type Read = { kind: 'chat'; from: string; text: string; at: number } | { kind: 'before' } | { kind: 'unreadable' };
+export type Read =
+  | { kind: 'chat'; from: string; text: string; at: number }
+  | { kind: 'react'; from: string; target: string; reaction: CallReaction; on: boolean; at: number }
+  | { kind: 'before' }
+  | { kind: 'unreadable' };
 
 
 /** One part of the call's MLS group, as this browser holds it. */
@@ -342,14 +350,14 @@ export class MlsGroup {
     });
   }
 
-  /** Chat, encrypted for everyone in the group now. */
-  encrypt(text: string, at: number): Promise<{ message: string; epoch: number }> {
+  /** Chat or a reaction, encrypted for everyone in the group now. */
+  encrypt(payload: ChatPayload): Promise<{ message: string; epoch: number }> {
     return this.run(async () => {
       const st = this.state;
       if (!st) throw new MlsError('Not in the group.');
       if (this.pending) throw new MlsError('The keys are moving on; try again.');
-      if (text.length > CALL_CHAT_MAX) throw new MlsError('That message is too long.');
-      const r = await this.l.m.createApplicationMessage(st, enc.encode(JSON.stringify({ text, at })), this.l.cs);
+      if ('text' in payload && payload.text.length > CALL_CHAT_MAX) throw new MlsError('That message is too long.');
+      const r = await this.l.m.createApplicationMessage(st, enc.encode(JSON.stringify(payload)), this.l.cs);
       this.state = r.newState;
       r.consumed.forEach((b) => this.l.m.zeroOutUint8Array(b));
       return { message: b64u(this.l.m.encodeMlsMessage({ privateMessage: r.privateMessage, wireformat: 'mls_private_message', version: 'mls10' })), epoch: Number(st.groupContext.epoch) };
@@ -359,7 +367,7 @@ export class MlsGroup {
   /**
    * Chat from the log: its text, and who sent it as MLS vouches for it (the sender's leaf, whose signature the
    * message must carry). `before`: sent before this browser was in the group. Anything else that can't be read
-   * (malformed, replayed, not chat) is `unreadable`, and leaves the group as it was.
+   * (malformed, replayed, neither chat nor a reaction) is `unreadable`, and leaves the group as it was.
    */
   decrypt(body: string): Promise<Read> {
     return this.run(async (): Promise<Read> => {
@@ -384,7 +392,8 @@ export class MlsGroup {
         let payload: unknown;
         try { payload = JSON.parse(dec.decode(r.message)); } catch { return { kind: 'unreadable' }; }
         const p = ChatPayloadSchema.safeParse(payload);
-        return p.success ? { kind: 'chat', from, text: p.data.text, at: p.data.at } : { kind: 'unreadable' };
+        if (!p.success) return { kind: 'unreadable' };
+        return 'text' in p.data ? { kind: 'chat', from, text: p.data.text, at: p.data.at } : { kind: 'react', from, ...p.data.react, at: p.data.at };
       } catch {
         return { kind: 'unreadable' };
       }

@@ -411,6 +411,11 @@ put them, and one dock at the bottom.
   is kept. It waits while notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
 - **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, who is
   ringing and how they answered, and who is invited and not here; the organizer can ring anyone in the last two).
+- **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
+  (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
+  the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
+  tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
+  once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays

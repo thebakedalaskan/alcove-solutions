@@ -165,6 +165,66 @@ describe('end-to-end encryption', () => {
     await host.leave();
   });
 
+  it('lets people react to chat, add to a reaction and take theirs back, as unreadable to the server as chat', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, guest);
+    const said = 'CANARY-REACTED shipping Friday?';
+    const reactionsOn = (call: CallSession) => call.crypto.getSnapshot().chat.find((m) => m.text === said)?.reactions;
+    const idOf = (call: CallSession) => call.crypto.getSnapshot().chat.find((m) => m.text === said && !m.sending)?.id;
+
+    await guest.sendChat(said);
+    await readLog(host, () => idOf(host) !== undefined, 'the message at the host');
+    await readLog(guest, () => idOf(guest) !== undefined, 'the message in the log for its sender');
+    const id = idOf(host) ?? '';
+    // Everyone knows the message by its place in the log.
+    expect(idOf(guest)).toBe(id);
+
+    // The host reacts: shown straight away, then to the guest once they read the log.
+    await host.react(id, 'thumbs-up', true);
+    expect(reactionsOn(host)).toEqual([{ reaction: 'thumbs-up', by: [host.ticket.identity] }]);
+    await readLog(guest, () => reactionsOn(guest)?.length === 1, 'the host’s reaction at the guest');
+
+    // The guest adds to it, and reacts with another.
+    await guest.react(id, 'thumbs-up', true);
+    await guest.react(id, 'party', true);
+    const both = [{ reaction: 'thumbs-up', by: [host.ticket.identity, guest.ticket.identity] }, { reaction: 'party', by: [guest.ticket.identity] }];
+    await readLog(host, () => reactionsOn(host)?.length === 2, 'the guest’s reactions at the host');
+    expect(reactionsOn(host)).toEqual(both);
+    expect(reactionsOn(guest)).toEqual(both);
+
+    // Each takes one back; an emoji nobody's left on goes.
+    await host.react(id, 'thumbs-up', false);
+    await guest.react(id, 'party', false);
+    const left = [{ reaction: 'thumbs-up', by: [guest.ticket.identity] }];
+    await readLog(guest, () => reactionsOn(guest)?.[0]?.by.length === 1, 'the host’s reaction gone at the guest');
+    await readLog(host, () => reactionsOn(host)?.length === 1, 'the guest’s party gone at the host');
+    expect(reactionsOn(guest)).toEqual(left);
+    expect(reactionsOn(host)).toEqual(left);
+    // Reactions aren't chat: nothing new appears in it.
+    expect(chatOf(host)).toEqual([said]);
+
+    // A message nobody's heard of can't be reacted to.
+    await expect(host.react('0:99999', 'heart', true)).rejects.toMatchObject({ code: 'not-found' });
+
+    // Someone let in later can't read the message, so a reaction to it changes nothing for them.
+    const late = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, late);
+    await host.react(id, 'heart', true);
+    await host.sendChat('after Lee joined');
+    await readLog(late, () => chatOf(late).includes('after Lee joined'), 'new chat for the late joiner');
+    expect(late.crypto.getSnapshot().chat.flatMap((m) => m.reactions)).toEqual([]);
+
+    // Neither what was said nor which emoji is anywhere the server keeps things.
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-REACTED', 'thumbs-up', 'thumbs-down']);
+    const logs = h.logs.join('');
+    for (const canary of ['CANARY-REACTED', 'thumbs-up']) expect(logs.includes(canary)).toBe(false);
+    await host.leave();
+  });
+
   it('keeps media from anyone without the call’s key, LiveKit included', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
@@ -479,6 +539,15 @@ describe('breakout rooms, each with its own keys', () => {
     await waitFor(() => chatOf(kofi.call).includes('the organizer, in Design'), 'Design reads the organizer');
     await lena.call.refresh();
     expect(chatOf(lena.call)).not.toContain('the organizer, in Design');
+    // Reactions stay in their room too: the organizer, in Design, still has the main room's chat but can't react to it.
+    const mainId = host.crypto.getSnapshot().chat.find((m) => m.text === 'for the main room')?.id ?? '';
+    await expect(host.react(mainId, 'thumbs-up', true)).rejects.toMatchObject({ code: 'not-found' });
+    const designId = host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.id ?? '';
+    await host.react(designId, 'heart', true);
+    await readLog(kofi.call, () => kofi.call.crypto.getSnapshot().chat.some((m) => m.reactions.length > 0), 'the organizer’s reaction in Design');
+    expect(kofi.call.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.reactions).toEqual([{ reaction: 'heart', by: [host.ticket.identity] }]);
+    await guest.refresh();
+    expect(guest.crypto.getSnapshot().chat.flatMap((m) => m.reactions)).toEqual([]);
     // A room member can't post into another room's chat, nor anyone into a room they're not in.
     const lenaLog = CallMlsSchema.parse(await (await asMember(lena.call, 'GET', '/mls?after=0')).json());
     expect((await asMember(lena.call, 'POST', '/mls/messages', { generation: lenaLog.generation, group: design, epoch: 1, message: 'AAAA' })).status).toBe(400);
