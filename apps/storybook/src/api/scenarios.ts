@@ -24,7 +24,7 @@ import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, s
 import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
-import { forgetAudio } from './media';
+import { drawnPicture, forgetAudio } from './media';
 import { stopLive } from './standin';
 import { serve } from './state';
 import { forgetDocuments } from './workspaces';
@@ -107,7 +107,10 @@ function pages(): Record<string, Page> {
   ];
   return Object.fromEntries(named.map(([name, page]) => [itemId(name), page]));
 }
-/** The files in the design review's home: its screenshots, drawn; its walkthrough, recorded; and the spec, a download. */
+/**
+ * The files: in the design review's home its screenshots, drawn, its walkthrough, recorded, and the spec, a download; and in
+ * the Launch plan two photos from the offsite and the timeline as a file, from Priya, this week.
+ */
 function files(): Kept[] {
   const doc = itemId('Sidebar screenshots');
   const frame = { width: 1600, height: 900 };
@@ -120,7 +123,8 @@ function files(): Kept[] {
     kept(MEDIA.dark, 'Sidebar, dark.png', 'image/png', 198_744, () => stillOf(SHOWN.dark), frame),
     kept(MEDIA.pricing, 'Pricing page.png', 'image/png', 176_020, () => stillOf(SHOWN.pricing), frame),
     kept(MEDIA.walkthrough, 'Sidebar walkthrough.webm', 'video/webm', 1_830_552, () => clipOf(SHOWN.walkthrough), frame),
-    kept(MEDIA.spec, 'Sidebar spec.pdf', FILE_TYPE, 482_133, () => Promise.resolve(new Blob(['The sidebar, in both themes.'], { type: FILE_TYPE })), null)
+    kept(MEDIA.spec, 'Sidebar spec.pdf', FILE_TYPE, 482_133, () => Promise.resolve(new Blob(['The sidebar, in both themes.'], { type: FILE_TYPE })), null),
+    ...launchFiles()
   ];
 }
 /** Kofi tagged Art in the standup's onboarding fixes this afternoon: by name and face, never an address. */
@@ -139,6 +143,23 @@ function shares(): Record<string, ShareEntry[]> {
     [itemId('Launch plan')]: [entry('share-jonas', JONAS, 'read', 6), entry('share-diego', DIEGO, 'edit', 2)],
     [itemId('Pricing page copy')]: [entry('share-maya', MAYA, 'edit', 3)]
   };
+}
+
+/** What the Launch plan has in it: two photos from the offsite and the timeline as a file, from Priya, this week. */
+function launchFiles(): Kept[] {
+  const plan = itemId('Launch plan');
+  const picture = (name: string, hue: number, daysAgo: number): Kept => ({
+    workspace: 'ws-product', body: () => drawnPicture(name.replace(/\.png$/, ''), hue, 1600, 1000),
+    media: { id: itemId(`media ${name}`), name, type: 'image/png', size: 2_400_000, width: 1600, height: 1000, createdAt: iso(-daysAgo, 11, 0), documents: [plan] }
+  });
+  const words = 'Launch timeline\n\nMonday: freeze\nWednesday: press\nFriday: launch\n';
+  return [
+    picture('Offsite whiteboard.png', 205, 1), picture('Launch room.png', 28, 2),
+    {
+      workspace: 'ws-product', body: () => Promise.resolve(new Blob([words], { type: 'text/plain' })),
+      media: { id: itemId('media Launch timeline'), name: 'Launch timeline.txt', type: 'application/octet-stream', size: words.length, width: null, height: null, createdAt: iso(-1, 9, 30), documents: [plan] }
+    }
+  ];
 }
 
 /** The canvas's busy Wednesday afternoon, at 16:12. */

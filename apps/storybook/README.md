@@ -69,7 +69,7 @@ couldn't-save, and a block can say someone else is still uploading it.
 
 | Name | What it is |
 |---|---|
-| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30 |
+| `busy` | Wednesday afternoon at Vandelay Industries: a day of notes, things waiting on you, a design sync at 17:30, and two photos and a file in the Product workspace's Launch plan |
 | `first-day` | Art has just signed in: no notes or calls, a team not on Alcove yet, no calendar access |
 | `on-their-own` | Art at a personal address: no team, no groups, recordings and calls with people he meets |
 | `offline` | The busy afternoon opened with no connection, signed in on this browser: Record works, the rest says offline |

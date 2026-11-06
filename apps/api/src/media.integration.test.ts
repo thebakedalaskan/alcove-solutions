@@ -4,18 +4,22 @@
  * guests, a real call. A file's bytes are read as an `<img>` or a player reads them: from its URL, with whatever cookies
  * that browser has and no other headers but `Range`.
  */
-import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, REQUEST_ID_HEADER, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { resolveObjectURL } from 'node:buffer';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { request, type ClientRequest } from 'node:http';
+import { connect } from 'node:net';
 import { performance } from 'node:perf_hooks';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { z } from 'zod';
+import { readPass } from './callPass';
+import { blindIndex } from './crypto';
 import { LIMITS } from './limits';
 import { maintain } from './maintenance';
 import { MEDIA_LIMITS } from './modules/media';
+import { masterKey } from './owners';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.
@@ -51,6 +55,7 @@ const NO_FILES = { code: 'invalid', message: 'Files can’t be uploaded right no
 const NO_UPLOADS = { code: 'conflict', message: 'Files can’t be uploaded right now.', status: 409 };
 const FULL = { code: 'conflict', message: 'This workspace is full, so it can’t take more files.', status: 409 };
 const TODAYS = { code: 'conflict', message: 'That’s all you can upload today. You can upload more tomorrow.', status: 409 };
+const SEAT_ONLY = { code: 'forbidden', message: 'You can work on this in the call, but you can’t delete its files for good.', status: 403 };
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
 const logsSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
 const madeUp = () => randomBytes(16).toString('base64url');
@@ -87,6 +92,87 @@ async function refused(who: { fetch: typeof fetch }, url: string, range?: string
   const res = await who.fetch(url, range ? { headers: { range } } : {});
   const { code: c, message } = Refused.parse(await res.json());
   return { status: res.status, code: c, message };
+}
+/** Someone with their session in hand, for a request of their own that says what `fetch` won't. */
+async function withCookie() {
+  const browser = cookieFetch(ORIGIN);
+  let cookie = '';
+  const tap: typeof fetch = async (input, init) => {
+    const res = await browser(input, init);
+    cookie = /(__Host-alcove_session=[^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1] ?? cookie;
+    return res;
+  };
+  const who = await account({ fetch: tap });
+  return { ...who, cookie: () => cookie };
+}
+/**
+ * How much of a response's body came on a connection, and whether all of it did: by its length, or, past 16 MiB where it
+ * has none, by the chunk that ends it.
+ */
+function bodyOf(all: Buffer): { body: number; whole: boolean } {
+  const at = all.indexOf('\r\n\r\n');
+  if (at < 0) return { body: 0, whole: false };
+  const head = all.subarray(0, at).toString('latin1');
+  const rest = all.subarray(at + 4);
+  const length = /\r\ncontent-length: *(\d+)/i.exec(head)?.[1];
+  if (length !== undefined) return { body: rest.length, whole: rest.length === Number(length) };
+  if (!/\r\ntransfer-encoding: *chunked/i.test(head)) return { body: rest.length, whole: false };
+  let body = 0;
+  for (let i = 0; ;) {
+    const eol = rest.indexOf('\r\n', i);
+    const size = eol < 0 ? Number.NaN : Number.parseInt(rest.subarray(i, eol).toString('latin1'), 16);
+    if (Number.isNaN(size)) return { body, whole: false };
+    if (size === 0) return { body, whole: true };
+    body += Math.min(size, rest.length - (eol + 2));
+    i = eol + 2 + size + 2;
+    if (i > rest.length) return { body, whole: false };
+  }
+}
+/** The status the server answered a request with, by the ID it was sent with, from its request line; 0 until it has. */
+const answered = (from: number, requestId: string): number => {
+  for (const raw of h.logs.slice(from)) {
+    if (!raw.includes(requestId)) continue;
+    const l = LogLine.safeParse(JSON.parse(raw));
+    if (l.success && ['request', 'request refused', 'request failed'].includes(l.data.msg)) return Number(l.data['status']);
+  }
+  return 0;
+};
+/**
+ * A read whose browser has stopped taking it, as a tab that stalled has: a connection of its own that sends the request
+ * and reads nothing back, so only what the operating system holds leaves the server, which is less than a piece. A
+ * fetch reads on into buffers of its own, and on Linux that can be the whole of a file of two pieces: the read ends by
+ * itself and gives its place back, and nothing has stopped. It's under way once the server has answered it, which its
+ * request line says, so that's what this waits for, not the answer reaching the browser.
+ */
+async function stopped(who: { cookie: () => string }, url: string) {
+  const requestId = randomBytes(12).toString('base64url');
+  const { hostname, port, pathname, host } = new URL(url);
+  const from = h.logs.length;
+  const socket = connect({ host: hostname, port: Number(port) });
+  socket.on('error', () => undefined);
+  socket.pause();
+  socket.write(`GET ${pathname} HTTP/1.1\r\nhost: ${host}\r\ncookie: ${who.cookie()}\r\n${REQUEST_ID_HEADER}: ${requestId}\r\nconnection: close\r\n\r\n`);
+  let status = 0;
+  await until(() => { status = answered(from, requestId); return status > 0; }, 'the server to answer a read');
+  let received = 0;
+  /**
+   * Takes the rest of the answer: all at once, or a chunk at a time `ms` apart, as a browser on a slow line does. How much
+   * of the body came, or `cut` when the connection ended short of its length.
+   */
+  const take = (ms = 0) => new Promise<number | 'cut'>((resolve) => {
+    const chunks: Buffer[] = [];
+    socket.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      if (ms) { socket.pause(); setTimeout(() => socket.resume(), ms).unref(); }
+    });
+    socket.once('close', () => {
+      const { body, whole } = bodyOf(Buffer.concat(chunks));
+      received = body;
+      resolve(whole ? body : 'cut');
+    });
+    socket.resume();
+  });
+  return { requestId, status, rest: () => take(), slowly: (ms: number) => take(ms), received: () => received, end: () => { socket.destroy(); } };
 }
 /** The answer for a URL nobody made: every refusal of a read must look just like it. */
 const nothing = () => refused({ fetch }, `${h.baseUrl}/v1/media/${randomBytes(120).toString('base64url')}.${randomBytes(32).toString('base64url')}`);
@@ -581,33 +667,23 @@ describe('a failure on the way', () => {
   });
 
   it('cuts a response off when a piece fails after the browser has been slow, as well as straight away', async () => {
-    const ann = await account();
+    const ann = await withCookie();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     const owner = await ownerOf(id);
     const m = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(4 * PIECE + 1)));
     const url = await ann.api.workspaces.media.url(id, doc, m.id);
     const third = (await objectsOf(owner))[2] ?? '';
-    const res = await ann.fetch(url);
-    const body = res.body?.getReader();
-    if (!body) throw new Error('no body');
-    // The browser takes a little and stops, so the server is waiting for it to catch up when the store goes.
-    let taken = (await body.read()).value?.length ?? 0;
+    // The browser takes no more than is on its way and stops, so the server is waiting for it to catch up when the store goes.
+    const paused = await stopped(ann, url);
     await new Promise((r) => setTimeout(r, 200));
     const get = h.deps.objects.get;
     h.deps.objects.get = async (o) => { if (o === third) throw new Error('the store has gone'); return get(o); };
     try {
-      const outcome = await (async () => {
-        for (;;) {
-          const { done, value } = await body.read();
-          if (done) return 'all of it';
-          taken += value.length;
-        }
-      })().catch(() => 'cut off');
-      expect(outcome).toBe('cut off');
+      expect(await paused.rest()).toBe('cut');
     } finally { h.deps.objects.get = get; }
     // It got as far as the piece that failed, and no further.
-    expect(taken).toBeLessThanOrEqual(2 * PIECE);
+    expect(paused.received()).toBeLessThanOrEqual(2 * PIECE);
     expect((await read(ann, url)).bytes.length).toBe(4 * PIECE + 1);
   });
 
@@ -1037,6 +1113,100 @@ describe('guests in a call', () => {
     await host.leave();
   });
 
+  it('put a picture on a board the call opens, which takes it when it’s deleted, as any document does', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const owner = await ownerOf(id);
+    const { host, guests } = await callWith(org, ['Sam Guest']);
+    const [sam] = guests;
+    if (!sam) throw new Error('nobody joined');
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    // Everyone in the call can work on it, so the guest's seat is enough to put a picture on it and see it.
+    await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat'", [owner, board])) === 1, 'the guest’s seat on the board');
+    const opts = { pass: sam.pass };
+    const bytes = bytesOf(PIECE + 1);
+    const picture = await sam.api.workspaces.media.upload(id, board, fileOf(bytes), opts);
+    expect(same((await read({ fetch }, await sam.api.workspaces.media.url(id, board, picture.id, opts))).bytes, bytes)).toBe(true);
+    const objects = await objectsOf(owner);
+    expect(objects).toHaveLength(2);
+
+    // Deleted for good, the board takes it: rows, stored bytes and objects.
+    await org.api.workspaces.items.trash(id, board);
+    await org.api.workspaces.items.deleteForever(id, board);
+    expect(await rowsOf(owner)).toEqual(NO_ROWS);
+    for (const o of objects) expect(await stored(o)).toBe(false);
+    expect(await storedBytes(owner)).toBe(0);
+    expect(await queued(owner)).toBe(0);
+  });
+
+  it('have their day counted in the database by nothing that names them, so another instance or a restart counts it', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const agenda = await make(org, id, 'document', 'Agenda');
+    const { host, guests } = await callWith(org, ['Sam Guest']);
+    const [sam] = guests;
+    if (!sam) throw new Error('nobody joined');
+    await org.api.workspaces.share.set(id, agenda, [{ seat: sam.seat }], 'edit', { pass: host.ticket.pass });
+    // Under a blind index of the person their pass names, never the pass, the person, the call or a name.
+    const index = blindIndex(masterKey(h.deps), 'upload-guest', readPass(h.deps.cfg, sam.pass)?.person ?? '');
+    const days = async () => (await h.pool.query<{ day: string; bytes: string }>("SELECT to_char(day, 'YYYY-MM-DD') AS day, bytes::text AS bytes FROM media_guest_upload_days WHERE guest_index = $1 ORDER BY day", [index])).rows.map((r) => [r.day, Number(r.bytes)]);
+    const ago = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+    const send = (api: AlcoveApi, bytes: number) => api.workspaces.media.upload(id, agenda, fileOf(bytesOf(bytes)), { pass: sam.pass });
+    await setLimit('media.account_day_bytes', 3 * MiB);
+    await send(sam.api, 2 * MiB);
+    expect(await days()).toEqual([[ago(0), 2 * MiB]]);
+    // Another process, as after a restart, counts what this one did, because it reads it from the database every time.
+    const second = await h.secondServer();
+    try {
+      const again = createHttpApi({ baseUrl: second.baseUrl, fetch: sam.fetch });
+      expect(await refusal(send(again, 2 * MiB))).toEqual(TODAYS);
+      await h.pool.query('DELETE FROM media_guest_upload_days WHERE guest_index = $1', [index]);
+      await send(again, 2 * MiB);
+    } finally { await second.close(); }
+    // Upkeep keeps today and yesterday, and nothing older.
+    await h.pool.query('INSERT INTO media_guest_upload_days (guest_index, day, bytes) VALUES ($1, $2, 1), ($1, $3, 1)', [index, ago(1), ago(2)]);
+    await maintain(h.deps, { uploadAgeMs: ALREADY });
+    expect((await days()).map(([d]) => d)).toEqual([ago(1), ago(0)]);
+  });
+
+  it('can’t delete a picture for good through their seat, so it stays where it’s reused, and the organizer still can', async () => {
+    const org = await account();
+    const id = await workspace(org, 'Ours');
+    const owner = await ownerOf(id);
+    const reused = await make(org, id, 'document', 'Reused here');
+    const { host, guests } = await callWith(org, ['Sam Guest']);
+    const [sam] = guests;
+    if (!sam) throw new Error('nobody joined');
+    await host.setWorkspace(id);
+    await host.openBoard({ template: 'blank' });
+    const board = host.getSnapshot().board.open?.documentId ?? '';
+    await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat'", [owner, board])) === 1, 'the guest’s seat on the board');
+    const opts = { pass: sam.pass };
+    const bytes = bytesOf(16);
+    const picture = await sam.api.workspaces.media.upload(id, board, fileOf(bytes, 'CANARY-SEAT.png'), opts);
+    await org.api.workspaces.media.attach(id, reused, picture.id);
+    const objects = await objectsOf(owner);
+
+    // A seat is for working on the board, and taking its picture out of it would be that. Deleting the file for everyone
+    // isn't: an ordinary refusal, which names nothing, here or in the log.
+    const from = h.logs.length;
+    expect(await refusal(sam.api.workspaces.media.remove(id, board, picture.id, opts))).toEqual(SEAT_ONLY);
+    expect(logsSince(from).filter((l) => l.msg === SEAT_ONLY.message).map((l) => l.level)).toEqual([30]);
+    expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-SEAT');
+    // Nothing went: it's on the board for them still, and in the document that reuses it, which they can't open.
+    expect(same((await read({ fetch }, await sam.api.workspaces.media.url(id, board, picture.id, opts))).bytes, bytes)).toBe(true);
+    expect(same((await read(org, await org.api.workspaces.media.url(id, reused, picture.id))).bytes, bytes)).toBe(true);
+    expect(await rowsOf(owner)).toEqual({ workspace_media: 1, workspace_media_pieces: 1, workspace_media_uses: 2 });
+
+    // The organizer can edit the board as one of the workspace's people, so it's theirs to delete, from everywhere.
+    await org.api.workspaces.media.remove(id, board, picture.id);
+    expect(await rowsOf(owner)).toEqual(NO_ROWS);
+    for (const o of objects) expect(await stored(o)).toBe(false);
+    expect(await code(org.api.workspaces.media.url(id, reused, picture.id))).toBe('not-found');
+  });
+
   it('read with their seat and their account together, each counting for what it gives', async () => {
     const org = await account();
     const id = await workspace(org, 'Ours');
@@ -1278,51 +1448,42 @@ describe('reusing a file', () => {
 describe('what a process takes on at once', () => {
   const { arriving, arrivingEach, arrivalMs, reading, readingEach, stalledMs, waiting, waitingEach, waitMs, working, readsAMinute } = MEDIA_LIMITS;
   const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  /** A read whose response is open and that takes no more of it, as a tab that stalled does. It keeps hold of the response: one nobody holds is collected, which cancels it. */
-  async function stopped(who: { fetch: typeof fetch }, url: string) {
-    const stop = new AbortController();
-    const res = await who.fetch(url, { signal: stop.signal });
-    return { res, status: res.status, end: () => stop.abort() };
-  }
   /** Someone with a file of three pieces and a URL to it. */
   async function reader() {
-    const who = await account();
+    const who = await withCookie();
     const id = await workspace(who, 'Ours');
     const doc = await make(who, id, 'document', 'Plan');
     const m = await who.api.workspaces.media.upload(id, doc, fileOf(bytesOf(2 * PIECE + 1)));
     return { ...who, url: await who.api.workspaces.media.url(id, doc, m.id) };
   }
-  /** The store stops answering, so what's let in stays in, until `open()`. */
+  /** The store stops answering, so what's let in stays in, until `open()`, or the test ends however it ends. */
   function stuckStore() {
     const put = h.deps.objects.put;
     let open = () => {};
     const stuck = new Promise<void>((r) => { open = r; });
     const state = { storing: 0 };
     h.deps.objects.put = async (o, b) => { state.storing++; await stuck; return put(o, b); };
-    return { state, open: () => { open(); h.deps.objects.put = put; } };
+    const unstick = () => { open(); h.deps.objects.put = put; };
+    onTestFinished(unstick);
+    return { state, open: unstick };
   }
 
-  /** The store stops giving anything back, so a read that's let in stays in, with this process the one still working on it, until `open()`. */
+  /**
+   * The store stops giving anything back, so a read that's let in stays in, with this process the one still working on it,
+   * until `open()`, or the test ends however it ends: one that fails leaves nothing stuck for the next.
+   */
   function stuckReads() {
     const get = h.deps.objects.get;
     let open = () => {};
     const stuck = new Promise<void>((r) => { open = r; });
     const state = { reading: 0 };
     h.deps.objects.get = async (o) => { state.reading++; await stuck; return get(o); };
-    return { state, open: () => { open(); h.deps.objects.get = get; } };
+    const unstick = () => { open(); h.deps.objects.get = get; };
+    onTestFinished(unstick);
+    return { state, open: unstick };
   }
-  /** Someone with their session in hand, for a request of their own that says what `fetch` won't. */
-  async function withCookie() {
-    const browser = cookieFetch(ORIGIN);
-    let cookie = '';
-    const tap: typeof fetch = async (input, init) => {
-      const res = await browser(input, init);
-      cookie = /(__Host-alcove_session=[^;]+)/.exec(res.headers.get('set-cookie') ?? '')?.[1] ?? cookie;
-      return res;
-    };
-    const who = await account({ fetch: tap });
-    return { ...who, cookie: () => cookie };
-  }
+  /** How many reads have had a place since `from`, by the server's own word. */
+  const placed = (from: number) => logsSince(from).filter((l) => l.msg === 'a read has its place').length;
   /** Says a piece is 4 MiB and sends what it's told to: this is what the process is about to hold. */
   const pieceFrom = (cookie: string, url: string, first: number) => {
     const req = request(url, { method: 'POST', agent: false, headers: { origin: ORIGIN, cookie, 'content-type': 'application/octet-stream', 'content-length': String(PIECE) } });
@@ -1331,6 +1492,19 @@ describe('what a process takes on at once', () => {
     return req;
   };
   const closed = (req: ClientRequest) => new Promise<void>((r) => { req.once('close', () => r()); });
+  /**
+   * Waits for `n` requests to be refused with `message`, and gives each refusal's level with what its request logged of
+   * itself. A browser that stopped sending, or went while it waited, is nothing failing here.
+   */
+  async function refusals(from: number, message: string, n: number) {
+    const lines = () => logsSince(from);
+    const refused = () => lines().filter((l) => l.msg === message);
+    const ended = (id: unknown) => lines().filter((l) => l['requestId'] === id && ['request', 'request refused', 'request failed'].includes(l.msg));
+    await until(() => refused().length === n && refused().every((l) => ended(l['requestId']).length > 0), `${n} requests refused with “${message}” and logged`);
+    return refused().map((l) => ({ refusal: l.level, request: ended(l['requestId']).map((r) => [r.msg, r.level, r['status']]) }));
+  }
+  /** What an ordinary refusal logs, for the refusal and for its request. */
+  const ordinary = { refusal: 30, request: [['request refused', 30, 503]] };
 
   it('takes only so many pieces in, refusing the rest before reading them, and an upload just tries again', async () => {
     // Enough people that the limit on everyone is reached first, each sending more than their share.
@@ -1396,8 +1570,9 @@ describe('what a process takes on at once', () => {
       expect((await sendPiece(ann, urls[0] ?? '', bytesOf(16))).status).toBe(503);
     } finally { for (const req of slow) req.destroy(); }
     await until(async () => (await sendPiece(ann, urls[0] ?? '', bytesOf(PIECE))).status === 200, 'their places to come back');
-    // A browser that went while sending is nothing going wrong here.
+    // A browser that went while sending is nothing going wrong here: an ordinary refusal, and its request says so too.
     expect(h.logs.slice(from).filter((l) => l.includes('"status":500'))).toEqual([]);
+    expect(await refusals(from, 'That piece stopped arriving. Try again.', slow.length)).toEqual(slow.map(() => ordinary));
   });
 
   it('cuts a piece that stops arriving, or only trickles, so nobody can hold a place by saying they’re about to send', async () => {
@@ -1409,6 +1584,7 @@ describe('what a process takes on at once', () => {
     const [first, second] = held;
     // Half send nothing more. Half keep sending, too little to ever get there: 4 MiB at this rate is hours.
     const trickle = setInterval(() => { for (const req of [first, second]) if (req && !req.destroyed) req.write(Buffer.alloc(64)); }, 200);
+    const from = h.logs.length;
     const began = Date.now();
     try {
       await pause(300);
@@ -1417,6 +1593,8 @@ describe('what a process takes on at once', () => {
       expect(Date.now() - began).toBeLessThan(arrivalMs + 3000);
       expect(Date.now() - began).toBeGreaterThanOrEqual(arrivalMs - 1000);
     } finally { clearInterval(trickle); for (const req of held) req.destroy(); }
+    // Each was cut as an ordinary refusal, logged as one, and its request too.
+    expect(await refusals(from, 'That piece stopped arriving. Try again.', held.length)).toEqual(held.map(() => ordinary));
     // Their places came back, and nothing was kept of what didn't arrive.
     expect((await sendPiece(ann, urls[0] ?? '', bytesOf(PIECE))).status).toBe(200);
     expect(await count('SELECT count(*)::int AS n FROM workspace_media_pieces WHERE owner_id = $1', [await ownerOf(id)])).toBe(1);
@@ -1464,7 +1642,7 @@ describe('what a process takes on at once', () => {
   });
 
   it('holds a place for what’s still to reach the browser, a small picture too', async () => {
-    const ann = await account();
+    const ann = await withCookie();
     const id = await workspace(ann, 'Ours');
     const doc = await make(ann, id, 'document', 'Plan');
     // One piece, all opened and sent at once, so only the response itself says it's still going.
@@ -1491,7 +1669,7 @@ describe('what a process takes on at once', () => {
       expect((await read(newcomer, newcomer.url, 'bytes=0-9')).status).toBe(206);
       expect(Date.now() - began).toBeLessThan(stalledMs + 2000);
       // One went for them. The rest read on as if nothing had happened.
-      const outcomes = await Promise.all(open.map((s) => s.res.arrayBuffer().then((b) => b.byteLength, () => 'cut')));
+      const outcomes = await Promise.all(open.map((s) => s.rest()));
       expect(outcomes.filter((o) => o === 'cut')).toHaveLength(1);
       expect(new Set(outcomes.filter((o) => o !== 'cut'))).toEqual(new Set([2 * PIECE + 1]));
     } finally { for (const s of open) s.end(); }
@@ -1502,13 +1680,19 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const theo = await reader();
     // Theo's has been stopped the longest, so it's what anyone else would be given.
+    const from = h.logs.length;
     const theirs = await stopped(theo, theo.url);
     await pause(200);
     const mine = await Promise.all(Array.from({ length: readingEach }, () => stopped(ann, ann.url)));
     try {
+      expect(new Set([theirs, ...mine].map((s) => s.status))).toEqual(new Set([200]));
       expect((await read(ann, ann.url, 'bytes=0-9')).status).toBe(206);
-      expect((await theirs.res.arrayBuffer()).byteLength).toBe(2 * PIECE + 1);
-      const outcomes = await Promise.all(mine.map((s) => s.res.arrayBuffer().then(() => 'read', () => 'cut')));
+      // One of hers was cut for it, and Theo's reads on to the end.
+      const cut = logsSince(from).filter((l) => l.msg === 'a read was cut').map((l) => l['requestId']);
+      expect(cut).toHaveLength(1);
+      expect(mine.map((s) => s.requestId)).toContain(cut[0]);
+      expect(await theirs.rest()).toBe(2 * PIECE + 1);
+      const outcomes = await Promise.all(mine.map((s) => s.rest()));
       expect(outcomes.filter((o) => o === 'cut')).toHaveLength(1);
     } finally { for (const s of [...mine, theirs]) s.end(); }
   });
@@ -1517,7 +1701,7 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const paused = await stopped(ann, ann.url);
     await pause(stalledMs + 1000);
-    expect((await paused.res.arrayBuffer()).byteLength).toBe(2 * PIECE + 1);
+    expect(await paused.rest()).toBe(2 * PIECE + 1);
   });
 
   it('ends a read at its own time, however it’s going, and takes the place back', async () => {
@@ -1525,18 +1709,11 @@ describe('what a process takes on at once', () => {
     const { cfg } = h.deps;
     h.deps.cfg = { ...cfg, MEDIA_READ_MS: 800 };
     try {
+      // One that stopped, and one that keeps taking a little at a time, too slowly to finish in time.
       const paused = await stopped(ann, ann.url);
-      const reading = (await ann.fetch(ann.url)).body?.getReader();
-      if (!reading) throw new Error('no body');
-      const outcome = await (async () => {
-        for (;;) {
-          const { done } = await reading.read();
-          if (done) return 'all of it';
-          await pause(100);
-        }
-      })().catch(() => 'cut off');
-      expect(outcome).toBe('cut off');
-      expect(await paused.res.arrayBuffer().then(() => 'all of it', () => 'cut off')).toBe('cut off');
+      const going = await stopped(ann, ann.url);
+      expect(await going.slowly(100)).toBe('cut');
+      expect(await paused.rest()).toBe('cut');
     } finally { h.deps.cfg = cfg; }
     const full = await Promise.all(Array.from({ length: readingEach }, () => read(ann, ann.url, 'bytes=0-9')));
     expect(new Set(full.map((r) => r.status))).toEqual(new Set([206]));
@@ -1546,12 +1723,14 @@ describe('what a process takes on at once', () => {
     const ann = await reader();
     const mine = await Promise.all(Array.from({ length: readingEach }, () => stopped(ann, ann.url)));
     try {
-      // They fill all the line they're allowed, and go.
+      // They fill all the line they're allowed, and go: an ordinary refusal for each, and for its request.
+      const from = h.logs.length;
       const stops = Array.from({ length: waitingEach }, () => new AbortController());
       const left = stops.map((stop) => ann.fetch(ann.url, { signal: stop.signal, headers: { range: 'bytes=0-9' } }).catch(() => 'gone'));
       await pause(300);
       for (const stop of stops) stop.abort();
       await Promise.all(left);
+      expect(await refusals(from, 'That browser has gone.', waitingEach)).toEqual(stops.map(() => ordinary));
       await pause(100);
       // A line they'd left full would refuse this at once. It waits, and only it gets a piece opened.
       const get = vi.spyOn(h.deps.objects, 'get');
@@ -1584,8 +1763,10 @@ describe('what a process takes on at once', () => {
     const newcomer = await reader();
     const first = await reader();
     const second = await reader();
-    // Every place is taken, by reads this process hasn't finished with, so nothing can give way.
+    // Every place is taken, by reads this process hasn't finished with, so nothing can give way. That's once the server
+    // says each has its place, however long their requests take to get there.
     const store = stuckReads();
+    const from = h.logs.length;
     const taken = people.flatMap((p) => Array.from({ length: readingEach }, () => read(p, p.url, 'bytes=0-9')));
     const lined: AbortController[] = [];
     const inLine = (who: { fetch: typeof fetch; url: string }) => {
@@ -1594,6 +1775,7 @@ describe('what a process takes on at once', () => {
       return who.fetch(who.url, { signal: stop.signal, headers: { range: 'bytes=0-0' } }).then((r) => r.status, () => 0);
     };
     try {
+      await until(() => placed(from) >= reading, 'every place to be taken');
       await until(() => store.state.reading >= working, 'every place to be working');
       // Someone new waits, for as long as it says, and is told.
       const began = Date.now();
@@ -1753,6 +1935,29 @@ describe('storage limits', () => {
     expect((await sendPiece(ann, at(1), bytesOf(PIECE))).status).toBe(200);
     expect((await sendPiece(ann, at(2), bytesOf(PIECE))).status).toBe(200);
     expect((await json(ann, `${place(id, doc)}/${m}/finish`, {})).status).toBe(200);
+  });
+
+  it('refuses a piece before reading it, and reads the rest, so its connection takes the next request', async () => {
+    const ann = await withCookie();
+    const { id, doc } = await planIn(ann);
+    const m = await started(ann, id, doc, 2 * PIECE);
+    await setLimit('media.account_day_bytes', 1);
+    // A browser that has sent all of a piece sends its next request down the same connection once it has its answer.
+    const { hostname, port, host } = new URL(h.baseUrl);
+    const socket = connect({ host: hostname, port: Number(port) });
+    socket.on('error', () => undefined);
+    onTestFinished(() => { socket.destroy(); });
+    const heard: Buffer[] = [];
+    let closed = false;
+    socket.on('data', (chunk: Buffer) => { heard.push(chunk); });
+    socket.on('close', () => { closed = true; });
+    const statuses = () => [...Buffer.concat(heard).toString('latin1').matchAll(/HTTP\/1\.1 (\d{3}) /g)].map((s) => Number(s[1]));
+    socket.write(`POST ${new URL(`${place(id, doc)}/${m}/pieces/0`).pathname} HTTP/1.1\r\nhost: ${host}\r\norigin: ${ORIGIN}\r\ncookie: ${ann.cookie()}\r\ncontent-type: application/octet-stream\r\ncontent-length: ${PIECE}\r\n\r\n`);
+    socket.write(bytesOf(PIECE));
+    await until(() => statuses().length > 0 || closed, 'the piece to be answered');
+    socket.write(`GET /v1/workspaces/${id}/media HTTP/1.1\r\nhost: ${host}\r\ncookie: ${ann.cookie()}\r\n\r\n`);
+    await until(() => statuses().length > 1 || closed, 'the next request to be answered, or its connection to go');
+    expect(statuses()).toEqual([409, 200]);
   });
 
   it('deletes nothing when a limit goes down: it only refuses what comes next', async () => {
@@ -2024,17 +2229,32 @@ describe('deleting a file', () => {
     expect((await ann.api.workspaces.media.list(id)).map((x) => x.id)).toEqual([]);
   });
 
-  it('isn’t stopped by a document someone can’t open, which they mustn’t be able to tell from any other', async () => {
+  it('is stopped by a document someone can’t open, in the same words as one they can only read, naming neither', async () => {
     const ann = await account();
     const theo = await account();
-    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const id = await workspace(ann, 'Ours', [[theo, 'read']]);
     const shared = await make(ann, id, 'document', 'Plan');
-    const secret = await make(ann, id, 'document', 'Theirs alone');
-    const m = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
-    await ann.api.workspaces.media.attach(id, secret, m.id);
+    await ann.api.workspaces.share.set(id, shared, [{ email: theo.email }], 'edit');
+    const secret = await make(ann, id, 'document', 'CANARY-HIDDEN-DOC');
     await ann.api.workspaces.share.restrict(id, secret, true);
-    await theo.api.workspaces.media.remove(id, shared, m.id);
-    expect(await code(ann.api.workspaces.media.url(id, secret, m.id))).toBe('not-found');
+    const notes = await make(ann, id, 'document', 'Notes');
+    // One picture Ann also put in her restricted document, which Theo was never shown. Another in one he can only read.
+    const hidden = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
+    await ann.api.workspaces.media.attach(id, secret, hidden.id);
+    const readOnly = await ann.api.workspaces.media.upload(id, shared, fileOf(bytesOf(16)));
+    await ann.api.workspaces.media.attach(id, notes, readOnly.id);
+    expect(await code(theo.api.workspaces.media.url(id, secret, hidden.id))).toBe('not-found');
+
+    // Both are refused, the same way: nothing says which kind of document kept it, or names it.
+    const from = h.logs.length;
+    const refused = await refusal(theo.api.workspaces.media.remove(id, shared, hidden.id));
+    expect(refused).toEqual({ code: 'forbidden', message: 'This file is also in a document you can’t edit.', status: 403 });
+    expect(await refusal(theo.api.workspaces.media.remove(id, shared, readOnly.id))).toEqual(refused);
+    expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-HIDDEN-DOC');
+    // Ann's restricted copy is still there, and she, who can edit both, can still delete it.
+    expect((await read(ann, await ann.api.workspaces.media.url(id, secret, hidden.id))).status).toBe(200);
+    await ann.api.workspaces.media.remove(id, shared, hidden.id);
+    expect(await code(ann.api.workspaces.media.url(id, secret, hidden.id))).toBe('not-found');
   });
 
   it('leaves a document in Trash as it is, like everything else in it', async () => {

@@ -320,9 +320,10 @@ export interface AlcoveApi {
       /** Every file you can reach in a workspace, the newest first, each with the documents you can reach it through. */
       list(id: ID, opts?: WorkspaceReadOptions): Promise<WorkspaceMedia[]>;
       /**
-       * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit a
-       * document that has it, and every other document they can open that has it, or it's `forbidden`. Older versions and
-       * any other document that had it get `not-found` from then on, which is the app's cue to show it as removed.
+       * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit every
+       * document that has it, beyond a seat in a call, whether they can open it or not, or it's `forbidden`, in words that
+       * name no document. Older versions and any other document that had it get `not-found` from then on, which is the
+       * app's cue to show it as removed.
        */
       remove(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
     };

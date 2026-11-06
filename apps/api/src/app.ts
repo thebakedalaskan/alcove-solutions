@@ -93,6 +93,27 @@ const MEDIA_PIECES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
 
 /**
+ * Reads what's left of a request that was answered before all of it arrived, as a refused piece is, once the answer has
+ * gone, and drops it, so the connection is ready for the next request. The Node adapter means to do this itself, but the
+ * request's body stream keeps the request paused. So on its own the adapter reads one chunk and closes the connection
+ * half a second later, and a client may already have sent its next request down it. The adapter's limits still hold: a
+ * body that's still arriving after 500 ms, or past 64 MiB, goes with its connection.
+ */
+function dropTheRest({ incoming, outgoing }: HttpBindings, body: ReadableStream<Uint8Array> | null, requestId: string): void {
+  if (!body || body.locked) return;
+  outgoing.once('finish', () => {
+    const reader = body.getReader();
+    const socket = incoming.socket;
+    const failed = (e: unknown) => rlog.debug('the rest of a request couldn’t be read', { requestId, err: e });
+    // The connection can go first, when the client gives up or the adapter's limits end it. Then there's nothing to drop.
+    const gone = () => { void reader.cancel().catch(failed); };
+    socket.once('close', gone);
+    const drop = async (): Promise<void> => { for (;;) if ((await reader.read()).done) return; };
+    void drop().catch(failed).finally(() => socket.off('close', gone));
+  });
+}
+
+/**
  * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
  * are keyed by client address; the ones that cost inference by account.
  */
@@ -249,6 +270,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       rlog.debug('request started', { bytes: Number(c.req.header('content-length') ?? 0) || undefined });
       await next();
       c.res.headers.set(REQUEST_ID_HEADER, requestId);
+      if (!c.env.incoming.complete) dropTheRest(c.env, c.req.raw.body, requestId);
       const ms = Math.round(performance.now() - t0);
       const status = c.res.status;
       const line = { status, ms };

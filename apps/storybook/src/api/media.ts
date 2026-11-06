@@ -5,6 +5,22 @@
  */
 import type { ScreenMoment } from '@alcove/api';
 
+/** A picture in a workspace, drawn when it's first read: a wash of `hue` with its name across the bottom, as a PNG. */
+export async function drawnPicture(name: string, hue: number, width: number, height: number): Promise<Blob> {
+  const canvas = new OffscreenCanvas(width, height);
+  const g = canvas.getContext('2d');
+  if (!g) return new Blob([], { type: 'image/png' });
+  const wash = g.createLinearGradient(0, 0, width, height);
+  wash.addColorStop(0, `hsl(${hue} 55% 82%)`);
+  wash.addColorStop(1, `hsl(${(hue + 40) % 360} 50% 48%)`);
+  g.fillStyle = wash;
+  g.fillRect(0, 0, width, height);
+  g.fillStyle = 'rgb(255 255 255 / 0.9)';
+  g.font = `600 ${Math.round(height / 14)}px system-ui, sans-serif`;
+  g.fillText(name, Math.round(width / 18), Math.round(height - height / 12));
+  return canvas.convertToBlob({ type: 'image/png' });
+}
+
 /** The most audio one segment is made with, so a long recording doesn't take a long time to make. */
 const MOST_SECONDS = 2 * 60 * 60;
 const RATE = 4000;

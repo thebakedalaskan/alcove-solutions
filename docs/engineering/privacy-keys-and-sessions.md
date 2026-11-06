@@ -128,6 +128,7 @@ index(purpose, value) = HMAC-SHA-256(HKDF(KMASTER, "alcove/index/v1"), purpose �
 | `ring` | The email address, trimmed and lower-cased | `call_rings.email_index` | Finding the rings for someone signed in. Its own purpose, so a row joins to no other table without `KMASTER` |
 | `addition-author` | The account's owner ID | `note_additions.author_index` | Taking everything an account added to the shared notes out of everyone's notes when it's deleted |
 | `call-seat` | A call's ID and someone's seat in it | `document_access.principal_index` | Who a document is shared with in a call. Only the API can work one out, from a call pass; it's different in every call |
+| `upload-guest` | The person a guest's call pass names, random for each person in each call | `media_guest_upload_days.guest_index` | Counting what a guest uploads in a day, on every instance and after a restart. It can't be matched to a call, a seat or a name |
 
 The hash is deterministic, so equal values show the same person across rows and accounts (see
 [What is still visible](#what-is-still-visible)), and anyone holding `KMASTER` can test a guessed address.
@@ -476,11 +477,13 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 A file in a workspace ([Data and storage › Media](data-and-storage.md#media)) is reached through a document that has it, and
 only that way, because a guest's seat covers one document. Whoever can open one of those documents can read the file, in Trash
 too. Adding one, or reusing one in another document, takes `edit` on that document, and reusing one takes being able to reach
-it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has it, and on every
-other document that has it that they can open, or reusing a picture would make it theirs to delete, and takes it from all of them.
-A document they can't open doesn't count, because being stopped by it would tell them it's there. What a workspace keeps and what each
-person uploads in a day are limited, the same for everyone: a guest's day is counted by the person their pass names, in the API's
-memory, and an account's in `media_upload_days`, a number a day ([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
+it already: an ID someone remembers or was told opens nothing. Deleting one takes `edit` on a document that has it, beyond a
+seat in a call, and on every other document that has it, whether they can open it or not, and takes it from all of them:
+reusing a picture doesn't make it theirs to delete, and nobody's file goes from a document they were never shown. A document
+they can't open refuses in the same words as one they can only read, so the refusal names neither. What a workspace keeps and
+what each person uploads in a day are limited, the same for everyone: an account's day is counted in `media_upload_days` and a
+guest's in `media_guest_upload_days`, under the `upload-guest` blind index of the person their pass names, a number a day
+([Data and storage › Media](data-and-storage.md#media)). `list` shows a reader what they can reach, and through which documents, and never a document they can't open.
 
 A picture or a player can't send a header and a guest has no cookie, so reading a file takes a URL with a token in it. The token
 is signed, as a call pass is, and lasts 12 hours. It says who's asking (an account's ID, a seat in a call, or both) and what
@@ -719,7 +722,7 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
 | Workspaces | That a workspace exists, how many people and documents it has and when each came, each one's role, that a document is shared and whether with an address or a seat in which call, how often it changes (`version`), when the oldest thing in its Trash went there, and that someone was tagged in a document and when, until they've heard. How many files it has, when each came, how big each is, and which documents share one. Never a name, a folder, how the tree is arranged, or what a file is called or is. `presenter_notes` shows which accounts keep notes on which documents, and so that those accounts could open them: one row each, of a size, and never what they say. Which calls use which workspaces, and what was worked on in them, is sealed in the meeting, the call and the note |
 | Documents | When each update was made and roughly how big it was and how many pieces it held, until it compacts, so when a document was being worked on and how hard; how big its state and versions are, how many versions it has and when each was kept; how many Yjs clients have written to it, which is about how many sessions, and how much each wrote, with nothing to link two clients to each other or to anyone. Never a word, a title, a mention or a comment. Carets and presence pass through Postgres's notice queue sealed, as notices of a size and at a time, each naming the workspace and, for a caret, the document |
 | Object store | Object count, sizes and timing: a recording writes about one object every 5 seconds, a shared screen one each time it changes (at most every 4 seconds), and a file one for every 4 MiB |
-| Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
+| Uploads | How many bytes each account uploaded to workspaces each day, today and yesterday, and each guest in a call, under a blind index that can't be matched to the call, the seat or a name. A file's row says which workspace it's in, how big it is and when it came, and not who uploaded it, but on a quiet day an account's bytes can be matched to one file's size and time, which shows that account uploaded it. And the service's limits, which are numbers and nothing of anyone's |
 | A file's URL | Readable by anyone who sees it, but only opaque IDs: the account or the call, seat and organizer asking, the workspace, document and file, and when it runs out. Alcove keeps it out of its logs, but a browser shows it to whoever opens a file by itself |
 | Ciphertext lengths | Not padded, so title, guest list, transcript, clip and own-notes lengths leak approximately. An answer to an invitation is padded: its length would say which of three words it is |
 | NEAR AI's models, inside their confidential VMs | Whisper: every transcript clip (the audio) and what was said in it. GLM: what someone selected in a document, when they ask Alcove to shorten it or turn it into a checklist, and nothing else about it; for notes, live notes, questions and catching up, the transcript, the meeting's title, the organizer's name, the invited people's names (or the part of an address before the @), the length, the summary, the question and the asker's name; for live notes and notes, also what people ticked and added to the follow-ups during the call; for captions, the lines asked for and the language; when shared screens were read, each frame's image, and what it read on them for the notes and answers; asking across a series, the same for up to 12 of the calls in it that the asker has notes from, their breakout rooms' too, with their dates (in the asker's time zone), decisions, open questions and follow-ups; comparing a call with earlier ones in its series, what those left standing (the organizer's notes: decisions and open questions), with this call's decisions and transcripts. Each request is sealed with Oblivious HTTP to the key the model's attestation vouches for, at its own endpoint, after the evidence is checked: Intel TDX, a published dstack OS image measured exactly, NVIDIA confidential GPUs, the measured configuration. The model code inside is NEAR AI's choice and isn't pinned ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)). |
@@ -826,8 +829,9 @@ connection](calls-and-recordings.md#recording-without-a-connection)), and so eac
   and isn't sent to anyone who opens the document after. Everyone's presenter notes on a document go with its `documents` row,
   by a foreign key, whichever account they're under.
 - **Deleting a file** from a workspace takes it from every document that has it, for everyone: rows and stored bytes in one
-  transaction, and its objects as above. It's refused for someone who can open one of those documents and can't edit it.
-  Taking its block out of a document deletes nothing: a version may still show it.
+  transaction, and its objects as above. It's refused for someone who can't edit every one of those documents, whether they
+  can open it or not, in words that name none of them, and for someone who can edit the document only through a seat in a
+  call. Taking its block out of a document deletes nothing: a version may still show it.
 - **Deleting your account** takes its presenter notes with its `owners` row, and also reaches every workspace its address still appears in, including ones it left: it comes
   out of them and off every document given to its address, unless another account still signs in with that address, and
   everything its calls gave people's seats ends. A workspace left with nobody in it is deleted, even if people outside it

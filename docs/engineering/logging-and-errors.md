@@ -92,14 +92,21 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   never an address, and never the answer, which is sealed so that nothing shows who's coming.
 - An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES`, a shared-screen frame over
   `MAX_FRAME_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
-  before the body is read.
+  before the body is read. Whatever's left of a request answered before all of it arrived is read and dropped once the
+  answer has gone, so its connection can take the next request. A body still arriving half a second later, or past 64 MiB,
+  goes with its connection, as the Node adapter has it.
 - A file's upload logs `upload started` and `upload finished` with its IDs, and its pieces at debug; deleting one logs `file
-  deleted`. A piece that's refused after reaching the store logs `piece not recorded; deleting its object`, at info for a refusal
-  and warn for a failure. A file that can't be read to the end has already sent its first bytes, so nothing reaches the client
+  deleted`. Deleting one refused because someone can edit its document only through a seat in a call is an ordinary
+  refusal: `forbidden` at info, with `why: 'only a seat'`. A piece that's refused after reaching the store logs `piece not
+  recorded; deleting its object`, at info for a refusal and warn for a failure. A file that can't be read to the end has
+  already sent its first bytes, so nothing reaches the client
   but a broken connection: it's `a file couldn’t be read to the end`, with the request's ID and the file's and piece's, at the
   level of what stopped it (info for someone who lost the document, warn for a limit, error for a failure). The Node adapter
-  also prints one generic line of its own to standard error. A read this side ends logs `a read was cut`, with its IDs and
-  why: it stopped and someone's waiting, or its time ran out. A piece that stopped arriving is an ordinary `503` at info.
+  also prints one generic line of its own to standard error. A read logs `a read has its place` at debug once it has one,
+  with its IDs and whether it waited. A read this side ends logs `a read was cut`, with its IDs and why: it stopped and
+  someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
+  waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
+  unless what answered it says it's an ordinary refusal.
 - An upload refused by a storage limit is an ordinary refusal at info: `409 conflict` for a full workspace or a day used up,
   `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context. A piece that takes a workspace past 80% of its
   limit logs `a workspace is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past

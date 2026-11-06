@@ -10,7 +10,7 @@ import {
   AlcoveApiError, DOC_SEED, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
   type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice,
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
-  type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceReadOptions, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
@@ -198,7 +198,7 @@ class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
 }
 export const liveWorkspace = (id: string): WorkspaceLive => new LiveWorkspace(id);
 
-/* ---------- files ---------- */
+/* ---------- files (from 519a0327, the workspace session's stand-in, in this branch's words) ---------- */
 
 /** The limit in force, as the API has it unless it's changed. */
 const MOST_BYTES = 512 * 1024 * 1024;
@@ -207,18 +207,20 @@ const UPLOAD_PIECES = 6;
 const PIECE_MS = 450;
 /** Where each file is read from, once it's been asked for: a player keeps it. They go with the story. */
 const urls = new Map<string, string>();
+const noFile = () => new AlcoveApiError('not-found', 'That file doesn’t exist, or you don’t have access to it.');
 
-/** A document or board you can edit, or why not. */
+/** The documents you can open in a workspace now. */
+/** A document or board you can edit, or why not, in the API's words. */
 function editable(id: string, documentId: string): WorkspaceItem {
   const item = treeOf(id).items.find((i) => i.id === documentId);
-  if (!item || item.kind === 'folder') throw notFound();
-  if (item.role !== 'edit') throw new AlcoveApiError('forbidden', 'You can only read this.');
+  if (!item || item.kind === 'folder') throw new AlcoveApiError('not-found', 'That document doesn’t exist, or you don’t have access to it.');
+  if (item.role !== 'edit') throw new AlcoveApiError('forbidden', 'You can read this, but not change it.');
   return item;
 }
 /** A file, as one of the documents you reach it through has it. */
 function fileIn(id: string, documentId: string, mediaId: string) {
   const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId && m.media.documents.includes(documentId));
-  if (!kept) throw new AlcoveApiError('not-found', 'That file isn’t there any more.');
+  if (!kept) throw noFile();
   return kept;
 }
 /** Keeps a file in a document, a piece at a time: through a lost connection it waits, and a stopped upload leaves nothing. */
@@ -233,7 +235,7 @@ export async function upload(id: string, documentId: string, file: File, o: Medi
     o.onProgress?.({ sent: Math.round((file.size * piece) / UPLOAD_PIECES), total: file.size });
   }
   const media: WorkspaceMedia = {
-    id: nextId('media'), name: file.name.replace(/\s+/g, ' ').trim() || 'File', type: servedType(file.type), size: file.size,
+    id: nextId('media').padEnd(22, '0'), name: file.name.replace(/\s+/g, ' ').trim() || 'File', type: servedType(file.type), size: file.size,
     width: o.width ?? null, height: o.height ?? null, createdAt: new Date().toISOString(), documents: [documentId]
   };
   current().media.unshift({ workspace: id, media, body: () => Promise.resolve(file) });
@@ -258,8 +260,9 @@ export async function pictureOf(id: string, documentId: string, mediaId: string,
 /** Reuses a file from another document of the same workspace, for someone who can edit this one. */
 export function attach(id: string, documentId: string, mediaId: string): void {
   editable(id, documentId);
-  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId);
-  if (!kept) throw new AlcoveApiError('not-found', 'That file isn’t there any more.');
+  const open = openable(treeOf(id));
+  const kept = current().media.find((m) => m.workspace === id && m.media.id === mediaId && m.media.documents.some((d) => open.has(d)));
+  if (!kept) throw noFile();
   if (!kept.media.documents.includes(documentId)) kept.media.documents = [...kept.media.documents, documentId];
 }
 /** Every file you can reach in a workspace, the newest first, each with the documents you reach it through. */
@@ -270,10 +273,17 @@ export function mediaIn(id: string): WorkspaceMedia[] {
     .map((m) => ({ ...m.media, documents: m.media.documents.filter((d) => open.has(d)) }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
-/** Deletes a file for good, for everyone: every document that had it shows it removed from then on. */
-export function removeMedia(id: string, documentId: string, mediaId: string): void {
+/**
+ * Deletes a file for good, for everyone, as the API does: refused for someone in only through a seat in a call (a pass,
+ * and no place in the workspace), and for anyone who can't edit every document that has it, seen or not, in words that
+ * name none of them. Every document that had it shows it removed from then on.
+ */
+export function removeMedia(id: string, documentId: string, mediaId: string, o: WorkspaceReadOptions = {}): void {
   editable(id, documentId);
-  fileIn(id, documentId, mediaId);
+  if (o.pass && treeOf(id).role === null) throw new AlcoveApiError('forbidden', 'You can work on this in the call, but you can’t delete its files for good.');
+  const kept = fileIn(id, documentId, mediaId);
+  const items = treeOf(id).items;
+  if (kept.media.documents.some((d) => items.find((i) => i.id === d)?.role !== 'edit')) throw new AlcoveApiError('forbidden', 'This file is also in a document you can’t edit.');
   const w = current();
   w.media = w.media.filter((m) => !(m.workspace === id && m.media.id === mediaId));
   const url = urls.get(mediaId);

@@ -50,6 +50,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `workspace_media_pieces` | owner, media, `seq`, object ID, the object's SHA-256 and length | (the object: a sealed piece of the file) |
 | `workspace_media_uses` | owner, media, document: which documents and boards have a file | — |
 | `media_upload_days` | owner (an account), `day` (UTC), `bytes`: what it uploaded to workspaces that day, for the limit on a day ([Media](#media)) | — |
+| `media_guest_upload_days` | `guest_index`, `day` (UTC), `bytes`: what a guest in a call uploaded that day, for the same limit ([Media](#media)) | `guest_index`, a blind index of the person the guest's pass names |
 | `service_limits` | `name`, `value`, `updated_at`: a limit changed while the service runs, which overrides its default ([Deployment › Changing a limit](deployment-and-acceptance.md#changing-a-limit)). Numbers only | — |
 | `object_gc` | object ID, owner, queued time, attempts, last error | — |
 
@@ -446,8 +447,9 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   invalid`, with how big one can be, "This file is bigger than 512 MiB, the most a file can be.", because only the server
   knows; a full workspace with `409 conflict`, "This workspace is full, so it can’t take more files."; and a day used up with
   `409 conflict`, "That’s all you can upload today. You can upload more tomorrow." A limit of zero refuses everything with
-  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, so
-  it survives a restart; a guest's is in the API's memory, by the person their pass names, because they have no account. A piece
+  "Files can’t be uploaded right now." Lowering a limit refuses what comes next and deletes nothing. An account's day is counted in `media_upload_days` as its pieces are kept, and
+  a guest's, who has no account, in `media_guest_upload_days`, by a blind index of the person their pass names: either way every
+  instance counts the same day, and a restart forgets nothing. A piece
   that takes a workspace or someone's day past 80% of its limit logs it at warn, once each time it's crossed.
 - **Reuse.** `attach` puts a file in another document of the workspace, for someone who can edit that document and can
   already reach the file, and a copy of a document has what the original has, in the transaction that makes it. It's still one
@@ -517,9 +519,12 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   refuses stays queued for maintenance. Use rows only change under the workspace's lock: adding one shares the lock and
   taking one away holds it alone, so a file can't be given out as it goes.
 - **Deleting one.** `DELETE …/media/:media` deletes a file for good, the same way, for anyone who can edit a document that has
-  it: every use goes with it. They have to be able to edit every document that has it that they can open, or it's `forbidden`,
-  so reusing a picture doesn't make it yours to delete. A version or another document that still shows it gets `not-found` from
-  then on, as for any file that isn't there, and the app shows it as removed.
+  it: every use goes with it. They have to be able to edit every document that has it, whether they can open it or not, or
+  it's `forbidden`: reusing a picture doesn't make it yours to delete, and nobody's file goes from a document you were never
+  shown. One you can't open is refused in the same words as one you can only read, "This file is also in a document you can’t
+  edit.", so it names neither. Someone who can edit the document only through a seat in a call is refused too, as `forbidden`:
+  a seat is for working on it in the call, and taking the file's block out of it still works. A version or another document
+  that still shows it gets `not-found` from then on, as for any file that isn't there, and the app shows it as removed.
 
 ### Live traffic
 
@@ -719,8 +724,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **A tag** lasts until its person has heard, for at most 30 days, and goes before that with its document or their access.
 - **A file in a workspace** stays until someone deletes it or every document that has it is deleted for good, Trash
   included, and an upload nobody finished for a day. A limit going down never deletes one.
-- **`media_upload_days`** keeps today and yesterday: upkeep deletes anything older, and it goes with its account. A guest's count
-  is in the API's memory, for the day.
+- **`media_upload_days`** and **`media_guest_upload_days`** keep today and yesterday: upkeep deletes anything older. An account's
+  rows also go with the account.
 - **`service_limits`** keeps a value until someone changes or deletes it.
 - **Seats** in `document_access` last while their call does.
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the

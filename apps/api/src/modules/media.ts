@@ -17,11 +17,12 @@
 import { FILE_TYPE, MEDIA_PIECE_BYTES, MediaInputSchema, type WorkspaceMedia } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
-import { concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../crypto';
+import { blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../crypto';
 import { bigintText, bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../db';
 import { ConflictError, ForbiddenError, IntegrityError, InternalError, NotFoundError, UnavailableError, invalid, notFound, toAppError } from '../errors';
 import { limitsNow, shown, type Limits } from '../limits';
 import { currentLogContext, log, withLogContext } from '../log';
+import { masterKey } from '../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../mediaToken';
 import { deleteQueued, queueDelete } from './audio';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './workspaceAccess';
@@ -221,37 +222,41 @@ const opens = (who: Who, w: Workspace, documentId: string): boolean => {
   const item = w.state.items[documentId];
   return item !== undefined && roleOf(who, w, documentId, item) !== undefined;
 };
-/** The documents this reader can reach a file through: they say whether it exists for them at all. */
-async function reachedThrough(who: Who, w: Workspace, db: Db, mediaId: string): Promise<string[]> {
+/** Every document that has a file, whoever can open it. */
+async function documentsWith(w: Workspace, db: Db, mediaId: string): Promise<string[]> {
   if (!ID128.test(mediaId)) return [];
-  const uses = await rows(db, z.object({ document_id: z.string() }), 'SELECT document_id FROM workspace_media_uses WHERE owner_id = $1 AND media_id = $2 ORDER BY document_id', [w.owner.ownerId, mediaId]);
-  return uses.map((u) => u.document_id).filter((id) => opens(who, w, id));
+  return (await rows(db, z.object({ document_id: z.string() }), 'SELECT document_id FROM workspace_media_uses WHERE owner_id = $1 AND media_id = $2 ORDER BY document_id', [w.owner.ownerId, mediaId])).map((u) => u.document_id);
 }
+/** The documents this reader can reach a file through: they say whether it exists for them at all. */
+const reachedThrough = async (who: Who, w: Workspace, db: Db, mediaId: string): Promise<string[]> => (await documentsWith(w, db, mediaId)).filter((id) => opens(who, w, id));
 const wire = (id: string, info: Info, createdAt: Date, documents: string[]): WorkspaceMedia => ({ id, name: info.name, type: info.type, size: info.size, width: info.width, height: info.height, createdAt: createdAt.toISOString(), documents });
 
 /* ---------- what can be kept ---------- */
 
-/** Who an upload counts against: an account, or a guest, by the person their pass names. */
-interface Uploader { key: string; account: string | undefined; callId: string | undefined }
-const uploaderOf = (r: Reader): Uploader => ({ key: limitKey(r), account: r.account?.owner.ownerId, callId: r.account ? undefined : r.seat?.callId });
+/** Who an upload counts against: an account, or a guest, by a blind index of the person their pass names. */
+type Uploader = { account: string } | { guest: Uint8Array; callId: string | undefined };
+const uploaderOf = (d: Deps, r: Reader): Uploader =>
+  (r.account ? { account: r.account.owner.ownerId } : { guest: blindIndex(masterKey(d), 'upload-guest', limitKey(r)), callId: r.seat?.callId });
 /** What each limit allows, the same for everyone. */
 interface Allowed { file: number; workspace: number; day: number }
 const allowedBy = (limits: Limits): Allowed => ({ file: limits.get('media.file_bytes'), workspace: limits.get('media.workspace_bytes'), day: limits.get('media.account_day_bytes') });
 
 /** Today, as uploads are counted: in UTC. */
 const today = (): string => new Date().toISOString().slice(0, 10);
-/** What each guest uploaded today, by the person their pass names. They have no account to count it under, so it's kept here, and a restart forgets it. */
-const guestDays = new Map<string, { day: string; bytes: number }>();
-const guestToday = (key: string): number => { const g = guestDays.get(key); return g?.day === today() ? g.bytes : 0; };
-function countGuest(key: string, bytes: number): number {
-  const day = today();
-  const now = (guestDays.get(key)?.day === day ? guestToday(key) : 0) + bytes;
-  guestDays.set(key, { day, bytes: now });
-  return now;
-}
 async function uploadedToday(db: Db, u: Uploader): Promise<number> {
-  if (!u.account) return guestToday(u.key);
-  return (await maybeOne(db, z.object({ bytes: bigintText }), 'SELECT bytes FROM media_upload_days WHERE owner_id = $1 AND day = $2', [u.account, today()]))?.bytes ?? 0;
+  const Day = z.object({ bytes: bigintText });
+  if ('guest' in u) return (await maybeOne(db, Day, 'SELECT bytes FROM media_guest_upload_days WHERE guest_index = $1 AND day = $2', [u.guest, today()]))?.bytes ?? 0;
+  return (await maybeOne(db, Day, 'SELECT bytes FROM media_upload_days WHERE owner_id = $1 AND day = $2', [u.account, today()]))?.bytes ?? 0;
+}
+/** Counts a kept piece towards its uploader's day, in the piece's own transaction, and says where the day stands now. */
+async function countDay(c: Db, u: Uploader, bytes: number): Promise<number> {
+  const Day = z.object({ bytes: bigintText });
+  const day = 'guest' in u
+    ? await maybeOne(c, Day, `INSERT INTO media_guest_upload_days (guest_index, day, bytes) VALUES ($1, $2, $3)
+        ON CONFLICT (guest_index, day) DO UPDATE SET bytes = media_guest_upload_days.bytes + excluded.bytes RETURNING bytes`, [u.guest, today(), bytes])
+    : await maybeOne(c, Day, `INSERT INTO media_upload_days (owner_id, day, bytes) VALUES ($1, $2, $3)
+        ON CONFLICT (owner_id, day) DO UPDATE SET bytes = media_upload_days.bytes + excluded.bytes RETURNING bytes`, [u.account, today(), bytes]);
+  return day?.bytes ?? bytes;
 }
 const storedBy = async (db: Db, w: Place): Promise<number> => (await maybeOne(db, z.object({ stored_bytes: bigintText }), 'SELECT stored_bytes FROM owners WHERE owner_id = $1', [w.owner.ownerId]))?.stored_bytes ?? 0;
 
@@ -281,14 +286,13 @@ const passes80 = (before: number, after: number, limit: number): boolean => befo
 function nearTheLimits(w: Place, u: Uploader, allowed: Allowed, stored: { before: number; after: number }, day: { before: number; after: number }): void {
   if (passes80(stored.before, stored.after, allowed.workspace)) mlog.warn('a workspace is past 80% of its storage', { workspaceId: w.workspaceId, storedBytes: stored.after, limitBytes: allowed.workspace });
   if (passes80(day.before, day.after, allowed.day)) {
-    mlog.warn('someone is past 80% of what they can upload today', { ...(u.account ? { ownerId: u.account } : { callId: u.callId ?? null }), uploadedBytes: day.after, limitBytes: allowed.day });
+    mlog.warn('someone is past 80% of what they can upload today', { ...('guest' in u ? { callId: u.callId ?? null } : { ownerId: u.account }), uploadedBytes: day.after, limitBytes: allowed.day });
   }
 }
-/** Forgets what was uploaded before yesterday, here and in the database. Returns how many rows went. */
+/** Forgets what accounts and guests uploaded before yesterday. Returns how many rows went. */
 export async function pruneUploadDays(d: Pick<Deps, 'pool'>): Promise<number> {
-  const day = today();
-  for (const [key, g] of guestDays) if (g.day !== day) guestDays.delete(key);
-  return exec(d.pool, 'DELETE FROM media_upload_days WHERE day < $1', [new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)]);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  return await exec(d.pool, 'DELETE FROM media_upload_days WHERE day < $1', [yesterday]) + await exec(d.pool, 'DELETE FROM media_guest_upload_days WHERE day < $1', [yesterday]);
 }
 
 /* ---------- putting a file in a document ---------- */
@@ -302,7 +306,7 @@ export async function mayAdd(d: Deps, who: Who, workspaceId: string, documentId:
 export async function begin(d: Deps, who: Reader, workspaceId: string, documentId: string, input: z.output<typeof MediaInputSchema>): Promise<{ id: string }> {
   const id = id128();
   const pieces = Math.ceil(input.size / MEDIA_PIECE_BYTES);
-  const u = uploaderOf(who);
+  const u = uploaderOf(d, who);
   const allowed = allowedBy(await limitsNow(d));
   await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, who, workspaceId, c, 'hold');
@@ -339,7 +343,7 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
   const info = openInfo(w, mediaId, m.info_ciphertext);
   const length = pieceLength(info, seq);
   if (body.declared > length) throw invalid('That piece is the wrong size.', { ...where, bytes: body.declared, length });
-  const u = uploaderOf(who);
+  const u = uploaderOf(d, who);
   const allowed = allowedBy(await limitsNow(d));
   await withinLimits(d.pool, w, u, allowed, info.size, length);
 
@@ -349,12 +353,12 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     const bytes = await arrived(body, where);
     if (bytes.length !== length) throw invalid('That piece is the wrong size.', { ...where, bytes: bytes.length, length });
     const { objectId, digest, sealed } = await inTurn(() => sealedObject(w, mediaId, seq, bytes));
-    let kept: { stored: number; day: number | undefined } | undefined;
+    let kept: { stored: number; day: number } | undefined;
     try {
       kept = await tx(d.pool, async (c) => {
         // The account's row before the workspace's, the order deleting an account takes them in, so the two can't wait on
         // each other: counting the piece towards its day below takes a lock on that row too.
-        if (u.account) await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR KEY SHARE', [u.account]);
+        if ('account' in u) await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR KEY SHARE', [u.account]);
         const held = await workspaceFor(d, who, workspaceId, c, 'hold');
         requireDocument(who, held, documentId, 'edit');
         if (!(await fileIn(held, c, documentId, mediaId, true))) throw noFile(held, documentId, mediaId);
@@ -363,9 +367,7 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
         await exec(c, 'UPDATE workspace_media SET bytes = bytes + $3 WHERE owner_id = $1 AND media_id = $2', [held.owner.ownerId, mediaId, sealed]);
         const owner = await maybeOne(c, z.object({ stored_bytes: bigintText }), 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1 RETURNING stored_bytes', [held.owner.ownerId, sealed]);
         // What they sent counts towards their day, with the piece, so a piece that isn't kept isn't counted.
-        const day = u.account ? await maybeOne(c, z.object({ bytes: bigintText }), `INSERT INTO media_upload_days (owner_id, day, bytes) VALUES ($1, $2, $3)
-          ON CONFLICT (owner_id, day) DO UPDATE SET bytes = media_upload_days.bytes + excluded.bytes RETURNING bytes`, [u.account, today(), bytes.length]) : undefined;
-        return { stored: owner?.stored_bytes ?? sealed, day: day?.bytes };
+        return { stored: owner?.stored_bytes ?? sealed, day: await countDay(c, u, bytes.length) };
       });
     } catch (e) {
       mlog.at(toAppError(e).status < 500 ? 'info' : 'warn', 'piece not recorded; deleting its object', { ...where, objectId, err: e });
@@ -374,8 +376,7 @@ export async function storePiece(d: Deps, who: Reader, workspaceId: string, docu
     }
     if (kept) {
       mlog.debug('piece stored', { ...where, bytes: sealed });
-      const day = kept.day ?? countGuest(u.key, bytes.length);
-      nearTheLimits(w, u, allowed, { before: kept.stored - sealed, after: kept.stored }, { before: day - bytes.length, after: day });
+      nearTheLimits(w, u, allowed, { before: kept.stored - sealed, after: kept.stored }, { before: kept.day - bytes.length, after: kept.day });
       return;
     }
     mlog.info('piece raced a retry; dropping the duplicate', where);
@@ -626,6 +627,7 @@ export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Respon
     const context = currentLogContext();
     const cut = (why: string) => { withLogContext(context, () => { mlog.info('a read was cut', { workspaceId: t.workspaceId, documentId, mediaId, why }); r.cut(); }); };
     const place = await reading.enter(asker, () => { cut('it stopped, and someone is waiting'); }, r.closed);
+    mlog.debug('a read has its place', { workspaceId: t.workspaceId, documentId, mediaId, waited: place.waited });
     const ends = setTimeout(() => { cut('its time ran out'); }, d.cfg.MEDIA_READ_MS).unref();
     const letGo = () => { clearTimeout(ends); place.leave(); };
     if (r.closed.aborted) { letGo(); throw browserLeft(); }
@@ -682,16 +684,22 @@ async function forget(o: Pick<Owner, 'ownerId'>, db: Db, mediaIds: string[]): Pr
  * Deletes a file for good, for everyone, or takes back an upload that hasn't finished: for anyone who can edit a document
  * that has it, because deleting is physical and a photo put in by mistake mustn't wait for its document to go. Every use
  * goes with it, so a version or another document that showed it now gets `not-found`, which the app shows as removed.
- * Someone who can open a document that has it and can't edit that one is refused, or reusing a picture would make it
- * theirs to delete. A document they can't open doesn't count, because being stopped by it would tell them it's there.
+ * They have to be able to edit every document that has it, beyond a seat in a call, whether they can open it or not:
+ * reusing a picture doesn't make it theirs to delete, and nobody's file goes from a document they were never shown. A
+ * document they can't open refuses in the same words as one they can't edit, naming neither. Someone who can edit this
+ * one only through a seat is refused before anything else: a seat is for working on it in the call, which taking the
+ * file's block out of it is, and deleting the file for everyone isn't.
  */
 export async function remove(d: Deps, who: Who, workspaceId: string, documentId: string, mediaId: string): Promise<void> {
   const ownerId = await tx(d.pool, async (c) => {
     const w = await workspaceFor(d, who, workspaceId, c, 'change');
-    requireDocument(who, w, documentId, 'edit');
+    const doc = requireDocument(who, w, documentId, 'edit');
+    if (roleOf(who, { role: w.role, grants: w.lasting }, documentId, doc.item) !== 'edit') {
+      throw new ForbiddenError('You can work on this in the call, but you can’t delete its files for good.', { level: 'info', context: { workspaceId, documentId, mediaId, why: 'only a seat' } });
+    }
     if (!(await fileIn(w, c, documentId, mediaId))) throw noFile(w, documentId, mediaId);
-    const shown = await reachedThrough(who, w, c, mediaId);
-    const stays = shown.find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, w, id, item) !== 'edit'; });
+    const lasting = { role: w.role, grants: w.lasting };
+    const stays = (await documentsWith(w, c, mediaId)).find((id) => { const item = w.state.items[id]; return item !== undefined && roleOf(who, lasting, id, item) !== 'edit'; });
     if (stays) throw new ForbiddenError('This file is also in a document you can’t edit.', { context: { workspaceId, documentId: stays, mediaId } });
     await forget(w.owner, c, [mediaId]);
     return w.owner.ownerId;
