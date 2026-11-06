@@ -2449,6 +2449,36 @@ describe('what the previous release stored', () => {
     expect(JSON.stringify((await storedCall(art.ownerId, callId)).state['workspace'])).not.toContain(other);
   });
 
+  it('keeps a presentation the next release writes through a save that doesn’t change it', async () => {
+    const art = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product', [[priya, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
+    const p = await invited(host, c, priya);
+    await host.openBoard({ template: 'blank' });
+    const board = (await opened(host))?.documentId ?? '';
+    await p.startPresenting('board', board);
+    // As the next release keeps presenting: the board, with which presentation it is and since when, the workspace presented,
+    // and how the last presentation ended.
+    const { callId } = host.ticket;
+    const was = await storedCall(art.ownerId, callId);
+    const Space = z.object({ present: z.array(z.object({ by: z.unknown() }).passthrough()) }).passthrough();
+    const space = Space.parse(was.state['workspace']);
+    const by = space.present[0]?.by;
+    if (!by) throw new Error('nothing presented');
+    const present = space.present.map((x) => ({ ...x, key: 'k2', since: 3 }));
+    const presenting = [{ place: 'main', workspaceId: id, key: 'k1', since: 1, by }];
+    const ended = [{ place: 'main', key: 'k0', close: true, by, at: 2 }];
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [art.ownerId, callId, sealJson(was.key, was.header, toJson({ ...was.state, workspace: { ...space, present, space: presenting, ended } }))]);
+
+    // Priya raises her hand through this release, which reads the call and saves it: the board is still presented, and all of
+    // it is kept as it was written.
+    expect((await action(priya, p, { type: 'hand', up: true })).status).toBe(200);
+    expect((await settle(host, (s) => s.participants.some((x) => x.id === p.ticket.identity && x.hand))).workspace.present).toMatchObject({ kind: 'board', id: board });
+    const after = Space.parse((await storedCall(art.ownerId, callId)).state['workspace']);
+    expect({ present: after.present, space: after['space'], ended: after['ended'] }).toEqual({ present, space: presenting, ended });
+  });
+
   it('a call it saved while rooms have boards still keeps each with its room, and everyone invited has them after, none in Trash', async () => {
     const r = await inRooms({ mode: 'each', template: 'blank' });
     const one = (await opened(r.k))?.documentId ?? '';

@@ -589,7 +589,7 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
         const now = y.s.workspace;
         const still = board ? y.s.board.open[boardPlace(y.s, place)]?.documentId === a.id : viewedIn(y.meeting.manifest, now) === from;
         if (!still || y.place !== place || presentSlot(y.s, now.present.find((p) => p.place === place)) !== slot) return 'again';
-        const next: Presenting = { place, workspaceId: from, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader) };
+        const next: Presenting = { place, workspaceId: from, kind: a.kind, id: a.id, section: a.section, by: controllerOf(v, reader), key: '', since: 0 };
         return { s: withSpace(y.s, { ...now, present: [...now.present.filter((p) => p.place !== place), next] }) };
       };
     }
