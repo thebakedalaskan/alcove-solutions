@@ -46,15 +46,20 @@ ideas from the call) is **`CallState.board`**, sealed in the call's state.
 Three roots.
 
 - `objects`, a `Y.Map` of id to `Y.Map`, one per object. Ids are 12 random base64url characters from the browser.
-- `places`, one shared `Y.Array` of `{ k, x, y, w, h }`: where each object is. Each browser keeps its own run in it: a write puts the places it
-  changes, as one block, right after the last entry that browser wrote (a browser's first write goes at the end), and deletes the entries they
-  replace. When two browsers write one key at once, the later entry in the list wins. It's its own root because of how Yjs stores what's
+- `places`, one shared `Y.Array` of `{ k, x, y, w, h, f, n }`: where each object with a box is, and `f`, the frame it's in. Each browser keeps
+  its own run in it, as the Yjs client it is: a write puts the places it changes, as one block, right after the last entry that client wrote (a
+  client's first write starts its run at the start of the list), and deletes the entries they replace. Of an object's entries, the one with the
+  highest `n` wins, and a write's `n` is one more than the place it replaces, so a move made after another wins wherever it sits; of two
+  written at once from the same place, with the same `n`, the later entry in the list wins. Two kinds of entry are never deleted: one this
+  release can't read, which may be a later release's, and a browser's own from before its client changed, which happens when Alcove refuses
+  an update, so that nothing written after a refusal waits on it. Either loses to what's written after it. It's its own root because of how Yjs stores what's
   superseded: a `Y.Map` keeps every old value of a key for ever, so a busy board's `x` and `y` would reach the document's structure ceiling
   through churn alone, in about 300 two-second drags, while a run of one browser's deleted entries collapses into one struct. Measured over
   100,000 moves, each heard as it's made, dragging added 2 structs for one person dragging one sticky, 4 for two people each dragging their own
   sticky at the same time, and 3 for two people each dragging their own 200 stickies. Two people dragging the same sticky at the same moment
   added 50,001, one for every two moves (never more than one per move), and two people taking turns of 13 moves on one sticky 3,849. As map
-  keys, the same moves added 200,000. Everything a drag changes lives here and nothing else does.
+  keys, the same moves added 200,000. Everything a drag changes lives here and nothing else does: a box and a frame are one entry, so two
+  people's moves at once leave one person's both, never one's box and the other's frame.
 - `comments`, a `Y.Map` of thread id to `Y.Map`, each with a `Y.Array` of replies, as a document's are. A thread names the
   object it's pinned to.
 
@@ -65,14 +70,15 @@ Three roots.
 | `shape` | `s` `rect`/`ellipse`/`diamond`/`pill`, `c` colour or none | `t` |
 | `frame` | `c` the colour new stickies take inside it, or `''`; `role` `''`/`actions`; `hint` (shown while it's empty); `sub` (beside the title: who was in a room) | `title` |
 | `line` | `style` `elbow`/`straight`/`curve`, `from`, `to`: each `{ on, side }` or `{ x, y }` (no `x y w h`) | none |
-| `ink` | `tool` `pen`/`marker`, `c`, `pts` flat numbers relative to `x y`, at most 2000 points | none |
+| `ink` | `tool` `pen`/`marker`, `c`, `pts` flat numbers, each a fraction of its box from its top left, at most 2000 points: a resize is only a new place | none |
 | `image` | `media` | none |
 | `shot` | `media`, `caption` | none |
 | `link` | `item`, a workspace item's id and nothing else | none |
 | `table` | `rows`, `cols`: each a `Y.Array` of `{ id, size }` | `cells`, a `Y.Map` of `Y.Text` keyed `<rowId>:<colId>` |
 | `node` | a mind map's node: `parent` | `t` |
 
-A `line` has no place. `at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`. A frame sits in
+A `line` has no place: its ends and its frame are in its map, written together when it moves. `at` orders objects within a layer (frames, then lines,
+then everything else); `f` is the frame an object sits in, or `''`. A frame sits in
 another only when the other holds its whole box, so dropping one frame beside another never turns a slide into a child.
 A frame's order on the board is its order as slides. `x y w h` are board units, absolute: moving a frame moves what's in it, in
 one transaction. `t` and `title` are `Y.Text`, so two people typing in one sticky merge. Everything else is last-write-wins per
@@ -104,6 +110,9 @@ So undo only ever takes back your own changes, and nobody's work is lost: the on
 press that can do nothing moves on to the step before it, so a press always does something if it can. A step that can't apply only because its object
 is gone stays where it is, so it can still apply once the object comes back. Each stack keeps the last 100 steps. Redo is the same walk the other way. A
 step is one transaction, or everything between `begin()` and `end()`: a drag, or all that's typed in one go. "Sort into themes" is one step.
+What arrives in its own time, as Sort's answer does, or a picture of a screen from the call, is a step of its own whatever's under way
+(`separate`): typing on, dragging, or a blank sticky going again never takes it with them, and the toast's Undo takes back that step itself
+(`undoStep`), wherever it is in the undo.
 
 Deleting an object takes the lines attached to it in the same transaction; a line left pointing at nothing by a concurrent delete isn't drawn.
 
@@ -204,7 +213,8 @@ board: {
 - **Ideas from the call** run only while notes are on, from the part of the call you're in, at most once a minute while a board is open,
   through `inference.ts`. Each names who said it and the frame it fits. Adding one writes a sticky. Nothing is kept once it's added
   or dismissed.
-- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction. Someone asked
+- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction, an undo of its own,
+  which the toast's Undo takes back whatever's been done since. Someone asked
   for it, about what people wrote, so it works with notes off and on a board's page. While a call is paused nothing goes to the AI, so the
   server refuses and the bar doesn't offer it.
 

@@ -9,7 +9,7 @@
 import { errorCode, type LiveStore } from '@alcove/api';
 import {
   BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, applyThemes, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, isAttached, makeHistory, objectText, observeBoard, readBoard,
-  removeObjects, type BoardHistory, type BoardObject, type BoardTheme, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
+  removeObjects, type BoardHistory, type BoardObject, type BoardStep, type BoardTheme, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
 import type { BoardMoreItem, BoardTool, ToastOptions } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
@@ -270,6 +270,18 @@ export class Board implements LiveStore<BoardState> {
     return result;
   }
 
+  /**
+   * A change of this person's that arrives in its own time, such as Sort's answer or a picture of a screen, as an undo of its own
+   * whatever step is under way: typing on, dragging, or a blank sticky going again leaves it be. Returns the step it made, to
+   * take back by itself, or null if it changed nothing.
+   */
+  writeApart<T>(change: () => T): { result: T; step: BoardStep | null } {
+    this.untouched = false;
+    const done = this.history ? this.history.separate(change) : { result: change(), step: null };
+    this.read();
+    return done;
+  }
+
   /** Goes a step back or forward. If one can't finish, what went back stays back and the board carries on. */
   private travel(step: (history: BoardHistory) => StepResult): void {
     const { history } = this;
@@ -282,6 +294,11 @@ export class Board implements LiveStore<BoardState> {
   /** Takes back this person's last change, and only theirs, whatever anyone else has done since. */
   undo(): void {
     this.travel((history) => history.undo());
+  }
+
+  /** Takes back one change of this person's, wherever it is in their undo, if it hasn't been taken back already. */
+  undoStep(step: BoardStep): void {
+    this.travel((history) => history.undoStep(step));
   }
 
   redo(): void {
@@ -337,8 +354,9 @@ export class Board implements LiveStore<BoardState> {
 
   /**
    * Sort into themes, on the stickies picked. `ask` asks confidential compute, which answers with the themes. They're written as
-   * this person's change, so the stickies travel into their themes together and one undo puts it all back, and the toast says how
-   * many themes there are, with Undo. A board that has closed meanwhile writes nothing, and one that couldn't be sorted says so.
+   * this person's change, an undo of its own whatever they've started meanwhile, so the stickies travel into their themes together
+   * and one undo puts it all back. The toast says how many themes there are, and its Undo takes back the sort itself, whatever's
+   * been done since. A board that has closed meanwhile writes nothing, and one that couldn't be sorted says so.
    */
   async sortIntoThemes(stickies: readonly string[], ask: (stickies: readonly string[]) => Promise<readonly BoardTheme[]>): Promise<void> {
     if (!this.canEdit || this.state.sorting || stickies.length < 2) return;
@@ -352,10 +370,9 @@ export class Board implements LiveStore<BoardState> {
         this.tell('Those stickies have gone, so there was nothing to sort.');
         return;
       }
-      this.untouched = false;
-      this.settle(() => this.write(() => applyThemes(this.doc, found, this.origin)));
+      const { step } = this.settle(() => this.writeApart(() => applyThemes(this.doc, found, this.origin)));
       this.set({ sel: [] });
-      this.tell(`Sorted into ${found.length} ${found.length === 1 ? 'theme' : 'themes'}.`, { icon: 'group', action: { label: 'Undo', onClick: () => this.undo() } });
+      this.tell(`Sorted into ${found.length} ${found.length === 1 ? 'theme' : 'themes'}.`, { icon: 'group', ...(step ? { action: { label: 'Undo', onClick: () => this.undoStep(step) } } : {}) });
     } catch (e) {
       log.warn('sort into themes failed', { code: errorCode(e), stickies: stickies.length });
       if (this.sheet) this.tell('Couldn’t sort these into themes. Try again.');

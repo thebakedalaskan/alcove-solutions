@@ -1,7 +1,8 @@
 /*
  * Every change to a board, each one a single `doc.transact` under the caller's origin, so even something as big
- * as Sort into themes is one undo. Where things are is written to `places` and everything else to their Y.Maps, and each
- * write ends by deleting the places it replaced, so a move is a delete and a push in one transaction. A write brings what it's given inside the limits, or refuses it, and checks
+ * as Sort into themes is one undo. Where things are, and the frame each is in, is written to `places` and everything else to
+ * their Y.Maps, and each write ends by deleting the places it replaced, so a move is a delete and an insert in one transaction.
+ * A line has no place, so a move writes its ends and its frame together, and two people's moves at once leave one person's all three. A write brings what it's given inside the limits, or refuses it, and checks
  * the result with the schema `readBoard` uses, so nothing written here is left out for anyone. Text people are
  * typing doesn't come through here: that's the object's Y.Text, from `objectText`, and the surface keeps each one
  * inside the limit. Two browsers merging can still pass it, which is why `readBoard` cuts text rather than leaving it
@@ -12,8 +13,9 @@ import { bounds, centre, contains, frameAt, holds } from './geometry';
 import { rootList, setPlace, tidyPlaces } from './places';
 import { listOf, mapOf, readBoard, recordOf, rootMap, same } from './read';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardObjectSchema, LineEndSchema, PLACE_FIELDS, PlaceSchema, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
-  type BoardAuthor, type BoardObject, type BoardReply, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineStyle, type NewObject, type NoteObject, type Place, type PlacedObject, type ShapeKind, type StickyColour
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, BOARD_PLACES, BOARD_REACH, BoardObjectSchema, LineEndSchema, NewPlaceSchema, PLACE_FIELDS, TABLE_MAX, TableLineSchema, cellKey, cut, hasBox, isAttached, layerOf, newId,
+  type BoardAuthor, type BoardObject, type BoardReply, type BoardView, type Box, type FrameObject, type InkColour, type LineEnd, type LineObject, type LineStyle, type NewObject, type NewPlace, type NoteObject, type PlacedObject,
+  type ShapeKind, type StickyColour
 } from './shape';
 
 /** Where an object was let go. */
@@ -67,7 +69,7 @@ function limited(key: string, value: unknown): unknown {
   if (typeof value === 'number' && (key === 'x' || key === 'y')) return reach(value);
   if (typeof value === 'number' && (key === 'w' || key === 'h')) return side(value);
   if (typeof value === 'string' && WORDS.has(key)) return cut(value);
-  if (key === 'pts' && Array.isArray(value)) return value.slice(0, Math.min(value.length - (value.length % 2), BOARD_LIMITS.points * 2));
+  if (key === 'pts' && Array.isArray(value)) return value.slice(0, Math.min(value.length - (value.length % 2), BOARD_LIMITS.points * 2)).map((n: unknown) => (typeof n === 'number' ? between(0, 1, n) : n));
   return value;
 }
 
@@ -94,12 +96,13 @@ const PLACED = new Set<string>(PLACE_FIELDS);
 /**
  * Writes an object from plain values, under its id, with its place. It's the one place an object's Y.Map is made: everything
  * that adds one comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written
- * if it has words, as cells are made on their first write.
+ * if it has words, as cells are made on their first write. A line has no place, so its `f` goes in its map.
  */
 export function put({ objects, places }: Board, id: string, fields: Record<string, unknown>): void {
   const m = new Y.Map<unknown>();
+  const boxed = fields['k'] !== 'line';
   for (const [key, value] of Object.entries(fields)) {
-    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || PLACED.has(key)) continue;
+    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || (boxed && PLACED.has(key))) continue;
     m.set(key, (key === 't' || key === 'title') && typeof value === 'string' ? new Y.Text(value) : value);
   }
   if (fields['k'] === 'table') {
@@ -114,9 +117,9 @@ export function put({ objects, places }: Board, id: string, fields: Record<strin
   if (place) setPlace(places, place);
 }
 
-/** Where something is, from its fields, or null if it has no box, as a line hasn't. */
-export function placeFrom(id: string, fields: Record<string, unknown>): Place | null {
-  const place = PlaceSchema.safeParse({ k: id, x: fields['x'], y: fields['y'], w: fields['w'], h: fields['h'] });
+/** Where something is and the frame it's in, from its fields, or null if it has no box, as a line hasn't. */
+export function placeFrom(id: string, fields: Record<string, unknown>): NewPlace | null {
+  const place = NewPlaceSchema.safeParse({ k: id, x: fields['x'], y: fields['y'], w: fields['w'], h: fields['h'], f: fields['f'] });
   return place.success ? place.data : null;
 }
 
@@ -152,10 +155,18 @@ export function writing<T>(doc: Y.Doc, origin: unknown, refused: T, change: (boa
   }, origin);
 }
 
-/** Puts something with a box somewhere new, if that's not where it is. */
-function place(board: Board, o: PlacedObject, box: Box): void {
-  if (o.x === box.x && o.y === box.y && o.w === box.w && o.h === box.h) return;
-  setPlace(board.places, { k: o.id, x: box.x, y: box.y, w: box.w, h: box.h });
+/** Puts something with a box somewhere new, in the frame `f`, if that's not where it is. */
+function place(board: Board, o: PlacedObject, at: Box & { f: string }): void {
+  if (o.x === at.x && o.y === at.y && o.w === at.w && o.h === at.h && o.f === at.f) return;
+  setPlace(board.places, { k: o.id, x: at.x, y: at.y, w: at.w, h: at.h, f: at.f });
+}
+
+/** A line's ends and the frame it's in, written together whenever any of them changes: of two people's moves at once, the same one wins all three. */
+function moveLine(m: Y.Map<unknown>, line: LineObject): void {
+  if (same(m.get('from'), line.from) && same(m.get('to'), line.to) && m.get('f') === line.f) return;
+  m.set('from', line.from);
+  m.set('to', line.to);
+  m.set('f', line.f);
 }
 
 const lastRead = new WeakMap<Y.Doc, BoardView>();
@@ -311,28 +322,26 @@ function shifted(view: BoardView, shifts: ReadonlyMap<string, Shift>): Map<strin
  */
 export const afterMove = (view: BoardView, moves: readonly Move[]): Map<string, BoardObject> => shifted(view, shiftsOf(view, moves).shifts);
 
-/** Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. */
+/**
+ * Moves objects, takes each frame's contents along, and settles `f` by where what was moved landed. Each one's frame is written with
+ * where it is, so a move that wins, wins both: one person's drag of a frame and another's of a sticky out of it can't leave the
+ * sticky in the frame and not held by it.
+ */
 function relocate(board: Board, view: BoardView, moves: readonly Move[]): void {
   const { wanted, shifts } = shiftsOf(view, moves);
   const held = heldBy(view);
   const moved = shifted(view, shifts);
-  for (const [id, next] of moved) {
-    const o = view.byId.get(id), m = mapOf(board.objects.get(id));
-    if (!o || !m) continue;
-    if (next.k === 'line') {
-      change(m, 'from', next.from);
-      change(m, 'to', next.to);
-    } else if (o.k !== 'line') place(board, o, next);
-  }
-
   const frames = view.frames.flatMap((f) => {
     const next = moved.get(f.id) ?? f;
     return next.k === 'frame' ? [next] : [];
   });
   const carried = new Set(shifts.keys());
-  for (const id of wanted.keys()) {
-    const o = moved.get(id), m = mapOf(board.objects.get(id));
-    if (o && m) change(m, 'f', landing(o, frames, carried, o.k === 'frame' ? within(held, [o.id]) : new Set()));
+  for (const [id, next] of moved) {
+    const o = view.byId.get(id), m = mapOf(board.objects.get(id));
+    if (!o || !m) continue;
+    const f = wanted.has(id) ? landing(next, frames, carried, next.k === 'frame' ? within(held, [id]) : new Set()) : next.f;
+    if (next.k === 'line') moveLine(m, { ...next, f });
+    else if (o.k !== 'line') place(board, o, { ...next, f });
   }
 }
 
@@ -344,20 +353,17 @@ export function moveObjects(doc: Y.Doc, moves: readonly Move[], origin: unknown)
   writing(doc, origin, undefined, (board) => relocate(board, viewOf(doc), moves));
 }
 
-/** What an object would be in a new box, inside the limits, with nothing written. A stroke stretches with its box. */
+/** What an object would be in a new box, inside the limits, with nothing written. A stroke stretches with its box, as its points are fractions of it. */
 export function afterResize(o: PlacedObject, box: Box): PlacedObject {
-  const next = { x: reach(box.x), y: reach(box.y), w: side(box.w), h: side(box.h) };
-  return o.k === 'ink' ? { ...o, ...next, pts: o.pts.map((n, i) => reach(n * (i % 2 ? next.h / o.h : next.w / o.w))) } : { ...o, ...next };
+  return { ...o, x: reach(box.x), y: reach(box.y), w: side(box.w), h: side(box.h) };
 }
 
-/** Gives an object a new box. */
+/** Gives an object a new box, which is all a resize writes: a new place. */
 export function resizeObject(doc: Y.Doc, id: string, box: Box, origin: unknown): void {
   writing(doc, origin, undefined, (board) => {
     const o = viewOf(doc).byId.get(id), m = mapOf(board.objects.get(id));
     if (!o || !m || !hasBox(o) || ![box.x, box.y, box.w, box.h].every(Number.isFinite)) return;
-    const next = afterResize(o, box);
-    if (next.k === 'ink') change(m, 'pts', next.pts);
-    place(board, o, next);
+    place(board, o, afterResize(o, box));
   });
 }
 
@@ -532,7 +538,7 @@ export function applyThemes(doc: Y.Doc, themes: readonly BoardTheme[], origin: u
       const tallest = Math.max(...columns.map((column) => Math.ceil(column.notes.length / 2)));
       const w = THEME.x + (columns.length - 1) * THEME.across + THEME.step + THEME.sticky + THEME.margin;
       const h = THEME.y + (tallest - 1) * THEME.step + THEME.sticky + THEME.margin;
-      place(board, shared, { x: shared.x, y: shared.y, w: side(Math.max(shared.w, w)), h: side(Math.max(shared.h, h)) });
+      place(board, shared, { x: shared.x, y: shared.y, w: side(Math.max(shared.w, w)), h: side(Math.max(shared.h, h)), f: shared.f });
     }
 
     const view = viewOf(doc);

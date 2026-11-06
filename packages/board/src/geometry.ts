@@ -80,12 +80,12 @@ export function fit(b: Box, W: number, H: number, pad?: Pad): Camera {
   return { x: p.l + (W - p.l - p.r - b.w * z) / 2 - b.x * z, y: p.t + (H - p.t - p.b - b.h * z) / 2 - b.y * z, z };
 }
 
-/** Whether a point is near the stroke itself: a circle drawn round a sticky mustn't cover it. */
+/** Whether a point is near the stroke itself: a circle drawn round a sticky mustn't cover it. Its points are fractions of its box. */
 function onStroke(ink: InkObject, x: number, y: number): boolean {
   const px = x - ink.x, py = y - ink.y;
-  let ax = ink.pts[0] ?? 0, ay = ink.pts[1] ?? 0;
+  let ax = (ink.pts[0] ?? 0) * ink.w, ay = (ink.pts[1] ?? 0) * ink.h;
   for (let i = 0; i < ink.pts.length; i += 2) {
-    const bx = ink.pts[i] ?? ax, by = ink.pts[i + 1] ?? ay;
+    const bx = (ink.pts[i] ?? 0) * ink.w, by = (ink.pts[i + 1] ?? 0) * ink.h;
     const dx = bx - ax, dy = by - ay, long = dx * dx + dy * dy;
     const along = long ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / long)) : 0;
     if (Math.hypot(px - ax - along * dx, py - ay - along * dy) <= STROKE_REACH) return true;

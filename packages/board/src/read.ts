@@ -5,8 +5,8 @@
  * nest without going round in circles and draw after whatever holds them, and every line's attached ends are there to
  * attach to.
  *
- * Each object is joined to its place, from the list `places.ts` keeps, and one with no place that parses is left out like any
- * other that doesn't. Two limits are exceptions to leaving out, because two people can pass them together and no write can stop that:
+ * Each object with a box is joined to its place, from the list `places.ts` keeps, which says where it is and the frame it's in,
+ * and one with no place that parses is left out like any other that doesn't. A line has no place: everything of it is in its map. Two limits are exceptions to leaving out, because two people can pass them together and no write can stop that:
  * a sticky mustn't vanish over its text, nor a table over its rows. So a read keeps the object and cuts what's past
  * the limit, and the doc stays whole: nothing is lost, and editing a merged sticky still shows all of it.
  */
@@ -80,9 +80,14 @@ function tableFields(m: Y.Map<unknown>): { rows?: unknown; cols?: unknown; cells
   return cells ? { rows: rows.data, cols: cols.data, cells } : {};
 }
 
-/** Where something with a box is, as the fields it reads with. A box in its Y.Map is no box: that isn't where it's kept. */
-const boxOf = (m: Y.Map<unknown>, place: Place | undefined): Record<string, unknown> =>
-  m.get('k') !== 'line' && place ? { x: place.x, y: place.y, w: place.w, h: place.h } : { x: undefined, y: undefined, w: undefined, h: undefined };
+/**
+ * Where something with a box is and the frame it's in, as the fields it reads with. A box or a frame in its Y.Map is neither: that
+ * isn't where they're kept. A line's frame is in its map, as it has no place.
+ */
+function boxOf(m: Y.Map<unknown>, place: Place | undefined): Record<string, unknown> {
+  if (m.get('k') === 'line') return { x: undefined, y: undefined, w: undefined, h: undefined };
+  return place ? { x: place.x, y: place.y, w: place.w, h: place.h, f: place.f } : { x: undefined, y: undefined, w: undefined, h: undefined, f: undefined };
+}
 
 /** Everything an object holds as plain values, its place joined in and its text cut to fit. A `t` that isn't a Y.Text reads as missing, so it won't parse. */
 function plainOf(id: string, m: Y.Map<unknown>, place: Place | undefined): Record<string, unknown> {
@@ -109,7 +114,7 @@ function unchanged(m: Y.Map<unknown>, was: BoardObject, place: Place | undefined
     if (!stored || !same(linesOf(m.get('rows')), was.rows) || !same(linesOf(m.get('cols')), was.cols) || !same(cellsOf(stored, was.rows, was.cols), was.cells)) return false;
   }
   for (const [key, value] of Object.entries<unknown>(was)) {
-    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || PLACED.has(key)) continue;
+    if (key === 'id' || key === 'rows' || key === 'cols' || key === 'cells' || (hasBox(was) && PLACED.has(key))) continue;
     if (key === 't' || key === 'title' ? textOf(m.get(key)) !== value : !same(m.get(key), value)) return false;
   }
   return true;

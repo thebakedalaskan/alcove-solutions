@@ -10,16 +10,27 @@
  * else has touched it, so nobody's work goes with it. No field is ever deleted, and what comes back is made the way `addObject`
  * makes it, so nothing is left that won't read. And an entry never spans someone else's change to that id, so `before` to
  * `after` is only ever this browser's doing, even with two people typing in one sticky at once.
+ *
+ * What arrives in its own time, such as Sort's answer, is a step of its own (`separate`), whatever step is under way, so neither
+ * takes back the other, and dropping a blank sticky's step leaves it be. It can be taken back by itself (`undoStep`).
  */
 import * as Y from 'yjs';
 import { asPlace, placesIn, rootList, setPlace } from './places';
 import { isRecord, listOf, mapOf, recordOf, rootMap, same } from './read';
-import { BOARD_COMMENTS, BOARD_OBJECTS, BOARD_PLACES, PLACE_FIELDS, type Place } from './shape';
+import { BOARD_COMMENTS, BOARD_OBJECTS, BOARD_PLACES, PLACE_FIELDS, type NewPlace, type Place } from './shape';
 import { difference } from './text';
 import { inLine, placeFrom, put, putThread, tidy, type TableAxis } from './write';
 
 /** What became of an undo or redo: whether anything changed, or what went wrong, for the caller to log. */
 export type StepResult = { ok: true; changed: boolean } | { ok: false; error: unknown };
+
+/** A step this history kept, to take back by itself with `undoStep`. */
+export class BoardStep {
+  readonly entries: readonly unknown[];
+  constructor(entries: readonly unknown[]) {
+    this.entries = entries;
+  }
+}
 
 export interface BoardHistory {
   canUndo(): boolean;
@@ -31,6 +42,13 @@ export interface BoardHistory {
   end(): void;
   /** Forgets the step in progress, leaving nothing to undo: a blank sticky left behind. */
   drop(): void;
+  /**
+   * Makes `change` a step of its own, whatever step is open, which carries on round it: what it touches starts afresh there, so
+   * neither takes back the other. Returns what `change` returned, and the step, or null if it changed nothing.
+   */
+  separate<T>(change: () => T): { result: T; step: BoardStep | null };
+  /** Takes back one step by itself, wherever it is in the undo, if it's still there to take back. */
+  undoStep(step: BoardStep): StepResult;
   subscribe(listener: () => void): () => void;
   destroy(): void;
 }
@@ -85,15 +103,17 @@ const idOf = (value: unknown): unknown => recordOf(value)['id'];
 const PLACED = new Set<string>(PLACE_FIELDS);
 
 /**
- * An object or thread as plain values, its place joined in, or null if there isn't one. A box in its Y.Map isn't where it is, so
- * it isn't copied. A cell with no words reads the same as no cell, so it's left out.
+ * An object or thread as plain values, its place joined in, or null if there isn't one. A box or a frame in its Y.Map isn't where
+ * it is, so it isn't copied. A line has no place, so its frame is its map's. A cell with no words reads the same as no cell, so it's left out.
  */
-function copyOf(value: unknown, place: Place | undefined): Copy | null {
+function copyOf(value: unknown, place: NewPlace | undefined): Copy | null {
   const m = mapOf(value);
   if (!m) return null;
   const copy: Copy = m.toJSON();
-  for (const key of PLACE_FIELDS) delete copy[key];
-  if (place && copy['k'] !== 'line') Object.assign(copy, { x: place.x, y: place.y, w: place.w, h: place.h });
+  if (copy['k'] !== 'line') {
+    for (const key of PLACE_FIELDS) delete copy[key];
+    if (place) Object.assign(copy, { x: place.x, y: place.y, w: place.w, h: place.h, f: place.f });
+  }
   if (isRecord(copy['cells'])) copy['cells'] = Object.fromEntries(Object.entries(copy['cells']).filter(([, words]) => words !== ''));
   return copy;
 }
@@ -224,14 +244,16 @@ function written(id: unknown, axis: TableAxis, before: Copy, after: Copy, now: C
 
 /**
  * Sets back what this browser changed in something, field by field. A field someone has changed since stays theirs, and none is
- * ever deleted. What goes back of where it is comes back to be written to its place, which is one entry for all four.
+ * ever deleted. What goes back of where it is and the frame it's in comes back to be written to its place, which is one entry for
+ * all of them.
  */
 function fieldsBack(m: Y.Map<unknown>, before: Copy, after: Copy, now: Copy, since: Since): Copy {
   const box: Copy = {};
+  const boxed = before['k'] !== 'line';
   for (const [key, was] of Object.entries(before)) {
     const left = after[key], live = m.get(key);
     if (same(was, left)) continue;
-    if (PLACED.has(key)) {
+    if (boxed && PLACED.has(key)) {
       if (same(now[key], left)) box[key] = was;
     } else if (live instanceof Y.Array) linesBack(live, listOf(was), listOf(left), (id) => (key === 'rows' || key === 'cols') && written(id, key, before, after, now, since), since.back);
     else if (live instanceof Y.Map) cellsBack(live, before, after, now, since);
@@ -392,9 +414,9 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
     doc.transact((transaction) => {
       walking = transaction;
       // Where things are as this walk leaves them: what it puts back is kept here for what it reads after, and written at the end.
-      const where = new Map<string, Place>(things ? things.places() : []);
+      const where = new Map<string, NewPlace>(things ? things.places() : []);
       const copyNow = (at: Root, id: string): Copy | null => copyOf(at.map.get(id), at === things ? where.get(id) : undefined);
-      const moveTo = (place: Place | null): void => {
+      const moveTo = (place: NewPlace | null): void => {
         if (!place || !board) return;
         setPlace(board.places, place);
         where.set(place.k, place);
@@ -466,6 +488,47 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
       open = false;
       take();
       tell();
+    },
+    separate<T>(change: () => T) {
+      const held = pending, heldLatest = [...latest], wasOpen = open;
+      pending = [];
+      latest.clear();
+      open = true;
+      let step: Entry[] = [];
+      try {
+        const result = change();
+        step = take();
+        return { result, step: step.length ? new BoardStep(step) : null };
+      } finally {
+        // What a change that stopped part way did is in the doc all the same, so it's a step too.
+        if (!step.length) step = take();
+        const touched = new Set(step.map(({ root: at, id }) => `${at.name}:${id}`));
+        pending = held;
+        for (const [key, entry] of heldLatest) if (!touched.has(key)) latest.set(key, entry);
+        open = wasOpen;
+        if (step.length) {
+          keep(undos, step);
+          redos.length = 0;
+        }
+        tell();
+      }
+    },
+    undoStep(step) {
+      if (open || walking) return { ok: true, changed: false };
+      const at = undos.findIndex((kept) => kept === step.entries);
+      if (at < 0) return { ok: true, changed: false };
+      landing = redos;
+      landed = false;
+      try {
+        const [found] = undos.splice(at, 1);
+        const waiting = found ? walk(found) : [];
+        if (waiting.length) undos.splice(at, 0, waiting);
+        return { ok: true, changed: landed || walking !== null };
+      } catch (error) {
+        return { ok: false, error };
+      } finally {
+        tell();
+      }
     },
     subscribe(listener) {
       listeners.add(listener);

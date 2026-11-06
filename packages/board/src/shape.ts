@@ -1,7 +1,7 @@
 /*
  * The shape of a board's Y.Doc, the one thing the app and the API have to agree on. Three roots: `objects`
- * holds a Y.Map per object, `places` one shared list of where each object is, and `comments` a Y.Map per thread.
- * What people type together is Y.Text and everything else is last-write-wins: per key, or per entry in `places`.
+ * holds a Y.Map per object, `places` one shared list of where each object is and what frame it's in, and `comments` a Y.Map
+ * per thread. What people type together is Y.Text and everything else is last-write-wins: per key, or per entry in `places`.
  * The schemas describe an object as it reads out, its place joined in and text as plain strings, and both
  * directions use them: `readBoard` leaves out what doesn't parse and a write refuses what wouldn't, so one
  * browser can't write what the others would throw away.
@@ -10,7 +10,7 @@ import { z } from './zod';
 
 /** The root map of objects: id to Y.Map. */
 export const BOARD_OBJECTS = 'objects';
-/** The root list of where things are: a `{ k, x, y, w, h }` for each object with a box, `k` being its id. See `places.ts`. */
+/** The root list of where things are: a `{ k, x, y, w, h, f, n }` for each object with a box, `k` being its id. See `places.ts`. */
 export const BOARD_PLACES = 'places';
 /** The root map of comment threads: id to Y.Map, each with a Y.Array of replies. */
 export const BOARD_COMMENTS = 'comments';
@@ -49,11 +49,18 @@ const Layered = { id: BoardIdSchema, at: z.number(), f: IdOrNoneSchema };
 const Boxed = { x: ReachSchema, y: ReachSchema, w: SideSchema, h: SideSchema };
 const Placed = { ...Layered, ...Boxed };
 
-/** An entry in `places`: where the object `k` is. Everything a drag changes is here, and nothing else is. */
-export const PlaceSchema = z.object({ k: BoardIdSchema, ...Boxed });
+/**
+ * An entry in `places`: where the object `k` is, and `f`, the frame it's in, so that the two are decided together. `n` orders an
+ * object's places: a write's is one more than the place it replaces, so of two for one key the higher `n` wins, and of two with
+ * the same, written at once, the later in the list. Everything a drag changes is here, and nothing else is.
+ */
+export const PlaceSchema = z.object({ k: BoardIdSchema, ...Boxed, f: IdOrNoneSchema, n: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) });
 export type Place = z.output<typeof PlaceSchema>;
-/** The fields of an object that live in its place rather than its Y.Map. */
-export const PLACE_FIELDS = ['x', 'y', 'w', 'h'] as const;
+/** A place to write: its `n` comes from the list it goes into. */
+export const NewPlaceSchema = PlaceSchema.omit({ n: true });
+export type NewPlace = z.output<typeof NewPlaceSchema>;
+/** The fields of an object with a box that live in its place rather than its Y.Map. A line has no place, so its `f` is in its map. */
+export const PLACE_FIELDS = ['x', 'y', 'w', 'h', 'f'] as const;
 
 /** One end of a line: attached to something, or free on the board. */
 export const LineEndSchema = z.union([z.object({ on: BoardIdSchema, side: z.enum(LINE_SIDES) }), z.object({ x: ReachSchema, y: ReachSchema })]);
@@ -75,10 +82,10 @@ const FrameSchema = z.object({
   k: z.literal('frame'), ...Placed, c: ColourOrNoneSchema, role: z.enum(['', 'actions']), hint: TextSchema, sub: TextSchema.default(''), sorted: z.boolean().default(false), title: TextSchema
 });
 const LineSchema = z.object({ k: z.literal('line'), ...Layered, style: z.enum(LINE_STYLES), from: LineEndSchema, to: LineEndSchema });
-/** `pts` are flat x, y pairs relative to the object's `x y`. */
+/** `pts` are flat x, y pairs, each a fraction of the object's box from its top left, so a stroke resized is only a new place. */
 const InkSchema = z.object({
   k: z.literal('ink'), ...Placed, tool: z.enum(['pen', 'marker']), c: z.enum(INK_COLOURS),
-  pts: z.array(ReachSchema).min(2).max(BOARD_LIMITS.points * 2).refine((pts) => pts.length % 2 === 0)
+  pts: z.array(z.number().min(0).max(1)).min(2).max(BOARD_LIMITS.points * 2).refine((pts) => pts.length % 2 === 0)
 });
 const ImageSchema = z.object({ k: z.literal('image'), ...Placed, media: OutsideIdSchema });
 const ShotSchema = z.object({ k: z.literal('shot'), ...Placed, media: OutsideIdSchema, caption: TextSchema });

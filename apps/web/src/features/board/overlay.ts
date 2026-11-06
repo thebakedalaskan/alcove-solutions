@@ -26,8 +26,9 @@ const NOTHING_HELD: ReadonlyMap<string, BoardObject> = new Map();
 function inPlace(o: BoardObject, place: BoardObject | undefined): BoardObject {
   if (!place) return o;
   if (o.k === 'line') return place.k === 'line' ? { ...o, from: place.from, to: place.to } : o;
+  // A stroke's points are fractions of its box, so its box is all of where it is.
   if (!hasBox(place)) return o;
-  return o.k === 'ink' && place.k === 'ink' ? { ...o, x: place.x, y: place.y, w: place.w, h: place.h, pts: place.pts } : { ...o, x: place.x, y: place.y, w: place.w, h: place.h };
+  return { ...o, x: place.x, y: place.y, w: place.w, h: place.h };
 }
 
 /** Where something is. A line's place is its first free end, and a line attached at both ends goes where they go. */

@@ -22,9 +22,13 @@ const ERASER_REACH = 10;
 /** What each pen draws in, as `Tools.html` has them. */
 const INK: Record<InkObject['tool'], InkColour> = { pen: 'horizon', marker: 'sun' };
 
-/** A stroke's points as a path, smoothed through the middle of each pair. It ends on the last point, so two points draw a line. */
-export function inkPath(pts: readonly number[], x: number, y: number): string {
-  const at = (i: number): number => (i % 2 ? y : x) + (pts[i] ?? 0);
+/**
+ * A stroke's points as a path, smoothed through the middle of each pair. It ends on the last point, so two points draw a line.
+ * A stroke on the board keeps its points as fractions of its box, so they're scaled by `w` and `h`; one being drawn keeps them on
+ * the board, at 1.
+ */
+export function inkPath(pts: readonly number[], x: number, y: number, w = 1, h = 1): string {
+  const at = (i: number): number => (i % 2 ? y + (pts[i] ?? 0) * h : x + (pts[i] ?? 0) * w);
   const last = pts.length - 2;
   let d = `M${at(0)} ${at(1)}`;
   for (let i = 2; i < last; i += 2) d += `Q${at(i)} ${at(i + 1)} ${(at(i) + at(i + 2)) / 2} ${(at(i + 1) + at(i + 3)) / 2}`;
@@ -37,7 +41,7 @@ const paths = new WeakMap<InkObject, string>();
 export function strokePath(o: InkObject): string {
   const known = paths.get(o);
   if (known !== undefined) return known;
-  const d = inkPath(o.pts, o.x, o.y);
+  const d = inkPath(o.pts, o.x, o.y, o.w, o.h);
   paths.set(o, d);
   return d;
 }
@@ -81,14 +85,19 @@ function within(points: readonly Point[], most: number, z: number): Point[] {
 }
 
 const tenth = (n: number): number => Math.round(n * 10) / 10;
+/** A point's place across its box, to a hundred-thousandth: less than a tenth of a unit across the widest box there is. */
+const across = (n: number): number => Math.min(1, Math.max(0, Math.round(n * 100_000) / 100_000));
 
-/** Writes a stroke as one object. Its box holds it, and a straight stroke's sits round it, since no box is thinner than the board allows. */
+/**
+ * Writes a stroke as one object. Its box holds it, and a straight stroke's sits round it, since no box is thinner than the board
+ * allows. Its points are fractions of the box, so resizing it changes only its place.
+ */
 function addStroke(board: Board, points: readonly Point[], tool: InkObject['tool']): void {
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const left = Math.min(...xs), top = Math.min(...ys), wide = Math.max(...xs) - left, tall = Math.max(...ys) - top;
   const w = Math.max(wide, BOARD_LIMITS.minSide), h = Math.max(tall, BOARD_LIMITS.minSide);
   const x = tenth(left - (w - wide) / 2), y = tenth(top - (h - tall) / 2);
-  const pts = points.flatMap(([px, py]) => [tenth(px - x), tenth(py - y)]);
+  const pts = points.flatMap(([px, py]) => [across((px - x) / w), across((py - y) / h)]);
   const id = board.write(() => addObject(board.doc, { k: 'ink', x, y, w, h, tool, c: INK[tool], pts }, board.origin));
   if (!id) board.refuse();
 }
@@ -137,7 +146,7 @@ function strokeGesture(board: Board, start: SheetPoint, tool: InkObject['tool'])
 /** Whether a point is within `reach` of a stroke. */
 function touches(o: InkObject, p: Point, reach: number): boolean {
   if (p[0] < o.x - reach || p[0] > o.x + o.w + reach || p[1] < o.y - reach || p[1] > o.y + o.h + reach) return false;
-  const point = (i: number): Point => [o.x + (o.pts[i] ?? 0), o.y + (o.pts[i + 1] ?? 0)];
+  const point = (i: number): Point => [o.x + (o.pts[i] ?? 0) * o.w, o.y + (o.pts[i + 1] ?? 0) * o.h];
   if (o.pts.length < 4) return away(p, point(0), point(0)) <= reach;
   for (let i = 0; i + 3 < o.pts.length; i += 2) if (away(p, point(i), point(i + 2)) <= reach) return true;
   return false;
