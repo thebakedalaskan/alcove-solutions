@@ -281,18 +281,32 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const placedNow = useRef(placed);
   placedNow.current = placed;
   const where = JSON.stringify(placed);
+  const reachable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && o.document !== null && tree.all.has(o.document) ? [o.callIdentity] : [])).join(' ');
   const tellTiles = call?.onTogether;
   useEffect(() => {
-    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current) });
-  }, [tellTiles, followable, followingIn, writing, where]);
+    tellTiles?.({ followable: followable ? followable.split(' ') : [], following: followingIn, writing: writing ? writing.split(' ') : [], where: Object.fromEntries(placedNow.current), reachable: reachable ? reachable.split(' ') : [] });
+  }, [tellTiles, followable, followingIn, writing, where, reachable]);
   const othersNow = useRef(others);
   othersNow.current = others;
+  const treeNow = useRef(tree);
+  treeNow.current = tree;
   const togetherRef = call?.together;
   useEffect(() => {
     if (!togetherRef) return;
-    togetherRef.current = { follow: (connection) => { const o = othersNow.current.find((x) => x.callIdentity === connection); if (o) follow(o.person.id); }, stop: () => stopFollowing() };
+    const someone = (connection: string) => othersNow.current.find((x) => x.callIdentity === connection);
+    togetherRef.current = {
+      follow: (connection) => { const o = someone(connection); if (o) follow(o.person.id); },
+      stop: () => stopFollowing(),
+      /* To the line they're on, as Go there on their card does. */
+      go: (connection) => {
+        const o = someone(connection);
+        if (o?.document && treeNow.current.all.has(o.document)) go({ kind: 'document', id: o.document, block: o.block ?? undefined });
+      },
+      tag: (connection) => { const o = someone(connection); if (o) page.current?.tag(o.person); },
+      canTag: () => page.current?.canTag === true
+    };
     return () => { togetherRef.current = null; };
-  }, [togetherRef, follow, stopFollowing]);
+  }, [togetherRef, follow, stopFollowing, go]);
   /* Out of sight, put away or behind what it takes turns with, there's nothing to go with. */
   /* Leaving with the call's workspace, it's said: they'd otherwise just stop going with whoever they followed. */
   const leaving = call?.leaving ?? false;

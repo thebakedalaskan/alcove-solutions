@@ -22,7 +22,7 @@ export const Open = inCall({
   then: (s) => s.openRooms({ rooms: [{ name: 'Empty states', emails: [PRIYA.email, KOFI.email] }, { name: 'Pricing', emails: [AIKO.email] }], minutes: 10 })
 }, { play: press('Breakout rooms') });
 /** On a phone, breakout rooms are under More. */
-export const OpenPhone = { ...phone(Open), play: press('More: catch up, settings', { then: ['Breakout rooms'] }) };
+export const OpenPhone = { ...phone(Open), play: press('More: chat, notes, settings', { then: ['Breakout rooms'] }) };
 
 /**
  * At Priya's check-in, she opens rooms two seconds in: you're in Rollout with Kofi, and talk the dates through. Her message

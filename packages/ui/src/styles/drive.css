@@ -38,7 +38,7 @@
 @media (max-width: 860px) {
   /* The sky goes up behind the phone's top bar. */
   .shell:has(> .main > .main-in > .dv) .ph-head { position: relative; z-index: 1; }
-  .dv { --hz: 260px; height: auto; min-height: 0; margin-top: -66px; }
+  .dv { --hz: 260px; --behind: 66px; height: auto; margin-top: -66px; }
   .dv .dusk-in { display: block; height: auto; padding-top: 66px; padding-bottom: 28px; }
   .dv .hz > .hz-at, .dv .hz > .hz-light { clip-path: inset(-500px -2400px -30px -2400px); }
   .dv-top { min-height: 32px; }

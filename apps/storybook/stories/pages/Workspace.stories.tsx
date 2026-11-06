@@ -18,6 +18,21 @@ const FIXES = at('ws-standup', 'Onboarding fixes');
 const SHOTS = at('ws-review', 'Sidebar screenshots');
 const UPLOADS = at('ws-review', 'Review uploads');
 const PHONE = { viewport: { value: 'phone' } };
+/** A moment, as a person takes one. */
+const beat = (ms: number) => new Promise<void>((done) => { setTimeout(done, ms); });
+/** Holds a finger on the first block of this kind until its menu opens: a phone has no handles to press. */
+const hold = (selector: string): NonNullable<PageStory['play']> => async ({ canvasElement, step }) => {
+  await step('Hold a finger on the block. Its menu opens as a sheet', async () => {
+    let block: Element | null = null;
+    for (let tries = 0; !block && tries < 50; tries++) { block = canvasElement.querySelector(selector); if (!block) await beat(200); }
+    if (!block) return;
+    const box = block.getBoundingClientRect();
+    const at = { bubbles: true, pointerType: 'touch', isPrimary: true, clientX: box.left + box.width / 2, clientY: box.top + Math.min(box.height / 2, 60) };
+    block.dispatchEvent(new PointerEvent('pointerdown', at));
+    await beat(700);
+    block.dispatchEvent(new PointerEvent('pointerup', at));
+  });
+};
 /** Opens the document's Share sheet. */
 const share: PageStory['play'] = async ({ canvas, userEvent }) => {
   await userEvent.click(await canvas.findByRole('button', { name: 'Share' }));
@@ -54,6 +69,8 @@ export const TagsAndCommentsPhone = page(FIXES, 'busy', { globals: PHONE });
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');
 export const PhotosVideoAndAFileNight = page(SHOTS, 'busy', { globals: { theme: 'dark' } });
 export const PhotosVideoAndAFilePhone = page(SHOTS, 'busy', { globals: PHONE });
+/** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Delete the photos for good. */
+export const HoldingABlockPhone = page(SHOTS, 'busy', { globals: PHONE, play: hold('.ws-ed .wb.is-gallery') });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */
 export const UploadingAndWhatDidnt = page(UPLOADS, 'busy');
 export const UploadingAndWhatDidntNight = page(UPLOADS, 'busy', { globals: { theme: 'dark' } });
@@ -81,6 +98,27 @@ export const ReaderNow = page(at('ws-handbook', 'Expenses'), 'unsaved');
 export const Offline = page(PLAN, 'offline');
 export const Night = page(PLAN, 'busy', { globals: { theme: 'dark' } });
 export const Phone = page(PLAN, 'busy', { globals: PHONE });
+/** Writing on a phone: the bar over the keyboard, for blocks, styles, @, photos and checklists. */
+export const WritingPhone = page(PLAN, 'busy', {
+  globals: PHONE,
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Tap a line to write. The bar rises with the keyboard', async () => {
+      await userEvent.click(await canvas.findByText(/^The launch moves to Wednesday/));
+    });
+  }
+});
+/** The bar's text style, as a sheet over it. */
+export const WritingStylesPhone = page(PLAN, 'busy', {
+  globals: { ...PHONE, theme: 'dark' },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Tap a line to write', async () => {
+      await userEvent.click(await canvas.findByText(/^The launch moves to Wednesday/));
+    });
+    await step('Press Text style. Bold, italic and the rest, and what the line is', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Text style' }));
+    });
+  }
+});
 /** On a phone the list and the page take turns: the list, until something's open. */
 export const PhoneList = page(at('ws-product'), 'busy', { globals: PHONE });
 export const PhoneCouldntSave = page(at('ws-product', 'Pricing page copy'), 'unsaved', { globals: { ...PHONE, theme: 'dark' } });

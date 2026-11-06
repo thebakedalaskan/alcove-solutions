@@ -26,7 +26,7 @@ import { useAskAnswered } from './WorkspaceAsks';
 
 const wlog = log.child({ component: 'call-workspace' });
 
-const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {} };
+const NOBODY_TOGETHER: CallTogether = { followable: [], following: null, writing: [], where: {}, reachable: [] };
 /** How long someone's tile stays lit for being tagged. */
 const LIT_MS = 2600;
 /** How often someone who hasn't opened the workspace in this call looks for tags: once it's open, its stream says. */
@@ -123,6 +123,10 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       /** Follow, on a tile. */
       follow: (connection: string) => { reach.current?.follow(connection); },
       stopFollowing: () => { reach.current?.stop(); },
+      /** Go there and Tag, from someone's arch on a phone. */
+      goTo: (connection: string) => { reach.current?.go(connection); },
+      tagIn: (connection: string) => { reach.current?.tag(connection); },
+      canTag: () => reach.current?.canTag() ?? false,
       setTogether,
       /** The tile's ring pulses once. */
       tagged: (connection: string) => {

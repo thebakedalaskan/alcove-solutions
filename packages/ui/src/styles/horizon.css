@@ -14,7 +14,12 @@
 .dusk-in > * { animation: ac-rise var(--duration-3) var(--ease-out) both; animation-delay: calc(var(--d, 0) * 55ms); }
 @media (max-width: 860px) {
   .main:has(> .main-in > .dusk) { padding: 0 0 calc(70px + env(safe-area-inset-bottom, 0px)); }
-  .dusk { min-height: 0; }
+  /*
+   * The sea goes down to the tab bar however little a page holds, so it never stops short over the plain ground: the
+   * window less the phone's top bar (66px) and the room kept for the tab bar. A page whose sky goes up behind the top bar
+   * (the Drive, Notes, Record) has those 66px too, as `--behind`.
+   */
+  .dusk { --behind: 0px; min-height: calc(100vh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); min-height: calc(100dvh - 136px + var(--behind) - env(safe-area-inset-bottom, 0px)); }
   .dusk-in { padding: 6px 20px 28px; }
 }
 

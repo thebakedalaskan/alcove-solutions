@@ -511,7 +511,7 @@
   .wh { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 1px solid var(--line); }
   .ws-pane:has(> .wh) .wd { max-height: 54%; }
   /* A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. */
-  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px 8px !important; min-width: 0 !important; transform: none !important; }
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; }
   .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
   /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */

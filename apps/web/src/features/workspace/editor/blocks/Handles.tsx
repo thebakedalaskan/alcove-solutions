@@ -21,6 +21,10 @@ const DRAG_FROM = 5;
 const INDENT = 26;
 /** How near an edge of the page the pointer has to be to scroll it. */
 const SCROLL_EDGE = 56;
+/** How long a finger rests on a block before its menu opens: a phone has no handles to press. */
+const HOLD_MS = 480;
+/** How far a finger can stray while it's held, before it's scrolling instead. */
+const HOLD_SLOP = 10;
 
 /** The space between blocks nearest a height on the window, and what's either side of it. */
 export function landing(rt: EditorRuntime, y: number): { line: number; id: string; side: 'before' | 'after' } | null {
@@ -156,11 +160,51 @@ export function Handles({ rt, root }: { rt: EditorRuntime; root: HTMLElement | n
       rt.hover.set(e.target.closest('.wb[data-b]')?.getAttribute('data-b') ?? null);
     };
     const leave = () => rt.hover.set(null);
+    /* A finger held still on a block opens the block's menu, a sheet on a phone, where the handles never show. */
+    let hold: { x: number; y: number; open: () => void; timer: ReturnType<typeof setTimeout> } | null = null;
+    let held = false;
+    const letGo = () => { if (hold) clearTimeout(hold.timer); hold = null; };
+    const down = (e: PointerEvent) => {
+      letGo();
+      held = false;
+      if (e.pointerType !== 'touch' || rt.readOnly || !(e.target instanceof Element)) return;
+      const block = e.target.closest<HTMLElement>('.wb[data-b]');
+      const id = block?.getAttribute('data-b');
+      if (!block || !id) return;
+      const open = () => {
+        letGo();
+        held = true;
+        rt.menu.set({ kind: 'block', block: id, rect: block.getBoundingClientRect() });
+      };
+      hold = { x: e.clientX, y: e.clientY, open, timer: setTimeout(open, HOLD_MS) };
+    };
+    const stray = (e: PointerEvent) => { if (hold && Math.abs(e.clientX - hold.x) + Math.abs(e.clientY - hold.y) > HOLD_SLOP) letGo(); };
+    /* What the browser does with a held finger (select a word, its own menu) gives way to the block's menu, at once. */
+    const own = (e: Event) => {
+      if (!held && !hold) return;
+      e.preventDefault();
+      hold?.open();
+    };
     root.addEventListener('pointermove', move);
     root.addEventListener('pointerleave', leave);
+    root.addEventListener('pointerdown', down);
+    root.addEventListener('pointermove', stray);
+    root.addEventListener('pointerup', letGo);
+    root.addEventListener('pointercancel', letGo);
+    root.addEventListener('contextmenu', own);
+    /* Lifting the finger that opened it doesn't also put the caret there, which would bring the keyboard up under the sheet. */
+    const lift = (e: TouchEvent) => { if (held) e.preventDefault(); };
+    root.addEventListener('touchend', lift, { passive: false });
     return () => {
+      root.removeEventListener('touchend', lift);
+      letGo();
       root.removeEventListener('pointermove', move);
       root.removeEventListener('pointerleave', leave);
+      root.removeEventListener('pointerdown', down);
+      root.removeEventListener('pointermove', stray);
+      root.removeEventListener('pointerup', letGo);
+      root.removeEventListener('pointercancel', letGo);
+      root.removeEventListener('contextmenu', own);
     };
   }, [root, rt]);
 

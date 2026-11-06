@@ -214,7 +214,7 @@ button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--
 @media (hover: none) { .wb-gut { display: none; } }
 @media (max-width: 640px) {
   .wb-gut { display: none; }
-  .ws-float .ws-pop { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
+  .ws-float .ws-pop { left: 8px !important; right: 8px; top: auto !important; bottom: calc(8px + var(--kbar, 0px)); width: auto; border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .wb-gal, .wb-gal.n3 { grid-template-columns: minmax(0, 1fr); }
 }
 
