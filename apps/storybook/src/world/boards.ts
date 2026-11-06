@@ -8,6 +8,7 @@
 import type { Person, ScreenMoment } from '@alcove/api';
 import { addObject, addReply, addThread, applyThemes, fillTemplate, readBoard, type BoardAuthor, type BoardTheme, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
+import { colourOf } from '~/features/board/people';
 import type { BoardSpec } from './index';
 import { LAUNCH_CHECKLIST } from './notes';
 import { AIKO, ART, KOFI, LENA, MAYA, PRIYA, SAM, THEO } from './people';
@@ -25,18 +26,19 @@ export interface OnTheBoard {
 
 export type FolkId = 'art' | 'priya' | 'theo' | 'kofi' | 'maya' | 'lena' | 'sam' | 'aiko';
 
-const folk = (id: FolkId, person: Person, colour: string, client: number): OnTheBoard => ({ id, person, name: person.name.split(' ')[0] ?? person.name, colour, client });
+/** Someone's pointer is in the colour the app gives them, from what they're known by, as it would be on their board's page. */
+const folk = (id: FolkId, person: Person, client: number): OnTheBoard => ({ id, person, name: person.name.split(' ')[0] ?? person.name, colour: colourOf(person.id), client });
 
-/** The canvas's people, each in the colour the canvas gives their pointer. */
+/** The canvas's people. */
 export const FOLK: Readonly<Record<FolkId, OnTheBoard>> = {
-  art: folk('art', ART, '#5B4BE0', 4100),
-  priya: folk('priya', PRIYA, '#C2406E', 4101),
-  theo: folk('theo', THEO, '#2F6FD6', 4102),
-  kofi: folk('kofi', KOFI, '#96600F', 4103),
-  maya: folk('maya', MAYA, '#8A4FD0', 4104),
-  lena: folk('lena', LENA, '#9C4A86', 4105),
-  sam: folk('sam', SAM, '#4A6BD6', 4106),
-  aiko: folk('aiko', AIKO, '#7A4FD0', 4107)
+  art: folk('art', ART, 4100),
+  priya: folk('priya', PRIYA, 4101),
+  theo: folk('theo', THEO, 4102),
+  kofi: folk('kofi', KOFI, 4103),
+  maya: folk('maya', MAYA, 4104),
+  lena: folk('lena', LENA, 4105),
+  sam: folk('sam', SAM, 4106),
+  aiko: folk('aiko', AIKO, 4107)
 };
 
 /** Writes that came with the board: nobody's undo takes them back. */

@@ -2,7 +2,7 @@
  * A board's own page, in the workspace beside the list (user-flows 13): the launch retro with Priya and Kofi on it, as the
  * whiteboards canvas's page has it, and a board nobody has added to yet; then every way its seal can stand, from the canvas's
  * States board (Reconnecting, Couldn't save, View only, and a board you can't open any more), what's under its name and in
- * its seal, who can add to it, a comment, in Trash, at night and on a phone.
+ * its seal, who can add to it, someone outside the workspace it was shared with, a comment, in Trash, at night and on a phone.
  */
 import type { WorkspaceItem } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
@@ -33,6 +33,10 @@ const standing = (s: NonNullable<BoardSpec['standing']>) => (w: World): void => 
 const reading = (w: World): void => retro(w, { role: 'read' });
 /** Priya moved it to Trash this afternoon. */
 const trashed = (w: World): void => retro(w, { trashedAt: iso(0, 15, 40), trashedBy: PRIYA.name });
+/** Art isn't in Product: the retro was shared with him by address, and it's all he has there. */
+const outside = (w: World): void => {
+  w.workspaces = w.workspaces.map((s) => (s.id === 'ws-product' ? { ...s, name: null, role: null, people: null, items: s.items.filter((i) => i.id === RETRO_ID) } : s));
+};
 
 /** A board Art made a moment ago in Product: nobody has added anything to it. */
 const BLANK_ID = itemId('Untitled board');
@@ -65,6 +69,8 @@ export const NoAccess = page(RETRO, 'busy', { beforeEach: changing(standing('gon
 export const InTrash = page(RETRO, 'busy', { beforeEach: changing(trashed) });
 /** Under its name: Rename, where it's saved, who can add to it, and Copy link. */
 export const UnderItsName = page(RETRO, 'busy', { play: underTheName });
+/** Shared with Art from outside Product: nothing on the page names the workspace, and under its name are Rename and Copy link. */
+export const OutsideTheWorkspace = page(RETRO, 'busy', { beforeEach: changing(outside), play: underTheName });
 /** Who can add to it: the workspace's own share sheet. */
 export const WhoCanAddToIt = page(RETRO, 'busy', {
   play: async (ctx) => {
