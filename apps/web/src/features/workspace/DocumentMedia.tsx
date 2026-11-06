@@ -190,6 +190,8 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
   const field = useRef<HTMLInputElement>(null);
   const choosingFor = useRef<Picking | null>(null);
 
+  /* Someone here only through a seat in a call works on what's shared with them, and can't delete a file for good: it isn't offered. */
+  const seatOnly = pass !== undefined && ws.sent.role === null;
   /* Everything handlers read that changes over time, for handlers that keep one identity. */
   const now = useRef({ editor, readOnly, say: ws.say, owner: ws.owner });
   now.current = { editor, readOnly, say: ws.say, owner: ws.owner };
@@ -243,8 +245,8 @@ export function useDocumentMedia(ws: Ws, documentId: string, { session, editor, 
     },
     onDuration: (block, seconds) => { if (!now.current.readOnly) now.current.editor?.updateBlock(block, { dur: seconds }); },
     onChoose: (block, rect) => { if (!now.current.readOnly) setPicking({ kind: 'photo', at: { replace: block }, anchor: block, rect }); },
-    onDeleteFiles: (files) => { if (!now.current.readOnly) setDeleting(files); }
-  }), [view, session, bumps]);
+    onDeleteFiles: seatOnly ? undefined : (files) => { if (!now.current.readOnly) setDeleting(files); }
+  }), [view, session, bumps, seatOnly]);
 
   /**
    * Files from the desktop, the clipboard or the picker: their blocks hold the space at once, and they go. What the picker
