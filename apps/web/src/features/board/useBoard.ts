@@ -35,8 +35,6 @@ const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 const BARE_PAD: Pad = { l: 40, r: 40, t: 56, b: 40 };
 /** A frame filling the sheet, with room for its title. */
 const SLIDE_PAD: Pad = { l: 40, r: 40, t: 96, b: 40 };
-/** The same with no bar over the sheet: room for the title, and the frame in the middle. */
-const PRESENT_PAD: Pad = { l: 48, r: 48, t: 72, b: 32 };
 const ZOOM_STEP = 1.25;
 /** How far Duplicate puts a copy from what it copied. */
 const COPY_OFFSET = { x: 24, y: 24 };
@@ -527,12 +525,15 @@ export class Board implements LiveStore<BoardState> {
     });
   }
 
-  /** The person has taken the camera. They've started looking around from here, so following stops and leaves them here, and a glide ends at once, where it was heading. */
+  /**
+   * The person has taken the camera. They've started looking around from here, so following stops and leaves them here, a glide
+   * ends at once, where it was heading, and a presented frame is no longer all there is to see.
+   */
   takeCamera(): void {
     this.untouched = false;
     this.home = null;
     this.stopFollow();
-    if (this.state.glide) this.set({ glide: false });
+    if (this.state.glide || this.state.slide) this.set({ glide: false, slide: null });
   }
 
   /** Whether all of this is on the sheet. */
@@ -563,16 +564,17 @@ export class Board implements LiveStore<BoardState> {
   };
 
   goTo(place: BoardPlace): void {
+    if (this.state.slide) this.set({ slide: null });
     this.glideTo(this.camera.centred(place));
   }
 
-  /** Fills the sheet with a frame. Presenting, it's all the sheet shows. */
+  /** Fills the sheet with a frame, in the middle, with room above for its title and the pill. Presenting, it's all the sheet shows. */
   focusFrame(id: string): void {
     const frame = this.state.view.byId.get(id);
     if (frame?.k !== 'frame') return;
     this.takeCamera();
     this.set({ slide: id });
-    this.glideTo(this.camera.fitting(frame, this.look.bar ? SLIDE_PAD : PRESENT_PAD));
+    this.glideTo(this.camera.fitting(frame, SLIDE_PAD));
   }
 
   /** Follows someone. A tile doesn't: it's a picture of the board, with nothing on it to stop following by. */
