@@ -8,6 +8,7 @@ import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
 } from '@livekit/rtc-node';
+import { setParticipantKey } from '@alcove/listener';
 import { KeyDerivationFunction } from '@livekit/rtc-ffi-bindings';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createHash, randomBytes } from 'node:crypto';
@@ -22,7 +23,11 @@ export interface TestParticipant {
   room: Room;
   remoteIdentities(): string[];
   /** Publishes a 440 Hz tone as this participant's microphone. Returns the track sid. */
-  publishTone(): Promise<string>;
+  /**
+   * Publishes a microphone playing a steady tone (440 Hz unless `hz` says otherwise), or with `speaking`, the tone in
+   * bursts of `onMs` with `offMs` of silence between, as someone talks in sentences.
+   */
+  publishTone(hz?: number, speaking?: { onMs: number; offMs: number }): Promise<string>;
   /**
    * Shares a screen the way a browser does: a picture (ScreenShare) and, `withSound`, its sound (ScreenShareAudio), both
    * encrypted like everything this participant sends. Returns their track sids.
@@ -61,20 +66,22 @@ async function waitFor(pred: () => boolean, what: string, ms = 15_000): Promise<
 export interface RoomJoin { serverUrl: string; token: string; identity: string }
 /**
  * Media keys. A browser holds every member's keys for the last few epochs and picks the one each frame needs by
- * the key index the frame carries. rtc-node 1.2.1 holds one key at a time (and its senders can't leave key
- * index 0), so a test participant either sends, with its own session's send key, or hears one sender, with
- * its own session's key for that sender in the epoch the sender is sending with (what the frame would say).
- * Or it holds one fixed key: someone who shouldn't have the group's keys.
+ * the key index the frame carries. rtc-node 1.2.1's senders can't leave key index 0, so a test participant either
+ * sends, with its own session's send key, or hears one sender, with its own session's key for that sender in the epoch
+ * the sender is sending with (what the frame would say). Or it hears every sender at once, each with its own key, as a
+ * browser does (`hearingAll`, as the listener does: see setParticipantKey in apps/listener). Or it holds one fixed
+ * key: someone who shouldn't have the group's keys.
  */
 export type Keys =
   | { sending: LiveStore<CallCrypto> }
   | { hearing: LiveStore<CallCrypto>; from: string; senderSends: LiveStore<CallCrypto> }
+  | { hearingAll: LiveStore<CallCrypto>; senders: { identity: string; sends: LiveStore<CallCrypto> }[] }
   | { key: Uint8Array; index: number };
 /**
  * The key a test participant uses now, or null to keep the one it has. A sender between two parts of the call has no
  * key to send with (`send` is null): like a browser, it then sends under a key nobody has.
  */
-const keyFor = (k: Keys): { key: Uint8Array; index: number } | null => {
+const keyFor = (k: Exclude<Keys, { hearingAll: unknown }>): { key: Uint8Array; index: number } | null => {
   if ('key' in k) return k;
   if ('sending' in k) {
     const media = k.sending.getSnapshot().media;
@@ -86,7 +93,14 @@ const keyFor = (k: Keys): { key: Uint8Array; index: number } | null => {
   const key = epoch?.keys[k.from];
   return epoch && key ? { key, index: epoch.index } : null;
 };
-const storesOf = (k: Keys): LiveStore<CallCrypto>[] => ('sending' in k ? [k.sending] : 'hearing' in k ? [k.hearing, k.senderSends] : []);
+/** Each sender's key for a participant hearing them all: its own session's key for them, in the epoch they send with. */
+const keysFor = (k: Extract<Keys, { hearingAll: unknown }>): { identity: string; key: Uint8Array; index: number }[] => k.senders.flatMap((s) => {
+  const at = s.sends.getSnapshot().media?.send?.index;
+  const key = k.hearingAll.getSnapshot().media?.epochs.find((e) => e.index === at)?.keys[s.identity];
+  return at !== undefined && key ? [{ identity: s.identity, key, index: at }] : [];
+});
+const storesOf = (k: Keys): LiveStore<CallCrypto>[] =>
+  ('sending' in k ? [k.sending] : 'hearing' in k ? [k.hearing, k.senderSends] : 'hearingAll' in k ? [k.hearingAll, ...k.senders.map((s) => s.sends)] : []);
 
 export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticipant> {
   const room = new Room();
@@ -104,24 +118,29 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
   // The same frame encryption as a browser's: AES-GCM, keys derived with HKDF, no ratchet, a ring of 256. rtc-node
   // only uses shared keys if it connects with one, so a participant without its key yet connects with a stand-in
   // (which decrypts nothing) until the real one arrives.
-  const first = keys ? keyFor(keys) : null;
+  // Hearing everyone, it connects with no shared key, so each sender's frames are opened with that sender's own.
+  const all = keys && 'hearingAll' in keys ? keys : null;
+  const one = keys && !('hearingAll' in keys) ? keys : null;
+  const first = one ? keyFor(one) : null;
   const encryption = {
-    keyProviderOptions: { ratchetWindowSize: 0, failureTolerance: -1, keyRingSize: 256, keyDerivationFunction: KeyDerivationFunction.HKDF, sharedKey: first?.key ?? new Uint8Array(randomBytes(32)) },
+    keyProviderOptions: { ratchetWindowSize: 0, failureTolerance: -1, keyRingSize: 256, keyDerivationFunction: KeyDerivationFunction.HKDF, ...(all ? {} : { sharedKey: first?.key ?? new Uint8Array(randomBytes(32)) }) },
     encryptionType: EncryptionType.GCM
   };
   await room.connect(join.serverUrl, join.token, { autoSubscribe: true, dynacast: false, ...(keys ? { encryption } : {}) });
-  const useKey = (k: { key: Uint8Array; index: number } | null) => {
-    const m = room.e2eeManager;
-    if (!k || !m) return;
-    // rtc-node 1.2.1 keeps the key provider out of its types (at runtime it's an ordinary property), and can't move
-    // its senders off key index 0, so a test participant keeps the current key there too. Browsers use the ring.
-    const provider: unknown = Reflect.get(m, 'keyProvider');
-    if (provider instanceof KeyProvider) { provider.setSharedKey(k.key, k.index); provider.setSharedKey(k.key, 0); }
+  // rtc-node 1.2.1 keeps the key provider out of its types (at runtime it's an ordinary property), and can't move
+  // its senders off key index 0, so a test participant keeps the current key there too. Browsers use the ring.
+  const provider = (): KeyProvider | null => { const m = room.e2eeManager; const p: unknown = m ? Reflect.get(m, 'keyProvider') : null; return p instanceof KeyProvider ? p : null; };
+  const useKeys = () => {
+    const p = provider();
+    if (!p) return;
+    if (all) { for (const k of keysFor(all)) { setParticipantKey(room, k.identity, k.key, k.index); setParticipantKey(room, k.identity, k.key, 0); } return; }
+    const k = one ? keyFor(one) : null;
+    if (k) { p.setSharedKey(k.key, k.index); p.setSharedKey(k.key, 0); }
   };
   let unfollow: () => void = () => undefined;
   if (keys) {
-    useKey(keyFor(keys));
-    const stops = storesOf(keys).map((store) => store.subscribe(() => useKey(keyFor(keys))));
+    useKeys();
+    const stops = storesOf(keys).map((store) => store.subscribe(useKeys));
     unfollow = () => stops.forEach((stop) => stop());
   }
 
@@ -136,7 +155,7 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
     identity: join.identity,
     room,
     remoteIdentities: () => [...room.remoteParticipants.keys()],
-    async publishTone() {
+    async publishTone(hz = 440, speaking) {
       const source = new AudioSource(RATE, 1);
       const track = LocalAudioTrack.createAudioTrack('mic', source);
       const opts = new TrackPublishOptions();
@@ -147,7 +166,8 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       let t = 0;
       pumps.push(setInterval(() => {
         const buf = new Int16Array(FRAME);
-        for (let i = 0; i < FRAME; i++) buf[i] = Math.round(Math.sin((2 * Math.PI * 440 * t++) / RATE) * 12_000);
+        const on = !speaking || ((t / RATE) * 1000) % (speaking.onMs + speaking.offMs) < speaking.onMs;
+        for (let i = 0; i < FRAME; i++, t++) buf[i] = on ? Math.round(Math.sin((2 * Math.PI * hz * t) / RATE) * 12_000) : 0;
         void source.captureFrame(new AudioFrame(buf, RATE, 1, FRAME));
       }, 10));
       return pub.sid ?? '';

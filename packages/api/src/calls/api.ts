@@ -6,6 +6,14 @@ import { type CallMoveIn } from './moves';
 import { type IncomingRing, type RingReply } from './rings';
 import { type CallSession } from './session';
 import { type CallCard } from './state';
+/**
+ * The API as the listener service (apps/listener) uses it, with its key: never the app's. A listener LiveKit sent to a
+ * call joins it with the invite its dispatch carried.
+ */
+export interface ListenerApi {
+  join(invite: string): Promise<{ place: string; session: CallSession }>;
+}
+
 export interface CallsApi {
   /** Creates a call that starts now and returns its code. */
   startNow(input?: InstantCallInput): Promise<{ code: string }>;

@@ -4,7 +4,7 @@
  * someone was when they said something, and who may read a line of the live transcript are all worked out here from
  * the call's sealed state, so every rule about rooms agrees. Nothing here touches the database or any key.
  */
-import { BreakoutBoardSchema, MAIN_PLACE } from '@alcove/api';
+import { BreakoutBoardSchema, CallRoleSchema, MAIN_PLACE } from '@alcove/api';
 import { z } from 'zod';
 import type { CallBoards } from './space-state';
 import { RoomPause } from './capture';
@@ -51,7 +51,7 @@ const withHosting = (v: unknown): unknown => {
   return j.success ? { ...v, hosting: j.data.role === 'host' ? [{ from: j.data.since, to: j.data.status === 'in' ? null : j.data.left ?? j.data.since }] : [] } : v;
 };
 export const Joined = z.preprocess(withHosting, z.object({
-  identity: z.string(), person: z.string(), role: z.enum(['host', 'invited', 'guest']), name: z.string(), email: z.string().optional(), photoUrl: z.string().optional(),
+  identity: z.string(), person: z.string(), role: CallRoleSchema, name: z.string(), email: z.string().optional(), photoUrl: z.string().optional(),
   status: z.enum(['waiting', 'in', 'left', 'denied']), admit: z.enum(['auto', 'ask']), keysFor: z.number(), group: z.string().nullable(), from: z.number(),
   placedAt: z.number(), placedSeq: z.number(), wasIn: z.object({ place: z.string(), since: z.number(), until: z.number() }).nullable(),
   leftAt: z.record(z.string(), z.number()), replaced: z.boolean(), chatBefore: z.boolean(), since: z.number(), left: z.number().nullable(),

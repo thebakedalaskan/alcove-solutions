@@ -175,6 +175,14 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     } else {
       s = await changeCapture(v, c, row, s, a, exact);
     }
+    // With notes off nothing hears the call: any listener still in it is taken out of the room and the call's group,
+    // whether or not it would go by itself.
+    if (s.notes.status === 'off') {
+      const listeners = s.people.filter((j) => j.role === 'listener' && (j.status === 'in' || j.status === 'waiting'));
+      const now = Date.now();
+      for (const j of listeners) s = withPerson(s, j.identity, (x) => (x.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: now }));
+      gone = [...gone, ...listeners.map((j) => j.identity)];
+    }
     const moved = s.people.filter((j) => j.status === 'in' && j.role !== 'host' && placeOf(settled, j) !== placeOf(s, j)).length;
     // Whoever left the main room (sent to a room, or the organizer visiting one) takes their share with them: it stops
     // there in the notes. Each share is ended by presenter, not by share, so it's read again once they're back.
@@ -201,7 +209,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     // Each room's board goes with whoever's in its room before anyone's told, so whoever's moved out has lost it by then.
     if (shifted) await syncRoomBoards({ organizer: o, callId });
     if (ready?.main) void syncBoardSeats({ organizer: o, callId });
-    await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 });
+    await nudge(o, room, callId, { call: true, log: a.type === 'remove' || a.type === 'deny' || moved > 0 || gone.length > 0 });
     if (board.landing) void landRooms({ organizer: o, callId });
   }, async (e: unknown) => {
     if (ready) await boards.dropRoomsReady(o, callId, ready);

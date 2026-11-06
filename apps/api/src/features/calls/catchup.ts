@@ -4,7 +4,7 @@
  * real lines back what the notes model says. Plain functions over what calls.ts reads; nothing here is kept.
  * Times are seconds since the call started, to a tenth.
  */
-import type { CallStretch, CaptureGap, CatchUpRange, CatchUpRead, CatchUpWindow, Evidence } from '@alcove/api';
+import type { CallRole, CallStretch, CaptureGap, CatchUpRange, CatchUpRead, CatchUpWindow, Evidence } from '@alcove/api';
 import type { Cut } from '../notes/drafting';
 import { ConflictError, ValidationError } from '../../errors';
 
@@ -22,7 +22,7 @@ export interface Open { from: number; to: number | null }
 
 /** A connection to the call as calls.ts keeps it: whose, whether it was let in, and when it came and went (ms). */
 export interface Connection {
-  identity: string; person: string; role: 'host' | 'invited' | 'guest'; email?: string | undefined;
+  identity: string; person: string; role: CallRole; email?: string | undefined;
   status: 'waiting' | 'in' | 'left' | 'denied'; since: number; left: number | null;
   /** Earlier stretches of a connection that came back in as it was after a drop (`mls/back`). */
   earlier: { since: number; left: number }[];

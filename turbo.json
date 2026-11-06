@@ -43,6 +43,8 @@
     "NEAR_AI_NOTES_MODEL",
     "LOG_LEVEL",
     "LOG_FORMAT",
+    "LISTENER_AGENT",
+    "LISTENER_SEATS",
     "TEST_LOGS"
   ],
   "globalPassThroughEnv": [
@@ -50,6 +52,7 @@
     "NEAR_AI_API_KEY",
     "LIVEKIT_API_KEY",
     "LIVEKIT_API_SECRET",
+    "LISTENER_KEY",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET"
   ]

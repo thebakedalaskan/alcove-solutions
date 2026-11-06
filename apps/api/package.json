@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@alcove/api-http": "workspace:*",
+    "@alcove/listener": "workspace:*",
     "@livekit/rtc-ffi-bindings": "0.13.1",
     "@livekit/rtc-node": "^1.2.1",
     "@modelcontextprotocol/client": "2.4.0",

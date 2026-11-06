@@ -546,6 +546,65 @@ call's sealed state (`apps/api/src/features/calls/capture.ts`) and the same for 
   [Privacy › Deletion](privacy-keys-and-sessions.md#deletion)). Capture says recording either way, which is true
   while the call runs. Paused stretches capture nothing, so there's nothing of them to keep.
 
+## The listener
+
+A server process (`apps/listener`) that hears a call for its notes instead of a browser, so a host's weak or dropped
+connection doesn't cost the transcript. Being built (see `docs/superpowers/plans/2026-11-05-call-listener.md`): for now
+it hears the main room, and the host's browser still sends what it hears too.
+
+- **Tasks.** While a live call's notes are on or paused, the main room has an open row in `listen_tasks`, kept in step
+  with every save of the call's state (`listening.follow` in `apps/api/src/features/calls/listening.ts`). Notes off, or the
+  call ending, ends it (`ended_at`, `ended_why`); ended tasks are kept a week to look into, then maintenance deletes them.
+- **Sending a listener.** `listening.supervise` asks LiveKit to dispatch a worker registered as `LISTENER_AGENT`
+  (`alcove-listener`) to the call's room, with a one-time invite in the dispatch's metadata: 32 random bytes that say
+  nothing about the call or its account (LiveKit, Cloud's operator included, reads metadata), of which only a hash is
+  kept, good for a minute after the dispatch. Nothing is sent while `LISTENER_KEY` isn't set: no listener could join.
+  It runs as soon as a task opens and every 5 seconds on every API instance, and sends a listener
+  to any open task that never had one, or whose listener didn't join within 10 seconds of being sent (no worker was
+  registered: LiveKit drops a dispatch nobody can take). Tasks are taken under a row lock other instances skip, so one
+  listener is sent, not two. LiveKit is told never to restart a job (`JRP_NEVER`): replacements are the API's, the same
+  on LiveKit Cloud as on LiveKit's own server, which never restarts one.
+- **Joining.** LiveKit pushes the job to a registered listener process (`serveDispatch`: LiveKit's agent protocol over
+  one WebSocket to `/agent`, not LiveKit's agents framework), which tells LiveKit it's full once its seats are. It joins
+  with `POST /v1/listeners/join`: the invite and the service's key (`LISTENER_KEY`, as a bearer token: LiveKit sees the
+  invite, so the invite alone lets nobody in), and a new identity and MLS key package, as a browser's join has. The
+  invite is taken once; the listener becomes the task's holder and comes into the call as a `listener`
+  (`listenerJoin` in `features/calls/joining.ts`): let in without asking (`admit: 'auto'`), so the host's browser adds it to the group and it
+  holds everyone's keys as anyone in the call does. It's never shown, never hosts, and a lock doesn't keep it out.
+- **Hearing.** It connects to the room with no shared key and gives the room each person's key under their own identity
+  (`setParticipantKey`: `@livekit/rtc-node` 1.2.1's `setKey` drops the key, so it sends that request through
+  `@livekit/rtc-ffi-bindings` itself), cuts each voice into clips with `@alcove/speech` (the cutter browsers use) and
+  sends them to `POST /v1/live/calls/:id/transcribe`, one at a time, trying again while the API answers `unavailable`.
+  It takes the server's nudges from the room, as a browser does, and leaves once its call has ended or its notes are off.
+  While notes are paused it cuts and sends nothing, as the pause notice promises. Its pass does nothing else: reading the
+  call and its keys, the room token, `transcribe` and `leave` are all it may ask (anything else is `403`).
+  Its room token is hidden and receive-only: nobody in the room sees it, and it can't publish anything. Browsers show
+  anyone in the call's group the server doesn't name as "Someone"; the call names its listener (`CallState.listeners`).
+  Only a web app built with `VITE_ALCOVE_LISTENERS=on` (development, until browsers check a listener's attestation)
+  leaves it off the screen, and only while notes are on or paused (and for 10 seconds after they go off, while the
+  host's browser takes it out of the group), one at a time, as the notes sign already says. It has no seat on boards,
+  and nothing given to everyone in the call (a document's seat) goes to it.
+- **When it goes.** However a listener comes out of the call (LiveKit's `participant_left` webhook for a task's holder,
+  it leaves, it's let in but isn't in the room 90 seconds on, or it couldn't come in: the host is away, so nobody can
+  let it into the group, or joining failed part way), it's taken out of the call at once (not after the wait that lets
+  a person come back) and its task is sent another. One that had been working (heard, or there 30 seconds) is replaced
+  straight away; one that left sooner without ever being heard failed, and the next waits 10, 20, 40 seconds and so on
+  up to five minutes (`failures`), so one that can't work doesn't come and go over and over, moving everyone's keys on
+  each time. A crashed listener is noticed when LiveKit drops it, about 20 seconds on; one LiveKit's word of never
+  arrives is noticed by its silence: it asks the API something every few seconds (`seen_at`), and one quiet for 30
+  seconds is replaced. A late or repeated webhook about a listener already replaced changes nothing. A listener isn't
+  trusted to go by itself: when notes go off, every listener still in the call is taken out of it, and any listener out
+  of the call is removed from the room too, so the host's browser takes it out of the group and the keys move on without
+  it. It never comes back the way a dropped connection does (`mlsBack`): another is sent with a new invite.
+- **What's taken.** A listener's clip is taken only while it holds the task for the part of the call the speech was
+  said in, and is placed in its segment by the server's clock, as a breakout room's is. One that doesn't hold it is
+  refused for good (`403`), and leaves. The host's browser's clips for the main room are taken as received and set
+  aside, so nothing is transcribed twice, only while a listener is hearing it: one of its clips was taken in this MLS
+  generation and notes segment, and it asked the API something within 20 seconds. So nothing is lost while a listener
+  comes in, catches up with a new host's keys or a new segment, or has gone quiet without anyone saying so.
+  While the host's browser is out of the call and a listener hears the main room, notes stay on: the transcript goes
+  on, and only the recording is unavailable, as it's still the host's browser's.
+
 ## Shared screens
 
 Call media is end-to-end encrypted, so LiveKit never sees a shared screen, and the API sees only the frames a

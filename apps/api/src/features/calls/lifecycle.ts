@@ -10,6 +10,7 @@ import { me, profile } from '../account/account';
 import { CallSpace, NO_BOARDS, NO_SPACE, withOpenBoards, type WorkedDocument } from './space-state';
 import * as space from './workspace';
 import * as boards from './boards';
+import * as listening from './listening';
 import * as liveNotes from './live-notes';
 import { queueDelete, segments, setRecordingState } from '../recordings/audio';
 import * as capture from './capture';
@@ -139,6 +140,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       invitedAtEnd = [(await profile(o, c)).email, ...boards.onInvite(s, m.manifest.guests, hereIn(o, callId, s))];
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
+      // Nothing more is heard: its listener leaves with everyone else when the room goes.
+      await listening.end(o, c, callId);
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await rings.clear(o, c, row.meeting_item_id);
@@ -277,7 +280,7 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
     await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
-    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept) };
+    return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept), listener: j.role === 'listener' };
   });
   if (r) {
     clog.info(r.was === 'waiting' ? 'someone stopped asking to join' : 'someone left the call', { callId });
@@ -285,6 +288,11 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     if (r.rooms) await syncRoomBoards({ organizer: o, callId });
     await nudge(o, r.room, callId, { call: true, log: true });
   }
+  // A listener out of the call is out of its room too, even if it's still connected there (a blip it came back from).
+  if (r?.listener && r.room) await o.livekit.removeParticipant(r.room, identity).catch((e: unknown) => clog.info('listener already gone from the room', { callId, err: e }));
+  // A listener out of the call, however it went (it left, gave up waiting to be let in, never reached the room): if it
+  // held a part of the call, another is sent.
+  await listening.left(o, o.ownerId, callId, identity);
 }
 
 /* ---------- the call's lifecycle from LiveKit: webhooks and upkeep, with nobody's session ---------- */
@@ -349,6 +357,12 @@ export async function onRoomEvent(d: Deps, e: LiveKitEvent): Promise<void> {
   if (!r) { clog.debug('livekit event for no live call', { event: e.event }); return; }
   if (e.event === 'room_finished') { await endCall(await openOwner(d, r.owner_id, undefined), r.call_id); return; }
   if (!e.identity) return;
+  // The listener hearing a part of the call left: another is sent at once, and this one is out of the call straight
+  // away, rather than after the wait that gives a person time to come back. If it was only a blip, it's been replaced.
+  if (e.event === 'participant_left' && await listening.left(d, r.owner_id, r.call_id, e.identity)) {
+    await departed(await openOwner(d, r.owner_id, undefined), r.call_id, e.identity, Date.now(), false, true);
+    return;
+  }
   if (e.identity !== r.host_identity) {
     // LiveKit says someone left: once it's clear they're really gone (a reconnect shows up as leaving and joining again), they're taken out.
     if (e.event === 'participant_left') {

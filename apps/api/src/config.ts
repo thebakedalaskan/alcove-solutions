@@ -53,6 +53,13 @@ const EnvSchema = z.object({
   LIVEKIT_URL: z.string().regex(/^wss?:\/\/\S+$/, 'LIVEKIT_URL must be a ws:// or wss:// URL'),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET must be at least 32 characters'),
+  /**
+   * The key listener processes (apps/listener) join calls with, until browsers check what a listener runs (docs: Calls
+   * and recordings › The listener). Without it, no listener is sent and none can join.
+   */
+  LISTENER_KEY: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().min(32, 'LISTENER_KEY must be at least 32 characters').optional()),
+  /** The name listener processes register with LiveKit under, which the API dispatches to calls. */
+  LISTENER_AGENT: z.string().regex(/^[a-z0-9-]{1,64}$/).default('alcove-listener'),
   /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
   NEAR_AI_API_KEY: optional,
   /** NEAR AI's gateway, which serves the attestation reports models are verified with. */

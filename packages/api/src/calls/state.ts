@@ -16,9 +16,10 @@ import { CallWorkspaceSchema } from './workspace';
 /**
  * The organizer hosts. Invited people join with their accounts. Anyone else with the link asks to join: signed in, under
  * their account, or with a typed name. Someone signed in whom the organizer lets in from the link is added to the
- * invite (when the notes may go to their account), and is invited from then on.
+ * invite (when the notes may go to their account), and is invited from then on. A listener is the service that hears
+ * the call for its notes: it's never shown, never hosts and never asks for anything.
  */
-export const CallRoleSchema = z.enum(['host', 'invited', 'guest']);
+export const CallRoleSchema = z.enum(['host', 'invited', 'guest', 'listener']);
 
 export type CallRole = z.infer<typeof CallRoleSchema>;
 
@@ -325,6 +326,12 @@ export const CallStateSchema = z.object({
    * or moved to another device. Shown as who they are, never as a stranger, and never twice.
    */
   leaving: z.array(z.object({ id: z.string(), seat: z.string(), person: PersonSchema, now: z.string().nullable() })),
+  /**
+   * Connections in the call's group that are the listener service hearing it for its notes, not people: never shown as
+   * anyone. A browser takes them as the notes listener only while notes are on or paused, and one at a time; anyone else
+   * in the group the server doesn't name still shows as "Someone".
+   */
+  listeners: z.array(z.string()),
   /** Who hosts now: the organizer, or someone standing in while the organizer is away. */
   host: CallHostSchema,
   /** The call's MLS group generation; browsers already in the call rejoin when it changes. */
@@ -353,6 +360,9 @@ export const CallStateSchema = z.object({
 });
 
 export type CallState = z.infer<typeof CallStateSchema>;
+
+/** What a listener's join gives it: the part of the call it hears, and its ticket into the call as a `listener`. */
+export const ListenerJoinedSchema = z.object({ place: z.string(), ticket: CallTicketSchema, state: CallStateSchema });
 
 
 export const CallEndResultSchema = z.object({

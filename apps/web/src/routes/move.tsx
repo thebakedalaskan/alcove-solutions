@@ -22,7 +22,7 @@ export const Route = createFileRoute('/move')({ component: MovePage });
 
 const mlog = log.child({ component: 'move' });
 const UI = { duration: 0.28, ease: [0.22, 0.8, 0.24, 1] } as const;
-const ROLE = { host: 'Organizer', invited: 'Invited', guest: 'Guest' } as const;
+const ROLE = { host: 'Organizer', invited: 'Invited', guest: 'Guest', listener: 'Listener' } as const;
 
 /** Calls are end-to-end encrypted in the browser, so a browser that can't do that can't take part. */
 async function canJoin(): Promise<boolean> {

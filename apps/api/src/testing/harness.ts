@@ -7,6 +7,7 @@
 import type { AlcoveApi, CallSession } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { serve, type ServerType } from '@hono/node-server';
+import { randomBytes } from 'node:crypto';
 import { Server } from 'node:http';
 import pg from 'pg';
 import { createApp } from '../app';
@@ -16,6 +17,7 @@ import { createPool } from '../db';
 import { createDocPool } from '../live/docPool';
 import { createHub } from '../live/hub';
 import { createLiveKit } from '../livekit';
+import { supervising } from '../features/calls/listening';
 import { configureLogging } from '../log';
 import { migrate } from '../migrate';
 import { createObjectStore, type ObjectStore } from '../objects';
@@ -121,7 +123,11 @@ export async function startHarness(): Promise<Harness> {
     // Sign-in photos come from the stand-in Google here, as they come from lh3.googleusercontent.com in production.
     PHOTO_HOSTS: 'googleusercontent.com,127.0.0.1',
     // A limit a test sets is in force on its next request, and gone once the test is: tests that look at the window set their own.
-    LIMITS_CACHE_MS: '0'
+    LIMITS_CACHE_MS: '0',
+    // The listener service's key, for listener processes the tests run, and a name of this run's own for them to
+    // register under, so a worker on the shared LiveKit never takes another run's (or worktree's) dispatches.
+    LISTENER_KEY: randomBytes(24).toString('base64url'),
+    LISTENER_AGENT: `test-listener-${randomBytes(4).toString('hex')}`
   });
   const pool = createPool(url);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -129,6 +135,8 @@ export async function startHarness(): Promise<Harness> {
   const objects = await createObjectStore(cfg);
   const deps: Deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(url, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS }), docs: docPoolFor(cfg) };
   const { server, baseUrl } = await listen(deps);
+  // As the server does: every part of a call with notes on gets a listener sent.
+  const stopSupervising = supervising(deps);
   // Only now is the API's address known: it's where Google sends people back to.
   deps.cfg = { ...cfg, API_URL: baseUrl };
   google.register(`${baseUrl}/v1/auth/google/callback`);
@@ -157,6 +165,7 @@ export async function startHarness(): Promise<Harness> {
       return { baseUrl: second.baseUrl, close: async () => { await hub.close(); await stop(second.server); if (docs !== deps.docs) await docs.close(); } };
     },
     async close() {
+      stopSupervising();
       closeCalls();
       await deps.hub.close();
       await deps.docs.close();

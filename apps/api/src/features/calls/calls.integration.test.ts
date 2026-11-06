@@ -9,6 +9,9 @@ import type { ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { openJson, sealJson, stateKey, toJson } from '../../crypto';
+import { openOwner } from '../../owners';
 import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from '../../testing/livekit';
@@ -249,6 +252,30 @@ describe('end-to-end encryption', () => {
     expect(await listen('p_outsideroutsideroutsid', randomBytes(32))).toBeLessThan(300);
     // And each sender has its own key: the guest's key doesn't open the organizer's frames.
     expect(await listen('p_wrongsenderwrongsender', latestKeys(host)[guest.ticket.identity] ?? randomBytes(32))).toBeLessThan(300);
+    await host.leave();
+  });
+
+  it('lets one participant hear everyone at once, each sender with their own key, as a browser does', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const samRoom = await joinRoom(sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    await waitFor(() => keyOf(host) === keyOf(lee) && keyOf(sam) === keyOf(lee), 'the same keys');
+    await hostRoom.publishTone();
+    await samRoom.publishTone();
+    await onLatestKey(host);
+    await onLatestKey(sam);
+    // Lee holds the host's key and Sam's, each for its own sender, in one room: both are heard.
+    const leeRoom = await connect(await lee.room(), { hearingAll: lee.crypto, senders: [{ identity: host.ticket.identity, sends: host.crypto }, { identity: sam.ticket.identity, sends: sam.crypto }] });
+    open.push(leeRoom);
+    const [fromHost, fromSam] = await Promise.all([leeRoom.meanLevelFrom(host.ticket.identity), leeRoom.meanLevelFrom(sam.ticket.identity)]);
+    expect(fromHost).toBeGreaterThan(3000);
+    expect(fromSam).toBeGreaterThan(3000);
     await host.leave();
   });
 
@@ -1997,5 +2024,28 @@ describe('screen sharing', () => {
     // Without screen notes, shares go from browser to browser through LiveKit, encrypted: the API kept nothing of them.
     expect([...await objectIds()].filter((id) => !before.has(id))).toEqual([]);
     await host.leave();
+  });
+});
+
+describe('a listener in a call’s record', () => {
+  it('reads a call whose record holds a listener, and shows nobody for it', async () => {
+    const org = await account();
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    await inGroup(host);
+    // The call's record as a release with listeners writes it: someone in the call whose role is `listener`.
+    const { ownerId } = org.session;
+    const { callId } = host.ticket;
+    const o = await openOwner(h.deps, ownerId, undefined);
+    const key = stateKey(o.root, ownerId, `call:${callId}`);
+    const header = { v: 1, kind: 'call-state', ownerId, callId } as const;
+    const row = z.object({ state_ciphertext: z.instanceof(Uint8Array) }).parse((await h.pool.query('SELECT state_ciphertext FROM calls WHERE owner_id = $1 AND call_id = $2', [ownerId, callId])).rows[0]);
+    const state = openJson(key, header, row.state_ciphertext, z.record(z.string(), z.unknown()));
+    const people = z.array(z.record(z.string(), z.unknown())).parse(state['people']);
+    const me = people.find((p) => p['identity'] === host.ticket.identity);
+    if (!me) throw new Error('the host isn’t in the call’s record');
+    const listener = { ...me, identity: 'listener-identity', person: 'listener-person', role: 'listener', name: 'Notes' };
+    await h.pool.query('UPDATE calls SET state_ciphertext = $3 WHERE owner_id = $1 AND call_id = $2', [ownerId, callId, sealJson(key, header, toJson({ ...state, people: [...people, listener] }))]);
+    await host.refresh();
+    expect(host.getSnapshot().participants.map((p) => p.id)).toEqual([host.ticket.identity]);
   });
 });

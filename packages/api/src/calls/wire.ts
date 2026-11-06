@@ -145,6 +145,11 @@ export const Mls = (max: number) => z.string().regex(/^[A-Za-z0-9_-]+$/).max(max
 
 /** A connection's participant ID in a call: its random LiveKit identity. */
 export const CallIdentity = z.string().regex(/^p_[A-Za-z0-9_-]{22}$/);
+/**
+ * A listener LiveKit sent to a call joining it: the invite its dispatch carried, and its new connection's identity and
+ * MLS key package, as a browser's join has.
+ */
+export const ListenerJoinBodySchema = z.object({ invite: z.string().max(2000), identity: CallIdentity, keyPackage: Mls(8192) });
 
 /** Joining by link: devices to start with, a name for guests, and this browser's MLS key package. */
 export const CallJoinBodySchema = z.object({

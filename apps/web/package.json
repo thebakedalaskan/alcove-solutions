@@ -12,6 +12,7 @@
   "dependencies": {
     "@alcove/api": "workspace:*",
     "@alcove/api-http": "workspace:*",
+    "@alcove/speech": "workspace:*",
     "@alcove/board": "workspace:*",
     "@alcove/ui": "workspace:*",
     "@livekit/track-processors": "0.8.2",

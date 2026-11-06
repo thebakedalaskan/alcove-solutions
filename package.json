@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "docker compose up -d --wait && turbo run dev --filter=@alcove/web --filter=@alcove/server",
+    "dev": "docker compose up -d --wait && turbo run dev --filter=@alcove/web --filter=@alcove/server --filter=@alcove/listener",
     "storybook": "pnpm --filter @alcove/storybook storybook",
     "build": "turbo run build",
     "typecheck": "node scripts/check-structure.mjs && node scripts/check-types.mjs && turbo run typecheck",

@@ -166,11 +166,12 @@ function modes(status: CaptureStatus, everOn: boolean): Record<Part, CaptureMode
  * The capture state for one person. Each part says when it last changed and who changed it: `organizer` names them,
  * for people in the call; people asking to join get no name, no gaps and no asks. A part the host's browser says
  * it can't do is unavailable while notes are on, and so is everything when it can do neither, or while that
- * browser is out of the call (`away`). Shared screens are read
+ * browser is out of the call (`away`), but the transcript while the listener hears the main room (`heard`): the
+ * recording is still the host's browser's. Shared screens are read
  * only once the organizer says so (`screens`), and then follow notes: on, paused with them, or off.
  */
 export function stateFor(c: {
-  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[]; away: boolean;
+  status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[]; away: boolean; heard?: boolean | undefined;
   screens: { on: boolean; history: ScreenChange[] };
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
 }): CaptureState {
@@ -186,7 +187,7 @@ export function stateFor(c: {
     before = now;
   }
   const current = modes(c.status, everOn);
-  const cant = new Set<CaptureDevicePart>(c.status !== 'on' ? [] : c.away ? ['recording', 'transcript'] : c.unavailable);
+  const cant = new Set<CaptureDevicePart>(c.status !== 'on' ? [] : c.away ? (c.heard ? ['recording'] : ['recording', 'transcript']) : c.unavailable);
   const part = (k: Part): CapturePart => {
     const h = changed.get(k);
     return { mode: k !== 'ai' && cant.has(k) ? 'unavailable' : current[k], since: h ? when(h.at) : null, by: h ? actor(h.by) : null };

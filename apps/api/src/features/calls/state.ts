@@ -11,6 +11,7 @@ import * as capture from './capture';
 import { noticesFor, type HostChange } from './hosting';
 import { BreakoutState, Joined, placesOf, relocate } from './places';
 import { keepRooms } from './scribes';
+import * as listening from './listening';
 import * as screens from '../recordings/screens';
 import { log } from '../../log';
 
@@ -125,6 +126,8 @@ export async function save(o: Owner, db: Db, callId: string, s: Stored) {
   // A board open in any part of the call goes into the note, for that part's notes to read, whether or not anyone changes it.
   const kept = keepRooms({ ...s, workspace: withOpenBoards(s.workspace, s.board.open) }, Date.now());
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);
+  // What the listener service hears follows the call's notes.
+  await listening.follow(o, db, callId, kept.notes.status);
 }
 
 export const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined): Stored =>
@@ -224,7 +227,8 @@ export async function saveSettled(o: Owner, db: Db, callId: string, stored: Stor
  * Taken out while their connection was away (it dropped for longer than LiveKit waits, or their tab slept), and not
  * because anyone wanted them out: the same connection can come back in as it is (`mlsBack`).
  */
-export const mayComeBack = (j: Joined) => j.role !== 'host' && j.status === 'left' && !j.replaced;
+/** A listener out of the call never comes back as it was: one is sent again with a new invite, if the call still needs it. */
+export const mayComeBack = (j: Joined) => j.role !== 'host' && j.role !== 'listener' && j.status === 'left' && !j.replaced;
 
 export const hostHere = (r: Pick<Row, 'state' | 'host_identity' | 'host_left_at'>) => r.state === 'live' && r.host_identity !== null && r.host_left_at === null;
 

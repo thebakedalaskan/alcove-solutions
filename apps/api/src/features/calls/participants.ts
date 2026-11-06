@@ -153,12 +153,12 @@ export async function inSeat(d: Deps, at: { callId: string; organizer: string; s
   return found.state.people.some((j) => j.status === 'in' && !found.state.removed.includes(j.person) && seatOf(key, j) === at.seat);
 }
 
-/** Everyone in the call now or, with `place`, in that part of it, by seat, with the name they're in it under. */
+/** Everyone in the call now or, with `place`, in that part of it, by seat, with the name they're in it under. Never a listener: it hears the call, it isn't given anything in it. */
 export async function seatedIn(o: Owner, callId: string, place?: string | undefined): Promise<Map<string, string>> {
   const { row, state } = await load(o, o.pool, callId);
   const s = settle(state, row);
   const key = seatKey(o, callId);
-  return new Map(s.people.filter((j) => j.status === 'in' && (place === undefined || placeOf(s, j) === place)).map((j) => [seatOf(key, j), j.name]));
+  return new Map(s.people.filter((j) => j.status === 'in' && j.role !== 'listener' && (place === undefined || placeOf(s, j) === place)).map((j) => [seatOf(key, j), j.name]));
 }
 
 export const seated = (v: Viewer): Promise<Map<string, string>> => seatedIn(v.organizer, v.pass.callId);
@@ -186,13 +186,14 @@ export function seatsOf(o: Owner, callId: string, people: Joined[]): boards.Here
 }
 
 /** Everyone in the call now, wherever they are in it: a main board is for the whole call. */
-export const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in'));
+// A listener never has a seat on a board: it hears the call, it doesn't take part in it.
+export const hereIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && j.role !== 'listener'));
 
 /** Everyone in one part of the call now: whoever's in a room is who its board is for. */
-export const inPlaceOf = (o: Owner, callId: string, s: Stored, place: string): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && placeOf(s, j) === place));
+export const inPlaceOf = (o: Owner, callId: string, s: Stored, place: string): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => j.status === 'in' && j.role !== 'listener' && placeOf(s, j) === place));
 
 /** Everyone the call has had who wasn't taken out of it, here now or not. Taking someone out ends their seats, so those don't count. */
-export const knownIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => !s.removed.includes(j.person)));
+export const knownIn = (o: Owner, callId: string, s: Stored): boards.Here[] => seatsOf(o, callId, s.people.filter((j) => !s.removed.includes(j.person) && j.role !== 'listener'));
 
 /** The part of the call someone asking is in. */
 export function whereIs(v: Viewer, s: Stored): string {
