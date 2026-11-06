@@ -50,8 +50,8 @@ export interface WorkspacePresenting {
   away: boolean;
   section: number;
   inSight: boolean;
-  /** Presents a document to everyone in this part of the call, from its first section. */
-  start: (documentId: string) => void;
+  /** Presents the workspace to everyone in this part of the call. */
+  start: () => void;
   /** Whoever's presenting, or the organizer: moves everyone to a section. */
   move: (section: number) => void;
   /** Whoever's presenting, or the organizer: stops it for everyone. */

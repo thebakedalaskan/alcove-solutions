@@ -83,7 +83,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
     return a.state === 'asking' && j ? [{ id: a.id, participantId: j.identity, person: personFor(j, j.identity, j.name, organizer), at: new Date(a.at).toISOString() }] : [];
   });
   const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer, asks });
-  if (lost.present.length || lost.play.length) await stopLost(o, callId, lost);
+  if (lost.present.length || lost.space.length || lost.play.length) await stopLost(o, callId, lost);
   return {
     ...base,
     participants: here.map((j) => ({
@@ -130,7 +130,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
 }
 
 /** What someone who isn't in the call yet is told of its workspace: nothing. */
-const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' };
+const PRIVATE: CallWorkspace = { id: null, home: null, name: null, chosenBy: { id: 'organizer', name: '', email: '' }, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' };
 
 /**
  * Who hosts, as this viewer sees it: the connection hosting now and whether it stands in for the organizer, the

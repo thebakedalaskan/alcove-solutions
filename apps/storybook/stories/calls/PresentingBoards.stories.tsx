@@ -56,7 +56,7 @@ const presenting = (section: number) => (s: CallSession): void => {
       const said = NOTES[frame.title];
       if (said) keepFrameNotes(open.documentId, frame.id, said);
     }
-    await s.startPresenting('board', open.documentId, section);
+    await s.startPresenting({ kind: 'board', id: open.documentId, section });
   })();
 };
 /** The retro open in your design review, filled in, for you to present. */

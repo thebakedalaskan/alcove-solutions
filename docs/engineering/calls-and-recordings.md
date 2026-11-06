@@ -173,7 +173,8 @@ The call itself stays in the API: who's let in, notes and the transcript.
   can't capture, audio and speech uploads, and end the call. Only the organizer (pass role `host`, their own
   session and their current connection: joining from another device takes the powers with it, and so does moving
   there, below): notes on/off, pause and resume, shared screens in the notes, say not now to an ask for notes, turn
-  pointing at shared screens off for everyone, and open, rearrange, rename, visit and pause breakout rooms. A
+  pointing at shared screens off for everyone, stop anyone's share for everyone ([Shared screens](#shared-screens)), and
+  open, rearrange, rename, visit and pause breakout rooms. A
   connection that hosted before, which the call has gone on from, is told `409` "You're not hosting this call from
   here any more". The recording and the main room's live transcript come from what the host's browser hears, and a
   breakout room's transcript from what its scribe's browser hears there (see Notes below). Link guests get no notes; invited people, and people signed in whom the organizer let in, get them.
@@ -410,7 +411,7 @@ calls module makes the change), shown to everyone as `CallState.host`.
 - **What a stand-in can do.** Let people in or turn them away, mute, remove anyone but the organizer, lock and
   unlock, spotlight, bring everyone back from breakout rooms, end the call, or leave it to someone else. What the notes
   capture stays the organizer's: a stand-in can't turn notes on or off, pause or resume, have shared screens read, or
-  say not now to an ask, and can ask for notes like anyone else. Breakout rooms stay as the organizer set them (no
+  say not now to an ask, and can ask for notes like anyone else. Stopping someone's share stays the organizer's too. Breakout rooms stay as the organizer set them (no
   opening, moving, renaming, visiting or pausing a room), and close on time. Only the organizer adds anyone to their
   invite: someone signed in whom a stand-in lets in is in the call as a guest, without the notes (their call card
   says `guest` while someone stands in), and the organizer can share the notes with them afterwards. Host powers
@@ -625,6 +626,15 @@ call (`apps/web/src/features/call/notes/frames.ts`, `apps/api/src/features/recor
   share, so a share is read again once they're back. The main room's shares are read while rooms are open.
 - **For catch-up.** `screens.framesOf` lists a live call's frames (ID, presenter, share, time) for a catch-up to
   point at; catch-up doesn't read screens yet ([Notes and inference › What's left](notes-and-inference.md#whats-left)).
+- **The organizer stops a share** for everyone (`share-stop`, by the person's `seat`, which holds across their connections):
+  the API asks LiveKit for that seat's share tracks, its picture (`SCREEN_SHARE`) and its sound (`SCREEN_SHARE_AUDIO`) on any
+  of their connections, with nothing of the call held, and mutes each through the room service that mutes a microphone, which
+  never unmutes. Then, under the call's row, everyone in the part of the call it was shared in, but the organizer's own
+  connection, gets a `people` notice: "Art stopped Priya’s share." (first names, as the call names them); the organizer's
+  browser says it in its own words. It's the organizer's alone (`403` for anyone else, a stand-in included), `409` "They
+  aren’t sharing anything." when that seat shares nothing LiveKit hasn't muted already, or isn't in the call, and, like every
+  organizer control, `409` from a connection that doesn't host. LiveKit sees which tracks are shares, never what's on them,
+  and the log has how many were muted, never whose.
 
 ## Pointing at shared screens
 
@@ -1029,9 +1039,9 @@ into the call. Being in a call, or organizing it, opens nothing.
   keeps what it made in `CallSpace.made`, which `followHome` follows by the call's own invite). It counts as one its
   organizer made. A stand-in hosts the call and doesn't choose its workspace.
 - **`CallState.workspace`** is per viewer, worked out on every read: `id` (what's viewed), `home`, `name`, `chosenBy`,
-  `canOpen`, `role`, `documents`, `agenda`, `present`, `play`, `asks`, `asked`. `home` is the home's ID for someone who can
-  open something in it, else null. Someone who can open nothing gets `id` and `name` null: private, and
-  nothing that names anything, `present` aside (below). Someone with one document has the `id` to open it with and no name.
+  `canOpen`, `role`, `documents`, `agenda`, `present`, `ended`, `play`, `asks`, `asked`. `home` is the home's ID for someone who
+  can open something in it, else null. Someone who can open nothing gets `id` and `name` null: private, and
+  nothing that names anything, `present` and `ended` aside (below). Someone with one document has the `id` to open it with and no name.
   It's computed only for a call that has something to show, and a workspace that can't be read reads as private: nothing
   in one can stop anyone reading the call. Someone waiting to be let in gets nothing at all.
   - **What a read costs.** What it needs of a workspace's tree, its name and what's brought, presented and played, with who
@@ -1077,47 +1087,63 @@ into the call. Being in a call, or organizing it, opens nothing.
   the note is told what they can open now, by the name it has now, and nothing else is listed or counted, and which of the
   people who changed it they are (`by[].isMe`): who changed it is kept as the workspace knows them (`personIn`, a keyed
   hash), so the reader is found among them the same way, on each read, and nothing stored says who's reading.
-- **Presenting.** `present-start` needs what's presented open to whoever starts it; `kind` is `document` or `board`, and the
-  state is `{ kind, id, section, by }`, one for each part of the call. A document is presented from the call's workspace. A board
-  is presented where it's open: the board open in your part of the call (the main board, in a room that shares it), from
-  whichever workspace it's kept in, and no other, so everyone it's presented to has it on their stage already. It's shown from
-  that workspace whichever one everyone views, and only while it's still the board open there: closed, it's over, and the next
-  change takes it out of what the call keeps. It's moved and stopped by whoever started it or the organizer, and nobody can
-  start over someone who's presenting there. Sections are the browser's to count: a document's headings, a board's frames
-  ([Presenting a board](#presenting-a-board)). Access doesn't change: someone who can't open it is told something's being presented, and by whom, with
-  `kind`, `id`, `name` and `section` null. Presenter notes aren't call state: see
-  [Data and storage › Presenter notes](data-and-storage.md#presenter-notes).
+- **Presenting.** One thing at a time in each part of the call, for the people there: the workspace, or a board
+  (`present-start` with `what`, `{ kind: 'workspace' }` or `{ kind: 'board', id, section }`). Each start is a new presentation
+  with a random `key` (`id128`), which names nothing and is the same for everyone told of it.
+  - *The workspace* presented is the one everyone views, by someone something in it opens for (`404` "That workspace…"
+    otherwise, as for a call that views none). It names that workspace and nothing more: where the presenter is in it comes
+    from presence. The call keeps it in `workspace.space`, `{ place, workspaceId, key, since, by }`, apart from `present`: a
+    release that knows only documents and boards there would fail to read the call with a new kind in it.
+  - *A board* is presented where it's open: the board open in your part of the call (the main board, in a room that shares it),
+    from whichever workspace it's kept in, and no other, so everyone it's presented to has it on their stage already. The call
+    keeps it in `workspace.present`, `{ kind: 'board', id, section, by, key, since }`. It's shown from that workspace whichever
+    one everyone views, and only while it's still the board open there: closed, it's over, and the next change takes it out of
+    what the call keeps. It moves a frame at a time (`present-move`; `409` while the workspace is what's presented), by whoever
+    started it or the organizer. Frames are the browser's to count ([Presenting a board](#presenting-a-board)).
+  - *One at a time.* Nobody starts either over someone else presenting there (`409` "Someone else is presenting here."), unless
+    they're reloading or have lost it. Starting while you present one presents this in its place, and the same again is the
+    same presentation, with its key.
+  - *Access doesn't change*: someone who can't open it is told something's being presented, by whom, and its `key`, with
+    `kind`, `id`, `name` and `section` null. Which workspace is said only to someone something in it opens for, and which board
+    only to someone who can open it. Presenter notes aren't call state: see
+    [Data and storage › Presenter notes](data-and-storage.md#presenter-notes).
+- **Ending a presentation.** `present-stop` is for whoever started it, or the organizer (`403` for anyone else), and says
+  whom it ends for: whoever presented it (`close` false), everyone following keeping it open on their own, or everyone
+  (`close`), which closes a board in the call as `board-close` does, for whoever's presenting it as well as whoever opened it.
+  The call keeps how the last presentation in each part ended, `workspace.ended`, `{ place, key, close, by, at }`, `by` being its
+  presenter whoever stopped it, until another starts there, and tells everyone there (`CallWorkspace.ended`: `key`, `close` and
+  `by`), so whoever was following it knows whether to keep it open. Nothing else that ends one says how (below).
+- **What a release before this one kept.** A document it presented a section at a time is over, and the next change takes it out
+  of what the call keeps. A board it presented has no `key` (`''`) or `since` (0): it's told with a key made from where it is,
+  whose it is and which board, keyed under the call's own key (`call-present:<callId>`), so it's the same on every read and for
+  everyone, and says nothing to anyone without that key. A workspace presented that isn't the one everyone views, as one of
+  those releases switching would leave it, is over.
 - **Playing together.** `{ mediaId, documentId, by, playing, positionMs, atMs }`, with `nowMs` as it's read: all the
   server's clock, so `playPosition` lands a late joiner at the same moment whatever their own clock says. `play-start` needs the
   document open and the video to be a block in it, which is read from the document with nothing held; only IDs are kept, and
   nothing about the video changes. Paused, seeked, resumed and stopped by whoever started it or the organizer. Only someone
   who can open the document is told: anyone else sees nothing, and what they try reads as nothing playing, or, if they start
   a video of their own over it, as that video not being there (`404`, the same as for one that isn't).
-- **What stops them.** Both belong to the part of the call they started in, and show only to the people there.
-  - Someone reloading hides what they started until they're back: it isn't stopped, and they find it as it was.
+- **What stops them.** What's presented and what's playing belong to the part of the call they started in, and show only to
+  the people there.
+  - Someone reloading hides what they started until they're back: it isn't stopped, nothing says it ended, and they find it as
+    it was, with its key.
   - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
     for good, as a change of workspace and the call ending do. Only they can say they left on purpose (`onPurpose` on `leave`,
     which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
+    How a presentation ended in a part of the call goes when that part closes, and everything presented with the call.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
-    everyone: losing a document says nothing to the call, so a read that finds this takes it out of the call's state and
-    tells everyone. It's found by a read from someone who can open something in the workspace, or from whoever started it,
-    never from someone with nothing in it, who's told only that something's being presented until then. While something's showing, a browser reads the call each time it checks its keys, so it never
-    waits on a nudge that isn't coming.
-- **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, `features/workspace/Presentation.tsx`).
-  - *Sections* are one rule, in the editor's reading plugin (`editor/plugins/reading.ts`): a first- or second-level heading
-    starts one, named for what it says; what comes before the first is a section named for the title; one with nothing in
-    it doesn't count, and only what's on the page does. Whoever presents and everyone watching read it from the same
-    document, so `section` means the same blocks everywhere. A section past the last shows the last.
-  - *The audience's view* is drawn over each person's own page, from a second session of the document opened only to read
-    (`openToRead`: no kept-edits store, so it never sends anything). The editor's reading mode leaves out, with decorations,
-    everything outside the section, the title after the first, and empty lines; nothing in the document changes. The page
-    underneath waits as it was, `inert`, and counts as out of sight, so following stops quietly and presence says you've left
-    it. When it ends, the overlay goes and your own page is there.
-  - *What's yours alone*: Work on my own (the presentation lifts off your own page, or, if the workspace was opened for the
-    presentation, it goes to the document itself), and whether the workspace was opened for it, so it's put away again when
-    it ends with you watching. Next and Back show at once for whoever presses them, then follow the call's answer.
-  - *Presenter notes* are read and kept through `api.workspaces.presenterNotes`, 600 ms after the last key and on leaving.
-    Someone in the call without an account isn't offered any: the API refuses a guest's.
+    everyone, and the workspace presented stops once nothing in it opens for its presenter: losing a document or a workspace
+    says nothing to the call, so a read that finds this takes it out of the call's state and tells everyone. It's found by a
+    read from someone who can open something in the workspace, or from whoever started it, never from someone with nothing in
+    it, who's told only that something's being presented until then. While something's showing, a browser reads the call each
+    time it checks its keys, so it never waits on a nudge that isn't coming.
+- **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`).
+  - *The workspace presented* is said in the strip at the top of what you have open in the workspace: who's presenting it, with
+    Stop for whoever may, which ends it for whoever presented it (`close` false). Nothing is drawn over your own page, and
+    nobody follows the presenter yet. Present, on a document in a call, presents the workspace.
+  - *A presentation ending* because its presenter left the call says so, for everyone. Which presentation it is, is its `key`.
+  - *Presenter notes* beside a board's frames are as [Presenting a board](#presenting-a-board) says.
 - **Playing together, in the browser** (`features/call/playback/sharedVideo.ts`, `PlayTogether.tsx`).
   - *One player per call*, playing whatever's open. A video block on screen borrows its `<video>`, which moves into the block
     and is never copied, so nothing is heard twice; with none on screen it plays out of sight and is still heard.
@@ -1221,6 +1247,12 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   The call's seats on it are for the whole call, so someone in a room finds it when they come back, and `boardCheck` counts
   them. A new board started in a room is the room's; a saved board is the main room's to bring: `board-open` with one, and
   `boardCheck`, from a room are `409`, before anything is settled.
+- **Not over someone presenting.** Nobody makes or brings in a board while someone else presents one where it would open,
+  there or in a room that shows that board: it would take theirs off everyone's stage. `board-open` is `409` "Someone else is
+  presenting a board here. You can start one once they stop.", asked before anything is made and again under the call's row,
+  and it names nobody: the call already tells everyone who's presenting. Bringing in the board that's presented, to let people
+  in, takes it off nobody's stage, and whoever's presenting may open another, which ends their presentation with the board it
+  was of. The workspace presented is in no board's way.
 - **A new board** (`board-open` with `template`) goes in the call's home, settled first if it has none, in this run of the
   call's folder there while that's in the tree (`workspaceForCall`'s `folderId`), whichever workspace everyone's viewing,
   and named after the call. It's made by the server through what `items.create` does, because whoever opens it needn't be in the
@@ -1288,6 +1320,8 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   (`useOpensAgain`, as the page's does), and one that couldn't open at all opens again once the browser is back online.
 - **Closing** (`board-close`) is for whoever opened it, on any connection of theirs, or the organizer, and only closes it.
   Nothing is deleted, seats stay until the call ends because people may open it again, and what the call lets people into stays.
+  While it's presented, ending the presentation for everyone (`present-stop` with `close`) closes it the same way, for whoever's
+  presenting it too ([Presenting](#the-calls-workspace)).
 - **When it stops.** The call ending ends every seat, and what it kept of its boards goes. A change of workspace leaves what's
   open alone: a board says where it is, and only a new one goes to the new workspace.
 - **Ideas from the call** are kept by part of the call in its sealed state (`board.ideas`: when they were last looked for, a
@@ -1432,9 +1466,11 @@ Each step counts towards the same 240 a minute as what goes on in the workspace.
 
 ### Presenting a board
 
-Present on the board's bar presents the board open where you are (`present-start` with `kind: 'board'`, from its first frame);
-what's kept, who may move and stop it, and what stops it are a document's ([Presenting](#the-calls-workspace)). In the browser:
-`features/call/boards/boardPresenting.ts` turns the call's present state into the board's, and `features/board/CallBoard.tsx` draws it.
+Present on the board's bar presents the board open where you are (`present-start` with `what: { kind: 'board', id }`, from its
+first frame); what's kept, who may move and stop it, how it ends and what stops it are as for anything presented
+([Presenting](#the-calls-workspace)). In the browser: `features/call/boards/boardPresenting.ts` turns the call's present state
+into the board's, and `features/board/CallBoard.tsx` draws it. Stop presenting there ends it for whoever presented it
+(`close` false): the board stays in the call.
 
 - **Frames are slides.** The board's top-level frames, in the order every browser reads them (`slides.ts`): a frame held in
   another is part of it. `section` is a slide's place in that order, so it means the same frame everywhere; past the last it
@@ -1464,8 +1500,8 @@ what's kept, who may move and stop it, and what stops it are a document's ([Pres
   frame. Anyone who'd hidden the board has it back as a presentation begins. Look around gives them their own view back, as they
   left it, tools and all, and the pill says Back to them; a scroll, a drag or a pinch on the frame is looking around too, from
   wherever it takes them (`onLook`). Whoever's presenting moving on never pulls them back, and Back to them is one press. The
-  organizer, who can stop anyone's, has **Stop presenting** in the pill too, which stops it for everyone, as a document's strip
-  has. Nobody
+  organizer, who can stop anyone's, has **Stop presenting** in the pill too, which stops it, as the workspace's strip has, and
+  leaves the board in the call. Nobody
   goes to or follows anyone on a board while it's being presented to them.
 - **When it ends**, everyone's own view comes back as they left it. Someone who came in during it gets the whole board.
 - **Rooms' frames.** Once rooms close, each room's board is a frame on the main board, so presenting it, each room's frame is a

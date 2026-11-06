@@ -54,7 +54,7 @@ export function useBoardPresenting({ session, presenting, board, account, failed
   } : null), [ours?.by.name, ours?.mine, section, away, canStop, watch, move, stop, notes, setNote]);
 
   const boardId = open?.documentId ?? null;
-  const start = useMemo(() => (boardId ? () => { session.startPresenting('board', boardId, 0).catch(failed); } : undefined), [session, boardId, failed]);
+  const start = useMemo(() => (boardId ? () => { session.startPresenting({ kind: 'board', id: boardId }).catch(failed); } : undefined), [session, boardId, failed]);
   const hold = mine ? () => refuse(STOP_PRESENTING_FIRST) : null;
   return { present, start, hold };
 }

@@ -54,7 +54,7 @@ export async function actOnWorkspace(v: Viewer, callId: string, a: space.SpaceAc
       const changed = await apply({ ...changing, c });
       if (changed === 'again') return 'again';
       const { closed } = await saveSettled(o, c, callId, state, changed.s);
-      clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
+      clog.info('call action', { callId, action: a.type, present: changed.s.workspace.present.length, space: changed.s.workspace.space.length, play: changed.s.workspace.play.length, asks: changed.s.workspace.asks.length, tries });
       return { room: row.room_name, ended: changed.ended, made: changed.made, meetingId: row.meeting_item_id, closed };
     });
     if (done === 'again') {

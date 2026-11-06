@@ -17,7 +17,7 @@ import {
 } from '@alcove/api';
 import type {
   BoardCheck, BoardOpen, BoardTemplate, BoardTimerMinutes, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
-  CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentKind, WorkspaceHere, WorkspaceItem
+  CallWorkspaceSwitch, DocFollowUpTick, DocumentRole, PresentStart, WorkspaceHere, WorkspaceItem
 } from '@alcove/api';
 import { addObject, colourIn, fillTemplate, landBoards, readBoard, roomFrameId, roomFrames, type FrameObject } from '@alcove/board';
 import { sessions } from '~/lib/live';
@@ -50,6 +50,8 @@ export interface RoomSide {
   endReason: 'ended-by-host' | 'removed' | 'error' | null;
   /** How many times whoever hosts has muted your microphone. */
   mutedYou: number;
+  /** How many times the organizer has stopped what you share: LiveKit mutes it, and your browser lets it go. */
+  sharesStopped: number;
 }
 type Them = RoomSide['people'][string];
 
@@ -57,6 +59,12 @@ class Crypto extends Pushed<CallCrypto> {}
 
 /** How you came to the call: what the call says you are, and whether you ask to be let in first. */
 export interface Arrival { role: CallRole; asking: boolean; name?: string | undefined }
+
+/**
+ * What's presented in one part of the call, as the server keeps it: the board open there, and which frame everyone's on, or the
+ * workspace everyone views; by whom (a participant ID); and which presentation it is.
+ */
+type Presented = { kind: 'board'; by: string; key: string; id: string; section: number } | { kind: 'workspace'; by: string; key: string };
 
 
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
@@ -92,8 +100,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private boards = new Map<string, { at: { workspaceId: string; documentId: string } | null; openedBy: string; made: boolean }>();
   private boardMode: BreakoutBoardMode = 'none';
   private roomBoards = new Map<string, { workspaceId: string; documentId: string; name: string; who: string[] }>();
-  /** What's presented in each part of the call, as the server keeps it: by whom (a participant ID), which board, and which frame everyone's on. */
-  private presented = new Map<string, { by: string; id: string; section: number }>();
+  /** What's presented in each part of the call: one thing at a time in each. */
+  private presented = new Map<string, Presented>();
+  /** How the last presentation in each part of the call ended, until another starts there. */
+  private ended = new Map<string, { key: string; close: boolean; by: CallSeat }>();
   /** Who's on the board where you are besides you, by their connection, and where their pointer is. */
   private onIt = new Map<string, { x: number; y: number }>();
 
@@ -114,7 +124,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
-      workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, play: null, asks: [], asked: 'no' },
+      workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
       board: { open: null, timer: null, vote: null, ideas: [] }
     });
     this.script = script;
@@ -123,7 +133,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
     this.personal = personalFor(noteId);
-    this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0 });
+    this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
 
     // Whoever's here already, the organizer first when it isn't you.
     const here: Present[] = [...(script.here ?? [])];
@@ -217,24 +227,28 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
         return;
       }
       case 'present': {
-        if (b.document !== undefined) { this.theyPresent(b.who, b.document, b.section ?? 0); return; }
         // The board open in the main room, from a frame.
         const p = this.find(b.who);
         const open = this.boards.get('main')?.at;
-        if (p && open) this.presented.set('main', { by: p.id, id: open.documentId, section: b.section ?? 0 });
+        if (p && open) this.startsHere('main', { kind: 'board', by: p.id, key: nextId('present'), id: open.documentId, section: b.section ?? 0 });
+        this.showBoard();
+        return;
+      }
+      case 'present-workspace': {
+        // Whoever presents the workspace has opened it, so the home is settled by then.
+        this.settleHome();
+        const p = this.find(b.who);
+        if (p) this.startsHere('main', { kind: 'workspace', by: p.id, key: nextId('present') });
         this.showBoard();
         return;
       }
       case 'move-presenting': {
-        const board = this.presented.get('main');
-        if (board) { this.presented.set('main', { ...board, section: b.section }); this.showBoard(); return; }
-        this.space((w) => (w.present ? { ...w, present: { ...w.present, section: w.present.id === null ? null : b.section } } : w));
+        const now = this.presented.get('main');
+        if (now?.kind === 'board') { this.presented.set('main', { ...now, section: b.section }); this.showBoard(); }
         return;
       }
-      case 'stop-presenting':
-        if (this.presented.delete('main')) { this.showBoard(); return; }
-        this.space((w) => ({ ...w, present: null }));
-        return;
+      case 'stop-presenting': this.endsHere('main', b.close ?? false); return;
+      case 'stop-share': this.theyStopShare(b.who); return;
       case 'play': this.theyPlay(b.who, b.document, b.media); return;
       case 'stop-playing': this.space((w) => ({ ...w, play: null })); return;
       case 'ask-to-see': {
@@ -284,7 +298,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private goes(p: Person): void {
     const x = this.find(p);
     if (!x) return;
-    // Whatever they were presenting ends with them.
+    // Whatever they were presenting ends with them, and nobody stopped it.
     for (const [place, q] of this.presented) if (q.by === x.id) this.presented.delete(place);
     this.change((s) => ({
       ...s, participants: s.participants.filter((q) => q.id !== x.id), spotlight: s.spotlight === x.id ? null : s.spotlight,
@@ -292,8 +306,9 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     }));
     this.crypto.update((c) => ({ ...c, members: c.members.filter((m) => m !== x.id), everyone: c.everyone.filter((m) => m !== x.id) }));
     this.livekit.update((r) => { const { [x.id]: _gone, ...rest } = r.people; return { ...r, people: rest }; });
-    // What they presented or played for everyone ends with them, and they're not in the workspace any more.
-    this.space((w) => ({ ...w, present: w.present?.by.seat === x.seat ? null : w.present, play: w.play?.by.seat === x.seat ? null : w.play }));
+    // What they played for everyone ends with them, and they're not in the workspace any more.
+    this.space((w) => ({ ...w, play: w.play?.by.seat === x.seat ? null : w.play }));
+    this.showBoard();
     if (this.where.delete(x.id)) this.sayWhere();
     this.hosting();
   }
@@ -453,24 +468,55 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     };
   }
   /**
-   * What's presented where you are, as you may know it: the board open there, a frame at a time. A presentation of a board
-   * that's closed, or by someone who's gone, is over.
+   * What's presented where you are, as you may know it: the board open there, a frame at a time, or the workspace everyone
+   * views. Someone who can open nothing in the workspace is told who's presenting it, and nothing else. A presentation of a
+   * board that's closed, or by someone who's gone, is over.
    */
   private presentHere(): CallPresent | null {
+    const s = this.getSnapshot();
     const place = this.crypto.getSnapshot().place;
     const p = this.presented.get(place);
-    const open = this.boards.get(this.shownAt(place))?.at;
-    const by = p ? this.getSnapshot().participants.find((x) => x.id === p.by) : undefined;
-    if (!p || !by || !open || open.documentId !== p.id) return null;
-    const item = treeOf(open.workspaceId).items.find((i) => i.id === p.id);
+    const by = p ? s.participants.find((x) => x.id === p.by) : undefined;
+    if (!p || !by) return null;
     const mine = by.id === this.me.id;
-    return { kind: 'board', id: p.id, name: item?.name ?? '', section: p.section, by: { seat: by.seat, name: by.person.name }, mine, canControl: mine || this.me.isOrganizer };
+    const seen = { key: p.key, by: this.seatOf(by), mine, canControl: mine || this.me.isOrganizer };
+    if (p.kind === 'workspace') {
+      const w = s.workspace;
+      return w.canOpen && w.id !== null ? { kind: 'workspace', id: w.id, name: null, section: null, ...seen } : { kind: null, id: null, name: null, section: null, ...seen };
+    }
+    const open = this.boards.get(this.shownAt(place))?.at;
+    if (!open || open.documentId !== p.id) return null;
+    const item = treeOf(open.workspaceId).items.find((i) => i.id === p.id);
+    return { kind: 'board', id: p.id, name: item?.name ?? '', section: p.section, ...seen };
+  }
+  /** A presentation starts in a part of the call, in place of whatever was presented there, and nothing has ended there since. */
+  private startsHere(place: string, p: Presented): void {
+    this.presented.set(place, p);
+    this.ended.delete(place);
+  }
+  /**
+   * What's presented in a part of the call ends: for whoever presented it, everyone following keeping it open on their own, or
+   * for everyone (`close`), which closes a board in the call too. Everyone there is told which, and whose it was.
+   */
+  private endsHere(place: string, close: boolean): void {
+    const p = this.presented.get(place);
+    if (!p) return;
+    const by = this.getSnapshot().participants.find((x) => x.id === p.by);
+    this.presented.delete(place);
+    if (by) this.ended.set(place, { key: p.key, close, by: this.seatOf(by) });
+    if (p.kind === 'board' && close) {
+      this.boards.delete(this.shownAt(place));
+      this.onIt.clear();
+    }
+    this.showBoard();
   }
   /** Tells the call what's open where you are now, what's presented there, which rooms are on a board of their own, and who's on yours. */
   private showBoard(): void {
-    for (const [place, p] of this.presented) if (this.boards.get(this.shownAt(place))?.at?.documentId !== p.id) this.presented.delete(place);
+    for (const [place, p] of this.presented) if (p.kind === 'board' && this.boards.get(this.shownAt(place))?.at?.documentId !== p.id) this.presented.delete(place);
+    const present = this.presentHere();
+    const last = this.ended.get(this.crypto.getSnapshot().place) ?? null;
     this.change((s) => ({
-      ...s, board: this.boardHere(s.board), workspace: { ...s.workspace, present: this.presentHere() ?? (s.workspace.present?.kind === 'board' ? null : s.workspace.present) },
+      ...s, board: this.boardHere(s.board), workspace: { ...s.workspace, present, ended: last && last.key !== present?.key ? last : null },
       breakouts: s.breakouts.open ? { ...s.breakouts, open: { ...s.breakouts.open, board: this.boardMode, rooms: s.breakouts.open.rooms.map((r) => ({ ...r, board: this.boards.has(r.id) })) } } : s.breakouts
     }));
     this.sayWhoIsOn();
@@ -599,6 +645,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (!open) return;
     this.push({ ...s, breakouts: { open: null, held: [...s.breakouts.held, { rooms: open.rooms.map(({ paused: _p, board: _b, ...r }) => r), from: open.from, to: s.elapsed }] }, capture: { ...s.capture, room: null } });
     for (const place of this.presented.keys()) if (place !== 'main') this.presented.delete(place);
+    for (const place of this.ended.keys()) if (place !== 'main') this.ended.delete(place);
     this.boardsBack();
     this.showBoard();
     const everyone = s.participants.map((p) => p.id);
@@ -792,8 +839,10 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (was !== null && was !== id) {
       hereIn(was, []);
       for (const [k, v] of this.where) this.where.set(k, { ...v, document: v.document !== null && this.itemIn(id, v.document) ? v.document : null });
+      this.presented.clear();
     }
-    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, present: null, play: null }));
+    this.space((w) => ({ ...w, id, home: this.homeId, name: tree.name, canOpen: true, role: tree.role, play: null }));
+    this.showBoard();
     this.sayWhere();
   }
   /** Who's where in the workspace everyone views, as its stream says it. */
@@ -807,19 +856,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     });
     hereIn(id, here);
   }
-  /* Someone else presenting, playing or tagging you in it has opened Workspace, so the home is settled by then. */
-  private theyPresent(who: Person, document: string, section: number): void {
-    this.settleHome();
-    const p = this.find(who);
-    if (!p) return;
-    const id = this.getSnapshot().workspace.id;
-    const item = id === null ? undefined : this.itemIn(id, document);
-    // Someone who can open nothing here is told that something is presented, and by whom, and nothing else.
-    const present: CallWorkspace['present'] = item
-      ? { kind: item.kind === 'board' ? 'board' : 'document', id: document, name: item.name, section, by: this.seatOf(p), mine: false, canControl: this.getSnapshot().isOrganizer }
-      : { kind: null, id: null, name: null, section: null, by: this.seatOf(p), mine: false, canControl: false };
-    this.space((x) => ({ ...x, present }));
-  }
+  /* Someone else playing or tagging you in it has opened Workspace, so the home is settled by then. */
   private theyPlay(who: Person, documentId: string, mediaId: string): void {
     this.settleHome();
     const p = this.find(who);
@@ -895,51 +932,44 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   declineWorkspaceAsk(askId: string): Promise<void> { this.space((w) => ({ ...w, asks: w.asks.filter((a) => a.id !== askId) })); return Promise.resolve(); }
-  /** A board is presented where it's open, as the server lets it be; a document, from the workspace everyone views. */
-  startPresenting(kind: PresentKind, id: string, section = 0): Promise<void> {
-    if (kind === 'board') {
-      const place = this.crypto.getSnapshot().place;
-      if (this.boards.get(this.shownAt(place))?.at?.documentId !== id) return Promise.reject(new AlcoveApiError('not-found', 'That isn’t there, or you can’t open it.'));
-      const there = this.presented.get(place);
-      if (there && there.by !== this.me.id) return Promise.reject(new AlcoveApiError('conflict', 'Someone else is presenting here.'));
-      this.presented.set(place, { by: this.me.id, id, section });
-      this.showBoard();
-      return Promise.resolve();
-    }
+  /**
+   * The workspace everyone views, for someone who can open it, or a board where it's open, as the server lets either be: one at a
+   * time where you are. Presenting while you present something presents this in its place; the same again is the same one.
+   */
+  startPresenting(what: PresentStart): Promise<void> {
+    const place = this.crypto.getSnapshot().place;
     const w = this.getSnapshot().workspace;
-    const item = w.id === null ? undefined : this.itemIn(w.id, id);
-    if (!item) return Promise.reject(new AlcoveApiError('not-found', 'That isn’t there, or you can’t open it.'));
-    this.space((x) => ({ ...x, present: { kind, id, name: item.name, section, by: this.seat, mine: true, canControl: true } }));
+    if (what.kind === 'workspace' ? w.id === null || !w.canOpen : this.boards.get(this.shownAt(place))?.at?.documentId !== what.id) {
+      return Promise.reject(new AlcoveApiError('not-found', `That ${what.kind === 'workspace' ? 'workspace' : 'document'} doesn’t exist, or you don’t have access to it.`));
+    }
+    const there = this.presented.get(place);
+    if (there && there.by !== this.me.id) return Promise.reject(new AlcoveApiError('conflict', 'Someone else is presenting here.'));
+    const same = what.kind === 'workspace' ? there?.kind === 'workspace' : there?.kind === 'board' && there.id === what.id;
+    const key = same && there ? there.key : nextId('present');
+    this.startsHere(place, what.kind === 'workspace' ? { kind: 'workspace', by: this.me.id, key } : { kind: 'board', by: this.me.id, key, id: what.id, section: what.section ?? 0 });
+    this.showBoard();
     return Promise.resolve();
   }
-  /** A board presented where you are, for whoever started it or the organizer to move on or stop; null when none is. */
-  private boardPresentedHere(): { place: string; now: { by: string; id: string; section: number } } | AlcoveApiError | null {
+  /** What's presented where you are, for whoever started it or the organizer to move on or stop. */
+  private presentedHere(): { place: string; now: Presented } | AlcoveApiError {
     const place = this.crypto.getSnapshot().place;
     const now = this.presented.get(place);
-    if (!now) return null;
+    if (!now) return new AlcoveApiError('conflict', 'Nothing is being presented here.');
     if (now.by !== this.me.id && !this.me.isOrganizer) return new AlcoveApiError('forbidden', 'Only whoever started this, or the organizer, can do that.');
     return { place, now };
   }
   movePresenting(section: number): Promise<void> {
-    const board = this.boardPresentedHere();
-    if (board instanceof AlcoveApiError) return Promise.reject(board);
-    if (board) {
-      this.presented.set(board.place, { ...board.now, section });
-      this.showBoard();
-      return Promise.resolve();
-    }
-    this.space((w) => (w.present ? { ...w, present: { ...w.present, section } } : w));
+    const here = this.presentedHere();
+    if (here instanceof AlcoveApiError) return Promise.reject(here);
+    if (here.now.kind !== 'board') return Promise.reject(new AlcoveApiError('conflict', 'Only a board is presented a frame at a time.'));
+    this.presented.set(here.place, { ...here.now, section });
+    this.showBoard();
     return Promise.resolve();
   }
-  stopPresenting(): Promise<void> {
-    const board = this.boardPresentedHere();
-    if (board instanceof AlcoveApiError) return Promise.reject(board);
-    if (board) {
-      this.presented.delete(board.place);
-      this.showBoard();
-      return Promise.resolve();
-    }
-    this.space((w) => ({ ...w, present: null }));
+  stopPresenting(close: boolean): Promise<void> {
+    const here = this.presentedHere();
+    if (here instanceof AlcoveApiError) return Promise.reject(here);
+    this.endsHere(here.place, close);
     return Promise.resolve();
   }
   startPlaying(documentId: string, mediaId: string, positionMs?: number | undefined): Promise<void> {
@@ -1064,6 +1094,11 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
    */
   openBoard(from: BoardOpen): Promise<void> {
     const place = this.crypto.getSnapshot().place;
+    // Nobody makes or brings in a board while someone else presents one here: it would take theirs off everyone's stage.
+    const there = this.presented.get(place);
+    if (there?.kind === 'board' && there.by !== this.me.id && !('documentId' in from && from.documentId === there.id)) {
+      return Promise.reject(new AlcoveApiError('conflict', 'Someone else is presenting a board here. You can start one once they stop.'));
+    }
     if ('template' in from) {
       const room = place === 'main' ? undefined : this.getSnapshot().breakouts.open?.rooms.find((r) => r.id === place);
       const at = this.makeBoard(room ? `${room.name} board` : this.meeting.title, from.template, room !== undefined);
@@ -1270,6 +1305,34 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const now = this.livekit.getSnapshot().people[identity];
     if (now) this.livekit.update((r) => ({ ...r, people: { ...r.people, [identity]: { ...now, mic: false, speaking: false } } }));
     return Promise.resolve();
+  }
+  /**
+   * The organizer stops what someone shares, for everyone: LiveKit mutes it. Everyone else is told who stopped it, and you, who
+   * did, have your own words for it.
+   */
+  stopShare(seat: string): Promise<void> {
+    if (!this.getSnapshot().isOrganizer) return Promise.reject(new AlcoveApiError('forbidden', 'Only the organizer can do that.'));
+    const p = this.getSnapshot().participants.find((x) => x.seat === seat);
+    const nothing = new AlcoveApiError('conflict', 'They aren’t sharing anything.');
+    if (p?.isMe) {
+      if (!sessions.media?.getSnapshot().screen) return Promise.reject(nothing);
+      this.livekit.update((r) => ({ ...r, sharesStopped: r.sharesStopped + 1 }));
+      return Promise.resolve();
+    }
+    const them = p ? this.livekit.getSnapshot().people[p.id] : undefined;
+    if (!p || !them?.screen) return Promise.reject(nothing);
+    this.livekit.update((r) => ({ ...r, people: { ...r.people, [p.id]: { ...them, screen: null, sound: false } } }));
+    return Promise.resolve();
+  }
+  /** The organizer, when it isn't you, stops what someone shares, yours or anyone's: it stops for everyone, and you're told who stopped it. */
+  private theyStopShare(who: Person | 'me'): void {
+    const s = this.getSnapshot();
+    const organizer = firstOf(s.participants.find((p) => p.isOrganizer)?.person ?? this.meeting.organizer);
+    const whose = who === 'me' ? this.me : this.find(who);
+    if (!whose) return;
+    if (who === 'me') this.livekit.update((r) => ({ ...r, sharesStopped: r.sharesStopped + 1 }));
+    else this.them(who, (t) => ({ ...t, screen: null, sound: false }));
+    if (!s.isOrganizer) this.change((x) => ({ ...x, notices: [...x.notices, { id: nextId('notice'), text: `${organizer} stopped ${firstOf(whose.person)}’s share.`, kind: 'people' }] }));
   }
   remove(id: string): Promise<void> {
     const p = this.getSnapshot().participants.find((x) => x.id === id);

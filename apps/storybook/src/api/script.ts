@@ -95,12 +95,16 @@ export type Beat =
    */
   | { do: 'goes-to'; who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }
   /**
-   * Someone presents a document in the call's workspace from a section, or with no `document` the board open in the main room
-   * from a frame; moves it on; and stops.
+   * Someone presents the board open in the main room, from a frame, or the workspace as everyone views it; moves the board on;
+   * and stops, for them alone, everyone following keeping it open on their own, or for everyone (`close`), which closes a board
+   * in the call too.
    */
-  | { do: 'present'; who: Person; document?: string | undefined; section?: number | undefined }
+  | { do: 'present'; who: Person; section?: number | undefined }
+  | { do: 'present-workspace'; who: Person }
   | { do: 'move-presenting'; section: number }
-  | { do: 'stop-presenting' }
+  | { do: 'stop-presenting'; close?: boolean | undefined }
+  /** The organizer, when it isn't you, stops what someone shares, for everyone: yours (`me`), or anyone else's. */
+  | { do: 'stop-share'; who: Person | 'me' }
   /** Someone plays a video in a document of the call's workspace for everyone, and stops it. */
   | { do: 'play'; who: Person; document: string; media: string }
   | { do: 'stop-playing' }
@@ -195,9 +199,15 @@ export const run = (what: () => void): Beat => ({ do: 'run', what });
 export const goesTo = (who: Person, document: string | null, o: { typing?: boolean; page?: CallPage } = {}): Beat => ({ do: 'goes-to', who, document, ...o });
 /** Someone in the call opens one of the call's own pages: Notes, Follow-ups or the Transcript. */
 export const opensPage = (who: Person, page: CallPage): Beat => ({ do: 'goes-to', who, document: null, page });
-export const presents = (who: Person, document: string, section?: number): Beat => ({ do: 'present', who, document, section });
+/** Someone presents the board open in the main room, from a frame. */
+export const presentsBoard = (who: Person, section?: number): Beat => ({ do: 'present', who, section });
+/** Someone presents the workspace, as everyone in the call views it. */
+export const presentsWorkspace = (who: Person): Beat => ({ do: 'present-workspace', who });
 export const movesPresenting = (section: number): Beat => ({ do: 'move-presenting', section });
-export const stopsPresenting = (): Beat => ({ do: 'stop-presenting' });
+/** Whoever's presenting stops: for them alone, or for everyone (`close`). */
+export const stopsPresenting = (close = false): Beat => ({ do: 'stop-presenting', close });
+/** The organizer stops what someone shares, yours or theirs, for everyone. */
+export const stopsShare = (who: Person | 'me'): Beat => ({ do: 'stop-share', who });
 export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
 export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
 export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });

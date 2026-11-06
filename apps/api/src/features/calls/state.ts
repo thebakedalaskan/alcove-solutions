@@ -127,8 +127,9 @@ export async function save(o: Owner, db: Db, callId: string, s: Stored) {
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);
 }
 
-export const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined): Stored =>
-  ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind, ...(place ? { place } : {}) }] });
+/** A notice for everyone, or only those in one part of the call (`place`), and for everyone but one connection (`not`). */
+export const notice = (s: Stored, text: string, kind: 'notes' | 'people' | 'info' = 'notes', place?: string | undefined, not?: string | undefined): Stored =>
+  ({ ...s, notices: [...s.notices.slice(-2), { id: id128(), text, kind, ...(place ? { place } : {}), ...(not ? { not } : {}) }] });
 
 /** A host change, told: the new host in their own words, everyone else in the same sentence (features/calls/hosting.ts). */
 export const hostNotices = (s: Stored, change: HostChange, organizer: string): Stored =>

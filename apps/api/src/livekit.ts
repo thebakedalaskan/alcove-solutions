@@ -23,13 +23,18 @@ export interface LiveKit {
    */
   screenShares(roomName: string): Promise<{ identity: string; sid: string }[]>;
   /**
+   * What everyone shares in the room now, the picture and its sound: whose each track is (identity), its ID, and whether it's
+   * muted. LiveKit sees which tracks are shares, never what's in them.
+   */
+  sharing(roomName: string): Promise<{ identity: string; sid: string; muted: boolean }[]>;
+  /**
    * A join token for one identity in one room. No admin rights: host powers stay in the API. It may send data: browsers
    * send each other pointers and marks on shared screens, encrypted end to end with their own media keys. The API is
    * never in the room, so it never receives them, and browsers take the call's nudges only from the server.
    */
   token(t: { roomName: string; identity: string }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
-  /** Mutes one published track. Never unmutes: remote unmute stays off. */
+  /** Mutes one published track, a microphone or a share. Never unmutes: remote unmute stays off. */
   muteTrack(roomName: string, identity: string, trackSid: string): Promise<void>;
   /** Sends a reliable data message to everyone in the room on `topic`. */
   sendData(roomName: string, data: Uint8Array, topic: string): Promise<void>;
@@ -75,6 +80,11 @@ export function createLiveKit(cfg: Config): LiveKit {
     async screenShares(roomName) {
       if (!(await rooms.listRooms([roomName])).length) return [];
       return (await rooms.listParticipants(roomName)).flatMap((p) => p.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE).map((t) => ({ identity: p.identity, sid: t.sid })));
+    },
+    async sharing(roomName) {
+      if (!(await rooms.listRooms([roomName])).length) return [];
+      const shares = new Set([TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO]);
+      return (await rooms.listParticipants(roomName)).flatMap((p) => p.tracks.filter((t) => shares.has(t.source)).map((t) => ({ identity: p.identity, sid: t.sid, muted: t.muted })));
     },
     async token({ roomName, identity }) {
       const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, ttl: TOKEN_TTL_SECONDS });

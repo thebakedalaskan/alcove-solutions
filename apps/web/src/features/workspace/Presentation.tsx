@@ -66,7 +66,7 @@ function useReading(ws: Ws, documentId: string) {
 /** Over your own page while you're watching a presentation, or giving one. Nothing for a board, which presents itself. */
 export function Presentation({ ws, presenting }: { ws: Ws; presenting: WorkspacePresenting }) {
   const present = presenting.present;
-  if (!present || present.kind !== 'document' || present.id === null) return null;
+  if (!present || present.kind !== 'workspace' || present.id === null) return null;
   return <Presented key={present.id} ws={ws} presenting={presenting} present={present} documentId={present.id} />;
 }
 

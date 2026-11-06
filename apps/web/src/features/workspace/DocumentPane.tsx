@@ -307,7 +307,7 @@ function OpenedPane({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem;
   /* Present is at the top of every document in a call, once the page knows its sections; on a phone it's in ⋯. Something in Trash can't be presented. */
   const present = ws.call?.presenting;
   const preview = present && sections && ready && !trashed ? (onStart: () => void) => (
-    <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { onStart(); present.start(item.id); }} />
+    <WsPresentPreview name={nameOf(item)} sections={sections.length} onStart={() => { onStart(); present.start(); }} />
   ) : null;
   const close = () => setMore(null);
   const morePop: WsPop = {

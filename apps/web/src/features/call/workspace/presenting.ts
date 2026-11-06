@@ -1,9 +1,8 @@
 /*
- * Presenting a document in a call, as this browser sees it (docs: Calls and recordings › Presenting). The call says what's
- * presented in the part of it you're in (`CallWorkspace.present`), the same for everyone who can open it. What's kept here is
- * yours alone: whether you're watching or working on your own, and whether the workspace was opened for the presentation,
- * so it's put away again when it ends. Your own page is never moved: what's presented is drawn over it (Presentation.tsx),
- * so when it stops, everyone's back exactly where they were.
+ * Presenting in a call, as this browser sees it (docs: Calls and recordings › Presenting). The call says what's presented in
+ * the part of it you're in (`CallWorkspace.present`), the same for everyone who can open it. What's kept here is yours alone:
+ * whether you're watching or working on your own. The workspace presented is said in the strip at the top of what you have
+ * open, with Stop for whoever may; nothing is drawn over your own page for it, and nobody follows the presenter yet.
  *
  * A board is presented on the board's own surface, by the whiteboards work: nothing here draws one.
  */
@@ -17,8 +16,8 @@ const plog = log.child({ component: 'presenting' });
 /** How long after a presentation ends its presenter's leaving the call is taken as why it ended. */
 const PRESENTER_LEFT_MS = 4000;
 
-/** Who started what's presented, and what it is: a new presentation is a new key, even of the same document. */
-const keyOf = (p: CallPresent | null): string | null => (p ? `${p.by.seat} ${p.kind ?? ''} ${p.id ?? ''}` : null);
+/** Which presentation it is, as the call says: a new presentation is a new key, even of the same thing. */
+const keyOf = (p: CallPresent | null): string | null => p?.key ?? null;
 
 export function usePresenting({ session, present, participants, open, inSight, show, hide, go, say, failed }: {
   session: CallSession;
@@ -39,8 +38,9 @@ export function usePresenting({ session, present, participants, open, inSight, s
   /** The presentation you're working on your own during, by its key. */
   const [ownWay, setOwnWay] = useState<string | null>(null);
   const away = key !== null && ownWay === key;
-  const isDocument = present?.kind === 'document' && present.id !== null;
-  const watching = isDocument && (present.mine || !away);
+  const isWorkspace = present?.kind === 'workspace' && present.id !== null;
+  /* The workspace presented isn't drawn over your own page: its strip says it's on. */
+  const watching = false;
 
   /* Next and Back show at once for whoever presses them; once the call has answered, what it says is what's so. */
   const [moved, setMoved] = useState<{ key: string; section: number; n: number } | null>(null);
@@ -60,7 +60,7 @@ export function usePresenting({ session, present, participants, open, inSight, s
     show();
   }, [watching, key, show]);
   useEffect(() => { if (!open) opened.current = false; }, [open]);
-  const presented = isDocument ? key : null;
+  const presented = isWorkspace ? key : null;
   const awayAtEnd = useRef(false);
   useEffect(() => { if (presented !== null) awayAtEnd.current = away; }, [presented, away]);
   const last = useRef(presented);
@@ -111,7 +111,7 @@ export function usePresenting({ session, present, participants, open, inSight, s
 
   const presentNow = useRef(present);
   presentNow.current = present;
-  const start = useCallback((documentId: string) => { session.startPresenting('document', documentId, 0).catch(failed); }, [session, failed]);
+  const start = useCallback(() => { session.startPresenting({ kind: 'workspace' }).catch(failed); }, [session, failed]);
   const move = useCallback((to: number) => {
     const k = keyOf(presentNow.current);
     if (k === null) return;
@@ -123,7 +123,7 @@ export function usePresenting({ session, present, participants, open, inSight, s
   const stop = useCallback(() => {
     const p = presentNow.current;
     if (!p) return;
-    session.stopPresenting().then(() => say(p.mine ? wsToast.stoppedPresenting() : wsToast.stoppedTheirPresenting(firstName(p.by.name))), (e: unknown) => {
+    session.stopPresenting(false).then(() => say(p.mine ? wsToast.stoppedPresenting() : wsToast.stoppedTheirPresenting(firstName(p.by.name))), (e: unknown) => {
       plog.info('presenting didn’t stop', { code: errorCode(e) });
       failed(e);
     });

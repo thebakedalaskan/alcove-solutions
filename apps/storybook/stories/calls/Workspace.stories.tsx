@@ -7,7 +7,7 @@
 import type { CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
-import { asksToSee, at, goesTo, leaves, movesPresenting, opensPage, plays, presents, tagsYou, type CallScript, type Present } from '../../src/api/script';
+import { asksToSee, at, goesTo, leaves, opensPage, plays, presentsWorkspace, tagsYou, type CallScript, type Present } from '../../src/api/script';
 import { current } from '../../src/api/state';
 import { inCall, phone, reach, type InCall, type StoryCall } from '../../src/call';
 import { iso } from '../../src/world/clock';
@@ -236,7 +236,7 @@ export const HistoryPhone = phone(History);
 
 /* ---------- presenting and playing ---------- */
 
-/** You present the plan: Present, then the button that says how many sections. Everyone sees it a section at a time. */
+/** You press Present on the plan, then the button that says how many sections: it presents the workspace, and everyone is told. */
 export const Presenting = inCall(reviewing(), {
   play: async (c) => {
     await openWorkspace(c);
@@ -255,12 +255,12 @@ export const Presenting = inCall(reviewing(), {
 });
 export const PresentingPhone = phone(Presenting);
 
-/** Priya presents the plan: the workspace opens for it by itself, and she moves it on to the next section. */
-export const Watching = inCall(reviewing({ cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, movesPresenting(1))] }));
+/** Priya presents the workspace: what you have open says she's presenting. */
+export const Watching = inCall(reviewing({ cues: at(2, presentsWorkspace(PRIYA)) }));
 export const WatchingPhone = phone(Watching);
 
-/** Priya leaves while she's presenting: it ends, and the toast says why. */
-export const PresenterLeft = inCall(reviewing({ cues: [...at(2, presents(PRIYA, PLAN)), ...at(9, leaves(PRIYA))] }));
+/** Priya leaves while she's presenting the workspace: it ends, and the toast says why. */
+export const PresenterLeft = inCall(reviewing({ cues: [...at(2, presentsWorkspace(PRIYA)), ...at(9, leaves(PRIYA))] }));
 export const PresenterLeftPhone = phone(PresenterLeft);
 
 /** Aiko plays the onboarding film for everyone: it plays in its block, and the bar above the dock says who started it. */

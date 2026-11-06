@@ -4,7 +4,7 @@
  * (docker-compose.yml) and main's fake Google and NEAR AI. Participants are @livekit/rtc-node rooms joined with
  * the tokens the API hands out, encrypting media with keys from the call's MLS group, so media travels for real.
  */
-import { AlcoveApiError, CallMlsSchema, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
+import { AlcoveApiError, CallMlsSchema, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
 import type { ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
@@ -1496,6 +1496,48 @@ describe('host controls', () => {
     await host.leave();
     // Once it's over, only the organizer can still read the call. Asked as a browser would: `back` may have heard it's over, and stopped asking.
     expect((await asMember(back, 'GET', '')).status).toBe(409);
+  });
+
+  it('the organizer stops anyone’s share for everyone, and nobody else can', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({});
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const hostRoom = await joinRoom(host);
+    const priya = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Priya Raman' });
+    await letIn(host, priya);
+    const kofi = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Kofi Asante' });
+    await letIn(host, kofi);
+    const priyaRoom = await joinRoom(priya);
+    const seatOf = async (who: CallSession) => (await settle(host, (s) => s.participants.some((p) => p.id === who.ticket.identity))).participants.find((p) => p.id === who.ticket.identity)?.seat ?? '';
+    const [priyas, kofis] = [await seatOf(priya), await seatOf(kofi)];
+    // Someone sharing nothing has nothing to stop, and nor has someone who isn't in the call.
+    expect(code(await host.stopShare(kofis).catch((e: unknown) => e))).toBe('conflict');
+    expect(code(await host.stopShare('nobody-has-this-seat').catch((e: unknown) => e))).toBe('conflict');
+
+    // Priya shares a tab with its sound: the picture and its sound reach the organizer.
+    const { screen, sound } = await priyaRoom.publishScreen(true);
+    const shared = () => [...(hostRoom.room.remoteParticipants.get(priya.ticket.identity)?.trackPublications.values() ?? [])]
+      .filter((t) => t.source === TrackSource.SOURCE_SCREENSHARE || t.source === TrackSource.SOURCE_SCREENSHARE_AUDIO);
+    await hostRoom.waitFor(() => shared().length === 2, 'Priya’s share and its sound');
+    expect(shared().map((t) => t.sid).sort()).toEqual([screen, sound].sort());
+    // Nobody but the organizer stops it: not Kofi, and not Priya from here either, whose own Stop sharing is in her browser.
+    for (const attempt of [() => kofi.stopShare(priyas), () => priya.stopShare(priyas)]) {
+      expect(code(await attempt().catch((e: unknown) => e))).toBe('forbidden');
+    }
+    expect(shared().every((t) => !t.muted)).toBe(true);
+
+    // The organizer stops it for everyone: LiveKit mutes the picture and its sound, as everyone in the room has them. (Whether
+    // her browser then lets go of the tab is the browser's to say: this LiveKit test participant only shows what the room did.)
+    await host.stopShare(priyas);
+    await hostRoom.waitFor(() => shared().length === 2 && shared().every((t) => t.muted), 'Priya’s share muted for everyone');
+    // Everyone else is told who stopped whose; the organizer has words of their own for it.
+    const told = `${firstName(org.session.user.name)} stopped Priya’s share.`;
+    for (const call of [priya, kofi]) expect((await settle(call, (s) => s.notices.some((n) => n.text === told))).notices).toContainEqual({ id: expect.any(String), text: told, kind: 'people' });
+    await host.refresh();
+    expect(host.getSnapshot().notices.map((n) => n.text)).not.toContain(told);
+    // Stopped, there's nothing left to stop.
+    expect(code(await host.stopShare(priyas).catch((e: unknown) => e))).toBe('conflict');
+    await host.leave();
   });
 
   it('never tells a guest anyone’s email address', async () => {

@@ -493,8 +493,11 @@ read every note given to it. That's why the demo SSO sign-in takes only example 
 - **Nothing else opens anything.** Being a call's organizer gives nothing. Joining a call gives nothing. What a call says
   of its workspace is worked out here on every read, for each person, and nothing about who can open what is copied into it.
   Someone who can open nothing is told that it's private and nothing that names anything: not which workspace, not a document, a
-  folder or anyone's whereabouts. That something's being presented, and by whom, is said to everyone in that part of the call,
-  and what it is only to those who can open it. A video playing isn't said to anyone who can't open its document. A board
+  folder or anyone's whereabouts. That something's being presented, by whom, and which presentation it is (a random key that
+  names nothing), is said to everyone in that part of the call, as is how the last one there ended, for its presenter or for
+  everyone; what it is only to those who can open it: which workspace to someone something in it opens for, which board to
+  someone who can open that board. A refusal to open a board while someone else presents one names nobody. A video playing
+  isn't said to anyone who can't open its document. A board
   open in the call is said to everyone in that part of it, and by whom, with nothing that names it for anyone who can't open
   it. What they try reads the same as for something that doesn't exist. Its timer and vote are told only to those who can open
   it, and nothing someone who can't tries says whether either is running; of a vote, each person is told their own votes and
