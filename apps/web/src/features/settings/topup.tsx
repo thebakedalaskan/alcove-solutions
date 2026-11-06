@@ -8,7 +8,7 @@ import { Button, Chip, CopyField, CryptoMark, Dots, Icon, IconButton, Notice, Qr
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { q, useStartTopUp } from '~/lib/queries';
-import { daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay, startsLabel } from '~/lib/time';
+import { daysFromToday, hm, hoursAndMinutes, minutesUntil, shortDay } from '~/lib/time';
 
 const number = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 });
 const tokens = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 6, useGrouping: false });
@@ -216,56 +216,89 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
       </div>
     );
   }
-  const hours = (credits: number) => (perMinute ? ` (~${hoursAndMinutes(credits / perMinute)})` : '');
+  const { token, chainName } = t.route;
+  const hours = (credits: number) => (perMinute ? `~${hoursAndMinutes(credits / perMinute)}` : null);
   const left = minutesUntil(t.expiresAt, now);
   // The server shows the address only while it can take money; past its expiry it can't, whatever the state says yet.
   const address = left > 0 ? t.address : null;
   /** Past its expiry while the server still has it open: nothing more can be sent to it. */
   const lapsed = t.address !== null && address === null;
-  let state: ReactNode;
-  if (lapsed && t.state === 'waiting') state = <p className="set-topup-state is-expired"><Icon name="clock" size={18} />This address expired. To add credits, start a new top-up.</p>;
-  else if (t.state === 'short') state = <Notice tone="caution">{topUpLine(t, now)}</Notice>;
-  else if (t.state === 'failed') state = <Notice tone="caution">{topUpLine(t, now)} <RequestRef id={t.id} /></Notice>;
-  else {
-    const mark = t.state === 'waiting' || t.state === 'arriving' ? <Dots /> : <Icon name={t.state === 'credited' ? 'check' : 'clock'} size={18} />;
-    state = <p className={`set-topup-state is-${t.state}`}>{mark}{topUpLine(t, now)}</p>;
-  }
   const r = t.received;
+  const done = t.state === 'credited' || t.state === 'held';
+  const short = t.state === 'short';
+
+  // What's sent and what it buys: what's still to send while it can be, what arrived once it's settled.
+  const send = done && r ? { label: 'You sent', amount: r.amount, more: null }
+    : short ? { label: 'You send', amount: rest(t), more: `more · ${r?.amount ?? 'Part'} of ${t.asked.amount} arrived` }
+    : { label: 'You send', amount: t.asked.amount, more: null };
+  const credits = done && r ? r.credits ?? 0 : t.asked.credits;
+
+  // How it stands: a chip, and a line on what happens next.
+  let chip: ReactNode;
+  let next: ReactNode;
+  if (lapsed && t.state === 'waiting') {
+    chip = <Chip icon="clock">Address expired</Chip>;
+    next = 'Nothing arrived. To add credits, start a new top-up.';
+  } else if (t.state === 'waiting') {
+    chip = <Chip tone="horizon"><Dots />Waiting for payment</Chip>;
+    next = <>Scan with a {chainName} wallet, or copy the address below. Send exactly {t.asked.amount} {token}; if your exchange takes a withdrawal fee, add it on top.</>;
+  } else if (short) {
+    chip = <Chip tone="caution" icon="alert">Less than asked arrived</Chip>;
+    next = <>Send the other {rest(t)} {token} to the same address for your {number.format(t.asked.credits)} credits. If you don’t, the {r?.amount ?? ''} {token} that arrived is added as credits when the address expires.</>;
+  } else if (t.state === 'arriving') {
+    chip = <Chip tone="horizon"><Dots />Payment seen</Chip>;
+    next = 'Adding your credits. This usually takes a minute or two.';
+  } else if (t.state === 'credited') {
+    chip = <Chip tone="sun" icon="check">Credits added</Chip>;
+    next = 'They’re in your balance now.';
+  } else if (t.state === 'held') {
+    chip = <Chip tone="caution" icon="alert">Too small to add</Chip>;
+    next = <>Under 1 {token} arrived, which is too little to add as credits. If you think that’s wrong, contact support with this reference: <RequestRef id={t.id} /></>;
+  } else if (t.state === 'failed') {
+    chip = <Chip tone="caution" icon="alert">Something went wrong</Chip>;
+    next = <>This payment needs a person to look at it. Contact support with this reference: <RequestRef id={t.id} /></>;
+  } else {
+    chip = <Chip icon="clock">Address expired</Chip>;
+    next = 'Nothing arrived. To add credits, start a new top-up.';
+  }
+  const expires = address !== null && <p className="exp"><Icon name="clock" size={15} />Expires {byWhen(t.expiresAt, now)}</p>;
+
   return (
     <>
       <div className="set-topup-body">
-        {address !== null && (
-          <div className="set-topup-ask">
-            <h3>{t.state === 'short' ? `Send ${rest(t)} ${t.route.token} more on ${t.route.chainName}` : `Send ${t.asked.amount} ${t.route.token} on ${t.route.chainName}`}</h3>
-            <p>→ {number.format(t.asked.credits)} credits{t.state === 'short' ? ' in total' : ''}{perMinute ? ` · ~${hoursAndMinutes(t.asked.credits / perMinute)}` : ''}</p>
+        <div className="set-topup-sum">
+          <div>
+            <span className="ac-eyebrow">{send.label}</span>
+            <p className="amt"><b>{send.amount}</b> {token}{send.more && <small>{send.more}</small>}</p>
+            <p className="on"><CryptoMark name={t.route.chain} />on {chainName}</p>
           </div>
-        )}
-        <div role="status">{state}</div>
+          <div className="get">
+            <span className="ac-eyebrow">{done ? 'You got' : 'You get'}</span>
+            <p className="credits">{number.format(credits)} credits{short && ' in total'}</p>
+            {hours(credits) && <p className="hrs">{hours(credits)}</p>}
+          </div>
+        </div>
         {address !== null ? (
-          <div className="set-topup-addr">
-            <QrCode value={address} size={164} label={`Address to send ${routeName(t.route)} to`} />
-            <div className="how">
-              <p className="only">Only send {t.route.token} on {t.route.chainName}. Anything else may be lost.</p>
-              <CopyField value={address} label="Address" />
-              {t.memo !== null && <CopyField value={t.memo} label="Memo" />}
-              <p>Send exactly this amount. If your exchange takes a withdrawal fee, add it on top.</p>
-              <p>{t.state === 'short' ? 'Send the rest to this same address. It’s added to what already arrived.' : 'This address is for one payment. To add more later, start a new top-up.'}</p>
-              <ul className="facts">
-                <li><Icon name="clock" size={15} />Address expires {startsLabel(t.expiresAt, now)}</li>
-              </ul>
+          <>
+            <div className="set-topup-scan">
+              <QrCode value={address} size={152} label={`Address to send ${routeName(t.route)} to`} />
+              <div className="how" role="status">{chip}<p>{next}</p>{expires}</div>
             </div>
-          </div>
+            <div className="set-topup-dest">
+              <div className="h">
+                <span>Deposit address · {chainName}</span>
+                {short ? <Chip tone="outline">Same address</Chip> : <Chip tone="horizon" icon="clock">One-time use</Chip>}
+              </div>
+              <CopyField value={address} label="Deposit address" />
+              {t.memo !== null && <CopyField value={t.memo} label="Memo" />}
+            </div>
+            <Notice tone="caution" icon="alert">Only send <b>{routeName(t.route)}</b>. Anything else may be lost.</Notice>
+          </>
         ) : (
-          <p className="set-topup-route">
-            {t.state === 'short' || !r
-              ? `${t.asked.amount} ${t.route.token} on ${t.route.chainName} for ${number.format(t.asked.credits)} credits`
-              : r.credits !== null && r.credits > 0
-                ? `${r.amount} ${t.route.token} arrived · ${number.format(r.credits)} credits added${hours(r.credits)}`
-                : `${r.amount} ${t.route.token} arrived`}
-          </p>
+          <div className="set-topup-how" role="status">{chip}<p>{next}</p></div>
         )}
       </div>
-      <div className="set-topup-f">
+      <div className="set-topup-f is-split">
         <Button variant="quiet" onClick={onNew}>Start a new top-up</Button>
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </div>

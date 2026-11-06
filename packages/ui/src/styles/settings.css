@@ -61,8 +61,7 @@
 .set-topup-h { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-4) 0 var(--space-6); }
 .set-topup-h h2 { flex: 1; margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
 .set-topup-body { display: grid; gap: var(--space-6); min-height: 0; overflow-y: auto; padding: var(--space-2) var(--space-6) var(--space-6); }
-.set-topup-lead, .set-topup-route { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
-.set-topup-route { color: var(--ink-3); font-size: 13.5px; }
+.set-topup-lead { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
 /* Pay with: the token, then a network it's offered on. */
 /* The status line under the form takes no room until it says something. */
 .set-topup-body > [role="status"]:empty { position: absolute; }
@@ -85,22 +84,30 @@
 .set-topup-pick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .set-topup-pick .ac-select { width: 100%; height: 44px; padding-inline: var(--space-3); }
 .set-topup-pick .ac-select .v { flex: 1; }
-.set-topup-ask { display: grid; gap: 4px; }
-.set-topup-ask h3 { margin: 0; font: 600 18px/1.3 var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
-.set-topup-ask p { font-size: 14px; line-height: 1.4; color: var(--ink-2); }
-.set-topup-wait, .set-topup-state { display: flex; align-items: center; gap: 10px; font: 600 15px/1.4 var(--font-sans); color: var(--ink); }
-.set-topup-wait { font-weight: 500; color: var(--ink-2); }
-.set-topup-state > .ac-i { flex: none; color: var(--ink-3); }
-.set-topup-state.is-credited > .ac-i { color: var(--sun-text); }
-.set-topup-body .ac-notice .ac-ref { margin-top: 6px; }
-.set-topup-addr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 22px; align-items: start; }
-.set-topup-addr .how { display: grid; gap: 10px; min-width: 0; }
-.set-topup-addr p { font-size: 13.5px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
-.set-topup-addr p.only { font: 600 14.5px/1.4 var(--font-sans); color: var(--ink); }
-.set-topup-addr .facts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.set-topup-addr .facts li { display: flex; align-items: center; gap: 8px; font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
-.set-topup-addr .facts .ac-i { flex: none; }
-.set-topup-f { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); }
+/* Waiting on the server: a quiet line with dots. */
+.set-topup-wait { display: flex; align-items: center; gap: var(--space-3); font: 500 15px/1.4 var(--font-sans); color: var(--ink-2); }
+/* Paying: what's sent and what it buys, then where to send it. */
+.set-topup-sum { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-4); padding-bottom: var(--space-5); border-bottom: 1px solid var(--line); }
+.set-topup-sum > div { display: grid; align-content: start; gap: var(--space-1); min-width: 0; }
+.set-topup-sum .get { justify-items: end; text-align: right; }
+.set-topup-sum .amt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-2); font: 500 16px/1.2 var(--font-sans); color: var(--ink-2); }
+.set-topup-sum .amt b { font: 600 32px/1.1 var(--font-sans); letter-spacing: -.02em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.set-topup-sum .amt small { flex-basis: 100%; font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-sum .on { display: flex; align-items: center; gap: var(--space-2); font-size: 13.5px; color: var(--ink-2); }
+.set-topup-sum .on .ac-crypto { width: 16px; height: 16px; }
+.set-topup-sum .credits { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.set-topup-sum .hrs { font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-scan { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-5); }
+.set-topup-scan .how, .set-topup-how { display: grid; justify-items: start; gap: var(--space-3); min-width: 0; }
+.set-topup-scan .how p, .set-topup-how p { font-size: 14px; line-height: 1.5; color: var(--ink-2); text-wrap: pretty; }
+.set-topup-scan .how .exp { display: flex; align-items: center; gap: var(--space-2); font: 500 12.5px/1.3 var(--font-mono); color: var(--ink-3); }
+.set-topup-how .ac-ref, .set-topup-scan .ac-ref { margin-top: var(--space-2); }
+.set-topup-dest { display: grid; gap: var(--space-2); }
+.set-topup-dest .h { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font: 600 13.5px/1.2 var(--font-sans); color: var(--ink); }
+.set-topup-dest .h .ac-chip { height: 24px; font-size: 12px; }
+.set-topup-dest .ac-copy-field { padding-block: var(--space-2); }
+.set-topup-f.is-split { justify-content: space-between; }
+.set-topup-f { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-6); border-top: 1px solid var(--line); }
 /* Deleting with a payment on its way: the warning on the step's own caution ground. */
 .set-confirm .ac-notice.is-caution { background: var(--surface); }
 
@@ -150,7 +157,7 @@
   .set-topup-h { padding-left: var(--space-4); }
   .set-topup-body { padding-inline: var(--space-4); }
   .set-topup-f { padding-inline: var(--space-4); }
-  .set-topup-addr { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 16px; }
-  .set-topup-addr .how { width: 100%; }
+  .set-topup-scan { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .set-topup-scan .how { width: 100%; }
   .set-topup-amt { padding-inline: var(--space-3); }
 }
