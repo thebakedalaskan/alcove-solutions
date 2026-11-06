@@ -26,7 +26,8 @@
 @media (max-width: 760px) { .lp { --lp-nav: 60px; } .lp-nav .lp-signin { display: none; } }
 
 /* ---- a part on the evening: the sky, its horizon, and the water under it ---- */
-.lp-sky { --hz: 600px; position: relative; isolation: isolate; }
+/* Clipped, so nothing of the scene (or what watches it) reaches past the part and adds to the page's height. */
+.lp-sky { --hz: 600px; position: relative; isolation: isolate; overflow: clip; }
 .lp-sky-up { position: relative; }
 .lp-sky-eye { position: absolute; left: 0; right: 0; top: calc(var(--hz) - 360px); height: 640px; pointer-events: none; }
 .lp-sky:not(.is-on) > .hz *, .lp-sky:not(.is-on) > .hz *::before { animation-play-state: paused; }
