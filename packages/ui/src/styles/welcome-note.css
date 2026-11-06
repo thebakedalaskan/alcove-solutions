@@ -1,0 +1,155 @@
+/*
+ * The welcome page's note (`lp-nw`): a design review's note page in a window on the hero's water. A slim band of the
+ * note's own evening (horizon.css, the `note` moment) holds the title, and its horizon is the call: chapters stand on the
+ * line, decisions (rose) and follow-ups (horizon) sit on it, the sun is the playhead and the strokes under it are where
+ * people spoke. The band grows with its head, and the line always sits where its sky meets its sea. Under it the summary
+ * and the lists, and beside them the transcript, following the recording. Built by NoteScene.tsx.
+ */
+.lp-nw {
+  --nw-sea-h: 64px;
+  --nw-sky: linear-gradient(to bottom in oklch, oklch(0.8 0.062 250) 0%, oklch(0.847 0.049 253.947) 58%, oklch(0.878 0.041 285) 100%);
+  --nw-sea: linear-gradient(to bottom in oklch, oklch(0.872 0.042 275), oklch(0.88 0.035 255));
+  --nw-sun: oklch(0.92 0.1 78);
+  --nw-glow: oklch(0.93 0.08 45 / .5);
+  --nw-rim: oklch(0.9 0.09 60);
+  --nw-haze: oklch(0.86 0.04 330);
+  --nw-near: oklch(0.86 0.1 66);
+  --nw-far: oklch(0.76 0.09 10);
+  margin-top: clamp(36px, 4vw, 60px);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.dark .lp-nw {
+  --nw-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.272 0.062 260.824) 58%, oklch(0.307 0.067 270.769) 100%);
+  --nw-sea: linear-gradient(to bottom in oklch, oklch(0.305 0.06 268.408), oklch(0.235 0.05 258));
+  --nw-sun: oklch(0.86 0.085 74);
+  --nw-glow: oklch(0.66 0.12 22 / .5);
+  --nw-rim: oklch(0.8 0.1 50);
+  --nw-haze: oklch(0.5 0.08 320);
+  --nw-near: oklch(0.84 0.09 72);
+  --nw-far: oklch(0.58 0.09 355);
+}
+/* Off screen, nothing runs. */
+.lp-nw:not([data-on]) *, .lp-nw:not([data-on]) *::before, .lp-nw:not([data-on]) *::after { animation-play-state: paused; }
+
+/* ---- the band: the note's evening, its head on the sky and the call on its horizon ---- */
+.lp-nw-band {
+  display: flex; flex-direction: column; min-height: 214px; padding: 22px 28px 0; overflow: hidden;
+  background: var(--nw-sky) 0 0 / 100% calc(100% - var(--nw-sea-h)) no-repeat, var(--nw-sea) 0 100% / 100% var(--nw-sea-h) no-repeat;
+}
+.lp-nw-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title acts" "meta acts"; column-gap: 18px; align-items: start; margin-bottom: 12px; }
+.lp-nw-title { grid-area: title; min-width: 0; font: 420 clamp(24px, 2.1vw, 30px)/1.05 var(--font-display); letter-spacing: -.02em; color: var(--ink); }
+/*
+ * Who and when, then where it was written, after a dot. The meta clips at its edges (with room for the faces' rings), so
+ * the dot goes when where it was written wraps to a line of its own.
+ */
+.lp-nw-meta { grid-area: meta; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 31px; min-width: 0; margin: 6px -2px -2px; padding: 2px; overflow: hidden; font: 400 13.5px/1.35 var(--font-sans); color: var(--ink-2); }
+.lp-nw-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
+.lp-nw-when { font-variant-numeric: tabular-nums; }
+.lp-nw .ac-sealed.is-inline { position: relative; align-items: flex-start; color: var(--ink-2); }
+.lp-nw .ac-sealed.is-inline::before { content: ""; position: absolute; left: -17px; top: calc(.675em - 1.5px); width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: .5; }
+.lp-nw-acts { grid-area: acts; display: flex; align-items: center; gap: 8px; }
+.lp-nw-state { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ground) 62%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--ink) 12%, transparent); font: 600 12.5px/1 var(--font-sans); color: var(--ink); white-space: nowrap; }
+.lp-nw-state > span { display: inline-flex; align-items: center; gap: 7px; }
+.lp-nw-state .ac-i { color: var(--sun-text); }
+.lp-nw-state .ac-dots { gap: 3px; }
+.lp-nw-state .ac-dots i { width: 4px; height: 4px; }
+/* A picture of Share: the page it would share is only an example. */
+.lp-nw-share { pointer-events: none; }
+
+/* The line: chapters stand on it, the sun is the playhead, and where people spoke shows in the water under it. */
+.lp-nw-hz { position: relative; flex: none; height: calc(40px + var(--nw-sea-h)); margin-top: auto; }
+.lp-nw-line { position: absolute; left: 0; right: 0; top: 40px; height: 0; display: flex; align-items: center; }
+.lp-nw-play { position: relative; z-index: 4; display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--sun); color: var(--on-sun); transition: filter var(--duration-1), transform var(--duration-1) var(--ease-out); }
+.lp-nw-play:hover { filter: brightness(1.07); }
+.lp-nw-play:active { transform: scale(.96); }
+.lp-nw-play .ac-i { fill: currentColor; }
+.lp-nw-time { flex: none; width: 92px; margin-left: 10px; font: 600 13px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+.lp-nw-time span { font-weight: 500; color: var(--ink-2); }
+.lp-nw-track { position: relative; flex: 1; min-width: 0; height: 0; }
+.lp-nw-track::before { content: ""; position: absolute; left: 0; right: 0; top: -.75px; height: 1.5px; background: linear-gradient(to right, var(--nw-rim), var(--nw-haze)); }
+.lp-nw-seek { position: absolute; left: 0; right: 0; top: -40px; z-index: 3; height: 80px; border-radius: 10px; cursor: pointer; }
+.lp-nw-seek:focus-visible { outline: 2px solid var(--focus); outline-offset: 5px; }
+.lp-nw-ch { position: absolute; bottom: 0; max-width: calc(var(--room) - 6px); padding-bottom: 14px; overflow: hidden; font: 600 12px/1 var(--font-sans); color: var(--ink); white-space: nowrap; text-overflow: ellipsis; pointer-events: none; }
+.lp-nw-ch::after { content: ""; position: absolute; left: 0; bottom: 0; width: 1px; height: 10px; background: color-mix(in oklch, var(--ink) 30%, transparent); }
+.lp-nw-mark { position: absolute; top: 0; z-index: 1; width: 9px; height: 9px; border-radius: 2px; background: var(--rose); transform: translate(-50%, -50%) rotate(45deg); pointer-events: none; }
+.lp-nw-mark.is-follow { width: 8px; height: 8px; border-radius: 50%; background: var(--horizon); transform: translate(-50%, -50%); }
+/* The sun: half of it above the line with its glow, the other half under the water. */
+.lp-nw-up { position: absolute; left: 0; right: 0; bottom: 0; height: 60px; overflow: hidden; pointer-events: none; }
+.lp-nw-path { position: absolute; inset: 0; will-change: transform; }
+.lp-nw-sun { position: absolute; left: -12px; bottom: -12px; width: 24px; height: 24px; border-radius: 50%; background: var(--nw-sun); box-shadow: 0 0 22px 8px var(--nw-glow); }
+.lp-nw-said { position: absolute; left: 0; right: 0; top: 12px; height: 40px; pointer-events: none; }
+.lp-nw-said i { position: absolute; height: 2px; border-radius: 1px; background: color-mix(in oklch, var(--nw-near), var(--nw-far) var(--far)); opacity: var(--o); }
+
+/* ---- the note: the summary and the lists, and the transcript beside them ---- */
+.lp-nw-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 390px); }
+.lp-nw-main { display: grid; align-content: start; gap: 28px; min-width: 0; padding: 30px 34px 36px; }
+.lp-nw-sum { max-width: 46em; font: 400 clamp(17px, 1.35vw, 19.5px)/1.6 var(--font-sans); color: var(--ink); text-wrap: pretty; }
+.lp-nw-sum .ac-word { animation-duration: 520ms; animation-delay: calc(var(--w) * 38ms); }
+.lp-nw-sum.is-held .ac-word { animation-play-state: paused; }
+.lp-nw-list { display: grid; }
+.lp-nw-k { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; font: 600 14px/1 var(--font-sans); }
+.lp-nw-k .n { font-weight: 500; color: var(--ink-3); }
+.lp-nw-k.is-decide { color: var(--rose); }
+.lp-nw-k.is-follow { color: var(--horizon); }
+/* A row: its kind or its tick box, the words, the moment, then what to do or whose it is. Lit while its moment plays. */
+.lp-nw-row { position: relative; isolation: isolate; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 118px; gap: 14px; align-items: center; min-height: 52px; padding: 9px 0; border-top: 1px solid var(--line); transition: opacity .55s var(--ease-out), transform .6s var(--ease-out); }
+.lp-nw-row::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(to right, transparent, var(--sun-soft) 12%, var(--sun-soft) 88%, transparent); opacity: 0; transition: opacity .6s var(--ease-out); pointer-events: none; }
+.lp-nw-row.is-lit::before { opacity: 1; }
+.lp-nw-row.is-out { opacity: 0; transform: translateY(8px); }
+.lp-nw-ic { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--rose-soft); color: var(--rose); }
+.lp-nw-t { min-width: 0; font: 400 15px/1.4 var(--font-sans); color: var(--ink); }
+.lp-nw-t small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-2); }
+.lp-nw-row.is-done .lp-nw-t > span { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--ink) 40%, transparent); }
+.lp-nw-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; font: 400 13px/1 var(--font-sans); color: var(--ink-2); white-space: nowrap; }
+.lp-nw-done { display: inline-flex; align-items: center; gap: 6px; font: 600 13px/1 var(--font-sans); color: var(--ink-2); }
+.lp-nw-done .ac-i { color: var(--rose); }
+.lp-nw .ac-check { justify-self: center; width: 18px; height: 18px; border-radius: 6px; }
+.lp-nw .ac-check:hover { box-shadow: inset 0 0 0 1.5px var(--horizon); }
+.lp-nw .ac-check.on { background: var(--horizon); box-shadow: none; }
+.lp-nw-mc.ac-time-chip { gap: 5px; height: 24px; padding: 0 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+/* The transcript beside the note, following the recording. */
+.lp-nw-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 26px 22px 22px; border-left: 1px solid var(--line); background: color-mix(in oklch, var(--sunk) 45%, var(--surface)); }
+.lp-nw-side h4 { display: flex; align-items: center; justify-content: space-between; gap: 12px; font: 600 15px/1.3 var(--font-sans); color: var(--ink); }
+.lp-nw-side h4 small { font: 500 12.5px/1 var(--font-sans); color: var(--ink-3); }
+.lp-nw-tx { position: relative; flex: 1 1 318px; min-height: 318px; overflow: clip; -webkit-mask-image: linear-gradient(to bottom, transparent, black 10%, black 86%, transparent); mask-image: linear-gradient(to bottom, transparent, black 10%, black 86%, transparent); }
+.lp-nw-tx-in { position: relative; display: grid; gap: 2px; }
+.lp-nw-tx .nd-l { isolation: isolate; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; margin: 0; padding: 9px 10px; border-radius: 12px; }
+.lp-nw-tx .nd-l:hover { background: none; }
+.lp-nw-tx .nd-l::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--sun-soft); opacity: 0; transition: opacity .5s var(--ease-out); pointer-events: none; }
+.lp-nw-tx .nd-l.is-now::before { opacity: 1; }
+.lp-nw-tx .nd-l .nd-la { grid-column: 1; grid-row: 1; padding-top: 2px; }
+.lp-nw-tx .nd-l .nd-lb { grid-column: 2; }
+.lp-nw-tx .nd-l .nd-lx { display: none; }
+.lp-nw-tx .nd-l .nd-ln { gap: 6px; font: 600 13px/18px var(--font-sans); }
+.lp-nw-at { font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.lp-nw-tx .nd-l .nd-lp { margin-top: 3px; font: 400 14px/1.45 var(--font-sans); color: var(--ink-2); }
+.lp-nw-tx .nd-l.is-now .nd-lp { color: var(--ink); }
+.lp-nw-ask { display: flex; flex: none; align-items: center; gap: 10px; height: 46px; padding: 0 6px 0 14px; border-radius: var(--radius-pill); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-control); font: 400 14px/1 var(--font-sans); color: var(--ink-2); }
+.lp-nw-ask > span:not(.ac-chip) { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* ---- narrower: one column, then on a phone a taller band, the time without its total and each row's end under its words ---- */
+@media (max-width: 960px) {
+  .lp-nw-body { grid-template-columns: minmax(0, 1fr); }
+  .lp-nw-side { border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 760px) {
+  .lp-nw { --nw-sea-h: 60px; }
+  .lp-nw-band { min-height: 236px; padding: 18px 16px 0; }
+  .lp-nw-head { grid-template-areas: "title acts" "meta meta"; }
+  .lp-nw-acts { align-self: center; }
+  .lp-nw-share { display: none; }
+  .lp-nw-time { width: 50px; }
+  .lp-nw-time span { display: none; }
+  .lp-nw-ch { font-size: 11px; }
+  .lp-nw-main { padding: 22px 18px 26px; }
+  .lp-nw-row { grid-template-columns: 22px minmax(0, 1fr) auto; }
+  .lp-nw-end { grid-column: 2 / -1; justify-content: flex-start; }
+  .lp-nw-side { padding: 20px 14px; }
+}
+@media (max-width: 380px) {
+  .lp-nw-ask { gap: 7px; padding-left: 12px; }
+}

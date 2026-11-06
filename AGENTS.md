@@ -216,8 +216,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
   Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
-  `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the other
-  screens in `styles/app.css`, `call.css` and `welcome.css`.
+  `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
+  page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
