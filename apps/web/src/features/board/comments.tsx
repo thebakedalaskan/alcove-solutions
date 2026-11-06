@@ -114,18 +114,44 @@ const useOpen = (store: BoardCommentsStore): CommentOpen => useSyncExternalStore
 
 /**
  * A pin, in screen pixels from where it's pinned: it stands over the corner, 6 left of it to 28 right and 30 above it to 6 below
- * (`board.css`). A frame's title and count sit over its top edge, from 8 above it to 36, as wide as the frame and a little more.
+ * (`board.css`). A frame's title row sits over its top edge, from 8 above it to 36, starting 8 in: its title in the display face at
+ * 25 units, then 10 and what's beside it, in the sans face at 14 (`.bf-h`). It's never wider than the frame and 12 more.
  */
 const PIN = { left: 6, right: 28, up: 30, down: 6 } as const;
-const TITLE = { up: 36, wider: 20 } as const;
+const TITLE = { up: 36, inset: 8, gap: 10, wider: 12, slack: 8 } as const;
+
+/** What's beside a frame's title, as the board draws it: its line, or how many stickies it holds. */
+const besideTitle = (view: BoardView, f: FrameObject): string => f.sub || String(view.objects.filter((o) => o.k === 'note' && o.f === f.id).length || '');
+
+let ruler: CanvasRenderingContext2D | null | undefined;
+const rowWidths = new Map<string, number>();
+/** How wide a frame's title row is, in board units, measured in the faces it's drawn in, once for each title and what's beside it. */
+function titleRow(title: string, beside: string): number {
+  const key = `${title}\u0000${beside}`;
+  const known = rowWidths.get(key);
+  if (known !== undefined) return known;
+  ruler ??= document.createElement('canvas').getContext('2d');
+  const face = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'serif';
+  let width = (title.trim() || 'Frame').length * 15 + (beside ? TITLE.gap + beside.length * 9 : 0);
+  if (ruler) {
+    ruler.font = `450 25px ${face('--font-display')}`;
+    width = ruler.measureText(title.trim() || 'Frame').width;
+    ruler.font = `500 14px ${face('--font-sans')}`;
+    if (beside) width += TITLE.gap + ruler.measureText(beside).width;
+  }
+  const row = TITLE.inset + width + TITLE.slack;
+  rowWidths.set(key, row);
+  return row;
+}
 
 /**
- * Whether a pin on this corner would stand over a frame's title or its count. Then it hangs under the corner, inside what it's
- * pinned to, below the frame's top edge. `z` is the camera's zoom: a pin is one size on the screen at any zoom.
+ * Whether a pin on this corner would stand over a frame's title or what's beside it, its count. Then it hangs under the corner,
+ * inside what it's pinned to, below the frame's top edge. `z` is the camera's zoom: a pin is one size on the screen at any zoom.
  */
-function overATitle(x: number, y: number, frames: readonly FrameObject[], z: number): boolean {
+function overATitle(x: number, y: number, view: BoardView, z: number): boolean {
   const left = x - PIN.left / z, right = x + PIN.right / z, top = y - PIN.up / z, bottom = y + PIN.down / z;
-  return frames.some((f) => left < f.x + f.w + TITLE.wider && right > f.x && top < f.y && bottom > f.y - TITLE.up);
+  return view.frames.some((f) => top < f.y && bottom > f.y - TITLE.up && right > f.x
+    && left < f.x + Math.min(f.w + TITLE.wider, titleRow(f.title, besideTitle(view, f))));
 }
 
 /**
@@ -147,7 +173,7 @@ export function CommentPins({ board, store, commenting, mode }: { board: Board; 
     if (t.resolved || !first || !commentable(o) || (slide && !slide.has(o.id))) return [];
     const x = o.x + o.w, y = o.y;
     return [<BoardComment key={t.id} id={t.id} x={x} y={y} person={commenting.face(first)} name={first.name || 'Someone'} text={first.text}
-      count={t.replies.length - 1} expanded={shown === t.id} controls={store.sheetId} under={overATitle(x, y, view.frames, z || 1)} onOpen={(id) => store.set(shown === id ? null : { thread: id })} />];
+      count={t.replies.length - 1} expanded={shown === t.id} controls={store.sheetId} under={overATitle(x, y, view, z || 1)} onOpen={(id) => store.set(shown === id ? null : { thread: id })} />];
   });
 }
 
