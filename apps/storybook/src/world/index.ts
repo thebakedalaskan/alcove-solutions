@@ -24,7 +24,12 @@ export interface PageThread { id: string; on: number; quote: string; says: { who
  * anything. A tag on a page names someone by address (`@` and it, as a mention's `id`): the stand-in writes in the ID they
  * have in the document's workspace, as the app would.
  */
-export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined }
+/**
+ * A version History lists: when it was kept, who'd changed the page since the one before, and the call it was kept in, by
+ * the call's ID, or null outside calls. What it says is what the page says.
+ */
+export interface PageVersion { at: string; by: Person[]; call: string | null; reason: 'edits' | 'call' }
+export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined; refused?: Refused | undefined; versions?: PageVersion[] | undefined }
 
 /** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
 export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;

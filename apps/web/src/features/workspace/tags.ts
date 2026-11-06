@@ -37,20 +37,14 @@ const seatPerson = (p: Person, seat: string): Person => ({ ...p, id: hashId(seat
 /** Someone asked about before anything's shared: who, the line, and where to ask. */
 export interface TagAsk { person: Person; block: string; rect: () => DOMRect }
 
-export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
-  const { workspaceId, pass } = ws;
+/**
+ * Everyone a tag in this workspace may name: its members, the rest of your company, who's invited to the call and who's in it,
+ * each by the ID the workspace knows them by. `faces` is all of them, for the faces on tags, wherever a document is shown.
+ */
+export function useTagPeople(ws: Ws) {
   const member = ws.sent.role !== null;
-  const canShare = member && item.role === 'edit';
-  const qc = useQueryClient();
-  const people = useQuery({ ...q.workspacePeople(workspaceId), enabled: member }).data;
+  const people = useQuery({ ...q.workspacePeople(ws.workspaceId), enabled: member }).data;
   const team = useQuery({ ...q.team(), enabled: member }).data;
-  const share = useQuery({ ...q.documentShare(workspaceId, item.id, pass), enabled: canShare }).data;
-  const changes = useDocumentShare(workspaceId, item.id, pass);
-  const mention = useMention(workspaceId, pass);
-  const [asking, setAsking] = useState<readonly TagAsk[]>([]);
-  /** Asked once: someone you've said Not now about isn't asked about again in this document. */
-  const asked = useRef(new Set<string>());
-
   /* Someone added by address is known here by that until they're around, when they say who they are. */
   const members = useMemo(() => (people ?? []).map((p) => named({ ...p.person, name: ws.here.find((h) => h.person.id === p.person.id)?.person.name ?? p.person.name })), [people, ws.here]);
   /* Anyone else by the ID the workspace keys for their address: someone whose ID isn't known yet isn't offered yet. */
@@ -77,6 +71,22 @@ export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
   }), [ws.call?.invited, members, ids]);
   /** Everyone a tag here may show a face for, under the IDs tags carried before they were keyed too. */
   const faces = useMemo(() => withEarlier([...members, ...company, ...invited, ...inCall.map((c) => c.person)]), [members, company, invited, inCall]);
+  return { team, members, company, inCall, invited, faces };
+}
+
+export function useTags(ws: Ws, item: WorkspaceItem, now: number) {
+  const { workspaceId, pass } = ws;
+  const member = ws.sent.role !== null;
+  const canShare = member && item.role === 'edit';
+  const qc = useQueryClient();
+  const share = useQuery({ ...q.documentShare(workspaceId, item.id, pass), enabled: canShare }).data;
+  const changes = useDocumentShare(workspaceId, item.id, pass);
+  const mention = useMention(workspaceId, pass);
+  const [asking, setAsking] = useState<readonly TagAsk[]>([]);
+  /** Asked once: someone you've said Not now about isn't asked about again in this document. */
+  const asked = useRef(new Set<string>());
+  const { team, members, company, inCall, invited, faces } = useTagPeople(ws);
+
   const myEmail = ws.me?.email;
   const seatOf = useCallback((p: Person) => inCall.find((c) => c.person.id === p.id)?.seat, [inCall]);
 

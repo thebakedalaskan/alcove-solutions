@@ -594,8 +594,8 @@ export const standIn: AlcoveApi = {
     live: (id: ID) => spaces.liveWorkspace(id),
     document: async (id: ID, documentId: ID) => { await answer(() => null); return spaces.openDocument(id, documentId); },
     saveCopy: (id: ID, input) => answer(() => spaces.saveCopy(id, input)),
-    versions: (id: ID) => answer(() => { spaces.treeOf(id); return spaces.noVersions(); }),
-    version: () => spaces.noVersion(),
+    versions: (id: ID, documentId: ID) => answer(() => spaces.versionsOf(id, documentId)),
+    version: (id: ID, documentId: ID, versionId: ID) => answer(() => spaces.versionOf(id, documentId, versionId)),
     restoreVersion: (id: ID) => answer(() => { spaces.treeOf(id); }),
     searchText: (id: ID) => spaces.searchText(id)
   },

@@ -402,9 +402,12 @@ leaves someone's tree or goes to Trash goes from there as the tree says so, all 
 workspace's stream closes, and all of it on signing out or in. A guest's goes when they leave the workspace.
 
 History reads a version into a `Y.Doc` of its own that nothing's connected to (`editor/version.ts`), and compares it with the row
-below it, by each block's ID and what it serializes to, to tint what changed. A version's `callId` is the call that kept it, and
-the first edit of a call keeps what was there before it, so History treats the oldest version of a call as the work before it.
-A call has no name in the document: a row takes one from the only note of yours whose time covers it, or says **During a call**.
+below it, by each block's ID and what it serializes to, to tint what changed. A version shows what was stored: a photo, video
+or file block still uploading or failed when it was kept loses what didn't arrive, and goes if nothing did. A version's `callId`
+is the call that kept it. The first edit of a call keeps what was there before it, so for a document that was there before the
+call started (by the call's start, from the call you're in or the note that covers it), History treats the oldest version of a
+call as the work before it; a document made in the call keeps all its versions under the call. A call has no name in the
+document: a row takes one from the only note of yours whose time covers it, or says **During a call**.
 Whoever restores says so in their awareness state for 8 seconds (`restored`, in `DocCaretStateSchema`), beside who the server says
 they are, so everyone with the document open can be told by name. Nothing is stored for it.
 

@@ -391,8 +391,23 @@ export function forgetDocuments(): void {
   urls.clear();
 }
 
-export const noVersions = (): DocVersionSummary[] => [];
-export const noVersion = (): Promise<DocVersion> => Promise.reject(new AlcoveApiError('not-found', 'That version isn’t there.'));
+/** A document's versions, the newest first, as the world keeps them (`Page.versions`). */
+export function versionsOf(id: string, documentId: string): DocVersionSummary[] {
+  treeOf(id);
+  return (current().pages[documentId]?.versions ?? []).map((v, i) => ({
+    id: `${documentId.slice(0, 20)}v${i}`, at: v.at, by: v.by.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait }] : [])), callId: v.call, reason: v.reason
+  }));
+}
+/** A version with its whole state: the page as the world has it, from its blocks, as a document opens. */
+export function versionOf(id: string, documentId: string, versionId: string): DocVersion {
+  const summary = versionsOf(id, documentId).find((v) => v.id === versionId);
+  const item = treeOf(id).items.find((i) => i.id === documentId);
+  if (!summary || !item) throw new AlcoveApiError('not-found', 'That version isn’t there.');
+  const doc = documentOf(item, id);
+  const update = Y.encodeStateAsUpdate(doc);
+  doc.destroy();
+  return { ...summary, update };
+}
 /** Every document you can open here, as words, for searching in this browser. */
 export async function* searchText(id: string): AsyncIterable<SearchDoc> {
   for (const i of treeFor(id).items) {

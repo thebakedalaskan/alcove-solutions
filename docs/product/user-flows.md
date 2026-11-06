@@ -483,8 +483,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    workspace switching), until you click, tap, Tab or Esc: the rest of a sentence never mutes you or makes a document
    somewhere else. Focus lands on the document taking the page's place, where a key does nothing.
    - **Someone shares while you're writing:** nothing you're looking at moves. It lands as a tile among the people and glows
-     for 3 seconds, and a toast offers **Show it**, as does the tile. It takes its place beside the document, and the
-     people and the list give way if they must. Drag the line between them (it snaps at half, and a double-click evens it);
+     for 3 seconds, and a toast offers **Show it**, as does the tile. It takes its place beside the document, the
+     people fold to arches and the list tucks away, so both stay readable, and they're back once it's a tile again. Drag the line between them (it snaps at half, and a double-click evens it);
      **×** on the screen sends it back to a tile for you only. On a window with no room for both, they take turns, and
      the one you just showed is in front.
    - **Arranging it:** the workspace is a panel like any other: its handle moves it, View has the four layouts, and **Document
@@ -543,7 +543,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    - **From the call** in **/**: **Decided so far** and **Follow-ups so far** fill in as the notes do, for everyone in the document,
      and nobody types them. When the call ends they stay as they were. **Quote what was said** picks from the last few lines. With
      notes off they say so.
-   - **Hear it** on a quote plays that moment, for anyone with the notes, once the note exists.
+   - **Hear it** on a quote plays that moment, for anyone with the notes, when the call keeps its recording: during the call
+     for whoever can read its notes then, and for everyone with them after.
 5. **Present** is at the top of every document in a call (in **⋯** on a phone). Its preview shows what people will see and
    how many sections the document splits into, at each first- or second-level heading, and **Present N sections** starts it.
    - **Everyone who can open it** sees it in place of their own page: one section at a time, with no list, menus or

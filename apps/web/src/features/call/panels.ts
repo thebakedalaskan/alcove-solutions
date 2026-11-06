@@ -188,6 +188,14 @@ export function adapt(a: CallPanels, size: Size, f: PanelFacts): Adapted {
   const front = f.front && open.includes(f.front) ? f.front : open[0] ?? null;
   if (f.phone) return { apart, people: 'arches', list: false, float: false, tabs: open.length > 1, front, gave: ['phone'], phone: true };
   const A: Adapted = { apart, people: !apart ? 'tiles' : f.zen ? 'hidden' : a.people, list: a.list && f.ws && !f.zen, float: false, tabs: false, front, gave: [], phone: false };
+  /*
+   * A share shown beside the workspace or the board: the people fold to arches and the list tucks away, so both stay
+   * readable. Nothing of yours changes, so they're back as they were once the share goes back to a tile.
+   */
+  if (apart && !f.zen && f.shown.length > 0 && (f.ws || f.board)) {
+    if (A.people === 'tiles') { A.people = 'arches'; A.gave.push('people'); }
+    if (A.list) { A.list = false; A.gave.push('list'); }
+  }
   const fits = () => need(a.tree, a, f, A, false) <= size.w;
   if (!fits() && A.people === 'tiles' && apart) { A.people = 'arches'; A.gave.push('people'); }
   if (!fits() && A.list) { A.list = false; A.gave.push('list'); }

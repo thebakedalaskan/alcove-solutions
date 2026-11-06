@@ -1428,9 +1428,10 @@ share picker, the leave sheet and the device pickers.
   call leaves it alone, and it only fills in while someone in the call who can edit has its document open. A block in a document
   counts as watching the notes.
 - **Hear it** (`HearIt.tsx`) is the `Editor`'s `hear`, drawn on a quote once it names a note. It reads the note as the note's own page
-  does, so someone without it never sees the button and nothing complains, and finds the line in the note's transcript by its ID. It
-  plays through `usePlayer` (`notes.audioUrl`) until the next line, or for 8 seconds after the last one. A note that kept no
-  recording or no transcript has nothing to hear.
+  does, so someone without it never sees the button and nothing complains, and finds the line in the note's transcript by its ID.
+  During the call the note has no transcript yet, so the line is found in the call's own (`CallState.transcript`) while the call is
+  the note's, and the note is read again until its recording has audio. It plays through `usePlayer` (`notes.audioUrl`) until the
+  next line, or for 8 seconds after the last one. A call that keeps no recording has nothing to hear.
 - **Just the document** isn't a new layout: `PanelFacts.zen` says what's left (`adapt` hides the rest, the people go to
   the horizon) and is a box past the call's area, where the bars were (`zenRoom`), so the page glides there like any other
   panel, in one animation, while the top bar slides off and the dock tucks to what's marked `keep`. Esc goes in the canvas's
@@ -1453,6 +1454,8 @@ share picker, the leave sheet and the device pickers.
   is: a press is followed on the window, not on the line it started on, which can go. A share ending ends a drag of its
   line or its handle, and something let go about where it was picked up stays put. What's typed in Chat and Ask is kept
   above the panels, so a tab moved to another panel has its words.
+- **A share shown beside the workspace or the board** folds the people to arches and tucks the list away (`adapt`), so both
+  stay readable; nothing of yours changes, so they're back once the share goes back to a tile.
 - **When room runs out** panels give way in one fixed order (`adapt`): tiles fold to arches, the workspace's list tucks
   away, side panels float in one column over the right of the screen (whatever's under it makes room when enough is
   left to be any use), then the workspace, the board and the shares take turns, with a switcher in the top bar, which
