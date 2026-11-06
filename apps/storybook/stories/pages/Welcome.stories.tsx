@@ -26,7 +26,7 @@ const at = (id: string, heading: string): PageStory => page('/welcome', 'signed-
 });
 /** The note a call leaves: it writes itself, then its call runs along its own horizon. */
 export const TheNote = at('notes', 'Notes that write themselves');
-/** The call, a night window: each feature plays as its step scrolls past. */
+/** The call, a night window: each feature loops while its step is the one being read, Documents and boards first. */
 export const TheCall = at('call', 'In the call');
 /** The team on the horizon, and their week. */
 export const FindATime = at('time', 'Find a time with your team');

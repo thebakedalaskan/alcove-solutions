@@ -262,8 +262,12 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
   sets as the page scrolls on.
 - **On its water,** the note a call leaves (`NoteScene`). It writes itself, then its call runs along its own horizon with
   the sun as the playhead, visiting each decision and follow-up.
-- **The call** is a night window on the water, in both themes (`CallTour`). Its steps scroll past the call, which stays in
-  view and plays each one with a pointer that shows every click. Under 1080px the call sticks at the top.
+- **The call** is a night window on the water, in both themes (`CallTour`). Its seven steps scroll past the call, which
+  stays in view: Documents and boards, Captions in your language, Set your status, Breakout rooms, A quiet nudge, Private
+  messages and threads, and Arrange it your way. Notes have the part above, so the call doesn't show them. The call loops
+  the scene of the step being read, the one on the reading line half way down the window, with a pointer that shows every
+  click; moving to another step carries it straight into that step's scene. Under 1080px the call sticks at the top and
+  the reading line is under it.
 - **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
   line. Picking people lays their busy hours out across the week, with the times everyone is free.
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.

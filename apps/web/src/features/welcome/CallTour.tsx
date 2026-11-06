@@ -1,16 +1,17 @@
 /*
- * In the call: eight features played on one call. The steps are on one side and the call on the other, held in view
+ * In the call: seven features played on one call. The steps are on one side and the call on the other, held in view
  * (sticky) while the steps scroll past; on narrower screens the call sticks at the top and the steps scroll under it.
- * Each step plays as it crosses the middle of the window, cancelling the one before, and ends on a still that tells its
- * story. A pointer shows every click. Under reduced motion each step shows its still. Nothing runs, and nothing on the
- * call moves, while the tour is off screen.
+ * Each feature is a scene that loops for as long as its step is the one being read, the step on the reading line. Moving
+ * to another step cancels the scene and carries the call straight into the next one's first picture, and its loop starts
+ * from there. A pointer shows every click. Under reduced motion each step shows its still, the scene's key moment. Nothing
+ * runs, and nothing on the call moves, while the tour is off screen.
  */
 import { Fit, Icon, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import { TourStage } from './TourStage';
 import {
-  SCRIPT, STAGE_H, STAGE_W, STEPS, STILL, apply, opened, pointed, stepOf, type Beat, type Point, type Stage, type StepId, type Where
+  FIRST, SCENES, STAGE_H, STAGE_W, START, STEPS, STILL, apply, opened, pointed, stepOf, type Beat, type Point, type Stage, type StepId, type Where
 } from './tourSteps';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
@@ -36,20 +37,24 @@ function menuAt(stage: HTMLElement, pop: string, at: string, where: Where): Poin
 }
 
 /**
- * Plays the step crossing the middle of the window. Every wait is time on screen, and a step that's been replaced stops
- * at its next beat. Before the tour is reached, the call shows the first step's still.
+ * Plays the scene of the step being read: its enter, then its loop again and again. Every wait is time on screen, and a
+ * scene that's been replaced stops at its next beat. Before the tour is reached, the call shows the first step's first
+ * picture (with reduced motion, its still).
  */
 function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDivElement | null>, reduce: boolean) {
-  const [s, setS] = useState<Stage>(STILL.notes);
-  const [active, setActive] = useState<StepId>('notes');
+  const [s, setS] = useState<Stage>(() => (reduce ? STILL[FIRST] : START));
+  const [active, setActive] = useState<StepId>(FIRST);
   const [still, setStill] = useState(true);
   const [on, setOn] = useState(false);
 
   useEffect(() => {
     const root = tour.current;
-    if (!root) return undefined;
+    const list = root?.querySelector('.lp-tour-steps');
+    if (!root || !list) return undefined;
     let run = 0;
     let current: StepId | null = null;
+    /* Moving on ends every tick started before. */
+    let ticks = 0;
     let seen = false;
     let waiting: ((go: boolean) => void)[] = [];
     const timers = new Map<ReturnType<typeof setTimeout>, () => void>();
@@ -68,13 +73,14 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
       w.forEach((r) => r(false));
     };
 
+    /* True if the beats played to their end; false if another step started first. Their ticks end with them. */
     const play = async (beats: readonly Beat[], my: number) => {
       for (const b of beats) {
-        if (my !== run) return;
+        if (my !== run) return false;
         const box = stage.current;
         switch (b.t) {
           case 'wait':
-            if (!(await sleep(b.ms, my))) return;
+            if (!(await sleep(b.ms, my))) return false;
             break;
           case 'set':
             setS((x) => apply(x, b.patch));
@@ -95,11 +101,20 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
             setS((x) => opened(x, b.pop, at, b.keep));
             break;
           }
-          case 'tick':
-            void (async () => { while (await sleep(b.ms, my)) setS((x) => apply(x, b.patch)); })();
+          case 'tick': {
+            const mine = ticks;
+            void (async () => { while ((await sleep(b.ms, my)) && mine === ticks) setS((x) => apply(x, b.patch)); })();
+            break;
+          }
+          case 'untick':
+            ticks += 1;
+            break;
+          case 'still':
             break;
         }
       }
+      ticks += 1;
+      return my === run;
     };
 
     const go = (id: StepId) => {
@@ -109,8 +124,15 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
       stop();
       setActive(id);
       setStill(reduce);
-      if (reduce) setS(STILL[id]);
-      else void play(SCRIPT[id], run);
+      if (reduce) {
+        setS(STILL[id]);
+        return;
+      }
+      const my = run, scene = SCENES[id];
+      void (async () => {
+        let more = await play(scene.enter, my);
+        while (more) more = await play(scene.loop, my);
+      })();
     };
 
     /* The tour on screen: waits run, and so do the call's own loops (a speaker's level, a caret). */
@@ -127,27 +149,58 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
     });
     band.observe(root);
 
-    /* A step plays as it crosses the middle of the window; on narrow screens, the part under the call. */
+    /*
+     * The step on the reading line plays: half way down the window, or on narrow screens, where the call sticks at the top,
+     * 70% of the way down, in what shows under it. The step whose box holds the line wins, or else the nearest, so whichever
+     * way you scroll the call plays the step you're reading. It's measured once a frame, only while the steps are near
+     * the window, and only a change of step changes the call.
+     */
     const narrow = matchMedia('(max-width: 1080px)');
-    let steps: IntersectionObserver | null = null;
-    const watch = () => {
-      steps?.disconnect();
-      const io = new IntersectionObserver((es) => es.forEach((e) => {
-        const id = stepOf(e.target.getAttribute('data-step'));
-        if (e.isIntersecting && id) go(id);
-      }), { rootMargin: narrow.matches ? '-66% 0px -26% 0px' : '-46% 0px -46% 0px' });
-      root.querySelectorAll('[data-step]').forEach((el) => io.observe(el));
-      steps = io;
+    const steps = Array.from(root.querySelectorAll('[data-step]'));
+    let reading: StepId | null = null;
+    let frame = 0;
+    const pick = () => {
+      frame = 0;
+      const y = innerHeight * (narrow.matches ? 0.7 : 0.5);
+      let best: StepId | null = null;
+      let gap = Infinity;
+      for (const el of steps) {
+        const r = el.getBoundingClientRect(), id = stepOf(el.getAttribute('data-step'));
+        const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+        if (id && d < gap) { gap = d; best = id; }
+      }
+      if (best && best !== reading) {
+        reading = best;
+        go(best);
+      }
     };
-    watch();
-    narrow.addEventListener('change', watch);
+    const measure = () => { if (!frame) frame = requestAnimationFrame(pick); };
+    const listen = (yes: boolean) => {
+      if (yes) {
+        addEventListener('scroll', measure, { passive: true });
+        addEventListener('resize', measure);
+        narrow.addEventListener('change', measure);
+      } else {
+        removeEventListener('scroll', measure);
+        removeEventListener('resize', measure);
+        narrow.removeEventListener('change', measure);
+      }
+    };
+    const near = new IntersectionObserver((es) => {
+      const e = es[es.length - 1];
+      if (!e) return;
+      listen(e.isIntersecting);
+      if (e.isIntersecting) measure();
+    }, { rootMargin: '50% 0px' });
+    near.observe(list);
 
     return () => {
       run += 1;
       stop();
       band.disconnect();
-      steps?.disconnect();
-      narrow.removeEventListener('change', watch);
+      near.disconnect();
+      listen(false);
+      cancelAnimationFrame(frame);
     };
   }, [tour, stage, reduce]);
 
@@ -178,7 +231,7 @@ export function CallTour() {
     <div ref={tour} className={cn('lp-tour', on && 'is-on')}>
       <Steps active={active} />
       <div className="lp-tour-stage">
-        <Fit width={STAGE_W} height={STAGE_H} stageRef={stage} className="lp-tour-fit" label={STEPS.find((x) => x.id === active)?.shows ?? STEPS[0]?.shows ?? 'An Alcove call'}>
+        <Fit width={STAGE_W} height={STAGE_H} stageRef={stage} className="lp-tour-fit" label={STEPS.find((x) => x.id === active)?.shows ?? STEPS[0].shows}>
           <TourStage s={s} still={still} />
         </Fit>
       </div>

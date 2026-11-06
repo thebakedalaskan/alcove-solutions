@@ -1,7 +1,9 @@
 /*
- * The call tour's script. Everything on the stage is one state (`Stage`). Each step is a list of beats: change the
- * stage, wait, or move the pointer to something and press it. A step's still is its beats folded together with no waits
- * and no pointer, so the picture it ends on and the picture reduced motion shows are the same one.
+ * The call tour's scenes. Everything on the stage is one state (`Stage`), and each feature is a scene of beats: change the
+ * stage, wait, or move the pointer to something and press it. A scene's `enter` carries the call from whatever is on it
+ * into the scene's first picture. Its `loop` plays the feature and ends where it started, so it plays again for as long
+ * as its step is the one being read. A `still` beat marks the loop's key moment: a step's still is its scene up to there,
+ * folded together with no waits, no pointer and every menu shut, and it's what reduced motion shows.
  */
 import type { IconName } from '@alcove/ui';
 import type { CastId } from '~/features/notes/cast';
@@ -14,31 +16,21 @@ export const STAGE_H = 700;
 export const ORDER = ['priya', 'kofi', 'aiko', 'maya', 'diego', 'art'] as const satisfies readonly CastId[];
 export type Who = (typeof ORDER)[number];
 
-export type StepId = 'notes' | 'layout' | 'status' | 'translate' | 'chat' | 'nudge' | 'rooms' | 'work';
+export type StepId = 'work' | 'translate' | 'status' | 'rooms' | 'nudge' | 'chat' | 'layout';
 interface Step {
   id: StepId;
   icon: IconName;
   title: string;
   line: string;
-  /** What the stage shows by the end of the step, for people who can't see it. */
+  /** What the stage shows while the step's scene plays, for people who can't see it. */
   shows: string;
 }
 
-export const STEPS: readonly Step[] = [
+export const STEPS: readonly [Step, ...Step[]] = [
   {
-    id: 'notes', icon: 'notes', title: 'Notes as you talk',
-    line: 'Decisions and follow-ups fill in while people speak, and everyone sees the sign while notes are on. No bot joins the call.',
-    shows: 'A call with six people. The notes panel fills in as they talk: one decision and two follow-ups, then a summary so far.'
-  },
-  {
-    id: 'layout', icon: 'layout', title: 'Arrange it your way',
-    line: 'Make someone the speaker, give a shared screen the room, or fold everyone into arches on the horizon. Only your screen changes.',
-    shows: 'The View menu turns the call to speaker view, then a shared screen takes the stage and everyone folds into arches on the horizon.'
-  },
-  {
-    id: 'status', icon: 'away', title: 'Be right back',
-    line: 'Step away without leaving. Your tile says when you’ll be back, and the call carries on.',
-    shows: 'You set Be right back for five minutes, and your tile dims with the time you’ll be back. Maya is listening only.'
+    id: 'work', icon: 'pen', title: 'Documents and boards',
+    line: 'Write and draw together without leaving the call. Everyone edits at once, and the notes keep what changed.',
+    shows: 'A shared document and a board inside the call, with three people editing at once.'
   },
   {
     id: 'translate', icon: 'translate', title: 'Captions in your language',
@@ -46,26 +38,34 @@ export const STEPS: readonly Step[] = [
     shows: 'Captions show Aiko’s Japanese and Diego’s Spanish in English, with their own words underneath.'
   },
   {
-    id: 'chat', icon: 'chat', title: 'Private messages and threads',
-    line: 'Write to everyone, reply in a thread, or message one person. Only the people in a conversation can read it.',
-    shows: 'The chat panel: a message to everyone with a thread of replies, then a private message to Priya and your reply.'
-  },
-  {
-    id: 'nudge', icon: 'nudge', title: 'A quiet nudge',
-    line: 'Let someone know they’re muted, hard to hear or going fast, without interrupting. Only they see it, and Alcove tells you when you’re talking on mute.',
-    shows: 'Alcove tells you you’re talking on mute. Then you send Kofi a nudge: Can’t hear you.'
+    id: 'status', icon: 'away', title: 'Set your status',
+    line: 'Tell people you’ll be right back, you’re only listening, or you’re on your phone. Your tile says so, and the call carries on.',
+    shows: 'You set your status to Be right back for five minutes, and your tile dims with the time you’ll be back while the call carries on.'
   },
   {
     id: 'rooms', icon: 'rooms', title: 'Breakout rooms',
     line: 'Split into rooms in two clicks. Everyone moves at once, the rooms share one timer, and each room’s notes join the call’s notes.',
-    shows: 'Three breakout rooms open, everyone moves into them at once, and a message goes to every room.'
+    shows: 'Three breakout rooms open, everyone moves into them at once, a message goes to every room, then everyone comes back.'
   },
   {
-    id: 'work', icon: 'pen', title: 'Documents and boards',
-    line: 'Write and draw together without leaving the call. Everyone edits at once, and the notes keep what changed.',
-    shows: 'A shared document and a board inside the call, with three people editing at once.'
+    id: 'nudge', icon: 'nudge', title: 'A quiet nudge',
+    line: 'Let someone know they’re muted, hard to hear or going fast, without interrupting. Only they see it, and Alcove tells you when you’re talking on mute.',
+    shows: 'Alcove tells you you’re talking on mute, then you nudge Kofi that you can’t hear them.'
+  },
+  {
+    id: 'chat', icon: 'chat', title: 'Private messages and threads',
+    line: 'Write to everyone, reply in a thread, or message one person. Only the people in a conversation can read it.',
+    shows: 'The chat panel: a message to everyone with a thread of replies, then a private message from Priya and your reply.'
+  },
+  {
+    id: 'layout', icon: 'layout', title: 'Arrange it your way',
+    line: 'Make someone the speaker, give a shared screen the room, or fold everyone into arches on the horizon. Only your screen changes.',
+    shows: 'The View menu turns the call to speaker view, Kofi shares a screen, everyone folds into arches on the horizon, then the call goes back to a grid.'
   }
 ];
+
+/** The step the call shows before the tour is reached. */
+export const FIRST = STEPS[0].id;
 
 /** The step a `data-step` names, if it names one. */
 export const stepOf = (v: string | null): StepId | null => STEPS.find((x) => x.id === v)?.id ?? null;
@@ -121,12 +121,12 @@ export const shareAt = (l: Layout): Box => (l === 'share' ? tile(16, 60, 718, 55
 
 /* ---- what's said and written ---- */
 
-export const SUMMARY = 'The launch moves a week to give support time. Kofi finishes the onboarding screens and Aiko writes the help article.';
 export const LINES = [
   { who: 'aiko', from: 'From Japanese', en: 'The Japanese help centre can go live on the same day.', or: '日本語のヘルプセンターも同じ日に公開できます。' },
   { who: 'diego', from: 'From Spanish', en: 'Then sales can announce it that same week.', or: 'Entonces ventas puede anunciarlo esa misma semana.' }
 ] as const satisfies readonly { who: Who; from: string; en: string; or: string }[];
-const REPLY = 'Yes, I’ll stay on.';
+/** Your answer to Priya's private message. */
+export const REPLY = 'Yes, I’ll stay on.';
 export const DOC_LINE = 'Help article ready for support by Friday';
 /** The rooms' timer starts here, in seconds: 9:12. */
 const ROOM_TIME = 552;
@@ -138,8 +138,8 @@ export const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padS
 
 /* ---- the stage ---- */
 
-type Panel = 'notes' | 'chat' | 'rooms';
-type Tool = 'captions' | 'rooms' | 'work' | 'notes' | 'chat';
+type Panel = 'chat' | 'rooms';
+type Tool = 'captions' | 'rooms' | 'work' | 'chat';
 export type PopId = 'view' | 'status' | 'lang' | 'tile' | 'nudge';
 export interface Point { x: number; y: number }
 
@@ -147,6 +147,8 @@ export interface Stage {
   layout: Layout;
   speaking: Who | null;
   muted: readonly Who[];
+  /** Someone who's hard to hear: their level and the ring round their tile are faint. */
+  faint: Who | null;
   /** The tile the pointer is over, showing its ⋯. */
   hover: Who | null;
   /** Who shows their status on their tile. */
@@ -158,8 +160,8 @@ export interface Stage {
   panel: Panel | null;
   /** The dock's tool that's open. */
   tool: Tool | null;
+  /** Your microphone, in the dock. */
   micOff: boolean;
-  unread: number;
   /** The menus that are open, and where each one opened. */
   pops: readonly PopId[];
   at: Readonly<Partial<Record<PopId, Point>>>;
@@ -167,16 +169,14 @@ export interface Stage {
   hi: readonly string[];
   /** What's chosen in the menus. */
   picked: readonly string[];
-  toast: { on: boolean; say: 'share' | 'nudge' };
+  toast: { on: boolean; say: 'share' | 'unshare' | 'nudge' };
   caption: { on: boolean; line: 0 | 1; words: number };
   /** "Only your screen changes". */
   chip: boolean;
   horizon: boolean;
   share: boolean;
-  /** The notes panel: how many items are in, and how many words of the summary. */
-  noted: number;
-  summed: number;
-  chat: { seen: number; dm: boolean; typed: string; typing: boolean; sent: boolean };
+  /** The chat: how much of the conversation is in, the dot on Priya's tab, her tab open, your reply typed and sent. */
+  chat: { seen: number; dot: boolean; dm: boolean; typed: string; typing: boolean; sent: boolean };
   rooms: { open: boolean; left: number; told: number };
   work: { on: boolean; board: boolean; typed: number; comment: boolean; drawn: number; sticky: boolean; held: boolean; kofi: Point; maya: Point; aiko: Point };
   /** The pointer that shows each click: `shows` counts its appearances, `taps` its presses since it appeared. */
@@ -184,11 +184,10 @@ export interface Stage {
 }
 
 const BASE: Stage = {
-  layout: 'grid', speaking: null, muted: ['diego'], hover: null, status: [], away: false, onMute: false,
-  panel: null, tool: null, micOff: false, unread: 0, pops: [], at: {}, hi: [], picked: [],
+  layout: 'grid', speaking: null, muted: ['diego'], faint: null, hover: null, status: [], away: false, onMute: false,
+  panel: null, tool: null, micOff: false, pops: [], at: {}, hi: [], picked: [],
   toast: { on: false, say: 'share' }, caption: { on: false, line: 0, words: 0 }, chip: false, horizon: false, share: false,
-  noted: 0, summed: 0,
-  chat: { seen: 0, dm: false, typed: '', typing: false, sent: false },
+  chat: { seen: 0, dot: false, dm: false, typed: '', typing: false, sent: false },
   rooms: { open: false, left: ROOM_TIME, told: 0 },
   work: { on: false, board: false, typed: 0, comment: false, drawn: 0, sticky: false, held: false, kofi: { x: 600, y: 150 }, maya: { x: 690, y: 330 }, aiko: { x: 800, y: 120 } },
   cur: { shows: 0, on: false, x: 0, y: 0, taps: 0 }
@@ -208,8 +207,18 @@ export type Beat =
   | { t: 'leave' }
   /** A menu opens at what's marked `data-at`. `keep` leaves the menu it came from open. */
   | { t: 'pop'; pop: PopId; at: string; where: Where; keep: boolean }
-  /** From here to the end of the step, every `ms`. */
-  | { t: 'tick'; ms: number; patch: Patch };
+  /** Every `ms` from here, until `untick` or the end of the beats it's in: so a timer never runs on into the next pass. */
+  | { t: 'tick'; ms: number; patch: Patch }
+  | { t: 'untick' }
+  /** The scene's key moment: the step's still is its scene up to here. */
+  | { t: 'still' };
+
+export interface Scene {
+  /** From whatever is on the stage to the scene's first picture. */
+  enter: readonly Beat[];
+  /** The feature, ending where it started so that it can play again, with one `still` at its key moment. */
+  loop: readonly Beat[];
+}
 
 export const apply = (s: Stage, patch: Patch): Stage => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) });
 export const opened = (s: Stage, pop: PopId, at: Point | null, keep: boolean): Stage => ({
@@ -227,113 +236,158 @@ const set = (patch: Patch): Beat => ({ t: 'set', patch });
 const point = (at: string): Beat => ({ t: 'point', at });
 const tap: Beat = { t: 'tap' };
 const leave: Beat = { t: 'leave' };
+const still: Beat = { t: 'still' };
+const untick: Beat = { t: 'untick' };
+const tick = (ms: number, patch: Patch): Beat => ({ t: 'tick', ms, patch });
 const pop = (p: PopId, at: string, where: Where = 'below', keep = false): Beat => ({ t: 'pop', pop: p, at, where, keep });
 const chat = (p: Partial<Stage['chat']>): Beat => set((s) => ({ chat: { ...s.chat, ...p } }));
 const rooms = (p: Partial<Stage['rooms']>): Beat => set((s) => ({ rooms: { ...s.rooms, ...p } }));
 const work = (p: Partial<Stage['work']>): Beat => set((s) => ({ work: { ...s.work, ...p } }));
+const toastOff = set((s) => ({ toast: { ...s.toast, on: false } }));
 /** `n` changes `ms` apart, the k-th made by `f(k)`: words appearing, letters typed. */
 const each = (n: number, ms: number, f: (k: number) => Patch): Beat[] => Array.from({ length: n }, (_, i) => [set(f(i + 1)), wait(ms)]).flat();
-/** Every step starts from the same call: everyone in a grid, nothing open. What's on its way out keeps its words. */
+/** The pointer goes to something and presses it. A button that `lights` stays lit that many ms. */
+const press = (at: string, lights = 0): Beat[] => [point(at), wait(700), tap, ...(lights ? [set({ hi: [at] }), wait(lights), set({ hi: [] })] : [])];
+/** The pointer goes to a menu's row: it lights, and is pressed. */
+const choose = (at: string): Beat[] => [point(at), wait(600), set((s) => ({ hi: [...s.hi, at] })), tap];
+/** View opens, one of its choices is pressed, and it shuts with what's picked; `then` is what changes as it shuts. */
+const viewTo = (choice: string, picked: readonly string[], then: Partial<Stage>): Beat[] => [
+  ...press('view'), set({ hi: ['viewBtn'] }), pop('view', 'view'),
+  wait(420), ...choose(`view:${choice}`), set({ picked }),
+  wait(320), set({ pops: [], hi: [], ...then }), leave
+];
+/**
+ * Every scene starts from the same call: everyone in a grid, nothing open, no pointer. What's on its way out keeps its
+ * words as it goes: a toast, a caption, the chat, the rooms and the workspace fade as they were.
+ */
 const reset = (p: Partial<Stage> = {}): Beat => set((s) => ({
-  ...BASE, at: s.at, toast: { ...s.toast, on: false }, caption: { ...s.caption, on: false }, cur: { ...s.cur, on: false }, ...p
+  ...BASE, at: s.at, toast: { ...s.toast, on: false }, caption: { ...s.caption, on: false }, chat: s.chat,
+  rooms: { ...s.rooms, open: false }, work: { ...s.work, on: false }, cur: { ...s.cur, on: false }, ...p
 }));
+/** Someone speaks, and their caption writes itself in English a word at a time. */
 const say = (line: 0 | 1): Beat[] => [
   set({ speaking: LINES[line].who, caption: { on: true, line, words: 0 } }),
   ...each(words(LINES[line].en), 95, (k) => (s) => ({ caption: { ...s.caption, words: k } }))
 ];
 
-export const SCRIPT: Record<StepId, readonly Beat[]> = {
-  notes: [
-    reset(), wait(600),
-    point('tool:notes'), wait(850), tap, set({ tool: 'notes', panel: 'notes', layout: 'panel' }), wait(700), leave,
-    set({ speaking: 'priya' }), wait(1300), set({ noted: 1 }), wait(1500),
-    set({ speaking: 'kofi' }), wait(1100), set({ noted: 2 }), wait(1400),
-    set({ speaking: 'aiko' }), wait(1100), set({ noted: 3 }), wait(900),
-    set({ speaking: null }),
-    ...each(words(SUMMARY), 55, (k) => ({ summed: k }))
-  ],
-  layout: [
-    reset({ speaking: 'priya', picked: ['view:auto', 'view:tiles'] }), wait(700),
-    point('view'), wait(850), tap, set({ hi: ['viewBtn'] }), pop('view', 'view'),
-    wait(600), point('view:speaker'), wait(800), set({ hi: ['viewBtn', 'view:speaker'] }), tap, set({ picked: ['view:speaker', 'view:tiles'] }),
-    wait(350), set({ pops: [], hi: [], layout: 'speaker' }), wait(700), leave, wait(1500),
-    set({ toast: { on: true, say: 'share' }, share: true, layout: 'share', speaking: 'kofi' }), wait(2300), set((s) => ({ toast: { ...s.toast, on: false } })),
-    point('view'), wait(850), tap, set({ hi: ['viewBtn'] }), pop('view', 'view'),
-    wait(500), point('view:arches'), wait(800), tap, set({ picked: ['view:speaker', 'view:arches'] }),
-    wait(380), set({ pops: [], hi: [], layout: 'arches', horizon: true }), wait(500), leave, set({ chip: true })
-  ],
-  status: [
-    reset({ status: ['maya'], speaking: 'kofi' }), wait(800),
-    set({ hover: 'art' }), point('more:art'), wait(900), tap, pop('status', 'more:art', 'above-right'),
-    wait(700), point('status:brb'), wait(800), set({ hi: ['status:brb'], picked: ['status:brb'] }), tap,
-    wait(500), point('status:5'), wait(700), tap, set({ picked: ['status:brb', 'status:5'] }),
-    wait(450), set({ pops: [], hi: [], hover: null }), wait(150), leave,
-    set({ status: ['maya', 'art'], away: true }),
-    wait(1200), set({ speaking: 'priya' }), wait(2400), set({ speaking: 'aiko' })
-  ],
-  translate: [
-    reset({ muted: [] }), wait(600),
-    point('tool:captions'), wait(900), tap, set({ tool: 'captions' }), pop('lang', 'tool:captions', 'above'),
-    wait(700), point('lang:en'), wait(800), set({ hi: ['lang:en'], picked: ['lang:en'] }), tap,
-    wait(400), set({ pops: [], hi: [] }), wait(200), leave,
-    ...say(0), wait(2600), ...say(1)
-  ],
-  chat: [
-    reset({ unread: 2 }), wait(700),
-    point('tool:chat'), wait(900), tap, set({ unread: 0, tool: 'chat', panel: 'chat', layout: 'panel' }), wait(600), leave,
-    chat({ seen: 1 }), wait(1300), chat({ seen: 2 }), wait(1500), chat({ seen: 3 }), wait(1300),
-    point('tab:dm'), wait(900), tap, set({ hi: ['tab:dm'] }), wait(250), set({ hi: [] }), chat({ dm: true }), wait(700),
-    point('compose'), wait(800), tap, chat({ typing: true }), wait(300), leave,
-    ...each([...REPLY].length, 60, (k) => (s) => ({ chat: { ...s.chat, typed: [...REPLY].slice(0, k).join('') } })),
-    wait(450), chat({ typed: '', typing: false, sent: true })
-  ],
-  nudge: [
-    reset({ muted: ['diego', 'art'], micOff: true, speaking: 'priya' }), wait(1100), set({ speaking: null, onMute: true }), wait(1100),
-    point('unmute'), wait(900), tap, wait(200),
-    set({ onMute: false, muted: ['diego'], micOff: false, speaking: 'art' }), wait(1500), set({ speaking: 'kofi' }), leave, wait(900),
-    set({ hover: 'kofi' }), point('more:kofi'), wait(900), tap, pop('tile', 'more:kofi'),
-    wait(700), point('tile:nudge'), wait(750), set({ hi: ['tile:nudge'] }), pop('nudge', 'tile:nudge', 'right', true),
-    wait(700), point('nudge:hear'), wait(750), set({ hi: ['tile:nudge', 'nudge:hear'] }), tap,
-    wait(400), set({ pops: [], hi: [], hover: null }), leave,
-    set({ toast: { on: true, say: 'nudge' } })
-  ],
-  rooms: [
-    reset(), wait(600),
-    point('tool:rooms'), wait(900), tap, set({ tool: 'rooms', panel: 'rooms', layout: 'panel' }),
-    wait(1300), point('open-rooms'), wait(850), tap, set({ hi: ['open-rooms'] }), wait(250), set({ hi: [] }),
-    set({ panel: null, layout: 'rooms' }), rooms({ open: true, left: ROOM_TIME }), leave,
-    { t: 'tick', ms: 1000, patch: (s) => ({ rooms: { ...s.rooms, left: Math.max(0, s.rooms.left - 1) } }) },
-    set({ speaking: 'maya' }), wait(2400),
-    point('msg-all'), wait(900), tap, set({ hi: ['msg-all'] }), wait(300), set({ hi: [] }), leave,
-    rooms({ told: 1 }), wait(160), rooms({ told: 2 }), wait(160), rooms({ told: 3 }),
-    wait(1600), set({ speaking: 'priya' }), wait(2200), set({ speaking: 'aiko' })
-  ],
-  work: [
-    reset(), wait(600),
-    point('tool:work'), wait(900), tap, set({ tool: 'work', layout: 'work' }), work({ on: true }), wait(800), leave,
-    set({ speaking: 'priya' }),
-    ...each(DOC_LINE.length, 48, (k) => (s) => ({ work: { ...s.work, typed: k } })),
-    wait(500), set({ speaking: 'kofi' }), work({ comment: true }), wait(2200),
-    point('ws:board'), wait(900), tap, set({ hi: ['ws:board'] }), wait(200), set({ hi: [] }), work({ board: true }), wait(400), leave,
-    work({ drawn: 1 }), wait(520), work({ drawn: 2 }), wait(520), work({ drawn: 3 }), wait(520), work({ drawn: 4 }), wait(520),
-    work({ kofi: { x: 660, y: 96 }, drawn: 5 }), wait(520),
-    work({ maya: { x: 640, y: 268 } }), wait(900),
-    work({ sticky: true }), wait(700),
-    work({ aiko: { x: 808, y: 98 }, held: true }), wait(1000), work({ held: false })
-  ]
+export const SCENES: Record<StepId, Scene> = {
+  /* Priya writes in the document and Kofi comments, then the board fills in with three people on it. */
+  work: {
+    enter: [reset({ tool: 'work', layout: 'work', work: { ...BASE.work, on: true } }), wait(700)],
+    loop: [
+      set({ speaking: 'priya' }),
+      ...each(DOC_LINE.length, 44, (k) => (s) => ({ work: { ...s.work, typed: k } })),
+      wait(450), set({ speaking: 'kofi' }), work({ comment: true }), wait(2000),
+      ...press('ws:board', 200), work({ board: true }), wait(350), leave,
+      work({ drawn: 1 }), wait(480), work({ drawn: 2 }), wait(480), work({ drawn: 3 }), wait(480), work({ drawn: 4 }), wait(480),
+      work({ kofi: { x: 660, y: 96 }, drawn: 5 }), wait(480),
+      work({ maya: { x: 640, y: 268 } }), wait(850),
+      work({ sticky: true }), wait(650),
+      work({ aiko: { x: 808, y: 98 }, held: true }),
+      still, wait(1100), work({ held: false }), wait(1800),
+      ...press('ws:doc', 200), work({ board: false }), leave, wait(900),
+      set({ work: { ...BASE.work, on: true }, speaking: null }), wait(700)
+    ]
+  },
+  /* Captions on in English, once; then Aiko and Diego speak in their own languages. */
+  translate: {
+    enter: [
+      reset({ muted: [] }), wait(450),
+      ...press('tool:captions'), set({ tool: 'captions' }), pop('lang', 'tool:captions', 'above'),
+      wait(460), ...choose('lang:en'), set({ picked: ['lang:en'] }),
+      wait(380), set({ pops: [], hi: [] }), leave, wait(300)
+    ],
+    loop: [
+      ...say(0), still, wait(2400), ...say(1), wait(2400),
+      set((s) => ({ caption: { ...s.caption, on: false }, speaking: null })), wait(900)
+    ]
+  },
+  /* You step away for five minutes, the call carries on, and you come back. Maya is listening only. */
+  status: {
+    enter: [reset({ status: ['maya'], speaking: 'kofi' }), wait(500)],
+    loop: [
+      set({ hover: 'art' }), ...press('more:art'), pop('status', 'more:art', 'above-right'),
+      wait(460), ...choose('status:brb'), set({ picked: ['status:brb'] }),
+      wait(400), point('status:5'), wait(560), tap, set({ picked: ['status:brb', 'status:5'] }),
+      wait(380), set({ pops: [], hi: [], hover: null, status: ['maya', 'art'], away: true }), leave,
+      still, wait(1300), set({ speaking: 'priya' }), wait(2200), set({ speaking: 'aiko' }), wait(2400),
+      set({ status: ['maya'], away: false, picked: [], speaking: 'art' }), wait(2000), set({ speaking: 'kofi' }), wait(900)
+    ]
+  },
+  /* Two clicks open three rooms and everyone moves, a message reaches every room, and everyone comes back. */
+  rooms: {
+    enter: [reset(), wait(500)],
+    loop: [
+      ...press('tool:rooms'), set({ tool: 'rooms', panel: 'rooms', layout: 'panel' }), wait(1000),
+      ...press('open-rooms', 220), set({ panel: null, layout: 'rooms' }), rooms({ open: true, left: ROOM_TIME, told: 0 }), leave,
+      tick(1000, (s) => ({ rooms: { ...s.rooms, left: Math.max(0, s.rooms.left - 1) } })),
+      set({ speaking: 'maya' }), wait(1900),
+      ...press('msg-all', 260), leave,
+      rooms({ told: 1 }), wait(150), rooms({ told: 2 }), wait(150), rooms({ told: 3 }), wait(150),
+      still, wait(1500), set({ speaking: 'priya' }), wait(1800), set({ speaking: 'aiko' }), wait(1300),
+      ...press('rooms:back', 260), leave, untick,
+      rooms({ open: false }), set({ tool: null, layout: 'grid', speaking: null }), wait(1700)
+    ]
+  },
+  /* You talk on mute and Alcove says so; then Kofi is hard to hear, and only Kofi gets your nudge. */
+  nudge: {
+    enter: [reset({ muted: ['diego', 'art'], micOff: true }), wait(500)],
+    loop: [
+      set({ speaking: 'priya' }), wait(1100), set({ speaking: null, onMute: true }), wait(900),
+      ...press('unmute'), wait(180), set({ onMute: false, muted: ['diego'], micOff: false, speaking: 'art' }), leave,
+      wait(1500), set({ speaking: 'kofi', faint: 'kofi' }), wait(1000),
+      set({ hover: 'kofi' }), ...press('more:kofi'), pop('tile', 'more:kofi'),
+      wait(460), ...choose('tile:nudge'), pop('nudge', 'tile:nudge', 'right', true),
+      wait(460), ...choose('nudge:hear'),
+      wait(320), set({ pops: [], hi: [], hover: null, toast: { on: true, say: 'nudge' } }), leave,
+      still, wait(1500), set({ faint: null }), wait(1300), toastOff,
+      wait(700), ...press('tool:mic'), set({ muted: ['diego', 'art'], micOff: true, speaking: null }), leave, wait(900)
+    ]
+  },
+  /* The conversation and its thread, then Priya writes to you alone and you answer; then it clears for the next pass. */
+  chat: {
+    enter: [reset({ tool: 'chat', panel: 'chat', layout: 'panel', chat: BASE.chat }), wait(600)],
+    loop: [
+      chat({ seen: 1 }), wait(1100), chat({ seen: 2 }), wait(1400), chat({ seen: 3 }), wait(1100),
+      chat({ dot: true }), wait(800),
+      ...press('tab:dm'), chat({ dot: false, dm: true }),
+      wait(700), ...press('compose'), chat({ typing: true }), wait(250), leave,
+      ...each([...REPLY].length, 55, (k) => (s) => ({ chat: { ...s.chat, typed: [...REPLY].slice(0, k).join('') } })),
+      wait(400), chat({ typed: '', typing: false, sent: true }),
+      still, wait(2400), ...press('tab:all'), chat({ dm: false }), leave,
+      wait(1300), chat({ seen: 0, sent: false }), wait(900)
+    ]
+  },
+  /* Speaker view, then a shared screen takes the room, everyone folds onto the horizon, and back to the grid. */
+  layout: {
+    enter: [reset({ speaking: 'priya', picked: ['view:grid', 'view:tiles'] }), wait(500)],
+    loop: [
+      ...viewTo('speaker', ['view:speaker', 'view:tiles'], { layout: 'speaker' }), wait(1700),
+      set({ toast: { on: true, say: 'share' }, share: true, layout: 'share', speaking: 'kofi' }), wait(2100), toastOff,
+      ...viewTo('arches', ['view:speaker', 'view:arches'], { layout: 'arches', horizon: true, chip: true }),
+      still, wait(2800), set({ chip: false }),
+      ...viewTo('grid', ['view:grid', 'view:tiles'], { layout: 'share', horizon: false }), wait(1500),
+      set({ toast: { on: true, say: 'unshare' }, share: false, layout: 'grid', speaking: 'priya' }), wait(2000), toastOff, wait(700)
+    ]
+  }
 };
 
-/** A step's last picture: its beats with no waits, no pointer and every menu closed. */
+/** The stage once `beats` have played, up to a `still`: with no waits, no pointer and every menu shut. */
 function settle(beats: readonly Beat[]): Stage {
   let s = BASE;
   for (const b of beats) {
+    if (b.t === 'still') break;
     if (b.t === 'set') s = apply(s, b.patch);
     else if (b.t === 'pop') s = opened(s, b.pop, null, b.keep);
   }
   return { ...s, pops: [], hi: [], hover: null, cur: { ...s.cur, on: false } };
 }
+const stillOf = (sc: Scene) => settle([...sc.enter, ...sc.loop]);
 
+/** What the call shows before the tour is reached: the first step's first picture. */
+export const START = settle(SCENES[FIRST].enter);
+/** Each step's still: its scene's key moment. */
 export const STILL: Record<StepId, Stage> = {
-  notes: settle(SCRIPT.notes), layout: settle(SCRIPT.layout), status: settle(SCRIPT.status), translate: settle(SCRIPT.translate),
-  chat: settle(SCRIPT.chat), nudge: settle(SCRIPT.nudge), rooms: settle(SCRIPT.rooms), work: settle(SCRIPT.work)
+  work: stillOf(SCENES.work), translate: stillOf(SCENES.translate), status: stillOf(SCENES.status), rooms: stillOf(SCENES.rooms),
+  nudge: stillOf(SCENES.nudge), chat: stillOf(SCENES.chat), layout: stillOf(SCENES.layout)
 };
