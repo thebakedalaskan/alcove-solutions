@@ -492,7 +492,7 @@ class LiveKitRoom implements CallRoom {
     const have = me.getTrackPublication(SOURCE[kind]);
     // A camera sent at another size than it's sent at now is sent again: a publication's layers are set when it's
     // published.
-    const sendAs = kind === 'cam' && track ? cameraSends(send, track).as : null;
+    const sendAs = kind === 'cam' && track ? cameraSends(send, this.media.camSource()).as : null;
     const resend = sendAs !== null && Boolean(have?.track) && this.camSentAs !== sendAs;
     if (have?.track?.mediaStreamTrack === track && have && !resend) return;
     // Another microphone or camera, or something else shared: the same publication carries it, so nobody sees it stop

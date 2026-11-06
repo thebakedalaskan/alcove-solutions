@@ -4,12 +4,14 @@
  */
 import type { Person } from '@alcove/api';
 import { Avatar, CallDock, DockButton, cn } from '@alcove/ui';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { PrejoinDevices } from '~/features/call/DevicePickers';
 import { Video, useLevels } from '~/features/call/Video';
 import { useDevices } from '~/features/call/devices';
 import { LocalMedia } from '~/features/call/media';
 import { sessions, useLive } from '~/lib/live';
+import { q } from '~/lib/queries';
 
 const shape = (l: number, i: number) => 18 + Math.min(1, l * (0.75 + Math.random() * 0.5)) * (i === 2 ? 82 : 62);
 
@@ -23,6 +25,10 @@ export function usePrejoinMedia(go: boolean, muted: boolean) {
   const levels = useLevels(media, 5, m.mic && !!m.camera, shape);
   // Named once the browser has been allowed the devices, so read again when they start.
   const devices = useDevices(m.camera);
+  // Whose pictures can show behind the camera: a guest's none.
+  const session = useQuery(q.session());
+  const owner = session.isPending ? undefined : session.data?.ownerId ?? null;
+  useEffect(() => { if (owner !== undefined) media.setAccount(owner); }, [media, owner]);
   useEffect(() => {
     sessions.media = media;
     // Leaving without joining lets go of the camera and microphone.

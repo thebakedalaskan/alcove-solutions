@@ -975,15 +975,34 @@ export type VideoSend = z.infer<typeof VideoSendSchema>;
 /** Others' cameras as someone receives them: as sharp as each tile needs, capped low to save data, or none. */
 export const VideoReceiveSchema = z.enum(['auto', 'saver', 'off']);
 export type VideoReceive = z.infer<typeof VideoReceiveSchema>;
+/** The pictures that come with Alcove to show behind someone. */
+export const BACKGROUND_SCENES = ['balloons', 'beach', 'office'] as const;
+export const BackgroundSceneSchema = z.enum(BACKGROUND_SCENES);
+export type BackgroundScene = z.infer<typeof BackgroundSceneSchema>;
 /**
- * The microphone, camera and speaker someone chose, whether the browser should reduce noise and blur their
- * background, and the video they send and see: remembered in their browser only, never sent anywhere.
+ * What shows behind someone on camera: what's really there, the same blurred, one of Alcove's pictures, or one of
+ * their own (kept sealed in their browser, by its ID there).
  */
-export const DevicePrefsSchema = z.object({
-  mic: z.string().max(300).optional(), cam: z.string().max(300).optional(), speaker: z.string().max(300).optional(),
-  noiseReduction: z.boolean().optional(), blur: z.boolean().optional(),
-  sendVideo: VideoSendSchema.optional(), receiveVideo: VideoReceiveSchema.optional()
-});
+export const CameraBackgroundSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('none') }),
+  z.object({ kind: z.literal('blur') }),
+  z.object({ kind: z.literal('scene'), id: BackgroundSceneSchema }),
+  z.object({ kind: z.literal('custom'), id: z.uuid() })
+]);
+export type CameraBackground = z.infer<typeof CameraBackgroundSchema>;
+/**
+ * The microphone, camera and speaker someone chose, whether the browser should reduce noise, what shows behind them on
+ * camera, and the video they send and see: remembered in their browser only, never sent anywhere. A browser that kept
+ * `blur: true` from before there were backgrounds keeps its blur.
+ */
+export const DevicePrefsSchema = z.preprocess(
+  (v) => (typeof v === 'object' && v !== null && 'blur' in v && v.blur === true && !('background' in v) ? { ...v, background: { kind: 'blur' } } : v),
+  z.object({
+    mic: z.string().max(300).optional(), cam: z.string().max(300).optional(), speaker: z.string().max(300).optional(),
+    noiseReduction: z.boolean().optional(), background: CameraBackgroundSchema.optional(),
+    sendVideo: VideoSendSchema.optional(), receiveVideo: VideoReceiveSchema.optional()
+  })
+);
 export type DevicePrefs = z.infer<typeof DevicePrefsSchema>;
 
 /**
@@ -1159,6 +1178,9 @@ export const KeptPieceSchema = z.object({
   durationMs: z.number().min(0), mimeType: z.string().max(100), sealed: DeviceSealedSchema
 });
 export type KeptPiece = z.infer<typeof KeptPieceSchema>;
+/** A picture someone added to show behind them on camera: a JPEG sealed in their browser for their account, never sent. */
+export const KeptBackgroundSchema = z.object({ owner: z.string().min(1), id: z.uuid(), at: z.number().min(0), sealed: DeviceSealedSchema });
+export type KeptBackground = z.infer<typeof KeptBackgroundSchema>;
 /** A clip of a kept recording's speech, waiting to be transcribed (TranscriptClip), found by where it starts. */
 export const KeptClipSchema = z.object({
   rec: z.string().min(1).max(100), segment: z.number().int().min(0), atMs: z.number().int().min(0), at: z.number().min(0),

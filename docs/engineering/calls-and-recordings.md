@@ -1740,9 +1740,22 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 
 - `getUserMedia` with echo cancellation and noise suppression; camera off releases the camera. Noise
   reduction can be switched from the microphone menu (`applyConstraints` on the live track, so the recording
-  and transcript carry on). Background blur is offered only where the browser can switch it both ways
-  (`backgroundBlur` in the camera's capabilities, as Chrome does with the system's camera effects); Alcove
-  doesn't segment video itself.
+  and transcript carry on).
+- **Backgrounds** (`backdrop.ts`, `backgrounds.ts`, picked in the camera's menu and before joining): none, blur,
+  three of Alcove's pictures (balloons, beach, office; drawn in `packages/ui/src/backgrounds`), or up to six of
+  your own. LiveKit's background processor (`@livekit/track-processors`) runs MediaPipe's selfie segmenter on this
+  device and draws the background into a new track; `LocalMedia` keeps the camera's own track (`camSource()`, for
+  its size) and shows and sends the drawn one, so the preview, your tile and the call all have it and nothing in
+  `livekit.ts` changes. It happens before anything is encrypted or sent. A new camera track goes through the
+  processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
+  drawn the camera turns off and says so. The processor's code loads only once someone has a background, and the
+  model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version the processor
+  was built with) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
+  `'wasm-unsafe-eval'` for it. The choice is remembered with the devices (`background` in `alcove.devices`; a
+  browser that kept `blur: true` from before keeps blur). Pictures of your own are made into 1920×1080 JPEGs and
+  kept sealed in this browser for the account ([Privacy › On this device](privacy-keys-and-sessions.md#on-this-device));
+  one that isn't here for the account using the camera shows blur instead, and a guest has none. Where the
+  browser can't do it (no WebGL2, or no way to make a track from frames) there's no background choice.
 - The microphone, camera and speaker chosen last time are asked for first (`deviceId: { ideal }`). When one
   isn't plugged in, the browser's default is used and pre-join says so. Choices live in `localStorage`
   (`alcove.devices`, parsed with `DevicePrefsSchema`) in this browser only; nothing about devices is sent.
@@ -1784,7 +1797,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   published"), so retrying the same track could never work. The room takes out what LiveKit left of the attempt (a
   sender still in the connection, and the request waiting for an answer), never offers that track again, and after
   1, 3 and 10 seconds, then every 30, has `LocalMedia` open the same camera again (`renewCamera`), at the size and
-  blur in use, without a word. Only while the camera is still on: one turned off meanwhile stays off. Each try waits
+  with the background in use, without a word. Only while the camera is still on: one turned off meanwhile stays off. Each try waits
   longer, also when the camera doesn't open again, and a publish that works starts the count over. The new track is
   published as any other, at the size chosen (HD included).
 - **Video quality** (`apps/web/src/features/call/VideoQuality.tsx`, under More → **Video quality**). Two choices,
@@ -1792,8 +1805,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   any moment of a call:
   - **Video you send:** 360p, 720p (the default) or HD 1080p. The camera is asked for that size (`VIDEO` in
     `media.ts`: 30 fps, 24 at 360p) when it opens. A change in the call goes to the running camera
-    (`applyConstraints`, after any device work already asked for, with blur in the same set, as each call replaces
-    the last): a smaller size is the browser scaling it, and HD asks it for at least 1920×1080, then for the nearest
+    (`applyConstraints`, after any device work already asked for): a smaller size is the browser scaling it, and HD asks it for at least 1920×1080, then for the nearest
     it has, so it never stops. The camera is published with simulcast layers for its size
     (`CAMERA` in `livekit.ts`): 180p, 360p and 720p up to 1.7 Mbps; 360p, 720p and 1080p up to 3 Mbps for HD;
     180p and 360p for 360p. A publication's layers are fixed when it's published, so a camera sent at a new

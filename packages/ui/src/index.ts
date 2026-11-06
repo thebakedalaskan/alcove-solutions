@@ -24,3 +24,4 @@ export * from './components/guidance';
 export * from './components/workspace';
 export * from './components/qr';
 export * from './components/flow';
+export * from './components/backgrounds';

@@ -298,7 +298,10 @@ put them, and one dock at the bottom.
   when the server's hardware check is bound to this browser's request); and who is here, which opens People.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
-  browser can do it, **Blur my background**. A microphone or camera that can't work has a caution mark, and
+  browser can do it, **Background**: **None**, **Blur**, Alcove's pictures (**Balloons**, **Beach**, **Office**)
+  or up to six of your own (**Add image**; they stay in this browser, and a guest has none). The same choice is on
+  the pre-join screen, so you pick it before anyone sees you. Removing the picture you're using shows blur
+  instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
   microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own

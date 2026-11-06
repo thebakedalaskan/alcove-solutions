@@ -5,6 +5,7 @@ import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
+import { forgetPictures } from '~/features/call/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
@@ -165,6 +166,7 @@ async function forgetHere(qc: QueryClient, deleted: boolean) {
   forgetPlaces(owner);
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
   try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
+  try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
 export function useSignOut() {
   const qc = useQueryClient();
