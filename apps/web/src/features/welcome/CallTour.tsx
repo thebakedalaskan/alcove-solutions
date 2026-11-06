@@ -7,7 +7,7 @@
  */
 import { Fit, Icon, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useEffect, useRef, useState, type RefObject } from 'react';
 import { TourStage } from './TourStage';
 import {
   SCRIPT, STAGE_H, STAGE_W, STEPS, STILL, apply, opened, pointed, stepOf, type Beat, type Point, type Stage, type StepId, type Where
@@ -154,6 +154,21 @@ function useTour(tour: RefObject<HTMLDivElement | null>, stage: RefObject<HTMLDi
   return { s, active, still, on };
 }
 
+/** The steps beside the call, the one it's playing lit. Drawn again only when that changes, not at every beat of the call. */
+const Steps = memo(function Steps({ active }: { active: StepId }) {
+  return (
+    <div className="lp-tour-steps">
+      {STEPS.map((x) => (
+        <article key={x.id} className={cn('lp-tour-step', x.id === active && 'is-on')} data-step={x.id}>
+          <span className="lp-tour-ic"><Icon name={x.icon} size={20} /></span>
+          <h3>{x.title}</h3>
+          <p>{x.line}</p>
+        </article>
+      ))}
+    </div>
+  );
+});
+
 export function CallTour() {
   const reduce = useReducedMotion() ?? false;
   const tour = useRef<HTMLDivElement>(null);
@@ -161,15 +176,7 @@ export function CallTour() {
   const { s, active, still, on } = useTour(tour, stage, reduce);
   return (
     <div ref={tour} className={cn('lp-tour', on && 'is-on')}>
-      <div className="lp-tour-steps">
-        {STEPS.map((x) => (
-          <article key={x.id} className={cn('lp-tour-step', x.id === active && 'is-on')} data-step={x.id}>
-            <span className="lp-tour-ic"><Icon name={x.icon} size={20} /></span>
-            <h3>{x.title}</h3>
-            <p>{x.line}</p>
-          </article>
-        ))}
-      </div>
+      <Steps active={active} />
       <div className="lp-tour-stage">
         <Fit width={STAGE_W} height={STAGE_H} stageRef={stage} className="lp-tour-fit" label={STEPS.find((x) => x.id === active)?.shows ?? STEPS[0]?.shows ?? 'An Alcove call'}>
           <TourStage s={s} still={still} />

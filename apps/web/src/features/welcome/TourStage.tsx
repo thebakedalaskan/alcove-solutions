@@ -2,16 +2,20 @@
  * The call the tour plays on, drawn at 1120 × 700 and always night: the people in it, the dock, the panels and menus
  * each step opens, the rooms, the workspace, and the pointer that shows each click. It draws whatever `Stage` says;
  * tourSteps.ts says what changes when. Anything the pointer goes to is marked `data-at`, and each menu `data-pop`.
+ *
+ * While a step types or writes, the stage changes every 50 to 100 ms. So each part of the call is drawn from only the bit
+ * of `Stage` it shows, and drawn again only when that bit changes: a letter typed redraws the line it's typed into, and
+ * someone starting to speak redraws their tile, not the whole call.
  */
 import {
   Avatar, Button, CallDock, CallTile, Caption, Chip, DockButton, DockLeave, DockSeparator, EASE, Faces, Icon, NotesSign, PointerTag,
   SealedBadge, SharePointer, TimeChip, cn, type IconName
 } from '@alcove/ui';
 import { AnimatePresence, motion } from 'motion/react';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, memo, type ReactNode } from 'react';
 import { CAST, firstOf } from '~/features/notes/cast';
 import {
-  DOC_LINE, LAYOUTS, LINES, LINKS, ORDER, ROOMS, SUMMARY, alcoveX, clock, shareAt, type Box, type PopId, type Stage, type Who
+  DOC_LINE, LAYOUTS, LINES, LINKS, ORDER, ROOMS, SUMMARY, alcoveX, clock, shareAt, type Box, type Point, type PopId, type Stage, type Who
 } from './tourSteps';
 
 const nameOf = (id: Who) => (id === 'art' ? 'You' : firstOf(id));
@@ -34,53 +38,61 @@ function Written({ text, shown }: { text: string; shown: number }) {
   ));
 }
 
-function Top({ s }: { s: Stage }) {
+const Top = memo(function Top({ viewHi }: { viewHi: boolean }) {
   return (
     <div className="lp-st-top">
       <span className="lp-st-title">Launch planning</span>
       <span className="lp-st-clock">14:32</span>
       <NotesSign stage>Notes on</NotesSign>
       <div className="lp-st-end">
-        <span className={cn('lp-st-tb', s.hi.includes('viewBtn') && 'is-hi')} data-at="view"><Icon name="layout" size={16} />View</span>
+        <span className={cn('lp-st-tb', viewHi && 'is-hi')} data-at="view"><Icon name="layout" size={16} />View</span>
         <span className="lp-st-tb is-sealed"><Icon name="sealed" size={16} /></span>
         <Faces people={[CAST.priya, CAST.kofi, CAST.aiko, CAST.maya]} size={22} />
         <span className="lp-st-count">6</span>
       </div>
     </div>
   );
-}
+});
 
-function Tiles({ s }: { s: Stage }) {
-  return ORDER.map((id) => {
-    const b = LAYOUTS[s.layout][id];
-    const status = STATUS[id];
-    return (
-      <div key={id} className={cn('lp-st-tile', b.arch && 'is-arch', s.hover === id && 'is-hover', id === 'art' && s.away && 'is-away', b.arch && s.speaking === id && 'is-up', !b.arch && b.h < 100 && 'is-short')}
-        style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
-        <CallTile person={CAST[id]} name={nameOf(id)} speaking={s.speaking === id} muted={s.muted.includes(id)}
-          chrome={(
-            <>
-              {status && <span className={cn('lp-st-status', s.status.includes(id) && 'is-on')}><Icon name={status.icon} size={14} />{status.text}</span>}
-              {id === 'art' && (
-                <>
-                  <span className="lp-st-left"><i /></span>
-                  <span className={cn('lp-st-mute', s.onMute && 'is-on')}>
-                    <Icon name="micOff" size={15} /><span>You’re talking on mute</span><span className="lp-st-unmute" data-at="unmute">Unmute</span>
-                  </span>
-                </>
-              )}
-              <span className="lp-st-more" data-at={`more:${id}`}><Icon name="more" size={16} /></span>
-            </>
-          )}>
-          <span className="lp-st-face"><Avatar person={CAST[id]} size={faceSize(b)} /></span>
-        </CallTile>
-      </div>
-    );
-  });
-}
+/** Someone in the call, in their tile or folded into an arch, with what their tile says. */
+const Tile = memo(function Tile({ id, b, speaking, muted, hover, status, away, onMute }: {
+  id: Who; b: Box; speaking: boolean; muted: boolean;
+  /** The pointer is over the tile, showing its ⋯. */
+  hover: boolean;
+  /** Their status shows on their tile. */
+  status: boolean;
+  /** You've stepped away: only ever your tile. */
+  away: boolean;
+  /** "You're talking on mute": only ever your tile. */
+  onMute: boolean;
+}) {
+  const said = STATUS[id];
+  return (
+    <div className={cn('lp-st-tile', b.arch && 'is-arch', hover && 'is-hover', away && 'is-away', b.arch && speaking && 'is-up', !b.arch && b.h < 100 && 'is-short')}
+      style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+      <CallTile person={CAST[id]} name={nameOf(id)} speaking={speaking} muted={muted}
+        chrome={(
+          <>
+            {said && <span className={cn('lp-st-status', status && 'is-on')}><Icon name={said.icon} size={14} />{said.text}</span>}
+            {id === 'art' && (
+              <>
+                <span className="lp-st-left"><i /></span>
+                <span className={cn('lp-st-mute', onMute && 'is-on')}>
+                  <Icon name="micOff" size={15} /><span>You’re talking on mute</span><span className="lp-st-unmute" data-at="unmute">Unmute</span>
+                </span>
+              </>
+            )}
+            <span className="lp-st-more" data-at={`more:${id}`}><Icon name="more" size={16} /></span>
+          </>
+        )}>
+        <span className="lp-st-face"><Avatar person={CAST[id]} size={faceSize(b)} /></span>
+      </CallTile>
+    </div>
+  );
+});
 
-/** Kofi's design file, shared to the call (illustration). */
-function SharedScreen() {
+/** Kofi's design file, shared to the call (illustration). It never changes, so it's drawn once. */
+const SharedScreen = memo(function SharedScreen() {
   return (
     <svg viewBox="0 0 700 440" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
       <defs>
@@ -125,17 +137,17 @@ function SharedScreen() {
       <rect x="176" y="382" width="140" height="8" rx="4" fill="#C7D1DD" />
     </svg>
   );
-}
+});
 
-function Share({ s }: { s: Stage }) {
-  const b = shareAt(s.layout);
+const Share = memo(function Share({ layout, on }: { layout: Stage['layout']; on: boolean }) {
+  const b = shareAt(layout);
   return (
-    <div className={cn('lp-st-share', s.share && 'is-on')} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
+    <div className={cn('lp-st-share', on && 'is-on')} style={{ left: b.x, top: b.y, width: b.w, height: b.h }}>
       <SharedScreen />
       <span className="lp-st-share-tag"><Avatar person={CAST.kofi} size={18} />Kofi’s screen</span>
     </div>
   );
-}
+});
 
 function Msg({ who, at, children, more, className }: { who: Who; at: string; children: ReactNode; more?: ReactNode; className?: string | undefined }) {
   return (
@@ -157,68 +169,113 @@ function Todo({ done = false, who, children }: { done?: boolean; who: Who; child
 }
 
 /** The workspace, open in the call: the launch plan, and the board beside it. */
-function Workspace({ s }: { s: Stage }) {
-  const w = s.work;
+const Workspace = memo(function Workspace({ work: w, boardHi }: { work: Stage['work']; boardHi: boolean }) {
   return (
     <div className={cn('lp-st-ws', w.on && 'is-on')}>
-      <div className="lp-st-ws-top">
-        <span className={cn('lp-st-ws-tab', !w.board && 'is-on')}><Icon name="fileText" size={15} />Launch plan</span>
-        <span className={cn('lp-st-ws-tab', w.board && 'is-on', s.hi.includes('ws:board') && 'is-hi')} data-at="ws:board"><Icon name="board" size={15} />Onboarding flow</span>
-        <Faces people={[CAST.priya, CAST.kofi, CAST.maya, CAST.aiko]} size={22} />
-        <span className="lp-st-ws-live"><i />4 editing</span>
+      <WsTop board={w.board} boardHi={boardHi} />
+      <WsDoc on={!w.board} typed={w.typed} comment={w.comment} />
+      <WsBoard on={w.board} drawn={w.drawn} sticky={w.sticky} held={w.held} kofi={w.kofi} maya={w.maya} aiko={w.aiko} />
+    </div>
+  );
+});
+
+/** The workspace's tabs, and who's in it. */
+const WsTop = memo(function WsTop({ board, boardHi }: { board: boolean; boardHi: boolean }) {
+  return (
+    <div className="lp-st-ws-top">
+      <span className={cn('lp-st-ws-tab', !board && 'is-on')}><Icon name="fileText" size={15} />Launch plan</span>
+      <span className={cn('lp-st-ws-tab', board && 'is-on', boardHi && 'is-hi')} data-at="ws:board"><Icon name="board" size={15} />Onboarding flow</span>
+      <Faces people={[CAST.priya, CAST.kofi, CAST.maya, CAST.aiko]} size={22} />
+      <span className="lp-st-ws-live"><i />4 editing</span>
+    </div>
+  );
+});
+
+/** The launch plan: Aiko's line, typed in as Priya writes it, then Kofi's comment beside it. */
+const WsDoc = memo(function WsDoc({ on, typed, comment }: { on: boolean; typed: number; comment: boolean }) {
+  return (
+    <div className={cn('lp-st-ws-view', on && 'is-on')}>
+      <div className="lp-st-doc">
+        <div className="lp-st-doc-title">Launch plan</div>
+        <div className="lp-st-doc-by">Worked on in Launch planning · today</div>
+        <div className="lp-st-doc-h">What ships</div>
+        <p>The new onboarding, behind a flag, on <span className="lp-st-mark">Wed 18 November</span>. Support gets the help article first.</p>
+        <div className="lp-st-doc-h">Before launch</div>
+        <Todo done who="maya">Pricing page copy</Todo>
+        <Todo who="kofi">Final onboarding screens</Todo>
+        <Todo who="aiko">{DOC_LINE.slice(0, typed)}<span className="lp-st-rcaret"><PointerTag person={CAST.priya} name="Priya" /></span></Todo>
       </div>
-      <div className={cn('lp-st-ws-view', !w.board && 'is-on')}>
-        <div className="lp-st-doc">
-          <div className="lp-st-doc-title">Launch plan</div>
-          <div className="lp-st-doc-by">Worked on in Launch planning · today</div>
-          <div className="lp-st-doc-h">What ships</div>
-          <p>The new onboarding, behind a flag, on <span className="lp-st-mark">Wed 18 November</span>. Support gets the help article first.</p>
-          <div className="lp-st-doc-h">Before launch</div>
-          <Todo done who="maya">Pricing page copy</Todo>
-          <Todo who="kofi">Final onboarding screens</Todo>
-          <Todo who="aiko">{DOC_LINE.slice(0, w.typed)}<span className="lp-st-rcaret"><PointerTag person={CAST.priya} name="Priya" /></span></Todo>
-        </div>
-        <div className={cn('lp-st-comment', w.comment && 'is-on')}>
-          <Msg who="kofi" at="14:41">Moved from the 12th, so support has the article a week ahead.</Msg>
-        </div>
-      </div>
-      <div className={cn('lp-st-ws-view', w.board && 'is-on')}>
-        <div className="lp-st-board">
-          <svg className="lp-st-links" viewBox="0 0 900 504" preserveAspectRatio="none" aria-hidden="true">
-            {LINKS.map((d, i) => <path key={d} d={d} pathLength={1} className={cn(w.drawn > i && 'is-on')} />)}
-          </svg>
-          <div className="lp-st-shape" style={{ left: 76, top: 60, width: 120 }}>Sign in</div>
-          <div className="lp-st-shape is-ask" style={{ left: 262, top: 52 }}>Calendar connected?</div>
-          <div className="lp-st-shape" style={{ left: 470, top: 60, width: 170 }}>Home, first day</div>
-          <div className="lp-st-shape" style={{ left: 262, top: 214, width: 132 }}>Connect calendar</div>
-          <div className={cn('lp-st-shape', w.held && 'is-held')} style={{ left: 706, top: 60, width: 130 }}>First call</div>
-          <div className={cn('lp-st-sticky', !w.sticky && 'is-off')} style={{ left: 520, top: 226, '--rot': '-3deg', background: '#FFE3CF' }}>
-            Skip the tour for people who were invited to a call?<small>Maya</small>
-          </div>
-          <div className="lp-st-sticky" style={{ left: 96, top: 300, '--rot': '2deg', background: '#E2E7FF' }}>
-            The calendar row shows its check as it arrives.<small>Kofi</small>
-          </div>
-          <div className="lp-st-tools">{BOARD_TOOLS.map((t, i) => <span key={t} className={cn(i === 0 && 'is-on')}><Icon name={t} size={17} /></span>)}</div>
-          <SharePointer person={CAST.kofi} name="Kofi" className="lp-st-pc" style={{ transform: `translate(${w.kofi.x}px, ${w.kofi.y}px)` }} />
-          <SharePointer person={CAST.maya} name="Maya" className="lp-st-pc" style={{ transform: `translate(${w.maya.x}px, ${w.maya.y}px)` }} />
-          <SharePointer person={CAST.aiko} name="Aiko" className="lp-st-pc" style={{ transform: `translate(${w.aiko.x}px, ${w.aiko.y}px)` }} />
-        </div>
+      <div className={cn('lp-st-comment', comment && 'is-on')}>
+        <Msg who="kofi" at="14:41">Moved from the 12th, so support has the article a week ahead.</Msg>
       </div>
     </div>
   );
-}
+});
+
+/** The board: its connectors drawn in one by one, a sticky note, and everyone's pointers on it. */
+const WsBoard = memo(function WsBoard({ on, drawn, sticky, held, kofi, maya, aiko }: {
+  on: boolean; drawn: number; sticky: boolean; held: boolean; kofi: Point; maya: Point; aiko: Point;
+}) {
+  return (
+    <div className={cn('lp-st-ws-view', on && 'is-on')}>
+      <div className="lp-st-board">
+        <svg className="lp-st-links" viewBox="0 0 900 504" preserveAspectRatio="none" aria-hidden="true">
+          {LINKS.map((d, i) => <path key={d} d={d} pathLength={1} className={cn(drawn > i && 'is-on')} />)}
+        </svg>
+        <div className="lp-st-shape" style={{ left: 76, top: 60, width: 120 }}>Sign in</div>
+        <div className="lp-st-shape is-ask" style={{ left: 262, top: 52 }}>Calendar connected?</div>
+        <div className="lp-st-shape" style={{ left: 470, top: 60, width: 170 }}>Home, first day</div>
+        <div className="lp-st-shape" style={{ left: 262, top: 214, width: 132 }}>Connect calendar</div>
+        <div className={cn('lp-st-shape', held && 'is-held')} style={{ left: 706, top: 60, width: 130 }}>First call</div>
+        <div className={cn('lp-st-sticky', !sticky && 'is-off')} style={{ left: 520, top: 226, '--rot': '-3deg', background: '#FFE3CF' }}>
+          Skip the tour for people who were invited to a call?<small>Maya</small>
+        </div>
+        <div className="lp-st-sticky" style={{ left: 96, top: 300, '--rot': '2deg', background: '#E2E7FF' }}>
+          The calendar row shows its check as it arrives.<small>Kofi</small>
+        </div>
+        <div className="lp-st-tools">{BOARD_TOOLS.map((t, i) => <span key={t} className={cn(i === 0 && 'is-on')}><Icon name={t} size={17} /></span>)}</div>
+        <SharePointer person={CAST.kofi} name="Kofi" className="lp-st-pc" style={{ transform: `translate(${kofi.x}px, ${kofi.y}px)` }} />
+        <SharePointer person={CAST.maya} name="Maya" className="lp-st-pc" style={{ transform: `translate(${maya.x}px, ${maya.y}px)` }} />
+        <SharePointer person={CAST.aiko} name="Aiko" className="lp-st-pc" style={{ transform: `translate(${aiko.x}px, ${aiko.y}px)` }} />
+      </div>
+    </div>
+  );
+});
 
 /** Breakout rooms: each room an alcove, everyone in it on its horizon, the rooms on one timer. */
-function Alcoves({ s }: { s: Stage }) {
+const Alcoves = memo(function Alcoves({ rooms }: { rooms: Stage['rooms'] }) {
   return ROOMS.map((r, i) => (
-    <div key={r.name} className={cn('lp-st-alcove', s.rooms.open && 'is-on', s.rooms.told > i && 'is-told')} style={{ left: alcoveX(i) }}>
+    <div key={r.name} className={cn('lp-st-alcove', rooms.open && 'is-on', rooms.told > i && 'is-told')} style={{ left: alcoveX(i) }}>
       <div className="lp-st-alcove-name">{r.name}</div>
       <div className="lp-st-alcove-who">{r.who.map(nameOf).join(' and ')}</div>
       <div className="lp-st-alcove-msg"><Icon name="megaphone" size={15} /><span>You: Two minutes, then everyone’s back in the main room.</span></div>
-      <div className="lp-st-alcove-time"><i /><b>{clock(s.rooms.left)} left</b></div>
+      <div className="lp-st-alcove-time"><i /><b>{clock(rooms.left)} left</b></div>
     </div>
   ));
-}
+});
+
+/** Over the rooms while they're open: the time left, and a message to every room. */
+const RoomsBar = memo(function RoomsBar({ open, left, hi }: { open: boolean; left: number; hi: boolean }) {
+  return (
+    <div className={cn('lp-st-rbar', open && 'is-on')}>
+      <span>Rooms are open</span>
+      <span className="lp-st-rbar-left">{clock(left)} left</span>
+      <span className={cn('lp-st-tb', hi && 'is-hi')} data-at="msg-all"><Icon name="megaphone" size={16} />Message every room</span>
+      <span className="lp-st-tb">Bring everyone back</span>
+    </div>
+  );
+});
+
+/** Captions in your language, a word at a time, with what was said underneath. */
+const Captions = memo(function Captions({ caption }: { caption: Stage['caption'] }) {
+  const line = LINES[caption.line];
+  return (
+    <Caption className={cn('lp-st-cap', caption.on && 'is-on')} who={<><Avatar person={CAST[line.who]} size={20} />{firstOf(line.who)}</>}
+      lang={line.from} original={line.or}>
+      <Written text={line.en} shown={caption.words} />
+    </Caption>
+  );
+});
 
 function Item({ on, title, by, at }: { on: boolean; title: string; by: string; at: number }) {
   return <div className={cn('lp-st-item lp-st-rv', on && 'is-in')}><div>{title}<small>{by}</small></div><TimeChip seconds={at} /></div>;
@@ -234,32 +291,31 @@ function Panel({ on, icon, title, children, foot }: { on: boolean; icon: IconNam
   );
 }
 
-function NotesPanel({ s }: { s: Stage }) {
+const NotesPanel = memo(function NotesPanel({ on, noted, summed }: { on: boolean; noted: number; summed: number }) {
   return (
-    <Panel on={s.panel === 'notes'} icon="notes" title="Notes" foot={<SealedBadge inline title="Written in confidential compute" />}>
+    <Panel on={on} icon="notes" title="Notes" foot={<SealedBadge inline title="Written in confidential compute" />}>
       <div className="lp-st-panel-body">
         <div>
           <div className="lp-st-k is-decided"><Icon name="decision" size={14} />Decided</div>
-          <Item on={s.noted >= 1} title="The launch moves to Wed 18 Nov" by="Proposed by Priya" at={372} />
+          <Item on={noted >= 1} title="The launch moves to Wed 18 Nov" by="Proposed by Priya" at={372} />
         </div>
         <div>
           <div className="lp-st-k is-follow"><Icon name="todos" size={14} />Follow-ups</div>
-          <Item on={s.noted >= 2} title="Final onboarding screens" by="Kofi · Mon" at={520} />
-          <Item on={s.noted >= 3} title="Help article for support" by="Aiko · Fri" at={555} />
+          <Item on={noted >= 2} title="Final onboarding screens" by="Kofi · Mon" at={520} />
+          <Item on={noted >= 3} title="Help article for support" by="Aiko · Fri" at={555} />
         </div>
         <div>
           <div className="lp-st-k">So far</div>
-          <p className="lp-st-sum"><Written text={SUMMARY} shown={s.summed} /></p>
+          <p className="lp-st-sum"><Written text={SUMMARY} shown={summed} /></p>
         </div>
       </div>
     </Panel>
   );
-}
+});
 
-function ChatPanel({ s }: { s: Stage }) {
-  const c = s.chat;
+const ChatPanel = memo(function ChatPanel({ on, chat: c, dmHi }: { on: boolean; chat: Stage['chat']; dmHi: boolean }) {
   return (
-    <Panel on={s.panel === 'chat'} icon="chat" title="Chat" foot={(
+    <Panel on={on} icon="chat" title="Chat" foot={(
       <div className="lp-st-compose" data-at="compose">
         {c.typed && <span className="lp-st-typed">{c.typed}</span>}
         <span className="lp-st-caret" />
@@ -269,7 +325,7 @@ function ChatPanel({ s }: { s: Stage }) {
     )}>
       <div className="lp-st-tabs">
         <span className={cn('lp-st-tab', !c.dm && 'is-on')}>Everyone</span>
-        <span className={cn('lp-st-tab', c.dm && 'is-on', s.hi.includes('tab:dm') && 'is-hi')} data-at="tab:dm"><Icon name="lock" size={13} />Priya</span>
+        <span className={cn('lp-st-tab', c.dm && 'is-on', dmHi && 'is-hi')} data-at="tab:dm"><Icon name="lock" size={13} />Priya</span>
       </div>
       {c.dm ? (
         <div className="lp-st-panel-body">
@@ -293,12 +349,12 @@ function ChatPanel({ s }: { s: Stage }) {
       )}
     </Panel>
   );
-}
+});
 
-function RoomsPanel({ s }: { s: Stage }) {
+const RoomsPanel = memo(function RoomsPanel({ on, hi }: { on: boolean; hi: boolean }) {
   return (
-    <Panel on={s.panel === 'rooms'} icon="rooms" title="Breakout rooms"
-      foot={<Button variant="primary" size="sm" className={cn('lp-st-open', s.hi.includes('open-rooms') && 'is-hi')} data-at="open-rooms">Open rooms</Button>}>
+    <Panel on={on} icon="rooms" title="Breakout rooms"
+      foot={<Button variant="primary" size="sm" className={cn('lp-st-open', hi && 'is-hi')} data-at="open-rooms">Open rooms</Button>}>
       <div className="lp-st-panel-body">
         <div className="lp-st-row"><span>Rooms</span><span className="lp-st-seg"><span>2</span><span className="is-on">3</span><span>4</span></span></div>
         <div className="lp-st-row"><span>How long</span><span className="lp-st-seg"><span>5 min</span><span className="is-on">10 min</span><span>15 min</span></span></div>
@@ -311,93 +367,109 @@ function RoomsPanel({ s }: { s: Stage }) {
       </div>
     </Panel>
   );
-}
+});
 
-function Menu({ s, id, from, children }: { s: Stage; id: PopId; from: string; children: ReactNode }) {
-  const at = s.at[id];
-  return <div className={cn('lp-st-pop', s.pops.includes(id) && 'is-on')} data-pop={id} style={{ left: at?.x ?? 0, top: at?.y ?? 0, '--from': from }}>{children}</div>;
+/** What's under the pointer in the menus, and what's chosen in them. */
+interface Picks { hi: Stage['hi']; picked: Stage['picked'] }
+
+function Menu({ id, open, at, from, children }: { id: PopId; open: boolean; at: Point | undefined; from: string; children: ReactNode }) {
+  return <div className={cn('lp-st-pop', open && 'is-on')} data-pop={id} style={{ left: at?.x ?? 0, top: at?.y ?? 0, '--from': from }}>{children}</div>;
 }
-function Opt({ s, k, icon, end, children }: { s: Stage; k: string; icon?: IconName | undefined; end?: ReactNode; children: ReactNode }) {
+function Opt({ p, k, icon, end, children }: { p: Picks; k: string; icon?: IconName | undefined; end?: ReactNode; children: ReactNode }) {
   return (
-    <div className={cn('lp-st-opt', s.hi.includes(k) && 'is-hi', s.picked.includes(k) && 'is-picked')} data-at={k}>
+    <div className={cn('lp-st-opt', p.hi.includes(k) && 'is-hi', p.picked.includes(k) && 'is-picked')} data-at={k}>
       {icon && <Icon name={icon} size={16} />}<span>{children}</span>{end && <span className="lp-st-opt-end">{end}</span>}
       <Icon name="check" size={16} className="lp-st-tick" />
     </div>
   );
 }
-function Chips({ s, items }: { s: Stage; items: readonly (readonly [string, string])[] }) {
-  return <div className="lp-st-chips">{items.map(([k, label]) => <span key={k} data-at={k} className={cn(s.picked.includes(k) && 'is-on')}>{label}</span>)}</div>;
+function Chips({ p, items }: { p: Picks; items: readonly (readonly [string, string])[] }) {
+  return <div className="lp-st-chips">{items.map(([k, label]) => <span key={k} data-at={k} className={cn(p.picked.includes(k) && 'is-on')}>{label}</span>)}</div>;
 }
 
-function Menus({ s }: { s: Stage }) {
+/** The menus the steps open: which are open and where, what's under the pointer in them, and what's chosen. */
+const Menus = memo(function Menus({ pops, at, hi, picked }: { pops: Stage['pops']; at: Stage['at']; hi: Stage['hi']; picked: Stage['picked'] }) {
+  const p: Picks = { hi, picked };
+  const menu = (id: PopId) => ({ id, open: pops.includes(id), at: at[id] });
   return (
     <>
-      <Menu s={s} id="view" from="100% 0">
+      <Menu {...menu('view')} from="100% 0">
         <div className="lp-st-pop-label">Layout</div>
-        <Opt s={s} k="view:auto" icon="viewAuto">Auto</Opt>
-        <Opt s={s} k="view:speaker" icon="viewSpeaker">Speaker</Opt>
-        <Opt s={s} k="view:grid" icon="grid">Grid</Opt>
+        <Opt p={p} k="view:auto" icon="viewAuto">Auto</Opt>
+        <Opt p={p} k="view:speaker" icon="viewSpeaker">Speaker</Opt>
+        <Opt p={p} k="view:grid" icon="grid">Grid</Opt>
         <div className="lp-st-pop-div" />
         <div className="lp-st-pop-label">People</div>
-        <Chips s={s} items={[['view:tiles', 'Tiles'], ['view:arches', 'Arches'], ['view:hidden', 'Hidden']]} />
+        <Chips p={p} items={[['view:tiles', 'Tiles'], ['view:arches', 'Arches'], ['view:hidden', 'Hidden']]} />
       </Menu>
-      <Menu s={s} id="status" from="100% 100%">
+      <Menu {...menu('status')} from="100% 100%">
         <div className="lp-st-pop-label">Set a status</div>
-        <Opt s={s} k="status:brb" icon="away">Be right back</Opt>
-        <Opt s={s} k="status:listen" icon="listening">Listening only</Opt>
-        <Opt s={s} k="status:phone" icon="phone">On my phone</Opt>
+        <Opt p={p} k="status:brb" icon="away">Be right back</Opt>
+        <Opt p={p} k="status:listen" icon="listening">Listening only</Opt>
+        <Opt p={p} k="status:phone" icon="phone">On my phone</Opt>
         <div className="lp-st-pop-div" />
         <div className="lp-st-pop-label">Back in</div>
-        <Chips s={s} items={[['status:2', '2 min'], ['status:5', '5 min'], ['status:10', '10 min']]} />
+        <Chips p={p} items={[['status:2', '2 min'], ['status:5', '5 min'], ['status:10', '10 min']]} />
       </Menu>
-      <Menu s={s} id="lang" from="50% 100%">
+      <Menu {...menu('lang')} from="50% 100%">
         <div className="lp-st-pop-label">Captions in</div>
-        <Opt s={s} k="lang:en" end="Yours">English</Opt>
-        <Opt s={s} k="lang:es">Español</Opt>
-        <Opt s={s} k="lang:de">Deutsch</Opt>
-        <Opt s={s} k="lang:ja">日本語</Opt>
-        <Opt s={s} k="lang:pt">Português</Opt>
+        <Opt p={p} k="lang:en" end="Yours">English</Opt>
+        <Opt p={p} k="lang:es">Español</Opt>
+        <Opt p={p} k="lang:de">Deutsch</Opt>
+        <Opt p={p} k="lang:ja">日本語</Opt>
+        <Opt p={p} k="lang:pt">Português</Opt>
       </Menu>
-      <Menu s={s} id="tile" from="100% 0">
-        <Opt s={s} k="tile:pin" icon="pin">Pin for me</Opt>
-        <Opt s={s} k="tile:vol" icon="speaker">Volume for you</Opt>
-        <Opt s={s} k="tile:nudge" icon="nudge" end={<Icon name="chevron" size={14} />}>Nudge Kofi</Opt>
+      <Menu {...menu('tile')} from="100% 0">
+        <Opt p={p} k="tile:pin" icon="pin">Pin for me</Opt>
+        <Opt p={p} k="tile:vol" icon="speaker">Volume for you</Opt>
+        <Opt p={p} k="tile:nudge" icon="nudge" end={<Icon name="chevron" size={14} />}>Nudge Kofi</Opt>
       </Menu>
-      <Menu s={s} id="nudge" from="0 0">
+      <Menu {...menu('nudge')} from="0 0">
         <div className="lp-st-pop-label">Only Kofi sees it</div>
-        <Opt s={s} k="nudge:muted" icon="micOff">You’re muted</Opt>
-        <Opt s={s} k="nudge:hear" icon="hear">Can’t hear you</Opt>
-        <Opt s={s} k="nudge:slow" icon="pace">Slow down a little</Opt>
-        <Opt s={s} k="nudge:up" icon="speaker">A bit louder</Opt>
+        <Opt p={p} k="nudge:muted" icon="micOff">You’re muted</Opt>
+        <Opt p={p} k="nudge:hear" icon="hear">Can’t hear you</Opt>
+        <Opt p={p} k="nudge:slow" icon="pace">Slow down a little</Opt>
+        <Opt p={p} k="nudge:up" icon="speaker">A bit louder</Opt>
       </Menu>
     </>
   );
-}
+});
 
-function Dock({ s }: { s: Stage }) {
+/** A toast over the call: Kofi starting to share, or the nudge Kofi got. */
+const Toast = memo(function Toast({ toast }: { toast: Stage['toast'] }) {
+  return (
+    <div className={cn('lp-st-toast', toast.on && 'is-on')}>
+      {toast.say === 'share'
+        ? <><Avatar person={CAST.kofi} size={22} /><span>Kofi started sharing their screen</span></>
+        : <><Icon name="nudge" size={16} /><span>Kofi got your nudge: Can’t hear you</span></>}
+    </div>
+  );
+});
+
+const Dock = memo(function Dock({ micOff, tool, unread }: { micOff: boolean; tool: Stage['tool']; unread: number }) {
   return (
     <div className="lp-st-dock">
       <CallDock>
-        <DockButton icon={s.micOff ? 'micOff' : 'mic'} label={s.micOff ? 'Unmute' : 'Mute'} off={s.micOff} />
+        <DockButton icon={micOff ? 'micOff' : 'mic'} label={micOff ? 'Unmute' : 'Mute'} off={micOff} />
         <DockButton icon="video" label="Turn your camera off" />
         <DockSeparator />
         <DockButton icon="screen" label="Share your screen" />
         <DockButton icon="hand" label="Raise your hand" />
-        <DockButton icon="captions" label="Captions" on={s.tool === 'captions'} data-at="tool:captions" />
-        <DockButton icon="rooms" label="Breakout rooms" on={s.tool === 'rooms'} data-at="tool:rooms" />
-        <DockButton icon="fileText" label="Workspace" on={s.tool === 'work'} data-at="tool:work" />
-        <DockButton icon="notes" label="Notes" on={s.tool === 'notes'} data-at="tool:notes" />
-        <DockButton icon="chat" label="Chat" on={s.tool === 'chat'} badge={s.unread} data-at="tool:chat" />
+        <DockButton icon="captions" label="Captions" on={tool === 'captions'} data-at="tool:captions" />
+        <DockButton icon="rooms" label="Breakout rooms" on={tool === 'rooms'} data-at="tool:rooms" />
+        <DockButton icon="fileText" label="Workspace" on={tool === 'work'} data-at="tool:work" />
+        <DockButton icon="notes" label="Notes" on={tool === 'notes'} data-at="tool:notes" />
+        <DockButton icon="chat" label="Chat" on={tool === 'chat'} badge={unread} data-at="tool:chat" />
         <DockButton icon="more" label="More" />
         <DockSeparator />
         <DockLeave />
       </CallDock>
     </div>
   );
-}
+});
 
 /** The pointer that shows each click: it comes in from below the first time, glides between clicks, and rings as it presses. */
-function Pointer({ cur }: { cur: Stage['cur'] }) {
+const Pointer = memo(function Pointer({ cur }: { cur: Stage['cur'] }) {
   return (
     <AnimatePresence>
       {cur.on && (
@@ -410,40 +482,30 @@ function Pointer({ cur }: { cur: Stage['cur'] }) {
       )}
     </AnimatePresence>
   );
-}
+});
 
-export function TourStage({ s, still }: { s: Stage; still: boolean }) {
-  const line = LINES[s.caption.line];
+export const TourStage = memo(function TourStage({ s, still }: { s: Stage; still: boolean }) {
   return (
     <div className={cn('lp-st ac-stage', still && 'is-still')}>
-      <Top s={s} />
-      <Share s={s} />
-      <Workspace s={s} />
-      <Alcoves s={s} />
+      <Top viewHi={s.hi.includes('viewBtn')} />
+      <Share layout={s.layout} on={s.share} />
+      <Workspace work={s.work} boardHi={s.hi.includes('ws:board')} />
+      <Alcoves rooms={s.rooms} />
       <div className={cn('lp-st-horizon', s.horizon && 'is-on')} />
-      <Tiles s={s} />
-      <Caption className={cn('lp-st-cap', s.caption.on && 'is-on')} who={<><Avatar person={CAST[line.who]} size={20} />{firstOf(line.who)}</>}
-        lang={line.from} original={line.or}>
-        <Written text={line.en} shown={s.caption.words} />
-      </Caption>
+      {ORDER.map((id) => (
+        <Tile key={id} id={id} b={LAYOUTS[s.layout][id]} speaking={s.speaking === id} muted={s.muted.includes(id)} hover={s.hover === id}
+          status={s.status.includes(id)} away={id === 'art' && s.away} onMute={id === 'art' && s.onMute} />
+      ))}
+      <Captions caption={s.caption} />
       <Chip icon="eye" className={cn('lp-st-chip', s.chip && 'is-on')}>Only your screen changes</Chip>
-      <div className={cn('lp-st-rbar', s.rooms.open && 'is-on')}>
-        <span>Rooms are open</span>
-        <span className="lp-st-rbar-left">{clock(s.rooms.left)} left</span>
-        <span className={cn('lp-st-tb', s.hi.includes('msg-all') && 'is-hi')} data-at="msg-all"><Icon name="megaphone" size={16} />Message every room</span>
-        <span className="lp-st-tb">Bring everyone back</span>
-      </div>
-      <NotesPanel s={s} />
-      <ChatPanel s={s} />
-      <RoomsPanel s={s} />
-      <Menus s={s} />
-      <div className={cn('lp-st-toast', s.toast.on && 'is-on')}>
-        {s.toast.say === 'share'
-          ? <><Avatar person={CAST.kofi} size={22} /><span>Kofi started sharing their screen</span></>
-          : <><Icon name="nudge" size={16} /><span>Kofi got your nudge: Can’t hear you</span></>}
-      </div>
-      <Dock s={s} />
+      <RoomsBar open={s.rooms.open} left={s.rooms.left} hi={s.hi.includes('msg-all')} />
+      <NotesPanel on={s.panel === 'notes'} noted={s.noted} summed={s.summed} />
+      <ChatPanel on={s.panel === 'chat'} chat={s.chat} dmHi={s.hi.includes('tab:dm')} />
+      <RoomsPanel on={s.panel === 'rooms'} hi={s.hi.includes('open-rooms')} />
+      <Menus pops={s.pops} at={s.at} hi={s.hi} picked={s.picked} />
+      <Toast toast={s.toast} />
+      <Dock micOff={s.micOff} tool={s.tool} unread={s.unread} />
       <Pointer cur={s.cur} />
     </div>
   );
-}
+});
