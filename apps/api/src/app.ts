@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MAX_MEDIA_PREVIEW_BYTES, MEDIA_PIECE_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
 } from '@alcove/api';
@@ -87,6 +87,8 @@ const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
 /** What holds a document's content, as it is: a paste can be megabytes, and it has a limit of its own. */
 const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/(?:updates|adopt)$/;
+/** The one route that takes a picture's preview: a small JPEG, kept beside a picture in a workspace. */
+const MEDIA_PREVIEW = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/preview$/;
 /** The one route that takes bytes as they are: a piece of a file going into a workspace. */
 const MEDIA_PIECES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/pieces\/[^/]+$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
@@ -284,7 +286,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const body = async <S extends z.ZodType>(c: Context, schema: S): Promise<z.infer<S>> => schema.parse(await c.req.json().catch(() => { throw new ValidationError('Expected a JSON body.'); }));
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
-  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS), ...Object.values(FRAME_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
+  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER, ...Object.values(HEARD_HEADERS)], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS), ...Object.values(FRAME_HEADERS)], allowMethods: ['GET', 'POST', 'PATCH', 'DELETE'], maxAge: 600 }));
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
@@ -297,7 +299,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (origin !== d.cfg.WEB_ORIGIN) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
-    const image = type.startsWith('image/jpeg') && FRAMES.test(c.req.path);
+    const image = type.startsWith('image/jpeg') && (FRAMES.test(c.req.path) || MEDIA_PREVIEW.test(c.req.path));
     const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
     const fileBytes = type.startsWith('application/octet-stream') && MEDIA_PIECES.test(c.req.path);
     if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update && !fileBytes) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
@@ -682,6 +684,19 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     if (!line.success) throw new ValidationError('That isn’t a moment of this call.');
     return c.json(await calls.moment(v, c.req.param('id'), line.data));
   });
+  /* Hear it, during the call: one line's recording, for anyone in it who may hear it (calls.hear says who). */
+  app.get('/v1/live/calls/:id/hear/:note/:line', async (c) => {
+    const v = c.get('viewer');
+    momentLimiter(v.pass.identity, 'hear');
+    const ids = z.object({ note: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), line: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }).safeParse({ note: c.req.param('note'), line: c.req.param('line') });
+    if (!ids.success) throw new ValidationError('That isn’t a moment of this call.');
+    const heard = await calls.hear(v, c.req.param('id'), ids.data.note, ids.data.line);
+    const mime = heard.audio.mimeType.split(';')[0]?.trim() ?? '';
+    return new Response(heard.audio.bytes.slice(), { headers: {
+      'content-type': AUDIO_TYPES.has(mime) ? heard.audio.mimeType : 'application/octet-stream', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store',
+      [HEARD_HEADERS.from]: String(heard.from), [HEARD_HEADERS.seconds]: String(heard.seconds)
+    } });
+  });
   /*
    * Your own notes from inside a call: your account's, with your session, on the call's note. Nothing here goes into the
    * call's state or tells anyone else's browser.
@@ -897,6 +912,24 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     treeLimiter(access.limitKey(r), 'workspace change');
     await media.remove(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'));
     return c.json({ removed: true });
+  });
+  /* A picture's preview, for a picker: kept once by whoever can edit, and read by whoever can read the picture. None is 204. */
+  app.use('/v1/workspaces/:id/documents/:doc/media/:media/preview', capped(MAX_MEDIA_PREVIEW_BYTES));
+  app.post('/v1/workspaces/:id/documents/:doc/media/:media/preview', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    // Who can, before what was sent: someone who can't edit the document hears what they'd hear for one that isn't there.
+    await media.mayAdd(d, r, c.req.param('id'), c.req.param('doc'));
+    if ((c.req.header('content-type') ?? '').toLowerCase().split(';')[0]?.trim() !== 'image/jpeg') throw new ValidationError('A preview must be a JPEG image.');
+    await media.storePreview(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'), new Uint8Array(await c.req.arrayBuffer()));
+    return c.json({ kept: true });
+  });
+  app.get('/v1/workspaces/:id/documents/:doc/media/:media/preview', async (c) => {
+    const r = await readerOf(c);
+    mediaLimiter(media.askerOf(r), 'media');
+    const jpeg = await media.preview(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'));
+    if (!jpeg) return c.body(null, 204, { 'cache-control': 'no-store' });
+    return new Response(jpeg.slice(), { headers: { 'content-type': 'image/jpeg', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'" } });
   });
   app.get('/v1/workspaces/:id/documents/:doc/media/:media/token', async (c) => {
     const r = await readerOf(c);

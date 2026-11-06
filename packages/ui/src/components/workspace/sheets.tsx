@@ -1,7 +1,7 @@
 /* What opens in a popover: people, comments, sharing, switching, presenting, and find, which opens over everything. */
 import { AnimatePresence, motion } from 'motion/react';
 import { Dialog as RDialog } from 'radix-ui';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { cn } from '../../cn';
 import { Icon, type IconName } from '../icon';
 import { Avatar, Faces, type AvatarPerson } from '../people';
@@ -63,9 +63,11 @@ function tagAt(value: string, caret: number): { from: number; query: string } | 
   return query === undefined ? null : { from: caret - query.length - 1, query };
 }
 
-/** A field and its send button, as a comment has them. Enter sends, and `@` opens a list above the line, in the same box. */
-function CommentField({ label, placeholder, value, onChange, onSend, tagging, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined; autoFocus?: boolean | undefined }) {
-  const field = useRef<HTMLInputElement>(null);
+/**
+ * What `@` does in a one-line field: the `@word` the caret is at, the list it opens, and what picking from it writes. Arrows
+ * move through the list, Enter or Tab picks, and Esc closes the list and leaves the field. `keys` says whether it took a key.
+ */
+function useTagList(field: RefObject<HTMLInputElement | null>, value: string, onChange: (v: string) => void, tagging: WsTagging | undefined) {
   const [caret, setCaret] = useState(0);
   const [index, setIndex] = useState(0);
   const [closed, setClosed] = useState<number | null>(null);
@@ -84,17 +86,18 @@ function CommentField({ label, placeholder, value, onChange, onSend, tagging, au
     tagging?.onPick(c);
     requestAnimationFrame(() => { field.current?.focus(); field.current?.setSelectionRange(at, at); });
   };
-  const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+  const keys = (e: KeyboardEvent<HTMLInputElement>): boolean => {
     if (open && choices.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       setIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
-    } else if (open && choices.length > 0 && (e.key === 'Enter' || e.key === 'Tab')) {
+      return true;
+    }
+    if (open && choices.length > 0 && (e.key === 'Enter' || e.key === 'Tab')) {
       e.preventDefault();
       take(choices[index]);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      onSend();
+      return true;
     }
+    return false;
   };
   const moved = (e: { currentTarget: HTMLInputElement }) => setCaret(e.currentTarget.selectionStart ?? e.currentTarget.value.length);
   /* Esc closes the list and leaves the box: the popover hears it first otherwise. */
@@ -105,26 +108,73 @@ function CommentField({ label, placeholder, value, onChange, onSend, tagging, au
     window.addEventListener('keydown', esc, true);
     return () => window.removeEventListener('keydown', esc, true);
   }, [from]);
+  const list = open ? (
+    <>
+      {choices.length === 0 && <p className="wm-x">Nobody called “{shown.query}”.</p>}
+      {sections.map((s) => [
+        <div key={s.title} className="wm-h">{s.title}</div>,
+        ...s.choices.map((c) => (
+          <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}>
+            {c.person && <Avatar person={c.person} size={24} />}
+            {c.icon && <Icon name={c.icon} size={16} />}
+            <span className="t"><span className="l">{c.label}</span>{c.sub && <small>{c.sub}</small>}</span>
+          </button>
+        ))
+      ])}
+    </>
+  ) : null;
+  return { open, list, keys, moved, reset: () => setIndex(0), close: () => setClosed(from) };
+}
+
+/** A field and its send button, as a comment has them. Enter sends, and `@` opens a list above the line, in the same box. */
+function CommentField({ label, placeholder, value, onChange, onSend, tagging, autoFocus = false }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; onSend: () => void; tagging?: WsTagging | undefined; autoFocus?: boolean | undefined }) {
+  const field = useRef<HTMLInputElement>(null);
+  const tags = useTagList(field, value, onChange, tagging);
+  const keys = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (tags.keys(e)) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onSend();
+    }
+  };
   return <>
-    <input ref={field} className="wm-in" type="text" placeholder={placeholder} aria-label={label} aria-expanded={open} value={value} autoFocus={autoFocus}
-      onChange={(e) => { onChange(e.target.value); setIndex(0); moved(e); }} onSelect={moved} onKeyDown={keys} />
+    <input ref={field} className="wm-in" type="text" placeholder={placeholder} aria-label={label} aria-expanded={tags.open} value={value} autoFocus={autoFocus}
+      onChange={(e) => { onChange(e.target.value); tags.reset(); tags.moved(e); }} onSelect={tags.moved} onKeyDown={keys} />
     <button type="button" className="ws-send" aria-label="Send" onClick={onSend}><Icon name="sendLine" size={15} /></button>
-    {open && (
-      <div className="wv-tags wm-list" role="listbox" aria-label="People and dates">
-        {choices.length === 0 && <p className="wm-x">Nobody called “{shown.query}”.</p>}
-        {sections.map((s) => [
-          <div key={s.title} className="wm-h">{s.title}</div>,
-          ...s.choices.map((c) => (
-            <button key={c.key} type="button" role="option" aria-selected={choices[index] === c} tabIndex={-1} className={cn('wm-r', choices[index] === c && 'is-sel', c.person && 'is-person')} onMouseDown={(e) => e.preventDefault()} onClick={() => take(c)}>
-              {c.person && <Avatar person={c.person} size={24} />}
-              {c.icon && <Icon name={c.icon} size={16} />}
-              <span className="t"><span className="l">{c.label}</span>{c.sub && <small>{c.sub}</small>}</span>
-            </button>
-          ))
-        ])}
-      </div>
-    )}
+    {tags.list && <div className="wv-tags wm-list" role="listbox" aria-label="People and dates">{tags.list}</div>}
   </>;
+}
+
+/** Words with the people they tag marked, as `@First` in them: what a comment and a caption show once they're written. */
+export function wsTagged(text: string, names: readonly string[]): ReactNode {
+  const marks = [...new Set(names.map((name) => `@${firstName({ name })}`))].filter((m) => text.includes(m)).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (marks.length === 0) return text;
+  return text.split(new RegExp(`(${marks.join('|')})`)).map((part, i) => (i % 2 === 1 ? <WsTagWords key={i}>{part}</WsTagWords> : <Fragment key={i}>{part}</Fragment>));
+}
+
+/**
+ * A photo's caption: one line, typed in place under it, where `@` tags someone as it does in a comment, with a list that
+ * drops below the line. Once it's written, the people it tags (`tagged`, by name) are marked in it. `onChange` is every key,
+ * `onDone` when it's left or Enter is pressed. Read only, it's the words, or nothing when there are none.
+ */
+export function WsCaptionField({ value, tagged = [], readOnly = false, onChange, onDone, tagging }: {
+  value: string; tagged?: readonly string[] | undefined; readOnly?: boolean | undefined; onChange: (v: string) => void; onDone: () => void; tagging?: WsTagging | undefined;
+}) {
+  const field = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  const tags = useTagList(field, value, onChange, readOnly ? undefined : tagging);
+  const marked = !focused && tagged.some((name) => value.includes(`@${firstName({ name })}`));
+  return (
+    <span className={cn('wb-capw', marked && 'is-marked')}>
+      <input ref={field} className="wb-cap" type="text" aria-label="Caption" placeholder={tagging && !readOnly ? 'Add a caption, or @ someone' : 'Add a caption'} readOnly={readOnly} value={value}
+        aria-expanded={tags.open}
+        onChange={(e) => { onChange(e.target.value); tags.reset(); tags.moved(e); }} onSelect={tags.moved}
+        onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); tags.close(); onDone(); }}
+        onKeyDown={(e) => { if (tags.keys(e)) return; if (e.key === 'Enter') e.currentTarget.blur(); }} />
+      {marked && <span className="wb-cap wb-capm" aria-hidden="true">{wsTagged(value, tagged)}</span>}
+      {tags.list && <span className="wb-captags wm-list" role="listbox" aria-label="People and dates">{tags.list}</span>}
+    </span>
+  );
 }
 
 /** A tag in a comment: the words as they were written, marked like a tag in a line. */

@@ -3,11 +3,11 @@
  * really in it. A stored file is known here by its media ID: a document says which files it uses by naming them.
  */
 import type { Node as PMNode } from 'prosemirror-model';
-import { blockFromJSON, captionKey, textAttr, textOf } from '../schema';
+import { blockFromJSON, captionKey, captionTags, textAttr, textOf, type CaptionTag } from '../schema';
 import type { BlockJSON, LiveLine } from '../types';
 
-/** One picture in a `gallery`. `width` and `height` hold its space until it arrives. */
-export interface GalleryItem { media: string | null; name: string; cap: string; width: number | null; height: number | null }
+/** One picture in a `gallery`. `width` and `height` hold its space until it arrives. `tags`: who its caption tags. */
+export interface GalleryItem { media: string | null; name: string; cap: string; tags: CaptionTag[]; width: number | null; height: number | null }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const numberOr = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -18,7 +18,8 @@ export function galleryItems(node: PMNode): GalleryItem[] {
   return items.flatMap((v: unknown) => {
     if (!isRecord(v)) return [];
     const media = textOf(v['media']);
-    return [{ media, name: textOf(v['name']) ?? '', cap: media ? textAttr(node, captionKey(media)) ?? '' : '', width: numberOr(v['width']), height: numberOr(v['height']) }];
+    const cap = media ? textAttr(node, captionKey(media)) ?? '' : '';
+    return [{ media, name: textOf(v['name']) ?? '', cap, tags: media ? captionTags(node, media, cap) : [], width: numberOr(v['width']), height: numberOr(v['height']) }];
   });
 }
 

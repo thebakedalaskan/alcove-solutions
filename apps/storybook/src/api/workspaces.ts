@@ -255,7 +255,7 @@ export async function upload(id: string, documentId: string, file: File, o: Medi
     id: nextId('media').padEnd(22, '0'), name: file.name.replace(/\s+/g, ' ').trim() || 'File', type: servedType(file.type), size: file.size,
     width: o.width ?? null, height: o.height ?? null, createdAt: new Date().toISOString(), documents: [documentId]
   };
-  current().media.unshift({ workspace: id, media, body: () => Promise.resolve(file) });
+  current().media.unshift({ workspace: id, media, body: () => Promise.resolve(file), ...(o.preview && media.type.startsWith('image/') ? { preview: o.preview } : {}) });
   return structuredClone(media);
 }
 /** Where to read a file through a document, for a player or a download: the same while the story lasts. */
@@ -273,6 +273,12 @@ export async function pictureOf(id: string, documentId: string, mediaId: string,
   const body = await kept.body();
   if (o.signal?.aborted) throw new AlcoveApiError('network', 'That picture was stopped.');
   return URL.createObjectURL(body);
+}
+/** A picture's small preview, as a URL of its own, or null for one with none (one the story starts with). */
+export async function previewOf(id: string, documentId: string, mediaId: string, o: MediaPictureOptions = {}): Promise<string | null> {
+  const kept = fileIn(id, documentId, mediaId);
+  if (o.signal?.aborted) throw new AlcoveApiError('network', 'That preview was stopped.');
+  return kept.preview ? URL.createObjectURL(kept.preview) : null;
 }
 /** Reuses a file from another document of the same workspace, for someone who can edit this one. */
 export function attach(id: string, documentId: string, mediaId: string): void {

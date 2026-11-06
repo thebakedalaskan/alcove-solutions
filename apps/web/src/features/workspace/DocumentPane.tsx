@@ -64,11 +64,11 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
   /* Whose face goes on a caret, a tag or a comment: people here last, who may know more about themselves than the list does. */
   const faces = useMemo(() => [...tagged, ...inCall, ...ws.here.map((h) => h.person)], [tagged, inCall, ws.here]);
   const byId = useMemo(() => new Map(faces.map((p) => [p.id, p])), [faces]);
-  /* Hearing a quote takes the notes, which take an account. */
+  /* Hearing a quote takes the notes, which take an account, except in the call it's from, which plays it for anyone in it. */
   const signedIn = ws.owner !== null;
   /* In the call, the call says where a line it heard is, before its note can. */
   const callSession = ws.call?.live.session;
-  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} call={callSession} />, [callSession]);
+  const hear = useCallback<NonNullable<EditorProps['hear']>>((m) => <HearIt note={m.note} line={m.line} call={callSession} notes={signedIn} />, [callSession, signedIn]);
 
   /* What the title says is what the list says: a name that didn't get through, offline say, goes when it can. */
   const reachable = status.status !== 'offline';
@@ -201,7 +201,7 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
     <WsFade id={item.id}>
       <WsPage onKeyDown={leave}>
         <Suspense>
-          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces} call={fromCall} hear={signedIn ? hear : undefined}
+          <Editor ref={setEditor} doc={session.doc} awareness={session.awareness} readOnly={readOnly} titleHint={item.name} people={faces} call={fromCall} hear={signedIn || callSession ? hear : undefined}
             autoFocus={madeHere.current && !readOnly ? 'title' : undefined}
             onMention={sections} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onNewBoard={!readOnly && ws.canChange && ws.tree.boards ? () => ws.actions.newBoard(item.parent, { stay: true }) : undefined}

@@ -97,6 +97,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `workspace-presence` | state key `workspace` | workspace (where someone is, on its way between instances, never stored) |
 | `workspace-media` | state key `media:<id>` | workspace, file (its name, type, size and dimensions) |
 | `media-piece` | state key `media:<id>` | workspace, file, seq, object (a piece of the file, as a binary record) |
+| `media-preview` | state key `media:<id>` | workspace, file, object (a picture's small JPEG preview, as a binary record) |
 | `workspace-mention` | state key `workspace` | workspace, document, tag (who tagged someone and on which line, until they've heard) |
 | `operation-result` | operation-result key | operation |
 | `billing` | billing key | owner |

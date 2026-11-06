@@ -35,7 +35,8 @@ import { readingPlugin } from './plugins/reading';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
 import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
-import { safeHref, schema, textAttr } from './schema';
+import { isGone, safeHref, schema, textAttr } from './schema';
+import { galleryItems } from './blocks/attrs';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
 
@@ -245,6 +246,14 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       return before ? { after: before } : 'start';
     },
     blockWords: () => (rt.view ? blockWords(rt.view.state.doc) : []),
+    captionOf: (media) => {
+      for (const b of rt.view ? allBlocks(rt.view.state.doc) : []) {
+        if (b.node.type.name !== 'gallery' || isGone(b.node)) continue;
+        const item = galleryItems(b.node).find((i) => i.media === media && i.cap !== '');
+        if (item) return { cap: item.cap, tags: item.tags };
+      }
+      return null;
+    },
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
     hasLive: () => hasLive(rt),
     openSlash: () => write((view) => typeTrigger(view, '/')),

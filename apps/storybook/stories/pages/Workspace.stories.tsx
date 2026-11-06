@@ -69,6 +69,42 @@ export const TagsAndCommentsPhone = page(FIXES, 'busy', { globals: PHONE });
 export const PhotosVideoAndAFile = page(SHOTS, 'busy');
 export const PhotosVideoAndAFileNight = page(SHOTS, 'busy', { globals: { theme: 'dark' } });
 export const PhotosVideoAndAFilePhone = page(SHOTS, 'busy', { globals: PHONE });
+/**
+ * Tagging someone in a caption: click under a photo, type @, and pick who, as in a line. The caption Aiko's tagged in shows
+ * her name marked; Kofi, who can't open the review's home, says so in the list, and is asked about before he's told.
+ */
+const captionTag: PageStory['play'] = async ({ canvasElement, userEvent, step }) => {
+  await step('Click the caption under the first screenshot, and type @ at its end', async () => {
+    let field: HTMLInputElement | null = null;
+    for (let tries = 0; !field && tries < 50; tries++) { field = canvasElement.querySelector<HTMLInputElement>('.ws-ed .wb-cap[aria-label="Caption"]'); if (!field) await beat(200); }
+    if (!field) return;
+    await userEvent.click(field);
+    await userEvent.keyboard('{End} with @');
+  });
+};
+export const CaptionTagging = page(SHOTS, 'busy', { play: captionTag });
+export const CaptionTaggingNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: captionTag });
+export const CaptionTaggingPhone = page(SHOTS, 'busy', { globals: PHONE, play: captionTag });
+/**
+ * Photos from `/`: the workspace's photos to use again, each drawn from its small preview, or for one from before previews,
+ * from the photo itself made small here once. One already in this document keeps its caption, and none starts with a file's name.
+ */
+const reusePhotos: PageStory['play'] = async ({ canvas, userEvent, step }) => {
+  await step('Press + beside the first line: the same menu as /', async () => {
+    const first = await canvas.findByText(/^From the design review/, undefined, { timeout: 8000 });
+    await userEvent.hover(first);
+    const [add] = await canvas.findAllByRole('button', { name: 'Add a block' }, { timeout: 5000 });
+    if (add) await userEvent.click(add);
+  });
+  await step('Pick Photos. The picker shows the workspace’s photos small', async () => {
+    const photos = await screen.findAllByText(/^Photos$/, undefined, { timeout: 5000 });
+    const row = photos.at(-1);
+    if (row) await userEvent.click(row);
+  });
+};
+export const ReusePhotos = page(SHOTS, 'busy', { play: reusePhotos });
+export const ReusePhotosNight = page(SHOTS, 'busy', { globals: { theme: 'dark' }, play: reusePhotos });
+export const ReusePhotosPhone = page(SHOTS, 'busy', { globals: PHONE, play: reusePhotos });
 /** On a phone, holding a block opens its menu as a sheet: here the screenshots', with Delete the photos for good. */
 export const HoldingABlockPhone = page(SHOTS, 'busy', { globals: PHONE, play: hold('.ws-ed .wb.is-gallery') });
 /** Aiko's walkthrough still uploading, a recording too big to keep here, and a photo deleted for good. */

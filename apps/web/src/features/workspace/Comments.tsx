@@ -4,8 +4,8 @@
  * so `canWrite` is the only thing between a reader and writing, and every change here goes through it.
  */
 import { firstName, type Person } from '@alcove/api';
-import { WsCommentCompose, WsCommentThread, WsPopover, WsTagWords, wsToast, type AvatarPerson, type WsComment, type WsTagChoice, type WsTagging, type WsToastData } from '@alcove/ui';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { WsCommentCompose, WsCommentThread, WsPopover, wsTagged, wsToast, type AvatarPerson, type WsComment, type WsTagChoice, type WsTagging, type WsToastData } from '@alcove/ui';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { Doc } from 'yjs';
 import { addReply, observeThreads, readThread, setResolved, type MessageTag, type Thread, type ThreadMessage } from './editor/comments';
 import type { CommentDraft, MentionSection, Rect } from './editor/types';
@@ -71,13 +71,6 @@ function useTagging(sections: CommentsProps['sections']) {
   return { tagging, take };
 }
 
-/** A message's words, with the people it tags marked. */
-function wordsWith(text: string, tags: readonly MessageTag[]): ReactNode {
-  if (tags.length === 0) return text;
-  const names = tags.map((t) => `@${firstName(t.name)}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return text.split(new RegExp(`(${names.join('|')})`)).map((part, i) => (i % 2 === 1 ? <WsTagWords key={i}>{part}</WsTagWords> : <Fragment key={i}>{part}</Fragment>));
-}
-
 const tagsOf = (people: readonly Person[]): MessageTag[] => people.map((p) => ({ id: p.id, name: p.name }));
 
 function Compose({ draft, self, sections, onOpen, onTagged }: { draft: CommentDraft; self: Person; sections: CommentsProps['sections']; onOpen: CommentsProps['onOpen']; onTagged: CommentsProps['onTagged'] }) {
@@ -98,7 +91,7 @@ function ThreadView({ doc, id, thread, self, people, canWrite, sections, onOpen,
   const [text, setText] = useState('');
   const { tagging, take } = useTagging(sections);
   const face = (m: ThreadMessage): AvatarPerson => people.get(m.by) ?? { name: m.name };
-  const messages = thread.messages.map((m): WsComment => ({ id: m.id, person: face(m), name: firstName(m.name), text: wordsWith(m.text, m.tags) }));
+  const messages = thread.messages.map((m): WsComment => ({ id: m.id, person: face(m), name: firstName(m.name), text: wsTagged(m.text, m.tags.map((t) => t.name)) }));
   const send = () => {
     const words = text.trim();
     if (!words || !self || !canWrite) return;

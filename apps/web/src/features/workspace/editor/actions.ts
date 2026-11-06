@@ -16,7 +16,7 @@ import { appear, decorChange, flash, holding, holdRange, rangeOf } from './plugi
 import { moveBlock } from './plugins/retire';
 import type { EditorRuntime, HeldWords, OpenMenu } from './runtime';
 import type { HeldRange } from './plugins/decor';
-import { blockFromJSON, captionKey, hasBlockId, learnAttrs, lineKind, safeHref, schema } from './schema';
+import { blockFromJSON, captionKey, captionTagsKey, hasBlockId, learnAttrs, lineKind, safeHref, schema, type CaptionTag } from './schema';
 import type { BlockJSON, BlockKind, InsertAt, LiveLine, LiveWhat, MentionItem, MomentLine, MovingBlock, Rect } from './types';
 import { elementOf, syncOf } from './ydoc';
 
@@ -373,14 +373,17 @@ export function setBlockAttrs(rt: EditorRuntime, pos: number, attrs: Record<stri
   view.dispatch(history ? tr : tr.setMeta('addToHistory', false));
 }
 
-/** Writes a photo's caption, on its block wherever that's got to. */
-export function setCaption(rt: EditorRuntime, block: string, media: string, cap: string): void {
+/** Writes a photo's caption and who it tags, on its block wherever that's got to. A caption that tags nobody has no list. */
+export function setCaption(rt: EditorRuntime, block: string, media: string, cap: string, tags: readonly CaptionTag[]): void {
   const view = editing(rt);
   const ref = view ? findBlock(view.state.doc, block) : null;
   if (!view || !ref) return;
-  const key = captionKey(media);
-  learnAttrs(ref.node.type, { [key]: cap });
-  view.dispatch(view.state.tr.setNodeAttribute(ref.pos, key, cap === '' ? null : cap));
+  const key = captionKey(media), tagsKey = captionTagsKey(media);
+  const list = tags.length ? tags.map((t) => ({ id: t.id, name: t.name })) : null;
+  learnAttrs(ref.node.type, { [key]: cap, [tagsKey]: list });
+  const tr = view.state.tr.setNodeAttribute(ref.pos, key, cap === '' ? null : cap);
+  if (JSON.stringify(ref.node.attrs[tagsKey] ?? null) !== JSON.stringify(list)) tr.setNodeAttribute(ref.pos, tagsKey, list);
+  view.dispatch(tr);
 }
 
 /** A `live` block of the call this document is open in. One from an earlier call stays as it was when that ended. */

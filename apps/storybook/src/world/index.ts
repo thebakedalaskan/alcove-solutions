@@ -35,8 +35,12 @@ export interface Page { blocks: BlockJSON[]; threads?: PageThread[] | undefined;
 
 /** A workspace as the world keeps it: its tree, and what the Drive says of it besides (when it was made, and its call). */
 export type Space = WorkspaceTree & Pick<WorkspaceSummary, 'createdAt' | 'call'>;
-/** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
-export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
+/**
+ * A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). A photo
+ * uploaded here keeps the small preview its browser made, as the API does; one the story starts with has none, as a photo
+ * from before previews hasn't, so the picker makes its own.
+ */
+export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob>; preview?: Blob | undefined }
 
 /**
  * A board as the story opens: what's on it (drawn with @alcove/board's own writers), who else has it open and where their

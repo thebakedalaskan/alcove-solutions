@@ -14,7 +14,7 @@
  * What can be kept is limited too, by limits that change without a deploy (limits.ts): a file, a workspace, and what
  * each person uploads in a day. A lower limit refuses what comes next, and never deletes what's there.
  */
-import { FILE_TYPE, MEDIA_PIECE_BYTES, MediaInputSchema, type WorkspaceMedia } from '@alcove/api';
+import { FILE_TYPE, MAX_MEDIA_PREVIEW_BYTES, MEDIA_PIECE_BYTES, MEDIA_PREVIEW_PIXELS, MediaInputSchema, type WorkspaceMedia } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { blindIndex, concat, equalBytes, id128, openBinary, openJson, sealBinary, sealJson, sha, stateKey, toJson, type RecordHeader } from '../crypto';
@@ -25,6 +25,7 @@ import { currentLogContext, log, withLogContext } from '../log';
 import { masterKey } from '../owners';
 import { issueMediaToken, readMediaToken, type MediaToken } from '../mediaToken';
 import { deleteQueued, queueDelete } from './audio';
+import { jpegSize } from './screens';
 import { ID128, limitKey, requireDocument, roleOf, whoNamed, workspaceFor, type Reader, type Who, type Workspace } from './workspaceAccess';
 
 const mlog = log.child({ component: 'media' });
@@ -202,6 +203,7 @@ type Place = Pick<Workspace, 'owner' | 'workspaceId'>;
 const mediaKey = (o: Owner, mediaId: string): Uint8Array => stateKey(o.root, o.ownerId, `media:${mediaId}`);
 const infoHeader = (w: Place, mediaId: string): RecordHeader => ({ v: 1, kind: 'workspace-media', ownerId: w.owner.ownerId, workspaceId: w.workspaceId, mediaId });
 const pieceHeader = (w: Place, mediaId: string, seq: number, objectId: string): RecordHeader => ({ v: 1, kind: 'media-piece', ownerId: w.owner.ownerId, workspaceId: w.workspaceId, mediaId, seq, objectId });
+const previewHeader = (w: Place, mediaId: string, objectId: string): RecordHeader => ({ v: 1, kind: 'media-preview', ownerId: w.owner.ownerId, workspaceId: w.workspaceId, mediaId, objectId });
 /** What's said about a file, sealed: never read from a request once it's stored, so what it's served as can't be asked for. */
 const Info = z.object({ name: z.string(), type: z.string(), size: z.number(), width: z.number().nullable(), height: z.number().nullable() });
 type Info = z.infer<typeof Info>;
@@ -461,6 +463,77 @@ export async function attach(d: Deps, who: Who, workspaceId: string, documentId:
   mlog.info('file attached', { workspaceId, documentId, mediaId });
 }
 
+/* ---------- a picture's preview ---------- */
+
+const PreviewRow = z.object({ object_id: z.string(), sha256: bytea });
+const previewOf = (w: Place, db: Db, mediaId: string) => maybeOne(db, PreviewRow, 'SELECT object_id, sha256 FROM workspace_media_previews WHERE owner_id = $1 AND media_id = $2', [w.owner.ownerId, mediaId]);
+
+/**
+ * Keeps a picture's preview beside it: a small JPEG its browser made (MEDIA_PREVIEW_PIXELS), sealed under the file's key
+ * with a header of its own, in one object. For anyone who can edit a document that has the file, once it's finished, and
+ * once: the first one kept stays, so a preview sent again, or by someone else, changes nothing. It counts towards what the
+ * workspace stores, with the file, and goes with it.
+ */
+export async function storePreview(d: Deps, who: Reader, workspaceId: string, documentId: string, mediaId: string, jpeg: Uint8Array): Promise<void> {
+  const w = await workspaceFor(d, who, workspaceId);
+  requireDocument(who, w, documentId, 'edit');
+  const m = await fileIn(w, d.pool, documentId, mediaId);
+  if (m?.state !== 'ready') throw noFile(w, documentId, mediaId);
+  const where = { workspaceId, documentId, mediaId };
+  if (!openInfo(w, mediaId, m.info_ciphertext).type.startsWith('image/')) throw invalid('Only a picture has a preview.', where);
+  const size = jpeg.length <= MAX_MEDIA_PREVIEW_BYTES ? jpegSize(jpeg) : null;
+  if (!size) throw invalid('A preview must be a small JPEG.', { ...where, bytes: jpeg.length });
+  if (Math.max(size.width, size.height) > MEDIA_PREVIEW_PIXELS) throw invalid('That preview is too large.', { ...where, width: size.width, height: size.height });
+  if (await previewOf(w, d.pool, mediaId)) { mlog.debug('preview already kept', where); return; }
+  const objectId = id128();
+  const key = mediaKey(w.owner, mediaId);
+  const sealed = sealBinary(key, previewHeader(w, mediaId, objectId), jpeg);
+  key.fill(0);
+  const digest = sha(sealed);
+  await w.owner.objects.put(objectId, sealed);
+  const back = await w.owner.objects.get(objectId);
+  if (back.length !== sealed.length || !equalBytes(sha(back), digest)) {
+    await queueDelete(w.owner, [objectId]);
+    throw new InternalError('This preview didn’t store correctly.', { context: { ...where, objectId } });
+  }
+  try {
+    const kept = await tx(d.pool, async (c) => {
+      const held = await workspaceFor(d, who, workspaceId, c, 'hold');
+      requireDocument(who, held, documentId, 'edit');
+      if (!(await fileIn(held, c, documentId, mediaId, true))) throw noFile(held, documentId, mediaId);
+      const n = await exec(c, 'INSERT INTO workspace_media_previews (owner_id, media_id, object_id, sha256, length) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [held.owner.ownerId, mediaId, objectId, digest, sealed.length]);
+      if (n !== 1) return false;
+      await exec(c, 'UPDATE workspace_media SET bytes = bytes + $3 WHERE owner_id = $1 AND media_id = $2', [held.owner.ownerId, mediaId, sealed.length]);
+      await exec(c, 'UPDATE owners SET stored_bytes = stored_bytes + $2, version = version + 1 WHERE owner_id = $1', [held.owner.ownerId, sealed.length]);
+      return true;
+    });
+    if (!kept) { mlog.info('preview raced another; dropping this one', where); await queueDelete(w.owner, [objectId]); return; }
+  } catch (e) {
+    mlog.at(toAppError(e).status < 500 ? 'info' : 'warn', 'preview not recorded; deleting its object', { ...where, objectId, err: e });
+    await queueDelete(w.owner, [objectId]);
+    throw e;
+  }
+  mlog.info('preview kept', { ...where, bytes: sealed.length, width: size.width, height: size.height });
+}
+
+/** A picture's preview, opened, for anyone who can read a document that has it: null when it has none, as a picture from before previews hasn't. */
+export async function preview(d: Deps, who: Reader, workspaceId: string, documentId: string, mediaId: string): Promise<Uint8Array | null> {
+  const w = await workspaceFor(d, who, workspaceId);
+  requireDocument(who, w, documentId, 'read');
+  const m = await fileIn(w, d.pool, documentId, mediaId);
+  if (m?.state !== 'ready') throw noFile(w, documentId, mediaId);
+  const p = await previewOf(w, d.pool, mediaId);
+  if (!p) return null;
+  const ct = await w.owner.objects.get(p.object_id);
+  if (!equalBytes(sha(ct), p.sha256)) throw new IntegrityError('A preview failed its integrity check.', { context: { workspaceId, mediaId, objectId: p.object_id } });
+  const key = mediaKey(w.owner, mediaId);
+  try {
+    return openBinary(key, previewHeader(w, mediaId, p.object_id), ct);
+  } finally {
+    key.fill(0);
+  }
+}
+
 /* ---------- reading one ---------- */
 
 /** Every finished file this reader can reach, the newest first. Nothing is opened of a file they can't. */
@@ -675,7 +748,8 @@ export async function serve(d: Deps, t: MediaToken, r: FileRead): Promise<Respon
  */
 async function forget(o: Pick<Owner, 'ownerId'>, db: Db, mediaIds: string[]): Promise<void> {
   if (!mediaIds.length) return;
-  await exec(db, 'INSERT INTO object_gc (object_id, owner_id) SELECT object_id, owner_id FROM workspace_media_pieces WHERE owner_id = $1 AND media_id = ANY($2::text[]) ON CONFLICT DO NOTHING', [o.ownerId, mediaIds]);
+  await exec(db, `INSERT INTO object_gc (object_id, owner_id) SELECT object_id, owner_id FROM workspace_media_pieces WHERE owner_id = $1 AND media_id = ANY($2::text[])
+                  UNION ALL SELECT object_id, owner_id FROM workspace_media_previews WHERE owner_id = $1 AND media_id = ANY($2::text[]) ON CONFLICT DO NOTHING`, [o.ownerId, mediaIds]);
   await exec(db, `WITH gone AS (DELETE FROM workspace_media WHERE owner_id = $1 AND media_id = ANY($2::text[]) RETURNING bytes)
                   UPDATE owners SET stored_bytes = greatest(0, stored_bytes - (SELECT coalesce(sum(bytes), 0) FROM gone)), version = version + 1 WHERE owner_id = $1`, [o.ownerId, mediaIds]);
 }
@@ -719,7 +793,8 @@ export async function releaseDocuments(o: Pick<Owner, 'ownerId'>, db: Db, docume
 }
 /** A whole workspace is going, in the caller's transaction: its rows go with it, and every object it has waits in object_gc. */
 export async function releaseWorkspace(db: Db, ownerId: string): Promise<void> {
-  await exec(db, 'INSERT INTO object_gc (object_id, owner_id) SELECT object_id, owner_id FROM workspace_media_pieces WHERE owner_id = $1 ON CONFLICT DO NOTHING', [ownerId]);
+  await exec(db, `INSERT INTO object_gc (object_id, owner_id) SELECT object_id, owner_id FROM workspace_media_pieces WHERE owner_id = $1
+                  UNION ALL SELECT object_id, owner_id FROM workspace_media_previews WHERE owner_id = $1 ON CONFLICT DO NOTHING`, [ownerId]);
 }
 /** A copy holds what its original does, in the caller's transaction, which has just made the copies' rows. */
 export async function copyUses(o: Pick<Owner, 'ownerId'>, db: Db, copies: { from: string; to: string }[]): Promise<void> {

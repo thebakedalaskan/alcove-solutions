@@ -223,7 +223,10 @@ export interface EditorProps {
   onAttachMedia?: ((mediaId: string) => void) | undefined;
   media?: MediaHandlers | undefined;
   call?: EditorCall | undefined;
-  /** Hear it, on a quote, in a call or not: what plays that moment, for someone who has the notes it's in. It draws nothing for anyone else. */
+  /**
+   * Hear it, on a quote, in a call or not: what plays that moment, for someone who has the notes it's in, or during the call
+   * it's from, for anyone in it who was there for it. It draws nothing for anyone else.
+   */
   hear?: ((moment: { note: string; line: string }) => ReactNode) | undefined;
   /** Comment was pressed, or ⌘⇧M, with words selected. Without it, there's no Comment button. */
   onComment?: ((draft: CommentDraft) => void) | undefined;
@@ -285,6 +288,8 @@ export interface EditorHandle {
   placeOf: (id: string) => InsertAt;
   /** What every block with text in it says now, for looking through without waiting on Alcove. */
   blockWords: () => { id: string; text: string }[];
+  /** The caption a photo already has somewhere in this document, and who it tags, for a photo used again here. Null if it has none. */
+  captionOf: (media: string) => { cap: string; tags: { id: string; name: string }[] } | null;
   /** Writes what every `live` block of this kind in this call shows. Only writes if it changed, so any browser in the call can do this. */
   setLiveLines: (what: LiveWhat, lines: LiveLine[]) => void;
   /** Whether this document has a `live` block of this call. */

@@ -315,6 +315,11 @@ export interface AlcoveApi {
        * memory. Video and audio stay on `url`, which a player can read by range.
        */
       picture(id: ID, documentId: ID, mediaId: ID, opts?: MediaPictureOptions): Promise<string>;
+      /**
+       * A picture's small preview, for a picker, as an object URL like `picture`'s, for anyone who can read the picture. Null
+       * for one uploaded before previews, which has none: draw that from `picture` instead.
+       */
+      preview(id: ID, documentId: ID, mediaId: ID, opts?: MediaPictureOptions): Promise<string | null>;
       /** Reuses a file you can reach in another document of the same workspace, for anyone who can edit that one. */
       attach(id: ID, documentId: ID, mediaId: ID, opts?: WorkspaceReadOptions): Promise<void>;
       /** Every file you can reach in a workspace, the newest first, each with the documents you can reach it through. */

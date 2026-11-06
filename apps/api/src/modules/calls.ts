@@ -21,7 +21,7 @@ import * as drafting from './drafting';
 import * as liveNotes from './liveNotes';
 import * as personal from './personal';
 import { personOf, portraitFor } from './portraits';
-import { appendPiece, createRecording, queueDelete, segments, setRecordingState, type Piece } from './audio';
+import { appendPiece, createRecording, queueDelete, segments, setRecordingState, stretch, type Piece, type Stretch } from './audio';
 import * as capture from './capture';
 import { dropInvites, notesCanGo, syncAccess } from './access';
 import { lookupCode } from './codes';
@@ -2343,6 +2343,49 @@ export async function moment(v: Viewer, callId: string, lineId: string): Promise
   const organizer = await me(o);
   clog.debug('transcript moment opened', { callId, lines: around.length });
   return { lineId, lines: transcripts.spoken(around, speakersIn(s, organizer, v), roomsIn(s)).map((l) => ({ ...l, said: saidAt.get(l.id) ?? 0 })) };
+}
+
+/** How much of a line Hear it plays at least, when its words were heard in less. */
+const LEAST_HEARD_MS = 1000;
+/** A line of a call's recording, for Hear it: its whole pieces, where the line starts in them and how long it lasts. */
+export interface Heard { audio: Stretch; from: number; seconds: number }
+
+/**
+ * Hear it, during the call: the recording of one line of its live transcript, for anyone in the call. Only a line they may
+ * read (mayRead: the part of the call they're in, and for a guest with the link, while they were in it, a stay that ended
+ * without a word ending when it was last heard from), and only the pieces of the recording they were there for: whole
+ * pieces, so a guest who came in or went out in the middle of one doesn't hear it. A line said in a breakout room isn't in
+ * the recording, and nor is anything of a call that doesn't keep its recording. Once the call ends it's the note's audio,
+ * for whoever has the note. Everything else is the same `not-found`, which names nothing.
+ */
+export async function hear(v: Viewer, callId: string, noteId: string, lineId: string): Promise<Heard> {
+  requireIn(v, 'hear');
+  const o = v.organizer;
+  const { row, state } = await load(o, o.pool, callId);
+  const ctx = { callId, what: 'hear' };
+  if (row.state !== 'live') throw new ConflictError('This call has ended. Its notes have the recording.', { context: ctx });
+  const nothing = () => notFound('That moment of the call', ctx);
+  const s = settle(state, row);
+  const recordingId = s.notes.recordingId;
+  if (!recordingId || s.notes.noteId !== noteId) throw nothing();
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  if (!meeting.manifest.choices.keepRecording) throw nothing();
+  const mine = s.people.find((j) => j.identity === v.pass.identity);
+  const invited = invitedIn(meeting);
+  const line = (await transcripts.lines(o, o.pool, noteId, mayRead(v, s, mine, row.started_at, invited))).find((l) => l.id === lineId);
+  const said = line ? saidIn(row.started_at)(line) : undefined;
+  if (!line || line.room !== undefined || said === undefined) throw nothing();
+  // Where it is in its own segment, as the line was placed there (transcripts.hear).
+  const before = (await segments(o, recordingId)).filter((g) => g.index < line.segment).reduce((n, g) => n + g.seconds, 0);
+  const fromMs = Math.max(0, Math.round((line.at - before) * 1000));
+  const toMs = Math.max(fromMs + LEAST_HEARD_MS, Math.round((line.end - before) * 1000));
+  // A piece of the recording is placed in the call by where it is from the line, which is known in both.
+  const here = onlyHere(v, s, mine, row.started_at, invited);
+  const inCall = (ms: number) => said + (ms - fromMs) / 1000;
+  const audio = await stretch(o, recordingId, line.segment, fromMs, toMs, (a, b) => catchup.covers(here, inCall(a), inCall(b)));
+  if (!audio) throw nothing();
+  clog.info('a line heard', { callId, segment: line.segment, bytes: audio.bytes.length, guest: here !== null });
+  return { audio, from: Math.max(0, (fromMs - audio.startMs) / 1000), seconds: (Math.min(toMs, audio.endMs) - fromMs) / 1000 };
 }
 
 /* ---------- your own notes, from inside the call: for your account alone, and nothing of them goes into the call ---------- */

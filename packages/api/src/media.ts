@@ -58,6 +58,14 @@ export const WorkspaceMediaSchema = z.object({
 });
 export type WorkspaceMedia = z.infer<typeof WorkspaceMediaSchema>;
 
+/**
+ * A picture's preview: a small JPEG of it, at most this many pixels on its longer side and this many bytes, made by the
+ * browser that uploads it and sealed beside it, so a picker shows thumbnails without reading whole photos. Pictures
+ * uploaded before previews have none.
+ */
+export const MEDIA_PREVIEW_PIXELS = 320;
+export const MAX_MEDIA_PREVIEW_BYTES = 128 * 1024;
+
 /** A file's token: `/media/<token>` is where it's read. */
 export const MediaTokenAnswerSchema = z.object({ token: z.string() });
 
@@ -74,4 +82,6 @@ export interface MediaUploadOptions extends WorkspaceReadOptions {
   height?: number | undefined;
   /** Gives up on the upload, taking back whatever of it was stored. */
   signal?: AbortSignal | undefined;
+  /** A picture's preview (`MEDIA_PREVIEW_PIXELS`, a JPEG), kept beside it once it's finished. One that can't be kept doesn't fail the upload. */
+  preview?: Blob | undefined;
 }

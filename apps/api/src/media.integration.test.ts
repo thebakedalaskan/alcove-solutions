@@ -4,7 +4,7 @@
  * guests, a real call. A file's bytes are read as an `<img>` or a player reads them: from its URL, with whatever cookies
  * that browser has and no other headers but `Range`.
  */
-import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MEDIA_PIECE_BYTES, REQUEST_ID_HEADER, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, FILE_TYPE, MAX_MEDIA_BYTES, MAX_MEDIA_PREVIEW_BYTES, MEDIA_PIECE_BYTES, REQUEST_ID_HEADER, errorCode, type AlcoveApi, type CallSession, type CallState, type ItemKind, type WorkspaceRole } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { resolveObjectURL } from 'node:buffer';
 import { spawn } from 'node:child_process';
@@ -20,6 +20,7 @@ import { LIMITS } from './limits';
 import { maintain } from './maintenance';
 import { MEDIA_LIMITS } from './modules/media';
 import { masterKey } from './owners';
+import { screenJpeg } from './testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from './testing/harness';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.
@@ -894,6 +895,134 @@ describe('who can read a file', () => {
     for (const url of [`${place(one, docOne)}/${unfinished}/pieces/0`, `${place(one, docTwo)}/${unfinished}/pieces/0`]) expect((await sendPiece(ann, url, bytesOf(8))).status).toBe(404);
     expect((await media.list(one)).map((m) => m.id)).toEqual([here.id]);
     expect((await media.list(two)).map((m) => m.id)).toEqual([there.id]);
+  });
+});
+
+describe('a picture’s preview', () => {
+  /** A small JPEG, as the uploading browser makes one, with words in it that must never be readable anywhere but here. */
+  const previewOf = (words: string, width = 320, height = 213) => screenJpeg(null, width, height, words);
+  /** What `preview` hands back, read as bytes: null when there's none. */
+  async function previewBytes(who: Account, id: string, doc: string, mediaId: string): Promise<Buffer | null> {
+    const url = await who.api.workspaces.media.preview(id, doc, mediaId);
+    if (url === null) return null;
+    const blob = resolveObjectURL(url);
+    URL.revokeObjectURL(url);
+    return blob ? Buffer.from(await blob.arrayBuffer()) : null;
+  }
+  const previewRows = (owner: string) => h.pool.query<{ media_id: string; object_id: string; length: number }>('SELECT media_id, object_id, length FROM workspace_media_previews WHERE owner_id = $1', [owner]).then((r) => r.rows);
+  const keep = (who: { fetch: typeof fetch }, id: string, doc: string, mediaId: string, body: Uint8Array<ArrayBuffer>, type = 'image/jpeg') =>
+    who.fetch(`${place(id, doc)}/${mediaId}/preview`, { method: 'POST', headers: { 'content-type': type }, body });
+
+  it('is kept sealed beside a picture as it’s uploaded, and read back by whoever can read the picture', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const jpeg = previewOf('CANARY-PREVIEW-WORDS');
+    const before = await storedBytes(owner);
+    const m = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(4096)), { width: 1600, height: 1066, preview: new Blob([jpeg], { type: 'image/jpeg' }) });
+    expect(same(await previewBytes(ann, id, doc, m.id) ?? new Uint8Array(), jpeg)).toBe(true);
+    // One row, one object under a random name, sealed: the words are in no row, no object and no log.
+    const [row] = await previewRows(owner);
+    expect(row).toMatchObject({ media_id: m.id });
+    const sealed = Buffer.from(await h.objects.get(row?.object_id ?? ''));
+    expect(sealed.includes(Buffer.from('CANARY-PREVIEW-WORDS'))).toBe(false);
+    expect(sealed.includes(Buffer.from(jpeg.subarray(0, 64)))).toBe(false);
+    expect(h.logs.join('').includes('CANARY-PREVIEW-WORDS')).toBe(false);
+    // It's counted with the file, towards what the workspace stores.
+    expect(await storedBytes(owner)).toBe(before + (await count('SELECT bytes::int AS n FROM workspace_media WHERE owner_id = $1 AND media_id = $2', [owner, m.id])));
+    expect(await count('SELECT bytes::int AS n FROM workspace_media WHERE owner_id = $1 AND media_id = $2', [owner, m.id])).toBeGreaterThan(4096 + (row?.length ?? 0) - 1);
+
+    // Sealed to its file and its place: put under another file's row, it doesn't open.
+    const other = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(64)), { preview: new Blob([previewOf('other')], { type: 'image/jpeg' }) });
+    const otherRow = (await previewRows(owner)).find((r) => r.media_id === other.id);
+    const theirs = await h.objects.get(otherRow?.object_id ?? '');
+    await h.objects.put(otherRow?.object_id ?? '', sealed);
+    await h.pool.query('UPDATE workspace_media_previews SET sha256 = (SELECT sha256 FROM workspace_media_previews WHERE owner_id = $1 AND media_id = $3) WHERE owner_id = $1 AND media_id = $2', [owner, other.id, m.id]);
+    expect(await code(ann.api.workspaces.media.preview(id, doc, other.id))).not.toBe('allowed');
+    await h.objects.put(otherRow?.object_id ?? '', theirs);
+  });
+
+  it('isn’t there for a picture uploaded before previews, which is still read whole, and is kept once', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const bytes = bytesOf(2048);
+    const old = await ann.api.workspaces.media.upload(id, doc, fileOf(bytes));
+    expect(await ann.api.workspaces.media.preview(id, doc, old.id)).toBeNull();
+    expect(same((await read(ann, await ann.api.workspaces.media.url(id, doc, old.id))).bytes, bytes)).toBe(true);
+    // Kept once: whatever's sent after the first changes nothing.
+    expect((await keep(ann, id, doc, old.id, previewOf('first'))).status).toBe(200);
+    expect((await keep(ann, id, doc, old.id, previewOf('second'))).status).toBe(200);
+    expect((await previewBytes(ann, id, doc, old.id))?.toString('latin1')).toContain('first');
+    expect(await previewRows(owner)).toHaveLength(1);
+  });
+
+  it('is a small JPEG of a finished picture, kept by someone who can edit it', async () => {
+    const ann = await account();
+    const theo = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'read']]);
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const picture = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(64)));
+    const file = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(64), 'brief.pdf', 'application/pdf'));
+    const unfinished = await started(ann, id, doc, 64);
+    const status = async (r: Promise<Response>) => (await r).status;
+    expect(await status(keep(ann, id, doc, picture.id, new Uint8Array(randomBytes(64)), 'image/jpeg'))).toBe(400);
+    expect(await status(keep(ann, id, doc, picture.id, previewOf('png'), 'image/png'))).toBe(400);
+    expect(await status(keep(ann, id, doc, picture.id, previewOf('big', 1600, 1066)))).toBe(400);
+    expect(await status(keep(ann, id, doc, picture.id, new Uint8Array(MAX_MEDIA_PREVIEW_BYTES + 1)))).toBe(400);
+    expect(await status(keep(ann, id, doc, file.id, previewOf('pdf')))).toBe(400);
+    expect(await status(keep(ann, id, doc, unfinished, previewOf('unfinished')))).toBe(404);
+    // Theo can read it, so he reads the preview Ann keeps, but he can't keep one himself.
+    expect(await status(keep(theo, id, doc, picture.id, previewOf('theo')))).toBe(403);
+    expect(await previewRows(owner)).toEqual([]);
+    expect(await status(keep(ann, id, doc, picture.id, previewOf('ann')))).toBe(200);
+    expect((await previewBytes(theo, id, doc, picture.id))?.toString('latin1')).toContain('ann');
+  });
+
+  it('is read only by people who can read the picture, through a document that has it, and never across owners', async () => {
+    const ann = await account();
+    const theo = await account();
+    const kofi = await account();
+    const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
+    const elsewhere = await workspace(kofi, 'Theirs');
+    const kofisDoc = await make(kofi, elsewhere, 'document', 'Theirs');
+    const secret = await make(ann, id, 'document', 'Secret');
+    const open = await make(ann, id, 'document', 'Open');
+    await ann.api.workspaces.share.restrict(id, secret, true);
+    const m = await ann.api.workspaces.media.upload(id, secret, fileOf(bytesOf(64)), { preview: new Blob([previewOf('secret')], { type: 'image/jpeg' }) });
+    // Each refusal is the one for something that isn't there: a document nobody has, or a file nobody has in it.
+    expect(await refusal(theo.api.workspaces.media.preview(id, secret, m.id))).toEqual(await refusal(theo.api.workspaces.media.preview(id, madeUp(), m.id)));
+    expect(await refusal(theo.api.workspaces.media.preview(id, open, m.id))).toEqual(await refusal(theo.api.workspaces.media.preview(id, open, madeUp())));
+    expect(await code(kofi.api.workspaces.media.preview(id, secret, m.id))).toBe('not-found');
+    expect(await code(kofi.api.workspaces.media.preview(elsewhere, kofisDoc, m.id))).toBe('not-found');
+    expect(await code(h.browser().api.workspaces.media.preview(id, secret, m.id))).not.toBe('allowed');
+    // Reused where Theo can read it, he reads its preview there, and only there.
+    await ann.api.workspaces.media.attach(id, open, m.id);
+    expect((await previewBytes(theo, id, open, m.id))?.toString('latin1')).toContain('secret');
+    expect(await code(theo.api.workspaces.media.preview(id, secret, m.id))).toBe('not-found');
+  });
+
+  it('goes with its picture, object and all', async () => {
+    const ann = await account();
+    const id = await workspace(ann, 'Ours');
+    const doc = await make(ann, id, 'document', 'Plan');
+    const owner = await ownerOf(id);
+    const m = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(64)), { preview: new Blob([previewOf('gone')], { type: 'image/jpeg' }) });
+    const [row] = await previewRows(owner);
+    await ann.api.workspaces.media.remove(id, doc, m.id);
+    expect(await previewRows(owner)).toEqual([]);
+    expect(await stored(row?.object_id ?? '')).toBe(false);
+    expect(await storedBytes(owner)).toBe(0);
+    // And with its workspace.
+    const again = await ann.api.workspaces.media.upload(id, doc, fileOf(bytesOf(64)), { preview: new Blob([previewOf('again')], { type: 'image/jpeg' }) });
+    const [kept] = await previewRows(owner);
+    expect(kept?.media_id).toBe(again.id);
+    await ann.api.workspaces.remove(id);
+    await maintain(h.deps);
+    expect(await stored(kept?.object_id ?? '')).toBe(false);
   });
 });
 
