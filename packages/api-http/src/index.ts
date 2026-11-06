@@ -4,11 +4,11 @@
  * from the contract fails loudly here instead of corrupting the UI.
  */
 import {
-  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, MediaTokenAnswerSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, PresenterFrameNotesSchema, BoardCheckSchema, BoardThemesSchema, IdeasWatchedSchema,
+  AlcoveApiError, AnswerPartSchema, AttestationSchema, AUDIO_HEADERS, HEARD_HEADERS, BusySchema, CreatedSchema, DocVersionLineSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocLiveEventSchema, DocVersionSummarySchema, MentionNoticeSchema, SearchDocSchema, DocumentShareSchema, MediaTokenAnswerSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, DocumentLibrarySchema, CALL_DATA_OVERHEAD, LIVE_TRANSCRIPT_LINES, CALL_CHAT_MAX, CALL_PASS_HEADER, CALL_VOID_KEY_INDEX, CalendarSchema, CallCardSchema, CallEndResultSchema, CallMlsSchema, CaptionTranslationSchema, CallRoomTokenSchema, CallStateSchema, CallTicketSchema, CallAnswerSchema, CallMomentSchema, CatchUpSchema, CatchUpWindowSchema, CreditBalanceSchema, FRAME_HEADERS, MAIN_PLACE, MeetingSchema, NoteProgressSchema, NoteSchema, NotesWatchedSchema, ScreenFrameReceiptSchema, CallFollowUpsSchema, CallWorkspaceSwitchSchema, DocAskPartSchema, PresenterNotesSchema, PresenterFrameNotesSchema, BoardCheckSchema, BoardThemesSchema, IdeasWatchedSchema,
   NoteFoundSchema, OPERATION_HEADER, PersonIdsSchema, InboxSchema, PersonSuggestionSchema, PreferencesSchema, RecordingStopResultSchema, REQUEST_ID_HEADER, RingsSnapshotSchema, PersonalNotesSchema, PromotionPreviewSchema,
   SeriesAnswerPartSchema, SeriesSchema, isTimeZone,
   RoomRecordingStateSchema, SessionSchema, SignInResultSchema, TeamSchema, errorCode, fromBase64Url, isAlcoveErrorCode, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema,
-  type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
+  type AlcoveApi, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, type CallAction, type CallFollowUps, type CallWorkspaceSwitch, type ChangeScope, type DocFollowUpTick, type DocumentRole, type PresentKind, type CaptionLanguage, type CaptureDevicePart, type CaptionTranslation, type CallCrypto, type CallMediaKeys, type CallMls, type CallMoveOut, type CallSession, type CallState, type LineAudio, type CallTicket, type LiveStore, type MoveMedia, type MoveOut, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow, type RecordingAction, type RoomRecording, type PersonalApi,
   type RoomRecordingState, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type WorkspaceReadOptions
 } from '@alcove/api';
 import type { DocVersionSummary } from '@alcove/api';
@@ -212,6 +212,12 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
       askSoFar: (id, question, range) => req(CallAnswerSchema, 'POST', `${live(id)}/ask`, { question, range }, p),
       catchUpWindow: (id) => req(CatchUpWindowSchema, 'GET', `${live(id)}/catch-up`, undefined, p),
       moment: (id, lineId) => req(CallMomentSchema, 'GET', `${live(id)}/transcript/${encodeURIComponent(lineId)}`, undefined, p),
+      hear: async (id, note, line) => {
+        const res = await send('GET', `${live(id)}/hear/${encodeURIComponent(note)}/${encodeURIComponent(line)}`, null, p);
+        const where = z.object({ from: z.coerce.number().min(0), seconds: z.coerce.number().min(0) }).parse({ from: res.headers.get(HEARD_HEADERS.from), seconds: res.headers.get(HEARD_HEADERS.seconds) });
+        const audio = await res.blob().catch((cause: unknown) => { throw new AlcoveApiError('network', 'Can’t reach Alcove. Check your connection.', { cause }); });
+        return { audio, ...where };
+      },
       personal: (id) => personal(`${live(id)}/personal`, p),
       askEarlier: (id, question, timeZone) => req(z.array(SeriesAnswerPartSchema), 'POST', `${live(id)}/series/ask`, { question, timeZone }, p),
       translate: (id, lines, language) => req(z.array(CaptionTranslationSchema), 'POST', `${live(id)}/translate`, { language, lines }, p),
@@ -452,11 +458,18 @@ export function createHttpApi(o: HttpOptions): AlcoveApi {
           begin: (input) => req(CreatedSchema, 'POST', mediaIn(id, documentId), input, withPass(w)),
           piece: async (mediaId, seq, bytes) => { parse(z.object({ stored: z.literal(true) }), await (await send('POST', `${mediaIn(id, documentId, mediaId)}/pieces/${seq}`, bytes, { ...withPass(w), 'content-type': 'application/octet-stream' }, false, w?.signal)).json(), 'piece receipt'); },
           finish: (mediaId) => req(WorkspaceMediaSchema, 'POST', `${mediaIn(id, documentId, mediaId)}/finish`, {}, withPass(w)),
+          preview: async (mediaId, jpeg) => { parse(z.object({ kept: z.literal(true) }), await (await send('POST', `${mediaIn(id, documentId, mediaId)}/preview`, jpeg, { ...withPass(w), 'content-type': 'image/jpeg' }, false, w?.signal)).json(), 'preview receipt'); },
           abandon: async (mediaId) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
         }, file, w, (level, msg, context) => emit(level, msg, context), o.mediaPatienceMs),
         // The token comes in an answer and goes in a URL: this is the only place the two meet, and neither is logged.
         url: async (id, documentId, mediaId, w) => `${base}/media/${await mediaToken(id, documentId, mediaId, w)}`,
         picture: (id, documentId, mediaId, w) => pictures({ token: () => mediaToken(id, documentId, mediaId, w), read: (token) => send('GET', `/media/${token}`, null, {}, false, w?.signal) }, w?.signal),
+        preview: async (id, documentId, mediaId, w) => {
+          const res = await send('GET', `${mediaIn(id, documentId, mediaId)}/preview`, null, withPass(w), false, w?.signal);
+          if (res.status === 204) return null;
+          const bytes = await res.blob().catch((cause: unknown) => { throw new AlcoveApiError('network', 'That preview didn’t arrive.', { cause }); });
+          return URL.createObjectURL(bytes);
+        },
         attach: async (id, documentId, mediaId, w) => { await req(z.object({ attached: z.literal(true) }), 'POST', `${mediaIn(id, documentId, mediaId)}/attach`, {}, withPass(w)); },
         list: (id, w) => req(z.array(WorkspaceMediaSchema), 'GET', `${space(id)}/media`, undefined, withPass(w)),
         remove: async (id, documentId, mediaId, w) => { await req(z.object({ removed: z.literal(true) }), 'DELETE', mediaIn(id, documentId, mediaId), undefined, withPass(w)); }
@@ -497,6 +510,7 @@ interface CallTransport {
   askSoFar(id: string, question: string, range: CatchUpRange): Promise<CallAnswer>;
   catchUpWindow(id: string): Promise<CatchUpWindow>;
   moment(id: string, lineId: string): Promise<CallMoment>;
+  hear(id: string, note: string, line: string): Promise<LineAudio>;
   personal(id: string): PersonalApi;
   askEarlier(id: string, question: string, timeZone: string): Promise<SeriesAnswerPart[]>;
   translate(id: string, lines: string[], language: CaptionLanguage): Promise<CaptionTranslation[]>;
@@ -1265,6 +1279,7 @@ class HttpCall extends Live<CallState> implements CallSession {
   askSoFar = (question: string, range: CatchUpRange) => this.t.askSoFar(this.state.callId, question, range);
   catchUpWindow = () => this.t.catchUpWindow(this.state.callId);
   moment = (lineId: string) => this.t.moment(this.state.callId, lineId);
+  hear = (note: string, line: string) => this.t.hear(this.state.callId, note, line);
   askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
     this.closed = true;

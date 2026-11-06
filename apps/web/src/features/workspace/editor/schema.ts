@@ -71,7 +71,7 @@ function wholeBlock(name: string): readonly TagParseRule[] {
       try {
         const attrs = BlockAttrsSchema.parse(JSON.parse(el.getAttribute('data-attrs') ?? '{}'));
         /* Any page can put this on the clipboard, so only what a block is known to carry is kept. */
-        learnAttrs(schema.nodes[name], Object.fromEntries(Object.entries(attrs).filter(([key, value]) => key.startsWith('cap:') && typeof value === 'string')));
+        learnAttrs(schema.nodes[name], Object.fromEntries(Object.entries(attrs).filter(([key, value]) => (key.startsWith('cap:') && typeof value === 'string') || (key.startsWith('tags:') && Array.isArray(value)))));
         return attrs;
       } catch (err) {
         /* Anyone's page can put anything on the clipboard: this just isn't that block. */
@@ -307,6 +307,23 @@ export const isPlainLine = (node: PMNode): boolean => node.type === schema.nodes
 
 /** A photo's caption is an attribute of its own, so two people captioning two photos of a gallery don't write over each other. */
 export const captionKey = (media: string): string => `cap:${media}`;
+/**
+ * Who a photo's caption tags, beside its words: `tags:<media>`, a list of who (`id`) and what they're called (`name`), as a
+ * comment keeps them. The words say `@First` where each is, and stay plain words for anything that doesn't read this, an older
+ * release included. A caption from before tags has none, and reads exactly as it did.
+ */
+export const captionTagsKey = (media: string): string => `tags:${media}`;
+export interface CaptionTag { id: string; name: string }
+/** Who a caption tags, of the people it says it does: only those still named in its words, so editing someone out untags them. */
+export function captionTags(node: PMNode, media: string, words: string): CaptionTag[] {
+  const list: unknown = node.attrs[captionTagsKey(media)];
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((v: unknown) => {
+    if (!isRecord(v)) return [];
+    const id = textOf(v['id']), name = textOf(v['name']);
+    return id && name && words.includes(`@${name.split(' ')[0] || name}`) ? [{ id, name }] : [];
+  });
+}
 export const captionsOf = (node: PMNode): string[] => Object.entries(node.attrs).flatMap(([name, value]: [string, unknown]) => (name.startsWith('cap:') && typeof value === 'string' && value !== '' ? [value] : []));
 
 /** An attribute this node has that isn't what it would have if nobody had written one. */

@@ -8,6 +8,7 @@ import { errorCode } from '@alcove/api';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import type { MediaState } from './editor/types';
+import { smallJpeg, type Pixels } from './thumbs';
 
 const plog = log.child({ component: 'workspace-media' });
 
@@ -39,9 +40,17 @@ const keyOf = (documentId: string, media: string) => `${documentId}:${media}`;
 export const fileUrl = (workspaceId: string, documentId: string, media: string, pass: string | undefined): Promise<string> =>
   api.workspaces.media.url(workspaceId, documentId, media, { pass });
 
+/** A photo's small picture for the picker: on its way, there (an object URL), or not to be had. */
+type Small = { kind: 'loading' } | { kind: 'ready'; url: string } | { kind: 'none' };
+
 /** One workspace's pictures, for as long as it's on screen. A guest reads them with their pass. */
 export class Pictures {
   private readonly entries = new Map<string, Entry>();
+  /**
+   * Small pictures for the picker, by file: read once while the workspace is on screen, so opening the picker again reads
+   * nothing. Its stored preview, or for a photo from before previews, the photo read once and made small here.
+   */
+  private readonly smalls = new Map<string, Small>();
   /** Files this browser deleted for good, or heard were: gone from every document. */
   private readonly deleted = new Set<string>();
   /** Files on their way into a document: reading one through it waits, or it would be `not-found` for a moment. */
@@ -101,6 +110,9 @@ export class Pictures {
   /** A file deleted for good: everything that shows it shows it as deleted, everywhere, from now on. */
   forget(media: string): void {
     this.deleted.add(media);
+    const small = this.smalls.get(media);
+    if (small?.kind === 'ready') URL.revokeObjectURL(small.url);
+    this.smalls.delete(media);
     for (const e of this.entries.values()) {
       if (e.media !== media) continue;
       this.stopReading(e);
@@ -132,8 +144,44 @@ export class Pictures {
     });
   }
 
+  /** A photo's small picture, read through a document that has it the first time it's asked for. */
+  small(documentId: string, media: string, size: Pixels | null): string | undefined {
+    if (this.deleted.has(media)) return undefined;
+    const known = this.smalls.get(media);
+    if (known) return known.kind === 'ready' ? known.url : undefined;
+    this.smalls.set(media, { kind: 'loading' });
+    void this.readSmall(documentId, media, size);
+    return undefined;
+  }
+
+  private async readSmall(documentId: string, media: string, size: Pixels | null): Promise<void> {
+    const where = { workspaceId: this.workspaceId, documentId, mediaId: media };
+    try {
+      let url = await api.workspaces.media.preview(this.workspaceId, documentId, media, { pass: this.pass });
+      if (url === null) {
+        // From before previews: the photo itself, once, made small, and let go of.
+        const whole = await api.workspaces.media.picture(this.workspaceId, documentId, media, { pass: this.pass });
+        try {
+          const small = await smallJpeg(await (await fetch(whole)).blob(), size);
+          url = small ? URL.createObjectURL(small) : null;
+        } finally {
+          URL.revokeObjectURL(whole);
+        }
+        plog.debug('a photo with no preview was made small here', { ...where, made: url !== null });
+      }
+      if (this.smalls.get(media)?.kind !== 'loading') { if (url) URL.revokeObjectURL(url); return; }
+      this.smalls.set(media, url ? { kind: 'ready', url } : { kind: 'none' });
+    } catch (err) {
+      plog.info('a photo’s small picture didn’t come', { ...where, code: errorCode(err) });
+      if (this.smalls.get(media)?.kind === 'loading') this.smalls.set(media, { kind: 'none' });
+    }
+    this.changed();
+  }
+
   /** Lets go of every picture: the workspace has gone from the screen. Anything that shows one again reads it again. */
   close(): void {
+    for (const s of this.smalls.values()) if (s.kind === 'ready') URL.revokeObjectURL(s.url);
+    this.smalls.clear();
     for (const e of this.entries.values()) {
       this.stopReading(e);
       if (e.letGo) clearTimeout(e.letGo);

@@ -13,6 +13,8 @@ export interface MediaUpload {
   begin(input: MediaInput): Promise<{ id: string }>;
   piece(mediaId: string, seq: number, bytes: Blob): Promise<void>;
   finish(mediaId: string): Promise<WorkspaceMedia>;
+  /** Keeps a picture's preview beside it, once it's finished. */
+  preview(mediaId: string, jpeg: Blob): Promise<void>;
   abandon(mediaId: string): Promise<void>;
 }
 type Note = (level: 'info' | 'warn', msg: string, context: Record<string, string | number | boolean | null>) => void;
@@ -66,7 +68,11 @@ export async function sendFile(t: MediaUpload, file: File, o: MediaUploadOptions
       await patiently(`piece ${place}`, () => t.piece(id, place, piece), patience);
       o?.onProgress?.({ sent: Math.min(at + MEDIA_PIECE_BYTES, file.size), total: file.size });
     }
-    return await patiently('finish', () => t.finish(id), patience);
+    const finished = await patiently('finish', () => t.finish(id), patience);
+    // A preview is for pickers: one that doesn't get there leaves the picture drawn from itself, as one from before previews is.
+    const preview = o?.preview;
+    if (preview) await patiently('preview', () => t.preview(id, preview), patience).catch((e: unknown) => note('info', 'a picture’s preview wasn’t kept', { code: errorCode(e) }));
+    return finished;
   } catch (e) {
     note('warn', 'a file’s upload failed', { code: errorCode(e) });
     await t.abandon(id).catch((e2: unknown) => note('info', 'an unfinished upload is left for upkeep', { code: errorCode(e2) }));

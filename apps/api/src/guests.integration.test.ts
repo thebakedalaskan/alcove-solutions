@@ -505,6 +505,7 @@ describe('what a guest’s pass reaches', () => {
       'POST /v1/workspaces/:id/documents/:doc/sort',
       'GET /v1/workspaces/:id/media', 'POST /v1/workspaces/:id/documents/:doc/media', 'GET /v1/workspaces/:id/documents/:doc/media/:media/token', 'POST /v1/workspaces/:id/documents/:doc/media/:media/pieces/:seq',
       'POST /v1/workspaces/:id/documents/:doc/media/:media/finish', 'POST /v1/workspaces/:id/documents/:doc/media/:media/attach', 'DELETE /v1/workspaces/:id/documents/:doc/media/:media',
+      'POST /v1/workspaces/:id/documents/:doc/media/:media/preview', 'GET /v1/workspaces/:id/documents/:doc/media/:media/preview',
       'POST /v1/workspaces/:id/documents/:doc/mentions', 'DELETE /v1/workspaces/:id/mentions/:mention', 'POST /v1/workspaces/:id/ids'
     ]);
     const byPass = (r: { method: string; path: string }) => BY_PASS.has(`${r.method} ${r.path}`);

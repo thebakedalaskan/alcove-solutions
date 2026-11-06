@@ -576,6 +576,7 @@ export const standIn: AlcoveApi = {
       upload: async (id: ID, documentId: ID, file: File, o) => { await answer(() => null); return spaces.upload(id, documentId, file, o); },
       url: async (id: ID, documentId: ID, mediaId: ID) => { await answer(() => null); return spaces.urlOf(id, documentId, mediaId); },
       picture: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.pictureOf(id, documentId, mediaId, o); },
+      preview: async (id: ID, documentId: ID, mediaId: ID, o) => { await answer(() => null); return spaces.previewOf(id, documentId, mediaId, o); },
       attach: (id: ID, documentId: ID, mediaId: ID) => answer(() => spaces.attach(id, documentId, mediaId)),
       list: (id: ID) => answer(() => spaces.mediaIn(id)),
       remove: (id: ID, documentId: ID, mediaId: ID, o) => answer(() => spaces.removeMedia(id, documentId, mediaId, o))

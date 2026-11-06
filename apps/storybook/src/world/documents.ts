@@ -29,10 +29,14 @@ const commented = (thread: string, text: string): BlockJSON => ({ type: 'text', 
 const lineOf = (parts: (string | BlockJSON)[], attrs?: Record<string, unknown>): BlockJSON => ({
   type: 'line', ...(attrs ? { attrs } : {}), content: parts.map((x) => (typeof x === 'string' ? { type: 'text', text: x } : x))
 });
-/** Photos side by side, each with its caption. */
-const gallery = (items: { media: string; name: string; cap?: string }[]): BlockJSON => ({
+/** Photos side by side, each with its caption, and who that tags (`@First` in its words), as the editor keeps them. */
+const gallery = (items: { media: string; name: string; cap?: string; tags?: Person[] }[]): BlockJSON => ({
   type: 'gallery',
-  attrs: { items: items.map(({ media, name }) => ({ media, name, width: 1600, height: 900 })), ...Object.fromEntries(items.flatMap((i) => (i.cap ? [[`cap:${i.media}`, i.cap]] : []))) }
+  attrs: {
+    items: items.map(({ media, name }) => ({ media, name, width: 1600, height: 900 })),
+    ...Object.fromEntries(items.flatMap((i) => (i.cap ? [[`cap:${i.media}`, i.cap]] : []))),
+    ...Object.fromEntries(items.flatMap((i) => (i.tags?.length ? [[`tags:${i.media}`, i.tags.map((p) => ({ id: `@${p.email}`, name: p.name }))]] : [])))
+  }
 });
 
 /** The calls the homes' documents were worked on in, by their IDs, for History to group what was kept in each. */
@@ -213,7 +217,7 @@ export const ONBOARDING_FIXES: Page = {
 export const SIDEBAR_SHOTS: Page = {
   blocks: [
     line('From the design review: the sidebar in both themes, and the pricing page Aiko found three filled buttons on.'),
-    gallery([{ media: MEDIA.light, name: 'Sidebar, light.png', cap: 'By day' }, { media: MEDIA.dark, name: 'Sidebar, dark.png', cap: 'By night, which reads better' }, { media: MEDIA.pricing, name: 'Pricing page.png', cap: 'Three filled buttons' }]),
+    gallery([{ media: MEDIA.light, name: 'Sidebar, light.png', cap: 'By day' }, { media: MEDIA.dark, name: 'Sidebar, dark.png', cap: 'By night, which reads better' }, { media: MEDIA.pricing, name: 'Pricing page.png', cap: 'Three buttons, says @Aiko', tags: [AIKO] }]),
     heading('The walkthrough'),
     { type: 'video', attrs: { media: MEDIA.walkthrough, title: 'Sidebar walkthrough', dur: 3, width: 1600, height: 900 } },
     heading('The spec'),

@@ -8,7 +8,7 @@
  */
 import type { Person } from '@alcove/api';
 import {
-  Avatar, Button, Icon, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsKnock, WsMentionPrompt, WsPage, WsPane, WsPersonCard, WsPopover,
+  Avatar, Button, Icon, WsCaptionField, WsCommentCompose, WsCommentThread, WsDoc, WsFind, WsKnock, WsMentionPrompt, WsPage, WsPane, WsPersonCard, WsPopover,
   WsPresentPreview, WsScroll, WsShareSheet, WsSwitchSheet, WsToasts, WsUploadPicker, wsToast, type WsComment, type WsFindHit
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -21,7 +21,7 @@ import { DocOf, GUEST, ListOf, PHOTOS, ShareFor, first, useToasts, useWorkspace 
 const meta = {
   title: 'Components/Workspace/Sheets',
   component: WsShareSheet,
-  subcomponents: { WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsPresentPreview, WsFind, WsKnock, WsUploadPicker },
+  subcomponents: { WsCaptionField, WsPersonCard, WsMentionPrompt, WsCommentCompose, WsCommentThread, WsSwitchSheet, WsPresentPreview, WsFind, WsKnock, WsUploadPicker },
   parameters: { layout: 'centered' }
 } satisfies Meta<typeof WsShareSheet>;
 export default meta;
@@ -178,6 +178,53 @@ export const CommentThreadReading: StoryObj<typeof WsCommentThread> = {
 export const CommentComposeNoQuote: StoryObj<typeof WsCommentCompose> = {
   name: 'Comment: a new one, on something with no words', args: { quote: '', person: ART, value: '', onChange: did('onChange'), onSend: did('onSend') }, argTypes: { person: { control: false } },
   render: (args) => <Compose key="no-quote" {...args} />
+};
+
+/* ---------- a photo's caption ---------- */
+
+type CaptionStory = StoryObj<typeof WsCaptionField>;
+/** What `@` offers in a caption: people, one of whom can't open the document yet, and dates. */
+const CAPTION_TAGGING = {
+  sections: (query: string) => [
+    { title: 'In this call', choices: [PRIYA, KOFI].filter((p) => p.name.toLowerCase().includes(query.toLowerCase())).map((p) => ({ key: p.id, label: p.name, person: p, words: first(p), ...(p === KOFI ? { sub: 'Can’t open this yet' } : {}) })) },
+    { title: 'Dates', choices: [{ key: 'today', label: 'Today', icon: 'cal' as const, words: 'Today' }].filter((d) => d.label.toLowerCase().includes(query.toLowerCase())) }
+  ].filter((x) => x.choices.length > 0),
+  onPick: did('onPick')
+};
+/** A caption under a photo, as the page has it: typed in place, with who it tags marked once it's written. */
+function Captioned({ value: start, tagged, readOnly, tagging }: ComponentProps<typeof WsCaptionField>) {
+  const [value, setValue] = useState(start);
+  const [names, setNames] = useState<readonly string[]>(tagged ?? []);
+  const picking = tagging && { ...tagging, onPick: (c: Parameters<typeof tagging.onPick>[0]) => { tagging.onPick(c); if (c.person) setNames((n) => [...n, c.person?.name ?? '']); } };
+  return (
+    <Box width={340} height={290}>
+      <figure className="wb-fig" style={{ margin: 0 }}><div className="wb-ph" style={{ aspectRatio: '3 / 2' }} /><WsCaptionField value={value} tagged={names} readOnly={readOnly} tagging={picking} onChange={setValue} onDone={did('onDone')} /></figure>
+    </Box>
+  );
+}
+export const CaptionWritten: CaptionStory = {
+  name: 'Caption: written', args: { value: 'Felixstowe at dawn', tagged: [], readOnly: false, tagging: CAPTION_TAGGING, onChange: did('onChange'), onDone: did('onDone') }, argTypes: { tagging: { control: false } },
+  render: (args) => <Captioned key={args.value} {...args} />
+};
+/** Someone tagged in it: their name marked, as a tag in a line is. */
+export const CaptionTagged: CaptionStory = {
+  name: 'Caption: someone tagged', args: { value: 'Stacks, bay 14, counted by @Kofi', tagged: [KOFI.name], readOnly: false, tagging: CAPTION_TAGGING, onChange: did('onChange'), onDone: did('onDone') }, argTypes: { tagging: { control: false } },
+  render: (args) => <Captioned key={args.value} {...args} />
+};
+/** Typing @: who to tag drops below the line, and says who can't open the document yet. */
+export const CaptionTagging: CaptionStory = {
+  name: 'Caption: tagging someone', args: { value: 'Warehouse 3', tagged: [], readOnly: false, tagging: CAPTION_TAGGING, onChange: did('onChange'), onDone: did('onDone') }, argTypes: { tagging: { control: false } },
+  parameters: { layout: 'padded' },
+  render: (args) => <div style={{ minHeight: 320 }}><Captioned key={args.value} {...args} /></div>,
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(await canvas.findByRole('textbox', { name: 'Caption' }));
+    await userEvent.keyboard('{End} with @');
+  }
+};
+/** Someone who can only read it: the words, and nothing to type in. */
+export const CaptionReading: CaptionStory = {
+  name: 'Caption: only to read', args: { value: 'Stacks, bay 14, counted by @Kofi', tagged: [KOFI.name], readOnly: true, onChange: did('onChange'), onDone: did('onDone') },
+  render: (args) => <Captioned key={args.value} {...args} />
 };
 
 /* ---------- switching the call's workspace ---------- */

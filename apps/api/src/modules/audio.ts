@@ -248,6 +248,71 @@ export async function file(o: Owner, recordingId: string, segment: number, count
   };
 }
 
+/** A stretch of a recording, as whole pieces of it: what Hear it plays of a call that's still going. */
+export interface Stretch { bytes: Uint8Array; mimeType: string; startMs: number; endMs: number }
+
+const StretchPiece = z.object({ seq: z.number(), at_ms: z.coerce.number(), duration_ms: z.coerce.number(), object_id: z.string(), cipher_sha256: bytea, cipher_bytes: z.coerce.number(), mime_type: z.string() });
+type StretchPiece = z.infer<typeof StretchPiece>;
+
+/** Where the first piece of a recording stops saying what the recording is and starts on its sound: a WebM's first Cluster, an MP4's first fragment. */
+function setUpEnds(bytes: Uint8Array, mimeType: string): number | null {
+  const find = (needle: number[], from = 0): number => {
+    for (let i = from; i + needle.length <= bytes.length; i++) if (needle.every((b, k) => bytes[i + k] === b)) return i;
+    return -1;
+  };
+  const type = mimeType.split(';')[0]?.trim() ?? '';
+  if (type === 'audio/webm') { const at = find([0x1f, 0x43, 0xb6, 0x75]); return at > 0 ? at : null; }
+  if (type === 'audio/mp4') { const at = find([0x6d, 0x6f, 0x6f, 0x66], 4); return at >= 8 ? at - 4 : null; }
+  return null;
+}
+
+/**
+ * The pieces of one segment from `fromMs` to `toMs` (in the segment, pauses not counted) that `may` lets through, each
+ * whole, in an unbroken run: a piece is never cut, so what's heard is what was recorded, and one the listener may not hear
+ * is never sent, nor anything after it. A run that doesn't start the segment is preceded by what the first piece says the
+ * recording is, without any of its sound, so it plays by itself. Null when none of it may be heard, or it can't be played
+ * from where it starts.
+ */
+export async function stretch(o: Owner, recordingId: string, segment: number, fromMs: number, toMs: number, may: (startMs: number, endMs: number) => boolean): Promise<Stretch | null> {
+  const found = await rows(o.pool, StretchPiece, `SELECT seq, at_ms, duration_ms, object_id, cipher_sha256, cipher_bytes, mime_type FROM recording_pieces
+    WHERE owner_id = $1 AND recording_id = $2 AND segment = $3 AND (seq = 0 OR (at_ms < $5 AND at_ms + duration_ms > $4)) ORDER BY seq`, [o.ownerId, recordingId, segment, fromMs, toMs]);
+  const over = found.filter((p) => p.at_ms < toMs && p.at_ms + p.duration_ms > fromMs);
+  const run: StretchPiece[] = [];
+  for (const p of over) {
+    const last = run.at(-1);
+    if (!may(p.at_ms, p.at_ms + p.duration_ms) || (last && p.seq !== last.seq + 1)) { if (run.length) break; continue; }
+    run.push(p);
+  }
+  const head = run[0];
+  const tail = run.at(-1);
+  if (!head || !tail) return null;
+  const { krec } = await krecOf(o, recordingId);
+  try {
+    const open = async (p: StretchPiece): Promise<Uint8Array> => {
+      const location = header(o, recordingId, segment, p.seq, p.object_id);
+      const ct = await o.objects.get(p.object_id);
+      if (!equalBytes(sha(ct), p.cipher_sha256)) throw new IntegrityError('A piece of this recording failed its integrity check.', { context: { recordingId, segment, seq: p.seq, objectId: p.object_id } });
+      return openRecord(krec, location, ct);
+    };
+    const parts: Uint8Array[] = [];
+    if (head.seq !== 0) {
+      const first = found.find((p) => p.seq === 0);
+      const opened = first ? await open(first) : null;
+      const ends = opened ? setUpEnds(opened, head.mime_type) : null;
+      if (!opened || ends === null) { alog.info('a stretch of a recording can’t be played from where it starts', { recordingId, segment, seq: head.seq }); return null; }
+      parts.push(opened.slice(0, ends));
+      opened.fill(0);
+    }
+    for (const p of run) parts.push(await open(p));
+    const bytes = new Uint8Array(parts.reduce((n, x) => n + x.length, 0));
+    let at = 0;
+    for (const x of parts) { bytes.set(x, at); at += x.length; x.fill(0); }
+    return { bytes, mimeType: head.mime_type, startMs: head.at_ms, endMs: tail.at_ms + tail.duration_ms };
+  } finally {
+    krec.fill(0);
+  }
+}
+
 /** Longer than node-server spends on a reply's first chunks, which it reads before writing anything. */
 const AFTER_THE_FIRST_READS_MS = 5;
 
