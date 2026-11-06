@@ -1,8 +1,9 @@
 /*
  * The welcome page, signed out (`lp-`): one evening on the app's own scene (horizon.css). Each part is an `lp-sky`, a sky as
- * tall as what stands on it and the water under its horizon: the hero is Home's sunset, the team stands on the horizon with
- * the sun low, the recorder is night in both themes, and the last ask is morning. The call and the recorder are night
- * windows on the water (`.dark`), in both themes. The scenes' own styles are in welcome-note.css (the note), welcome-call.css
+ * tall as what stands on it and the water under its horizon: the hero looks out of a cove (cove.css) at Home's sunset, the
+ * team stands on the horizon with the sun low, the recorder is night in both themes, and the last ask is morning, in a cove
+ * of its own. What's on a cove's water starts below its reflections (`--cv-reach`, which Sky sets). The call and the
+ * recorder are night windows on the water (`.dark`), in both themes. The scenes' own styles are in welcome-note.css (the note), welcome-call.css
  * (the call), welcome-team.css (finding a time, the agent) and welcome-night.css (recording offline, what Alcove can see).
  * The ways in are WaysIn's: `lp-sso` is also the single sign-on form on the join and move pages.
  */
@@ -58,10 +59,11 @@
 .lp-hero .hz { --hz-sun-r: clamp(44px, 4.1vw, 60px); }
 .lp-hero .hz-sun { translate: 0 calc(var(--lp-set, 0) * (var(--hz-sun-r) + 6px)); }
 .lp-hero .hz > .hz-light { opacity: calc(1 - var(--lp-set, 0) * .7); }
-.lp-hero:has(.lp-hero-in .lp-go:hover) .hz-sun, .lp-hero:has(.lp-hero-in .lp-go:focus-visible) .hz-sun { transform: translateY(-10px); }
+/* Pointing at Google lifts the sun a little, and it stays up while Google opens. */
+.lp-hero:has(.lp-hero-in .lp-go:hover) .hz-sun, .lp-hero:has(.lp-hero-in .lp-go:focus-visible) .hz-sun, .lp-hero.is-going .hz-sun { transform: translateY(-10px); }
 .lp-hero-in { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: clamp(600px, 80vh, 860px); padding-block: calc(var(--lp-nav) + 48px) calc(clamp(44px, 4.1vw, 60px) + 84px); }
 .lp-hero-in .lp-lede { margin-top: 24px; max-width: 35em; }
-.lp-notes { padding-block: clamp(150px, 15vw, 210px) clamp(96px, 9vw, 140px); }
+.lp-notes { padding-block: max(clamp(150px, 15vw, 210px), calc(var(--cv-reach, 0px) + 24px)) clamp(96px, 9vw, 140px); }
 
 /* ---- the ways in, on the sky ---- */
 .lp-ways-in { display: grid; justify-items: center; gap: 14px; margin-top: 32px; }
@@ -109,7 +111,7 @@
 .dark .lp-close .hz[data-moment="home"] { --hz-sky: linear-gradient(to bottom in oklch, oklch(0.24 0.052 258) 0%, oklch(0.31 0.066 278) 58%, oklch(0.47 0.092 342) 100%); --hz-glow: oklch(0.68 0.12 40 / 0.5); }
 .lp-close .hz-sun { translate: 0 calc(var(--lp-rise, 0) * (var(--hz-sun-r) + 14px)); }
 .lp-close-in { display: flex; flex-direction: column; align-items: center; text-align: center; padding-block: clamp(150px, 14vw, 210px) calc(clamp(46px, 4.4vw, 64px) + 86px); }
-.lp-close-water { padding-top: clamp(150px, 13vw, 190px); }
+.lp-close-water { padding-top: max(clamp(150px, 13vw, 190px), calc(var(--cv-reach, 0px) + 24px)); }
 .lp-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 26px; padding-block: 26px calc(26px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid color-mix(in oklch, var(--ink) 12%, transparent); color: var(--ink-2); font-size: 13.5px; }
 .lp-foot nav { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-left: auto; }
 .lp-foot a { transition: color var(--duration-1); }

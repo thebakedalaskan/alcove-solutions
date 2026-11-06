@@ -1,0 +1,44 @@
+/*
+ * The cove the welcome page looks out of (`cv-`), drawn into a Horizon as its land, and signing in sailing out of it to Home
+ * (`cv-out`). The cove's colours are its own tokens, light and dark: each headland paler and hazier the further out it
+ * stands, a band on each cliff face lit by the sun's rim, foam where the nearest meet the water, and ripples in the bay.
+ */
+.cv {
+  --cv-far: oklch(0.745 0.042 292);
+  --cv-stacks: oklch(0.68 0.048 287);
+  --cv-mid: oklch(0.615 0.052 281);
+  --cv-near: oklch(0.5 0.056 271);
+  --cv-foam: oklch(0.98 0.015 80 / .75);
+  --cv-rip: oklch(0.97 0.02 250 / .5);
+  position: absolute; inset: 0; pointer-events: none;
+}
+.dark .cv {
+  --cv-far: oklch(0.31 0.055 285);
+  --cv-stacks: oklch(0.27 0.052 280);
+  --cv-mid: oklch(0.225 0.047 272);
+  --cv-near: oklch(0.17 0.038 263);
+  --cv-foam: oklch(0.9 0.03 75 / .3);
+  --cv-rip: oklch(0.86 0.03 250 / .12);
+}
+.cv svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.cv-far { --cv: var(--cv-far); --cv-lit: 24%; }
+.cv-stacks { --cv: var(--cv-stacks); --cv-lit: 20%; }
+.cv-mid { --cv: var(--cv-mid); --cv-lit: 17%; }
+.cv-near { --cv: var(--cv-near); --cv-lit: 12%; }
+.cv-rock { fill: var(--cv); }
+.cv-face { fill: color-mix(in oklch, var(--cv), var(--hz-rim) var(--cv-lit)); }
+.cv-refl { fill: var(--cv); opacity: .26; }
+.cv-foam { fill: none; stroke: var(--cv-foam); stroke-width: 2; stroke-linecap: round; }
+.cv-rips path { fill: none; stroke: var(--cv-rip); stroke-width: 1.6; stroke-linecap: round; }
+
+/*
+ * Signing in: the cove over the real Home, out of its way. It sits above the app and below anything that opens over it
+ * (a modal's scrim, a toast, being rung). The sea takes presses until it clears; the ground under it (`cv-veil`) is what was
+ * on screen before, which the sea comes in over.
+ */
+.cv-out { position: fixed; inset: 0; z-index: 45; isolation: isolate; pointer-events: none; }
+.cv-sea { position: absolute; inset: 0; isolation: isolate; pointer-events: auto; }
+.cv-sea > .hz { --hz-sun-r: var(--cv-sun-r, 48px); }
+/* The sun starts where the welcome page had it and only ever rises: it never plays a page's own sunrise again. */
+.cv-sea .hz-sun { translate: 0 var(--cv-sink, 0px); animation: none; transition: none; }
+.cv-veil { position: absolute; inset: 0; background: var(--ground); pointer-events: auto; }

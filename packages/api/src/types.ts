@@ -1152,6 +1152,22 @@ export const HomeTourSchema = z.object({ seenAt: ISODateSchema });
 export type HomeTour = z.infer<typeof HomeTourSchema>;
 
 /**
+ * Signing in from the welcome page, so Home can sail out of the same cove: when a way in was pressed (ms), and where the hero's
+ * cove stood on the window (px) if it was in view: the window's width, the horizon, how tall the sky was, where the nearest
+ * cliffs met the water, how far the sun's middle stood below the horizon and its radius, which cove (its seed), and the boxes
+ * of the words on its sky. Kept in that tab (sessionStorage) across the way out to the provider and back, used once and for
+ * ten minutes at most, and never sent anywhere. Geometry only: nothing anyone typed or is called.
+ */
+export const SailOutStoredSchema = z.object({
+  at: z.number(),
+  hero: z.object({
+    width: z.number(), line: z.number(), sky: z.number(), foot: z.number(), sun: z.number(), r: z.number(), seed: z.number(),
+    words: z.array(z.object({ l: z.number(), r: z.number(), b: z.number() })).max(16).readonly()
+  }).nullable()
+});
+export type SailOutStored = z.infer<typeof SailOutStoredSchema>;
+
+/**
  * That this browser has a signed-in session, so the app opens without a connection and Record works: the account's
  * opaque ID, when its session ends at the latest, and whether it records without a connection. Kept in this browser
  * (localStorage) while the session lasts; never a name or an address.

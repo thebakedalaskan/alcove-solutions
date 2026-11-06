@@ -1,19 +1,22 @@
 /*
- * The welcome page: what Alcove is, before sign-in, told as one evening on the app's own scene. The hero is Home's sunset,
- * the ways in on the sky with the sun under them, setting as the page scrolls on. The note and the call sit on its water,
- * the call a night window of its own. Then the team stands on the horizon with the sun low, your agent works in Alcove, the
- * recorder stands on the night's horizon above what Alcove can see, and morning comes up behind the last ask. Each scene
- * plays while it's on screen; with reduced motion each shows a still.
+ * The welcome page: what Alcove is, before sign-in, told as one evening on the app's own scene. The hero looks out of a cove
+ * at Home's sunset, the ways in on the sky with the sun under them, setting as the page scrolls on. The note and the call
+ * sit on its water, the call a night window of its own. Then the team stands on the horizon with the sun low, your agent
+ * works in Alcove, the recorder stands on the night's horizon above what Alcove can see, and morning comes up behind the
+ * last ask, in a cove of its own. Each scene plays while it's on screen; with reduced motion each shows a still. Signing in
+ * sails out of the hero's cove to Home (lib/sailOut.ts, features/home/SailOut.tsx).
  */
 import { Button, EASE, Icon, IconButton, Logo, cn, useTheme, type IconName } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useState, type MouseEvent, type ReactNode } from 'react';
+import { keepSailOut } from '~/lib/sailOut';
 import { AgentScene } from './AgentScene';
 import { CallTour } from './CallTour';
+import { CLOSE_COVE, HERO_COVE } from './coves';
 import { NoteScene } from './NoteScene';
 import { RecordScene } from './RecordScene';
 import { SealedScene } from './SealedScene';
-import { PartHead, Sky } from './Sky';
+import { PartHead, Sky, coveOnScreen } from './Sky';
 import { TeamScene } from './TeamScene';
 import { WaysIn, type Auth } from './WaysIn';
 
@@ -146,12 +149,30 @@ function Close({ auth }: { auth: Auth }) {
   );
 }
 
+/**
+ * The ways in, remembering the hero's cove as it stands on screen as one is pressed, for signing in to sail out of. The sun
+ * keeps the lift pointing at Google gave it while Google opens (`held`).
+ */
+function useSailing(auth: Auth): { ways: Auth; held: boolean } {
+  const [lifted, setLifted] = useState(false);
+  const keep = () => {
+    const hero = document.getElementById('top');
+    keepSailOut(hero ? coveOnScreen(hero, HERO_COVE) : null);
+    setLifted(Boolean(hero?.querySelector('.lp-hero-in .lp-go')?.matches(':hover, :focus-visible')));
+  };
+  return {
+    ways: { ...auth, google: () => { keep(); auth.google(); }, go: (provider, email) => { keep(); return auth.go(provider, email); } },
+    held: lifted && auth.busy !== null
+  };
+}
+
 export function Landing({ auth }: { auth: Auth }) {
+  const { ways, held } = useSailing(auth);
   return (
     <motion.div className="lp" animate={{ opacity: auth.leaving ? 0 : 1 }} transition={{ duration: 0.3, ease: EASE.in }}>
-      <Nav auth={auth} />
+      <Nav auth={ways} />
       <main>
-        <Sky moment="home" className="lp-hero" id="top" sun="set" sky={<Hero auth={auth} />}>
+        <Sky moment="home" className={cn('lp-hero', held && 'is-going')} id="top" sun="set" cove={HERO_COVE} sky={<Hero auth={ways} />}>
           <section className="lp-wrap lp-notes" id="notes" aria-labelledby="notes-title">
             <PartHead id="notes-title" title="Notes that write themselves">
               The transcript fills in as people talk. When the call ends you have the summary, what was decided and who’s doing what, each linked to the moment it was said, with the recording to play it back.
@@ -191,7 +212,7 @@ export function Landing({ auth }: { auth: Auth }) {
           <div className="lp-gap" />
         </TeamScene>
 
-        <Sky moment="home" className="lp-close" id="start" sun="rise" sky={<Close auth={auth} />}>
+        <Sky moment="home" className="lp-close" id="start" sun="rise" cove={CLOSE_COVE} sky={<Close auth={ways} />}>
           <div className="lp-wrap lp-close-water">
             <footer className="lp-foot">
               <span>© 2026 Alcove</span>

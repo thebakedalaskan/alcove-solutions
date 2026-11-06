@@ -1,7 +1,8 @@
 /*
  * Welcome and sign-in: signed out, the welcome page shows what Alcove does as one evening on the app's own scene, each part
- * with a scene that plays while it's on screen, and the ways in at the top and the bottom. Each part can be opened scrolled
- * to it. A sign-in that didn't happen says why (user-flows 1).
+ * with a scene that plays while it's on screen, and the ways in at the top and the bottom. The hero and the last ask look
+ * out of a cove (Components › The evening › Cove), which signing in sails out of to Home (Journeys › 1 Sign in). Each part
+ * can be opened scrolled to it. A sign-in that didn't happen says why (user-flows 1).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
@@ -12,7 +13,9 @@ import { SOON } from '../journeys/play';
 const meta = { title: 'Pages/Welcome', ...pages } satisfies Meta<PageArgs>;
 export default meta;
 
+/** The hero looks out of a cove at Home's sunset: the ways in on the sky, the sun under them, the cliffs clear of the words. */
 export const Welcome = page('/welcome', 'signed-out');
+/** On a phone the words reach across the window, so the cove's land lies lower under them. */
 export const WelcomePhone = phone(Welcome);
 
 /** A part of the welcome page, scrolled to once its heading is there. */
@@ -36,11 +39,11 @@ export const YourAgent = at('agents', 'Your agent can use Alcove');
 export const RecordingOffline = at('offline', 'Offline recordings');
 /** The same note, as you see it and as Alcove's servers hold it. */
 export const WhatAlcoveCanSee = at('privacy', 'What Alcove can see');
-/** Morning comes up behind the last ask. */
+/** Morning comes up behind the last ask, in a cove of its own. */
 export const StartYourFirstCall = at('start', 'Start your first call');
 /** Alcove's front door, signed out: the welcome page. */
 export const FrontDoor = page('/', 'signed-out');
-/** Use single sign-on asks for a work email in place. */
+/** Use single sign-on asks for a work email in place, and the cove is drawn again round the form. */
 export const SingleSignOn = page('/welcome', 'signed-out', {
   play: async ({ canvas, userEvent, step }) => {
     await step('Press Use single sign-on. It asks for a work email in place', async () => {

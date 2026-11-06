@@ -9,6 +9,7 @@ import { takeAgentReturn, takeReturn } from '~/lib/afterSignIn';
 import { signedInHere } from '~/lib/device';
 import { sessionOrOffline } from '~/lib/guards';
 import { GOOGLE_REFUSED } from '~/lib/googleSignIn';
+import { forgetSailOut } from '~/lib/sailOut';
 
 /** Why a sign-in with Google came back without signing in, as the API reports it. */
 type Refused = keyof typeof GOOGLE_REFUSED;
@@ -38,12 +39,14 @@ function Welcome() {
   const toast = useToast();
   const { signin } = Route.useSearch();
 
-  /* Back from Google without a session: say why once, then tidy the address, or go back to the call it started from. */
+  /* Back from Google without a session: say why once, then tidy the address, or go back to the call it started from. No
+     sign-in is on its way to Home, so there's no cove to sail out of. */
   const handled = useRef<Refused | null>(null);
   useEffect(() => {
     // Once per refusal, however often the effect runs: the call to go back to can be taken only once.
     if (!signin || handled.current === signin) return;
     handled.current = signin;
+    forgetSailOut();
     toast(GOOGLE_REFUSED[signin], { icon: 'x', ms: 5200 });
     const agent = takeAgentReturn();
     if (agent) { void navigate({ to: '/connect', search: { request: agent }, replace: true }); return; }

@@ -12,6 +12,9 @@
  * a whale's tail, a shooting star, a balloon in the corner, and boats and ships along the horizon. They come at random, one
  * at a time; the ships take minutes and are sometimes already out there when the page opens. With reduced motion nothing
  * comes. Shown for itself rather than behind a page (`only`), the scene brings one kind of visitor over and over, or none.
+ *
+ * `land` stands between the sea and the sky's visitors (the welcome page's `Cove`): everything that sails, leaps or rises
+ * passes behind it, and gulls fly in front.
  */
 import { useReducedMotion } from 'motion/react';
 import { memo, useEffect, useMemo, useRef, useState, type AnimationEvent, type ComponentProps, type ReactNode } from 'react';
@@ -317,14 +320,20 @@ function Slowly({ v, gone }: { v: Slow; gone: () => void }) {
   return v.kind === 'balloon' ? <Balloon ms={v.ms} gone={gone} /> : <Boat v={v} gone={gone} />;
 }
 
-/** Whatever's passing through. It redraws on its own, so the scene around it never does. */
-function Passing({ moment }: { moment: Moment }) {
+/**
+ * Whatever's passing through, with the land between: gulls fly in front of it and everything else goes behind. It redraws on
+ * its own, so the scene around it never does.
+ */
+function Passing({ moment, land }: { moment: Moment; land: ReactNode }) {
   const [quick, quickGone] = useVisits(LANES[moment].quick);
   const [slow, slowGone] = useVisits(LANES[moment].slow);
+  const flying = quick?.kind === 'gulls';
   return (
     <>
       {slow && <Slowly v={slow} gone={slowGone} />}
-      {quick && <Quickly v={quick} gone={quickGone} />}
+      {quick && !flying && <Quickly v={quick} gone={quickGone} />}
+      {land}
+      {quick && flying && <Quickly v={quick} gone={quickGone} />}
     </>
   );
 }
@@ -359,20 +368,26 @@ function againOf(moment: Moment, kind: Visitor, pace: number): Lane<Quick | Slow
   return { arrive, first: AGAIN_FIRST, gap: AGAIN_GAP };
 }
 
-function Again({ moment, kind, pace }: { moment: Moment; kind: Visitor; pace: number }) {
+function Again({ moment, kind, pace, land }: { moment: Moment; kind: Visitor; pace: number; land: ReactNode }) {
   const lane = useMemo(() => againOf(moment, kind, pace), [moment, kind, pace]);
   const [here, gone] = useVisits(lane);
-  if (!here) return null;
-  return isSlowVisit(here) ? <Slowly v={here} gone={gone} /> : <Quickly v={here} gone={gone} />;
+  const flying = here?.kind === 'gulls';
+  const visit = here && (isSlowVisit(here) ? <Slowly v={here} gone={gone} /> : <Quickly v={here} gone={gone} />);
+  return <>{!flying && visit}{land}{flying && visit}</>;
 }
 
-function Visitors({ moment, only }: { moment: Moment; only?: Showing | undefined }) {
-  if (useReducedMotion()) return null;
-  if (!only) return <Passing moment={moment} />;
-  return only.kind ? <Again moment={moment} kind={only.kind} pace={only.pace ?? 1} /> : null;
+function Visitors({ moment, only, land }: { moment: Moment; only?: Showing | undefined; land: ReactNode }) {
+  if (useReducedMotion()) return land;
+  if (!only) return <Passing moment={moment} land={land} />;
+  return only.kind ? <Again moment={moment} kind={only.kind} pace={only.pace ?? 1} land={land} /> : land;
 }
 
-export const Horizon = memo(function Horizon({ moment, only }: { moment: Moment; only?: Showing | undefined }) {
+export const Horizon = memo(function Horizon({ moment, only, land }: {
+  moment: Moment;
+  only?: Showing | undefined;
+  /** Land between the sea and the sky's visitors, such as the welcome page's `Cove`: gulls fly in front of it, all else behind. */
+  land?: ReactNode;
+}) {
   const scene = SCENES[moment];
   return (
     <div className="hz" data-moment={moment} aria-hidden="true">
@@ -399,7 +414,7 @@ export const Horizon = memo(function Horizon({ moment, only }: { moment: Moment;
       <div className="hz-light">
         {scene.glints.map((g) => <i key={`${g.x}-${g.y}`} className="hz-glint" style={{ left: g.x, top: g.y, width: g.w, '--o': g.o, '--far': g.far, '--every': `${g.every}s`, '--after': `${g.after}s` }} />)}
       </div>
-      <Visitors moment={moment} only={only} />
+      <Visitors moment={moment} only={only} land={land} />
     </div>
   );
 });
