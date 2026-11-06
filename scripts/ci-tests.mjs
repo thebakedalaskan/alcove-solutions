@@ -136,25 +136,36 @@ switch (command) {
     const dir = resolve(args[0] ?? 'reports');
     const lists = json(dir, 'list-');
     if (!lists.length) { console.error(`No test list in ${dir}: no runner got as far as listing the tests.`); process.exit(1); }
-    const expected = new Set(lists.flat().map((t) => `${underApi(t.file)} › ${t.name}`));
+    // vitest lists `it.each` once, under its template (`%i people…`), and runs it as one test a case (`2 people…`), so a
+    // listed name with a placeholder is met by any test of its file whose name it matches.
+    const SLOT = /(%[sdifjoOc#%]|\$#|\$[A-Za-z_][\w.]*)/;
+    const listed = new Map(lists.flat().map((t) => [`${underApi(t.file)} › ${t.name}`, { file: underApi(t.file), name: t.name }]));
+    const exact = new Set([...listed].filter(([, t]) => !SLOT.test(t.name)).map(([k]) => k));
+    const templates = [...listed].filter(([, t]) => SLOT.test(t.name)).map(([k, t]) => ({
+      key: k, file: t.file, runs: 0,
+      re: new RegExp(`^${t.name.split(SLOT).map((part, i) => (i % 2 === 0 ? escape(part) : part === '%%' ? '%' : '.+?')).join('')}$`)
+    }));
     const ran = new Map();
     const failed = [];
+    const unknown = [];
     for (const t of results(json(dir, 'shard-'))) {
       if (t.status !== 'passed' && t.status !== 'failed') continue;
       const k = `${t.file} › ${t.name}`;
+      const template = exact.has(k) ? undefined : templates.find((x) => x.file === t.file && x.re.test(t.name));
+      if (!exact.has(k) && !template) unknown.push(k);
+      if (template) template.runs += 1;
       ran.set(k, (ran.get(k) ?? 0) + 1);
       if (t.status === 'failed') failed.push(k);
     }
-    const missing = [...expected].filter((k) => !ran.has(k));
+    const missing = [...[...exact].filter((k) => !ran.has(k)), ...templates.filter((x) => !x.runs).map((x) => x.key)];
     const twice = [...ran].filter(([, n]) => n > 1).map(([k]) => k);
-    const unknown = [...ran.keys()].filter((k) => !expected.has(k));
     const show = (title, ks) => { if (ks.length) console.error(`${title} (${ks.length}):\n${ks.slice(0, 40).map((k) => `  ${k}`).join('\n')}`); };
     show('Listed but never run', missing);
     show('Failed', failed);
     show('Ran more than once', twice);
     show('Ran but not listed', unknown);
     if (missing.length || failed.length) process.exit(1);
-    console.log(`All ${expected.size} integration tests ran, each once, and passed.`);
+    console.log(`All ${ran.size} integration tests ran, each once, and passed (${listed.size} as vitest lists them, an each's cases counted as one).`);
     break;
   }
   case 'times': {
