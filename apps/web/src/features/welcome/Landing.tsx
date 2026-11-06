@@ -19,8 +19,10 @@ import { WaysIn, type Auth } from './WaysIn';
 
 /** The headline: two sentences, each its own line where there's room. */
 const HEADLINE = [['Your', 'meeting', 'superapp.'], ['Powered', 'by', 'confidential', 'AI.']] as const;
-/** The warm words, the sunset's walk across both of them. */
-const WARM: readonly string[] = ['confidential', 'AI.'];
+/** The words in the evening's colours: the sky's on the app, the sun's on what powers it. The rest are ink. */
+const TINT: Partial<Record<(typeof HEADLINE)[number][number], 'lp-cool' | 'lp-warm'>> = {
+  meeting: 'lp-cool', 'superapp.': 'lp-cool', confidential: 'lp-warm', 'AI.': 'lp-warm'
+};
 const PARTS = [['notes', 'Notes'], ['call', 'In the call'], ['time', 'Find a time'], ['agents', 'Agents'], ['offline', 'Offline'], ['privacy', 'Privacy']] as const;
 const TOOLS = [
   ['search_notes', 'Find what was said, across your calls'],
@@ -118,7 +120,7 @@ function Hero({ auth }: { auth: Auth }) {
               const i = HEADLINE.slice(0, l).flat().length + j;
               return (
                 <Fragment key={w}>
-                  <motion.span aria-hidden="true" className={cn('lp-w', WARM.includes(w) && 'lp-warm')} initial={reduce ? false : { y: '42%', opacity: 0, rotate: 1.5 }}
+                  <motion.span aria-hidden="true" className={cn('lp-w', TINT[w])} initial={reduce ? false : { y: '42%', opacity: 0, rotate: 1.5 }}
                     animate={{ y: 0, opacity: 1, rotate: 0 }} transition={{ duration: 1.25, delay: 0.12 + i * 0.07, ease: EASE.out }}>{w}</motion.span>
                   {j < line.length - 1 ? ' ' : ''}
                 </Fragment>

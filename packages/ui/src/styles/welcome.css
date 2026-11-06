@@ -34,13 +34,21 @@
 .lp-gap { height: clamp(90px, 9vw, 140px); }
 
 /* ---- type ---- */
-.lp-h1 { font: 390 clamp(44px, 6.9vw, 100px)/.96 var(--font-display); letter-spacing: -.032em; font-variation-settings: 'opsz' 72; max-width: 11.8em; }
+/* The headline's own colours: vivid on the day's sky, bright on the night's. */
+:root, .light { --lp-cool-from: oklch(0.53 0.2 256); --lp-cool-to: oklch(0.5 0.235 306); --lp-warm-from: oklch(0.63 0.19 50); --lp-warm-to: oklch(0.56 0.225 2); }
+.dark { --lp-cool-from: oklch(0.81 0.125 236); --lp-cool-to: oklch(0.77 0.165 302); --lp-warm-from: oklch(0.85 0.14 64); --lp-warm-to: oklch(0.75 0.185 357); }
+.lp-h1 { font: 390 clamp(36px, 6vw, 86px)/1 var(--font-display); letter-spacing: -.032em; font-variation-settings: 'opsz' 72; max-width: 11.8em; }
 /* A sentence a line where there's room, the longer just fitting; on a phone its words wrap inside it. */
 .lp-h1-line { display: block; }
 .lp-w { display: inline-block; padding-bottom: .06em; will-change: transform; }
-/* The warm words: the sunset's own walk from the sun to rose, across both of them. */
-.lp-warm { background: linear-gradient(100deg, var(--sun-text) 8%, var(--rose) 92%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
-.lp-warm + .lp-warm { background-position: 100% 0; }
+/* Two phrases in the evening's colours, each walking across both its words: the sky's, blue into violet, on the app,
+   and the sun's, amber into pink, on what powers it. */
+.lp-h1 .lp-cool { background: linear-gradient(100deg in oklch, var(--lp-cool-from) 6%, var(--lp-cool-to) 94%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lp-h1 .lp-warm { background: linear-gradient(100deg in oklch, var(--lp-warm-from) 6%, var(--lp-warm-to) 94%) 0 0 / 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lp-h1 .lp-cool + .lp-cool, .lp-h1 .lp-warm + .lp-warm { background-position: 100% 0; }
+/* A gradient is painted only inside its word's box, so the box reaches past the ascenders and descenders, given back as
+   margin so nothing moves. */
+.lp-h1 .lp-cool, .lp-h1 .lp-warm { padding: .2em .06em .16em; margin: -.2em -.06em -.16em; }
 .lp-h2 { font: 410 clamp(36px, 4.4vw, 62px)/1.05 var(--font-display); letter-spacing: -.024em; text-wrap: balance; }
 .lp-lede { font: 400 clamp(17px, 1.3vw, 19px)/1.58 var(--font-sans); color: var(--ink-2); max-width: 36em; text-wrap: pretty; }
 .lp-head { display: grid; gap: 18px; max-width: 760px; }
