@@ -49,13 +49,15 @@ export const wsToast = {
   switched: (name: string, home: string | null, onBack: () => void): WsToastData =>
     ({ ...say('swap', '', { label: 'Back', onClick: onBack }), text: clamped(home ? `Everyone’s in ${name} now. Notes still go to ${home}.` : `Everyone’s back in ${name}, where the notes go.`) }),
   newSpace: (name: string, home: string | null): WsToastData =>
-    ({ ...say('folders', ''), text: clamped(home ? `New workspace, ${name}. Everyone’s in it, and notes still go to ${home}.` : `New workspace, ${name}. Everyone’s in it now.`) }),
+    ({ ...say('folders', ''), text: clamped(home ? `New workspace, ${name}. Everyone invited is in it, and notes still go to ${home}.` : `New workspace, ${name}. Everyone invited is in it now.`) }),
   /** For whoever asked to see the workspace, when the organizer says not now; and for the organizer who said it. */
   saidNotNow: (organizer: string) => say('lock', `${organizer} said not now`),
   toldNotNow: (first: string) => say('check', `${first} was told not now`),
   askedForNotes: (organizer: string) => say('hand', `You asked ${organizer} for notes`),
   notesOn: () => say('check', 'Notes are on for everyone'),
   backOnline: () => say('check', 'Back online. Your edits are saved.'),
+  /** The call's connection is back, with nothing of a document's to say about it. */
+  reconnected: () => say('check', 'Back online.'),
   copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),
   savedAsNew: (onOpen: () => void) => say('filePlus', 'Saved as a new document', { label: 'Open', onClick: onOpen }),
   discarded: () => say('trash', 'Discarded. This document is as Alcove has it.'),

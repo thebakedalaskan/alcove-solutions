@@ -572,7 +572,9 @@ and this way it runs through the same auth, origin check and tests as everything
   what is checked against everyone here. What each reader is told is worked out for them: where someone is if they can open
   it, otherwise `elsewhere`, with the document and block null. Someone outside the workspace hears of nobody who isn't in something
   they can open or in a call with them, and an address goes only between people in the workspace. `callIdentity` goes
-  only to people in that call, so a tile can show where someone is. Streams work out who's here at most five times a second.
+  only to people in that call, so a tile can show where someone is, and so does `page`: which of the call's own pages they're
+  on (Notes, Follow-ups or the Transcript), which anyone else hears of only as `elsewhere`. Only a browser in a call can be on
+  its pages: a `page` from anyone else is dropped. Streams work out who's here at most five times a second.
   Whoever moved last comes last, so of someone's windows the one in use can be told from one left open. Following someone
   is all in the browser, from this: nobody is told, and a document you can't open reaches you only as `elsewhere`, so nothing
   in the app has its name to show.

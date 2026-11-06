@@ -32,7 +32,7 @@ import { LivePage } from './live/LivePage';
 import { useSending } from './live/useSending';
 import { Pictures } from './pictures';
 import { openedIn, placesOf, rememberPlaces } from './places';
-import { othersIn } from './presence';
+import { othersIn, pageName } from './presence';
 import { Presentation, presentingStrip } from './Presentation';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
@@ -270,13 +270,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
 
   /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
   const closed = call?.closed ?? false;
-  const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
+  const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.page !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
   const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
   const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
   const placed = closed ? [] : others.flatMap((o): [string, string][] => {
     if (o.callIdentity === null) return [];
     const doc = o.document === null ? undefined : tree.all.get(o.document);
-    return doc ? [[o.callIdentity, nameOf(doc)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
+    return doc ? [[o.callIdentity, nameOf(doc)]] : o.page ? [[o.callIdentity, pageName(o.page)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
   });
   const placedNow = useRef(placed);
   placedNow.current = placed;
@@ -315,7 +315,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   }, [watching]);
 
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
-  useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false }); }, [store, documentId, closed]);
+  const livePage = at.kind === 'live' ? at.page : null;
+  useEffect(() => { store.present({ document: closed ? null : documentId, block: null, typing: false, page: closed ? null : livePage }); }, [store, documentId, livePage, closed]);
   const closedNow = useRef(closed);
   closedNow.current = closed;
   const present = useCallback((where: WorkspaceWhere) => { if (!closedNow.current) store.present(where); }, [store]);
@@ -388,7 +389,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
-  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen, ids } : null;
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen, ids, following, stopFollowing: () => stopFollowing() } : null;
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>

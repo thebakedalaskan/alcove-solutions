@@ -373,13 +373,15 @@ describe('which workspace a call uses', () => {
     // The workspace it left is still there.
     expect((await art.api.workspaces.list()).map((x) => x.name)).toEqual(expect.arrayContaining(['Design', 'Product']));
 
-    // A new one, from the call: named after it, with just the organizer in it, still there after the call.
+    // A new one, from the call: named after it, made for the call as a home is, so everyone invited is in it to edit and a
+    // guest isn't; still there after the call.
     await host.newWorkspace('Launch review');
     const made = host.getSnapshot().workspace;
     expect(made).toMatchObject({ name: 'Launch review', role: 'admin', canOpen: true });
-    expect(await art.api.workspaces.people(made.id ?? '')).toHaveLength(1);
+    expect(Object.fromEntries((await art.api.workspaces.people(made.id ?? '')).map((x) => [x.person.email, x.role]))).toEqual({ [art.email]: 'admin', [priya.email]: 'edit', [theo.email]: 'edit' });
     expect((await art.api.workspaces.get(made.id ?? '')).items).toEqual([]);
-    expect(await space(p)).toMatchObject({ id: null, name: null, canOpen: false });
+    expect(await space(p)).toMatchObject({ id: made.id, name: 'Launch review', canOpen: true, role: 'edit' });
+    expect(await space(jamie.call)).toMatchObject({ id: null, name: null, canOpen: false });
     expect(await code(p.newWorkspace('Mine now'))).toBe('forbidden');
     await host.newWorkspace();
     expect(host.getSnapshot().workspace.name).toBe(host.getSnapshot().title);
@@ -545,7 +547,7 @@ describe('someone who can’t open it', () => {
     await host.startPlaying(film, media, 5000);
     const here = priya.api.workspaces.live(id, { pass: p.ticket.pass });
     await until(() => here.getSnapshot().status === 'live', 'Priya’s stream');
-    here.present({ document: plan, block: null, typing: false });
+    here.present({ document: plan, block: null, typing: false, page: null });
     await rest(250);
 
     await jamie.call.openWorkspace();
@@ -710,7 +712,7 @@ describe('a guest in a call', () => {
     // Taking it back from Share stops content, edits and presence at once.
     const here = jamie.api.workspaces.live(id, pass);
     await until(() => here.getSnapshot().status === 'live', 'their stream');
-    here.present({ document: plan, block: null, typing: false });
+    here.present({ document: plan, block: null, typing: false, page: null });
     const watching = art.api.workspaces.live(id);
     await until(() => watching.getSnapshot().here.some((x) => x.document === plan && x.person.name === 'Jamie Guest'), 'Art to see Jamie there');
     const entry = (await art.api.workspaces.share.list(id, plan)).entries[0];

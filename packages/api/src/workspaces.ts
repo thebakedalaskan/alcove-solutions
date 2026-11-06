@@ -172,13 +172,15 @@ export type KeptEdit = z.infer<typeof KeptEditSchema>;
  */
 export const WorkspaceHereSchema = z.object({
   person: PersonSchema, connection: z.string(), callIdentity: z.string().nullable(), document: IDSchema.nullable(), block: z.string().nullable(), typing: z.boolean(), elsewhere: z.boolean(),
+  /** The call's own page they're on, Notes, Follow-ups or the Transcript, for someone in that call with them: anyone else is told only `elsewhere`. */
+  page: CallPageSchema.nullable(),
   /** It's you, here or in another tab or on another device. */
   isMe: z.boolean()
 });
 export type WorkspaceHere = z.infer<typeof WorkspaceHereSchema>;
 
-/** Where a browser says it is: the document open in it and the block its caret is in, or nothing open. */
-export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: BlockIdSchema.nullable(), typing: z.boolean() });
+/** Where a browser says it is: the document open in it and the block its caret is in, the call's own page it's on, or nothing open. */
+export const WorkspaceWhereSchema = z.object({ document: ItemIdSchema.nullable(), block: BlockIdSchema.nullable(), typing: z.boolean(), page: CallPageSchema.nullable() });
 export type WorkspaceWhere = z.infer<typeof WorkspaceWhereSchema>;
 /** Presence, from a browser: where this connection is now, or that it's gone. It says so again every few seconds, or it's taken for gone. */
 export const PresenceBodySchema = z.union([z.object({ connection: ItemIdSchema, gone: z.literal(true) }), WorkspaceWhereSchema.extend({ connection: ItemIdSchema })]);

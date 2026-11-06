@@ -323,6 +323,46 @@ describe('the call’s folder', () => {
     expect(JSON.stringify(w?.state)).not.toContain('CANARY-FOLDERSAID');
   });
 
+  it('says which of its pages someone’s on to everyone in the call, so they can follow them there, and to anyone else only that they’re elsewhere', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const lena = await account();
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email], title: 'Pricing' });
+    const k = await invited(host, c, kofi);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+    // Lena's in the workspace and not in the call.
+    await ann.api.workspaces.addPerson(home, lena.email, 'edit');
+    const annSees = ann.api.workspaces.live(home, { pass: host.ticket.pass });
+    const kofiIs = kofi.api.workspaces.live(home, { pass: k.ticket.pass });
+    const lenaSees = lena.api.workspaces.live(home);
+    await until(() => [annSees, kofiIs, lenaSees].every((s) => s.getSnapshot().status === 'live'), 'everyone’s stream');
+    const of = (s: typeof annSees, email: string) => s.getSnapshot().here.find((x) => x.person.email === email);
+
+    kofiIs.present({ document: null, block: null, typing: false, page: 'transcript' });
+    await until(() => of(annSees, kofi.email)?.page === 'transcript', 'Ann to see Kofi on the transcript');
+    expect(of(annSees, kofi.email)).toMatchObject({ document: null, page: 'transcript', elsewhere: false, callIdentity: k.ticket.identity });
+    await until(() => of(lenaSees, kofi.email)?.elsewhere === true, 'Lena to see Kofi elsewhere');
+    expect(of(lenaSees, kofi.email)).toMatchObject({ document: null, page: null, elsewhere: true, callIdentity: null });
+    // From one page to another, and off them.
+    kofiIs.present({ document: null, block: null, typing: false, page: 'notes' });
+    await until(() => of(annSees, kofi.email)?.page === 'notes', 'Ann to see Kofi on the notes');
+    kofiIs.present({ document: null, block: null, typing: false, page: null });
+    await until(() => of(annSees, kofi.email)?.page === null, 'Ann to see Kofi leave the notes');
+    await until(() => of(lenaSees, kofi.email)?.elsewhere === false, 'Lena to see Kofi back');
+
+    // Someone who isn't in the call can't be on its pages: what they say of it is dropped, and the rest of it holds.
+    const plan = (await ann.api.workspaces.items.create(home, { kind: 'document', name: 'Plan', parent: null })).id;
+    lenaSees.present({ document: plan, block: null, typing: false, page: 'notes' });
+    const lenaIn = () => annSees.getSnapshot().here.find((x) => x.person.email === lena.email && x.document === plan);
+    await until(() => lenaIn() !== undefined, 'Ann to see Lena in the plan');
+    expect(lenaIn()).toMatchObject({ page: null, elsewhere: false });
+    await until(() => of(kofiIs, lena.email)?.document === plan, 'Kofi to see Lena in the plan');
+    expect(of(kofiIs, lena.email)).toMatchObject({ page: null, elsewhere: false });
+    for (const s of [annSees, kofiIs, lenaSees]) s.close();
+    await host.leave();
+  });
+
   it('has a room for what the server makes for the call, beside its pages', async () => {
     const ann = await account();
     const { host } = await callBy(ann, { title: 'Sketching' });
@@ -494,6 +534,44 @@ describe('who’s in a home made for a call', () => {
     expect(await code(sam.api.workspaces.get(home))).toBe('not-found');
     expect(await code(theo.api.workspaces.get(home))).toBe('not-found');
     await host.leave();
+  });
+
+  it('is what a workspace made during the call is too: everyone invited is in it, after the call as well, and no guest', async () => {
+    const ann = await account();
+    const kofi = await account();
+    const sam = await account();
+    const zed = await account();
+    const { host, code: c } = await callBy(ann, { guests: [kofi.email], title: 'Standup' });
+    await invited(host, c, kofi);
+    const s = await sam.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, s);
+    const jamie = await h.browser().api.calls.join(c, { mic: false, cam: false, name: 'Jamie Guest' });
+    await letIn(host, jamie);
+    await host.openWorkspace();
+    const home = (await space(host)).home ?? '';
+
+    // Ann makes one in the call, and everyone views it: everyone invited is in it to edit, Sam (let in from the link) too.
+    await host.newWorkspace('Retro');
+    const made = (await space(host)).id ?? '';
+    expect(made).not.toBe(home);
+    expect(await peopleIn(ann, made)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [sam.email]: 'edit' });
+    expect(await ann.api.workspaces.list()).toEqual(expect.arrayContaining([expect.objectContaining({ id: made, name: 'Retro', people: 3, call: { title: 'Standup', at: expect.any(String) } })]));
+    // A guest without an account isn't in it: to them it's private.
+    expect(await space(jamie)).toMatchObject({ id: null, canOpen: false });
+    // Someone let in after it's made comes in too, as the invite says, and someone taken out of the call goes, whichever
+    // workspace everyone views by then.
+    await host.setWorkspace(home);
+    const z = await zed.api.calls.join(c, { mic: false, cam: false });
+    await letIn(host, z);
+    await until(async () => (await peopleIn(ann, made))[zed.email] === 'edit', 'Zed to be in the workspace made in the call');
+    await host.remove(s.ticket.identity);
+    await until(async () => (await peopleIn(ann, made))[sam.email] === undefined, 'Sam to be out of it');
+    expect(await peopleIn(ann, made)).toEqual({ [ann.email]: 'admin', [kofi.email]: 'edit', [zed.email]: 'edit' });
+
+    // After the call it's theirs too, with what they wrote there.
+    await host.leave();
+    expect((await kofi.api.workspaces.list()).map((w) => w.id)).toContain(made);
+    expect((await kofi.api.workspaces.get(made)).role).toBe('edit');
   });
 
   it('is made with its organizer alone, and lets everyone invited in once the call’s row is let go', async () => {

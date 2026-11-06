@@ -18,7 +18,7 @@ export const PRESENCE_BEAT_MS = 10_000;
 const PRESENCE_WAIT_MS = 100;
 /** In Node (tests), timers mustn't keep the process alive. */
 export const unref = (t: unknown) => { if (t && typeof t === 'object' && 'unref' in t && typeof t.unref === 'function') t.unref(); };
-const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false };
+const NOWHERE: WorkspaceWhere = { document: null, block: null, typing: false, page: null };
 /** What this connection is called in `here`: a name it makes up, because a browser can have the same workspace open twice. */
 const newConnection = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 

@@ -5,19 +5,21 @@
 import type { Person } from '@alcove/api';
 import { WsPersonCard } from '@alcove/ui';
 import { useWs } from './context';
+import { pageName } from './presence';
 import { nameOf } from './tree';
 
 export function PersonCard({ person, onDone }: { person: Person; onDone: () => void }) {
   const ws = useWs();
   const someone = ws.others.find((o) => o.person.id === person.id);
   const item = someone?.document ? ws.tree.all.get(someone.document) : undefined;
-  const where = item ? nameOf(item) : someone?.elsewhere ? 'A document you can’t open' : 'Not in the workspace';
+  const there = item ? null : someone?.page ?? null;
+  const where = item ? nameOf(item) : there ? pageName(there) : someone?.elsewhere ? 'A document you can’t open' : 'Not in the workspace';
   const page = ws.page.current;
   return (
     <WsPersonCard person={person} where={where} followed={ws.following?.person.id === person.id}
       onFollow={() => { onDone(); ws.follow(person.id); }}
       onStop={() => { onDone(); ws.stopFollowing(); }}
-      onGo={item ? () => { onDone(); ws.go({ kind: 'document', id: item.id, block: someone?.block ?? undefined }); } : undefined}
+      onGo={item ? () => { onDone(); ws.go({ kind: 'document', id: item.id, block: someone?.block ?? undefined }); } : there ? () => { onDone(); ws.go({ kind: 'live', page: there }); } : undefined}
       onTag={page?.canTag ? () => { onDone(); page.tag(person); } : undefined} />
   );
 }

@@ -7,6 +7,7 @@ import { WsDropLine, WsList, WsListHead, WsMovePicker, WsNewMenu, WsRenameRow, W
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react';
 import { q, useCreateWorkspace, useRenameWorkspace } from '~/lib/queries';
+import { hm, hms } from '~/lib/time';
 import { focusRow } from './actions';
 import { CallPages } from './CallPages';
 import { useWs, type WorkspaceArea } from './context';
@@ -18,8 +19,30 @@ import { foldersFor, nameOf, nudged, rowsOf, trashIn } from './tree';
 
 /** Who's in a workspace, in the words under its name. */
 export const peopleWords = (n: number | null) => (n === null ? 'Only what’s shared with you' : n === 1 ? 'Just you' : `${n} people`);
-/** A workspace as a row of the menu under the name at the top of the list. */
-export const spaceChoice = (w: WorkspaceSummary): WsSpaceChoice => ({ id: w.id, name: w.name ?? 'Shared with you', sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
+/**
+ * What each workspace in a list of them is called: its name, and where calls' homes share one (the same call twice in a day),
+ * the time its call started too ("Art's call · 5 Nov, 14:30"), to the second if they started in the same minute, so no
+ * two rows read the same.
+ */
+export function namesIn(spaces: readonly WorkspaceSummary[]): (w: WorkspaceSummary) => string {
+  const repeats = (label: (w: WorkspaceSummary) => string | null) => {
+    const count = new Map<string, number>();
+    for (const w of spaces) { const l = label(w); if (l !== null) count.set(l, (count.get(l) ?? 0) + 1); }
+    return (l: string) => (count.get(l) ?? 0) > 1;
+  };
+  const sameName = repeats((w) => w.name);
+  const atMinute = (w: WorkspaceSummary) => (w.name !== null && w.call ? `${w.name}, ${hm(w.call.at)}` : null);
+  const sameMinute = repeats(atMinute);
+  return (w) => {
+    if (w.name === null) return 'Shared with you';
+    const minute = atMinute(w);
+    if (!w.call || minute === null || !sameName(w.name)) return w.name;
+    return sameMinute(minute) ? `${w.name}, ${hms(w.call.at)}` : minute;
+  };
+}
+/** A workspace as a row of the menu under the name at the top of the list, as `named` calls it. */
+export const spaceChoice = (w: WorkspaceSummary, named: (w: WorkspaceSummary) => string = (x) => x.name ?? 'Shared with you'): WsSpaceChoice =>
+  ({ id: w.id, name: named(w), sub: peopleWords(w.people), icon: w.people === 1 ? 'lock' : 'folders' });
 /** The same, saying which is the call's home: where its notes and transcript go, whichever everyone views. */
 export const homeChoice = (c: WsSpaceChoice, home: string | null): WsSpaceChoice => (c.id === home ? { ...c, sub: `This call’s home · ${c.sub}` } : c);
 
@@ -56,7 +79,8 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   const about: WsMenuRow[] = [];
   if (ws.sent.role !== null) about.push({ icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setPeople(true) });
   if (ws.sent.role === 'admin') about.push({ icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
-  const list = (spaces.data ?? []).map(spaceChoice);
+  const named = namesIn(spaces.data ?? []);
+  const list = (spaces.data ?? []).map((w) => spaceChoice(w, named));
   const choices = list.some((s) => s.id === ws.workspaceId) ? list : [{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, ...list];
   /* In a call whoever chooses the workspace has the call's own picker, and everyone else is told who chooses. */
   const call = ws.call;
@@ -214,6 +238,8 @@ export function List({ drags }: { drags: ListDrag }) {
     return [rowOf(row.item, 'tree', row.depth, row.open), ...pages];
   });
   const trash = trashIn(ws.items);
+  /* The call's own pages, unless the list has the call's folder, which holds them. */
+  const top = ws.items.some((i) => i.call?.here === true && i.trashedAt === null) ? undefined : call?.top;
 
   return (
     <>
@@ -222,8 +248,8 @@ export function List({ drags }: { drags: ListDrag }) {
         <WsListHead name={ws.spaceName} pickerLabel={ws.mode === 'page' ? 'Workspaces' : undefined} picker={picker} naming={namingField} onFind={ws.openFind}
           create={canChange ? { open: adding === null, onOpenChange: (to) => setAdding(to ? null : undefined), content: adding === null ? newIn(null) : null } : undefined} />
       ) : undefined}>
-      {(call?.top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}
-      {call?.top}
+      {(top || inCall.length > 0) && <WsSection key="call" label="This call" area="pins" into={drag?.spot?.kind === 'bring'} />}
+      {top}
       {inCall.map((item) => rowOf(item, 'pins', 0, false))}
       {/* Someone outside the workspace has the head's words for it in the app, and in a call no head at all. */}
       {member ? <WsSection key="section" label="Documents" /> : ws.mode === 'call' ? <WsSection key="section" label="Shared with you" /> : null}

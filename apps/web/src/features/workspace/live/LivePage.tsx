@@ -4,7 +4,7 @@
  * nothing to show and notes off, it says why it's empty and what to do about it.
  */
 import { errorMessage, firstName, type CallState, type CatchUpItem } from '@alcove/api';
-import { Notice, WsDoc, WsDocHead, WsFollowUps, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, wsToast, type WsDecision, type WsSaid } from '@alcove/ui';
+import { Button, Notice, WsDoc, WsDocHead, WsFollowBar, WsFollowUps, WsNotesOff, WsNotesPage, WsScroll, WsTranscript, wsToast, type WsDecision, type WsSaid } from '@alcove/ui';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useFollow } from '~/features/call/LiveLines';
 import { organizerName } from '~/features/call/Capture';
@@ -20,14 +20,24 @@ const NAMES: Record<LivePageId, string> = { notes: 'Notes', 'follow-ups': 'Follo
 const FIRST_FOLLOW_UPS = 3;
 const FLASH_MS = 1600;
 
-/** What's holding the notes back here, in a line, when something is. */
-function heldBack(s: CallState): ReactNode {
+/** What's holding the notes back here, in a line, when something is. Turned off, anyone but the organizer can ask for them back. */
+function heldBack(s: CallState, live: LiveCall): ReactNode {
   const organizer = organizerName(s);
   const here = captureHere(s.capture);
   const error = s.liveNotes.error;
   if (s.liveNotes.notes?.read.whileHere) return <Notice icon="lock">Only what was said while you were here.</Notice>;
   if (here.mode === 'paused') return <Notice icon="pause">{`Notes are paused. Nothing new is written down until ${s.isOrganizer ? 'you resume' : `${organizer} resumes`}.`}</Notice>;
-  if (here.mode === 'off') return <Notice icon="notesPen">Notes are off. Nothing new is written down until they’re back on.</Notice>;
+  if (here.mode === 'off') {
+    const asking = s.capture.asked?.state === 'asking';
+    return (
+      <Notice icon="notesPen" className="wl-off">
+        {asking ? `Notes are off. You asked ${firstName(organizer)} for them.` : 'Notes are off. Nothing new is written down until they’re back on.'}
+        {!s.isOrganizer && (asking
+          ? <Button variant="quiet" size="xs" onClick={() => live.ask(false)}>Take it back</Button>
+          : <Button variant="secondary" size="xs" icon="hand" onClick={() => live.ask(true)}>Ask {firstName(organizer)} for notes</Button>)}
+      </Notice>
+    );
+  }
   if (here.mode === 'unavailable') return <Notice tone="caution" icon="alert">Nothing new is being captured right now. Notes pick up as soon as they can.</Notice>;
   return error ? <Notice tone="caution">{error}</Notice> : null;
 }
@@ -51,7 +61,7 @@ function NotesPage({ host, state }: { host: LiveHost; state: CallState }) {
   const decided = items.map((d): WsDecision => ({ id: decidedId(d), text: d.text, at: clockAt(state, d.evidence[0]?.said ?? 0) }));
   const { put, go } = host;
   return (
-    <WsNotesPage summary={n?.summary ?? ''} decided={decided} followUps={rows.slice(0, FIRST_FOLLOW_UPS)} allFollowUps={rows.length} notice={heldBack(state)} onTick={tick}
+    <WsNotesPage summary={n?.summary ?? ''} decided={decided} followUps={rows.slice(0, FIRST_FOLLOW_UPS)} allFollowUps={rows.length} notice={heldBack(state, host.live)} onTick={tick}
       put={put ? { target: put.target, onPut: (id) => { const d = items.find((x) => decidedId(x) === id); if (d) put.decided(d.text); } } : undefined}
       onTime={(id) => go({ kind: 'live', page: 'transcript', line: items.find((x) => decidedId(x) === id)?.evidence[0]?.lineId })}
       onAll={() => go({ kind: 'live', page: 'follow-ups' })} />
@@ -73,7 +83,7 @@ function FollowUpsPage({ host, state }: { host: LiveHost; state: CallState }) {
   };
   const yours = rows.filter((r) => r.mine);
   return (
-    <WsFollowUps mine={mine} onMine={setMine} everyoneCount={rows.length} mineCount={yours.length} rows={mine ? yours : rows} notice={heldBack(state)} onTick={tick}
+    <WsFollowUps mine={mine} onMine={setMine} everyoneCount={rows.length} mineCount={yours.length} rows={mine ? yours : rows} notice={heldBack(state, host.live)} onTick={tick}
       draft={draft} onDraft={setDraft} onAdd={canAdd ? add : undefined} />
   );
 }
@@ -99,7 +109,7 @@ function TranscriptPage({ host, state, line }: { host: LiveHost; state: CallStat
   if (state.transcript.length === 0 && modeHere(state) === 'off') return <Off live={live} state={state} />;
   const talking = notesOnHere(state) && speaking && !words ? { person: speaking, name: firstName(speaking.name) } : null;
   return (
-    <WsTranscript query={query} onQuery={setQuery} lines={lines} now={talking} notice={heldBack(state)}
+    <WsTranscript query={query} onQuery={setQuery} lines={lines} now={talking} notice={heldBack(state, host.live)}
       put={put ? { target: put.target, onPut: (id) => { const l = state.transcript.find((x) => x.id === id); if (l) put.line(l); } } : undefined} />
   );
 }
@@ -131,6 +141,7 @@ function Page({ host, page, line }: { host: LiveHost; page: LivePageId; line: st
   return (
     <WsDoc>
       <WsDocHead crumbs={[state.title, NAMES[page]]} save={on ? 'live' : 'quiet'} onToggleList={host.toggleList} zen={host.zen?.on} onZen={host.zen?.onToggle} />
+      <WsFollowBar following={host.following} onStop={host.stopFollowing} />
       <Body key={page} host={host} state={state} page={page} line={line} />
     </WsDoc>
   );

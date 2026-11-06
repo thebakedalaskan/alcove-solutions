@@ -53,10 +53,12 @@ export const CallSpace = z.object({
   agendaDraft: AgendaDraft.nullable().default(null),
   /** The workspace everyone views, when the organizer switched from the home: the home's on the meeting. */
   viewing: z.string().nullable().default(null),
-  home: CallHome.nullable().default(null)
+  home: CallHome.nullable().default(null),
+  /** The workspaces made in this run of the call (New workspace), the latest last: who's in them follows its invite while it's on. */
+  made: z.array(z.string()).default([])
 });
 export type CallSpace = z.infer<typeof CallSpace>;
-export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null };
+export const NO_SPACE: CallSpace = { asks: [], present: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
 
 /** Nothing presented or playing is left: everyone views another workspace. */
 export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], play: [] });

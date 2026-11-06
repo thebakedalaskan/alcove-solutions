@@ -6,6 +6,7 @@ import type { MeetingInput, Person } from '@alcove/api';
 import { Button, Faces, FlowBody, FlowFoot, FlowRow, Select, Switch, SwitchLine } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { namesIn } from '~/features/workspace/List';
 import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
@@ -39,7 +40,8 @@ export function Details({ draft, change, guests, at, invites, team, back, return
   const [open, setOpen] = useState<'notes' | 'big' | 'home' | null>(null);
   /* A call's home can be one of your workspaces you can make things in: the menu reads them again as it opens. */
   const spaces = useQuery({ ...q.workspaces(), enabled: open === 'home' }).data ?? [];
-  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: w.name }] : []));
+  const named = namesIn(spaces);
+  const homes = spaces.flatMap((w) => (w.name !== null && (w.role === 'admin' || w.role === 'edit') ? [{ id: w.id, name: named(w) }] : []));
   const name = useRef<HTMLInputElement>(null);
   const zone = timeZone();
   const series = useMemo(() => (draft.offer ? null : repeatInput(draft.repeat, at, zone)), [draft.offer, draft.repeat, at, zone]);

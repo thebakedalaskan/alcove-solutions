@@ -325,6 +325,8 @@
 .wp-notes:focus { box-shadow: inset 0 0 0 2px var(--focus); }
 /* What everyone watches sits over your own pane, which waits underneath just as you left it: caret, scroll and all. */
 .ws-over { position: absolute; inset: 0; z-index: 4; display: flex; }
+/* Notes turned off, with the way to ask for them back on the same line, or under it where there's no room. */
+.wl-off > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 /* A page or a presentation that holds focus for someone who was typing when what they were in went: it's where they are, not a control. */
 .ws-over:focus, .ws-over .wd-scroll:focus, .ws-pane .wd-scroll:focus { outline: none; }
 .ws-pane.is-under { visibility: hidden; isolation: isolate; }

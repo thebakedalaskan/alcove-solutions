@@ -237,7 +237,7 @@ function Page({ ws, item, session, status, onSections }: { ws: Ws; item: Workspa
             onMention={sections} documentName={documentName} onOpenDocument={(id) => ws.go({ kind: 'document', id })}
             onOpenPerson={openPerson} onTagged={(person, block, rect) => { void onTagged(person, block, tagRect(person.id, block, rect)); }}
             onComment={readOnly || !ws.self ? undefined : (draft) => setComment({ kind: 'draft', draft })} onOpenThread={(id, rect) => setComment({ kind: 'thread', id, rect })}
-            onPresence={(p) => ws.present({ document: item.id, ...p })}
+            onPresence={(p) => ws.present({ document: item.id, page: null, ...p })}
             media={media.media} onUpload={media.onUpload} onPick={media.onPick} onAttachMedia={media.onAttachMedia}
             onTitle={(title) => ws.actions.titled(item.id, title)} onToast={toast} onSections={onSections}
             onCopyBlockLink={(id) => ws.actions.copyLink(item.id, id)}

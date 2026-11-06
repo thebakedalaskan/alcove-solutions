@@ -443,8 +443,9 @@ put them, and one dock at the bottom.
   in as you, with your place, raised hand and breakout room, and its microphone and camera as they were. The
   laptop says where the call went, with **Join again here**. While you share your screen the code stays hidden.
   Whoever hosts keeps hosting on the new device, and nobody takes over while it can still arrive.
-- If your connection drops, the top bar says **Reconnecting** and you're back by yourself when it returns, as the
-  same person. While the host's browser is out of the call, the notes sign says **Notes unavailable**, for
+- If your connection drops, the top bar says **Reconnecting**, whether the browser is offline or the call's sound and
+  video are finding their way back, and you're back by yourself when it returns, as the same person, with **Back online.**
+  (or, from a document you wrote in meanwhile, that your edits are saved). While the host's browser is out of the call, the notes sign says **Notes unavailable**, for
   everyone and on the join page; when another browser takes over (theirs on another device, or someone standing in),
   the notes mark the time between ("Host offline 10:20–10:21"). A pause stays a pause through all of it.
 - **When the organizer's connection drops.** The call goes on. About ten seconds after the call loses them,
@@ -511,7 +512,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    call's Notes, Follow-ups and Transcript stay at the top of the list while another workspace is viewed. Nobody is
    interrupted and nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and
    sees that it's private, not what's in it. What was brought to the call from the workspace before stays with that one.
-   **New workspace** makes one with just the organizer in it, named after the call, and opens a blank document in it; it's
+   **New workspace** makes one for the call, with everyone invited in it to edit, as its home has (a guest without an account
+   isn't), named after the call, and opens a blank document in it; it's
    still there after the call. The home doesn't change: the next call in the series still has it. Everyone else sees the
    name, and that the organizer chooses.
 3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
@@ -954,7 +956,9 @@ Signing in again starts a new, empty account with 10,000 credits.
 Documents and folders people write in together, between calls as well as in them. Every call has a workspace of its own,
 its home, where its notes, follow-ups and transcript go, and **Drive** in the side panel lists every workspace you're in,
 newest first: a call's home with the call it was made for and when (**From Launch check-in, Today at 09:30**), and one
-made by hand with when it was made, each with who's in it. Picking one opens it on its own page, which fills the page, in
+made by hand with when it was made, each with who's in it. Homes with the same name, the same call twice in a day, say
+when each call started too (**Launch check-in · 5 Nov, 14:30**, to the second if they started in the same minute), here, in
+the workspace picker and when choosing a home while scheduling. Picking one opens it on its own page, which fills the page, in
 your theme, with search and you in the top of it: the list and a document side by side, at the document you had open in
 it last. Everything happens in the list: nothing opens a window, and nothing asks you to fill anything in. Whatever
 someone does here reaches everyone else in the workspace as it happens, and a row that arrives or moves glows for a moment
@@ -1050,7 +1054,8 @@ its name), **Follow**, **Go to where they are**, and **Tag them in this document
 face and first name while they move, which fade after three seconds of quiet. Opening a document only moves you.
 
 **Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
-say so, and the page scrolls to them. Nobody else moves, and they do nothing. If they open something you can't, you stay put
+say so, and the page scrolls to them. In a call that's the call's own **Notes**, **Follow-ups** and **Transcript** too, and the
+bar names the page. Nobody else moves, and they do nothing. If they open something you can't, you stay put
 and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following** or **Esc** ends
 it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are, and a toast offers
 **Follow again**.

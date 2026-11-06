@@ -7,7 +7,7 @@
  * notice, and every instance keeps what it hears in memory until it's said again or runs out. What someone may know of
  * someone else depends on both of them and on the tree as it stands, so that's worked out here.
  */
-import { PersonSchema, type Person, type WorkspaceHere, type WorkspaceWhere } from '@alcove/api';
+import { CallPageSchema, PersonSchema, type CallPage, type Person, type WorkspaceHere, type WorkspaceWhere } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, fromUtf8, openJson, sealJson, toJson, unb64u, utf8, type RecordHeader } from '../crypto';
@@ -59,19 +59,21 @@ const HereNotice = z.object({
   document: z.string().nullable(),
   block: z.string().nullable(),
   typing: z.boolean(),
+  /** The call's own page they're on. A notice from an instance a release behind has none. */
+  page: CallPageSchema.nullable().default(null),
   gone: z.boolean()
 });
 type HereNotice = z.infer<typeof HereNotice>;
-interface Here { who: Who; member: boolean; person: Person; connection: string; callId: string | null; callIdentity: string | null; document: string | null; block: string | null; typing: boolean; until: number }
+interface Here { who: Who; member: boolean; person: Person; connection: string; callId: string | null; callIdentity: string | null; document: string | null; block: string | null; typing: boolean; page: CallPage | null; until: number }
 
 const hereHeader = (o: Owner, workspaceId: string): RecordHeader => ({ v: 1, kind: 'workspace-presence', ownerId: o.ownerId, workspaceId });
 
 /** Tells every instance where this reader's connection is, or that it's gone. Nothing of it is kept anywhere that lasts. */
 export async function announce(w: { owner: Owner; workspaceId: string; role: Standing['role'] }, reader: Reader, person: Person, connection: string, where: WorkspaceWhere | 'gone'): Promise<void> {
-  const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false } : where;
+  const place: WorkspaceWhere = where === 'gone' ? { document: null, block: null, typing: false, page: null } : where;
   const notice: HereNotice = {
     person, email: reader.email ?? null, principals: reader.principals.map(b64u), member: w.role !== null, connection, callId: reader.seat?.callId ?? null, callIdentity: reader.seat?.viewer.pass.identity ?? null,
-    ...place, gone: where === 'gone'
+    ...place, page: reader.seat ? place.page : null, gone: where === 'gone'
   };
   await publish(w.owner.pool, w.workspaceId, `${PRESENCE}${fromUtf8(sealJson(workspaceKey(w.owner), hereHeader(w.owner, w.workspaceId), toJson(notice)))}`);
 }
@@ -180,7 +182,7 @@ export class Room {
       const { email, principals, gone: _, ...rest } = n;
       // Whoever moved last comes last, so of someone's windows the one they're using can be told from one left open.
       const was = this.here.get(key);
-      if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing)) this.here.delete(key);
+      if (was && (was.document !== n.document || was.block !== n.block || was.typing !== n.typing || was.page !== n.page)) this.here.delete(key);
       this.here.set(key, { ...rest, who: { email: email ?? undefined, principals: principals.map((p) => unb64u(p)) }, until });
     }
     this.expire();
@@ -240,7 +242,8 @@ export class Room {
       return [{
         // A face comes from an address, so whoever isn't told the address gets one from the keyed ID, which tells them nothing.
         person: isMe || colleagues ? e.person : { ...e.person, email: '', portrait: portraitFor(e.person.id) }, connection: e.connection, callIdentity: inCall ? e.callIdentity : null,
-        document: opens ? e.document : null, block: opens ? e.block : null, typing: opens && e.typing, elsewhere: e.document !== null && !opens, isMe
+        document: opens ? e.document : null, block: opens ? e.block : null, typing: opens && e.typing, page: inCall ? e.page : null,
+        elsewhere: (e.document !== null && !opens) || (e.page !== null && !inCall), isMe
       }];
     });
   }

@@ -122,7 +122,7 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
               <h2 className="ac-display-s">Call ended</h2>
               {ended.noteId ? (
                 <>
-                  <p>Notes will be ready in a minute.</p>
+                  {!progress?.ready && !failed && <p>Notes will be ready in a minute.</p>}
                   <div className="who">{getting.length > 0 && <Faces people={getting} size={26} max={6} />}<span>{organizer ? (getting.length ? `${listNames(getting)} and you get the notes.` : 'You get the notes.') : 'Everyone invited gets the notes, you included.'}</span></div>
                   <div className="state" role="status">
                     {failed ? <><Icon name="clock" size={16} /><span>Still writing. They’ll be in Notes when they’re ready.</span></>

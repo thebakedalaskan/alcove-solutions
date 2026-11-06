@@ -9,7 +9,7 @@ import { wsToast, type WsToastData } from '@alcove/ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { overlayOpen } from '~/lib/keys';
 import type { WorkspacePlace } from './context';
-import type { Someone } from './presence';
+import { pageName, type Someone } from './presence';
 import { nameOf, type Tree } from './tree';
 
 /** Who you're following and where they are now. `document` and `block` only ever name what you can open. */
@@ -35,7 +35,10 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
   if (someone) known.current = someone.person;
   const item = someone?.document ? tree.all.get(someone.document) : undefined;
   const target = item && item.kind !== 'folder' ? item.id : null;
-  const here = at.kind === 'document' ? at.id : null;
+  /* Where they are and where you are, each as one key: a document by its ID, or one of the call's own pages. */
+  const page = target === null ? someone?.page ?? null : null;
+  const there = target ?? (page === null ? null : `$${page}`);
+  const here = at.kind === 'document' ? at.id : at.kind === 'live' ? `$${at.page}` : null;
 
   const follow = useCallback((person: string) => setId(person), []);
   const latest = useRef({ id, say });
@@ -50,14 +53,15 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
   }, []);
 
   /* They moved: you go too. You moved, by the address, say, and not with them: that's you going somewhere. */
-  const before = useRef<{ target: string | null; here: string | null }>({ target, here });
+  const before = useRef<{ target: string | null; here: string | null }>({ target: there, here });
   useEffect(() => {
     const was = before.current;
-    before.current = { target, here };
-    if (id === null || target === null || here === target) return;
-    if (was.here !== here && was.target === target) { stop(); return; }
-    goWith({ kind: 'document', id: target });
-  }, [id, target, here, goWith, stop]);
+    before.current = { target: there, here };
+    if (id === null || there === null || here === there) return;
+    if (was.here !== here && was.target === there) { stop(); return; }
+    if (target !== null) goWith({ kind: 'document', id: target });
+    else if (page !== null) goWith({ kind: 'live', page });
+  }, [id, there, target, page, here, goWith, stop]);
 
   /* Esc, once nothing's open on top of the page. */
   useEffect(() => {
@@ -76,7 +80,7 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
   const lost = someone?.elsewhere === true;
   const following: Following | null = id === null || !person ? null : {
     person, name: firstName(person.name), lost,
-    where: item ? nameOf(item) : 'Not in the workspace',
+    where: item ? nameOf(item) : page ? pageName(page) : 'Not in the workspace',
     document: target, block: target !== null ? someone?.block ?? null : null
   };
   return { following, follow, stopFollowing: stop };

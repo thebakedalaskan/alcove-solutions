@@ -585,7 +585,10 @@ export interface CallSession extends LiveStore<CallState> {
    * transcript still go to the home. Nobody is interrupted; what's being presented and played stops.
    */
   setWorkspace(workspaceId: string): Promise<void>;
-  /** Organizer only: makes a workspace with just them in it, named after the call unless it's given a name, and everyone views it. */
+  /**
+   * Organizer only: makes a workspace for this call, named after it unless it's given a name, and everyone views it. As the
+   * call's home does, it has everyone invited in it to edit (a guest without an account isn't), and it follows the invite.
+   */
   newWorkspace(name?: string | undefined): Promise<void>;
   /** Anyone who can open it: brings a document in the call's workspace to the call, or takes it off (`brought` false). */
   bringDocument(documentId: string, brought: boolean): Promise<void>;

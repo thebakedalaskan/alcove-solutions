@@ -1005,8 +1005,11 @@ into the call. Being in a call, or organizing it, opens nothing.
   by membership alone, which the organizer can see from the workspace's people: someone with one document there is still
   named, because saying otherwise would tell the organizer about something they can't see. Switching interrupts nothing:
   nobody's keys move, nothing open closes, and what was presented or playing there stops. A workspace viewed that's deleted
-  takes everyone back to the home. `workspace-new` makes one with just the organizer in it, named after the call unless
-  it's given a name, and everyone views it. A stand-in hosts the call and doesn't choose its workspace.
+  takes everyone back to the home. `workspace-new` makes one for the call (`madeFor`, with no series), named after it unless
+  it's given a name, and everyone views it: everyone invited is let in to edit once the call's row is let go, as a home's
+  invitees are, and who's in it follows the invite for as long as the call's on, whichever workspace is viewed (the call
+  keeps what it made in `CallSpace.made`, which `followHome` follows by the call's own invite). It counts as one its
+  organizer made. A stand-in hosts the call and doesn't choose its workspace.
 - **`CallState.workspace`** is per viewer, worked out on every read: `id` (what's viewed), `home`, `name`, `chosenBy`,
   `canOpen`, `role`, `documents`, `agenda`, `present`, `play`, `asks`, `asked`. `home` is the home's ID for someone who can
   open something in it, else null. Someone who can open nothing gets `id` and `name` null: private, and

@@ -314,24 +314,30 @@ async function invitedTo(o: Owner, m: Loaded<MeetingManifest>, home: string): Pr
 /**
  * Who's in the call's home follows its invite, one change at a time, when it was made for the call or its series
  * (`followInvite`): whoever the change put on the invite is let in, if they're on it still, and whoever it took off is
- * taken out, unless the series still invites them to a call to come. It never throws: the call goes on, and the next
- * change, or the next call's start, tries again.
+ * taken out, unless the series still invites them to a call to come. So does who's in each workspace made in the call
+ * (`made`), by the call's own invite. It never throws: the call goes on, and the next change, or the next call's start,
+ * tries again.
  */
-export async function followHome(o: Owner, meetingId: string, change: InviteChange): Promise<void> {
+export async function followHome(o: Owner, meetingId: string, change: InviteChange, made: readonly string[] = []): Promise<void> {
   if (!change.add?.length && !change.gone?.length) return;
   try {
     const m = await findItem(o, o.pool, 'meeting', meetingId, MeetingManifest);
-    const home = m?.manifest.workspaceId;
-    if (!m || !home) return;
-    const invited = await invitedTo(o, m, home);
-    const add = (change.add ?? []).filter((e) => invited.has(e.trim().toLowerCase()));
-    const gone = (change.gone ?? []).filter((e) => !invited.has(e.trim().toLowerCase()));
-    if (!add.length && !gone.length) return;
-    const organizer = (await profile(o)).email;
-    await tx(o.pool, async (c) => {
-      const w = await serverWorkspace(o, home, c, 'change');
-      if (w && homeOf(w.state.madeFor, m)) await followInvite(w, c, organizer, { add, gone });
-    });
+    if (!m) return;
+    const home = m.manifest.workspaceId;
+    const own = new Set(m.manifest.guests.map((e) => e.trim().toLowerCase()));
+    const spaces = new Map<string, Set<string>>(made.map((x) => [x, own]));
+    if (home) spaces.set(home, await invitedTo(o, m, home));
+    let organizer: string | undefined;
+    for (const [workspaceId, invited] of spaces) {
+      const add = (change.add ?? []).filter((e) => invited.has(e.trim().toLowerCase()));
+      const gone = (change.gone ?? []).filter((e) => !invited.has(e.trim().toLowerCase()));
+      if (!add.length && !gone.length) continue;
+      const by = (organizer ??= (await profile(o)).email);
+      await tx(o.pool, async (c) => {
+        const w = await serverWorkspace(o, workspaceId, c, 'change');
+        if (w && homeOf(w.state.madeFor, m)) await followInvite(w, c, by, { add, gone });
+      });
+    }
   } catch (e) {
     wlog.warn('a call’s home didn’t follow its invite', { meetingId, err: e });
   }
@@ -429,6 +435,8 @@ export async function mayPlay(o: Owner, reader: Reader, workspaceId: string | nu
 export interface Changing<S extends Spaced> {
   v: Viewer; reader: Reader; callId: string;
   meeting: Loaded<MeetingManifest>;
+  /** When this run of the call started. */
+  startedAt: Date;
   s: S;
   /** Where whoever's asking is in the call. */
   place: string;
@@ -439,7 +447,11 @@ export interface Changing<S extends Spaced> {
  * What came of it: the call as it is now, and the seat a grant gave someone who was removed meanwhile, for the caller to take
  * back once the call's row is let go, as their removal does.
  */
-export interface Changed<S> { s: S; ended?: string | undefined }
+export interface Changed<S> {
+  s: S; ended?: string | undefined;
+  /** A workspace made for the call just now, and who's invited, for them to be let into it once the call's row is let go. */
+  made?: { workspaceId: string; guests: string[] } | undefined;
+}
 /**
  * The change to what the call keeps, in the transaction that holds its row (`c`). What it went by is checked again there, from
  * the call's own state alone; `again` when that's moved on, for it all to be asked afresh with nothing held.
@@ -447,6 +459,8 @@ export interface Changed<S> { s: S; ended?: string | undefined }
 export type Apply<S extends Spaced> = (x: Changing<S> & { c: Db }) => Promise<Changed<S> | 'again'>;
 
 const withSpace = <S extends Spaced>(s: S, workspace: CallSpace): S => ({ ...s, workspace });
+/** How many of the workspaces made in a call it keeps following: as many as anyone can have. */
+const MADE_KEPT = 100;
 const notYours = (callId: string, what: string) => new ForbiddenError('Only whoever started this, or the organizer, can do that.', { context: { callId, what } });
 /** Whether someone can open a document in a workspace, read with nothing held. */
 async function opens(d: Deps, reader: Who, workspaceId: string, documentId: string): Promise<boolean> {
@@ -491,8 +505,17 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
       requireRole(await workspaceFor(o, reader, a.workspaceId), 'edit');
       return (y) => Promise.resolve(view(y, a.workspaceId));
     }
-    // A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody.
-    case 'workspace-new': return async (y) => view(y, (await createIn(o, y.c, a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled'))).id);
+    /*
+     * A workspace made now is one nobody else can reach yet, so making it under the call's row waits on nobody. It's made for
+     * this call, as its home is: everyone invited is let in to edit once the row's let go, and who's in it follows the invite
+     * for as long as the call's on (the call keeps it in `made`).
+     */
+    case 'workspace-new': return async (y) => {
+      const name = a.name ?? (y.meeting.manifest.title.replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled');
+      const { id } = await createIn(o, y.c, name, { ...madeForCall(y.meeting, y.startedAt), seriesId: null });
+      const { s } = view(y, id);
+      return { s: withSpace(s, { ...s.workspace, made: [...s.workspace.made, id].slice(-MADE_KEPT) }), made: { workspaceId: id, guests: y.meeting.manifest.guests } };
+    };
     case 'workspace-bring': {
       const from = broughtFrom(x.meeting.manifest, w, a);
       if (!from) throw noDocument(a.documentId);

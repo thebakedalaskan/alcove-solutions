@@ -71,7 +71,10 @@ export interface SpaceHead { workspaceId: string; name: string; people: number |
 
 /** What a call adds to the workspace. Left out in the app. */
 export interface WorkspaceCall {
-  /** The first rows under This call: the live pages, while everyone views a workspace that isn't the call's home, where they're in its folder. */
+  /**
+   * The first rows under This call: the call's own pages. The list leaves them out where it shows the call's folder, which
+   * holds them; someone who can't see that folder, such as a guest shared one document, still has them here.
+   */
   top?: ReactNode;
   /** The call's home, where its notes go and its folder is, if you can open anything in it. */
   home: string | null;

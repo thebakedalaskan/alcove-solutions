@@ -520,7 +520,7 @@ describe('what a guest’s pass reaches', () => {
     expect(passRoutes.map((r) => `${r.method} ${r.path}`).sort()).toEqual([...BY_PASS].sort());
     // Each with what it takes, so what answers is whether it's there to reach and not what was sent.
     const update = 'AQHpxYYMAAQBB2NvbnRlbnQBeAA';
-    const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false };
+    const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false, page: null };
     const asking: Record<string, unknown> = {
       'POST /v1/workspaces/:id/presence': presence, 'POST /v1/workspaces/:id/documents/:doc/updates': { update }, 'POST /v1/workspaces/:id/documents/:doc/awareness': { update: 'AA' },
       'POST /v1/workspaces/:id/documents/:doc/presenter-notes': { text: 'Mine' }, 'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' },

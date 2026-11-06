@@ -24,6 +24,9 @@ export interface LiveHost {
   zen: WorkspaceCall['zen'];
   /** Who's who in the workspace's documents, as far as it's known (../ids.ts). */
   ids: PersonIds;
+  /** Who you're following, here too when they open one of these pages. Nobody, with no workspace. */
+  following: Ws['following'];
+  stopFollowing: () => void;
 }
 
 export const LiveHostContext = createContext<LiveHost | null>(null);

@@ -131,8 +131,9 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
         unlit.current = setTimeout(() => setLit(null), LIT_MS);
       },
       /**
-       * Organizer only: a workspace with just them in it, made right here, and the call moves to it. It starts with one blank
-       * document, open, ready to write in: from the picker, or for an organizer who's lost the one the call uses.
+       * Organizer only: a workspace made for this call, with everyone invited in it as the home has, and the call moves to it.
+       * It starts with one blank document, open, ready to write in: from the picker, or for an organizer who's lost the one the
+       * call uses.
        */
       newWorkspace: () => {
         session.newWorkspace().then(async () => {
@@ -266,7 +267,7 @@ export const WorkspacePanel = memo(function WorkspacePanel({ workspace, organize
   const picker = useMemo(() => (organizer ? (head: SpaceHead) => <SpacePicker head={head} act={act} home={home} /> : undefined), [organizer, act, home]);
   /* Watching a presentation, your own page is under it: out of sight, as far as it knows. */
   const call = useMemo((): WorkspaceCall => ({
-    top: home !== null && home === workspace.id ? undefined : LIVE_ROWS, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
+    top: LIVE_ROWS, home, live, documents, onBring: act.bring, picker, chooser: organizer ? undefined : chooser, say: act.say, closed: !showing || presenting.watching, people, invited, onTogether: act.setTogether, onTagged: act.tagged, together: reach, finding, onFinding: act.found,
     zen: zen === null ? undefined : { on: zen, onToggle: onToggleZen },
     list: { off: listOff, peek: listPeek, onToggle: onToggleList, onShow: onShowList, wanted: listWanted },
     presenting, playing

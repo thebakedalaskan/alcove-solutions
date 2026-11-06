@@ -8,7 +8,7 @@ import { Button, EmptyState, Evening, Icon, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { peopleWords } from '~/features/workspace/List';
+import { namesIn, peopleWords } from '~/features/workspace/List';
 import { q, useCreateWorkspace } from '~/lib/queries';
 import { daysFromToday, hm, noteDay, shortDay } from '~/lib/time';
 
@@ -25,12 +25,12 @@ function aboutOf(w: WorkspaceSummary): string {
   return [made, peopleWords(w.people)].filter(Boolean).join(' · ');
 }
 
-function Row({ w }: { w: WorkspaceSummary }) {
+function Row({ w, name }: { w: WorkspaceSummary; name: string }) {
   return (
     <li>
       <Link to="/drive/$workspaceId" params={{ workspaceId: w.id }} className={cn('dv-row', w.call && 'is-call')}>
         <span className="dv-ic"><Icon name={w.role === null ? 'lock' : w.call ? 'video' : 'folders'} size={19} /></span>
-        <span className="dv-t"><b className="ac-clamp-1">{w.name ?? 'Shared with you'}</b><small className="ac-clamp-1">{aboutOf(w)}</small></span>
+        <span className="dv-t"><b className="ac-clamp-1">{name}</b><small className="ac-clamp-1">{aboutOf(w)}</small></span>
         <span className="dv-end"><Icon name="chevron" size={16} /></span>
       </Link>
     </li>
@@ -64,6 +64,7 @@ function Make() {
 
 export function Drive() {
   const spaces = useQuery(q.workspaces()).data ?? [];
+  const named = namesIn(spaces);
   return (
     <Evening moment="drive" className="dv">
       <header className="dv-top" style={{ '--d': 0 }}><h1>Drive</h1></header>
@@ -75,7 +76,7 @@ export function Drive() {
         {spaces.length === 0 ? (
           <EmptyState className="dv-none" title="Nothing here yet">Your next call makes the first: its notes land in it when it ends, and you can work in it during the call.</EmptyState>
         ) : (
-          <ul className="dv-list" aria-label="Your workspaces">{spaces.map((w) => <Row key={w.id} w={w} />)}</ul>
+          <ul className="dv-list" aria-label="Your workspaces">{spaces.map((w) => <Row key={w.id} w={w} name={named(w)} />)}</ul>
         )}
       </div>
     </Evening>

@@ -269,8 +269,11 @@ function landing(reader: Reader, w: Workspace, parent: string | null): string | 
   return parent;
 }
 
-/** Makes a workspace with `o` as its admin and nobody else in it, in the caller's transaction. */
-export async function createIn(o: Owner, c: Db, name: string): Promise<{ id: string }> {
+/**
+ * A workspace someone makes, with them as its admin, in the caller's transaction. `madeFor`: the call it's made in, as a home
+ * is (`MadeFor`), so who's in it follows that call's invite (`followInvite`).
+ */
+export async function createIn(o: Owner, c: Db, name: string, madeFor: Omit<MadeFor, 'out'> | null = null): Promise<{ id: string }> {
   const me = await profile(o, c);
   const id = id128();
   // One at a time for an account, so two at once can't both be the hundredth.
@@ -279,7 +282,7 @@ export async function createIn(o: Owner, c: Db, name: string): Promise<{ id: str
   if ((made?.n ?? 0) >= MAX_MADE) throw new ConflictError('You’ve made as many workspaces as you can. Delete one first.', { context: { ownerId: o.ownerId, made: made?.n } });
   const { ownerId, root } = await createOwner(o, c);
   const owner = ownerFrom(o, ownerId, root, undefined);
-  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: null })]);
+  await exec(c, 'INSERT INTO workspaces (owner_id, workspace_id, state_ciphertext) VALUES ($1,$2,$3)', [ownerId, id, sealState(owner, id, { name, items: {}, madeFor: madeFor && { ...madeFor, out: [] } })]);
   await addMember(owner, c, id, me.email, 'admin', me.name);
   await noteAuthor({ owner }, c, me.email, true);
   wlog.info('workspace created', { workspaceId: id });
@@ -1130,5 +1133,5 @@ export async function open(d: Deps, credentials: Credentials, reader: Reader, wo
 /** Says where a browser is, for everyone who may know. Nobody can be placed in something they can't open. */
 export async function present(d: Deps, reader: Reader, workspaceId: string, body: PresenceBody): Promise<void> {
   const w = await placeableIn(d, reader, workspaceId, 'gone' in body ? null : body.document);
-  await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing });
+  await announce(w, reader, personIn(w.owner, reader), body.connection, 'gone' in body ? 'gone' : { document: body.document, block: body.block, typing: body.typing, page: body.page });
 }

@@ -59,7 +59,7 @@ import { MoveSheet } from '~/features/move/MoveSheet';
 import { useMoveOut } from '~/features/move/useMoveOut';
 import { tickEverywhere } from '~/features/workspace/live/useFollowUps';
 import { overlayOpen, typing, withMod, withModShift } from '~/lib/keys';
-import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive } from '~/lib/live';
+import { selfIn, sessions, useClosingWithPage, useLeaveGuard, useLive, useOnline } from '~/lib/live';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
 import { q, qk, useCallSeries } from '~/lib/queries';
@@ -1012,6 +1012,20 @@ function InCall({ session }: { session: CallSession }) {
     return () => removeEventListener('keydown', onKey);
   }, [work.act, toggleZen]);
 
+  /*
+   * The connection: this browser offline, or the call's media finding its way back. It's said at the top of the call while it
+   * lasts, and once it's back, in the workspace's place for what it says, so a document saying its edits are saved says so instead.
+   */
+  const online = useOnline();
+  const down = !online || roomView.connection === 'reconnecting';
+  const wasDown = useRef(false);
+  useEffect(() => {
+    if (down) { wasDown.current = true; return; }
+    if (!wasDown.current || ended) return;
+    wasDown.current = false;
+    work.act.say(wsToast.reconnected());
+  }, [down, ended, work.act]);
+
   /* What the workspace said last, such as a switch with Back, means nothing once the call's over, and sits over Leave's question. */
   useEffect(() => { if (ended || leaveOpen) work.act.hush(); }, [ended, leaveOpen, work.act]);
 
@@ -1430,7 +1444,7 @@ function InCall({ session }: { session: CallSession }) {
       <div className={cn('ic-call', ended && 'is-ended', zenOn && 'is-zen')}>
         <TopBar title={state.title} elapsed={state.elapsed} custom={custom} people={stagePeople.map((p) => p.person)}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openPanel('notes')} />}
-          asking={hosting ? state.waiting.length : 0} reconnecting={roomView.connection === 'reconnecting' || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
+          asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} peopleOpen={showing.includes('people')} screens={state.capture.screen.mode !== 'off'}
           swap={!phone && swap}
           view={(
             <ViewMenu mode={layout.prefs.mode} preset={presetNow(layout.prefs, layout.layout)} self={layout.prefs.self} custom={custom} layout={presetOf(panels)} people={panels.people} list={facts.ws ? panels.list : null}

@@ -25,7 +25,7 @@ export function OutsideSpace({ live, at, go, say, closed, zen, list, children }:
     else list.onToggle();
   }, [list.onToggle]);
   const goAndClose = useCallback<LiveHost['go']>((to) => { setPhoneList(false); go(to); }, [go]);
-  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, zen, ids: NO_IDS }), [live, at, goAndClose, say, closed, toggleList, zen]);
+  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, zen, ids: NO_IDS, following: null, stopFollowing: () => undefined }), [live, at, goAndClose, say, closed, toggleList, zen]);
   return (
     <LiveHostContext value={host}>
       <WsPane listOff={list.off} listPeek={list.peek} phoneList={phoneList} zen={zen?.on}>
