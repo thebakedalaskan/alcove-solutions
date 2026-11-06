@@ -6,23 +6,23 @@
  */
 import {
   FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
-  MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentRole,
-  type Group, type ItemCall, type MentionNotice, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
+  MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
+  type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
 import { sessions } from '~/lib/live';
 import { openBrowser } from '../browser';
-import { busyCalls, busyEvents, library, soonCalls } from '../world/calls';
+import { busyCalls, busyEvents, soonCalls } from '../world/calls';
 import { connected, notConnected, writeNote, type NoteSpec } from '../world/build';
 import { iso, on, setClock } from '../world/clock';
 import { clipOf, stillOf } from '../media/screens';
 import { CREDITS, PREFS, WELCOME_CREDITS, session, type BoardSpec, type Kept, type Opening, type Page, type Refused, type Space, type World } from '../world';
-import { FLOW, RETRO } from '../world/boards';
+import { FLOW, RETRO, roomBoard } from '../world/boards';
 import {
   COMPETITORS, EMPTY_STATES, EXPENSES, FIRST_DRAFT, HOLIDAYS, INTERVIEWS, LAUNCH_CHECKLIST, LAUNCH_PLAN, MEDIA, OLD_ROADMAP, ONBOARDING_FIXES, PRICING_COPY,
   PRICING_DRAFT, REVIEW_CHECKLIST, REVIEW_UPLOADS, SHOWN, SIDEBAR_SHOTS, WORKED, WORKING_FROM_HOME
 } from '../world/documents';
 import { busyNotes, pricingFollowUp, pricingFollowUpWritten, standupAdditions, standupOwn, walkthrough } from '../world/notes';
-import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, teamOf, type Colleague } from '../world/people';
+import { AIKO, ANA, ART, DIEGO, DIRECTORY, INES, JONAS, KOFI, LENA, MANY, MAYA, ME_ID, NADIA, PRIYA, SAM, THEO, teamOf, type Colleague } from '../world/people';
 import { QUIET } from './empty';
 import { forgetKeptHere } from './kept';
 import { drawnPicture, forgetAudio } from './media';
@@ -60,8 +60,10 @@ const REVIEW_AT = iso(-1, 11, 0);
  * A call's home, as the API makes one when the call's workspace first opens: named after the call and the day, with the
  * call's folder at its top, whose pages open the call's note once it's over.
  */
+/** What a call's home is called: the call, and the day. */
+const homeName = (title: string, at: string): string => `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
 function home(id: string, title: string, at: string, organizer: Person, role: WorkspaceRole, people: number, noteId: string, items: WorkspaceItem[]): Space {
-  const name = `${title} · ${new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(at))}`;
+  const name = homeName(title, at);
   const hours = (Date.parse(iso(0, 16, 12)) - Date.parse(at)) / 3_600_000;
   return { id, name, role, people, createdAt: at, call: { title, at }, items: [item(name, 'folder', organizer, hours, { call: { startedAt: at, on: false, here: false, noteId } }), ...items] };
 }
@@ -98,6 +100,108 @@ function workspaces(): Space[] {
     }
   ];
 }
+/**
+ * What a demo account at the company can bring to a call: Product and Design, as the Drive has them, each item under its own
+ * ID there (`item`) and the one a call keeps.
+ */
+function library(): DocumentLibrary {
+  const doc = (workspace: string, name: string, kind: 'doc' | 'board', by: string, hoursAgo: number) =>
+    ({ id: `${workspace}.${itemId(name)}`, item: itemId(name), name, kind, by, updatedAt: new Date(Date.parse(iso(0, 16, 12)) - hoursAgo * 3_600_000).toISOString() });
+  return {
+    workspaces: [
+      {
+        id: 'ws-product', name: 'Product', documents: [
+          doc('ws-product', 'Launch retro', 'board', 'Priya', 1), doc('ws-product', 'Launch plan', 'doc', 'Priya', 2), doc('ws-product', 'Launch checklist', 'doc', 'Maya', 5),
+          doc('ws-product', 'Pricing page copy', 'doc', 'Lena', 26)
+        ]
+      },
+      { id: 'ws-design', name: 'Design', documents: [doc('ws-design', 'Onboarding flow', 'board', 'Aiko', 50)] }
+    ]
+  };
+}
+
+/* ---------- after the launch retro ---------- */
+
+/** The launch retro's note, which the whiteboards canvas ends on. */
+export const RETRO_NOTE = 'n-retro';
+const RETRO_AT = iso(0, 14, 0);
+/** The breakout rooms, each with a board of its own. */
+const RETRO_ROOMS = ['Comms', 'Staging', 'Support'] as const;
+/** A board open in the retro, as its note lists it for Art: saved in Product. */
+function onTheNote(name: string, people: readonly Person[], room: string | null, everyone = true): NoteWorkedOn {
+  return {
+    workspaceId: 'ws-product', id: itemId(name), kind: 'board', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])),
+    workspace: 'Product', room, everyone
+  };
+}
+/** A breakout room's section of the retro, written from what was said and written in it alone. */
+function retroRoom(id: string, name: string, people: readonly Person[], spec: Pick<NoteSpec, 'summary' | 'said' | 'actions'>): NoteRoom {
+  const n = writeNote({ ...spec, id: `${RETRO_NOTE}-${id}`, title: name, startedAt: RETRO_AT, minutes: 45, organizer: ART, excerpt: '' });
+  return {
+    id, name, people: people.map((p) => ({ name: p.name, person: p })), from: 12 * 60, to: 22 * 60, summary: n.summary, decisions: n.decisions, questions: n.questions, actions: n.actions,
+    chapters: n.chapters, gaps: [], transcript: (n.transcript ?? []).map((l) => ({ ...l, room: { id, name } }))
+  };
+}
+/**
+ * After the launch retro: Art's call this afternoon, with the launch retro open for everyone and a board in each of three
+ * breakout rooms. Its note has, under the summary, the board and then each room's board beside the others', and the follow-ups
+ * the notes took from its Actions frame; each room's section has the follow-ups from its own. Support's board isn't open to
+ * everyone invited, so the summary left it out, and its follow-up is one Sam said. The boards are saved in Product.
+ */
+export function afterTheRetro(w: World): void {
+  const spec: NoteSpec = {
+    id: RETRO_NOTE, title: 'Launch retro', startedAt: RETRO_AT, minutes: 45, organizer: ART, invited: [PRIYA, THEO, KOFI, MAYA, LENA, SAM],
+    excerpt: 'The launch went well, and comms and staging need owners.',
+    summary: 'The launch went well, and comms and staging need owners. Each room took one problem and came back with next steps. Three follow-ups came off the board.',
+    chapters: [['00:00', 'What went well', 'Sign-ups beat the plan.'], ['06:30', 'What could improve', 'Comms, staging and support.'], ['12:00', 'Breakout rooms', 'One problem each.'], ['24:00', 'Back together', 'Owners for each.']],
+    said: [
+      { at: '01:10', who: PRIYA, text: 'Beta sign-ups beat the plan, and support ran launch day with no queue.' },
+      { at: '06:40', who: KOFI, text: 'Staging data was two days stale on launch day. That’s how the billing bug got through.' },
+      { at: '24:30', who: ART, text: 'Every launch gets one comms owner from now on. Kofi, that’s you for the next one.' },
+      { at: '31:15', who: PRIYA, text: 'I’ll send the launch numbers to everyone on Friday.' }
+    ],
+    decisions: [{ id: 'n-retro-d1', text: 'Every launch gets one comms owner.', at: '24:30', state: 'confirmed', by: ART }],
+    actions: [
+      { id: 'n-retro-a1', text: 'Send the launch numbers to everyone', at: '31:15', owner: PRIYA, takenOn: true, due: 'Friday' },
+      { id: 'n-retro-b1', text: 'Kofi owns launch comms from now on', owner: KOFI, takenOn: true, board: true },
+      { id: 'n-retro-b2', text: 'Refresh staging every night', owner: MAYA, board: true },
+      { id: 'n-retro-b3', text: 'Write the launch runbook', owner: THEO, board: true }
+    ]
+  };
+  const rooms = [
+    retroRoom('room-comms', 'Comms', [PRIYA, THEO], {
+      summary: 'Comms went out of order because nobody owned the date. One owner for launch comms, and one shared calendar.',
+      said: [{ at: '13:20', who: PRIYA, text: 'The changelog went out after the launch post because nobody owned the date.' }],
+      actions: [{ id: 'room-comms-b1', text: 'One owner for launch comms', owner: PRIYA, board: true }, { id: 'room-comms-b2', text: 'Keep one shared launch calendar', owner: THEO, board: true }]
+    }),
+    retroRoom('room-staging', 'Staging', [KOFI, MAYA], {
+      summary: 'Staging was stale because the nightly job was off and nobody watches it. Refresh it every night, and alert when the job fails.',
+      said: [{ at: '14:05', who: MAYA, text: 'The nightly job was off for two days and nobody noticed.' }],
+      actions: [{ id: 'room-staging-b1', text: 'Refresh staging every night', owner: KOFI, board: true }, { id: 'room-staging-b2', text: 'Alert when the nightly job fails', owner: MAYA, board: true }]
+    }),
+    retroRoom('room-support', 'Support', [LENA, SAM], {
+      summary: 'Support saw the docs late, so replies were out of date. Support joins the launch review from now on.',
+      said: [
+        { at: '15:40', who: LENA, text: 'We saw the new docs the morning of the launch.' },
+        { at: '17:10', who: SAM, text: 'Support should be in the launch review from now on. I’ll ask for a seat.' }
+      ],
+      actions: [{ id: 'room-support-a1', text: 'Support joins the launch review', at: '17:10', owner: SAM, takenOn: true }]
+    })
+  ];
+  const by = [PRIYA, KOFI, THEO];
+  const note = {
+    ...writeNote(spec), rooms,
+    workedOn: [
+      onTheNote('Launch retro', by, null), onTheNote('Comms board', [PRIYA, THEO], 'room-comms'), onTheNote('Staging board', [KOFI, MAYA], 'room-staging'),
+      onTheNote('Support board', [LENA, SAM], 'room-support', false)
+    ]
+  };
+  w.notes = [note, ...w.notes].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  const product = w.workspaces.find((x) => x.id === 'ws-product');
+  if (product) product.items = [...product.items, item('Comms board', 'board', PRIYA, 3), item('Staging board', 'board', KOFI, 3), item('Support board', 'board', LENA, 3)];
+  for (const name of RETRO_ROOMS) w.boards[itemId(`${name} board`)] = roomBoard(name);
+}
+
 /** What the documents say, by their IDs. */
 function pages(): Record<string, Page> {
   const named: [string, Page][] = [
@@ -135,9 +239,11 @@ function files(): Kept[] {
 const TAGGED: MentionNotice[] = [
   { id: 'tag-kofi-fixes', workspaceId: 'ws-standup', document: itemId('Onboarding fixes'), name: 'Onboarding fixes', block: null, by: { id: KOFI.id, name: KOFI.name, email: '', ...(KOFI.portrait ? { portrait: KOFI.portrait } : {}) }, at: iso(0, 15, 40) }
 ];
-/** Who changed what during a call, as its note lists it for Art. */
-function workedOn(workspaceId: string, name: string, people: readonly Person[]): NoteWorkedOn {
-  return { workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])) };
+/** Who changed what during a call, as its note lists it for Art, in the call's home. */
+function workedOn(workspaceId: string, workspace: string, name: string, people: readonly Person[]): NoteWorkedOn {
+  return {
+    workspaceId, id: itemId(name), kind: 'document', name, by: people.flatMap((p) => (p.portrait ? [{ name: p.name, portrait: p.portrait, isMe: p.id === ART.id }] : [])), workspace, room: null, everyone: true
+  };
 }
 
 /** The launch plan reaches a designer outside the company and someone from sales; the pricing copy is closed to the workspace. */
@@ -170,8 +276,8 @@ function launchFiles(): Kept[] {
 function busy(): World {
   const notes = busyNotes();
   for (const n of notes) {
-    if (n.id === 'n2') { n.additions = standupAdditions(); n.workedOn = [workedOn('ws-standup', 'Onboarding fixes', WORKED.standup)]; }
-    if (n.id === 'n4') n.workedOn = [workedOn('ws-review', 'Sidebar screenshots', WORKED.review), workedOn('ws-review', 'Review checklist', WORKED.checklist)];
+    if (n.id === 'n2') { n.additions = standupAdditions(); n.workedOn = [workedOn('ws-standup', homeName('Team standup', STANDUP_AT), 'Onboarding fixes', WORKED.standup)]; }
+    if (n.id === 'n4') n.workedOn = [workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Sidebar screenshots', WORKED.review), workedOn('ws-review', homeName('Design review', REVIEW_AT), 'Review checklist', WORKED.checklist)];
   }
   return {
     session: session(), prefs: { ...PREFS, pinned: ['n4', 'n6'], groups: GROUPS }, team: teamOf(DIRECTORY), notes, personal: { n2: standupOwn() },

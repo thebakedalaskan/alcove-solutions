@@ -95,8 +95,9 @@ const PLACED = new Set<string>(PLACE_FIELDS);
 
 /**
  * Writes an object from plain values, under its id, with its place. It's the one place an object's Y.Map is made: everything
- * that adds one comes through here, and so does undo bringing one back, so the two can't drift apart. A cell is only written
- * if it has words, as cells are made on their first write. A line has no place, so its `f` goes in its map.
+ * that adds one comes through here, and so does undo bringing one back, so the two can't drift apart. A table's cells are
+ * made with it, one for every row and column, empty or with its words, so nobody's typing ever makes one. A line has no place,
+ * so its `f` goes in its map.
  */
 export function put({ objects, places }: Board, id: string, fields: Record<string, unknown>): void {
   const m = new Y.Map<unknown>();
@@ -107,7 +108,13 @@ export function put({ objects, places }: Board, id: string, fields: Record<strin
   }
   if (fields['k'] === 'table') {
     const cells = new Y.Map<Y.Text>();
-    for (const [key, text] of Object.entries(recordOf(fields['cells']))) if (typeof text === 'string' && text) cells.set(key, new Y.Text(text));
+    const worded = new Set<string>();
+    for (const [key, text] of Object.entries(recordOf(fields['cells']))) {
+      if (typeof text !== 'string' || !text) continue;
+      cells.set(key, new Y.Text(text));
+      worded.add(key);
+    }
+    for (const row of plainLines(fields['rows'])) for (const col of plainLines(fields['cols'])) if (!worded.has(cellKey(row, col))) cells.set(cellKey(row, col), new Y.Text());
     m.set('rows', arrayOf(fields['rows']));
     m.set('cols', arrayOf(fields['cols']));
     m.set('cells', cells);
@@ -228,7 +235,7 @@ export function sitsIn(o: NewObject | BoardObject, f: Box): boolean {
 }
 
 /** The innermost frame something sits in, leaving out any it can't be in. */
-function frameFor(o: NewObject | BoardObject, frames: readonly FrameObject[], ruledOut: ReadonlySet<string> = new Set()): string {
+export function frameFor(o: NewObject | BoardObject, frames: readonly FrameObject[], ruledOut: ReadonlySet<string> = new Set()): string {
   return frames.findLast((f) => !ruledOut.has(f.id) && sitsIn(o, f))?.id ?? '';
 }
 
@@ -595,11 +602,15 @@ export function resolveThread(doc: Y.Doc, thread: string, resolved: boolean, ori
   if (found && (found.get('resolved') === true) !== resolved) doc.transact(() => found.set('resolved', resolved), origin);
 }
 
-function tableOf(objects: Y.Map<unknown>, id: string): { rows: Y.Array<unknown>; cols: Y.Array<unknown>; cells: Y.Map<unknown> } | null {
-  const m = mapOf(objects.get(id));
+/** A table's rows, columns and cells as they're stored. */
+interface Table { rows: Y.Array<unknown>; cols: Y.Array<unknown>; cells: Y.Map<unknown> }
+
+/** The table under a Y.Map, or null if it isn't one. */
+export function tableIn(m: Y.Map<unknown> | null): Table | null {
   const rows = m?.get('rows'), cols = m?.get('cols'), cells = mapOf(m?.get('cells'));
   return m?.get('k') === 'table' && rows instanceof Y.Array && cols instanceof Y.Array && cells ? { rows, cols, cells } : null;
 }
+const tableOf = (objects: Y.Map<unknown>, id: string): Table | null => tableIn(mapOf(objects.get(id)));
 
 /** Whether a cell's key is in this row or column. */
 export const inLine = (key: string, axis: TableAxis, line: string): boolean => (axis === 'rows' ? key.startsWith(`${line}:`) : key.endsWith(`:${line}`));
@@ -611,13 +622,43 @@ function lineIds(lines: Y.Array<unknown>): (string | null)[] {
   });
 }
 
-/** Adds a row or column at `index` and returns its id, or null past `TABLE_MAX`. Its cells come to be as they're written. */
+/** The rows or columns a table is read with, by their IDs: each once, the first `TABLE_MAX`, as `readBoard` reads them. */
+const readLines = (ids: readonly (string | null)[]): string[] => [...new Set(ids.flatMap((id) => (id === null ? [] : [id])))].slice(0, TABLE_MAX);
+const linesRead = (lines: Y.Array<unknown>): string[] => readLines(lineIds(lines));
+/** The same, from rows or columns as plain values. */
+function plainLines(value: unknown): string[] {
+  return readLines(listOf(value).map((line) => {
+    const parsed = TableLineSchema.safeParse(line);
+    return parsed.success ? parsed.data.id : null;
+  }));
+}
+
+/**
+ * Makes an empty text for every cell a table is missing, so whoever types in a cell types in the one everyone has. A table has
+ * every cell from the start, and a row or column brings its own, so the only ones missing are in a table from before cells
+ * were made with their rows and columns, or where two people added a row and a column at the same moment, neither knowing of
+ * the other's: the cell where they cross. A key holding something that isn't text is left as it is.
+ */
+export function fillCells({ rows, cols, cells }: Table): void {
+  for (const row of linesRead(rows)) {
+    for (const col of linesRead(cols)) {
+      const key = cellKey(row, col);
+      if (!cells.has(key)) cells.set(key, new Y.Text());
+    }
+  }
+}
+
+/** Adds a row or column at `index`, with its cells, and returns its id, or null past `TABLE_MAX`. */
 export function addTableLine(doc: Y.Doc, id: string, axis: TableAxis, index: number, size: number, origin: unknown): string | null {
   return writing<string | null>(doc, origin, null, ({ objects }) => {
     const table = tableOf(objects, id);
     if (!table || table[axis].length >= TABLE_MAX || !Number.isFinite(size) || !Number.isFinite(index)) return null;
     const line = newId();
     table[axis].insert(between(0, table[axis].length, Math.round(index)), [{ id: line, size: side(size) }]);
+    for (const other of linesRead(axis === 'rows' ? table.cols : table.rows)) {
+      const key = axis === 'rows' ? cellKey(line, other) : cellKey(other, line);
+      if (!table.cells.has(key)) table.cells.set(key, new Y.Text());
+    }
     return line;
   });
 }
@@ -648,18 +689,17 @@ export function sizeTableLine(doc: Y.Doc, id: string, axis: TableAxis, line: str
 }
 
 /**
- * A cell's Y.Text to type in, made on its first write. Two people making one cell at the same moment is the cost of
- * cells being sparse: a Y.Map key has one winner, so one person's words in that cell are lost. Once it exists, words merge.
+ * A cell's Y.Text to type in: the one made with its row and column, which everyone has, so two people typing in it at once
+ * both keep their words. A cell a table is missing (`fillCells`) is made now, with the rest it's missing.
  */
 export function tableCell(doc: Y.Doc, id: string, row: string, col: string, origin: unknown): Y.Text | null {
   return writing<Y.Text | null>(doc, origin, null, ({ objects }) => {
     const table = tableOf(objects, id);
     if (!table || !lineIds(table.rows).includes(row) || !lineIds(table.cols).includes(col)) return null;
     const key = cellKey(row, col);
+    if (!table.cells.has(key)) fillCells(table);
+    if (!table.cells.has(key)) table.cells.set(key, new Y.Text());
     const cell = table.cells.get(key);
-    if (cell instanceof Y.Text) return cell;
-    const made = new Y.Text();
-    table.cells.set(key, made);
-    return made;
+    return cell instanceof Y.Text ? cell : null;
   });
 }

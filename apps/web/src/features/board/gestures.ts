@@ -15,7 +15,7 @@ import type { SheetPoint } from './camera';
 import { STICKY } from './editing';
 import { keyDown, keyUp } from './keys';
 import { dragTo, stretchTo } from './overlay';
-import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, boxBetween, carried, drawn, movable, picks, pressed, snapTargets, snapTo } from './selection';
+import { CLICK_SLOP, NO_GUIDES, OVER_THE_SHEET, TAP_SLOP, boxBetween, carried, drawn, movable, picks, pressed, slopOf, snapTargets, snapTo } from './selection';
 import { framePress, settleFrame } from './tools/frame';
 import { dotPress, hoverAt, linePress } from './tools/line';
 import { penPress } from './tools/pen';
@@ -65,6 +65,8 @@ const LEAST_SIDE = 60;
 const SNAP_REACH = 6;
 const WHEEL_ZOOM = 0.004;
 const LINE_HEIGHT = 16;
+/** How far Safari's pinch scales before it's a pinch, and not two fingers resting. */
+const PINCH_SLOP = 0.03;
 
 /** The id under a press. A frame's body is for drawing a marquee in and catching stickies, so only its title picks it. */
 function pressedId(board: Board, target: Element): string | null {
@@ -73,7 +75,7 @@ function pressedId(board: Board, target: Element): string | null {
   return o?.k === 'frame' && !target.closest('.bf-h') ? null : id;
 }
 
-function panGesture(board: Board, press: SheetPoint): Gesture {
+function panGesture(board: Board, press: SheetPoint, slop: number = CLICK_SLOP): Gesture {
   let last = press;
   let taken = false;
   board.set({ panning: true });
@@ -82,7 +84,7 @@ function panGesture(board: Board, press: SheetPoint): Gesture {
     move(at) {
       if (!taken) {
         // A tap isn't looking around, and on a board that can't be edited every press lands here. So the camera is taken by the drag, not the press.
-        if (Math.abs(at.sx - last.sx) + Math.abs(at.sy - last.sy) < CLICK_SLOP) return;
+        if (Math.abs(at.sx - last.sx) + Math.abs(at.sy - last.sy) < slop) return;
         // Whoever is being followed has gone on moving it since the press, so the drag starts from here. Otherwise what was pressed stays under the pointer.
         if (board.getSnapshot().following) last = at;
         board.takeCamera();
@@ -111,7 +113,7 @@ function marqueeGesture(board: Board, start: SheetPoint): Gesture {
   };
 }
 
-function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean): Gesture {
+function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean, slop: number = CLICK_SLOP): Gesture {
   board.select(pressed(board.getSnapshot().sel, id, shift));
   const { view, near, sel } = board.getSnapshot();
   const objects = movable(view, sel);
@@ -129,7 +131,7 @@ function moveGesture(board: Board, start: SheetPoint, id: string, shift: boolean
     move(at) {
       const { z } = board.camera.getSnapshot();
       const mx = at.x - start.x, my = at.y - start.y;
-      if (!objects.length || (!moved && Math.abs(mx) + Math.abs(my) < CLICK_SLOP / z)) return;
+      if (!objects.length || (!moved && Math.abs(mx) + Math.abs(my) < slop / z)) return;
       if (!moved) board.beginStep();
       moved = true;
       const { dx, dy, guides } = snapTo({ ...box, x: box.x + mx, y: box.y + my }, targets, SNAP_REACH / z);
@@ -166,10 +168,32 @@ function sizeGesture(board: Board, start: SheetPoint, o: PlacedObject, corner: s
   };
 }
 
+/** On a phone, a tap on a sticky in a vote is a vote, or takes one back; a drag from it looks round the board, as from anywhere. */
+function tapToVote(board: Board, start: SheetPoint, id: string): Gesture {
+  const pan = panGesture(board, start);
+  let moved = false;
+  return {
+    move(at, e) {
+      if (Math.hypot(at.sx - start.sx, at.sy - start.sy) > TAP_SLOP) moved = true;
+      pan.move(at, e);
+    },
+    up(at, e) {
+      pan.up(at, e);
+      if (!moved) board.ballot?.press(id);
+    },
+    cancel: () => pan.cancel()
+  };
+}
+
 /** Works out what a press means, in the order the canvas does. */
 function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): Gesture | null {
   const { sel, tool, space, view, hover } = board.getSnapshot();
-  if (e.button === 1 || space || !board.canEdit) return panGesture(board, at);
+  if (!board.canEdit && board.look.phone) {
+    const id = pressedId(board, target);
+    if (id && board.ballot?.takes(id)) return tapToVote(board, at, id);
+  }
+  // A camera that's the board's to put, as a presenter's own frame is, doesn't move by hand.
+  if (e.button === 1 || space || !board.canEdit) return board.still ? null : panGesture(board, at, slopOf(e));
   const dot = target.closest('[data-p]')?.getAttribute('data-p');
   const from = sel.length === 1 ? sel[0] : hover;
   if (dot && from) return dotPress(board, at, from);
@@ -180,7 +204,12 @@ function press(board: Board, at: SheetPoint, e: PointerEvent, target: Element): 
   const id = pressedId(board, target);
   const toolPress = TOOL_PRESSES.get(tool);
   if (toolPress) return toolPress(board, { at, id, target, e });
-  return id ? moveGesture(board, at, id, e.shiftKey) : marqueeGesture(board, at);
+  // While a vote is on, a press on a sticky it takes is a vote, or takes one back, and the sticky stays where it is.
+  if (id && board.ballot?.takes(id)) {
+    board.ballot.press(id);
+    return null;
+  }
+  return id ? moveGesture(board, at, id, e.shiftKey, slopOf(e)) : marqueeGesture(board, at);
 }
 
 /** Double-click: type in what's there, or put a sticky here. It asks what's at the point, because a captured pointer makes the sheet the event's target. */
@@ -189,7 +218,16 @@ function doubleClick(board: Board, e: MouseEvent): void {
   const { tool, view } = board.getSnapshot();
   if (!board.canEdit || tool !== 'select' || !target || target.closest(`${OVER_THE_SHEET}, [data-p], [data-h]`)) return;
   const o = view.byId.get(pressedId(board, target) ?? '');
-  // A line and a stroke have nothing to type in, and "anywhere" includes on them.
+  // Two presses on a sticky in a vote are a vote and its taking back, not a way into typing.
+  if (o && board.ballot?.takes(o.id)) return;
+  // A table is typed in a cell at a time, the one pressed.
+  if (o?.k === 'table') {
+    const [row, col] = (target.closest('[data-cell]')?.getAttribute('data-cell') ?? '').split(':');
+    if (row && col) board.startCell(o.id, row, col);
+    return;
+  }
+  // A line and a stroke have nothing to type in, and "anywhere" includes on them; nor has a picture or something from the workspace.
+  if (o && (o.k === 'image' || o.k === 'shot' || o.k === 'link')) return;
   if (o && o.k !== 'line' && o.k !== 'ink') {
     board.startEdit(o.id);
     return;
@@ -213,7 +251,7 @@ function pinchGesture(board: Board, a: ClientPoint, b: ClientPoint): (a: ClientP
     const now = middle(p, q);
     if (!taken) {
       // As with a drag: two fingers landing aren't a pinch until they move, and a followed camera goes on moving until then.
-      if (Math.abs(apart(p, q) - wide) + Math.hypot(now.sx - start.sx, now.sy - start.sy) < CLICK_SLOP) return;
+      if (Math.abs(apart(p, q) - wide) + Math.hypot(now.sx - start.sx, now.sy - start.sy) < TAP_SLOP) return;
       if (board.getSnapshot().following) {
         ({ z } = camera.getSnapshot());
         wide = apart(p, q);
@@ -237,7 +275,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   let frame = 0;
   const touches = new Map<number, ClientPoint>();
   let pinch: ((a: ClientPoint, b: ClientPoint) => void) | null = null;
-  let safariPinch: { z: number; at: SheetPoint } | null = null;
+  let safariPinch: { z: number; at: SheetPoint; taken: boolean } | null = null;
 
   const flush = (): void => {
     frame = 0;
@@ -255,7 +293,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   /** Two fingers pinch from where they are now. When a third lifts, the pair left starts afresh: the old pair's spread would make the camera jump. */
   const pinchFromHere = (): void => {
     const [p, q] = touches.values();
-    pinch = p && q ? pinchGesture(board, p, q) : null;
+    pinch = p && q && !board.still ? pinchGesture(board, p, q) : null;
   };
 
   /** Takes the gesture off the pointer that's ending, so that nothing can end it twice. */
@@ -323,8 +361,10 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   }, { signal });
 
   // The press that opened a sticky mustn't then focus the sheet, which would close it again. Anything over the sheet keeps its own focus, and with it the field's closing.
+  // A press on a sticky in a vote leaves the keys with the sheet, as any press on the board does: only Tab puts them on a sticky.
   sheet.addEventListener('mousedown', (e) => {
-    if (board.getSnapshot().edit && !(e.target instanceof Element && e.target.closest(OVER_THE_SHEET))) e.preventDefault();
+    const onSheet = !(e.target instanceof Element && e.target.closest(OVER_THE_SHEET));
+    if (onSheet && (board.getSnapshot().edit || (e.target instanceof Element && e.target.closest('.bo.is-ballot')))) e.preventDefault();
   }, { signal });
 
   sheet.addEventListener('pointermove', (e) => {
@@ -352,7 +392,7 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   sheet.addEventListener('wheel', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (safariPinch) return;
+    if (safariPinch || board.still) return;
     board.takeCamera();
     const unit = e.deltaMode === 1 ? LINE_HEIGHT : e.deltaMode === 2 ? camera.height : 1;
     if (e.ctrlKey || e.metaKey) {
@@ -366,13 +406,22 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
   sheet.addEventListener('gesturestart', (e) => {
     e.preventDefault();
     const clientX: unknown = Reflect.get(e, 'clientX'), clientY: unknown = Reflect.get(e, 'clientY');
-    if (typeof clientX === 'number' && typeof clientY === 'number') safariPinch = { z: camera.getSnapshot().z, at: camera.point({ clientX, clientY }) };
+    if (typeof clientX === 'number' && typeof clientY === 'number') safariPinch = { z: camera.getSnapshot().z, at: camera.point({ clientX, clientY }), taken: false };
   }, { signal });
   sheet.addEventListener('gesturechange', (e) => {
     e.preventDefault();
     const scale: unknown = Reflect.get(e, 'scale');
-    if (!safariPinch || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
-    board.takeCamera();
+    // Two fingers on the screen are already the pointer's pinch, which keeps them under what they hold: this would fight it.
+    if (!safariPinch || pinch || board.still || typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return;
+    // As with a drag, a pinch that hasn't really begun leaves the camera where it is: following someone carries on until it does.
+    if (!safariPinch.taken) {
+      if (Math.abs(scale - 1) < PINCH_SLOP) return;
+      // From here, as the camera is now and wherever the fingers are now, so nothing jumps.
+      const clientX: unknown = Reflect.get(e, 'clientX'), clientY: unknown = Reflect.get(e, 'clientY');
+      const at = typeof clientX === 'number' && typeof clientY === 'number' ? camera.point({ clientX, clientY }) : safariPinch.at;
+      safariPinch = { at, z: camera.getSnapshot().z / scale, taken: true };
+      board.takeCamera();
+    }
     camera.set(camera.holding(safariPinch.at, safariPinch.at.sx, safariPinch.at.sy, safariPinch.z * scale));
   }, { signal });
   sheet.addEventListener('gestureend', (e) => {
@@ -380,6 +429,19 @@ export function watchSheet(board: Board, sheet: HTMLElement): () => void {
     safariPinch = null;
   }, { signal });
 
+  // A screen reader's own press on a sticky in a vote (VoiceOver's VO-Space, say) is a click with no pointer behind it: it votes, as Enter does.
+  // A pointer's press voted as it went down, so its click does nothing more.
+  sheet.addEventListener('click', (e) => {
+    const pointer: unknown = Reflect.get(e, 'pointerType');
+    if (e.detail !== 0 || (typeof pointer === 'string' && pointer !== '')) return;
+    const id = e.target instanceof HTMLElement && e.target.matches('.bo.is-ballot') ? e.target.getAttribute('data-id') : null;
+    if (id && board.ballot?.takes(id)) board.ballot.press(id);
+  }, { signal });
+  // A sticky with the keys on it in a vote gives them up as the vote ends, or as this person can no longer vote: back to the sheet, not the page.
+  sheet.addEventListener('focusout', (e) => {
+    if (e.relatedTarget !== null || !(e.target instanceof HTMLElement) || !e.target.matches('.bo') || e.target.hasAttribute('tabindex')) return;
+    queueMicrotask(() => { if (document.activeElement === null || document.activeElement === document.body) board.focusSheet(); });
+  }, { signal });
   sheet.addEventListener('dblclick', (e) => doubleClick(board, e), { signal });
   sheet.addEventListener('keydown', (e) => keyDown(board, e), { signal });
   sheet.addEventListener('keyup', (e) => keyUp(board, e), { signal });

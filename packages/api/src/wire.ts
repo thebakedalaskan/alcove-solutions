@@ -3,12 +3,12 @@
  * domain types: the app never sees them.
  */
 import { z } from './zod';
-import { BoardNewSchema, BoardSavedSchema } from './callBoards';
+import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardTimerMinutesSchema, BoardVotesEachSchema, BreakoutBoardSchema } from './callBoards';
 import { PlayMediaSchema, PlayPositionSchema, PresentKindSchema, PresentSectionSchema } from './callWorkspace';
 import { CaptureDevicePartSchema } from './capture';
 import { CallPlaceSchema } from './live';
 import { CatchUpRangeSchema } from './catchup';
-import { CaptionLanguageSchema, ISODateSchema, RsvpSchema, isTimeZone } from './types';
+import { CaptionLanguageSchema, IDSchema, ISODateSchema, RsvpSchema, isTimeZone } from './types';
 import { RingReplySchema } from './rings';
 import { DocumentRoleSchema, ItemIdSchema } from './workspaces';
 /**
@@ -87,7 +87,9 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('rooms-open'),
     rooms: z.array(z.object({ name: z.string().trim().min(1).max(40), emails: z.array(z.string().trim().toLowerCase().max(254)).max(50) })).min(2).max(8),
-    minutes: z.number().int().min(1).max(60)
+    minutes: z.number().int().min(1).max(60),
+    /** What the rooms have to work on: the panel's Board row. */
+    board: BreakoutBoardSchema
   }),
   z.object({ type: z.literal('rooms-close') }),
   z.object({ type: z.literal('rooms-message'), text: z.string().trim().min(1).max(300) }),
@@ -131,10 +133,37 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('play-seek'), positionMs: PlayPositionSchema }),
   z.object({ type: z.literal('play-stop') }),
   /** Whoever opened the board open here, or the organizer: it closes for everyone there, and nothing is deleted. */
-  z.object({ type: z.literal('board-close') })
+  z.object({ type: z.literal('board-close') }),
+  /** Anyone in the part of the call the ideas are from: they were added to the board, or put aside, so they go for everyone there. */
+  z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) }),
+  /**
+   * The timer on the board open here, the same for everyone there: 3, 5 or 10 minutes from now, from anyone who can edit the
+   * board. While one is still running, only whoever started it or the organizer can start it over. Null stops it, which is for
+   * them too.
+   */
+  z.object({ type: z.literal('board-timer'), minutes: BoardTimerMinutesSchema.nullable() })
 ]);
-/** Anyone invited opens a board for the part of the call they're in, a new one or a saved one. Two shapes of one action, so they sit beside the union that tells actions apart by `type`. */
-export const CallActionSchema = z.union([CallStepSchema, BoardNewSchema.extend({ type: z.literal('board-open') }), BoardSavedSchema.extend({ type: z.literal('board-open') })]);
+/**
+ * A vote on the board open here, a step at a time. Starting one, and voting, are for anyone who can edit the board; ending it
+ * and clearing it after are for whoever started it, or the organizer.
+ */
+const BoardVoteStepSchema = z.discriminatedUnion('step', [
+  /** On a frame, or with no frame on every sticky on the board, with 3, 5 or 10 votes each. Never on top of another. */
+  z.object({ type: z.literal('board-vote'), step: z.literal('start'), frame: BoardObjectIdSchema.nullable(), per: BoardVotesEachSchema }),
+  /** A vote for a sticky it's on, while it's on: one a sticky, up to your votes each. Only you are told. */
+  z.object({ type: z.literal('board-vote'), step: z.literal('cast'), sticky: BoardObjectIdSchema }),
+  /** Your vote for that sticky taken back, while it's on. */
+  z.object({ type: z.literal('board-vote'), step: z.literal('take-back'), sticky: BoardObjectIdSchema }),
+  /** Everyone is told every count at once. */
+  z.object({ type: z.literal('board-vote'), step: z.literal('end') }),
+  /** Once it's ended: the results go, for everyone. */
+  z.object({ type: z.literal('board-vote'), step: z.literal('done') })
+]);
+/**
+ * Anyone invited opens a board for the part of the call they're in, a new one or a saved one. Two shapes of one action, and a
+ * vote's steps, so they sit beside the union that tells actions apart by `type`.
+ */
+export const CallActionSchema = z.union([CallStepSchema, BoardNewSchema.extend({ type: z.literal('board-open') }), BoardSavedSchema.extend({ type: z.literal('board-open') }), BoardVoteStepSchema]);
 export type CallAction = z.infer<typeof CallActionSchema>;
 
 /*
@@ -155,6 +184,8 @@ export const CallJoinBodySchema = z.object({
 });
 /** What watching the live notes did: true when this look refreshed them, so a browser reads the call again straight away. */
 export const NotesWatchedSchema = z.object({ refreshed: z.boolean() });
+/** What looking for ideas from the call did: true when this look found some, so a browser reads the call again straight away. */
+export const IdeasWatchedSchema = z.object({ found: z.boolean() });
 /** The host's browser, adding people to one part of the call's group and taking people out of it: the commit, the welcome for anyone added, and who that was. */
 export const CallCommitBodySchema = z.object({
   generation: z.number().int().nonnegative(),

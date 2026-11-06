@@ -56,3 +56,14 @@ export const ShareMarkMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('clear'), share: ShareIdSchema, seq: SeqSchema })
 ]);
 export type ShareMarkMessage = z.infer<typeof ShareMarkMessageSchema>;
+
+/**
+ * A picture of someone's share put on the board (`Put on the board`), told to whoever's screen it is, so nobody's screen goes
+ * on a board without them knowing. It travels as marks do, on its own topic, sealed with the sender's media key, and says
+ * which share by its picture's track ID and nothing else: the picture itself is on the board, sealed like the rest of it.
+ */
+export const BOARD_SHOT_TOPIC = 'board-shot/1' as const;
+/** The largest such message a browser reads, and how many a sender can say in a burst and then each second. */
+export const BOARD_SHOT_LIMITS = { bytes: 256, burst: 4, perSecond: 1 } as const;
+export const BoardShotMessageSchema = z.object({ share: ShareIdSchema });
+export type BoardShotMessage = z.infer<typeof BoardShotMessageSchema>;

@@ -1,6 +1,7 @@
 /*
- * BoardNoAccess: in the board's place, for someone in the call it wasn't opened to. It says who brought it and nothing about
- * what's on it, not even its name, and offers to ask them for access while they're in the call. At night, as the call is.
+ * BoardNoAccess: in the board's place, for someone in the call it wasn't opened to. It says who brought it, to ask them to
+ * let you in, and nothing about what's on it, not even its name, and offers to ask them for access while they're in the call.
+ * At night, as the call is.
  */
 import { BoardNoAccess } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -24,5 +25,5 @@ type Story = StoryObj<typeof meta>;
 export const InTheCall: Story = { name: 'In the call' };
 /** On a phone, in the space between the faces and the dock. */
 export const OnAPhone: Story = { name: 'On a phone', globals: { viewport: { value: 'phone', isRotated: false } } };
-/** Whoever brought it has left the call: it says where it's from, with nobody to ask. */
+/** Whoever brought it has left the call: it says to ask whoever brought it, with nobody here to ask. */
 export const TheyveLeft: Story = { name: 'They’ve left', args: { who: null } };

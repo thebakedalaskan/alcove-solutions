@@ -252,11 +252,13 @@ const whole = (r: Box): Box => { const x = Math.round(r.x); const y = Math.round
 function solvePhone(a: CallPanels, size: Size, f: PanelFacts, A: Adapted): Solved {
   const box: Box = { x: 0, y: 0, w: size.w, h: size.h };
   const rects: Solved['rects'] = {};
-  // With the workspace or the board open the people are a row of arches over one thing at a time.
-  const top = A.apart ? (A.tabs ? 116 : 78) : 0;
+  // With the workspace or the board open the people are a row of arches over one thing at a time, under the status bar while
+  // it says anything (`f.top`), as a wider screen's panels are.
+  const bar = A.apart ? f.top : 0;
+  const top = A.apart ? bar + (A.tabs ? 116 : 78) : 0;
   const body: Box = { x: 0, y: top, w: size.w, h: Math.max(0, size.h - top) };
   if (A.apart) {
-    rects.people = { x: 8, y: 4, w: size.w - 16, h: 64 };
+    rects.people = { x: 8, y: bar + 4, w: size.w - 16, h: 64 };
     for (const id of mains(f)) if (!A.tabs || id === A.front) rects[id] = body;
   } else {
     rects.stage = box;

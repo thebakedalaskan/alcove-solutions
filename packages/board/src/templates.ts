@@ -8,8 +8,8 @@
  */
 import type * as Y from 'yjs';
 import { sides } from './routes';
-import { hasBox, idFrom, type NewObject, type ShapeKind, type StickyColour } from './shape';
-import { insert, stack, viewOf, writing } from './write';
+import { hasBox, idFrom, newId, type NewObject, type ShapeKind, type StickyColour } from './shape';
+import { clearSpot, insert, stack, viewOf, writing } from './write';
 
 export const TEMPLATES = ['blank', 'retro', 'ideas', 'flow', 'what-why-next'] as const;
 export type TemplateName = (typeof TEMPLATES)[number];
@@ -79,5 +79,25 @@ export function fillTemplate(doc: Y.Doc, name: TemplateName, origin: unknown, se
       const [start, end] = sides(a, b);
       insert(board, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: id(pieces.length + index), at: at('line'), f: '' });
     });
+  });
+}
+
+/**
+ * Puts a template on a board that has things on it already, from More: beside everything, where `clearSpot` says new work
+ * goes, with ids of its own, as a browser's change that its undo takes back. Returns what it put there, frames first.
+ */
+export function addTemplate(doc: Y.Doc, name: TemplateName, origin: unknown): string[] {
+  return writing<string[]>(doc, origin, [], (board) => {
+    const { objects: pieces, links } = BOARDS[name];
+    const view = viewOf(doc);
+    const spot = clearSpot(view), at = stack(view);
+    const made = pieces.map((piece) => insert(board, { ...piece, x: piece.x + spot.x, y: piece.y + spot.y, id: newId(), at: at(piece.k), f: '' }));
+    for (const [from, to] of links) {
+      const a = made[from], b = made[to];
+      if (!a || !b || !hasBox(a) || !hasBox(b)) continue;
+      const [start, end] = sides(a, b);
+      insert(board, { k: 'line', style: 'elbow', from: { on: a.id, side: start }, to: { on: b.id, side: end }, id: newId(), at: at('line'), f: '' });
+    }
+    return made.flatMap((o) => (o ? [o.id] : []));
   });
 }

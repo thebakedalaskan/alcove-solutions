@@ -1,5 +1,5 @@
 import { z } from './zod';
-import { CallBoardSchema, type BoardCheck, type BoardOpen } from './callBoards';
+import { BreakoutBoardModeSchema, CallBoardSchema, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard } from './callBoards';
 import { CallWorkspaceSchema, type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './callWorkspace';
 import { CaptureStateSchema, type CaptureDevicePart } from './capture';
 import { LiveNotesSchema, type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
@@ -231,8 +231,13 @@ export type BreakoutRoom = z.infer<typeof BreakoutRoomSchema>;
 export const BreakoutsSchema = z.object({
   /** Rooms that are open now, or null. Times are seconds since the call started. */
   open: z.object({
-    /** Each room open now, and whether the organizer has paused notes in it (CaptureState.room says what that holds). */
-    rooms: z.array(BreakoutRoomSchema.extend({ paused: z.boolean() })),
+    /**
+     * Each room open now, whether the organizer has paused notes in it (CaptureState.room says what that holds), and whether
+     * it has a board of its own open: what's on it is for the people in it, so nobody else is told more than that.
+     */
+    rooms: z.array(BreakoutRoomSchema.extend({ paused: z.boolean(), board: z.boolean() })),
+    /** What the rooms were opened with to work on (`BreakoutBoard`): nothing, a board each, or the main board, shared. */
+    board: BreakoutBoardModeSchema,
     from: z.number(),
     /** Everyone comes back at this time, unless the organizer brings them back sooner. */
     until: z.number(),
@@ -457,8 +462,8 @@ export type CaptionTranslation = z.infer<typeof CaptionTranslationSchema>;
 /** A line of a call's recording, to hear: its audio, whole pieces of the recording around it, and where in that the line is (seconds). */
 export interface LineAudio { audio: Blob; from: number; seconds: number }
 
-/** Rooms to open: who goes where (invited people, by email), and for how long. */
-export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number }
+/** Rooms to open: who goes where (invited people, by email), for how long, and what they have to work on. */
+export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; minutes: number; board: BreakoutBoard }
 
 export interface CallSession extends LiveStore<CallState> {
   /** Who you are in the call, and this person's pass for the call's requests. */
@@ -626,14 +631,43 @@ export interface CallSession extends LiveStore<CallState> {
   stopPlaying(): Promise<void>;
   /**
    * Anyone invited, not a guest: opens a board for everyone in the part of the call they're in, in place of whatever's open
-   * there. A new one is saved in the call's workspace, named after the call; a saved one needs `edit` on it. Resolves once
-   * it's open, with `board` up to date.
+   * there. A new one is saved in the call's home, named after the call; a saved one, from whichever workspace it's in, needs
+   * `edit` on it. Resolves once it's open, with `board` up to date.
    */
   openBoard(from: BoardOpen): Promise<void>;
   /** Whoever opened it, or the organizer: closes it for everyone. Nothing is deleted, and nobody loses what the call gave them. */
   closeBoard(): Promise<void>;
   /** What opening a saved board would mean: who here can't open it, and whether you may let them in. For someone who could bring it. Changes nothing. */
-  boardCheck(documentId: string): Promise<BoardCheck>;
+  boardCheck(workspaceId: string, documentId: string): Promise<BoardCheck>;
+  /**
+   * Says this browser has the board open, until the function it returns is called. While anything here does, and notes are
+   * on, what was said in the part of the call it's in is looked at for ideas worth putting on the board: at most once a
+   * minute, in one run however many browsers are looking. The ideas arrive with the call (`CallState.board.ideas`).
+   */
+  watchIdeas(): () => void;
+  /** Ideas from the call that were added to the board, or put aside: they go for everyone in that part of the call. */
+  ideasDone(ids: string[]): Promise<void>;
+  /**
+   * Anyone who can edit the board open here: a timer everyone there sees count down, of 3, 5 or 10 minutes from now. While
+   * one is still running, starting another starts it over, and is only for whoever started it or the organizer, or while
+   * neither of them is in the call, anyone who can edit the board.
+   */
+  startTimer(minutes: BoardTimerMinutes): Promise<void>;
+  /** Whoever started it, or the organizer, or while neither is in the call anyone who can edit the board: it goes for everyone. */
+  stopTimer(): Promise<void>;
+  /**
+   * Anyone who can edit the board open here: a vote on one of its frames, or on every sticky on it with no frame, with `per`
+   * votes each. Nobody is told a count until it ends. Never on top of another, nor of one whose results haven't been cleared.
+   */
+  startVote(frame: string | null, per: BoardVotesEach): Promise<void>;
+  /** Anyone who can edit the board, while the vote is on: a vote for a sticky it's on, one a sticky, up to `per`. Only you are told. */
+  castVote(sticky: string): Promise<void>;
+  /** Takes your vote for a sticky back, while the vote is on. */
+  takeBackVote(sticky: string): Promise<void>;
+  /** Whoever started it, or the organizer, or while neither is in the call anyone who can edit the board: it ends, and everyone is told every count at once. */
+  endVote(): Promise<void>;
+  /** The same people, once it's ended: the results go, for everyone. */
+  clearVote(): Promise<void>;
   /** The call's follow-ups as you may read them, kept up to date while something here says it's showing them (`watchFollowUps`). */
   readonly followUps: LiveStore<CallFollowUps | null>;
   /** Says this browser is showing the follow-ups, until the function it returns is called. */

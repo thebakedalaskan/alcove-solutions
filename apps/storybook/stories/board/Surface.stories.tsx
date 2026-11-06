@@ -5,8 +5,9 @@
  * here is the design canvas's, written through the board package's own writes: a new board from each template, the launch retro
  * a few minutes in, the ideas before and after sorting, the onboarding flow and what three breakout rooms brought back.
  *
- * Everything on it works: double-click to add a sticky, drag, draw, undo. The bar's menus and Start a call here belong to
- * what's round the board, so here they say they were pressed in the Actions panel.
+ * Everything on it works: double-click to add a sticky, drag, draw, undo, and the board's own More (a table, a mind map, a
+ * template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From your workspace and Start a call
+ * here belong to what's round the board, so here they say they were pressed in the Actions panel.
  */
 import { BoardPhoneAdd, BoardPill, BoardTile } from '@alcove/ui';
 import type { Meta } from '@storybook/react-vite';

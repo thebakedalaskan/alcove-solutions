@@ -5,7 +5,7 @@
  *
  *   export const Busy: BoardStory = { args: { board: () => launchRetro(), mode: 'call', others: AROUND, talking: ['priya'] } };
  */
-import type { BoardReply, BoardTheme } from '@alcove/board';
+import { setNight, type BoardReply, type BoardTheme } from '@alcove/board';
 import { useTheme, useToast, wsToast, type IconName } from '@alcove/ui';
 import type { Decorator, StoryObj } from '@storybook/react-vite';
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
@@ -14,6 +14,7 @@ import * as Y from 'yjs';
 import { BoardSurface, type BoardHandle, type BoardPerson } from '~/features/board/BoardSurface';
 import type { BoardCommenting } from '~/features/board/comments';
 import { BOARD_LOOKS, type BoardMode } from '~/features/board/state';
+import type { BoardRun } from '~/features/board/tools/run';
 import './board.css';
 import { did } from './component';
 import { FOLK, themesFor, type FolkId, type Presence } from './world/boards';
@@ -67,8 +68,9 @@ export interface BoardSceneProps {
   talking?: readonly FolkId[] | undefined;
   /** Follows someone as soon as the board is open. */
   follow?: FolkId | undefined;
-  /** Fills the sheet with this frame, by the canvas's name for it, as presenting or a phone's room does. */
+  /** Fills the sheet with this frame, by the canvas's name for it, as a phone's room does; presenting, it's the frame presented. */
   focus?: string | undefined;
+  /** Night board, the board's own setting, on: it's written on the board before the surface reads it, as it would have been saved. */
   night?: boolean | undefined;
   /** Rises through the arch, as a board that has just opened. */
   fresh?: boolean | undefined;
@@ -84,13 +86,27 @@ const NOBODY: readonly Presence[] = [];
 /** How long Sort into themes takes to answer here: long enough to see it waiting. */
 const THINKING_MS = 900;
 const asked = did('sort into themes');
-/** The rail's More and the bar's, each saying it was pressed. */
-const MORE = { image: did('image'), workspace: did('from your workspace'), table: did('table'), mindMap: did('mind map'), templates: did('templates') };
-const BAR_MORE = { link: did('copy link'), image: did('download as an image'), pdf: did('download as a PDF'), night: did('night board') };
+/**
+ * What More beside the rail does where the world round the board would: Image and From your workspace, each saying it was
+ * pressed. Table, Mind map, Templates and the bar's More (Copy link, the downloads, Night board) are the board's own, and work.
+ */
+const MORE = { image: did('image'), workspace: did('from your workspace') };
+/** The board's own link, which Copy link copies. */
+const LINK = 'https://alcove.example/drive/ws-design/launch-retro';
+/** What a call runs on its board, for a board story in a call: nothing yet, and Timer and Vote open their menus, which say what was asked. */
+const said = (name: string) => (...args: unknown[]): Promise<void> => { did(name)(...args); return Promise.resolve(); };
+const RUN: BoardRun = {
+  timer: null, vote: null, startTimer: said('start timer'), stopTimer: said('stop timer'), startVote: said('start vote'), castVote: said('vote'),
+  takeBackVote: said('take back a vote'), endVote: said('end the vote'), clearVote: said('clear the vote')
+};
 
 /** The real surface on a story's board. Everything outside the board (the bar's menus, Start a call here) says it was pressed. */
 export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon, acts, others = NOBODY, talking, follow, focus, night, fresh, me = 'art', sort = themesFor, children }: BoardSceneProps) {
-  const made = useMemo(board, [board]);
+  const made = useMemo(() => {
+    const m = board();
+    if (night) setNight(m.doc, true, 'story');
+    return m;
+  }, [board, night]);
   const awareness = useMemo(() => new Awareness(made.doc), [made]);
   const handle = useRef<BoardHandle>(null);
   const { resolved } = useTheme();
@@ -119,18 +135,18 @@ export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon,
     const start = setTimeout(() => handle.current?.follow(follow), 50);
     return () => clearTimeout(start);
   }, [follow]);
+  const focused = focus ? made.ids?.get(focus) ?? null : null;
   useEffect(() => {
-    const frame = focus ? made.ids?.get(focus) : undefined;
-    if (frame) handle.current?.focusFrame(frame);
-  }, [focus, made]);
+    if (focused && mode !== 'present') handle.current?.focusFrame(focused);
+  }, [focused, mode]);
   return (
-    <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
-      people={people} comments={comments} talking={speaking} theme={resolved} night={night} fresh={fresh}
-      onName={did('name')} onSeal={did('seal')} onTimer={did('timer')} onVote={did('vote')} onPresent={did('present')}
-      barMore={BAR_MORE} onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')}
+    <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} slide={mode === 'present' ? focused : undefined} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
+      people={people} comments={comments} talking={speaking} theme={resolved} fresh={fresh}
+      onName={did('name')} onSeal={did('seal')} run={mode === 'call' || mode === 'phone' ? RUN : undefined} onPresent={did('present')}
+      link={LINK} onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')}
       onSort={(stickies) => {
         asked(stickies);
-        return new Promise<readonly BoardTheme[]>((answer) => { setTimeout(() => answer(sort(made.doc, stickies)), THINKING_MS); });
+        return new Promise<readonly BoardTheme[]>((answer) => { setTimeout(() => answer(sort(made.doc, stickies.map((s) => s.id))), THINKING_MS); });
       }} moreItems={MORE}>
       {children}
     </BoardSurface>

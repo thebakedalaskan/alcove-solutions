@@ -8,7 +8,11 @@
  * Times are seconds: in the call, from the moment you joined it (asking to join included); at the door, from when the
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
-import { RING_SECONDS, type CallCard, type CallPage, type CaptureMode, type CapturePart, type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply } from '@alcove/api';
+import {
+  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallPage, type CaptureMode, type CapturePart,
+  type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
+} from '@alcove/api';
+import type * as Y from 'yjs';
 import type { Screen } from '../media/screens';
 import type { World } from '../world';
 import { current, me } from './state';
@@ -37,8 +41,19 @@ export interface Present {
   sharing?: Screen | undefined;
 }
 
-/** A breakout room the organizer opens: its name and who goes to it (you included, as `me`). */
-export interface RoomPlan { name: string; people: readonly (Person | 'me')[] }
+/** A sticky someone in the call puts on a board: on the frame with this title. */
+export interface BoardWork { who: Person; frame: string; text: string }
+/**
+ * Something the call heard that's worth a sticky, as ideas from the call offer it: who `said` it, so many seconds `ago`, the
+ * sticky's words, and the frame it fits, by its title.
+ */
+export interface HeardIdea { who: Person; said: string; text: string; frame?: string | undefined; ago?: number | undefined }
+
+/**
+ * A breakout room the organizer opens: its name, who goes to it (you included, as `me`), and what the people in it put on its
+ * board, a sticky every few seconds, when it has one.
+ */
+export interface RoomPlan { name: string; people: readonly (Person | 'me')[]; work?: readonly string[] | undefined }
 
 /** One thing that happens. */
 export type Beat =
@@ -56,8 +71,8 @@ export type Beat =
   /** The organizer, when it isn't you: notes on, off or paused, or not now to your ask. */
   | { do: 'notes'; mode: 'on' | 'off' | 'paused' }
   | { do: 'not-now' }
-  /** The organizer, when it isn't you: rooms open, with a message to every room, and everyone back. */
-  | { do: 'rooms'; rooms: readonly RoomPlan[]; minutes: number }
+  /** The organizer, when it isn't you: rooms open (with a board each, or one they share), with a message to every room, and everyone back. */
+  | { do: 'rooms'; rooms: readonly RoomPlan[]; minutes: number; board?: BreakoutBoard | undefined }
   | { do: 'message-rooms'; text: string }
   | { do: 'close-rooms' }
   /** Whoever hosts: lets you in from asking, turns you away, mutes your microphone, removes you, ends the call. */
@@ -77,8 +92,11 @@ export type Beat =
    * call's own pages (`page`), which only the people in the call are told.
    */
   | { do: 'goes-to'; who: Person; document: string | null; typing?: boolean | undefined; page?: CallPage | undefined }
-  /** Someone presents a document in the call's workspace from a section, moves it on, and stops. */
-  | { do: 'present'; who: Person; document: string; section?: number | undefined }
+  /**
+   * Someone presents a document in the call's workspace from a section, or with no `document` the board open in the main room
+   * from a frame; moves it on; and stops.
+   */
+  | { do: 'present'; who: Person; document?: string | undefined; section?: number | undefined }
   | { do: 'move-presenting'; section: number }
   | { do: 'stop-presenting' }
   /** Someone plays a video in a document of the call's workspace for everyone, and stops it. */
@@ -90,6 +108,27 @@ export type Beat =
   | { do: 'not-now-to-see' }
   /** Someone tags you in a document of the call's workspace, on a line. */
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
+  /**
+   * A board in the call (user-flows 6, A board in the call). Someone opens a new one for everyone in the main room from a
+   * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
+   * (`closedToYou`); adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
+   * pointer by it; and whoever opened it closes it. `standing` opens it here with no connection to it (`offline`), or with
+   * Alcove refusing what's added here (`failed`), while the call carries on.
+   */
+  | { do: 'open-board'; who: Person; template: BoardTemplate; closedToYou?: boolean | undefined; draw?: ((doc: Y.Doc) => void) | undefined; standing?: 'offline' | 'failed' | undefined }
+  | { do: 'add-sticky'; who: Person; frame: string; text: string }
+  | { do: 'close-board' }
+  /**
+   * The board's timer and vote, run by someone else: a timer (`left`: seconds still to go, for one near its end), a vote on a
+   * frame by its title (null: every sticky), ended with everyone else's votes by what each sticky says, and cleared.
+   */
+  | { do: 'start-timer'; who: Person; minutes: BoardTimerMinutes; left?: number | undefined }
+  | { do: 'stop-timer' }
+  | { do: 'start-vote'; who: Person; frame: string | null; per: BoardVotesEach }
+  | { do: 'end-vote'; votes: Readonly<Record<string, number>>; voters: number }
+  | { do: 'clear-vote' }
+  /** Ideas from the call: what it heard worth a sticky, offered to whoever can add to the board where you are, while notes are on. */
+  | { do: 'heard'; ideas: readonly HeardIdea[] }
   /** Anything else the story needs at that moment, such as someone ringing you to another call. */
   | { do: 'run'; what: () => void };
 
@@ -114,6 +153,11 @@ export interface CallScript {
   summary?: string | undefined;
   /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */
   workspace?: ScriptWorkspace | undefined;
+  /**
+   * What the others do on a board once one's open, whoever opens it: the stickies they put on it, one every `every` seconds
+   * (1.2 unless it says), and how they vote when a vote ends, by what each sticky says, and how many of them do.
+   */
+  board?: { work?: readonly BoardWork[] | undefined; every?: number | undefined; votes?: Readonly<Record<string, number>> | undefined; voters?: number | undefined } | undefined;
   /** While you're at the door: the organizer isn't in yet (they come this many seconds after the story opened), someone hosts in their place, or it's locked. */
   door?: { hostArrives?: number | undefined; standIn?: Person | undefined; locked?: boolean | undefined } | undefined;
 }
@@ -154,6 +198,20 @@ export const stopsPresenting = (): Beat => ({ do: 'stop-presenting' });
 export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
 export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
 export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });
+/** Someone opens a board from a template for everyone here, or one you can't open, or one that stands badly here. */
+export const opensBoard = (who: Person, template: BoardTemplate, o: { closedToYou?: boolean; draw?: (doc: Y.Doc) => void; standing?: 'offline' | 'failed' } = {}): Beat => ({ do: 'open-board', who, template, ...o });
+/** Someone adds a sticky to the frame with this title on the board that's open. */
+export const addsSticky = (who: Person, frame: string, text: string): Beat => ({ do: 'add-sticky', who, frame, text });
+export const closesBoard = (): Beat => ({ do: 'close-board' });
+export const hears = (...ideas: HeardIdea[]): Beat => ({ do: 'heard', ideas });
+/** Someone starts the board's timer: `left` seconds to go, if it started a while ago. */
+export const startsTimer = (who: Person, minutes: BoardTimerMinutes, left?: number): Beat => ({ do: 'start-timer', who, minutes, left });
+export const stopsTimer = (): Beat => ({ do: 'stop-timer' });
+/** Someone starts a vote on the frame with this title (null: on every sticky), with `per` votes each. */
+export const startsVote = (who: Person, frame: string | null, per: BoardVotesEach = 3): Beat => ({ do: 'start-vote', who, frame, per });
+/** The vote ends: everyone else's votes, by what each sticky says, and how many of them voted. Yours count too. */
+export const endsVote = (votes: Readonly<Record<string, number>>, voters: number): Beat => ({ do: 'end-vote', votes, voters });
+export const clearsVote = (): Beat => ({ do: 'clear-vote' });
 
 /** A line of the conversation. */
 export const line = (who: Person | 'me', text: string, more: Omit<Line, 'who' | 'text'> = {}): Line => ({ who, text, ...more });

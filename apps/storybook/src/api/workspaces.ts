@@ -6,19 +6,20 @@
  * document or discarded. Files are kept in the world (`media`) and read back as the browser's own object URLs; a tag waits
  * in the world (`mentions`) until it's seen.
  *
- * A board starts empty, as the API makes one, and holds what the world's `boards` draws on it. Whoever the world has on it
- * is on its awareness, as the server would say they are, with their pointer where the world puts it, and in the workspace's
- * own list of who's here. Its `standing` opens it Reconnecting, Couldn't save, or taken from under you.
+ * A board starts empty, as the API makes one, and holds what the world's `boards` draws on it. A call writes on it as the server
+ * would (`boardDoc`), and puts the people in it on it (`onTheBoard`): each on the board's awareness as the server passes them on,
+ * with their pointer and their view. Whoever the world has on a board is on it the same way, and in the workspace's own list of
+ * who's here. Its `standing` opens it Reconnecting, Couldn't save, or taken from under you.
  */
 import {
   AlcoveApiError, DOC_SEED, randomClient, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
-  type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice,
+  type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice, type Person,
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
   type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceReadOptions, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage, newBlockId } from '@alcove/api/retire';
 import { NO_PRESENCE } from '@alcove/board';
-import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protocols/awareness';
+import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { COMMENTS } from '~/features/workspace/editor/names';
 import { setTitle } from '~/features/workspace/editor/title';
@@ -396,34 +397,67 @@ function statusOf(item: WorkspaceItem): DocStatus {
   return base;
 }
 
+/* ---------- who else is on a board ---------- */
+
+/** Someone else on a board in a call: their connection to the call, who they are, where their pointer is, and whether they're typing. */
+export interface OnTheBoard { callIdentity: string; person: Person; at: { x: number; y: number }; typing?: boolean | undefined }
+/** Who's on each board, by its ID, as the call that has it open puts them there. */
+const onBoards = new Map<string, readonly OnTheBoard[]>();
+/** Each open session of a board, told when that changes. */
+const boardSessions = new Map<string, Set<(people: readonly OnTheBoard[]) => void>>();
+/** These people are on the board now, and nobody else is. */
+export function onTheBoard(documentId: string, people: readonly OnTheBoard[]): void {
+  onBoards.set(documentId, people);
+  for (const tell of boardSessions.get(documentId) ?? []) tell(people);
+}
 /**
- * How often someone else on a board moves their pointer a little, as a person reading does: a pointer that stays still for
- * six seconds fades, and Awareness lets go of anyone quiet for thirty.
+ * How often someone on a board moves their pointer a little, as a person reading does: a pointer that stays still for six
+ * seconds fades, and Awareness lets go of anyone quiet for thirty.
  */
 const DRIFT_MS = 3_500;
-
-/** The people the world has on a board, on its awareness, as the server would stamp them: who they are, and where they point. */
-function othersOn(awareness: Awareness, item: WorkspaceItem): () => void {
-  const here = item.kind === 'board' ? current().boards[item.id]?.here ?? [] : [];
-  if (!here.length) return () => undefined;
+/**
+ * Keeps a board session's awareness saying who's on it, as the server passes on each of their browsers: whoever the world has on
+ * it, and whoever a call that has it open puts there (`onTheBoard`), each with their own client, their pointer and the view round
+ * it (which is what Go to and Follow find), and in a call their connection to it on `user`, as the server stamps it. Someone who
+ * leaves the board leaves its awareness.
+ */
+function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
+  const documentId = item.id;
+  const placed = (current().boards[documentId]?.here ?? []).map(({ who, x, y }) => ({ key: `world:${who.id}`, user: { id: who.id, name: who.name }, at: { x, y }, typing: false }));
+  const inCall = (people: readonly OnTheBoard[]) => people.map((p) => ({
+    key: p.callIdentity, user: { id: p.person.id, name: p.person.name, callIdentity: p.callIdentity }, at: p.at, typing: p.typing ?? false
+  }));
+  let everyone = [...placed, ...inCall(onBoards.get(documentId) ?? [])];
+  const theirs = new Map<string, Awareness>();
   let beat = 0;
-  const them = here.map(({ who, x, y }, i) => {
-    const theirs = new Awareness(ownDoc());
-    const point = () => { const d = ((beat + i) % 3) * 6; theirs.setLocalState({ ...NO_PRESENCE, at: { x: x + d, y: y + d / 2 }, user: { id: who.id, name: who.name } }); };
-    return { theirs, point };
-  });
   const say = () => {
-    for (const { theirs, point } of them) {
-      point();
-      applyAwarenessUpdate(awareness, encodeAwarenessUpdate(theirs, [theirs.clientID]), 'standin');
+    for (const [key, a] of theirs) {
+      if (everyone.some((p) => p.key === key)) continue;
+      removeAwarenessStates(awareness, [a.clientID], 'standin');
+      a.destroy();
+      a.doc.destroy();
+      theirs.delete(key);
     }
+    everyone.forEach((p, i) => {
+      const a = theirs.get(p.key) ?? new Awareness(ownDoc());
+      theirs.set(p.key, a);
+      const d = ((beat + i) % 3) * 6;
+      const at = { x: p.at.x + d, y: p.at.y + d / 2 };
+      a.setLocalState({ ...NO_PRESENCE, at, view: { x: at.x, y: at.y, z: 1 }, typing: p.typing, user: p.user });
+      applyAwarenessUpdate(awareness, encodeAwarenessUpdate(a, [a.clientID]), 'standin');
+    });
     beat += 1;
   };
+  const tell = (now: readonly OnTheBoard[]) => { everyone = [...placed, ...inCall(now)]; say(); };
+  const sessions = boardSessions.get(documentId) ?? new Set();
+  sessions.add(tell);
+  boardSessions.set(documentId, sessions);
   say();
   const again = setInterval(say, DRIFT_MS);
   return () => {
     clearInterval(again);
-    for (const { theirs } of them) { theirs.destroy(); theirs.doc.destroy(); }
+    sessions.delete(tell);
+    for (const a of theirs.values()) { a.destroy(); a.doc.destroy(); }
   };
 }
 
@@ -440,9 +474,9 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.doc = known ?? documentOf(item, workspace);
     if (!known) docs.set(item.id, this.doc);
     this.awareness = new Awareness(this.doc);
-    this.leave = othersOn(this.awareness, item);
     const sending = sendingIn(current().pages[item.id]?.blocks ?? []);
     if (sending.length > 0) this.awareness.states.set(SOMEONE_ELSE, { uploading: sending });
+    this.leave = item.kind === 'board' ? othersOn(item, this.awareness) : () => undefined;
     this.ready = Promise.resolve();
   }
   /** What Alcove refused of this document, which is all this browser wrote here that it hasn't taken. */
@@ -463,6 +497,19 @@ class Document extends Pushed<DocStatus> implements DocSession {
     return Promise.resolve();
   }
   override close(): void { this.leave(); this.awareness.destroy(); super.close(); }
+}
+/**
+ * A board as the world holds it, made the way a browser opening it first would find it: what the call writes on it, as the
+ * server would (its template, a frame for each room, rooms' boards coming back), and what scripted people add, goes here.
+ */
+export function boardDoc(id: string, documentId: string): Y.Doc {
+  const known = docs.get(documentId);
+  if (known) return known;
+  const item = treeOf(id).items.find((i) => i.id === documentId);
+  if (!item) throw notFound();
+  const doc = documentOf(item, id);
+  docs.set(documentId, doc);
+  return doc;
 }
 export function openDocument(id: string, documentId: string): DocSession {
   const item = treeOf(id).items.find((i) => i.id === documentId);
@@ -486,10 +533,33 @@ export function saveCopy(id: string, input: ItemInput & { state: Uint8Array }): 
 export function forgetDocuments(): void {
   for (const d of docs.values()) d.destroy();
   docs.clear();
+  onBoards.clear();
+  boardSessions.clear();
   watching.clear();
   presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();
+  notes.clear();
+  frameNotes.clear();
+}
+
+/**
+ * What you keep beside each document for presenting it, and beside each frame of a board, as your account would, for as long
+ * as the story lasts.
+ */
+const notes = new Map<string, string>();
+const frameNotes = new Map<string, Map<string, string>>();
+export const presenterNotes = (documentId: string): string => notes.get(documentId) ?? '';
+export function keepPresenterNotes(documentId: string, text: string): void {
+  if (text) notes.set(documentId, text);
+  else notes.delete(documentId);
+}
+export const presenterFrameNotes = (boardId: string): Record<string, string> => Object.fromEntries(frameNotes.get(boardId) ?? []);
+export function keepFrameNotes(boardId: string, frame: string, text: string): void {
+  const kept = frameNotes.get(boardId) ?? new Map<string, string>();
+  if (text) kept.set(frame, text);
+  else kept.delete(frame);
+  frameNotes.set(boardId, kept);
 }
 
 /** A document's versions, the newest first, as the world keeps them (`Page.versions`). */

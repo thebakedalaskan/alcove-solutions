@@ -205,9 +205,13 @@ export type RsvpCounts = z.infer<typeof RsvpCountsSchema>;
 
 export const DocumentKindSchema = z.enum(['doc', 'board']);
 export type DocumentKind = z.infer<typeof DocumentKindSchema>;
-/** A document or board someone can bring to a call. `id` is what a call keeps: an ID of its own, not the item's in its workspace. */
+/**
+ * A document or board someone can bring to a call. `id` is what a call keeps: an ID of its own, not the item's in its workspace.
+ * `item` is the item's own ID there, for finding it from where it's open, such as a board's page.
+ */
 export const DocumentSchema = z.object({
   id: IDSchema,
+  item: IDSchema,
   /** Empty until it's named: the app shows its own word for that. */
   name: z.string(),
   kind: DocumentKindSchema,
@@ -369,11 +373,15 @@ export const MeetingInputSchema = z.object({
 });
 export type MeetingInput = z.infer<typeof MeetingInputSchema>;
 
-/** A call that starts now. Everything is optional: a bare call is "<name>'s call" with your default notes setting. */
+/**
+ * A call that starts now. Everything is optional: a bare call is "<name>'s call" with your default notes setting. `documents`:
+ * what it brings, from your own library (`Document.id`), as a scheduled call's are.
+ */
 export const InstantCallInputSchema = z.object({
   title: z.string().optional(),
   guests: z.array(z.string()).optional(),
-  notes: NotesSettingSchema.optional()
+  notes: NotesSettingSchema.optional(),
+  documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional()
 });
 export type InstantCallInput = z.infer<typeof InstantCallInputSchema>;
 
@@ -762,10 +770,16 @@ export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 /**
  * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
  * from a note what they couldn't open. `by`: who changed it during the call, by the name they were in the call under, and
- * `isMe` for the one reading the note.
+ * `isMe` for the one reading the note. `workspace`: the workspace's name, for someone in it (null otherwise).
+ *
+ * A board open in the call is here whether or not anyone changed it. `room` is the breakout room it was open in (null for the
+ * main room, and for anything only changed from the list), so it sits with that room's notes. `everyone`, for a board:
+ * everyone the note went to can open it now (always false for a document, which nothing asks). The notes read a board open
+ * for everyone in the call when everyone can open it, because one summary goes to everyone.
  */
 export const NoteWorkedOnSchema = z.object({
-  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema, isMe: z.boolean() }))
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema, isMe: z.boolean() })),
+  workspace: z.string().nullable(), room: IDSchema.nullable(), everyone: z.boolean()
 });
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 

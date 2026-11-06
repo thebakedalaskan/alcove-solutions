@@ -586,6 +586,176 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
     for anyone who has its notes.
 
+### A board in the call
+
+1. **Board** in the dock, beside Share, or **O**, opens the Board menu. **Blank**, **Retro**, **Ideas** and **Flow** start a new
+   board, which opens for everyone here at once. Under them are boards your team already has: whatever's been brought to this
+   call first, then the newest from the workspaces in your Drive, three at most, with where they're from. Anyone invited can
+   start one, in the main room or a breakout room; a guest can't. On a phone, Board is in **⋯** beside Share, and **Open a
+   board** shows the same menu there.
+2. **It opens for everyone.** The board rises through an arch onto the stage, people glide to a strip beside it, and one
+   line says what happened: "Everyone here can add to this board." for whoever opened it, "Art opened Launch retro. Everyone
+   here can add to it." for everyone else. A new board is saved in the call's workspace, named after the call. Opening
+   another replaces it for everyone.
+3. **A saved board some people here can't open** asks first, in the same menu, before anything opens: "Priya and Theo can't
+   open Onboarding flow. It's in Product." **Let them in for this call**, there only for someone who may share it, opens it to
+   them until the call ends. **Open without them** opens it to everyone else. Someone it isn't open to sees **A board you
+   can't open** and who brought it, and nothing of its name; **Ask Art for access** asks in the call's chat.
+4. **Working on it together.** Everyone's pointer carries their face and name, with dots while they type, and whoever's
+   talking glows on their tile and their pointer. A person's tile has **Go to Priya**, which takes you to where Priya is,
+   and **Follow Priya**, which keeps your view with Priya's, with a ring in her colour and a pill at the top of the board,
+   until **Stop**, Escape, a scroll or a zoom. The pill shows one thing at a time.
+5. **Hide it, for you alone.** With a board open, the Board button (or **O**) puts it away for you: it's a live tile among
+   the faces, and pressing the tile brings it back where you were, with the keys on it. Nobody else's view changes. While
+   you're presenting it, it stays in front of you, since everyone's watching what you see: the Board button and **O** say
+   "Stop presenting first. Everyone sees this board while you present it." and leave it where it is.
+6. **Beside a shared screen.** If someone's sharing, the board takes the main space and the share moves to the top of the
+   column, live, with everyone under it. A share that starts while you're on the board comes in the same way, and one line
+   says so: "Priya started sharing. It's beside the board." Nothing you're doing on the board stops. Dragging the line
+   between them gives one more room, for you only. Pressing the share makes it big and the board a live tile above the faces;
+   pressing the board swaps them back. From the keyboard, **P** on the share (or **Make it big**, first in its **⋯**) swaps
+   them as a press does, and Enter on the board's tile brings it back with the keys on the board. While you present the board
+   it stays where it is, and the share says to stop presenting first. **Put on the board**, in a share's **⋯**, puts a picture
+   of the share as your browser shows it on the board, captioned "Priya's screen, 14:05", and Priya is told. It's kept in the
+   board's files, whether or not screen notes are on.
+7. **The board's name** has **Rename**, for anyone who can change it, and everyone sees the new name at once; **Saved in
+   Product**, which brings up that workspace if it's the one the call is viewing and opens any other in a tab of its own;
+   **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
+   it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
+   becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
+   can add to it); and **Close for everyone**, for whoever opened
+   it or the organizer. Closing deletes nothing: the sheet sinks back through the arch, the faces come back and one
+   line says "Launch retro is closed. It's saved in Product." Whoever closed it has the keys on Board in the dock (on a phone, on More, where Board is). The seal
+   beside the name says what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says
+   how the board stands too, as on its own page:
+   - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
+     "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
+   - **Not saved**, when Alcove won't take what was added. The pill says **Couldn't save** and how many changes are only on
+     this screen ("Your last 3 changes are only here."). For anyone signed in, whose browser keeps them, it has **Try
+     again**, which opens the board again and sends them. It tries again by itself as well.
+   - Pressing the seal says the same, under the pill. A board that can't be opened right now opens again by itself, a little
+     later each time.
+8. **Timer and votes**, on the board's bar, for anyone who can add to it. **Timer** offers 3, 5 or 10 minutes and **Start**:
+   one pill at the top of the board counts down, the same for everyone, turns amber in its last minute and chimes softly at
+   the end, and whoever started it, or the organizer, can **Stop** it. A screen reader hears it start, with how long, then with
+   a minute left, when time's up and when it's stopped, never each second. **Vote** votes on the frame you're looking at (every
+   sticky, with no frame in view), 3, 5 or 10 votes each, and the board glides to it. After **Start the vote**, pressing a
+   sticky spends a vote and shows a dot only you can see, and pressing it again takes it back. From the keyboard, Tab from
+   the board goes from sticky to sticky in the vote, frame by frame and row by row, with the board gliding to one out of
+   view, and on past the last; Shift and Tab go back. Enter or Space votes for the sticky you're on, and again takes the
+   vote back. A screen reader hears each sticky's words as a toggle button, pressed once it has your vote and dimmed while
+   you've no votes left to give it, and the pill says how many you have left as that changes. When the vote ends, the keys
+   go back to the board. Nobody sees a count until
+   whoever started it, or the organizer, presses **End the vote**: every count appears at once, for everyone, the top three
+   stay bright and the rest step back, until **Done**. The pill shows one thing at a time: how the board stands (Reconnecting
+   or Couldn't save), someone presenting, then a vote, its results, following someone, and the timer.
+9. **Ideas from the call.** While notes are on where you are, the call picks out things people said that are worth a sticky,
+   and a pill rises at the foot of the board: **3 ideas from the call**. Nobody has to stop talking to write them down.
+   Pressing it opens the tray, **From the call**, written in confidential compute like the notes: each line is what someone
+   said, with who and when ("Priya, 2 min ago"), and **Add**. Adding one puts it on the board as a sticky, in a free spot in
+   the frame it fits and that frame's colour, and it goes from everyone's tray; it says **Added** in yours. **Add all three**
+   (or **Add both**) adds the rest at once, popping in one after another, and says "Added 3 stickies from the call." with
+   **Undo**, which takes back those three and nothing you've done since. Two people adding at the same moment get their
+   stickies side by side, never one on another, and the same idea added by both is one sticky. Closing the tray (× or Escape)
+   puts what's left aside for you alone; the pill comes back when there's something new. While the tray is open the call's
+   keys work as ever: O, W, and Escape for the side panel. Ideas are only for people who can add to the board, only from
+   what everyone there may read, and never while notes are off or paused; a room's ideas stay in the room.
+10. **Sort into themes.** Drag round several stickies (or Shift-click them) and the bar offers **Sort into themes** beside
+   **Tidy**. It sends what they say to confidential compute, says **Sorting…** meanwhile, and moves them into named columns,
+   each in its own colour, inside their frame: "Sorted into 3 themes." with **Undo**, and one Undo puts it all back. It
+   works with notes off, and on a board's own page. While notes are paused nothing goes to the AI, so it isn't offered.
+   Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
+   stickies at a time."
+11. **Present.** **Present** on the board's bar makes its frames slides, in order, with nothing to prepare (on a wider screen:
+   a phone's bar has no Present).
+   - **Whoever presents** sees exactly what everyone sees, ringed and marked **Everyone sees this**, with **1 of 3**, **Back a
+     frame** and **Next frame** (or **←** and **→**) and **Stop presenting** under it, and beside it, for them alone, the next
+     frame and their own notes beside this frame, marked **Only you see this**: each frame its own, kept for next time. Their
+     pointer shows to everyone. The board stays in front of them until they stop (step 5).
+   - **From the keyboard**, Enter on **Present** puts the keys on **Next frame** (on **Stop presenting**, with only one
+     frame). **←** and **→**, and a clicker's Page Up and Page Down, move the frames while the presentation has the keys: the
+     frame itself, or Back a frame, Next frame and Stop presenting under it. Anywhere else they move nothing: in the notes
+     beside the frame, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen. **Stop presenting**
+     puts the keys back on **Present**. Someone watching who had the keys on the board finds them on **Look around** as the
+     frame takes the sheet, and back on the board once the presentation ends.
+   - **Everyone else** sees the frame alone, with no tools and no handles, as it changes, and the pill says "Art is presenting"
+     with **Look around**. Look around, or a scroll, gives you your own view back, tools and all, and the pill says **Back to Art**;
+     Art moving on never pulls you back. Someone who comes in late lands on the frame everyone's on. The organizer's pill has
+     **Stop presenting** too, which stops anyone's for everyone.
+   - **Stop presenting** puts everyone back where they were. If the presenter leaves the call, the same happens, and a toast says
+     they left, so the presentation ended. Closing the board ends it too. Nobody's access changes: someone who can't open the
+     board is told who's presenting, never what.
+12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
+   where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,
+   and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
+   on the board as a card. It offers nothing from anywhere else, so a link only ever points where the board's readers can
+   reach: each person sees it by their own name for it, opens it from the card (in the call when everyone's
+   viewing that workspace, in a tab of its own otherwise), or sees "A document you can't open" and nothing of its name.
+   **Table** puts three by three where you're looking with its first cell open; Tab goes along a row and on to the next, and
+   a row and a column are a press away while it's picked. Two people typing in one cell at once, an empty one too, both keep
+   what they type. **Mind map** starts an idea: Tab branches from it, and Enter adds another branch beside it; two people
+   branching from one idea at once get one branch under the other. **Comment** (or **K**) opens a comment on the sticky
+   you've picked, or with nothing picked on the next thing you press: your face pins to its corner, everyone in the call
+   sees it, and it's there on the board's page afterwards, by your name. **Templates** puts Retro, Ideas, Flow or What, why, next beside everything on the
+   board, and the view goes to it. Whatever More adds lands in the nearest clear place to the middle of your view, never on
+   anything, and the view follows it if that's out of sight. Undo takes each back while nobody's touched it.
+13. **More**, at the end of the board's bar. **Copy link** copies the board's address, which opens it for whoever can open
+   it. **Download as an image** and **Download as a PDF** save the board as you see it, every linked document named as you
+   know it or "A document you can't open"; it's drawn and saved in your browser, and comments aren't in it. Those three
+   change nothing, so someone who can only look has them too. **Night board**, for whoever can change the board, makes it a
+   dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a tile, on the note,
+   presenting and on its page. It says **On** while it is, and pressing it again lets the board follow each person's theme.
+14. **On a phone**, faces stay on top, under the line over the call when it says anything, and the board fills the rest,
+   opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps the name, the
+   seal, **Timer**, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is **+**, at the
+   bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says where
+   it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first free
+   place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add** or
+   **Add all three**, and the toast's **Undo** takes them back. In a vote, a tap on a sticky votes for it and another takes it
+   back. Drawing and moving things stay on bigger screens.
+
+### Boards in breakout rooms
+
+1. **Set up rooms.** The rooms panel has one more row: **Board**, with **None**, **In each room** and **Shared**. In each room:
+   "Only that room sees its board. When rooms close, every board comes back to the main room.", and what each starts from
+   (**What, why, next**, Retro, Ideas, Flow or Blank). Shared: "One board, a frame for each room. Everyone can see every frame
+   while they work.", on the board open now, or a new one from what you pick. **Open 2 rooms** sends everyone, and every room
+   already has its board open: "2 rooms are open. Each one has a board."
+2. **Inside a room.** "Art opened rooms. You're going to Rollout." You arrive on the room's board with its frames ready. Its
+   seal says **Sealed to this room**: "Only the people in Rollout can see this board.", "When rooms close it comes back to the
+   main room, and everyone in the call sees it." and "Alcove can't read it, then or later." Whoever's moved to another room
+   loses it as they go, and finds the new room's. The pill at the top of the board says the room and how long it has left
+   (**Comms · 9:12**): in its last minute it turns amber and says **This board comes back with you**, and in the last ten
+   seconds **Rooms close in 10 seconds**, counting down. A screen reader hears it at ten seconds and as rooms close, not every
+   second. While the board's pill says it, the line over the call doesn't; while the pill shows something more pressing, such
+   as a timer, the line over the call says where you are and how long is left. Art's message to every room comes as a toast,
+   "Art, to every room: Two minutes left", so nobody has to leave the board to read it. **Raise your hand** asks Art for help,
+   and Art coming in is told as "Art joined this room."
+3. **Start a board in a room.** With none set up, **Board** is where it always is, and the same menu says "Only this room sees
+   it" and "Comes back with you when rooms close. Alcove can't read it." It opens for everyone in the room, and nobody outside it
+   can see it, the organizer included, until they join.
+4. **While rooms are open** the organizer sees who is where: each room on its board says "On their board. Join to see it." in
+   the panel and on the stage, with no preview. **Join room** puts them in the room and on its board; **Back to main room** takes
+   the board away with the room's keys.
+5. **When rooms close** everyone's back in the main room, and each room's board lands on the main board as a frame, named for the
+   room with who was there: "Everyone's back. 2 boards came with you." Its stickies come, and its pictures stay in the room. The
+   board glides to the frames as they land, for anyone who stayed on it too, unless they're following someone or in the middle
+   of something. With no board open in the main room, one is made for them, and so it is when the one open can't take them any
+   more (whoever brought it can't edit it now): it opens in its place, and the call says "The rooms' boards came back on a new
+   board. The one that was open can't take them." When the call's workspace can't take a new board, they stay where they are:
+   "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
+   Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
+   **Present** then makes each room's frame a slide: the room reports back, and the organizer moves on.
+6. **One board for every room.** With Shared, the organizer stays on the board and can watch every frame fill up; when the one
+   open can't take the rooms' frames (whoever brought it can't edit it now), the rooms share a new one in its place: "The rooms
+   share a new board. The one that was open can't take their frames." In a room you land on your room's frame, hear your room
+   only, and the pill says **Everyone can see this board** with the room's time; in the main room it says how many rooms are
+   on it (**3 rooms on this board**). When rooms close nothing has to come back: "Everyone's back. The board stays as it
+   is.", and the board glides out to all of it.
+7. **Rooms with no board**, opened with **None** and with nobody starting one, are as rooms have always been (Breakout rooms,
+   above): "You're in Comms for 5 min.", the organizer's message for a moment in the line over the call ("Art to all rooms:
+   Two minutes left"), **Ask for help** on the hand, and "Art joined your room".
+
 ## 7. End the call and get the notes
 
 1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
@@ -1142,24 +1312,31 @@ here it's on its own page, the same board, with no call around it.
 opens it. Someone who can't open that board sees **A board you can’t open** there, and nothing of what's on it.
 
 **The page.** The board fills the page under the workspace's head, with its tools down the side and its bar along the
-top: its name, its seal, Undo and Redo, how near you are, the map, the faces of whoever else is on it, and **Start a call
-here**, which opens Start a call named after the board. Everyone else on it has a pointer with their face and name, in a
-colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add a
-sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
+top: its name, its seal, Undo and Redo, how near you are, the map, **More**, the faces of whoever else is on it, and **Start
+a call here**, which opens Start a call with the board coming too: one line says **Launch retro comes with this call. Start now
+and it opens for everyone.** Start now, and once the call's under way the board opens on the stage for everyone, and the call
+says so. Schedule for later, and the board is brought to that call, first in its Board menu, and opens only when someone opens
+it. The bar's **More** has **Download as an image**, **Download as a PDF** and, for whoever can add to the board, **Night
+board**, as in a call; a night board is dark on its page by day too. Everyone else on it has a pointer with their face and
+name, in a colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add
+a sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
 it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
 
 **Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
 the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
 **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
-it again for the highlighter) and **Frame** (F). The **+** under them holds only what can be done here: on a board's page,
-**Comment**. Two people typing in one sticky both keep what they typed. The board's keys work as soon as the typing stops:
+it again for the highlighter) and **Frame** (F). **More**, the **+** under them, holds what it holds in a call ([A board in the
+call](#a-board-in-the-call), step 9): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
+a link on the board opens its document here.
+Two people typing in one sticky both keep what they typed. The board's keys work as soon as the typing stops:
 straight after **Esc** finishes a sticky, **N** picks the next. The call's letters still sleep for a moment after typing, as
 everywhere. If what you're typing in goes from under you, as the board closes or a presentation comes over it, the board's
 keys wait until you click or press **Esc**, so the rest of a sentence never makes or deletes anything.
 
 **Changing what's there.** Click something and a small bar sits above it: its colour, its size, a line from it, copy (**⌘D**)
 and delete (**Delete**), with handles to size it. Drag it to move it; a frame takes what's in it along. Drag round several, or
-Shift-click them, to pick them together: the bar says how many and offers **Tidy**, which puts them in a grid. Pointing at
+Shift-click them, to pick them together: the bar says how many and offers **Sort into themes**, which sorts stickies into
+named columns in confidential compute, with Undo (as in a call), and **Tidy**, which puts them in a grid. Pointing at
 something shows four dots just off its edges: drag from one onto something else, or press **Draw a line from this** and then
 click it, and the line stays attached, finding a clean route whenever either end moves. **Undo** (**⌘Z**, with **⇧⌘Z** to redo,
 or the arrows in the bar) takes back only your own changes, never anyone else's, whatever they've done since. **Sort into
@@ -1198,5 +1375,23 @@ it, and brings them back with it. Presenting a frame, only its own comments and 
   board**, the same as for a board that never existed, with the way back. Anything changed on it that didn't reach
   Alcove is kept in this browser, and **Discard** says it drops every change made on it, moves and all.
 
-On a phone the list and the board take turns, as a document does, and the bar keeps the name, the seal, Undo, Redo, how
-near you are and Start a call here.
+On a phone the list and the board take turns, as a document does, and the board is the phone's: it opens on its first
+frame at a size it can be read, you drag to look round and pinch to zoom, and the bar keeps the name, the seal, **More** and
+**Start a call here**. The one tool is **+**, at the bottom right: a sheet rises in your own theme (dark on a night board)
+with one sticky, its colours and a button that says where it's going, and the sticky goes into that frame's first free
+place. Someone who can only look has it to look round. Drawing and moving things stay on bigger screens.
+
+**After the call.** Right under the note's summary are the boards that were open for everyone in the call, the ones you can
+open. The call's board is a wide card: a small picture of all of it, as it is now, with its name, what's on it (**3 frames, 13
+stickies, saved in Product.**) and who can open it, and **Open the board**, which goes to its page. Anywhere on the card opens
+it too. Each breakout room's board is a card beside the other rooms', under how many rooms there were and for how long (**3
+breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room had no board or one you can't open): its picture,
+the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
+opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
+rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
+The stickies in the call's board's **Actions** frame come back as follow-ups, under **Follow-ups from the board**, right after
+the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
+said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open
+says **Not everyone invited can open it, so the summary leaves it out.**, and only to people who can open it. A room's board's
+follow-ups are in that room's section of the notes, and the room's line says it had a board. The next call in a series brings
+the boards open in this one.

@@ -20,7 +20,7 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
     {
       name: inCall ? 'In the call' : 'In the workspace',
       keys: [
-        ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }] : []),
+        ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }, { label: 'Open or hide the board', key: 'O' }] : []),
         { label: 'Find anything', key: shortcut('K') },
         { label: 'Show or hide the list', key: shortcut('\\') },
         ...(inCall ? [{ label: 'Hide or show people', key: '⇧P' }, { label: 'Just the document', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),

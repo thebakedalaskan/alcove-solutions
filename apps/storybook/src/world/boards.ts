@@ -170,7 +170,9 @@ const THEMES: readonly { name: string; ideas: readonly string[] }[] = [
   { name: 'Testing', ideas: ['i4', 'i5', 'i6'] },
   { name: 'Ownership', ideas: ['i7', 'i8', 'i9'] }
 ];
-const themeOf = (text: string): string => THEMES.find((t) => t.ideas.some((key) => IDEAS.find(([k]) => k === key)?.[1] === text))?.name ?? 'Other';
+/** The canvas's theme for one of its ideas, by what the sticky says, or null for anything else. */
+export const canvasTheme = (text: string): string | null => THEMES.find((t) => t.ideas.some((key) => IDEAS.find(([k]) => k === key)?.[1] === text))?.name ?? null;
+const themeOf = (text: string): string => canvasTheme(text) ?? 'Other';
 
 /**
  * Sort into themes as confidential compute answers it, for the stickies picked: the canvas's three themes, by what each sticky says,
@@ -188,12 +190,18 @@ export function themesFor(doc: Y.Doc, stickies: readonly string[]): BoardTheme[]
   return [...groups].map(([name, ids]) => ({ name, ids }));
 }
 
-/** A pile of ideas in one frame. `sorted` runs the board's own Sort into themes on them, into the canvas's three themes. */
-export function launchIdeas({ sorted = false }: { sorted?: boolean | undefined } = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
-  const doc = new Y.Doc();
+/** Puts the canvas's pile of ideas on a board, in one frame, as people dropped them: the ids of what's on it, by the canvas's names. */
+export function drawIdeas(doc: Y.Doc): ReadonlyMap<string, string> {
   const { put, ids } = adding(doc);
   put('ideas', frame('How do we launch better?', 0, 0, 1160, 530));
   for (const [key, t, c, x, y] of IDEAS) put(key, note({ x, y }, c, t));
+  return ids;
+}
+
+/** A pile of ideas in one frame. `sorted` runs the board's own Sort into themes on them, into the canvas's three themes. */
+export function launchIdeas({ sorted = false }: { sorted?: boolean | undefined } = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
+  const doc = new Y.Doc();
+  const ids = drawIdeas(doc);
   if (sorted) applyThemes(doc, themesFor(doc, IDEAS.flatMap(([key]) => ids.get(key) ?? [])), SEED);
   return { doc, ids };
 }
@@ -247,6 +255,26 @@ export const ROOMS: readonly { name: string; who: readonly FolkId[]; rows: reado
   { name: 'Support', who: ['lena', 'sam'], rows: [['Replies were out of date', 'Tickets went to the wrong queue'], ['Support saw the docs late', 'New plans had no tag'], ['Support joins the launch review', 'Tag plans before launch']] }
 ];
 const COLUMNS: readonly StickyColour[] = ['rose', 'peach', 'sky'];
+
+/**
+ * A breakout room's own board, as the room left it: what happened, why, and what next, on the template's three frames, two
+ * stickies to each. What next is its Actions frame, where the notes take follow-ups from.
+ */
+export function roomBoard(name: string): BoardSpec {
+  return {
+    draw: (doc) => {
+      const room = ROOMS.find((r) => r.name === name);
+      if (!room) return;
+      fillTemplate(doc, 'what-why-next', SEED, `story-room-${name}`);
+      const { put } = adding(doc);
+      room.rows.forEach(([first, second], k) => {
+        const at: Spot = { x: k * 220, y: 0 };
+        put(`${name}${k}a`, note(slot(at, 0, 1), COLUMNS[k] ?? 'butter', first));
+        put(`${name}${k}b`, note(slot(at, 1, 1), COLUMNS[k] ?? 'butter', second));
+      });
+    }
+  };
+}
 
 /**
  * When rooms close: each room's board lands on the main one as a frame, named, with who was there. Each frame's id comes back under

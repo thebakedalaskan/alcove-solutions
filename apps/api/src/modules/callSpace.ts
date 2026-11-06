@@ -125,16 +125,25 @@ export type PlaceIdeas = z.infer<typeof PlaceIdeas>;
 const RoomBoard = z.object({ workspaceId: z.string(), documentId: z.string(), room: z.string(), kept: z.boolean() });
 export type RoomBoard = z.infer<typeof RoomBoard>;
 /**
+ * A room's board as the call finds it, which isn't always as it keeps it: one a save by a release that didn't know rooms' boards
+ * left out of `rooms` is found again where the call is open or in its home's tree, and one nothing names the room of any more
+ * is for no room (`room: null`).
+ */
+export type FoundRoomBoard = Omit<RoomBoard, 'room'> & { room: string | null };
+/**
  * Rooms' boards coming back to the main room, from the moment rooms close until they've landed: each one, named for its room
  * with who was there; the board they land on, which is the one open in the main room, or with `make` one to make for them, its
- * id taken under the call's row so that it's made once; and until when (ms) whoever's landing them has it, so two never do at
- * once. Landing again changes nothing (`landBoards`), so one cut short is done again from the start.
+ * id taken under the call's row so that it's made once; until when (ms) whoever's landing them has it, so two never do at
+ * once, or after a try that failed, when the next may be; and how many tries have failed (`tries`, none in a landing stored
+ * before they were counted), so one that can't be done is given up after a few. Landing again changes nothing (`landBoards`),
+ * so one cut short is done again from the start.
  */
 const Landing = z.object({
   rooms: z.array(z.object({ room: z.string(), workspaceId: z.string(), documentId: z.string(), name: z.string(), who: z.array(z.string()) })),
   into: z.object({ workspaceId: z.string(), documentId: z.string() }),
   make: z.boolean(),
-  until: z.number()
+  until: z.number(),
+  tries: z.number().default(0)
 });
 export type Landing = z.infer<typeof Landing>;
 /**
@@ -155,6 +164,26 @@ export const NO_BOARDS: CallBoards = { open: {}, letIn: [], rooms: [], landing: 
 /** How many documents a call remembers working on, and how many people on each: its sealed state is read on every request. */
 const MAX_WORKED = 100;
 const MAX_WORKED_BY = 50;
+/**
+ * The same, with a board open for everyone in a part of the call (`place`): its note shows it, and that part's notes read it,
+ * whether or not anyone changes it. A board is noted in the first part it opened in.
+ */
+function withBoardOpened(w: CallSpace, at: { workspaceId: string; documentId: string }, place: string): CallSpace {
+  const same = (x: WorkedDocument) => x.workspaceId === at.workspaceId && x.documentId === at.documentId;
+  const there = w.worked.find(same);
+  if (there) return there.open === null ? { ...w, worked: w.worked.map((x) => (same(x) ? { ...x, open: place } : x)) } : w;
+  if (w.worked.length >= MAX_WORKED) return w;
+  return { ...w, worked: [...w.worked, { workspaceId: at.workspaceId, documentId: at.documentId, kind: 'board', by: [], open: place }] };
+}
+
+/**
+ * The same, with every board open in the call noted in the part it's open in (`open` is by part: `main`, or a room's ID),
+ * however it opened: from the Board menu, with rooms opening, or started in a room.
+ */
+export function withOpenBoards(w: CallSpace, open: Readonly<Record<string, { workspaceId: string; documentId: string }>>): CallSpace {
+  return Object.entries(open).reduce((x, [place, at]) => withBoardOpened(x, at, place), w);
+}
+
 /** The same, with someone having changed a document. Undefined when that's known already, or there's no room for it. */
 export function withWorked(w: CallSpace, entry: Omit<WorkedDocument, 'by'>, by: WorkedBy): CallSpace | undefined {
   const same = (x: WorkedDocument) => x.workspaceId === entry.workspaceId && x.documentId === entry.documentId;

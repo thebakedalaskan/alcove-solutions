@@ -1,6 +1,6 @@
 /*
  * What opens beside the rail: a tool's options, and More. What's picked stays picked for the next time that tool is used.
- * More's items come from outside the board, so they run what the surface was given, and More holds only those.
+ * More holds only what it has something to do with (`more`): the board's own items, and what the world round it gives.
  */
 import { BoardFlyout, type BoardMoreItem } from '@alcove/ui';
 import type { BoardState } from '../state';

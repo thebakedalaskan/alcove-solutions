@@ -2,10 +2,12 @@
  * Journeys on a board's own page (docs/product/user-flows.md › 13. Boards), from the whiteboards canvas's page, its board and its
  * States board: making one, putting one in a document, everything under its name, a comment, the connection going; then adding to
  * it, changing what's there and undoing it, linking things, looking round, resolving a comment, and a board someone can only look at.
+ * Then after the call, from the canvas's `after` and `notes` journeys: the board on the note, opening it, starting a call on it,
+ * and each breakout room's board on the note, opened in one click.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { itemId } from '../../src/api/scenarios';
+import { RETRO_NOTE, afterTheRetro, itemId } from '../../src/api/scenarios';
 import { setOnline } from '../../src/browser';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import type { World } from '../../src/world';
@@ -297,6 +299,39 @@ export const OnlyToLook: PageStory = {
     await step('And read what’s said: press Maya’s pin. There’s no field and no Resolve', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Comment from Maya Chen' }, SOON));
       await screen.findByRole('dialog', { name: 'Comment' }, SOON);
+    });
+  }
+};
+
+export const AfterTheCall: PageStory = {
+  name: '13.12 After the call: the board on the note',
+  ...page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
+  play: async ({ userEvent, step }) => {
+    await step('The note has the board, and the follow-ups taken from its Actions frame. Everyone invited can open it', async () => {
+      await screen.findByRole('heading', { name: 'Follow-ups from the board', level: 2 }, SOON);
+      await screen.findByRole('heading', { name: 'Launch retro', level: 3 }, SOON);
+    });
+    await step('Open the board: the same board on its own page, with no call around it. Start a call here brings it to the next one', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Open the board Launch retro' }, SOON));
+      await sheet('Launch retro');
+    });
+    await step('Start a call here: the board comes with the call, and opens for everyone when it starts', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: /Start a call here/ }, SOON));
+      await screen.findByText(/Launch retro comes with this call/, {}, SOON);
+    });
+  }
+};
+
+export const RoomsInTheNotes: PageStory = {
+  name: '13.13 Each room’s board on the note',
+  ...page(`/notes/${RETRO_NOTE}`, 'busy', { beforeEach: changing(afterTheRetro) }),
+  play: async ({ userEvent, step }) => {
+    await step('Under the summary, every room’s board, side by side, with what came of the room and who was there', async () => {
+      await screen.findByText('3 breakout rooms · 10 min', {}, SOON);
+    });
+    await step('Click Comms: a room’s board is a saved board like any other, and it can be opened in the next call', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Open the board Comms board' }, SOON));
+      await sheet('Comms board');
     });
   }
 };

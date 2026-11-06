@@ -8,8 +8,9 @@
  *   export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
  *   export const SpeakingPhone = phone(Speaking);
  *
- * The call is always night, so its stories are too. The toolbar renders a story again without starting it over: the
- * call carries on.
+ * The call is always night, so its stories are too. What follows your own theme in a call, a board on its stage, has a
+ * story in a light theme as well (`light`): the board is light there, and the stage around it night. The toolbar renders a
+ * story again without starting it over: the call carries on.
  */
 import type { CallSession, Meeting, Person } from '@alcove/api';
 import { screen } from 'storybook/test';
@@ -146,4 +147,14 @@ export const phone = (story: PageStory, name?: string): PageStory => ({
   ...story,
   ...(name ? { name } : story.name ? { name: `${story.name}, on a phone` } : {}),
   globals: { ...story.globals, viewport: { value: 'phone', isRotated: false } }
+});
+
+/**
+ * The same story for someone whose theme is light. The stage stays night, as the call always is; a board on it follows their
+ * theme, so it's light, as the canvas's in-call frames are.
+ */
+export const light = (story: PageStory, name?: string): PageStory => ({
+  ...story,
+  ...(name ? { name } : story.name ? { name: `${story.name}, in a light theme` } : {}),
+  globals: { ...story.globals, theme: 'light' }
 });

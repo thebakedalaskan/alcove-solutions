@@ -15,10 +15,17 @@ export const NO_GUIDES: readonly Guide[] = [];
 
 /** Past this many objects, only those near the view are mounted. */
 export const MOUNT_ALL = 500;
-/** What floats over the sheet. It has its own controls, so the board leaves a press on it alone. */
-export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit, .bo-at, .bo-pick';
+/**
+ * What floats over the sheet, and an object's own buttons (a table's row and column, a link's Open). Each has its own
+ * controls, so the board leaves a press on it alone: taking the pointer for a drag would leave the button without its click.
+ */
+export const OVER_THE_SHEET = '.bi, .bx, .bx-sw, .bfly, .bp, .bd-head, .bd-pill, .bd-heard, .bd-tray, .bo-edit, .bo-at, .bo-pick, .bo-add, .bo-open, .pc-add, .pc-sheet, .pc-shade';
 /** How far a press can wander, in screen pixels, and still be a click. */
 export const CLICK_SLOP = 3;
+/** The same for a finger, which wanders more than a mouse as it lands and lifts. */
+export const TAP_SLOP = 10;
+/** How far this press can wander and still be a click: a finger's, or a mouse's or a pen's. */
+export const slopOf = (e: { pointerType: string }): number => (e.pointerType === 'touch' ? TAP_SLOP : CLICK_SLOP);
 
 export const sameIds = (a: readonly string[], b: readonly string[]): boolean => a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
 

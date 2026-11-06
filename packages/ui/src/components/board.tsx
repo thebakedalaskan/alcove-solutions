@@ -101,10 +101,14 @@ export function BoardLines({ children }: { children?: ReactNode }) {
   return <svg className="bd-svg" aria-hidden="true">{children}</svg>;
 }
 
-/** A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as dots. `settle`: it's just been let go. */
-export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false, settle = false }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined; settle?: boolean | undefined }) {
-  const state = cn(selected && 'is-sel', draft && 'is-draft', settle && 'is-settle');
-  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={state} d={d} />{head && <path className={cn('head', state)} d={head} />}</>;
+/**
+ * A line, with its arrowhead. `id` lets it be pressed, through a wider path that isn't drawn. `draft`: the one being drawn, as
+ * dots. `settle`: it's just been let go. `land`: it arrives from a room with its frame, this many ms from now.
+ */
+export const BoardLine = memo(function BoardLine({ id, d, head, selected = false, draft = false, settle = false, land }: { id?: string | undefined; d: string; head?: string | undefined; selected?: boolean | undefined; draft?: boolean | undefined; settle?: boolean | undefined; land?: number | undefined }) {
+  const state = cn(selected && 'is-sel', draft && 'is-draft', land !== undefined ? 'is-land' : settle && 'is-settle');
+  const style = land ? ({ '--d': `${land}ms` } as const) : undefined;
+  return <>{id && <path className="bd-hit" data-id={id} d={d} />}<path className={state} d={d} style={style} />{head && <path className={cn('head', state)} d={head} style={style} />}</>;
 });
 
 /** A stroke of the pen. `marker` is the highlighter: wide, and see-through. `id` lets it be pressed, as `BoardLine`'s does. */
@@ -172,7 +176,7 @@ export interface BoardBarProps {
   canRedo?: boolean | undefined;
   /** Undo and Redo: false for someone who can only look. */
   editable?: boolean | undefined;
-  /** Timer, Vote, Present and More: false where there's no session to run. */
+  /** Timer, Vote and Present, each shown only with its handler: false where there's no session to run. More shows whenever it's given. */
   acts?: boolean | undefined;
   /** Whether this person can start a timer, a vote or present: false for someone who can only look, who sees them disabled, saying why. More stays theirs. */
   canAct?: boolean | undefined;
@@ -198,6 +202,8 @@ function NameField({ naming }: { naming: BoardNaming }) {
   const finish = (keep: boolean) => {
     if (done.current) return;
     done.current = true;
+    // The name comes back in the field's place: the keys go to the sheet first, so nothing focused is taken out from under them.
+    field.current?.closest<HTMLElement>('.bd')?.focus({ preventScroll: true });
     if (keep) naming.onDone(); else naming.onCancel();
   };
   return (
@@ -234,32 +240,27 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
       <span className="sp" />
       {editable && (
         <>
-          <IconButton className="bt" icon="undo" size={17} label="Undo" title="Undo your last change · ⌘Z" disabled={!canUndo} onClick={onUndo} />
-          <IconButton className="bt" icon="redo" size={17} label="Redo" title="Redo · ⇧⌘Z" disabled={!canRedo} onClick={onRedo} />
-          <span className="vr" />
+          <IconButton className="bt ur" icon="undo" size={17} label="Undo" title="Undo your last change · ⌘Z" disabled={!canUndo} onClick={onUndo} />
+          <IconButton className="bt ur" icon="redo" size={17} label="Redo" title="Redo · ⇧⌘Z" disabled={!canRedo} onClick={onRedo} />
+          <span className="vr ur" />
         </>
       )}
       <IconButton className="bt zm" icon="minus" size={16} label="Zoom out" onClick={onZoomOut} />
       <button type="button" className="pct" title="Show everything · ⇧1" onClick={onFit}>{Math.round(zoom * 100)}%</button>
       <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
-      <IconButton className="bt zm" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
-      {acts && (
+      <IconButton className="bt zm mp" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
+      {/*
+        * Each is there only with something to do: no button does nothing. Someone who can only look sees Timer, Vote and Present
+        * where they're offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while
+        * following someone, too.
+        */}
+      {((acts && (onTimer || onVote || onPresent)) || onMore) && (
         <>
           <span className="vr" />
-          {canAct ? (
-            <>
-              <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} />
-              <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} />
-              <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} />
-            </>
-          ) : (
-            <>
-              <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />
-              <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />
-              <Barred icon="play" size={15} label="Present" why={ONLY_EDITORS.present} />
-            </>
-          )}
-          <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />
+          {acts && onTimer && (canAct ? <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} /> : <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />)}
+          {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />)}
+          {acts && onPresent && (canAct ? <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} /> : <Barred icon="play" size={15} label="Present" why={ONLY_EDITORS.present} />)}
+          {onMore && <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />}
         </>
       )}
       {tail}
@@ -267,21 +268,100 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
   );
 }
 
-/** Anything the whole board shares, in one place: a timer, a vote, following, a room's time. `soon` turns it amber. */
-export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, className }: {
+/**
+ * Anything the whole board shares, in one place: a timer, a vote, following, a room's time, someone presenting. `soon` turns it
+ * amber. `second` is a second thing to do after `action`, for someone who has more to do there: the organizer stopping someone
+ * else's presentation. It says what it says as it arrives and as its words change; a time ticking isn't read out every second,
+ * and is there to read.
+ */
+export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, second, said, className }: {
   /** `null` for no icon. */
   icon?: IconName | null | undefined;
   title?: string | undefined; text?: string | undefined; time?: string | undefined; soon?: boolean | undefined;
-  action?: string | undefined; onAction?: (() => void) | undefined; className?: string | undefined;
+  action?: string | undefined; onAction?: (() => void) | undefined; second?: { label: string; onClick: () => void } | undefined;
+  /**
+   * For words that change too often to read out each time, as a countdown's do: what a screen reader is told instead, each time
+   * this changes ('' for nothing yet). Given, the pill's own words change on screen only, and are there to read.
+   */
+  said?: string | undefined;
+  className?: string | undefined;
 }) {
   return (
-    <div className={cn('bd-pill', 'dark', soon && 'is-soon', action && 'has-act', className)} role="status">
+    <div className={cn('bd-pill', 'dark', soon && 'is-soon', action && 'has-act', className)} role={said === undefined ? 'status' : undefined}>
       {icon && <Icon name={icon} size={16} fill="none" />}
       {title && <b className="ac-clamp-1">{title}</b>}
       {text && <span>{text}</span>}
       {time && (title || text) && <span className="sep" />}
-      {time && <span className="t">{time}</span>}
+      {time && <span className="t" aria-live="off">{time}</span>}
+      {said !== undefined && <p className="sr-only" role="status">{said}</p>}
       {action && <button type="button" onClick={onAction}>{action}</button>}
+      {second && <button type="button" onClick={second.onClick}>{second.label}</button>}
+    </div>
+  );
+}
+
+/** What whoever's presenting a board has around it: where they are, the next frame, their notes, and the way on. */
+export interface BoardPresenting {
+  /** Which frame everyone is on, from 1, and how many there are. */
+  at: number;
+  total: number;
+  /** A picture of the next frame, drawn at `NEXT_FRAME` and shrunk to fit; null at the end. */
+  next: ReactNode | null;
+  /** Their notes beside this frame, or null for someone without an account, who has nowhere to keep them. */
+  notes: string | null;
+  onNotes: (notes: string) => void;
+  onBack: () => void;
+  onNext: () => void;
+  onStop: () => void;
+}
+
+/** The size the next frame's picture is drawn at before it's shrunk into its place: the canvas's board on a call's stage. */
+export const NEXT_FRAME = { w: 1114, h: 674 } as const;
+/** The room the next frame's picture has, beside the board. */
+const NEXT_W = 248;
+
+/**
+ * The board on a call's stage, and, while you're presenting it, your view of it: the frame as everyone sees it, ringed and
+ * marked so, with where it is, Back a frame, Next frame and Stop presenting under it, and beside it, for you alone, the next
+ * frame and your notes. `children` is the board, which stays where it is in the page whether you're presenting or not, so it's
+ * never drawn afresh: what you were doing on it is as you left it when you stop. On a narrow stage the notes go under it.
+ */
+export function BoardPresenter({ presenting, className, children }: { presenting: BoardPresenting | null; className?: string | undefined; children: ReactNode }) {
+  const p = presenting;
+  return (
+    <div className={cn('bd-pres', p && 'is-on', className)}>
+      <div className="bd-pres-in">
+        <div className="pm">
+          <div className="shown">
+            {p && <span className="tag"><Icon name="eye" size={15} />Everyone sees this</span>}
+            {children}
+          </div>
+          {p && (
+            // aria-disabled, not disabled, at either end: the keys stay on the button pressed.
+            <div className="ctl">
+              <button type="button" className="go" aria-label="Back a frame" title="Back a frame · ←" aria-keyshortcuts="ArrowLeft" aria-disabled={p.at <= 1 || undefined} onClick={() => { if (p.at > 1) p.onBack(); }}><Icon name="chevronLeft" size={20} /></button>
+              <span className="at" aria-live="polite">{p.at} of {p.total}</span>
+              <button type="button" className="go" aria-label="Next frame" title="Next frame · →" aria-keyshortcuts="ArrowRight" aria-disabled={p.at >= p.total || undefined} onClick={() => { if (p.at < p.total) p.onNext(); }}><Icon name="chevron" size={20} /></button>
+              <button type="button" className="stop" onClick={p.onStop}>Stop presenting</button>
+            </div>
+          )}
+        </div>
+        {p && (
+          <aside className="side" aria-label="Only you see this">
+            <span className="lab">Next</span>
+            <div className="nx">
+              {p.next ? <span className="bd-mini" style={{ width: NEXT_FRAME.w, height: NEXT_FRAME.h, transform: `scale(${NEXT_W / NEXT_FRAME.w})` }}>{p.next}</span>
+                : <span className="end">That’s the end</span>}
+            </div>
+            {p.notes !== null && (
+              <label className="pn">
+                <span className="lab">Only you see this</span>
+                <textarea value={p.notes} placeholder="Notes for this frame" aria-label="Your notes" spellCheck onChange={(e) => p.onNotes(e.target.value)} />
+              </label>
+            )}
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
@@ -335,7 +415,7 @@ export type BoardMoreItem = 'image' | 'workspace' | 'table' | 'mindMap' | 'comme
 /** More's items in the canvas's order, each with what the rail's More calls a few of them. */
 const MORE: { id: BoardMoreItem; icon: IconName; label: string; many: string; key?: string }[] = [
   { id: 'image', icon: 'image', label: 'Image', many: 'images' },
-  { id: 'workspace', icon: 'transcript', label: 'From your workspace', many: 'documents' },
+  { id: 'workspace', icon: 'fileText', label: 'From your workspace', many: 'documents' },
   { id: 'table', icon: 'table', label: 'Table', many: 'tables' },
   { id: 'mindMap', icon: 'workflow', label: 'Mind map', many: 'mind maps' },
   { id: 'comment', icon: 'commentBubble', label: 'Comment', many: 'comments', key: 'K' },
@@ -374,7 +454,7 @@ export function BoardFlyout(props: BoardFlyoutProps) {
     const { items } = props;
     return (
       <div className={cn(cls, items.length < MORE.length && 'is-few')}>
-        {MORE.filter((m) => items.includes(m.id)).map((m) => <button key={m.id} type="button" className="item" onClick={() => props.onMore(m.id)}><Icon name={m.icon} size={18} />{m.label}{m.key && <kbd>{m.key}</kbd>}</button>)}
+        {MORE.filter((m) => items.includes(m.id)).map((m) => <button key={m.id} type="button" className="item" aria-keyshortcuts={m.key} onClick={() => props.onMore(m.id)}><Icon name={m.icon} size={18} />{m.label}{m.key && <kbd aria-hidden="true">{m.key}</kbd>}</button>)}
       </div>
     );
   }
@@ -505,6 +585,8 @@ interface ObjectProps extends BoardBox {
   glide?: boolean | undefined;
   /** Pops in where it was made, `delay` ms from now. */
   pop?: boolean | undefined;
+  /** Arrives from a room with its frame, `delay` ms from now. */
+  land?: boolean | undefined;
   delay?: number | undefined;
   /** Picked up, while it's dragged. */
   lift?: boolean | undefined;
@@ -515,7 +597,7 @@ interface ObjectProps extends BoardBox {
 function objectAttrs(o: ObjectProps, kind: string, ...more: (string | false | undefined)[]) {
   return {
     'data-id': o.id,
-    className: cn('bo', kind, ...more, o.selected && 'is-sel', o.other && 'is-other', o.glide && 'is-glide', o.pop && 'is-pop', o.lift && 'is-lift', o.editor ? 'is-live-edit' : false),
+    className: cn('bo', kind, ...more, o.selected && 'is-sel', o.other && 'is-other', o.glide && 'is-glide', o.land ? 'is-land' : o.pop && 'is-pop', o.lift && 'is-lift', o.editor ? 'is-live-edit' : false),
     style: { ...place(o), ...(o.other ? { '--pc': o.other } : {}), ...(o.delay ? { '--d': `${o.delay}ms` } : {}) }
   };
 }
@@ -567,7 +649,7 @@ export const BoardFrame = memo(function BoardFrame({ id, x, y, w, h, title, sub,
 });
 
 /** A sticky. It says nothing about who wrote it. */
-export const BoardSticky = memo(function BoardSticky({ colour, text, size = 'm', votes = 0, dots = 0, top = false, muted = false, ...o }: ObjectProps & {
+export const BoardSticky = memo(function BoardSticky({ colour, text, size = 'm', votes = 0, dots = 0, top = false, muted = false, ballot, ...o }: ObjectProps & {
   colour: BoardColour; text: string; size?: 's' | 'm' | 'l' | undefined;
   /** Everyone's votes, once a vote has ended. */
   votes?: number | undefined;
@@ -577,9 +659,19 @@ export const BoardSticky = memo(function BoardSticky({ colour, text, size = 'm',
   top?: boolean | undefined;
   /** Didn't make it: it steps back. */
   muted?: boolean | undefined;
+  /**
+   * In a vote you can vote in: the keys can be put on it (the board moves them from sticky to sticky with Tab), and Enter or
+   * Space votes for it or takes the vote back, as a press does. A screen reader hears its words as a toggle button: pressed
+   * once it has your vote (`voted`), and dimmed while you've no vote left to give it (`spent`).
+   */
+  ballot?: 'voted' | 'open' | 'spent' | undefined;
 }) {
+  const votable = ballot ? {
+    role: 'button', tabIndex: -1, 'aria-pressed': ballot === 'voted', 'aria-disabled': ballot === 'spent' || undefined,
+    'aria-label': text.trim() ? undefined : 'A sticky with nothing on it'
+  } : {};
   return (
-    <div {...objectAttrs(o, 'k-note', `c-${colour}`, size !== 'm' && `is-${size}`, votes > 0 && 'has-v', dots > 0 && 'has-dots', top && 'is-top', muted && 'is-muted')}>
+    <div {...objectAttrs(o, 'k-note', `c-${colour}`, size !== 'm' && `is-${size}`, votes > 0 && 'has-v', dots > 0 && 'has-dots', top && 'is-top', muted && 'is-muted', ballot && 'is-ballot')} {...votable}>
       {o.editor}
       <p className="bo-t">{text}</p>
       {votes > 0 && <b className="bo-v"><Icon name="vote" size={11} />{votes}</b>}
@@ -615,6 +707,95 @@ export const BoardPicture = memo(function BoardPicture({ src, shot = false, capt
   if (!shot) return <div {...objectAttrs(o, 'k-img')}>{picture}</div>;
   return <div {...objectAttrs(o, 'k-shot')}><span className="bo-shot">{picture}</span><p className="bo-t">{caption}</p></div>;
 });
+
+/* ---------- More's objects: a table, a mind map's ideas, and something from the workspace ---------- */
+
+/** A row or a column of a `BoardTable`: its id, which its cells are keyed by, and its share of the table's size. */
+export interface BoardTableLine { id: string; size: number }
+
+/**
+ * A table, in board units. Its columns and rows share its width and height by their sizes, and each cell says its words, read
+ * by `<rowId>:<colId>` and written to `data-cell`, which is how a double-click finds the cell to type in. While it's selected,
+ * it offers a row at the bottom and a column at the right.
+ */
+export const BoardTable = memo(function BoardTable({ cols, rows, cells, editing, onAddRow, onAddCol, ...o }: ObjectProps & {
+  cols: readonly BoardTableLine[]; rows: readonly BoardTableLine[];
+  cells: Readonly<Record<string, string>>;
+  /** The cell being typed in, by its key, and its `BoardEdit`. */
+  editing?: { key: string; editor: ReactNode } | undefined;
+  onAddRow?: (() => void) | undefined; onAddCol?: (() => void) | undefined;
+}) {
+  const share = (lines: readonly BoardTableLine[]) => lines.map((l) => `${Math.max(1, l.size)}fr`).join(' ');
+  return (
+    <div {...objectAttrs({ ...o, editor: undefined }, 'k-table')}>
+      <div className="bo-grid" style={{ gridTemplateColumns: share(cols), gridTemplateRows: share(rows) }}>
+        {rows.flatMap((row, r) => cols.map((col) => {
+          const key = `${row.id}:${col.id}`, live = editing?.key === key;
+          return (
+            <div key={key} className={cn('bo-cell', r === 0 && 'is-head', live && 'is-live-edit')} data-cell={key}>
+              {live && editing.editor}
+              <p className="bo-t">{cells[key] ?? ''}</p>
+            </div>
+          );
+        }))}
+      </div>
+      {o.selected && onAddRow && <button type="button" className="bo-add is-row" aria-label="Add a row" title="Add a row" onClick={onAddRow}><Icon name="plus" size={14} /></button>}
+      {o.selected && onAddCol && <button type="button" className="bo-add is-col" aria-label="Add a column" title="Add a column" onClick={onAddCol}><Icon name="plus" size={14} /></button>}
+    </div>
+  );
+});
+
+/** An idea in a mind map. `first`: the one the map starts from, which has nothing it branches from. */
+export const BoardNode = memo(function BoardNode({ text, first = false, ...o }: ObjectProps & { text: string; first?: boolean | undefined }) {
+  return (
+    <div {...objectAttrs(o, 'k-node', first && 'is-first')}>
+      {o.editor}
+      <p className="bo-t">{text}</p>
+    </div>
+  );
+});
+
+/**
+ * Something from the workspace on the board: a document or a board, by its reader's own name for it. Someone who can't open
+ * it is told so, and nothing of its name. `onOpen` opens it, for whoever can.
+ */
+export const BoardLink = memo(function BoardLink({ name, kind = 'document', onOpen, ...o }: Omit<ObjectProps, 'editor'> & {
+  /** What it's called for whoever's looking, or null if they can't open it. */
+  name: string | null;
+  kind?: 'document' | 'board' | undefined;
+  onOpen?: (() => void) | undefined;
+}) {
+  const icon: IconName = name === null ? 'lock' : kind === 'board' ? 'presentation' : 'fileText';
+  return (
+    <div {...objectAttrs(o, 'k-link', name === null && 'is-closed')}>
+      <span className="bo-li"><Icon name={icon} size={20} /></span>
+      <p className="bo-t">{name === null ? 'A document you can’t open' : name.trim() || (kind === 'board' ? 'Untitled board' : 'Untitled')}</p>
+      {name !== null && onOpen && <button type="button" className="bo-open" aria-label={`Open ${name.trim() || 'it'}`} title="Open it" onClick={onOpen}><Icon name="right" size={15} /></button>}
+    </div>
+  );
+});
+
+/**
+ * What one of More's items offers, beside the rail where More was: the templates, or what's in the workspace. Each choice has an
+ * id, and for a moment after the choices move (the workspace's items coming in as it opens) a press does nothing.
+ */
+export function BoardFlyList({ label, items, empty, className }: {
+  label: string;
+  items: readonly { id: string; icon: IconName; label: string; small?: string | undefined; onPick: () => void }[];
+  /** What it says with nothing to choose. */
+  empty: string;
+  className?: string | undefined;
+}) {
+  const press = useSettledPress(items.map((i) => i.id).join('\n'));
+  return (
+    <div className={cn('bfly', 'is-list', className)} role="menu" aria-label={label}>
+      <div className="hd">{label}</div>
+      {items.length ? items.map((i) => (
+        <button key={i.id} type="button" className="item" role="menuitem" onClick={press(i.onPick)}><Icon name={i.icon} size={18} /><span className="lb">{i.label}</span>{i.small && <small>{i.small}</small>}</button>
+      )) : <p className="none">{empty}</p>}
+    </div>
+  );
+}
 
 /** Moves a pointer without drawing it again, as `moveBoardCamera` moves the board: it's written on a `BoardPointer`'s ref, in board units, and eases there. */
 export function moveBoardPointer(pointer: HTMLElement, x: number, y: number): void {
@@ -683,10 +864,14 @@ export interface BoardIdea {
 
 const addAllLabel = (n: number): string => (n === 2 ? 'Add both' : n === 3 ? 'Add all three' : `Add all ${n}`);
 
-/** Ideas the call heard, each with who said it. */
+/**
+ * Ideas the call heard, each with who said it. Those added stay, saying so, and Add all adds the rest. It stays open while
+ * people work on the board, so it's a region, not a dialog: the call's keys and Escape go on working round it.
+ */
 export function BoardTray({ ideas, onClose, onAdd, onAddAll, className }: { ideas: BoardIdea[]; onClose: () => void; onAdd: (id: string) => void; onAddAll: () => void; className?: string | undefined }) {
+  const left = ideas.filter((l) => !l.added).length;
   return (
-    <div className={cn('bd-tray', className)} role="dialog" aria-label="Ideas from the call">
+    <div className={cn('bd-tray', className)} role="region" aria-label="Ideas from the call">
       <div className="hd"><Icon name="waveform" size={16} />From the call<span className="sp"><Icon name="sealed" size={13} />Written in confidential compute</span><IconButton className="bt" icon="x" size={16} label="Close" onClick={onClose} /></div>
       {ideas.map((l) => (
         <div key={l.id} className="ln">
@@ -695,7 +880,7 @@ export function BoardTray({ ideas, onClose, onAdd, onAddAll, className }: { idea
           <Button variant="secondary" size="sm" disabled={l.added} onClick={() => onAdd(l.id)}>{l.added ? 'Added' : 'Add'}</Button>
         </div>
       ))}
-      {ideas.length > 1 && <div className="ft"><Button variant="primary" size="sm" onClick={onAddAll}>{addAllLabel(ideas.length)}</Button></div>}
+      {left > 1 && <div className="ft"><Button variant="primary" size="sm" onClick={onAddAll}>{addAllLabel(left)}</Button></div>}
     </div>
   );
 }
@@ -709,10 +894,6 @@ export function BoardMap({ blocks, bounds, view, className }: { blocks: BoardBox
   return <div className={cn('bi bd-map', className)} aria-hidden="true">{blocks.map((b, i) => <i key={i} style={onMap(b)} />)}<b style={onMap(view)} /></div>;
 }
 
-/**
- * What a blank board says, until the first sticky. `fading` as that sticky lands: it goes on being drawn until it has gone.
- * `everyone`: everyone here can add to it, which it says only when it's so.
- */
 /**
  * What a blank board says. To someone who can add to it, how to start, and with `everyone`, that everyone here can too: `page` says
  * it of everyone who can open the board, as a page has nobody "here". To someone who can only look, that what's added shows here.
@@ -750,7 +931,7 @@ export function BoardNoAccess({ who, onAsk, className }: { who: string | null; o
       <div>
         <Icon name="lock" size={28} />
         <h3>A board you can’t open</h3>
-        <p>{who ? `${who} brought it from a workspace you’re not in.` : 'It’s from a workspace you’re not in.'}</p>
+        <p>{who ? `${who} brought it. Ask them to let you in.` : 'Ask whoever brought it to let you in.'}</p>
         {who && onAsk && <Button variant="secondary" onClick={onAsk}>Ask {who} for access</Button>}
       </div>
     </div>
@@ -806,46 +987,66 @@ export interface BoardMenuAccess {
 
 const namesList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
-/**
- * The Board button's menu, rising from `anchor` (the dock's button): a new board from a template, the team's recent boards
- * and, in place of those, the access step. `inRoom` says it's only for this room, and leaves the saved boards out. `tip`
- * names the button on hover, as a dock button's does. `busy`: something chosen is on its way, so nothing else can be. Each
- * row is told apart by what it is, a template or a board by its `id`, and for a moment after the rows move, as the recent
- * boards come in or the access step takes their place, a press does nothing (`useSettledPress`).
- */
-export function BoardMenu({ open, onOpenChange, anchor, tip, inRoom = false, recents, access, busy = false, onTemplate, onRecent, className }: {
-  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode; inRoom?: boolean | undefined;
+/** What the Board menu offers: a new board from a template, the team's recent boards and, in place of those, the access step. */
+export interface BoardMenuContent {
+  /** It's only for this room, and leaves the saved boards out. */
+  inRoom?: boolean | undefined;
   recents?: BoardMenuRecents | undefined;
   access?: BoardMenuAccess | undefined;
+  /** Something chosen is on its way, so nothing else can be. */
   busy?: boolean | undefined;
-  onTemplate: (template: BoardTemplate) => void; onRecent?: ((id: string) => void) | undefined; className?: string | undefined;
-}) {
-  const shown = !access && !inRoom && recents ? recents.boards : [];
-  const settled = useSettledPress([
-    ...TEMPLATES.map((t) => `template:${t.id}`), ...shown.map((r) => `board:${r.id}`), access ? `access:${access.onLetIn ? 'let-in' : 'without'}` : ''
+  onTemplate: (template: BoardTemplate) => void;
+  onRecent?: ((id: string) => void) | undefined;
+}
+
+/**
+ * What the Board menu holds, wherever it opens: in a popover with the class `bl`, from the dock's button or from More. Each row
+ * is told apart by what it is, a template or a board by its `id`, and for a moment after the rows move, as the recent boards
+ * come in or the access step takes their place, a press does nothing (`useSettledPress`).
+ */
+export function BoardMenuBody({ inRoom = false, recents, access, busy = false, onTemplate, onRecent }: BoardMenuContent) {
+  const saved = !access && !inRoom && recents ? recents.boards : [];
+  const press = useSettledPress([
+    ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`),
+    ...(access ? [...(access.onLetIn ? ['access:let-in'] : []), 'access:without'] : [])
   ].join('\n'));
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="top" align="center" label="Open a board" className={cn('bl', busy && 'is-busy', className)}>
+    <>
       <div className="bl-h"><span>New board</span><small>{inRoom ? 'Only this room sees it' : 'Opens for everyone here'}</small></div>
       <div className="bl-tpl">
-        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={settled(() => onTemplate(t.id))}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
+        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={press(() => onTemplate(t.id))}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
       </div>
-      {recents && shown.length > 0 && (
+      {recents && saved.length > 0 && (
         <>
           <div className="bl-sub">From {recents.workspace}</div>
-          {shown.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={settled(() => onRecent?.(r.id))}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
+          {saved.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={press(() => onRecent?.(r.id))}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
         </>
       )}
       {access && (
         <div className="bl-q">
           <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
           <div className="acts">
-            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={settled(access.onLetIn)}>Let them in for this call</Button>}
-            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={settled(access.onWithout)}>Open without them</Button>
+            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={press(access.onLetIn)}>Let them in for this call</Button>}
+            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>Open without them</Button>
           </div>
         </div>
       )}
       <div className="bl-f"><Icon name="sealed" size={15} /><span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : 'Sealed. Alcove can’t read boards.'}</span></div>
+    </>
+  );
+}
+
+/**
+ * The Board button's menu, rising from `anchor` (the dock's button), with what `BoardMenuBody` holds. `tip` names the button on
+ * hover, as a dock button's does. `inRoom` says it's only for this room, and leaves the saved boards out. `busy`: something
+ * chosen is on its way, so nothing else can be.
+ */
+export function BoardMenu({ open, onOpenChange, anchor, tip, className, ...content }: BoardMenuContent & {
+  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode; className?: string | undefined;
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="top" align="center" label="Open a board" className={cn('bl', content.busy && 'is-busy', className)}>
+      <BoardMenuBody {...content} />
     </Popover>
   );
 }
@@ -892,7 +1093,7 @@ export function BoardPhoneSheet({ text, colour, target, onText, onColour, onAdd,
   return (
     <div className={cn('pc-sheet', className)} role="dialog" aria-label="Add a sticky">
       <div className="grab" />
-      <textarea className={cn('pc-note', `c-${colour}`)} aria-label="What the sticky says" value={text} onChange={(e) => onText(e.target.value)} />
+      <textarea className={cn('pc-note', `c-${colour}`)} aria-label="What the sticky says" placeholder="Type your sticky" autoFocus value={text} onChange={(e) => onText(e.target.value)} />
       <div className="row">
         {PHONE_COLOURS.map((c) => <button key={c} type="button" className={cn('sw', `c-${c}`)} aria-pressed={colour === c} aria-label={colourName(c)} onClick={() => onColour(c)}><i className="swatch" /></button>)}
       </div>
