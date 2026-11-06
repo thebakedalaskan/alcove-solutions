@@ -10,9 +10,10 @@
  */
 import { BoardPhoneAdd, BoardPill, BoardTile } from '@alcove/ui';
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { BoardScene, whereItShows, type BoardStory } from '../../src/board';
 import { did } from '../../src/component';
-import { AROUND, launchIdeas, launchRetro, onboardingFlow, roomsBack, templateBoard } from '../../src/world/boards';
+import { AROUND, launchIdeas, launchRetro, onboardingFlow, retroWithComments, roomsBack, templateBoard } from '../../src/world/boards';
 import { ART } from '../../src/world/people';
 
 const MODES = ['call', 'page', 'read', 'tile', 'present', 'phone'] as const;
@@ -28,7 +29,7 @@ const meta = {
     mode: { control: 'select', options: MODES },
     name: { control: 'text' },
     seal: { control: 'text' },
-    board: { control: false }, others: { control: false }, talking: { control: false }, follow: { control: false }, children: { control: false }, sealIcon: { control: false }
+    board: { control: false }, others: { control: false }, talking: { control: false }, follow: { control: false }, children: { control: false }, sealIcon: { control: false }, sort: { control: false }
   }
 } satisfies Meta<typeof BoardScene>;
 export default meta;
@@ -57,10 +58,46 @@ export const WhatWhyNext: BoardStory = {
   }
 };
 
-/** Ideas where people dropped them, before anyone sorted them. Drag round them all and the bar offers Sort into themes. */
+/**
+ * Ideas where people dropped them, before anyone sorted them. Drag round them all and the bar offers Sort into themes, which here
+ * answers after a moment as confidential compute would, with the canvas's three themes. They travel into them, and one undo puts it
+ * all back.
+ */
 export const PileOfIdeas: BoardStory = { name: 'A pile of ideas', args: { board: () => launchIdeas(), others: [], talking: ['theo'] } };
-/** The same ideas after Sort into themes: three named groups, each in its own colour. One undo puts it all back. */
+/** The same ideas after Sort into themes: three named groups, each in its own colour, and the frame drawn round its themes. It counts nine stickies: a theme's name is no sticky. */
 export const SortedIntoThemes: BoardStory = { name: 'Sorted into themes', args: { board: () => launchIdeas({ sorted: true }), others: [], talking: ['theo'] } };
+
+/**
+ * A board with comments: Maya asked about the changelog on Priya's sticky and Art answered, and Kofi left a note on refreshing
+ * staging. Each shows as a pin on the sticky's corner with its first person's face and how many have replied, and nothing else
+ * until it's opened. Pins stay one size at any zoom. Comments aren't on the board: nobody's undo takes one back.
+ */
+export const WithComments: BoardStory = { name: 'With comments', args: { board: () => retroWithComments() } };
+/** Maya's thread, open beside its pin in the workspace's comment sheet: what it's on, Resolve, what's been said and the field to reply in. */
+export const AThreadOpen: BoardStory = {
+  name: 'A thread open',
+  args: { board: () => retroWithComments() },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Click the pin on Priya’s sticky', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Comment from Maya, and 1 reply' }));
+    });
+  }
+};
+/** A new comment: pick a sticky, press K, and write. The field opens beside its corner, with your face. */
+export const ANewComment: BoardStory = {
+  name: 'A new comment',
+  args: { board: () => retroWithComments() },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Click One owner for launch comms, then press K', async () => {
+      await userEvent.click(await canvas.findByText('One owner for launch comms'));
+      await userEvent.keyboard('k');
+    });
+    await step('Write the comment', async () => {
+      // The field opens in the workspace's comment sheet, which is drawn over the page, outside the story's root.
+      await userEvent.type(await screen.findByRole('textbox', { name: 'Comment' }), 'Priya, can you take this one?');
+    });
+  }
+};
 /** A saved board brought in from the workspace: the onboarding flow, with Aiko's question on the step people stop at. */
 export const OnboardingFlow: BoardStory = {
   name: 'Onboarding flow',
@@ -79,11 +116,32 @@ export const RoomsBack: BoardStory = {
 export const OnItsPage: BoardStory = { name: 'On its page', args: { mode: 'page', others: [{ who: 'priya', at: { x: 575, y: 214 } }, { who: 'kofi', at: { x: 980, y: 430 } }], talking: [] } };
 export const OnItsPageDark: BoardStory = { ...OnItsPage, name: 'On its page, dark', globals: { theme: 'dark' } };
 /**
- * For someone given view access: the tools and undo go away, and they can still look round, follow people and talk. In the
- * call the bar keeps the timer, a vote, presenting and More, as the canvas has it: the call passes `acts`.
+ * For someone given view access, in a call: the tools and undo go away, and they can still look round, follow people, read
+ * comments and talk. The bar keeps Timer, Vote and Present where they are, disabled, each saying why in its tip, and More, which
+ * has nothing in it that changes the board. The call passes `acts`.
  */
-export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true } };
-/** Presenting: no tools, no dots and no handles, just the frame on screen, as everyone sees it. */
+export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, board: () => retroWithComments() } };
+/** More, for someone with view access: a link, the board as an image or a PDF, and Night board. */
+export const ViewOnlyMore: BoardStory = {
+  name: 'View only, with More',
+  args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Click More on the bar', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'More' }));
+    });
+  }
+};
+/** Someone with view access reads a thread, with no field and no Resolve. */
+export const ViewOnlyThread: BoardStory = {
+  name: 'View only, a thread open',
+  args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, board: () => retroWithComments() },
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Click the pin on Priya’s sticky', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Comment from Maya, and 1 reply' }));
+    });
+  }
+};
+/** Presenting: no tools, no dots and no handles, just the frame on screen, as everyone sees it, fitted and in the middle with nothing of the next one at its edge. */
 export const Presenting: BoardStory = { args: { mode: 'present', focus: 'Went well', others: [], talking: ['art'] } };
 
 /** Anyone can drop the board to a live tile and keep faces big. It's a picture that keeps up, and pressing it opens the board. */

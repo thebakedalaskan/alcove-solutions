@@ -122,18 +122,24 @@ export function CommentPins({ board, store, commenting }: { board: Board; store:
   });
 }
 
-/** Where a pin is, or the corner of what's being commented on: what the sheet beside it sits against. */
-function cornerOf(sheet: HTMLElement | null, board: Board, at: CommentOpen): DOMRect {
-  if (at !== null && at !== 'picking' && 'thread' in at) {
-    const pin = sheet?.querySelector(`[data-thread="${CSS.escape(at.thread)}"]`);
-    if (pin) return pin.getBoundingClientRect();
-  }
+/** The most of what's commented on that the sheet beside it keeps clear of, in screen pixels: a sticky's worth, at its top right corner. */
+const CLEAR = 240;
+
+/**
+ * What the sheet beside a comment sits against: the top right of what it's on, as far as a sticky's worth of it, with its pin when it
+ * has one. The sheet opens to the right of that, and where there's no room on the right it opens on the left of it rather than over it.
+ */
+function besideOf(sheet: HTMLElement | null, board: Board, at: CommentOpen, on: string | undefined): DOMRect {
   const box = sheet?.getBoundingClientRect();
-  const id = at !== null && at !== 'picking' && 'on' in at ? at.on : undefined;
-  const o = id === undefined ? undefined : board.getSnapshot().view.byId.get(id);
-  if (!box || !o || !hasBox(o)) return new DOMRect(box?.left ?? 0, box?.top ?? 0, 0, 0);
+  const o = on === undefined ? undefined : board.getSnapshot().view.byId.get(on);
+  const pin = at !== null && at !== 'picking' && 'thread' in at ? sheet?.querySelector(`[data-thread="${CSS.escape(at.thread)}"]`)?.getBoundingClientRect() : undefined;
+  if (!box || !o || !hasBox(o)) return pin ?? new DOMRect(box?.left ?? 0, box?.top ?? 0, 0, 0);
   const { x, y, z } = board.camera.getSnapshot();
-  return new DOMRect(box.left + (o.x + o.w) * z + x, box.top + o.y * z + y, 0, 0);
+  const right = box.left + (o.x + o.w) * z + x, top = box.top + o.y * z + y;
+  const w = Math.min(o.w * z, CLEAR), h = Math.min(o.h * z, CLEAR);
+  if (!pin) return new DOMRect(right - w, top, w, h);
+  const left = Math.min(right - w, pin.left), up = Math.min(top, pin.top);
+  return new DOMRect(left, up, Math.max(right, pin.right) - left, Math.max(top + h, pin.bottom) - up);
 }
 
 /** The thread that's open, or a new comment being written, beside what it's on; and while picking, what catches the press. */
@@ -180,7 +186,8 @@ function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: 
   }
   if (gone) return null;
   const close = (to: boolean) => { if (!to) store.close(); };
-  const at = () => cornerOf(sheet(), board, open);
+  const on = 'on' in open ? open.on : threads.find((t) => t.id === open.thread)?.on;
+  const at = () => besideOf(sheet(), board, open, on);
 
   if ('on' in open) {
     if (!me) return null;

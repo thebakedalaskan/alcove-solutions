@@ -67,9 +67,12 @@ export const TableLinesSchema = z.array(TableLineSchema).max(TABLE_MAX);
 const NoteSchema = z.object({ k: z.literal('note'), ...Placed, c: StickyColourSchema, size: z.enum(['s', 'm', 'l']), t: TextSchema });
 const TextObjectSchema = z.object({ k: z.literal('text'), ...Placed, size: z.enum(['title', 'heading', 'body']), t: TextSchema });
 const ShapeSchema = z.object({ k: z.literal('shape'), ...Placed, s: z.enum(SHAPE_KINDS), c: ColourOrNoneSchema, t: TextSchema });
-/** `c` is the colour new stickies take inside it; `sub` is the line beside its title, like who was in a room. */
+/**
+ * `c` is the colour new stickies take inside it; `sub` is the line beside its title, like who was in a room; `sorted` says Sort into
+ * themes has sorted what's in it, so it's drawn round its themes.
+ */
 const FrameSchema = z.object({
-  k: z.literal('frame'), ...Placed, c: ColourOrNoneSchema, role: z.enum(['', 'actions']), hint: TextSchema, sub: TextSchema.default(''), title: TextSchema
+  k: z.literal('frame'), ...Placed, c: ColourOrNoneSchema, role: z.enum(['', 'actions']), hint: TextSchema, sub: TextSchema.default(''), sorted: z.boolean().default(false), title: TextSchema
 });
 const LineSchema = z.object({ k: z.literal('line'), ...Layered, style: z.enum(LINE_STYLES), from: LineEndSchema, to: LineEndSchema });
 /** `pts` are flat x, y pairs relative to the object's `x y`. */

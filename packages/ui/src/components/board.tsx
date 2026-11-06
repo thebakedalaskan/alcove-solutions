@@ -163,6 +163,10 @@ export interface BoardBarProps {
   editable?: boolean | undefined;
   /** Timer, Vote, Present and More: false where there's no session to run. */
   acts?: boolean | undefined;
+  /** Whether this person can start a timer, a vote or present: false for someone who can only look, who sees them disabled, saying why. More stays theirs. */
+  canAct?: boolean | undefined;
+  /** More is open, so its button says so. */
+  moreOn?: boolean | undefined;
   mapOn?: boolean | undefined;
   faded?: boolean | undefined;
   onName: () => void; onSeal: () => void;
@@ -196,9 +200,21 @@ function NameField({ naming }: { naming: BoardNaming }) {
   );
 }
 
+/** Why Timer, Vote and Present can't be pressed by someone who can only look at a board. */
+const ONLY_EDITORS = {
+  timer: 'Only people who can add to this board can start a timer',
+  vote: 'Only people who can add to this board can vote',
+  present: 'Only people who can add to this board can present'
+} as const;
+
+/** A button on the bar that someone who can only look sees, disabled, with why in its tip: a disabled button can't show a tip. */
+function Barred({ icon, size, label, why }: { icon: IconName; size: number; label: string; why: string }) {
+  return <IconButton className="bt run" icon={icon} size={size} label={label} title={why} aria-disabled="true" />;
+}
+
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
-export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, mapOn = false, faded = false,
-  onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
+export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
+  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       {naming ? <NameField naming={naming} />
@@ -219,10 +235,20 @@ export function BoardBar({ name, naming, seal = 'Sealed', sealIcon = 'sealed', s
       {acts && (
         <>
           <span className="vr" />
-          <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} />
-          <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} />
-          <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} />
-          <IconButton className="bt" icon="more" size={17} label="More" onClick={onMore} />
+          {canAct ? (
+            <>
+              <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} />
+              <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} />
+              <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} />
+            </>
+          ) : (
+            <>
+              <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />
+              <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />
+              <Barred icon="play" size={15} label="Present" why={ONLY_EDITORS.present} />
+            </>
+          )}
+          <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />
         </>
       )}
       {tail}
@@ -240,7 +266,7 @@ export function BoardPill({ icon = 'clock', title, text, time, soon = false, act
   return (
     <div className={cn('bd-pill', 'dark', soon && 'is-soon', action && 'has-act', className)} role="status">
       {icon && <Icon name={icon} size={16} fill="none" />}
-      {title && <b>{title}</b>}
+      {title && <b className="ac-clamp-1">{title}</b>}
       {text && <span>{text}</span>}
       {time && (title || text) && <span className="sep" />}
       {time && <span className="t">{time}</span>}
@@ -375,6 +401,8 @@ export interface BoardSelectionBarProps {
   /** A button shows only if it's given something to do: nothing is offered that can't be done to what's picked. */
   onLine?: (() => void) | undefined; onDuplicate?: (() => void) | undefined; onMore?: (() => void) | undefined;
   onSort?: (() => void) | undefined; onTidy?: (() => void) | undefined;
+  /** Sort into themes is waiting for its answer: it says so, and can't be pressed again. */
+  sorting?: boolean | undefined;
   className?: string | undefined;
 }
 
@@ -385,14 +413,18 @@ const UNDER_BAR = 48;
 const POP_GAP = 12;
 
 /** A small bar that only appears on what you've picked, with its row of colours and its menu under it. */
-export function BoardSelectionBar({ x, y, room, count = 1, things = 'stickies', colour, textSize = false, picking = false, lineStyle, moreItems, onColour, onPick, onTextSize, onLineStyle, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, className }: BoardSelectionBarProps) {
+export function BoardSelectionBar({ x, y, room, count = 1, things = 'stickies', colour, textSize = false, picking = false, lineStyle, moreItems, onColour, onPick, onTextSize, onLineStyle, onLine, onDuplicate, onDelete, onMore, onSort, onTidy, sorting = false, className }: BoardSelectionBarProps) {
   return (
     <>
       <div className={cn('bx', className)} style={{ left: x, top: y, translate: centredOn(x, room) }} role="toolbar" aria-label="Selected">
         {count > 1 && <><span className="n">{count} {things}</span><span className="bd-sep" /></>}
         {count > 1 && (onSort || onTidy) && (
           <>
-            {onSort && <button type="button" className="wide" title="Written in confidential compute" onClick={onSort}><Icon name="group" size={17} />Sort into themes</button>}
+            {onSort && (
+              <button type="button" className="wide" title="Written in confidential compute" disabled={sorting} aria-busy={sorting} onClick={onSort}>
+                <Icon name="group" size={17} />{sorting ? 'Sorting…' : 'Sort into themes'}
+              </button>
+            )}
             {onTidy && <button type="button" className="wide" onClick={onTidy}><Icon name="grid" size={16} />Tidy</button>}
             <span className="bd-sep" />
           </>

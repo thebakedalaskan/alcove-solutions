@@ -45,6 +45,11 @@ export type BoardFly = 'note' | 'shape' | 'line' | 'pen' | 'more';
 /** What More's items do. Each comes from outside the board, and one that isn't given does nothing. */
 export type BoardMoreItems = Partial<Record<BoardMoreItem, (() => void) | undefined>>;
 
+/** What the bar's More holds, beside the name: none of it changes the board, so it's there for someone who can only look too. */
+export type BoardBarItem = 'link' | 'image' | 'pdf' | 'night';
+/** What each of the bar's More items does. An item that isn't given isn't shown. */
+export type BoardBarItems = Partial<Record<BoardBarItem, (() => void) | undefined>>;
+
 export interface BoardState {
   view: BoardView;
   tool: BoardTool;
@@ -90,6 +95,12 @@ export interface BoardState {
   near: Box | null;
   /** Whose view this is, if it isn't your own. */
   following: string | null;
+  /** The bar's More is open. */
+  barMenu: boolean;
+  /** The frame on the sheet while presenting, which is all a presented board shows. */
+  slide: string | null;
+  /** Sort into themes is waiting for its answer. */
+  sorting: boolean;
   canUndo: boolean;
   canRedo: boolean;
 }

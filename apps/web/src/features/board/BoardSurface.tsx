@@ -8,9 +8,9 @@
  * and what the bars offer is in `tools/`.
  */
 import { errorCode } from '@alcove/api';
-import { addObject, bounds, hasBox, shapePath, type BoardView, type PlacedObject } from '@alcove/board';
+import { addObject, bounds, hasBox, shapePath, type BoardTheme, type BoardView, type PlacedObject } from '@alcove/board';
 import {
-  BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky, BoardStroke,
+  BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardPop, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky, BoardStroke,
   BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
 } from '@alcove/ui';
 import { createContext, forwardRef, memo, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react';
@@ -22,8 +22,8 @@ import { BoardTyping } from './editing';
 import { watchSheet } from './gestures';
 import { FollowingPill } from './pills';
 import { BoardPointers, useBoardPresence, useOthersEditing, type BoardPresenceStore } from './presence';
-import { mounted, placed, selectionRing } from './selection';
-import { BOARD_LOOKS, type BoardMode, type BoardMoreItems } from './state';
+import { inSlide, mounted, placed, selectionRing } from './selection';
+import { BOARD_LOOKS, type BoardBarItem, type BoardBarItems, type BoardMode, type BoardMoreItems } from './state';
 import { SelectedBar } from './tools/bar';
 import { Draft } from './tools/draft';
 import { Flyouts } from './tools/flyouts';
@@ -79,15 +79,19 @@ export interface BoardHandlers {
   onTimer?: (() => void) | undefined;
   onVote?: (() => void) | undefined;
   onPresent?: (() => void) | undefined;
-  onMore?: (() => void) | undefined;
+  /** What the bar's More does: Copy link, Download as an image or a PDF, and Night board. None of it changes the board, so someone who can only look has it too. */
+  barMore?: BoardBarItems | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
   /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
   onFollow?: ((id: string | null) => void) | undefined;
   /** Something to tell this person, such as what they were typing in being deleted. */
   onSay?: ((text: string) => void) | undefined;
-  /** Sort into themes, on the stickies picked. The bar offers it only with this, so while a call is paused it isn't given. */
-  onSort?: ((stickies: readonly string[]) => void) | undefined;
+  /**
+   * Sort into themes, on the stickies picked: asks confidential compute, and answers with the themes, which the board writes as
+   * this person's change, so one undo puts it all back. The bar offers it only with this, so while a call is paused it isn't given.
+   */
+  onSort?: ((stickies: readonly string[]) => Promise<readonly BoardTheme[]>) | undefined;
   /** What More beside the rail does: Image, From your workspace, Table, Mind map, Comment (also K) and Templates. */
   moreItems?: BoardMoreItems | undefined;
 }
@@ -107,7 +111,10 @@ export interface BoardSurfaceProps extends BoardHandlers {
   sealTitle?: string | undefined;
   /** Comments: who's writing, and whose faces go on them. Without it there are none to see or add. */
   comments?: BoardCommenting | undefined;
-  /** Timer, Vote, Present and More in the bar. On by default in a call and nowhere else. */
+  /**
+   * Timer, Vote, Present and More in the bar. On by default in a call and nowhere else: someone with view access in a call has them
+   * too, with Timer, Vote and Present disabled, saying why.
+   */
   acts?: boolean | undefined;
   people?: readonly BoardPerson[] | undefined;
   /** The call identities of whoever is talking. */
@@ -134,6 +141,7 @@ export interface BoardSurfaceProps extends BoardHandlers {
 
 const NO_PEOPLE: readonly BoardPerson[] = [];
 const NO_ITEMS: BoardMoreItems = {};
+const NO_BAR_ITEMS: BoardBarItems = {};
 /** A picture of a screen as the canvas sizes one, in board units: its frame, the picture and the line under it. */
 const SHOT = { w: 320, h: 228 } as const;
 /** How far beside everything a picture lands when there's no view to put it in the middle of. */
@@ -166,11 +174,15 @@ const Picture = memo(function Picture({ media, ...rest }: ComponentProps<typeof 
   return <BoardPicture {...rest} src={src} />;
 });
 
-/** How many objects each frame holds, for the number beside its title and to know when it's empty. */
-function heldCounts(view: BoardView): Map<string, number> {
-  const held = new Map<string, number>();
-  for (const o of view.objects) if (o.f && o.k !== 'frame' && o.k !== 'line') held.set(o.f, (held.get(o.f) ?? 0) + 1);
-  return held;
+/** What each frame holds: how many things, to know when it's empty, and how many stickies, the number beside its title. A theme's name is no sticky. */
+function heldCounts(view: BoardView): { held: Map<string, number>; stickies: Map<string, number> } {
+  const held = new Map<string, number>(), stickies = new Map<string, number>();
+  for (const o of view.objects) {
+    if (!o.f || o.k === 'frame' || o.k === 'line') continue;
+    held.set(o.f, (held.get(o.f) ?? 0) + 1);
+    if (o.k === 'note') stickies.set(o.f, (stickies.get(o.f) ?? 0) + 1);
+  }
+  return { held, stickies };
 }
 
 function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boolean, glide: boolean, editing: boolean, other: string | undefined): ReactNode {
@@ -187,24 +199,33 @@ function drawObject(o: PlacedObject, board: Board, selected: boolean, pop: boole
 }
 
 /** Everything on the board, in the order it stacks: frames, then lines and ink in one drawing, then objects. */
-const Objects = memo(function Objects({ board, presence }: { board: Board; presence: BoardPresenceStore }) {
+const Objects = memo(function Objects({ board, presence, mode }: { board: Board; presence: BoardPresenceStore; mode: BoardMode }) {
   const view = useBoardState(board, (s) => s.view);
   const near = useBoardState(board, (s) => s.near);
   const sel = useBoardState(board, (s) => s.sel);
   const edit = useBoardState(board, (s) => s.edit);
   const landed = useBoardState(board, (s) => s.landed);
   const settling = useBoardState(board, (s) => s.settling);
+  const presented = useBoardState(board, (s) => s.slide);
+  const slide = mode === 'present' ? presented : null;
   const others = useOthersEditing(presence);
   const picked = useMemo(() => new Set(sel), [sel]);
-  const shown = useMemo(() => mounted(view, near, edit), [view, near, edit]);
-  const held = useMemo(() => heldCounts(view), [view]);
+  // Presenting, the frame on the sheet is all there is: nothing of the next one shows at its edge.
+  const shown = useMemo(() => {
+    const all = mounted(view, near, edit);
+    if (!slide || !view.byId.has(slide)) return all;
+    const only = inSlide(view, slide);
+    return all.filter((o) => only.has(o.id));
+  }, [view, near, edit, slide]);
+  const { held, stickies } = useMemo(() => heldCounts(view), [view]);
 
   const frames: ReactNode[] = [], lines: ReactNode[] = [], objects: ReactNode[] = [];
   for (const o of shown) {
     if (o.k === 'frame') {
-      const count = held.get(o.id) ?? 0;
+      const count = stickies.get(o.id) ?? 0;
       const editor = edit === o.id ? <BoardTyping board={board} id={o.id} label="Edit this title" field="title" /> : undefined;
-      frames.push(<BoardFrame key={o.id} id={o.id} x={o.x} y={o.y} w={o.w} h={o.h} title={o.title} sub={o.sub || (count ? String(count) : undefined)} hint={count ? undefined : o.hint} other={others.get(o.id)} editor={editor} />);
+      frames.push(<BoardFrame key={o.id} id={o.id} x={o.x} y={o.y} w={o.w} h={o.h} title={o.title} sub={o.sub || (count ? String(count) : undefined)} hint={held.get(o.id) ? undefined : o.hint}
+        theme={o.sorted} other={others.get(o.id)} editor={editor} />);
     } else if (o.k === 'line') {
       const r = lineRoute(view, o);
       if (r) lines.push(<BoardLine key={o.id} id={o.id} d={r.d} head={r.head} selected={picked.has(o.id)} settle={landed.has(o.id)} />);
@@ -273,17 +294,37 @@ function Bar({ board, surface }: { board: Board; surface: BoardSurfaceProps }) {
   const canUndo = useBoardState(board, (s) => s.canUndo);
   const canRedo = useBoardState(board, (s) => s.canRedo);
   const mapOn = useBoardState(board, (s) => s.map);
+  const moreOn = useBoardState(board, (s) => s.barMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name = '', naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call', people = NO_PEOPLE, onName, onSeal, onTimer, onVote, onPresent, onMore, onCall } = surface;
+  const { name = '', naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call', people = NO_PEOPLE, onName, onSeal, onTimer, onVote, onPresent, onCall } = surface;
   const look = BOARD_LOOKS[mode];
   const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
-    <BoardBar name={name} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={BOARD_LOOKS[mode].edit} acts={acts && !following} mapOn={mapOn}
+    <BoardBar name={name} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit} acts={acts && !following} canAct={look.edit}
+      moreOn={moreOn} mapOn={mapOn}
       onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={onMore}
+      onTimer={onTimer} onVote={onVote} onPresent={onPresent} onMore={() => board.toggleBarMenu()}
       tail={look.page && !look.phone && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );
+}
+
+/** The bar's More, in the canvas's words and order. */
+const BAR_ITEMS: readonly { id: BoardBarItem; icon: IconName; label: string }[] = [
+  { id: 'link', icon: 'link', label: 'Copy link' },
+  { id: 'image', icon: 'download', label: 'Download as an image' },
+  { id: 'pdf', icon: 'fileText', label: 'Download as a PDF' },
+  { id: 'night', icon: 'sun', label: 'Night board' }
+];
+
+/** The bar's More, under its button: whichever of its items this board was given. */
+function BarMenu({ board, items }: { board: Board; items: BoardBarItems }) {
+  const open = useBoardState(board, (s) => s.barMenu);
+  const rows = BAR_ITEMS.flatMap((item) => {
+    const run = items[item.id];
+    return run ? [{ icon: item.icon, label: item.label, onPick: () => { board.set({ barMenu: false }); run(); } }] : [];
+  });
+  return open && rows.length > 0 ? <BoardPop right={14} top={60} label="More" items={rows} /> : null;
 }
 
 /** What the pill shows by itself: following, with the way back. */
@@ -311,7 +352,7 @@ function shotSpot(board: Board): { x: number; y: number } {
 }
 
 export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function BoardSurface(props, ref) {
-  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, comments, onFollow, onSay, onSort, moreItems = NO_ITEMS, children, className } = props;
+  const { doc, awareness, mode, people = NO_PEOPLE, talking, fresh = false, theme, night = false, name, pictures, pill, everyone = true, comments, onFollow, onSay, onSort, moreItems = NO_ITEMS, barMore = NO_BAR_ITEMS, children, className } = props;
   const board = useBoard(doc, mode);
   const look = BOARD_LOOKS[mode];
   const toast = useToast();
@@ -329,7 +370,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
 
   useLayoutEffect(() => board.setMode(mode), [board, mode]);
   useLayoutEffect(() => {
-    board.tell = (text) => { toast(text); };
+    board.tell = (text, o) => { toast(text, o); };
     board.onFollow = onFollow;
     board.onSay = onSay;
     board.moreItems = items;
@@ -367,11 +408,12 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
         <BoardSheet ref={sheet} tool={tool} clean={look.clean} fresh={fresh} page={look.page} mini={look.mini} glide={glide} pan={pan} theme={theme} night={night} follow={people.find((p) => p.id === following)?.colour}
           tabIndex={look.mini ? -1 : 0} role={look.mini ? undefined : 'application'} aria-label={name} aria-hidden={look.mini || undefined}>
           <BoardWorld ref={world} pointers={<>{comments && !look.mini && <CommentPins board={board} store={said} commenting={comments} />}<BoardPointers presence={presence} talking={talking} /></>}>
-            <Objects board={board} presence={presence} />
+            <Objects board={board} presence={presence} mode={mode} />
           </BoardWorld>
           {!look.mini && <Over board={board} onSort={onSort} />}
           {look.edit && <Blank board={board} everyone={everyone} />}
           {look.bar && <Bar board={board} surface={props} />}
+          {look.bar && <BarMenu board={board} items={barMore} />}
           {look.bar && <Minimap board={board} />}
           {look.rail && <Flyouts board={board} />}
           <SheetPill board={board} people={people} pill={pill ?? followingOnly} />

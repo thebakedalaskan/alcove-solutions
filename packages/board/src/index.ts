@@ -19,7 +19,7 @@ export type { Route } from './routes';
 export {
   addObject, addReply, addTableLine, addThread, afterMove, afterResize, applyThemes, duplicateObjects, moveObjects, removeObjects, removeTableLine, resizeObject, resolveThread, setObjects, sitsIn, sizeTableLine, stackObjects, tableCell, tidyObjects
 } from './write';
-export type { Move, ObjectPatch, TableAxis } from './write';
+export type { BoardTheme, Move, ObjectPatch, TableAxis } from './write';
 export { makeHistory } from './history';
 export type { BoardHistory, StepResult } from './history';
 export { TEMPLATES, fillTemplate } from './templates';

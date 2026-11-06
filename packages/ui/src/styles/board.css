@@ -81,10 +81,10 @@
 .bd-svg path.is-settle { animation: bd-settle var(--duration-1) var(--ease-out) both; }
 .bd-svg path.ink { stroke-width: 3.5; }
 .bd-svg path.ink.c-rose { stroke: var(--line-rose); }
-.bd-svg path.ink.c-sun { stroke: var(--sun-glow); }
+.bd-svg path.ink.c-sun { stroke: var(--bd-marker); }
 .bd-svg path.ink.c-horizon { stroke: var(--horizon); }
 .bd-svg path.ink.is-sel { stroke: var(--horizon); }
-.bd-svg path.ink.is-marker { stroke-width: 12; opacity: .28; }
+.bd-svg path.ink.is-marker { stroke-width: 12; opacity: var(--bd-marker-alpha); }
 /* What takes a press on a line or a stroke: a band one width on screen at any zoom, so a thin line is easy to hit and doesn't reach for what's near it. A highlighter is wide in board units, so zoomed in its band is as wide as it is. */
 .bd-svg path.bd-hit { --iz: inherit; stroke: transparent; stroke-width: calc(16px * var(--iz, 1)); pointer-events: stroke; }
 .bd-svg path.bd-hit.is-marker { stroke-width: max(12px, calc(16px * var(--iz, 1))); }
@@ -269,7 +269,9 @@
 .bd.is-clean .bd-pill { top: 14px; }
 .bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
-.bd-pill > b, .bd-pill > span:not(.sep, .t) { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+/* What a pill says gives way before its title does, and the title is cut last of all. */
+.bd-pill > b { flex: 0 1 auto; min-width: 0; line-height: 1.3; }
+.bd-pill > span:not(.sep, .t) { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
 .bd-pill .t { flex: none; font: 500 14px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill .sep { flex: none; width: 1px; height: 18px; background: rgb(255 255 255 / .14); }
 .bd-pill.is-soon .ac-i, .bd-pill.is-soon .t { color: var(--caution); }
@@ -279,7 +281,7 @@
 /* A board's own page on a phone: what the pill says wraps rather than being cut, since the seal has only its icon there. */
 @container (max-width: 480px) {
   .bd.is-page .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
-  .bd.is-page .bd-pill > b, .bd.is-page .bd-pill > span:not(.sep, .t) { overflow: visible; }
+  .bd.is-page .bd-pill > b, .bd.is-page .bd-pill > span:not(.sep, .t) { overflow: visible; white-space: normal; -webkit-line-clamp: unset; }
 }
 
 /* Anything small that floats over the sheet is night, like the dock beside it */
@@ -292,6 +294,8 @@
 .bx .sw i, .swatch { display: block; width: 20px; height: 20px; border-radius: 50%; background: var(--nc); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); }
 .bx .wide { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 11px 0 9px; border-radius: 9px; color: var(--stage-ink); font: 600 13px/1 var(--font-sans); }
 .bx .wide .ac-i { color: var(--stage-ink-2); }
+.bx .wide:disabled { cursor: progress; color: var(--stage-ink-2); }
+.bx .wide:disabled:hover { background: none; color: var(--stage-ink-2); }
 .bx .n { padding: 0 8px 0 9px; font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--stage-ink-2); }
 .bd-sep { flex: none; align-self: stretch; width: 1px; margin: 8px 3px; background: rgb(255 255 255 / .14); }
 .bx-sw { position: absolute; z-index: 14; display: flex; gap: 2px; padding: 5px; border-radius: 12px; animation: bd-pop var(--duration-1) var(--ease-out) both; }

@@ -23,7 +23,7 @@ interface Template {
 }
 
 const frame = (title: string, x: number, y: number, w: number, h: number, hint: string, c: StickyColour, role: '' | 'actions' = ''): Piece =>
-  ({ k: 'frame', x, y, w, h, title, hint, sub: '', c, role });
+  ({ k: 'frame', x, y, w, h, title, hint, sub: '', sorted: false, c, role });
 const shape = (s: ShapeKind, t: string, x: number, y: number, w: number, h: number, c: StickyColour | '' = ''): Piece =>
   ({ k: 'shape', s, t, x, y, w, h, c });
 const label = (t: string, x: number, y: number, w: number, h: number): Piece =>

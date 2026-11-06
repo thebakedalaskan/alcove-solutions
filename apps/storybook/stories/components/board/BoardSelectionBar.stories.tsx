@@ -77,6 +77,9 @@ export const SeveralStickies: Story = {
   )
 };
 
+/** Sort into themes, waiting for its answer from confidential compute: it says Sorting… and can't be pressed again. */
+export const Sorting: Story = { ...SeveralStickies, name: 'Sorting', args: { ...SeveralStickies.args, sorting: true } };
+
 /** A line, picked: how it runs, and delete. Joined at both ends, it has nothing to copy. The bar sits over its middle. */
 const LINE_MIDDLE = { x: CAM.x + ((F1.x + F1.w / 2 + A1.x + A1.w / 2) / 2) * CAM.z, y: Math.max(66, CAM.y + ((F1.y + F1.h / 2 + A1.y + A1.h / 2) / 2) * CAM.z - 52) };
 export const ALine: Story = {

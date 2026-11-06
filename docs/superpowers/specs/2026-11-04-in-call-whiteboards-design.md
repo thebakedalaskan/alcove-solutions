@@ -178,7 +178,8 @@ board: {
 - **Ideas from the call** run only while notes are on, from the part of the call you're in, at most once a minute while a board is open,
   through `inference.ts`. Each names who said it and the frame it fits. Adding one writes a sticky. Nothing is kept once it's added
   or dismissed.
-- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction. Someone asked
+- **Sort into themes** sends the selected stickies' text through `inference.ts`, and the surface applies the answer in one transaction as
+  that person's change, so their undo puts it back (`onSort` answers with the themes; the bar says Sorting… meanwhile). Someone asked
   for it, about what people wrote, so it works with notes off and on a board's page. While a call is paused nothing goes to the AI, so the
   server refuses and the bar doesn't offer it.
 

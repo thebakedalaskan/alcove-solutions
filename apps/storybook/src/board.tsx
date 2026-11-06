@@ -5,16 +5,18 @@
  *
  *   export const Busy: BoardStory = { args: { board: () => launchRetro(), mode: 'call', others: AROUND, talking: ['priya'] } };
  */
-import { useTheme, type IconName } from '@alcove/ui';
+import type { BoardReply, BoardTheme } from '@alcove/board';
+import { useTheme, useToast, wsToast, type IconName } from '@alcove/ui';
 import type { Decorator, StoryObj } from '@storybook/react-vite';
 import { useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { BoardSurface, type BoardHandle, type BoardPerson } from '~/features/board/BoardSurface';
-import type { BoardMode } from '~/features/board/state';
+import type { BoardCommenting } from '~/features/board/comments';
+import { BOARD_LOOKS, type BoardMode } from '~/features/board/state';
 import './board.css';
 import { did } from './component';
-import { FOLK, type FolkId, type Presence } from './world/boards';
+import { FOLK, themesFor, type FolkId, type Presence } from './world/boards';
 
 /** A board for a story: its doc, made fresh for each story, and the ids of what's on it by the canvas's names. */
 export interface StoryBoard { doc: Y.Doc; ids?: ReadonlyMap<string, string> | undefined }
@@ -70,14 +72,24 @@ export interface BoardSceneProps {
   night?: boolean | undefined;
   /** Rises through the arch, as a board that has just opened. */
   fresh?: boolean | undefined;
+  /** Who's at this board, and comments as, if they can add to it: Art, unless the story says. */
+  me?: FolkId | undefined;
+  /** What Sort into themes answers, after a moment, as confidential compute would: the canvas's themes, unless the story says. */
+  sort?: ((doc: Y.Doc, stickies: readonly string[]) => readonly BoardTheme[]) | undefined;
   /** What the call puts over the sheet: its pill, its menus, ideas from the call. */
   children?: ReactNode;
 }
 
 const NOBODY: readonly Presence[] = [];
+/** How long Sort into themes takes to answer here: long enough to see it waiting. */
+const THINKING_MS = 900;
+const asked = did('sort into themes');
+/** The rail's More and the bar's, each saying it was pressed. */
+const MORE = { image: did('image'), workspace: did('from your workspace'), table: did('table'), mindMap: did('mind map'), templates: did('templates') };
+const BAR_MORE = { link: did('copy link'), image: did('download as an image'), pdf: did('download as a PDF'), night: did('night board') };
 
 /** The real surface on a story's board. Everything outside the board (the bar's menus, Start a call here) says it was pressed. */
-export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon, acts, others = NOBODY, talking, follow, focus, night, fresh, children }: BoardSceneProps) {
+export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon, acts, others = NOBODY, talking, follow, focus, night, fresh, me = 'art', sort = themesFor, children }: BoardSceneProps) {
   const made = useMemo(board, [board]);
   const awareness = useMemo(() => new Awareness(made.doc), [made]);
   const handle = useRef<BoardHandle>(null);
@@ -86,6 +98,17 @@ export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon,
   // Whoever is here: everyone on the board, and whoever is talking.
   const people = useMemo(() => [...new Set<FolkId>([...others.map((o) => o.who), ...(talking ?? [])])].map(asPerson), [others, talking]);
   useOthers(awareness, others, made.ids);
+  const toast = useToast();
+  // Comments as the page has them: written as whoever is here, if they can add to the board, with each writer's face from who they are.
+  const comments = useMemo((): BoardCommenting => ({
+    me: BOARD_LOOKS[mode].edit ? { by: FOLK[me].id, name: FOLK[me].name } : null,
+    person: FOLK[me].person,
+    face: (reply: BoardReply) => Object.values(FOLK).find((f) => f.id === reply.by)?.person ?? { name: reply.name || 'Someone' },
+    onResolved: (reopen) => {
+      const said = wsToast.resolved(reopen);
+      toast(said.text, { icon: said.icon, action: said.action, ms: said.ms });
+    }
+  }), [mode, me, toast]);
   useEffect(() => () => {
     awareness.destroy();
     made.doc.destroy();
@@ -102,10 +125,13 @@ export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon,
   }, [focus, made]);
   return (
     <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
-      people={people} talking={speaking} theme={resolved} night={night} fresh={fresh}
-      onName={did('name')} onSeal={did('seal')} onTimer={did('timer')} onVote={did('vote')} onPresent={did('present')} onMore={did('more')}
-      onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')} onSort={did('sort into themes')}
-      moreItems={{ image: did('image'), workspace: did('from your workspace'), table: did('table'), mindMap: did('mind map'), comment: did('comment'), templates: did('templates') }}>
+      people={people} comments={comments} talking={speaking} theme={resolved} night={night} fresh={fresh}
+      onName={did('name')} onSeal={did('seal')} onTimer={did('timer')} onVote={did('vote')} onPresent={did('present')}
+      barMore={BAR_MORE} onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')}
+      onSort={(stickies) => {
+        asked(stickies);
+        return new Promise<readonly BoardTheme[]>((answer) => { setTimeout(() => answer(sort(made.doc, stickies)), THINKING_MS); });
+      }} moreItems={MORE}>
       {children}
     </BoardSurface>
   );

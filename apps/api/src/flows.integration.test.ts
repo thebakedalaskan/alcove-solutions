@@ -3156,7 +3156,7 @@ describe('privacy at rest', () => {
     await onBoard.ready;
     const row = newId();
     const col = newId();
-    addObject(onBoard.doc, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: '', hint: '', sub: '', title: 'CANARY-WSFRAME roadmap' }, null);
+    addObject(onBoard.doc, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: '', hint: '', sub: '', sorted: false, title: 'CANARY-WSFRAME roadmap' }, null);
     addObject(onBoard.doc, { k: 'note', x: 40, y: 80, w: 150, h: 150, c: 'butter', size: 'm', t: 'CANARY-WSSTICKY sign by Friday' }, null);
     const grid = addObject(onBoard.doc, { k: 'table', x: 800, y: 0, w: 120, h: 40, rows: [{ id: row, size: 40 }], cols: [{ id: col, size: 120 }], cells: {} }, null);
     const cell = grid ? tableCell(onBoard.doc, grid, row, col, null) : undefined;

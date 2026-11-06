@@ -6,7 +6,7 @@
  * own; the stand-in's workspaces draw the retro and the flow into the documents it keeps (`RETRO`, `FLOW`).
  */
 import type { Person, ScreenMoment } from '@alcove/api';
-import { addObject, addThread, applyThemes, fillTemplate, readBoard, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
+import { addObject, addReply, addThread, applyThemes, fillTemplate, readBoard, type BoardAuthor, type BoardTheme, type NewObject, type StickyColour, type TemplateName } from '@alcove/board';
 import * as Y from 'yjs';
 import type { BoardSpec } from './index';
 import { LAUNCH_CHECKLIST } from './notes';
@@ -49,7 +49,7 @@ interface Spot { x: number; y: number }
 const slot = (frame: Spot, i: number, cols = 2): Spot => ({ x: frame.x + G + (i % cols) * (S + G), y: frame.y + G + Math.floor(i / cols) * (S + G) });
 const note = ({ x, y }: Spot, c: StickyColour, t: string): NewObject => ({ k: 'note', x, y, w: S, h: S, c, size: 'm', t });
 const frame = (title: string, x: number, y: number, w: number, h: number, hint = '', sub = '', c: StickyColour | '' = ''): NewObject =>
-  ({ k: 'frame', x, y, w, h, title, hint, sub, c, role: '' });
+  ({ k: 'frame', x, y, w, h, title, hint, sub, sorted: false, c, role: '' });
 
 /** Adds each and keeps the id each one got, by the canvas's name for it. */
 function adding(doc: Y.Doc): { put: (key: string, o: NewObject) => void; ids: Map<string, string> } {
@@ -119,6 +119,27 @@ function writeRetro(doc: Y.Doc, { links = true, only }: RetroOptions = {}): Read
   return ids;
 }
 
+/** Who wrote a comment, as the board stories' people know them: who they are in the call, and their first name. */
+const author = (who: FolkId): BoardAuthor => ({ by: FOLK[who].id, name: FOLK[who].name });
+/** Comments are nobody's change to the board, as the surface writes them: no undo takes these back. */
+const SAID = { comments: true };
+
+/**
+ * The retro with a conversation on it: Maya asks about the changelog on Priya's sticky and Art answers, and Kofi has a note on
+ * refreshing staging. Each is a thread pinned to its sticky, as the people in the call wrote them.
+ */
+export function retroWithComments(): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
+  const retro = launchRetro();
+  const { doc, ids } = retro;
+  const changelog = ids.get('f1'), staging = ids.get('a2');
+  if (changelog) {
+    const thread = addThread(doc, changelog, 'Kofi did last time. Worth writing down?', author('maya'), SAID);
+    addReply(doc, thread, 'Yes. I’ll put it in the runbook.', author('art'), SAID);
+  }
+  if (staging) addThread(doc, staging, 'The nightly job is already there, just switched off.', author('kofi'), SAID);
+  return retro;
+}
+
 /** Priya's screen as a picture of it on the board keeps it: launch day's timeline, with the changelog going out after the post. */
 export const PRIYAS_SCREEN: ScreenMoment = {
   ...LAUNCH_CHECKLIST,
@@ -141,16 +162,37 @@ const IDEAS: readonly (readonly [string, string, StickyColour, number, number])[
   ['i9', 'Keep the runbook in the workspace', 'peach', 860, 300]
 ];
 
+/** The canvas's three themes for the ideas, by what each sticky says. */
+const THEMES: readonly { name: string; ideas: readonly string[] }[] = [
+  { name: 'Comms', ideas: ['i1', 'i2', 'i3'] },
+  { name: 'Testing', ideas: ['i4', 'i5', 'i6'] },
+  { name: 'Ownership', ideas: ['i7', 'i8', 'i9'] }
+];
+const themeOf = (text: string): string => THEMES.find((t) => t.ideas.some((key) => IDEAS.find(([k]) => k === key)?.[1] === text))?.name ?? 'Other';
+
+/**
+ * Sort into themes as confidential compute answers it, for the stickies picked: the canvas's three themes, by what each sticky says,
+ * and anything else under Other. It stands in for the server, which a story can't reach.
+ */
+export function themesFor(doc: Y.Doc, stickies: readonly string[]): BoardTheme[] {
+  const view = readBoard(doc);
+  const groups = new Map<string, string[]>();
+  for (const id of stickies) {
+    const o = view.byId.get(id);
+    if (o?.k !== 'note') continue;
+    const name = themeOf(o.t);
+    groups.set(name, [...(groups.get(name) ?? []), id]);
+  }
+  return [...groups].map(([name, ids]) => ({ name, ids }));
+}
+
 /** A pile of ideas in one frame. `sorted` runs the board's own Sort into themes on them, into the canvas's three themes. */
 export function launchIdeas({ sorted = false }: { sorted?: boolean | undefined } = {}): { doc: Y.Doc; ids: ReadonlyMap<string, string> } {
   const doc = new Y.Doc();
   const { put, ids } = adding(doc);
   put('ideas', frame('How do we launch better?', 0, 0, 1160, 530));
   for (const [key, t, c, x, y] of IDEAS) put(key, note({ x, y }, c, t));
-  if (sorted) {
-    const of = (...keys: string[]): string[] => keys.flatMap((k) => ids.get(k) ?? []);
-    applyThemes(doc, [{ name: 'Comms', ids: of('i1', 'i2', 'i3') }, { name: 'Testing', ids: of('i4', 'i5', 'i6') }, { name: 'Ownership', ids: of('i7', 'i8', 'i9') }], SEED);
-  }
+  if (sorted) applyThemes(doc, themesFor(doc, IDEAS.flatMap(([key]) => ids.get(key) ?? [])), SEED);
   return { doc, ids };
 }
 
@@ -179,9 +221,6 @@ function writeOnboarding(doc: Y.Doc): void {
   link(doc, ids, 's3', 's5');
   link(doc, ids, 's5', 's6');
 }
-
-/** Comments are nobody's change to the board, as the surface writes them: no undo takes these back. */
-const SAID = { comments: true };
 
 /**
  * The launch retro in the stand-in's Product workspace, with Priya and Kofi on it, as the canvas's page has them, and Maya's

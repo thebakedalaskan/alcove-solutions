@@ -202,7 +202,8 @@
  * .light, and dark wherever everything above is, so on the stage a sheet is night unless it says `.light`: `BoardSheet`'s
  * `theme`. What can come from the tokens above does, so a sheet scoped to one theme follows it. `note-*` are the sticky
  * colours, which are content, and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the `line`
- * tokens for edges above. `bf-*` are frames.
+ * tokens for edges above, and `bd-marker` the highlighter, which is brighter and stronger at night so it still reads on a dark
+ * sheet. `bf-*` are frames.
  */
 :root, .light {
   --bd-ground: var(--ground);
@@ -224,6 +225,8 @@
   --note-shadow: 0 1px 1px rgb(18 34 63 / .05), 0 8px 16px -10px rgb(18 34 63 / .3);
   --line-ink: color-mix(in srgb, var(--sun) 82%, var(--ground));
   --line-rose: var(--rose);
+  --bd-marker: var(--sun-glow);
+  --bd-marker-alpha: .28;
   /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
   --bd-rise: 560ms;
   --bd-glide: 700ms;
@@ -250,6 +253,8 @@
   --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
   --line-ink: var(--horizon);
   --line-rose: var(--rose);
+  --bd-marker: var(--gold);
+  --bd-marker-alpha: .5;
 }
 
 /*

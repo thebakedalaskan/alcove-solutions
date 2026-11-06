@@ -6,12 +6,12 @@
  * Other people's changes are read once a frame. Your own are read at once, so what you did is on the sheet when you next
  * look. `readBoard` keeps the identity of whatever didn't change, which is what lets one move draw one object again.
  */
-import type { LiveStore } from '@alcove/api';
+import { errorCode, type LiveStore } from '@alcove/api';
 import {
-  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, isAttached, makeHistory, objectText, observeBoard, readBoard, removeObjects,
-  type BoardHistory, type BoardObject, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
+  BOARD_COMMENTS, BOARD_LIMITS, BOARD_OBJECTS, addObject, applyThemes, bounds, colourIn, contains, duplicateObjects, frameAt, hasBox, isAttached, makeHistory, objectText, observeBoard, readBoard,
+  removeObjects, type BoardHistory, type BoardObject, type BoardTheme, type BoardView, type Box, type Camera, type NewObject, type Pad, type StepResult, type StickyColour
 } from '@alcove/board';
-import type { BoardMoreItem, BoardTool } from '@alcove/ui';
+import type { BoardMoreItem, BoardTool, ToastOptions } from '@alcove/ui';
 import { useMemo, useSyncExternalStore } from 'react';
 import type * as Y from 'yjs';
 import { typing } from '~/lib/keys';
@@ -26,7 +26,7 @@ const log = rootLog.child({ component: 'board' });
 
 const NOTHING: ReadonlySet<string> = new Set();
 /** Whatever is open or under way over the sheet, closed. */
-const CLOSED = { fly: null, picking: false, menu: false, draft: null, lineFrom: null } satisfies Partial<BoardState>;
+const CLOSED = { fly: null, picking: false, menu: false, draft: null, lineFrom: null, barMenu: false } satisfies Partial<BoardState>;
 /** The tools with options to pick, which open as the tool is picked. */
 const OPTIONS: Partial<Record<BoardTool, BoardFly>> = { note: 'note', shape: 'shape', line: 'line', pen: 'pen' };
 /** What a board with nothing on it frames: the canvas's working space. */
@@ -35,6 +35,8 @@ const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 const BARE_PAD: Pad = { l: 40, r: 40, t: 56, b: 40 };
 /** A frame filling the sheet, with room for its title. */
 const SLIDE_PAD: Pad = { l: 40, r: 40, t: 96, b: 40 };
+/** The same with no bar over the sheet: room for the title, and the frame in the middle. */
+const PRESENT_PAD: Pad = { l: 48, r: 48, t: 72, b: 32 };
 const ZOOM_STEP = 1.25;
 /** How far Duplicate puts a copy from what it copied. */
 const COPY_OFFSET = { x: 24, y: 24 };
@@ -59,8 +61,8 @@ export class Board implements LiveStore<BoardState> {
   /** The doc as last read, which is what writes go by. `view` is what's shown, and can be ahead of it. */
   written: BoardView;
   mode: BoardMode;
-  /** Says something to the person at this board. */
-  tell: (text: string) => void = () => undefined;
+  /** Says something to the person at this board, with something to press, such as Undo, when there is one. */
+  tell: (text: string, o?: ToastOptions) => void = () => undefined;
   /** Told when following stops, whatever stopped it. */
   onFollow: ((id: string | null) => void) | undefined;
   /** Told what to say to this person about what just happened to them. */
@@ -97,7 +99,7 @@ export class Board implements LiveStore<BoardState> {
     this.state = {
       view: this.written, tool: 'select', colour: 'butter', shape: 'rect', line: 'elbow', pen: 'pen', fly: null, sel: [], edit: null, picking: false, menu: false, hover: null,
       draft: null, lineFrom: null, pressing: false, map: false, marquee: null, guides: NO_GUIDES, space: false, panning: false, glide: false, settling: NOTHING, landed: NOTHING,
-      near: null, following: null, canUndo: false, canRedo: false
+      near: null, following: null, barMenu: false, slide: null, sorting: false, canUndo: false, canRedo: false
     };
   }
 
@@ -324,8 +326,44 @@ export class Board implements LiveStore<BoardState> {
 
   /** A press on the sheet closes whatever is open over it. */
   closeOver(): void {
-    const { fly, picking, menu } = this.state;
-    if (fly || picking || menu) this.set({ fly: null, picking: false, menu: false });
+    const { fly, picking, menu, barMenu } = this.state;
+    if (fly || picking || menu || barMenu) this.set({ fly: null, picking: false, menu: false, barMenu: false });
+  }
+
+  /** The bar's More, beside the name. */
+  toggleBarMenu(): void {
+    this.set({ barMenu: !this.state.barMenu, fly: null });
+  }
+
+  /* ---------- sort into themes ---------- */
+
+  /**
+   * Sort into themes, on the stickies picked. `ask` asks confidential compute, which answers with the themes. They're written as
+   * this person's change, so the stickies travel into their themes together and one undo puts it all back, and the toast says how
+   * many themes there are, with Undo. A board that has closed meanwhile writes nothing, and one that couldn't be sorted says so.
+   */
+  async sortIntoThemes(stickies: readonly string[], ask: (stickies: readonly string[]) => Promise<readonly BoardTheme[]>): Promise<void> {
+    if (!this.canEdit || this.state.sorting || stickies.length < 2) return;
+    this.set({ sorting: true });
+    try {
+      const themes = await ask(stickies);
+      if (!this.sheet || !this.canEdit) return;
+      // What's left of the answer: a sticky deleted meanwhile has nowhere to go, and a theme with none left isn't drawn.
+      const found = themes.filter((t) => t.ids.some((id) => this.written.byId.get(id)?.k === 'note'));
+      if (!found.length) {
+        this.tell('Those stickies have gone, so there was nothing to sort.');
+        return;
+      }
+      this.untouched = false;
+      this.settle(() => this.write(() => applyThemes(this.doc, found, this.origin)));
+      this.set({ sel: [] });
+      this.tell(`Sorted into ${found.length} ${found.length === 1 ? 'theme' : 'themes'}.`, { icon: 'group', action: { label: 'Undo', onClick: () => this.undo() } });
+    } catch (e) {
+      log.warn('sort into themes failed', { code: errorCode(e), stickies: stickies.length });
+      if (this.sheet) this.tell('Couldn’t sort these into themes. Try again.');
+    } finally {
+      this.set({ sorting: false });
+    }
   }
 
   hoverOn(id: string | null): void {
@@ -335,8 +373,8 @@ export class Board implements LiveStore<BoardState> {
   /** Back to Select, dropping anything held. Says whether there was anything to go back from, so that Esc can otherwise be the call's. */
   escape(): boolean {
     const held = this.letGo();
-    const { tool, sel, following, fly } = this.state;
-    if (!held && tool === 'select' && !sel.length && !following && !fly) return false;
+    const { tool, sel, following, fly, barMenu } = this.state;
+    if (!held && tool === 'select' && !sel.length && !following && !fly && !barMenu) return false;
     this.stopFollow();
     this.set({ ...CLOSED, tool: 'select', sel: [] });
     return true;
@@ -528,12 +566,13 @@ export class Board implements LiveStore<BoardState> {
     this.glideTo(this.camera.centred(place));
   }
 
-  /** Fills the sheet with a frame. */
+  /** Fills the sheet with a frame. Presenting, it's all the sheet shows. */
   focusFrame(id: string): void {
     const frame = this.state.view.byId.get(id);
     if (frame?.k !== 'frame') return;
     this.takeCamera();
-    this.glideTo(this.camera.fitting(frame, SLIDE_PAD));
+    this.set({ slide: id });
+    this.glideTo(this.camera.fitting(frame, this.look.bar ? SLIDE_PAD : PRESENT_PAD));
   }
 
   /** Follows someone. A tile doesn't: it's a picture of the board, with nothing on it to stop following by. */

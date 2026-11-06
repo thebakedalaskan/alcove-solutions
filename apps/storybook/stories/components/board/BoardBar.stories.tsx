@@ -30,8 +30,13 @@ type Story = StoryObj<typeof meta>;
 export const InTheCall: Story = { name: 'In the call' };
 /** On the board's own page there's no session to run, so no Timer, Vote, Present or More. Following someone hides them too. */
 export const OnItsPage: Story = { name: 'On its page', args: { acts: false } };
-/** For someone given view access: no undo, and the seal says View only. */
-export const ViewOnly: Story = { name: 'View only', args: { editable: false, seal: 'View only', sealIcon: 'eye' } };
+/** For someone given view access: no undo, and the seal says View only. Off a call there's no session to run. */
+export const ViewOnly: Story = { name: 'View only', args: { editable: false, acts: false, seal: 'View only', sealIcon: 'eye' } };
+/**
+ * For someone given view access in a call: Timer, Vote and Present are where they always are, disabled, and their tips say why.
+ * More is theirs, as nothing in it changes the board.
+ */
+export const ViewOnlyInACall: Story = { name: 'View only, in a call', args: { editable: false, canAct: false, seal: 'View only', sealIcon: 'eye' } };
 /** A room's board, sealed to that room until rooms close. */
 export const InARoom: Story = { name: 'In a room', args: { name: 'Comms board', seal: 'Sealed to this room', canUndo: false } };
 /** The connection dropped: the seal says so, and the pill under the bar says what it means. */

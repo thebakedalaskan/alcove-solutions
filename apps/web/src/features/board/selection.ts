@@ -128,6 +128,21 @@ export function hangsOff(view: BoardView, comments: Y.Map<unknown>, id: string, 
   return pinned || view.objects.some((o) => o.k === 'line' && o.id !== own && [o.from, o.to].some((end) => isAttached(end) && end.on === id));
 }
 
+/**
+ * What a presented frame shows: the frame, whatever is in it however deep, and the lines among those. Frames come before what they
+ * hold in a view, so one pass in order reaches into frames inside frames.
+ */
+export function inSlide(view: BoardView, slide: string): ReadonlySet<string> {
+  const ids = new Set<string>([slide]);
+  for (const o of view.objects) if (o.k !== 'line' && o.f && ids.has(o.f)) ids.add(o.id);
+  for (const o of view.objects) {
+    if (o.k !== 'line') continue;
+    const ends = [o.from, o.to].flatMap((end) => (isAttached(end) ? [end.on] : []));
+    if ((o.f && ids.has(o.f)) || (ends.length > 0 && ends.every((on) => ids.has(on)))) ids.add(o.id);
+  }
+  return ids;
+}
+
 /** Where a line's end is, or nothing if what it's attached to isn't on the board. */
 export function endBox(view: BoardView, end: LineEnd): Box | null {
   if (!isAttached(end)) return { x: end.x, y: end.y, w: 0, h: 0 };

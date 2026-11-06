@@ -97,7 +97,7 @@ function add(t: Tab, input: NewObject): string {
   return id;
 }
 const sticky = (t: Tab, words: string, x = 0, y = 0, c: StickyColour = 'butter') => add(t, { k: 'note', x, y, w: 150, h: 150, c, size: 'm', t: words });
-const frame = (t: Tab, title: string, box: Box) => add(t, { k: 'frame', ...box, c: '', role: '', hint: '', sub: '', title });
+const frame = (t: Tab, title: string, box: Box) => add(t, { k: 'frame', ...box, c: '', role: '', hint: '', sub: '', sorted: false, title });
 /** Types into an object's text in one go, as the surface's field does: one transaction under this browser's origin. */
 function type(t: Tab, id: string, words: string, field = 't'): void {
   const text = objectText(t.doc, id, field);
@@ -1106,7 +1106,7 @@ describe('search', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'read']]);
     const board = await make(ann, id, 'Plan board');
     const a = await open(ann, id, board);
-    const holder = add(a, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: 'actions', hint: 'A hint isn’t on the board', sub: 'Priya, Theo', title: 'Next steps' });
+    const holder = add(a, { k: 'frame', x: 0, y: 0, w: 600, h: 500, c: '', role: 'actions', hint: 'A hint isn’t on the board', sub: 'Priya, Theo', sorted: false, title: 'Next steps' });
     sticky(a, 'Ship the beta', 40, 80);
     add(a, { k: 'shape', x: 800, y: 0, w: 170, h: 76, s: 'diamond', c: '', t: 'Decide' });
     add(a, { k: 'shot', x: 800, y: 200, w: 320, h: 200, media: 'media0002', caption: 'The login screen' });
@@ -1295,7 +1295,7 @@ describe('what’s kept', () => {
       const board = await make(ann, id, 'CANARY-BOARD-NAME');
       expect(await fill(ann, id, board)).toBe(true);
       const [a, t] = await Promise.all([open(ann, id, board), open(theo, id, board)]);
-      add(a, { k: 'frame', x: 0, y: 1000, w: 600, h: 500, c: '', role: '', hint: 'CANARY-BOARD-HINT', sub: 'CANARY-BOARD-WHO', title: 'CANARY-BOARD-FRAME' });
+      add(a, { k: 'frame', x: 0, y: 1000, w: 600, h: 500, c: '', role: '', hint: 'CANARY-BOARD-HINT', sub: 'CANARY-BOARD-WHO', sorted: false, title: 'CANARY-BOARD-FRAME' });
       const note = sticky(a, 'CANARY-BOARD-STICKY the launch slips', 40, 1080);
       await saved(a);
       await until(() => view(t).byId.has(note), 'Theo to see the sticky');

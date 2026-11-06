@@ -965,6 +965,22 @@ here**, which opens Start a call named after the board. Everyone on it has a poi
 colour of their own. A blank board says **Double-click anywhere to add a sticky**, or press **N**. What's added reaches
 everyone on it as it happens.
 
+**Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
+the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
+**Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
+it again for the highlighter) and **Frame** (F). Two people typing in one sticky both keep what they typed.
+
+**Changing what's there.** Click something and a small bar sits above it: its colour, its size, a line from it, copy (**⌘D**)
+and delete (**Delete**), with handles to size it. Drag it to move it; a frame takes what's in it along. Drag round several, or
+Shift-click them, to pick them together: the bar says how many and offers **Tidy**, which puts them in a grid. Pointing at
+something shows four dots just off its edges: drag from one onto something else, or press **Draw a line from this** and then
+click it, and the line stays attached, finding a clean route whenever either end moves. **Undo** (**⌘Z**, with **⇧⌘Z** to redo,
+or the arrows in the bar) takes back only your own changes, never anyone else's, whatever they've done since.
+
+**Looking round.** Scroll, or two fingers, to move; pinch or **⌘** and scroll to zoom; or hold **Space** and drag. The bar has
+**−**, how near you are and **+**, and **Map**, which shows where you are on a board too big for the sheet; **⇧1** shows
+everything.
+
 **Under its name.** Pressing the board's name offers **Rename**, where the name becomes a field in its place (**Enter**
 keeps it, **Esc** puts it back); **Saved in** the workspace, which shows it in the list; **Who can add to it**, the
 workspace's share sheet, where the board can be shared beyond the workspace or closed to **Only people added here**; and

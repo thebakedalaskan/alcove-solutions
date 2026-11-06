@@ -48,8 +48,17 @@ export const CouldNotSave: BoardStory = {
 };
 export const CouldNotSaveDark: BoardStory = { ...CouldNotSave, name: 'Couldn’t save, dark', globals: { theme: 'dark' } };
 
-/** View only, for anyone given view access: the tools go away, and they can still look round, follow people and talk. */
+/**
+ * View only, for anyone given view access: the tools go away, and they can still look round, follow people and talk. In a call,
+ * Timer, Vote and Present stay on the bar, disabled, and say why: only people who can add to this board can start a timer, vote
+ * or present. More stays theirs.
+ */
 export const ViewOnly: BoardStory = { name: 'View only', args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, others: AROUND } };
+/** Someone with view access still sees what the call runs: here, a vote's results, which someone who can add to the board started. */
+export const ViewOnlyResults: BoardStory = {
+  name: 'View only, a vote’s results',
+  args: { mode: 'read', seal: 'View only', sealIcon: 'eye', acts: true, children: <BoardPill icon="vote" title="Results" text="7 people voted" /> }
+};
 
 /** A board you can't open: if the organizer opens without you, you never see its name or what's on it. You can ask for access. */
 export const NoAccess: BoardStory = {

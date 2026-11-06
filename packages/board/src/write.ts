@@ -495,8 +495,11 @@ export function tidyObjects(doc: Y.Doc, ids: readonly string[], origin: unknown)
   });
 }
 
+/** A theme Sort into themes found: its name, and the stickies in it. */
+export interface BoardTheme { name: string; ids: readonly string[] }
+
 /** A column for each theme with stickies left in it. The answer comes from a model, so it can repeat or invent ids. */
-function themeColumns(view: BoardView, themes: readonly { name: string; ids: readonly string[] }[]): { name: string; notes: NoteObject[] }[] {
+function themeColumns(view: BoardView, themes: readonly BoardTheme[]): { name: string; notes: NoteObject[] }[] {
   const seen = new Set<string>();
   return themes.flatMap(({ name, ids }) => {
     const notes = ids.flatMap((id) => {
@@ -511,9 +514,9 @@ function themeColumns(view: BoardView, themes: readonly { name: string; ids: rea
 
 /**
  * Sorts stickies into named themes in one undo: a column of two for each theme, its stickies in the theme's colour,
- * with its name on top. Stickies sharing a frame stay in it, and it grows to fit them.
+ * with its name on top. Stickies sharing a frame stay in it, and it grows to fit them and is marked `sorted`, to be drawn round its themes.
  */
-export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: readonly string[] }[], origin: unknown): void {
+export function applyThemes(doc: Y.Doc, themes: readonly BoardTheme[], origin: unknown): void {
   writing(doc, origin, undefined, (board) => {
     const before = viewOf(doc);
     const columns = themeColumns(before, themes);
@@ -524,6 +527,8 @@ export function applyThemes(doc: Y.Doc, themes: readonly { name: string; ids: re
     const shared = before.frames.find((f) => f.id === first.f && all.every((o) => o.f === f.id));
     const base = shared ?? bounds(all);
     if (shared) {
+      const frame = mapOf(board.objects.get(shared.id));
+      if (frame) change(frame, 'sorted', true);
       const tallest = Math.max(...columns.map((column) => Math.ceil(column.notes.length / 2)));
       const w = THEME.x + (columns.length - 1) * THEME.across + THEME.step + THEME.sticky + THEME.margin;
       const h = THEME.y + (tallest - 1) * THEME.step + THEME.sticky + THEME.margin;

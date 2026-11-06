@@ -13,7 +13,7 @@ const TITLE = 'Frame';
 
 export const framePress: ToolPress = (board, { at }) => drawGesture(board, at, {
   standard: STANDARD,
-  add: (box) => addObject(board.doc, { k: 'frame', ...box, c: '', role: '', hint: '', sub: '', title: TITLE }, board.origin),
+  add: (box) => addObject(board.doc, { k: 'frame', ...box, c: '', role: '', hint: '', sub: '', sorted: false, title: TITLE }, board.origin),
   settle: (id) => settleFrame(board, id)
 });
 

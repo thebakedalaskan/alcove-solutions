@@ -50,7 +50,7 @@ export function landBoards(main: Y.Doc, rooms: readonly { name: string; who: rea
 
       const w = Math.min(BOARD_LIMITS.maxSide, Math.max(FRAME_W, hasBlock ? block.w + 2 * GAP : 0));
       const h = Math.min(BOARD_LIMITS.maxSide, Math.max(FRAME_H, rowsTall + GAP + (hasBlock ? block.h + GAP : 0)));
-      const frame = insert(into, { k: 'frame', x, y, w, h, title: name, hint: '', sub: who.join(', '), c: '', role: '', id: newId(), at: at('frame'), f: '' });
+      const frame = insert(into, { k: 'frame', x, y, w, h, title: name, hint: '', sub: who.join(', '), sorted: false, c: '', role: '', id: newId(), at: at('frame'), f: '' });
       if (!frame) continue;
       room -= 1;
 
