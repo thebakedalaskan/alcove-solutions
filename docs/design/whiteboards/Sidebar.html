@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Side panel</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/alcove/tokens.css">
+<link rel="stylesheet" href="ds/alcove/components/bundle.css">
+<link rel="stylesheet" href="alcove-app.css">
+<link rel="stylesheet" href="flow.css">
+<link rel="stylesheet" href="kit.css">
+<link rel="stylesheet" href="call.css">
+<link rel="stylesheet" href="board.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<aside class="sb" aria-label="Side panel">
+<div class="sb-top">
+<span class="ac-brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="sbm-a"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><clipPath id="sbm-u"><rect x="0" y="0" width="22" height="19.2"></rect></clipPath><linearGradient id="sbm-s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient><radialGradient id="sbm-n" cx=".42" cy=".38" r=".72"><stop offset="0" stop-color="#FFF6E0"></stop><stop offset=".5" stop-color="#FFD58A"></stop><stop offset="1" stop-color="#FFB547"></stop></radialGradient></defs><g clip-path="url(#sbm-a)"><rect width="22" height="26" fill="url(#sbm-s)"></rect><g clip-path="url(#sbm-u)"><circle cx="11" cy="19.2" r="4.4" fill="url(#sbm-n)"></circle></g><rect y="19.2" width="22" height="7" fill="#231C5E"></rect><rect x="7.2" y="20.5" width="7.6" height=".9" rx=".45" fill="#FFB36E" opacity=".8"></rect></g><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z" fill="none" stroke="#FFFFFF" stroke-opacity=".2" stroke-width="1"></path></svg>alcove</span>
+<button type="button" class="ac-icon-btn" aria-label="Hide the side panel" title="Hide the side panel"><dc-import name="Icon" i="panel" size="18"></dc-import></button>
+</div>
+<button type="button" class="ac-btn is-primary sb-new {{hot}}" onClick="{{start}}"><dc-import name="Icon" i="video" size="18"></dc-import><span>Start a call</span><kbd class="ac-kbd">N</kbd></button>
+<div class="sb-search" style="margin-top: 8px"><dc-import name="Icon" i="search" size="16"></dc-import><span style="flex: 1; font-size: 14px">Search or ask</span><kbd class="ac-kbd">⌘K</kbd></div>
+<nav class="ac-nav" aria-label="Main">
+<span class="ac-nav-item" aria-current="page"><dc-import name="Icon" i="home" size="18"></dc-import><span>Home</span></span>
+<span class="ac-nav-item"><dc-import name="Icon" i="notes" size="18"></dc-import><span>Notes</span><span class="count">{{notes}}</span></span>
+<span class="ac-nav-item"><dc-import name="Icon" i="recordDot" size="18"></dc-import><span>Record</span></span>
+<sc-if value="{{team}}" hint-placeholder-val="{{true}}"><span class="ac-nav-item"><dc-import name="Icon" i="people" size="18"></dc-import><span>Team</span><span class="count">14</span></span></sc-if>
+</nav>
+<sc-if value="{{team}}" hint-placeholder-val="{{true}}">
+<div class="sb-sec">
+<div class="sb-sec-h"><span class="ac-eyebrow">Groups</span></div>
+<span class="sb-link"><dc-import name="Icon" i="hash" size="15"></dc-import><span>Product</span><b class="n">6</b></span>
+<span class="sb-link"><dc-import name="Icon" i="hash" size="15"></dc-import><span>Design</span><b class="n">4</b></span>
+<span class="sb-link"><dc-import name="Icon" i="hash" size="15"></dc-import><span>Leadership</span><b class="n">3</b></span>
+</div>
+</sc-if>
+<div class="sb-foot">
+<p class="sb-seal"><dc-import name="Icon" i="sealed" size="15"></dc-import>Confidential compute · verified</p>
+<span class="sb-me"><dc-import name="Faces" who="{{me.id}}" size="30"></dc-import><span class="who"><b>{{me.name}}</b><small>{{me.sub}}</small></span><dc-import name="Icon" i="settings" size="17"></dc-import></span>
+</div>
+</aside>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"who":{"editor":"enum","options":["art","zara","priya"],"default":"art"},"hot":{"editor":null,"default":""},"onStart":{"editor":null},"$preview":{"width":272,"height":800}}'>
+var ME = {
+  art: { id: 'art', name: 'Art Vandelay', sub: 'Vandelay Industries' },
+  priya: { id: 'priya', name: 'Priya Raman', sub: 'Vandelay Industries' },
+  zara: { id: 'zara', name: 'Zara Ahmed', sub: 'zara.ahmed@gmail.com' }
+};
+class Component extends DCLogic {
+  renderVals() {
+    var who = this.props.who || 'art';
+    return {
+      me: ME[who] || ME.art,
+      team: who !== 'zara',
+      notes: who === 'zara' ? '17' : '42',
+      hot: this.props.hot || '',
+      start: this.props.onStart
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!-- title: How it moves -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="mo" data-theme="light" style="width: 1520px">
+<div class="mo-g">
+<div class="mo-c"><div class="mo-s nt wm-1"><i class="t a"></i><i class="t b"></i><i class="t c"></i><span class="wsh"></span></div><h3>A board opens</h3><p>The sheet rises through an arch, like the sun in the mark.</p><code>Rise 560 ms · ease-in-out</code></div>
+<div class="mo-c"><div class="mo-s nt wm-2"><i class="t a"></i><i class="t b"></i><i class="t c"></i><span class="wsh"></span></div><h3>People make room</h3><p>Tiles glide into the strip while the sheet rises. Nobody leaves the screen.</p><code>Glide 900 ms · ease-in-out</code></div>
+<div class="mo-c"><div class="mo-s wm-3"><i class="n a"></i><i class="n b"></i><i class="n c"></i></div><h3>A sticky lands</h3><p>It pops in where it was made. Someone else’s arrive the same way.</p><code>Pop 240 ms · ease-out</code></div>
+<div class="mo-c"><div class="mo-s wm-4"><i class="ptr"></i></div><h3>Pointers</h3><p>Pointers glide between updates, so a busy board stays calm.</p><code>Glide 1300 ms between updates</code></div>
+<div class="mo-c"><div class="mo-s nt wm-5"><i class="tile a"></i><i class="tile b"></i></div><h3>Someone talks</h3><p>The ring moves to whoever is talking, on their tile and their pointer.</p><code>Ring 240 ms · after 800 ms of speech</code></div>
+<div class="mo-c"><div class="mo-s wm-6"><i class="n a"></i><i class="n b"></i><span class="ring"></span></div><h3>Follow</h3><p>The board glides to them and a ring settles round it. Move and it’s gone.</p><code>Glide 420 ms · ring 240 ms</code></div>
+<div class="mo-c"><div class="mo-s wm-7"><i class="n a"></i><i class="n b"></i><i class="n c"></i><i class="n d"></i><i class="n e"></i><i class="n f"></i></div><h3>Sort into themes</h3><p>Stickies travel together to their groups. One undo sends them back.</p><code>Glide 700 ms · ease-in-out</code></div>
+<div class="mo-c"><div class="mo-s wm-8"><i class="f a"></i><i class="f b"></i><i class="f c"></i></div><h3>Rooms close</h3><p>Each room’s board lands as a frame, one after another.</p><code>Land 700 ms, 180 ms apart</code></div>
+<div class="mo-c"><div class="mo-s wm-9"><i class="n a"></i><i class="n b"></i><i class="n c"></i></div><h3>Votes are counted</h3><p>Counts pop in together. What didn’t make it steps back.</p><code>Counts 240 ms · fade to 40%</code></div>
+<div class="mo-c"><div class="mo-s wm-10"><span class="wsh"><i class="n a"></i><i class="n b"></i></span><span class="tool"></span></div><h3>Present</h3><p>Tools fade, and the frame fills the sheet.</p><code>Tools 240 ms · glide 420 ms</code></div>
+<div class="mo-c"><div class="mo-s nt wm-13"><span class="pa"></span><span class="pb"></span><span class="pc2"></span></div><h3>A share comes alongside</h3><p>The board makes room, and the screen takes the top of the column above the tiles.</p><code>Glide 900 ms · ease-in-out</code></div>
+<div class="mo-c"><div class="mo-s nt wm-12"><span class="fade"></span><span class="wsh"></span></div><h3>Going to a room</h3><p>The stage dims, then the room’s board rises.</p><code>Dim 420 ms, then rise 560 ms</code></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1520,"height":1046}}'>
+class Component extends DCLogic { renderVals() { return {}; } }
+</script>

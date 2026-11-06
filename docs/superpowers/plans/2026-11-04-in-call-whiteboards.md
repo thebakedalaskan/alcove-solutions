@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - AGENTS.md applies to every task. Read it first, and `.claude/skills/strict-typescript/SKILL.md` before writing TypeScript.
-- Canvas source, the UI spec for every task: `CANVAS=/private/tmp/claude-501/-Users-benjaminkurrek--superset-worktrees-the-privacy-suite-create-depth-artifact-showing-446d60ca/e4834bb5-5819-4e08-b444-ba8449bd0c18/scratchpad/wb`. `$CANVAS/src/` has `board.css`, `Paper.html`, `Scene.html`, `paper.js`, `live.js`, `scenes.js`, `journeys.js`, `content.js`, `States.html`, `Tools.html`, `Motion.html`, `Anatomy.html`, `Compare.html`. `$CANVAS/site-live/Sandbox.dc.html` is the working board when served by `$CANVAS/serve.py`. Read it; never copy its fictional data into the app.
+- Canvas source, the UI spec for every task: `CANVAS=docs/design/whiteboards` (the approved canvas, in the repo). `$CANVAS/` has `board.css`, `Paper.html`, `Scene.html`, `paper.js`, `live.js`, `scenes.js`, `journeys.js`, `content.js`, `States.html`, `Tools.html`, `Motion.html`, `Anatomy.html`, `Compare.html`. `$CANVAS/site-live/Sandbox.dc.html` is the working board when served by `$CANVAS/serve.py`. Read it; never copy its fictional data into the app.
 - Fidelity: same layout, spacing, type, colours, motion durations and words as the canvas. Port `board.css` rather than restyling. A difference needs a reason.
 - UI copy is the canvas's words, exactly. Board objects are stickies, never notes. Use "they" for people. No "coming soon".
 - No test files except `*.integration.test.ts` through the real API. `@alcove/board` and the surface get no tests of their own: they're proved by Stage 3's tests and by scratch pages outside the repo, never committed.
@@ -44,7 +44,7 @@
 **Interfaces:**
 - Produces in `shape.ts`: `BOARD_OBJECTS = 'objects'`, `BOARD_COMMENTS = 'comments'`, `BOARD_LIMITS = { objects: 5000, points: 2000, text: 4000, minSide: 16, maxSide: 8000 }`, `STICKY_COLOURS = ['butter','peach','rose','lilac','sky','mist']`, `BoardObject` (a union on `k`, per the spec's table, with text fields read out as plain strings), `Box { x, y, w, h }`, `NewObject`, `BoardView { objects, byId, frames }`, `newId(): string`.
 - Produces in `read.ts`: `readBoard(doc: Y.Doc, prev?: BoardView): BoardView` (zod-parses each object, leaves out what doesn't parse, keeps `prev`'s object identity for what didn't change, sorted by layer then `at`); `observeBoard(doc, onChange: () => void): () => void`; `objectText(doc, id, field = 't'): Y.Text | null`.
-- Produces in `write.ts`, each one `doc.transact` under `origin: unknown`: `addObject(doc, input: NewObject, origin): string | null` (null past the limit), `moveObjects(doc, moves: { id: string; x: number; y: number }[], origin)` (a frame's contents move with it, and `f` is reassigned by where each object lands), `resizeObject(doc, id, box: Box, origin)`, `setObjects(doc, ids, patch, origin)`, `removeObjects(doc, ids, origin)` (takes attached lines too), `duplicateObjects(doc, ids, by: { x: number; y: number }, origin): string[]`, `tidyObjects(doc, ids, origin)`, `applyThemes(doc, themes: { name: string; ids: string[] }[], origin)`, `addThread(doc, on, text, origin): string`, `addReply(doc, thread, text, origin)`, `makeUndo(doc, origin): Y.UndoManager`.
+- Produces in `write.ts`, each one `doc.transact` under `origin: unknown`: `addObject(doc, input: NewObject, origin): string | null` (null past the limit), `moveObjects(doc, moves: { id: string; x: number; y: number }[], origin)` (a frame's contents move with it, and `f` is reassigned by where each object lands), `resizeObject(doc, id, box: Box, origin)`, `setObjects(doc, ids, patch, origin)`, `removeObjects(doc, ids, origin)` (takes attached lines too), `duplicateObjects(doc, ids, by: { x: number; y: number }, origin): string[]`, `tidyObjects(doc, ids, origin)`, `applyThemes(doc, themes: { name: string; ids: string[] }[], origin)`, `addThread(doc, on, text, origin): string`, `addReply(doc, thread, text, origin)`. Undo is Task 1b's `makeHistory`.
 - Produces in `geometry.ts`: `bounds(boxes: Box[]): Box`, `frameAt(view, x, y): FrameObject | null`, `colourIn(view, frame): StickyColour`, `fit(box, W, H, pad?): Camera` where `Camera { x, y, z }`, `hit(view, x, y): BoardObject | null`, `inside(view, box): BoardObject[]`.
 - Produces in `routes.ts`: `route(a: Box, b: Box, style): { d: string; head: string }`, `freeRoute(a: Box, to: [number, number], style)`, `shapePath(s, w, h): string`.
 - Produces in `templates.ts`: `TEMPLATES = ['blank','retro','ideas','flow','what-why-next']`, `fillTemplate(doc, name, origin)`.
@@ -52,9 +52,23 @@
 - Produces in `land.ts`: `landBoards(main: Y.Doc, rooms: { name: string; who: string[]; doc: Y.Doc }[], origin)`.
 - Produces in `presence.ts`: `BoardPresenceSchema`, `BoardPresence { at, view, sel, edit, typing }`, `NO_PRESENCE`.
 
-- [ ] Port from `$CANVAS/src/paper.js` (`bounds`, `fit`, `shapePath`, `route` and its helpers, unchanged numbers) and `live.js` (`frameAt`, `colourIn`, `tidy`, `sortThemes`). Templates and their words come from `content.js`; `retro`'s Actions frame and `what-why-next`'s last frame get `role: 'actions'`. Keep `content.js`'s frame sizes, hints and colours; its stickies are fiction and stay behind.
+- [ ] Port from `$CANVAS/paper.js` (`bounds`, `fit`, `shapePath`, `route` and its helpers, unchanged numbers) and `live.js` (`frameAt`, `colourIn`, `tidy`, `sortThemes`). Templates and their words come from `content.js`; `retro`'s Actions frame and `what-why-next`'s last frame get `role: 'actions'`. Keep `content.js`'s frame sizes, hints and colours; its stickies are fiction and stay behind.
 - [ ] Prove it with a Node script in the scratchpad, outside the repo: two `Y.Doc`s exchanging updates converge on concurrent adds, moves and typing; a malformed object is left out; undo in one doc leaves the other's changes alone; `landBoards` produces the canvas's layout for three rooms.
 - [ ] Run `pnpm typecheck`. Commit.
+
+### Task 1b: History
+
+**Files:**
+- Create: `packages/board/src/history.ts`
+- Modify: `packages/board/src/write.ts`, `packages/board/src/index.ts`, `apps/web/src/features/board/useBoard.ts`
+
+**Interfaces:**
+- Produces `makeHistory(doc: Y.Doc, origin: unknown): BoardHistory`, with `canUndo()`, `canRedo()`, `undo(): StepResult`, `redo(): StepResult`, `begin()`, `end()`, `drop()` (forgets the step in progress: a blank sticky left behind), `subscribe(listener): () => void`, `destroy()`. `StepResult` is `{ ok: true, changed: boolean } | { ok: false, error: unknown }`.
+
+- [ ] Delete `makeUndo`, `undoStep`, `redoStep` and everything under them from `write.ts`: nothing in the package imports `UndoManager` or reads a Yjs internal.
+- [ ] Implement the spec's "Undo is a history of plain copies".
+- [ ] Move the surface's `Board` onto it.
+- [ ] Prove every scene in the brief, and a fuzz that counts words lost.
 
 ### Task 2: The board kit
 
@@ -65,7 +79,7 @@
 **Interfaces:**
 - Produces stateless components taking data and handlers, with no Yjs: `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`, `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`, `BoardPicture`, `BoardPointer`, `BoardHeard`, `BoardTray`, `BoardMap`, `BoardMenu` (the Board button's menu, with its access step), `BoardEmpty`, `BoardComment`. Report their final props.
 
-- [ ] Port `$CANVAS/src/board.css` to `board.css`: the board's rules only, not the canvas's journey, strip or compare styles. Classes keep their names, except where AGENTS.md's prefixes or a collision says otherwise. `[data-theme="dark"]` becomes `.dark`. Tokens `--bd-*`, `--bf-*`, `--note-*`, `--line-ink` go in `styles.css`, light on `:root`, dark on `.dark`. Raw hex only on what's night.
+- [ ] Port `$CANVAS/board.css` to `board.css`: the board's rules only, not the canvas's journey, strip or compare styles. Classes keep their names, except where AGENTS.md's prefixes or a collision says otherwise. `[data-theme="dark"]` becomes `.dark`. Tokens `--bd-*`, `--bf-*`, `--note-*`, `--line-ink` go in `styles.css`, light on `:root`, dark on `.dark`. Raw hex only on what's night.
 - [ ] Port each surface of `Paper.html`, and the menu from `Scene.html`, to a stateless component with the same markup and classes. Reuse `PointerTag`, `SharePointer`, `Avatar`, `Faces`, `IconButton`, `Popover`. Add the canvas's extra icons to `Icon`.
 - [ ] Render each in a scratch page outside the repo beside the canvas, light and dark. Run `pnpm typecheck` and `pnpm build`. Commit.
 
@@ -78,7 +92,7 @@
 - Consumes: Task 1 and Task 2.
 - Produces: `<BoardSurface doc={Y.Doc} awareness={Awareness} mode="call"|"page"|"tile"|"present"|"phone"|"read" people talking onHandlers />` and `BoardHandle` with `fit()`, `goTo(view)`, `follow(id | null)`, `focusFrame(id)`.
 
-- [ ] Port `$CANVAS/src/live.js`'s pointer, wheel, key and selection behaviour onto `@alcove/board`. Pan and zoom by trackpad, mouse, space-drag and pinch; fit; select, shift-select, marquee, move, resize; double-click for a sticky in the frame's colour; Tab starts the next; Esc finishes; a `textarea` bound to the object's `Y.Text`; undo and redo through `makeUndo`. The camera writes one `transform` through a ref and never re-renders objects. Objects past 500 mount only near the view.
+- [ ] Port `$CANVAS/live.js`'s pointer, wheel, key and selection behaviour onto `@alcove/board`. Pan and zoom by trackpad, mouse, space-drag and pinch; fit; select, shift-select, marquee, move, resize; double-click for a sticky in the frame's colour; Tab starts the next; Esc finishes; a `textarea` bound to the object's `Y.Text`; undo and redo through `makeHistory`. The camera writes one `transform` through a ref and never re-renders objects. Objects past 500 mount only near the view.
 - [ ] Keys sleep while typing. M, V and C are never taken.
 - [ ] Verify two surfaces on one `Y.Doc` in a scratch page outside the repo against `$CANVAS/site-live/Sandbox.dc.html`, light and dark, including 500 objects. Run `pnpm typecheck` and `pnpm build`. Commit.
 
@@ -112,6 +126,7 @@ As `docs/superpowers/plans/2026-11-04-in-call-workspace.md` Task B2 has it: 4 Mi
 - `attach(workspaceId, documentId, mediaId)` for reuse: `edit` on the target, same workspace.
 - `items.duplicate` copies a document's use rows in its transaction.
 - A use row goes only when its document is deleted for good, so versions and trashed documents hold their media. Media with no uses left goes through `object_gc`.
+- `remove(workspaceId, documentId, mediaId)` is the exception, because delete means deleted: anyone with `edit` on a document that uses it can delete it; every use row and object goes, and other documents and versions get `not-found`, which the UI shows as a "removed" placeholder.
 
 Tests: as B2 lists, plus a guest's seat on one document sees its pictures and no others, and a revoked reader's next `Range` gets `not-found`.
 
@@ -121,7 +136,7 @@ Tests: as B2 lists, plus a guest's seat on one document sees its pictures and no
 
 **Files:** create `apps/api/src/boards.integration.test.ts`; modify `apps/api/src/modules/workspaceDocuments.ts` (`documentText`, `searchText`, `documentTodos`), `apps/api/src/modules/workspaces.ts`, the leakage test, `packages/api-http` as needed.
 
-- [ ] Tests first, the whole of #83's Validation through the real API, with `@alcove/board` making the edits in several browsers: concurrent stickies converge; a connector stays attached through moves; undo takes back only your own; late join and reconnect get the current board; edits survive a reload and an API restart; a read-only reader's update is refused; revocation ends the stream; a trashed board stays readable and is deleted physically; a template fills once; `boardText` reaches search; the canary finds no board text in any column, object or log.
+- [ ] Tests first, the whole of #83's Validation through the real API, with `@alcove/board` making the edits in several browsers: concurrent stickies converge; a connector stays attached through moves; undo takes back only your own; undo after a same-moment move or recolour loses nothing, and restoring a deleted object brings it back whole; late join and reconnect get the current board; edits survive a reload and an API restart; a read-only reader's update is refused; revocation ends the stream; a trashed board stays readable and is deleted physically; a template fills once; `boardText` reaches search; the canary finds no board text in any column, object or log.
 - [ ] Implement. Run `pnpm check`.
 
 ### Task 7b: The document library
@@ -138,11 +153,11 @@ Refine these from A2's final contract before starting. Tasks 10 to 14 can run in
 
 ### Task 9: `CallState.board`
 
-Contract, `workspaceForCall` and `grantDocumentToCall` in `access.ts` (tell the workspace session), `workspaceId` on the meeting manifest, opening with a template or a saved board, the access step, closing. Tests: starting, late joiners, reconnects, guests add but can't start, bringing a board needs `edit`, "Let them in" needs the right to share, someone admitted later under each choice, seats ending with the call, a stored call still opens, cross-owner IDs.
+Contract, `workspaceForCall` and `grantDocumentToCall` in `workspaceAccess.ts` (tell the workspace session), `workspaceId` on the meeting manifest, opening with a template or a saved board, the access step, closing. Tests: starting, late joiners, reconnects, guests add but can't start, bringing a board needs `edit`, "Let them in" needs the right to share, someone admitted later under each choice, seats ending with the call, a stored call still opens, cross-owner IDs.
 
 ### Task 10: The board on the stage
 
-Journeys: start, joining, close. The dock button and B, the Board menu, the `board` leaf, the rise, people to the strip, hide for you, the live tile, the title menu, closed toast, the Keyboard board entry.
+Journeys: start, joining, close. The dock button and O, the Board menu, the `board` leaf, the rise, people to the strip, hide for you, the live tile, the title menu, closed toast, the Keyboard board entry.
 
 ### Task 11: With a shared screen
 
@@ -174,7 +189,7 @@ Journeys: close's last steps, notes. Boards on the note and in sub-notes with `m
 
 ### Task 17: More, and the phone
 
-Image, From your workspace, Table, Mind map, Comment, Templates, Download as an image, Download as a PDF, Night board; journey: phone at 390 px.
+Image, From your workspace, Table, Mind map, Comment, Templates, Download as an image, Download as a PDF, Night board; journey: phone at 390 px. A table's cell makes its `Y.Text` when someone focuses it, not on their first letter, and rebinds if another browser's wins, so two people starting in one empty cell lose at most what they typed within one sync.
 
 ### Task 18: Every journey, end to end
 

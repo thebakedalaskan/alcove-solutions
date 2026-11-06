@@ -1,0 +1,33 @@
+<!-- title: The board, named -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="an" data-theme="light" style="width: 1392px">
+<div class="an-pic">
+<dc-import name="Scene" node="anat" hint-size="1280px,800px"></dc-import>
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="10"><span class="an-m" style="left: {{m.x}}px; top: {{m.y}}px">{{m.n}}</span></sc-for>
+</div>
+<div class="an-l">
+<sc-for list="{{marks}}" as="m" hint-placeholder-count="10">
+<div class="an-i"><i>{{m.n}}</i><div><b>{{m.t}}</b><p>{{m.p}}</p></div></div>
+</sc-for>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1392,"height":1191}}'>
+var MARKS = [
+  { x: 84, y: 52, t: 'The board’s bar', p: 'Its name, its seal, undo and zoom, in one line along the top of the sheet. No pills in the corners.' },
+  { x: 16, y: 212, t: 'Tools', p: 'The call’s dock, turned on its side, just off the sheet. Seven tools and More, each one a single key.' },
+  { x: 462, y: 118, t: 'One pill', p: 'Anything the whole board shares, in one place: a timer, a vote, following, a room’s time.' },
+  { x: 976, y: 52, t: 'Run the session', p: 'Timer, Vote and Present, at the end of the bar. Nothing else needs a facilitator.' },
+  { x: 500, y: 330, t: 'What’s selected', p: 'A small bar that only appears on what you’ve picked. Dots start a line.' },
+  { x: 500, y: 590, t: 'Pointers', p: 'A face and a name, never colour alone. Whoever is talking glows, here and on their tile.' },
+  { x: 470, y: 700, t: 'From the call', p: 'Ideas the call heard, waiting quietly. Written in confidential compute, only while notes are on.' },
+  { x: 1136, y: 54, t: 'People', p: 'The call’s tiles. Click one to go to them or follow them. A shared screen joins them here, on top.' },
+  { x: 316, y: 738, t: 'The call', p: 'The same dock and top bar as any call. The board is one more thing on the stage.' }
+].map(function (m, i) { return Object.assign({ n: i + 1 }, m); });
+class Component extends DCLogic {
+  renderVals() { return { marks: MARKS }; }
+}
+</script>

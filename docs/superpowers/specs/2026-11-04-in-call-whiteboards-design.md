@@ -1,8 +1,8 @@
 # In-call whiteboards: design
 
 The approved design is the Design canvas <https://claude.ai/artifact/JkR1bitzMxispnPUDjAQrV> (version 11): 17 journeys, a
-working board, states, anatomy, every tool, motion, and the main call compared with a room. Ben's instruction: build it
-end to end. GitHub issue #83 holds the acceptance criteria. This page records the engineering decisions the canvas can't
+working board, states, anatomy, every tool, motion, and the main call compared with a room. Build it end to end.
+GitHub issue #83 holds the acceptance criteria. This page records the engineering decisions the canvas can't
 show. Where it's silent on how something looks or moves, the canvas decides.
 
 The canvas source is the UI spec: `board.css` (styles), `Paper.html` (the board's markup), `Scene.html` (the call around
@@ -43,13 +43,22 @@ ideas from the call) is **`CallState.board`**, sealed in the call's state.
 
 ## The board's Y.Doc
 
-Two roots.
+Three roots.
 
 - `objects`, a `Y.Map` of id to `Y.Map`, one per object. Ids are 12 random base64url characters from the browser.
+- `places`, one shared `Y.Array` of `{ k, x, y, w, h }`: where each object is. Each browser keeps its own run in it: a write puts the places it
+  changes, as one block, right after the last entry that browser wrote (a browser's first write goes at the end), and deletes the entries they
+  replace. When two browsers write one key at once, the later entry in the list wins. It's its own root because of how Yjs stores what's
+  superseded: a `Y.Map` keeps every old value of a key for ever, so a busy board's `x` and `y` would reach the document's structure ceiling
+  through churn alone, in about 300 two-second drags, while a run of one browser's deleted entries collapses into one struct. Measured over
+  100,000 moves, each heard as it's made, dragging added 2 structs for one person dragging one sticky, 4 for two people each dragging their own
+  sticky at the same time, and 3 for two people each dragging their own 200 stickies. Two people dragging the same sticky at the same moment
+  added 50,001, one for every two moves (never more than one per move), and two people taking turns of 13 moves on one sticky 3,849. As map
+  keys, the same moves added 200,000. Everything a drag changes lives here and nothing else does.
 - `comments`, a `Y.Map` of thread id to `Y.Map`, each with a `Y.Array` of replies, as a document's are. A thread names the
   object it's pinned to.
 
-| `k` | Fields beyond `x y w h at f` | Text |
+| `k` | Fields beyond `at f`, and a place in `places` | Text |
 | --- | --- | --- |
 | `note` | `c` colour, `size` `s`/`m`/`l` | `t` |
 | `text` | `size` `title`/`heading`/`body` | `t` |
@@ -63,7 +72,8 @@ Two roots.
 | `table` | `rows`, `cols`: each a `Y.Array` of `{ id, size }` | `cells`, a `Y.Map` of `Y.Text` keyed `<rowId>:<colId>` |
 | `node` | a mind map's node: `parent` | `t` |
 
-`at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`.
+A `line` has no place. `at` orders objects within a layer (frames, then lines, then everything else); `f` is the frame an object sits in, or `''`. A frame sits in
+another only when the other holds its whole box, so dropping one frame beside another never turns a slide into a child.
 A frame's order on the board is its order as slides. `x y w h` are board units, absolute: moving a frame moves what's in it, in
 one transaction. `t` and `title` are `Y.Text`, so two people typing in one sticky merge. Everything else is last-write-wins per
 key, which is what "move" and "recolour" should mean: whoever let go last. Deleting wins over a concurrent edit, and undo brings
@@ -76,25 +86,41 @@ cell is safe.
 What other people's browsers wrote is `unknown` until parsed: `readBoard` runs every object through a zod schema and leaves out
 any that don't parse, so one bad object can't take a board down for everyone.
 
-Every write is one `doc.transact(fn, origin)` through a function in `@alcove/board`, so "Sort into themes" is one undo. Undo is a
-`Y.UndoManager` on both roots with this browser's origin alone in `trackedOrigins`, which is exactly "undo only ever takes back
-your own changes". Deleting an object takes the lines attached to it in the same transaction; a line left pointing at nothing by
-a concurrent delete isn't drawn.
+Every write is one `doc.transact(fn, origin)` through a function in `@alcove/board`.
 
-Limits, enforced when writing and parsing: 5000 objects, 2000 points a stroke, 4000 characters of text an object, an object
-between 16 and 8000 units a side, within a million units of the origin (so a camera can always fit the board), and tables up to 50 by 50. A
-board past 5000 says so and refuses more, rather than slowing down for everyone. Text is the one limit two browsers can pass together, by
-merging what each typed offline: then the object stays, showing the first 4000 characters, and the `Y.Text` keeps everything, so nobody's
-words are lost.
+**Undo is a history of plain copies, not Yjs's `UndoManager`.** That manager is built for text. On objects that several people edit at once it
+restores or refuses item by item, so a field can end up with no value and an object can vanish for everyone, and working round that means
+depending on its internals. So `makeHistory(doc, origin)` keeps a plain copy of every object and thread, updated by every transaction. A change
+made under this browser's origin records, for each object it touched, the copy `before` and `after`. Undo walks that step back, and for each
+object:
+
+- **I added it** (`before` is nothing): it goes only if it's still exactly as I left it and nothing else points at it. If anyone has typed in it,
+  moved it, recoloured it, drawn a line to it or commented on it, it stays.
+- **I removed it** (`after` is nothing): it's made again from `before`, words and cells included, unless someone has already brought it back.
+- **I changed it:** each field goes back only if it still holds what I set. A field someone has changed since stays theirs. Text is a field: words go
+  back only if nobody has typed there since, and through a diff, so carets survive. Tables compare cell by cell.
+
+So undo only ever takes back your own changes, and nobody's work is lost: the only things it removes are what you made that nobody has touched. A
+press that can do nothing moves on to the step before it, so a press always does something if it can. A step that can't apply only because its object
+is gone stays where it is, so it can still apply once the object comes back. Each stack keeps the last 100 steps. Redo is the same walk the other way. A
+step is one transaction, or everything between `begin()` and `end()`: a drag, or all that's typed in one go. "Sort into themes" is one step.
+
+Deleting an object takes the lines attached to it in the same transaction; a line left pointing at nothing by a concurrent delete isn't drawn.
+
+Limits, enforced when writing and parsing: 5000 objects, 2000 points a stroke, 4000 characters of text an object or a table's cell, an
+object between 16 and 8000 units a side, within a million units of the origin (so a camera can always fit the board), and tables up to 50 by
+50. A board past 5000 says so and refuses more, rather than slowing down for everyone. Two browsers can pass the text and table limits
+together, by merging what each did offline. Then the object stays: text shows its first 4000 characters with the `Y.Text` keeping everything,
+and a table shows its first 50 rows and columns, so nobody's words are lost.
 
 ## Storage, keys and access
 
 Nothing new. A board is a `documents` row, so its records, keys, compaction, versions and physical deletion are the document's
 (`document-update`, `document-snapshot`, `document-version`). Its pictures are `workspace_media`, reached through a document: a seat on one
-board sees that board's pictures and no others. `documentText`, `searchText`
-and `documentTodos` switch on `kind`; the board case comes from `@alcove/board` (`boardText`, `boardFollowUps`).
+board sees that board's pictures and no others. `documentText` and search
+read a board's words with `boardText` from `@alcove/board`. `documentTodos` gives nothing for a board: its follow-ups come from the note writer.
 
-Boards need one thing from `access.ts` beyond documents: **`grantDocumentToCall(d, workspace, documentId, call, { role, place? })`**,
+Boards need one thing from `workspaceAccess.ts` beyond documents: **`grantDocumentToCall(d, workspace, documentId, call, { role, place? })`**,
 which gives one board to the people in a call or, with `place`, a room's people. Seat entries end with the call. A reader in a
 call can be both an account and a seat, and room access is by seat, so a request carrying both a session and a call pass keeps both
 identities, and either can grant.
@@ -156,7 +182,7 @@ board: {
 }
 ```
 
-- **Opening.** Anyone invited, with the Board button (B). Guests can add but not start one. The board is saved in the call's workspace,
+- **Opening.** Anyone invited, with the Board button (O, because B marks a moment). Guests can add but not start one. The board is saved in the call's workspace,
   from `workspaceForCall(d, call)`: the meeting's `workspaceId`, else the organizer's most recently used, else a new one in their
   name. A meeting's manifest gains `workspaceId` (default null), carried to the next call in a series. A new board is named after
   the call, or "<room> board" in a room. It's filled from its template by a server-made Yjs update, so everyone gets the same
@@ -178,8 +204,7 @@ board: {
 - **Ideas from the call** run only while notes are on, from the part of the call you're in, at most once a minute while a board is open,
   through `inference.ts`. Each names who said it and the frame it fits. Adding one writes a sticky. Nothing is kept once it's added
   or dismissed.
-- **Sort into themes** sends the selected stickies' text through `inference.ts`, and the surface applies the answer in one transaction as
-  that person's change, so their undo puts it back (`onSort` answers with the themes; the bar says Sorting… meanwhile). Someone asked
+- **Sort into themes** sends the selected stickies' text through `inference.ts` and applies the answer in one transaction. Someone asked
   for it, about what people wrote, so it works with notes off and on a board's page. While a call is paused nothing goes to the AI, so the
   server refuses and the bar doesn't offer it.
 
