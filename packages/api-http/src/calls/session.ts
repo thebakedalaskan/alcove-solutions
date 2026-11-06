@@ -3,7 +3,7 @@ import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
 import { type ChatPayload, groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentKind, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -342,7 +342,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const quick = Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)) * (0.8 + Math.random() * 0.4);
     this.timer = setTimeout(() => {
       void this.sync();
-      // Losing a document says nothing to the call, so while something's presented, playing or open as a board, the call is read as well.
+      // Losing a document or a workspace says nothing to the call, so while something's presented, playing or open as a board, the call is read as well.
       const { present, play } = this.state.workspace;
       if (present || play || this.state.board.open) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
     }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
@@ -759,9 +759,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   askForWorkspace = (up: boolean) => this.space({ type: 'workspace-ask', up });
   grantWorkspaceAsk = (askId: string, documentId: string, role: DocumentRole) => this.space({ type: 'workspace-grant', askId, documentId, role });
   declineWorkspaceAsk = (askId: string) => this.space({ type: 'workspace-decline', askId });
-  startPresenting = (kind: PresentKind, id: string, section = 0) => this.space({ type: 'present-start', kind, id, section });
+  startPresenting = (what: PresentStart) => this.space({ type: 'present-start', what: what.kind === 'board' ? { kind: 'board', id: what.id, section: what.section ?? 0 } : { kind: 'workspace' } });
   movePresenting = (section: number) => this.space({ type: 'present-move', section });
-  stopPresenting = () => this.space({ type: 'present-stop' });
+  stopPresenting = (close: boolean) => this.space({ type: 'present-stop', close });
   startPlaying = (documentId: string, mediaId: string, positionMs = 0) => this.space({ type: 'play-start', documentId, mediaId, positionMs });
   pausePlaying = (positionMs: number) => this.space({ type: 'play-pause', positionMs });
   resumePlaying = () => this.space({ type: 'play-resume' });
@@ -781,6 +781,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
   shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
+  stopShare = async (seat: string) => { this.take(await this.t.act(this.state.callId, { type: 'share-stop', seat })); };
   /** They're disconnected at once; the host's browser then takes them out of their group, so the keys move on without them. */
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };

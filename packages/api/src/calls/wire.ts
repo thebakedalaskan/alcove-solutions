@@ -10,7 +10,7 @@ import { CaptureDevicePartSchema } from './capture';
 import { CatchUpRangeSchema } from './catchup';
 import { RingReplySchema } from './rings';
 import { CallPlaceSchema } from './state';
-import { PlayMediaSchema, PlayPositionSchema, PresentKindSchema, PresentSectionSchema } from './workspace';
+import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notes'), on: z.boolean() }),
@@ -47,6 +47,11 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('deny'), identity: z.string().min(1).max(64) }),
   /* The organizer's host controls. Mute has no remote unmute; remove only disconnects; lock keeps everyone new out. */
   z.object({ type: z.literal('mute'), identity: z.string().min(1).max(64), trackSid: z.string().min(1).max(64) }),
+  /**
+   * The organizer stops what someone shares, for everyone: their screen and its sound, by their seat (`CallParticipant.seat`),
+   * whichever connection it's on. They're told who stopped it.
+   */
+  z.object({ type: z.literal('share-stop'), seat: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }),
   z.object({ type: z.literal('remove'), identity: z.string().min(1).max(64) }),
   z.object({ type: z.literal('lock'), on: z.boolean() }),
   /** Puts someone in the call on everyone's main stage, or nobody. */
@@ -87,11 +92,18 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('workspace-grant'), askId: z.string().min(1).max(64), documentId: ItemIdSchema, role: DocumentRoleSchema }),
   /** The organizer says not now to an ask, and whoever asked is told. */
   z.object({ type: z.literal('workspace-decline'), askId: z.string().min(1).max(64) }),
-  /** Anyone who can open it presents a document or board in the call's workspace to the part of the call they're in. */
-  z.object({ type: z.literal('present-start'), kind: PresentKindSchema, id: ItemIdSchema, section: PresentSectionSchema.default(0) }),
-  /** Whoever started it, or the organizer. */
+  /**
+   * Anyone who can open it presents the workspace everyone views, or the board open where they are, to the part of the call
+   * they're in: one at a time there, so it's refused while someone else presents either.
+   */
+  z.object({ type: z.literal('present-start'), what: PresentStartSchema }),
+  /** Whoever started it, or the organizer: everyone goes to another of the board's frames. */
   z.object({ type: z.literal('present-move'), section: PresentSectionSchema }),
-  z.object({ type: z.literal('present-stop') }),
+  /**
+   * Whoever started it, or the organizer: it ends for whoever presented it, and everyone else keeps it open on their own, or
+   * for everyone (`close`), which closes a board in the call too.
+   */
+  z.object({ type: z.literal('present-stop'), close: z.boolean().default(false) }),
   /** Anyone who can open the document plays a video in it for the part of the call they're in. */
   z.object({ type: z.literal('play-start'), documentId: ItemIdSchema, mediaId: PlayMediaSchema, positionMs: PlayPositionSchema.default(0) }),
   /** Whoever started it, or the organizer: it holds where it says, for everyone. */
