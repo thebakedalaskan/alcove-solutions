@@ -23,13 +23,27 @@ function byWhen(iso: string, now: number): string {
   return `${days === 1 ? 'tomorrow' : shortDay(new Date(iso))} ${hm(iso)}`;
 }
 
+/** `a` minus `b`, two token amounts as decimal strings ("5" − "1.5" = "3.5"), never below 0. */
+export function amountLeft(a: string, b: string): string {
+  const places = Math.max(a.split('.')[1]?.length ?? 0, b.split('.')[1]?.length ?? 0);
+  const units = (x: string) => { const [w = '0', f = ''] = x.split('.'); return BigInt(w + f.padEnd(places, '0')); };
+  const left = units(a) - units(b);
+  if (left <= 0n) return '0';
+  const digits = left.toString().padStart(places + 1, '0');
+  const whole = digits.slice(0, digits.length - places);
+  const fraction = digits.slice(digits.length - places).replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole;
+}
+/** What's still to send on a short top-up: the asked amount less what arrived. */
+const rest = (t: TopUp) => amountLeft(t.asked.amount, t.received?.amount ?? '0');
+
 /** How a top-up stands, in a line. The waiting, arriving and short lines are also what Plan and credits lists. */
 export function topUpLine(t: TopUp, now = Date.now()): string {
   const token = t.route.token;
   switch (t.state) {
     case 'waiting': return 'Waiting for your payment';
     case 'arriving': return 'Payment seen, adding your credits';
-    case 'short': return `${t.received?.amount ?? 'Less'} ${token} arrived, less than the ${t.asked.amount} ${token} asked. It’ll be added as credits when it reaches us, by ${byWhen(t.expiresAt, now)}.`;
+    case 'short': return `${t.received?.amount ?? 'Less than asked'} of ${t.asked.amount} ${token} arrived. Send the other ${rest(t)} ${token} to the same address by ${byWhen(t.expiresAt, now)} for your ${number.format(t.asked.credits)} credits. If you don’t, what arrived is added as credits then.`;
     case 'credited': return `Added ${number.format(t.received?.credits ?? 0)} credits`;
     case 'held': return `Too small to add: under 1 ${token}`;
     case 'failed': return 'Something went wrong with this payment. Contact support with this reference:';
@@ -214,8 +228,8 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
       <div className="set-topup-body">
         {address !== null && (
           <div className="set-topup-ask">
-            <h3>Send {t.asked.amount} {t.route.token} on {t.route.chainName}</h3>
-            <p>→ {number.format(t.asked.credits)} credits{perMinute ? ` · about ${hoursAndMinutes(t.asked.credits / perMinute)}` : ''}</p>
+            <h3>{t.state === 'short' ? `Send ${rest(t)} ${t.route.token} more on ${t.route.chainName}` : `Send ${t.asked.amount} ${t.route.token} on ${t.route.chainName}`}</h3>
+            <p>→ {number.format(t.asked.credits)} credits{t.state === 'short' ? ' in total' : ''}{perMinute ? ` · about ${hoursAndMinutes(t.asked.credits / perMinute)}` : ''}</p>
           </div>
         )}
         <div role="status">{state}</div>
@@ -227,7 +241,7 @@ function Paying({ id, onNew, onClose }: { id: string; onNew: () => void; onClose
               <CopyField value={address} label="Address" />
               {t.memo !== null && <CopyField value={t.memo} label="Memo" />}
               <p>Send exactly this amount. If your exchange takes a withdrawal fee, add it on top.</p>
-              <p>This address is for one payment. To add more later, start a new top-up.</p>
+              <p>{t.state === 'short' ? 'Send the rest to this same address. It’s added to what already arrived.' : 'This address is for one payment. To add more later, start a new top-up.'}</p>
               <ul className="facts">
                 <li><Icon name="clock" size={15} />Address expires {startsLabel(t.expiresAt, now)}</li>
               </ul>

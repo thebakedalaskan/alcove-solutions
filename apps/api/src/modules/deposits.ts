@@ -78,10 +78,11 @@ const toRoute = (r: DepositRecord['route'] | DepositRoute) => ({
 });
 /** A deposit as the person sees it. Its address is shown only while a payment is awaited: one payment per address. */
 function toTopUp(depositId: string, r: DepositRecord, state: TopUpState): TopUp {
-  const waiting = state === 'waiting';
+  // Short: 1Click adds whatever else arrives before its deadline, so the rest can still be sent to the same address.
+  const sendable = state === 'waiting' || state === 'short';
   const sent = r.settled?.sentMicroUsd ?? r.seenMicroUsd;
   return {
-    id: depositId, route: toRoute(r.route), address: waiting ? r.address : null, memo: waiting ? r.memo : null,
+    id: depositId, route: toRoute(r.route), address: sendable ? r.address : null, memo: sendable ? r.memo : null,
     expiresAt: r.expiresAt, state,
     asked: { amount: formatUnits(BigInt(r.asked), r.route.decimals), credits: r.credits },
     received: sent === null ? null : { amount: formatUnits(BigInt(sent), 6), credits: r.settled ? r.settled.credits : null }

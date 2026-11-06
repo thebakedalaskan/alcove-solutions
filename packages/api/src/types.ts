@@ -872,7 +872,7 @@ export type TopUpState = z.infer<typeof TopUpStateSchema>;
 /** One payment for credits: what to send and where, and what has happened to it so far. */
 export const TopUpSchema = z.object({
   id: IDSchema, route: TopUpRouteSchema,
-  /** Only while a payment is awaited (`waiting`); null once the top-up has moved on. */
+  /** Only while a payment, or the rest of one, can still be sent (`waiting`, `short`); null once the top-up has moved on. */
   address: z.string().nullable(), memo: z.string().nullable(),
   expiresAt: ISODateSchema, state: TopUpStateSchema,
   /** What to send, in tokens as a decimal string, and the credits it adds. */

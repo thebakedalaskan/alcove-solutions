@@ -87,7 +87,7 @@ What's credited goes by what was sent, at face value; Alcove absorbs 1Click's fe
 | --- | --- | --- |
 | `PENDING_DEPOSIT` | `waiting` | keep watching |
 | `KNOWN_DEPOSIT_TX`, `PROCESSING` | `arriving` | keep watching |
-| `INCOMPLETE_DEPOSIT` | `short`: less than the band arrived; the address is no longer shown, and 1Click refunds it to the treasury at the deadline | keep watching |
+| `INCOMPLETE_DEPOSIT` | `short`: less than the band arrived. The address stays shown with what is left to send: 1Click adds anything else sent to it before its deadline and swaps the total (credited as `SUCCESS`); otherwise it refunds what arrived to the treasury at the deadline, and that is credited then (as `REFUNDED`). Nothing is credited before the money reaches the treasury | keep watching |
 | `SUCCESS`, `REFUNDED` | `credited`, or `held` when nothing creditable arrived (a refund under 1 USD) | done |
 | `FAILED` | `failed` | done; logged at error |
 | none at the last check, 24 h after the address expires (or 1Click can't answer it, 6 h after that) | `expired` | done |

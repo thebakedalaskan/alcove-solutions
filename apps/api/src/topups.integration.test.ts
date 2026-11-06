@@ -238,12 +238,12 @@ describe('top-ups', () => {
     expect((await api.credits.balance()).balance).toBe(10_000 + 50_000 + 50_000);
   });
 
-  it('shows a payment under the band as short, without the address, and credits it as what it buys once refunded', async () => {
+  it('shows a payment under the band as short, with the address, and credits it as what it buys once refunded', async () => {
     const { api } = await account();
     const t = await api.credits.startTopUp(BASE_USDC, 50_000);
     h.oneclick.set(addr(t), 'INCOMPLETE_DEPOSIT', { depositedAmount: '30000000' });
     expect(await api.credits.topUp(t.id)).toMatchObject({
-      state: 'short', address: null, memo: null, asked: { amount: '45', credits: 50_000 }, received: { amount: '30', credits: null }
+      state: 'short', address: t.address, memo: t.memo, asked: { amount: '45', credits: 50_000 }, received: { amount: '30', credits: null }
     });
     expect((await api.credits.balance()).balance).toBe(10_000);
 
@@ -251,6 +251,19 @@ describe('top-ups', () => {
     h.oneclick.set(addr(t), 'REFUNDED', { depositedAmount: '30000000', amountOut: '0', refundedAmount: '30000000', intentHashes: ['h30'] });
     expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '30', credits: 30_000 } });
     expect((await api.credits.balance()).balance).toBe(10_000 + 30_000);
+  });
+
+  it('credits what was promised when the rest of a short payment is sent to the same address', async () => {
+    const { api } = await account();
+    const t = await api.credits.startTopUp(BASE_USDC, 50_000);
+    h.oneclick.set(addr(t), 'INCOMPLETE_DEPOSIT', { depositedAmount: '30000000' });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'short', address: t.address });
+
+    // 1Click adds the second payment to the first and swaps the total.
+    await forgetCheck(t.id);
+    h.oneclick.set(addr(t), 'SUCCESS', { depositedAmount: '45000000', amountOut: '44995500', intentHashes: ['h45'] });
+    expect(await api.credits.topUp(t.id)).toMatchObject({ state: 'credited', address: null, received: { amount: '45', credits: 50_000 } });
+    expect((await api.credits.balance()).balance).toBe(10_000 + 50_000);
   });
 
   it('credits a refund of at least 1 USD at the tier it reaches, holds a smaller one, and adds a swapped part', async () => {
