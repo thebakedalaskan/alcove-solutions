@@ -74,7 +74,8 @@ const unavailable = (context: Record<string, string | number>, level: 'warn' | '
  */
 const MAX_BAND_BPS = 150n;
 
-export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string }): DepositProvider {
+/** `apiKey` is the partner JWT; without one 1Click still quotes, with its own fee on top. */
+export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treasury: string }): DepositProvider {
   let tokens: { routes: DepositRoute[]; until: number } | null = null;
 
   /** One request to 1Click, its JSON body parsed with `schema`. Anything but a 2xx answer that parses is unavailable. */
@@ -85,7 +86,7 @@ export function oneClick(o: { baseUrl: string; apiKey: string; treasury: string 
     try {
       res = await fetch(`${o.baseUrl}${path}`, {
         method,
-        headers: { 'X-API-Key': o.apiKey, 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        headers: { ...(o.apiKey === undefined ? {} : { 'X-API-Key': o.apiKey }), 'User-Agent': 'alcove-api', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         body: body === undefined ? null : JSON.stringify(body),
         signal: AbortSignal.timeout(TIMEOUT_MS)
       });

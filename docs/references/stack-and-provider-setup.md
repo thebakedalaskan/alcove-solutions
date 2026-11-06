@@ -56,8 +56,10 @@ The meeting VM runs the ordinary browser, isolated audio daemon, native recorder
 
 Credit top-ups call 1Click's REST API directly (`apps/api/src/payments/oneclick.ts`, no SDK) at `ONECLICK_BASE_URL`
 (default `https://1click.chaindefuser.com`), sending `X-API-Key: ONECLICK_API_KEY` (the partner JWT from
-partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless the key and
-`TREASURY_INTENTS_ACCOUNT` are set.
+partners.near-intents.org) when it is set, and `User-Agent: alcove-api`, with a 15 s timeout. Top-ups are off unless
+`TREASURY_INTENTS_ACCOUNT` is set. Without the key 1Click still quotes and swaps the same way, adding its own fee
+(about 0.013% on USDC on Base when checked on 6 November 2026, against 0.01% with a key); a key that is set but wrong is
+refused (401), which makes top-ups unavailable.
 
 - `GET /v0/tokens`: intersected with the allowlist of USDC and USDT asset IDs (checked 5 November 2026), cached for
   10 minutes.
@@ -67,7 +69,8 @@ partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. To
   top-up is refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept),
   `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
   `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
-  `deadline` 24 hours ahead, `dry: false`. The whole response, signature included, is kept sealed for disputes.
+  `deadline` 24 hours ahead (1Click sets its own, later one: 3 days out when checked on 6 November 2026; the
+  response's `deadline` is the one used), `dry: false`. The whole response, signature included, is kept sealed for disputes.
 - `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
   it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
   (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited. A status Alcove doesn't know
@@ -92,7 +95,7 @@ partners.near-intents.org) and `User-Agent: alcove-api`, with a 15 s timeout. To
 | 5. C01 deployment | API and meeting application IDs, accepted OS/node/instance configuration, measurements, verified channel/key binding, distinct service-seal paths | Actual attestation and permitted secret bootstrap; invalid evidence rejected |
 | 6. Sign-in and keys | Google and Microsoft OAuth clients and the OIDC SSO configuration; `KMASTER` released only to the attested API VM | Verified sign-in, session expiry, cross-owner and ciphertext tests |
 | 7. I01 route | Canonical model ID, approved endpoint, SDK/source integrity, request/receipt handling, supplier funding and deadlines | Actual protected request, cited usable answer and truthful expense/verification state |
-| 8. P01 top-ups | `ONECLICK_API_KEY` and `TREASURY_INTENTS_ACCOUNT`; the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only credit and retry checks |
+| 8. P01 top-ups | `TREASURY_INTENTS_ACCOUNT` (and `ONECLICK_API_KEY` for the lower fee); the allowlisted routes still listed in `/v0/tokens` | Real supported SUCCESS outcome linked to its top-up; once-only credit and retry checks |
 | 9. Meet route | Guest-enabled meeting permission, visible attendee name, actual browser/media egress, frozen source selectors and local speech image | Host-admitted actual remote audio, stop/leave, timed encrypted transcript and import |
 | 10. Release rehearsal | The linked engineering acceptance checklist and MVP task dependencies | Real purchase → documents → paid chat → actual meeting → cross-source answer → private receipt/storage inspection |
 

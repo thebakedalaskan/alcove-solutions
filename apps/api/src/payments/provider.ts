@@ -70,8 +70,9 @@ const made = new WeakMap<Config, { oneclick: DepositProvider } | null>();
 export function depositProviders(cfg: Config): { oneclick: DepositProvider } | null {
   const known = made.get(cfg);
   if (known !== undefined) return known;
-  const providers = cfg.ONECLICK_API_KEY && cfg.TREASURY_INTENTS_ACCOUNT
-    ? { oneclick: oneClick({ baseUrl: cfg.ONECLICK_BASE_URL, apiKey: cfg.ONECLICK_API_KEY, treasury: cfg.TREASURY_INTENTS_ACCOUNT }) }
+  // The treasury turns top-ups on; the partner key only lowers 1Click's fee, so without it quotes are a little worse.
+  const providers = cfg.TREASURY_INTENTS_ACCOUNT
+    ? { oneclick: oneClick({ baseUrl: cfg.ONECLICK_BASE_URL, apiKey: cfg.ONECLICK_API_KEY || undefined, treasury: cfg.TREASURY_INTENTS_ACCOUNT }) }
     : null;
   made.set(cfg, providers);
   return providers;

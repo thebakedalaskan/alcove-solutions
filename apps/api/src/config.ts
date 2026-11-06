@@ -64,9 +64,9 @@ const EnvSchema = z.object({
   NEAR_AI_NOTES_MODEL: z.string().min(1).default('z-ai/glm-5.3-flash'),
   /** The notes model's own endpoint: requests go to its /ohttp, sealed to the key its attestation vouches for. */
   NEAR_AI_NOTES_URL: z.string().url().default('https://glm-5-3-flash.completions.near.ai'),
-  /** NEAR Intents 1Click, for credit top-ups: the partner JWT from partners.near-intents.org. Top-ups are off without it and the treasury. */
+  /** NEAR Intents 1Click, for credit top-ups: the partner JWT from partners.near-intents.org. Optional: without it 1Click still quotes, with a higher fee. */
   ONECLICK_API_KEY: optional,
-  /** The NEAR account whose Intents balance receives every top-up, and every refund. */
+  /** The NEAR account whose Intents balance receives every top-up, and every refund. Top-ups are off without it. */
   TREASURY_INTENTS_ACCOUNT: optional,
   /** 1Click's API. Tests point it at their stand-in. */
   ONECLICK_BASE_URL: z.string().url().default('https://1click.chaindefuser.com'),

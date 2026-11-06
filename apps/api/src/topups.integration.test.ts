@@ -131,8 +131,21 @@ describe('top-ups', () => {
     expect(await b.api.credits.topUps()).toEqual([]);
   });
 
-  it('says top-ups are unavailable when 1Click isn’t set up, or won’t quote', async () => {
+  it('quotes without a partner key, sending none', async () => {
     const second = await h.secondServer({ ONECLICK_API_KEY: '' });
+    try {
+      const api: AlcoveApi = createHttpApi({ baseUrl: second.baseUrl, fetch: cookieFetch(ORIGIN) });
+      await api.auth.signIn('sso', { email: unique() });
+      const t = await api.credits.startTopUp(BASE_USDC, 10_000);
+      expect(t.state).toBe('waiting');
+      expect(h.oneclick.apiKeys.at(-1)).toBe('');
+    } finally {
+      await second.close();
+    }
+  });
+
+  it('says top-ups are unavailable when there’s no treasury, or 1Click won’t quote', async () => {
+    const second = await h.secondServer({ TREASURY_INTENTS_ACCOUNT: '' });
     try {
       const api: AlcoveApi = createHttpApi({ baseUrl: second.baseUrl, fetch: cookieFetch(ORIGIN) });
       await api.auth.signIn('sso', { email: unique() });
