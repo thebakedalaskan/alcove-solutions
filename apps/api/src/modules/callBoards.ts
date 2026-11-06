@@ -93,11 +93,12 @@ export function requireMainRoom(callId: string, place: string, what: string): vo
 const noBoard = (documentId: string) => notFound('That board', { documentId });
 /**
  * A saved board, for someone who could bring it to the call: one they can edit, where it was brought from or in the workspace
- * the call uses. `letIn`: and they may share it, which is the workspace's rule, so nobody gets past it through a call.
- * Whatever they can't reach is the same refusal, in the same words, as what isn't there.
+ * everyone's viewing (`viewed`, the call's home unless the organizer switched). `letIn`: and they may share it, which is the
+ * workspace's rule, so nobody gets past it through a call. Whatever they can't reach is the same refusal, in the same words, as
+ * what isn't there.
  */
-async function bringable(o: Owner, reader: Reader, m: Pick<MeetingManifest, 'workspaceId' | 'documents'>, documentId: string, need: { letIn: boolean; db: Db; lock?: 'change' | 'hold' | undefined }): Promise<Workspace> {
-  const workspaceId = m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === documentId ? [at.workspaceId] : []; })[0] ?? m.workspaceId;
+async function bringable(o: Owner, reader: Reader, m: { documents: string[]; viewed: string | null }, documentId: string, need: { letIn: boolean; db: Db; lock?: 'change' | 'hold' | undefined }): Promise<Workspace> {
+  const workspaceId = m.documents.flatMap((id) => { const at = placeOfBrought(id); return at?.documentId === documentId ? [at.workspaceId] : []; })[0] ?? m.viewed;
   if (!workspaceId) throw noBoard(documentId);
   try {
     const w = await workspaceFor(o, reader, workspaceId, need.db, need.lock);
@@ -119,9 +120,9 @@ const mayShare = (who: Who, w: WorkspaceAs, documentId: string): boolean => {
 };
 
 /** What the menu asks before a saved board opens: who in the call can't open it, and whether this person may let them in. */
-export async function check(o: Owner, reader: Reader, x: { callId: string; meeting: Pick<MeetingManifest, 'workspaceId' | 'documents'>; place: string; here: Here[] }, documentId: string): Promise<BoardCheck> {
+export async function check(o: Owner, reader: Reader, x: { callId: string; meeting: Pick<MeetingManifest, 'documents'>; viewed: string | null; place: string; here: Here[] }, documentId: string): Promise<BoardCheck> {
   requireMainRoom(x.callId, x.place, 'board-check');
-  const w = await bringable(o, reader, x.meeting, documentId, { letIn: false, db: o.pool });
+  const w = await bringable(o, reader, { documents: x.meeting.documents, viewed: x.viewed }, documentId, { letIn: false, db: o.pool });
   const left = await cantOpen(w, o.pool, documentId, x.here.map((p) => ({ ...p, who: whoInCall(o, x.callId, p) })));
   return { cannot: left.map((p) => firstName(p.name)), mayLetIn: mayShare(reader, w, documentId) };
 }
@@ -241,6 +242,8 @@ export async function keepForInvited(o: Owner, callId: string, meetingId: string
 export interface Changing<S extends Boarded> {
   v: Viewer; reader: Reader; callId: string;
   meeting: Pick<MeetingManifest, 'title' | 'guests' | 'workspaceId' | 'documents' | 'addedFromLink'>;
+  /** The workspace everyone's viewing: the call's home unless the organizer switched. A saved board is opened from there. */
+  viewed: string | null;
   s: S;
   /** Where whoever's asking is in the call. */
   place: string;
@@ -269,7 +272,7 @@ const fullUp = (callId: string) => new ConflictError('This call has as many boar
 const opening = <S extends Boarded>(s: S, open: OpenBoard, letIn: BoardLetIn[] = s.board.letIn): S => ({ ...s, board: { open: { ...s.board.open, [MAIN_PLACE]: open }, letIn } });
 
 /**
- * A new board in the workspace the call uses. The people invited get it by email, so it stays theirs through the note, and
+ * A new board in the call's home, in the call's folder there, whichever workspace everyone's viewing. The people invited get it by email, so it stays theirs through the note, and
  * anyone else here a seat. Someone on the invite because they were let in from the link has a seat too, for now: taking them out
  * of the call takes them off the invite, and a seat goes with them where an address wouldn't. `keepForInvited` sees to whoever's
  * still on it when the call ends. Nobody taken out of the call and still out is given what's opened after they went, though they
@@ -283,14 +286,14 @@ async function prepareNew<S extends Boarded>(x: Changing<S>, template: BoardTemp
   const { v, s, callId, meeting } = x;
   const o = v.organizer;
   if (s.board.letIn.length >= MAX_BOARDS) throw fullUp(callId);
-  const { workspaceId } = await workspaceForCall(o, { organizer: o, callId });
+  const { workspaceId, folderId } = await workspaceForCall(o, { organizer: o, callId });
   const made = await tx(o.pool, async (c) => {
     const w = await serverWorkspace(o, workspaceId, c, 'change');
     if (!w) throw notFound('That workspace', { callId });
     if (!(await organizerEdits(o, w, c, (await profile(o, c)).email))) {
-      throw new ConflictError(v.isOrganizer ? 'You can’t add to this call’s workspace any more. Choose another.' : 'This call’s workspace can’t take a new board. Ask the organizer to choose another.', { context: { callId, workspaceId } });
+      throw new ConflictError(v.isOrganizer ? 'You can’t add to this call’s home any more. You can still open a board that’s saved.' : 'This call’s home can’t take a new board any more. You can still open one that’s saved.', { context: { callId, workspaceId } });
     }
-    const documentId = await addBoard(w, c, nameOf(meeting.title), x.maker);
+    const documentId = await addBoard(w, c, nameOf(meeting.title), x.maker, folderId);
     const back = new Set(x.here.flatMap((p) => (p.email ? [p.email.toLowerCase()] : [])));
     const out = s.people.flatMap((j) => (j.email && s.removed.includes(j.person) && !back.has(j.email.toLowerCase()) ? [j.email] : []));
     const notNow = new Set([...(meeting.addedFromLink ?? []), ...out].map((e) => e.toLowerCase()));
@@ -320,11 +323,11 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, documentId: strin
   const there = s.board.letIn.find((e) => e.documentId === documentId);
   if (letIn && !there && s.board.letIn.length >= MAX_BOARDS) throw fullUp(callId);
   if (!letIn) {
-    const { workspaceId } = await bringable(o, reader, x.meeting, documentId, { letIn: false, db: o.pool });
+    const { workspaceId } = await bringable(o, reader, { documents: x.meeting.documents, viewed: x.viewed }, documentId, { letIn: false, db: o.pool });
     return (y) => ({ s: opening(y.s, { workspaceId, documentId, by }), ended: [], done: { what: 'board opened', workspaceId, documentId, made: false, letIn: false, invited: 0, here: 0 } });
   }
   const r = await tx(o.pool, async (c) => {
-    const w = await bringable(o, reader, x.meeting, documentId, { letIn: true, db: c, lock: 'change' });
+    const w = await bringable(o, reader, { documents: x.meeting.documents, viewed: x.viewed }, documentId, { letIn: true, db: c, lock: 'change' });
     const decided = there?.by === null && await stillTheCalls(o, w, c, documentId) ? null : by;
     return { workspaceId: w.workspaceId, ...await letInHere(w, c, callId, { workspaceId: w.workspaceId, documentId, by: decided, seen: [] }, x.here, x.known) };
   });

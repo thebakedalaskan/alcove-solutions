@@ -39,15 +39,13 @@ export const Profile = z.object({
   sample: z.boolean(),
   preferences: PreferencesSchema,
   /** Colleagues this person has invited to Alcove. */
-  invited: z.array(z.string()),
-  /** The workspace they used last, which a call of theirs uses if nobody chooses another. */
-  recentWorkspace: z.string().nullable().default(null)
+  invited: z.array(z.string())
 });
 export type Profile = z.infer<typeof Profile>;
 
 const DEFAULT_PREFERENCES: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
-  notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false },
+  notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
   pinned: [], groups: []
 };
 
@@ -113,7 +111,7 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
     const { ownerId, root } = await createOwner(d, c);
     await exec(c, 'INSERT INTO identities (subject_index, owner_id, email_index) VALUES ($1,$2,$3)', [subject, ownerId, email]);
     const o = ownerFrom(d, ownerId, root, undefined);
-    const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [], recentWorkspace: null };
+    const p: Profile = { name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: who.sample, preferences: DEFAULT_PREFERENCES, invited: [] };
     await createItem(o, c, 'profile', p);
     await openAccount(d, c, ownerId);
     return { ownerId, isNew: true };
@@ -131,7 +129,7 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
 async function refreshProfile(o: Owner, who: Identity): Promise<void> {
   const p = await profile(o);
   if (p.name === who.name && p.email === who.email && p.photoUrl === who.photoUrl) return;
-  await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited, recentWorkspace: x.recentWorkspace }));
+  await updateProfile(o, (x) => ({ name: who.name, email: who.email, ...(who.photoUrl ? { photoUrl: who.photoUrl } : {}), sample: x.sample, preferences: x.preferences, invited: x.invited }));
   alog.info('profile updated from provider', { ownerId: o.ownerId });
 }
 

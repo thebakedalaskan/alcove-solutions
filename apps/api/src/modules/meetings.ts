@@ -18,6 +18,7 @@ import { createItem, findItem, getItem, listItems, lockItem, saveRevision, type 
 import { accessOf, answer as saveAnswer, countsOf, dropInvites, finished, invitedMeetings, inviteKey, locateInvited, reconcileAccess, syncAccess, type Access, type Invited } from './access';
 import { me, preferences, profile, type Profile } from './account';
 import * as calendar from './calendar';
+import { followInvites, invitesOf } from './callWorkspace';
 import { indexCode } from './codes';
 import { documentsFor, keptIds, shownOn, validDocuments } from './documents';
 import { personOf } from './portraits';
@@ -357,7 +358,8 @@ export async function changeCall(o: Owner, id: string, patch: Patch<MeetingInput
 
 /**
  * Changes a call that hasn't started, or more than one in a series (./repeats.ts). A call started now, or one offering
- * times, stays off the calendar: renaming a lobby emails nobody.
+ * times, stays off the calendar: renaming a lobby emails nobody. A change to who's invited reaches the home made for the
+ * calls it changed, as a change in the call does.
  */
 export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, scope?: ChangeScope | undefined): Promise<Meeting> {
   if (sent.offer !== undefined) throw new ValidationError('The times a call offers can’t be changed. Cancel it and offer others.', { context: { meetingId: id } });
@@ -365,16 +367,18 @@ export async function update(o: Owner, id: string, sent: Patch<MeetingInput>, sc
   const { manifest } = await getItem(o, o.pool, 'meeting', id, MeetingManifest, 'That meeting');
   const patch = sent.documents ? { ...sent, documents: keptIds(o, id, manifest.documents, sent.documents) } : sent;
   await validDocuments(o, patch.documents ?? [], manifest.documents);
+  const invites = patch.guests ? await invitesOf(o, id, manifest) : null;
   if (manifest.seriesCode || patch.repeat || scope === 'following') {
     await changeInSeries(o, id, manifest, patch, scope);
-    return own(o, id);
+  } else {
+    const next = await changeCall(o, id, patch);
+    if (next.calendarEvent) {
+      if (showsOnEvent(patch)) {
+        try { await calendar.change(o, next.calendarEvent.id, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
+      }
+    } else if (!next.instant && !next.offer) await placeOnCalendar(o, id);
   }
-  const next = await changeCall(o, id, patch);
-  if (next.calendarEvent) {
-    if (showsOnEvent(patch)) {
-      try { await calendar.change(o, next.calendarEvent.id, id, next); } catch (e) { mlog.warn('calendar event not updated', { meetingId: id, err: e }); }
-    }
-  } else if (!next.instant && !next.offer) await placeOnCalendar(o, id);
+  if (invites) await followInvites(o, invites);
   return own(o, id);
 }
 

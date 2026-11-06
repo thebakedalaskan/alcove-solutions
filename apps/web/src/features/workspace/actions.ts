@@ -10,6 +10,7 @@ import { useItemChanges } from '~/lib/queries';
 import type { TreeChange } from './changes';
 import type { TreeActions, WorkspacePlace } from './context';
 import { withDocument } from './session';
+import { stemOf, uploadInto } from './uploads';
 import { foldersAbove, isWithin, nameFrom, nameOf, nextDocument, placeOf, samePlace, type Tree } from './tree';
 
 /** Everything `useTreeActions` works with. It reads the latest of these whenever something's pressed. */
@@ -47,7 +48,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
     const made = (id: string, kind: WorkspaceItem['kind'], name: string, parent: string | null): WorkspaceItem => {
       const at = new Date().toISOString();
       const { me } = s();
-      return { id, kind, name, parent, by: me?.portrait ? { name: me.name, portrait: me.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit' };
+      return { id, kind, name, parent, by: me?.portrait ? { name: me.name, portrait: me.portrait } : null, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, role: 'edit', call: null };
     };
     /** Makes a document's title say `name`, on the page if it's open, and otherwise opened just for that. */
     const writeTitle = async (id: string, name: string) => {
@@ -71,6 +72,20 @@ export function useTreeActions(input: ActionsInput): TreeActions {
           if (parent) s().openFolders([parent]);
           s().go({ kind: 'document', id });
         }, failed).finally(() => { making = false; });
+      },
+      uploadFiles: (parent, files) => {
+        if (making || files.length === 0) return;
+        making = true;
+        const one = files.length === 1 ? files[0] : undefined;
+        const name = one ? nameFrom(stemOf(one.name)) : '';
+        s().changes.create.mutateAsync({ kind: 'document', name, parent }).then(({ id }) => {
+          arrived(made(id, 'document', name, parent), { parent });
+          /* Several files make a document with no name: the caret's in its title, as for a new document. */
+          if (!name) s().justMade.current = id;
+          if (parent) s().openFolders([parent]);
+          s().go({ kind: 'document', id });
+          return uploadInto({ workspaceId: s().workspaceId, documentId: id, owner: s().owner, pass: s().pass }, files, name || null);
+        }).catch(failed).finally(() => { making = false; });
       },
       newBoard: (parent, how) => {
         if (making) return Promise.resolve(null);
@@ -144,7 +159,7 @@ export function useTreeActions(input: ActionsInput): TreeActions {
         s().change({ kind: 'delete', id }, () => s().changes.deleteForever.mutateAsync(id)).then(() => { s().say(wsToast.deleted(nameOf(item))); }, failed);
       },
       copyLink: (id, block) => {
-        const url = `${location.origin}/workspace/${s().workspaceId}/${id}${block ? `#${block}` : ''}`;
+        const url = `${location.origin}/drive/${s().workspaceId}/${id}${block ? `#${block}` : ''}`;
         navigator.clipboard.writeText(url).then(() => { s().say(wsToast.linkCopied()); }, failed);
       }
     };

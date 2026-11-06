@@ -18,12 +18,12 @@ import { createPortal } from 'react-dom';
 import { log } from '~/lib/log';
 import { initProseMirrorDoc, ySyncPlugin, ySyncPluginKey, yUndoPlugin } from 'y-prosemirror';
 import * as Y from 'yjs';
-import { insertBlocks, movingBlock, removeBlock, setBlockAttrs, setLiveLines, turnInto } from './actions';
+import { hasLive, insertBlocks, movingBlock, pickSlash, removeBlock, setBlockAttrs, setLiveLines, tagAtEnd, turnInto } from './actions';
 import { Carets, FileLine, Handles, landing } from './blocks/Handles';
 import { RuntimeContext } from './blocks/Media';
 import { markViews, nodeViews } from './blocks/views';
 import { cleanPastedHTML, cleanSerializer, handlePaste, refuseSlice, refuseText, sliceText, textToSlice, transformCopied, transformPasted } from './clipboard';
-import { allBlocks, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
+import { allBlocks, blockWords, caretInto, findBlock, isBlank, scrollerOf, selectedBlock } from './commands';
 import { observeThreads, readThreads } from './comments';
 import { editorKeys, typedShortcuts } from './keymap';
 import { Menus, useStore } from './menus/Menus';
@@ -31,9 +31,10 @@ import { blockIds, fromSync } from './plugins/blockIds';
 import { caretsPlugin } from './plugins/carets';
 import { decorPlugin, flash } from './plugins/decor';
 import { keepInStep } from './plugins/inStep';
+import { readingPlugin } from './plugins/reading';
 import { retirePlugin } from './plugins/retire';
 import { watchPlugin } from './plugins/watch';
-import { EditorRuntime, type ThreadView } from './runtime';
+import { EditorRuntime, type FileDragState, type ThreadView } from './runtime';
 import { safeHref, schema, textAttr } from './schema';
 import type { EditorHandle, EditorProps } from './types';
 import { contentOf, NodeRecord } from './ydoc';
@@ -116,6 +117,7 @@ function createView(rt: EditorRuntime, mount: HTMLElement): EditorView {
     dropCursor({ class: 'ws-dropcaret', color: false, width: 2 }),
     blockIds,
     decorPlugin(rt),
+    readingPlugin(rt),
     watchPlugin(rt)
   ];
   const state = EditorState.create(fits ? { schema, doc: start.doc, plugins } : { schema, plugins });
@@ -184,6 +186,14 @@ function scrollTo(scroller: HTMLElement, top: number, smooth: boolean): void {
   requestAnimationFrame(step);
 }
 
+/** Types `/` or `@` at the caret as someone would, after a space if it follows a word, which is where they open a menu. */
+function typeTrigger(view: EditorView, trigger: '/' | '@'): void {
+  const { $from } = view.state.selection;
+  const before = $from.parent.textBetween(Math.max(0, $from.parentOffset - 1), $from.parentOffset, undefined, ' ');
+  view.focus();
+  view.dispatch(view.state.tr.insertText(before === '' || /\s/.test(before) ? trigger : ` ${trigger}`).scrollIntoView());
+}
+
 function makeHandle(rt: EditorRuntime): EditorHandle {
   const put = (run: (view: EditorView) => void) => { const v = rt.view; if (v) run(v); };
   const write = (run: (view: EditorView) => void) => { if (!rt.readOnly) put(run); };
@@ -201,6 +211,11 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
         const block = where === 'start' ? blocks[0] : blocks.at(-1);
         if (block) focusAt(view, where === 'start' ? Selection.near(doc.resolve(block.pos), 1) : Selection.near(doc.resolve(block.pos + block.node.nodeSize), -1));
       }
+    }),
+    resume: () => put((view) => {
+      view.focus();
+      const { selection } = view.state;
+      if (!selection.empty) view.dispatch(view.state.tr.setSelection(Selection.near(selection.$to, -1)));
     }),
     focusBlock: (id, at = 'start') => put((view) => {
       const ref = findBlock(view.state.doc, id);
@@ -229,9 +244,12 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
       const before = blocks[blocks.findIndex((b) => b.id === id) - 1]?.id;
       return before ? { after: before } : 'start';
     },
+    blockWords: () => (rt.view ? blockWords(rt.view.state.doc) : []),
     setLiveLines: (what, lines) => setLiveLines(rt, what, lines),
-    openSlash: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('/').scrollIntoView()); }),
-    openMention: () => write((view) => { view.focus(); view.dispatch(view.state.tr.insertText('@').scrollIntoView()); }),
+    hasLive: () => hasLive(rt),
+    openSlash: () => write((view) => typeTrigger(view, '/')),
+    openMention: () => write((view) => typeTrigger(view, '@')),
+    tag: (person) => tagAtEnd(rt, person),
     toggleMark: (mark) => write((view) => {
       const { from, to, empty } = view.state.selection;
       const type = schema.marks[mark];
@@ -242,9 +260,18 @@ function makeHandle(rt: EditorRuntime): EditorHandle {
     turnInto: (kind) => write((view) => {
       const id = selectedBlock(view.state)?.id;
       if (id) turnInto(rt, id, kind);
+    }),
+    addPhotos: () => write((view) => {
+      const block = selectedBlock(view.state)?.id;
+      const at = view.state.selection.from;
+      /* As if `/` had been typed here and Photos picked, with nothing typed to take out again. */
+      if (block) pickSlash(rt, { kind: 'slash', block, from: at, to: at, query: '' }, 'photo');
     })
   };
 }
+
+/** The empty Photos block files are over, if they're over one. */
+const intoOf = (drag: FileDragState | null): string | null => (drag && 'into' in drag ? drag.into : null);
 
 /** The empty space under the last block: a press there is a press on a new last line. */
 function goToEnd(rt: EditorRuntime): void {
@@ -309,8 +336,8 @@ export default function Editor(props: EditorProps) {
     return observeThreads(doc, update);
   }, [rt, doc]);
 
-  /* Who can edit decides what the page is, and names change under a tag. */
-  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint]);
+  /* Who can edit decides what the page is, and so does the section being presented. Names change under a tag. */
+  useEffect(() => { rt.refresh(); }, [rt, readOnly, props.titleHint, props.section]);
   useEffect(() => { rt.names.set(rt.names.get() + 1); });
 
   /* Files from the desktop land between blocks, wherever the page is under the pointer. */
@@ -319,10 +346,19 @@ export default function Editor(props: EditorProps) {
     const area = view ? scrollerOf(view.dom) ?? root : root;
     if (!area) return;
     const wanted = (e: DragEvent) => !rt.readOnly && rt.props.onUpload !== undefined && (e.dataTransfer?.types ?? []).includes('Files');
+    /* An empty Photos block under the pointer is where they go: it says "Drop photos here". */
+    const emptyUnder = (e: DragEvent): string | null => {
+      const block = e.target instanceof Element ? e.target.closest('.wb.is-upload[data-b]') : null;
+      return block && area.contains(block) ? block.getAttribute('data-b') : null;
+    };
     const over = (e: DragEvent) => {
       if (!wanted(e)) return;
       e.preventDefault();
+      /* Files have their own line: ProseMirror's caret for dropped text would stay behind, since it never hears of the drop. */
+      e.stopPropagation();
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      const into = emptyUnder(e);
+      if (into) { rt.fileDrag.set(into === intoOf(rt.fileDrag.get()) ? rt.fileDrag.get() : { into }); return; }
       const spot = landing(rt, e.clientY);
       rt.fileDrag.set(spot ? { line: spot.line, after: spot.id } : null);
     };
@@ -331,9 +367,12 @@ export default function Editor(props: EditorProps) {
       if (!wanted(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      const spot = landing(rt, e.clientY);
+      const into = emptyUnder(e);
+      const spot = into ? null : landing(rt, e.clientY);
       rt.fileDrag.set(null);
-      rt.props.onUpload?.([...(e.dataTransfer?.files ?? [])], spot ? (spot.side === 'after' ? { after: spot.id } : { before: spot.id }) : 'end');
+      const files = [...(e.dataTransfer?.files ?? [])];
+      if (into) rt.props.onUpload?.(files, { replace: into });
+      else rt.props.onUpload?.(files, spot ? (spot.side === 'after' ? { after: spot.id } : { before: spot.id }) : 'end');
     };
     area.addEventListener('dragover', over, true);
     area.addEventListener('dragleave', leave, true);

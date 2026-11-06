@@ -2,7 +2,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { phone } from '../../src/call';
-import { changing, page, pages, type PageArgs } from '../../src/page';
+import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { STATES, inEveryState } from '../../src/world/states';
 import { troubled } from './changes';
 
@@ -133,6 +133,12 @@ export const PinsFull = page('/notes/lot-20', 'lots', {
 
 /** A note that isn't there any more. */
 export const Gone = page('/notes/n-gone', 'busy');
+
+/** Scrolls to what was worked on in the call. */
+const toWorkedOn: PageStory['play'] = async ({ canvas }) => { (await canvas.findByText('Worked on in this call')).scrollIntoView({ block: 'center' }); };
+/** The design review's note, at what was worked on in it: each document someone changed during the call, and who, opening in the Drive. */
+export const WorkedOn = page('/notes/n4', 'busy', { play: toWorkedOn });
+export const WorkedOnNight = page('/notes/n4', 'busy', { play: toWorkedOn, globals: { theme: 'dark' } });
 /** Alcove couldn't answer: the page says so. */
 export const CouldntOpen = page('/notes/n3', 'busy', { beforeEach: changing(troubled({ 'notes.get': (id) => (id === 'n3' ? 'failed' : null) })) });
 /** Opened without a connection: a note needs one, and Record still works. */

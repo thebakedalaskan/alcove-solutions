@@ -3,7 +3,7 @@
  * store and the local LiveKit server: who can open one and who sees it, closing it, bringing a saved board and who's let in,
  * the workspace it's saved in, and what someone left out is told, which is nothing that names it.
  */
-import { AlcoveApiError, DOC_UPDATE_TYPE, SERVER_CLIENT, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, DOC_UPDATE_TYPE, SERVER_CLIENT, type CallSession, type CallState, type DocSession, type DocSessionOptions, type WorkspaceRole, type WorkspaceTree } from '@alcove/api';
 import { addObject, readBoard } from '@alcove/board';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
@@ -77,12 +77,18 @@ async function invited(host: CallSession, callCode: string, who: Account, previo
   return call;
 }
 /** A call `org` hosts, with `guests` invited. */
-async function callBy(org: Account, o: { guests?: string[]; title?: string } = {}) {
-  const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: o.guests ?? [], ...(o.title ? { title: o.title } : {}) });
+/** A call `org` hosts, with `guests` invited, and `home` as its home when it's scheduled with one, as the organizer chooses one. */
+async function callBy(org: Account, o: { guests?: string[]; title?: string; home?: string } = {}) {
+  const { code: c } = o.home
+    ? await org.api.meetings.create({ title: o.title ?? 'Untitled call', startsAt: new Date(Date.now() + 60_000).toISOString(), durationMinutes: 30, guests: o.guests ?? [], notes: 'off', workspaceId: o.home })
+    : await org.api.calls.startNow({ notes: 'off', guests: o.guests ?? [], ...(o.title ? { title: o.title } : {}) });
   const host = await org.api.calls.join(c, { mic: false, cam: false });
   await inGroup(host);
   return { host, code: c };
 }
+/** What's in a workspace besides each call's own folder, which the call's home has at its top. */
+const inTree = (t: WorkspaceTree) => t.items.filter((x) => x.call === null);
+const callFolderIn = (t: WorkspaceTree) => t.items.find((x) => x.call !== null)?.id ?? null;
 async function workspace(who: Account, name: string, people: [Account, WorkspaceRole][] = []) {
   const { id } = await who.api.workspaces.create(name);
   for (const [p, role] of people) await who.api.workspaces.addPerson(id, p.email, role);
@@ -126,8 +132,7 @@ describe('a new board', () => {
     const priya = await account();
     const lena = await account();
     const id = await workspace(art, 'Product', [[lena, 'read']]);
-    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], title: 'Launch  review' });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], title: 'Launch  review', home: id });
     const k = await invited(host, c, kofi);
     const p = await invited(host, c, priya);
     const jamie = await guest(host, c);
@@ -147,9 +152,10 @@ describe('a new board', () => {
 
     // It's an item like any other, by whoever started it, and every stream of the workspace hears of it.
     await until(() => stream.getSnapshot().tree?.items.some((x) => x.id === board) === true, 'the stream to hear of it');
-    expect((await art.api.workspaces.get(id)).items).toEqual([expect.objectContaining({ id: board, kind: 'board', name: 'Launch review', parent: null, restricted: false, role: 'edit', by: expect.objectContaining({ name: kofi.name }) })]);
+    const tree = await art.api.workspaces.get(id);
+    expect(inTree(tree)).toEqual([expect.objectContaining({ id: board, kind: 'board', name: 'Launch review', parent: callFolderIn(tree), restricted: false, role: 'edit', by: expect.objectContaining({ name: kofi.name }) })]);
     // The workspace's people have it by their role, and those invited by email. A guest has a seat, and only that.
-    expect((await lena.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'read']]);
+    expect(inTree(await lena.api.workspaces.get(id)).map((x) => [x.id, x.role])).toEqual([[board, 'read']]);
     const shared = (await art.api.workspaces.share.list(id, board)).entries;
     expect(shared.filter((e) => e.kind === 'email').map((e) => [e.person.email, e.role]).sort()).toEqual([[kofi.email, 'edit'], [priya.email, 'edit']].sort());
     expect(shared.filter((e) => e.kind === 'seat').map((e) => [e.person.name, e.role])).toEqual([['Jamie Guest', 'edit']]);
@@ -167,7 +173,7 @@ describe('a new board', () => {
     await until(async () => (await seats(board)) === 0, 'the seat to end with the call');
     for (const who of [kofi, priya]) expect((await who.api.workspaces.get(id)).items.map((x) => [x.id, x.kind, x.name, x.role])).toEqual([[board, 'board', 'Launch review', 'edit']]);
     expect(await code(jamie.api.workspaces.get(id, pass))).toBe('unauthenticated');
-    expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([board]);
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
   });
 
   it('fills a new board from its template before the call says it’s open, once, as the server’s, for everyone in it', async () => {
@@ -331,8 +337,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     await guest(host, c, 'Early Guest');
     await host.openBoard({ template: 'ideas' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -368,8 +373,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email], title: 'Planning' });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], title: 'Planning', home: id });
     const k = await invited(host, c, kofi);
     await host.openBoard({ template: 'blank' });
     const before = host.getSnapshot().board.open?.documentId ?? '';
@@ -379,10 +383,10 @@ describe('a new board', () => {
     // Who opened it now is whoever opened this one: the one it replaced was theirs and nobody's now.
     expect(await opened(host)).toMatchObject({ documentId: after, openedBy: k.ticket.identity, canClose: true });
     expect(k.getSnapshot().board.open).toMatchObject({ documentId: after, openedBy: k.ticket.identity, canClose: true });
-    expect((await art.api.workspaces.get(id)).items.map((x) => x.id).sort()).toEqual([before, after].sort());
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id).sort()).toEqual([before, after].sort());
     // Two at once: one is open, and both are kept.
     await Promise.all([host.openBoard({ template: 'blank' }), k.openBoard({ template: 'blank' })]);
-    const items = (await art.api.workspaces.get(id)).items.map((x) => x.id);
+    const items = inTree(await art.api.workspaces.get(id)).map((x) => x.id);
     expect(items).toHaveLength(4);
     expect(items).toContain((await opened(host))?.documentId);
     expect((await opened(k))?.documentId).toBe((await opened(host))?.documentId);
@@ -391,15 +395,14 @@ describe('a new board', () => {
   it('keeps a call from making boards without end', async () => {
     const art = await account();
     const id = await workspace(art, 'Product');
-    const { host } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host } = await callBy(art, { home: id });
     for (let i = 0; i < 50; i++) await host.openBoard({ template: 'blank' });
     const last = (await opened(host))?.documentId;
     expect(await refusal(host.openBoard({ template: 'blank' }))).toMatchObject({ code: 'conflict', message: 'This call has as many boards as it can take. Open one it already has.' });
-    expect((await art.api.workspaces.get(id)).items).toHaveLength(50);
+    expect(inTree(await art.api.workspaces.get(id))).toHaveLength(50);
     // The ones it made still open, and what was open stays.
     expect(await opened(host)).toMatchObject({ documentId: last });
-    const made = (await art.api.workspaces.get(id)).items[0]?.id ?? '';
+    const made = inTree(await art.api.workspaces.get(id))[0]?.id ?? '';
     await host.openBoard({ documentId: made, letIn: false });
     expect((await opened(host))?.documentId).toBe(made);
     await host.openBoard({ documentId: made, letIn: true });
@@ -410,38 +413,38 @@ describe('a new board', () => {
     expect((await opened(host))?.documentId).toBe(other);
   });
 
-  it('is refused in a workspace the organizer can’t edit in any more, and the call goes on', async () => {
+  it('is refused in a home the organizer can’t edit in any more, and the call goes on', async () => {
     const art = await account();
     const lena = await account();
     const kofi = await account();
     const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
+    // The home is settled while Art can edit there, and it doesn't change during the call.
+    await host.openWorkspace();
     const people = await lena.api.workspaces.people(id);
     const them = people.find((p) => p.person.email === art.email)?.id ?? '';
     await lena.api.workspaces.setRole(id, them, 'read');
-    const told = { code: 'conflict', status: 409, message: 'This call’s workspace can’t take a new board. Ask the organizer to choose another.' };
-    const toldThem = { code: 'conflict', status: 409, message: 'You can’t add to this call’s workspace any more. Choose another.' };
+    const told = { code: 'conflict', status: 409, message: 'This call’s home can’t take a new board any more. You can still open one that’s saved.' };
+    const toldThem = { code: 'conflict', status: 409, message: 'You can’t add to this call’s home any more. You can still open a board that’s saved.' };
     expect(await refusal(k.openBoard({ template: 'blank' }))).toEqual(told);
     expect(await refusal(host.openBoard({ template: 'blank' }))).toEqual(toldThem);
     await lena.api.workspaces.removePerson(id, them);
     expect(await refusal(k.openBoard({ template: 'blank' }))).toEqual(told);
     expect(await refusal(host.openBoard({ template: 'blank' }))).toEqual(toldThem);
-    expect((await lena.api.workspaces.get(id)).items).toEqual([]);
+    expect(inTree(await lena.api.workspaces.get(id))).toEqual([]);
     expect(await opened(k)).toBeNull();
-    // Choosing another puts it right.
+    // Viewing another workspace doesn't change where a new board goes: the home's still the home.
     await host.newWorkspace('Art’s');
-    await k.openBoard({ template: 'blank' });
-    expect((await opened(k))?.workspaceId).toBe((await read(host)).workspace.id);
+    expect(await refusal(k.openBoard({ template: 'blank' }))).toEqual(told);
+    expect(await opened(k)).toBeNull();
   });
 
   it('is read again while it’s open, so what happens to it outside the call shows with no nudge', async () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     await k.openBoard({ template: 'blank' });
     const board = k.getSnapshot().board.open?.documentId ?? '';
@@ -456,8 +459,7 @@ describe('a new board', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     await k.openBoard({ template: 'blank' });
     const board = k.getSnapshot().board.open?.documentId ?? '';
@@ -482,8 +484,7 @@ describe('closing a board', () => {
     const kofi = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], home: id });
     const k = await invited(host, c, kofi);
     const p = await invited(host, c, priya);
     const jamie = await guest(host, c);
@@ -501,7 +502,7 @@ describe('closing a board', () => {
     await k.closeBoard();
     expect(k.getSnapshot().board).toEqual({ open: null });
     expect((await read(jamie.call)).board).toEqual({ open: null });
-    expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([board]);
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
     expect(await seats(board)).toBe(1);
     expect((await jamie.api.workspaces.get(id, { pass: jamie.call.ticket.pass })).items.map((x) => x.id)).toEqual([board]);
 
@@ -513,7 +514,7 @@ describe('closing a board', () => {
     // The organizer, whoever opened it.
     await host.closeBoard();
     expect(await opened(p)).toBeNull();
-    expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([board]);
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
   });
 
   it('stays the organizer’s when whoever opened it has gone, and doesn’t go with hosting', async () => {
@@ -521,8 +522,7 @@ describe('closing a board', () => {
     const kofi = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], home: id });
     const k = await invited(host, c, kofi);
     const p = await invited(host, c, priya);
     await k.openBoard({ template: 'blank' });
@@ -544,8 +544,7 @@ describe('a saved board', () => {
     const theo = await account();
     const id = await workspace(art, 'Product', [[priya, 'edit'], [rita, 'read']]);
     const board = await saved(art, id, 'Onboarding flow');
-    const { host, code: c } = await callBy(art, { guests: [priya.email, rita.email, theo.email], title: 'Weekly' });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [priya.email, rita.email, theo.email], title: 'Weekly', home: id });
     return { art, priya, rita, theo, id, board, host, code: c };
   }
 
@@ -636,7 +635,7 @@ describe('a saved board', () => {
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'every seat to end with the call');
     expect(await code(theo.api.workspaces.get(id))).toBe('not-found');
-    expect((await art.api.workspaces.get(id)).items.map((x) => x.id)).toEqual([board]);
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
     expect(await entries(board)).toBe(0);
   });
 
@@ -752,8 +751,7 @@ describe('a saved board', () => {
     const board = await saved(lena, id, 'Priya’s only');
     await lena.api.workspaces.share.restrict(id, board, true);
     await lena.api.workspaces.share.set(id, board, [{ email: priya.email }], 'edit');
-    const { host, code: c } = await callBy(art, { guests: [priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
     const p = await invited(host, c, priya);
     inRoom.push(await connect(await p.room(), { sending: p.crypto }));
     await host.handOff(p.ticket.identity);
@@ -783,13 +781,17 @@ describe('a saved board', () => {
     expect(await refusal(t.openBoard({ documentId: board, letIn: false }))).toEqual(await refusal(t.openBoard({ documentId: nothing, letIn: false })));
     await p.openBoard({ documentId: board, letIn: false });
     expect(await opened(host)).toMatchObject({ workspaceId: id, documentId: board, name: 'Onboarding flow' });
-    // A new board goes where the call is now, and moving the call interrupts nothing that's open.
+    // Switching what's viewed interrupts nothing that's open, and a new board goes to the call's home, in the call's folder,
+    // whichever workspace everyone's viewing.
     await host.setWorkspace(id);
     expect(await opened(p)).toMatchObject({ workspaceId: id, documentId: board });
     await host.setWorkspace(other);
     expect(await opened(p)).toMatchObject({ workspaceId: id, documentId: board });
     await p.openBoard({ template: 'blank' });
-    expect(await opened(host)).toMatchObject({ workspaceId: other });
+    const fresh = await opened(host);
+    expect(fresh).toMatchObject({ workspaceId: id });
+    const folder = (await art.api.workspaces.get(id)).items.find((x) => x.call !== null);
+    expect((await art.api.workspaces.get(id)).items.find((x) => x.id === fresh?.documentId)).toMatchObject({ kind: 'board', parent: folder?.id });
   });
 
   it('tells someone left out nothing about it: not in the call, an error or a log', async () => {
@@ -797,8 +799,7 @@ describe('a saved board', () => {
     const theo = await account();
     const id = await workspace(art, 'CANARY-SPACE Product');
     const board = await saved(art, id, 'CANARY-BOARD Onboarding flow');
-    const { host, code: c } = await callBy(art, { guests: [theo.email], title: 'Weekly' });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [theo.email], title: 'Weekly', home: id });
     const t = await invited(host, c, theo);
     const jamie = await guest(host, c);
     const from = h.logs.length;
@@ -837,8 +838,7 @@ describe('someone who joins the invite during a call', () => {
     const pia = await account();
     const rosa = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     // Signed in, not invited, and let in from the link: on the invite from now on, whether that's before the board or after it.
     const before = await pia.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, before);
@@ -876,8 +876,7 @@ describe('a board the call made', () => {
     const rita = await account();
     const sara = await account();
     const id = await workspace(art, 'Product', [[rita, 'read'], [sara, 'read']]);
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     // In the call from the link, so not on the invite when it's made: the workspace lets her read it.
     const r = await rita.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, r);
@@ -896,15 +895,14 @@ describe('a board the call made', () => {
     // Her seat ends with the call, and being on the invite by then, she keeps it as anyone invited does.
     await host.leave();
     await until(async () => (await seats(board)) === 0, 'the seats to end with the call');
-    for (const who of [rita, sara]) expect((await who.api.workspaces.get(id)).items.map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
+    for (const who of [rita, sara]) expect(inTree(await who.api.workspaces.get(id)).map((x) => [x.id, x.role])).toEqual([[board, 'edit']]);
   });
 
   it('stops being given to anyone new once someone restricts it: that’s someone deciding who has it', async () => {
     const art = await account();
     const nora = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const n = await nora.api.calls.join(c, { mic: false, cam: false });
@@ -927,8 +925,7 @@ describe('a board the call made', () => {
     const art = await account();
     const nora = await account();
     const id = await workspace(lena, 'Lena’s', [[art, 'edit']]);
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const n = await nora.api.calls.join(c, { mic: false, cam: false });
@@ -949,8 +946,7 @@ describe('a board the call made', () => {
   it('can still be opened to people by someone who may share it, on their word and not the call’s', async () => {
     const art = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     await art.api.workspaces.share.restrict(id, board, true);
@@ -969,8 +965,7 @@ describe('a board the call made', () => {
     const kofi = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], home: id });
     const k = await invited(host, c, kofi);
     await invited(host, c, priya);
     await host.openBoard({ template: 'blank' });
@@ -989,8 +984,7 @@ describe('a board the call made', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     await host.remove(k.ticket.identity);
     await invited(host, c, kofi);
@@ -1005,8 +999,7 @@ describe('a board the call made', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     await host.remove(k.ticket.identity);
     await host.openBoard({ template: 'blank' });
@@ -1026,8 +1019,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
     const p = await invited(host, c, priya);
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -1049,8 +1041,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const entry = (await art.api.workspaces.share.list(id, board)).entries[0];
@@ -1066,8 +1057,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const priya = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [priya.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [priya.email], home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     await art.api.workspaces.share.set(id, board, [{ email: priya.email }], 'read');
@@ -1088,8 +1078,7 @@ describe('what someone decided about a board the call made', () => {
     const rita = await account();
     const out = await account();
     const id = await workspace(art, 'Product', [[rita, 'read']]);
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     const r = await rita.api.calls.join(c, { mic: false, cam: false });
     await letIn(host, r);
     await host.openBoard({ template: 'blank' });
@@ -1108,8 +1097,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const rosa = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const r = await rosa.api.calls.join(c, { mic: false, cam: false });
@@ -1132,8 +1120,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const rosa = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const r = await rosa.api.calls.join(c, { mic: false, cam: false });
@@ -1161,8 +1148,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const omar = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const o = await omar.api.calls.join(c, { mic: false, cam: false });
@@ -1183,8 +1169,7 @@ describe('what someone decided about a board the call made', () => {
     const art = await account();
     const nora = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const n = await nora.api.calls.join(c, { mic: false, cam: false });
@@ -1201,8 +1186,7 @@ describe('keeping seats in step', () => {
   it('puts right at the next upkeep a seat that a crash kept from someone let in', async () => {
     const art = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
     const jamie = await guest(host, c);
@@ -1223,15 +1207,15 @@ describe('keeping seats in step', () => {
     const art = await account();
     const id = await workspace(art, 'Product');
     const other = await workspace(art, 'Other');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     await host.openBoard({ template: 'blank' });
     const full = host.getSnapshot().board.open?.documentId ?? '';
     await host.openBoard({ template: 'blank' });
     const beside = host.getSnapshot().board.open?.documentId ?? '';
     await host.setWorkspace(other);
-    await host.openBoard({ template: 'blank' });
-    const elsewhere = host.getSnapshot().board.open?.documentId ?? '';
+    // A new board always goes to the call's home, so one in another workspace is one saved there.
+    const elsewhere = await saved(art, other, 'Elsewhere');
+    await host.openBoard({ documentId: elsewhere, letIn: true });
     for (let i = 0; i < 5; i++) await art.api.workspaces.share.set(id, full, Array.from({ length: 100 }, () => ({ email: unique('full') })), 'read');
     expect(await entries(full)).toBe(500);
     const from = h.logs.length;
@@ -1257,7 +1241,7 @@ describe('the workspace a board is saved in', () => {
     expect(await opened(host)).toMatchObject({ workspaceId: product, name: 'Weekly' });
   });
 
-  it('is the organizer’s most recently used otherwise, kept on the meeting, so it doesn’t change mid-way', async () => {
+  it('is the call’s home otherwise, a new one made for it, kept on the meeting, so it doesn’t change mid-way', async () => {
     const art = await account();
     const kofi = await account();
     await workspace(art, 'First');
@@ -1265,15 +1249,20 @@ describe('the workspace a board is saved in', () => {
     const { host, code: c } = await callBy(art, { guests: [kofi.email] });
     const k = await invited(host, c, kofi);
     await k.openBoard({ template: 'blank' });
-    expect(await opened(host)).toMatchObject({ workspaceId: second });
-    expect((await art.api.meetings.get(host.getSnapshot().meetingId)).workspaceId).toBe(second);
-    await workspace(art, 'Third');
+    const home = (await read(host)).workspace.home ?? '';
+    expect(home).not.toBe('');
+    expect(home).not.toBe(second);
+    expect(await opened(host)).toMatchObject({ workspaceId: home });
+    expect((await art.api.meetings.get(host.getSnapshot().meetingId)).workspaceId).toBe(home);
+    // Viewing another workspace doesn't move where boards go.
+    await host.setWorkspace(second);
     await k.openBoard({ template: 'blank' });
-    expect(await opened(host)).toMatchObject({ workspaceId: second });
-    expect((await art.api.workspaces.get(second)).items).toHaveLength(2);
+    expect(await opened(host)).toMatchObject({ workspaceId: home });
+    expect(inTree(await art.api.workspaces.get(home))).toHaveLength(2);
+    expect(inTree(await art.api.workspaces.get(second))).toHaveLength(0);
   });
 
-  it('is a new one in the organizer’s name when they have none, whoever opened it', async () => {
+  it('is a new one made for the call, with everyone invited in it, whoever opened it', async () => {
     const art = await account();
     const kofi = await account();
     const { host, code: c } = await callBy(art, { guests: [kofi.email] });
@@ -1281,12 +1270,12 @@ describe('the workspace a board is saved in', () => {
     await Promise.all([k.openBoard({ template: 'blank' }), host.openBoard({ template: 'blank' })]);
     const mine = await art.api.workspaces.list();
     expect(mine).toHaveLength(1);
-    expect(mine[0]).toMatchObject({ role: 'admin', people: 1 });
+    expect(mine[0]).toMatchObject({ role: 'admin', people: 2 });
     expect(mine[0]?.name).toContain(first(art));
     expect(await opened(host)).toMatchObject({ workspaceId: mine[0]?.id });
-    // It isn't Kofi's: he has what was opened with him, and it's the organizer's workspace.
-    expect((await kofi.api.workspaces.list()).filter((x) => x.role !== null)).toEqual([]);
-    expect((await read(k)).workspace).toMatchObject({ id: mine[0]?.id, name: null, role: null, canOpen: true });
+    // It's the organizer's, and Kofi's in it because he's invited: he gets the notes, which go there.
+    expect((await kofi.api.workspaces.list()).filter((x) => x.role !== null)).toEqual([expect.objectContaining({ id: mine[0]?.id, role: 'edit' })]);
+    expect((await read(k)).workspace).toMatchObject({ id: mine[0]?.id, home: mine[0]?.id, name: mine[0]?.name, role: 'edit', canOpen: true });
   });
 
   it('carries on to the next call in a series', async () => {
@@ -1309,7 +1298,7 @@ describe('the workspace a board is saved in', () => {
     await inGroup(next);
     await next.openBoard({ template: 'blank' });
     expect(next.getSnapshot().board.open?.workspaceId).toBe(settled);
-    expect((await art.api.workspaces.get(settled ?? '')).items).toHaveLength(2);
+    expect(inTree(await art.api.workspaces.get(settled ?? ''))).toHaveLength(2);
     // The next call scheduled by hand takes it along too.
     const later = await art.api.meetings.scheduleNext(calls[1]?.id ?? '', new Date(at + 21 * 86_400_000).toISOString());
     expect(later.workspaceId).toBe(settled);
@@ -1322,8 +1311,7 @@ describe('the workspace a board is saved in', () => {
     const product = await workspace(art, 'Product');
     const hers = await workspace(lena, 'CANARY-HERS');
     const hidden = await saved(lena, hers, 'CANARY-HIDDEN');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(product);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: product });
     const k = await invited(host, c, kofi);
     const nothing = madeUp();
     for (const call of [host, k]) {
@@ -1339,7 +1327,7 @@ describe('the workspace a board is saved in', () => {
     const into = await action(art, host, { type: 'board-open', template: 'blank', workspaceId: hers, parent: hidden });
     expect(into.status).toBe(200);
     expect((await lena.api.workspaces.get(hers)).items.map((x) => x.id)).toEqual([hidden]);
-    expect((await art.api.workspaces.get(product)).items.map((x) => x.kind)).toEqual(['board']);
+    expect(inTree(await art.api.workspaces.get(product)).map((x) => x.kind)).toEqual(['board']);
     expect(await opened(host)).toMatchObject({ workspaceId: product });
     // Nor does a meeting take one its organizer can't reach, so nothing brings it into the call that way.
     expect(await code(art.api.meetings.update(host.getSnapshot().meetingId, { workspaceId: hers }))).toBe('not-found');
@@ -1358,8 +1346,7 @@ describe('breakout rooms', () => {
     const art = await account();
     const kofi = await account();
     const id = await workspace(art, 'Product');
-    const { host, code: c } = await callBy(art, { guests: [kofi.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id });
     const k = await invited(host, c, kofi);
     await host.openBoard({ template: 'blank' });
     const board = host.getSnapshot().board.open?.documentId ?? '';
@@ -1396,8 +1383,7 @@ describe('breakout rooms', () => {
     const theo = await account();
     const id = await workspace(art, 'Product');
     const board = await saved(art, id, 'Onboarding flow');
-    const { host, code: c } = await callBy(art, { guests: [theo.email] });
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { guests: [theo.email], home: id });
     const t = await invited(host, c, theo);
     host.openRooms({ rooms: [{ name: 'One', emails: [theo.email] }, { name: 'Two', emails: [] }], minutes: 5 });
     const rooms = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? [];
@@ -1417,8 +1403,7 @@ describe('a busy workspace', () => {
     const art = await account();
     const id = await workspace(art, 'Product');
     const board = await saved(art, id, 'Onboarding flow');
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
+    const { host, code: c } = await callBy(art, { home: id });
     const kim = await guest(host, c, 'Kim');
     await host.openBoard({ documentId: board, letIn: true });
     expect(await opened(kim.call)).toMatchObject({ role: 'edit' });

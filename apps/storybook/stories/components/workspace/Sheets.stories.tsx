@@ -127,7 +127,7 @@ const THREAD: WsComment[] = [
 /** A thread that answers: a reply rises in under the others, and Resolve closes it with a toast that can reopen it. */
 function Thread({ quote, messages: said, value: start, onSend, onResolve, onChange }: ComponentProps<typeof WsCommentThread>) {
   const [messages, setMessages] = useState(said);
-  const [value, setValue] = useState(start);
+  const [value, setValue] = useState(start ?? '');
   const [resolved, setResolved] = useState(false);
   const { toasts, say } = useToasts();
   const send = () => {
@@ -142,7 +142,7 @@ function Thread({ quote, messages: said, value: start, onSend, onResolve, onChan
     <>
       {resolved
         ? <Button size="sm" icon="message" onClick={() => setResolved(false)}>Show the comment again</Button>
-        : <PopSurface ws><WsCommentThread quote={quote} messages={messages} value={value} onChange={(v) => { onChange(v); setValue(v); }} onSend={send} onResolve={resolve} /></PopSurface>}
+        : <PopSurface ws><WsCommentThread quote={quote} messages={messages} value={value} onChange={(v) => { onChange?.(v); setValue(v); }} onSend={send} onResolve={resolve} /></PopSurface>}
       <WsToasts toasts={toasts} />
     </>
   );
@@ -259,7 +259,7 @@ export const FindNothing: FindStory = { name: 'Find: nothing found', ...WIDE, ar
 
 /* ---------- asking to see the workspace ---------- */
 
-/** On the organizer's screen: Jonas, a guest, asked to see the workspace. Letting him read shares just this document. */
+/** On the organizer's screen: Jonas, a guest, asked to see the workspace. Letting him read or edit shares just this document. */
 function Knocking(args: ComponentProps<typeof WsKnock>) {
   const [person, setPerson] = useState<Person | null>(args.person === null ? null : GUEST);
   const { toasts, say } = useToasts();
@@ -268,15 +268,17 @@ function Knocking(args: ComponentProps<typeof WsKnock>) {
       {person === null && <Button size="sm" icon="hand" onClick={() => setPerson(GUEST)}>{first(GUEST)} asks to see the workspace</Button>}
       <Behind height={520} />
       <WsKnock person={person} document={args.document}
-        onLet={() => { args.onLet(); setPerson(null); say(wsToast.canOpen(first(GUEST), 'read', args.document)); }} onNotNow={() => { args.onNotNow(); setPerson(null); }} />
+        onLet={() => { args.onLet(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'read', args.document)); }}
+        onEdit={() => { args.onEdit(); setPerson(null); if (args.document) say(wsToast.canOpen(first(GUEST), 'edit', args.document)); }}
+        onChoose={() => { args.onChoose(); setPerson(null); }} onNotNow={() => { args.onNotNow(); setPerson(null); }} />
       <WsToasts toasts={toasts} />
     </Stack>
   );
 }
 type KnockStory = StoryObj<typeof WsKnock>;
-export const Knock: KnockStory = { name: 'Knock: someone asks', ...WIDE, args: { person: GUEST, document: 'Launch plan', onLet: did('onLet'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
+export const Knock: KnockStory = { name: 'Knock: someone asks', ...WIDE, args: { person: GUEST, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
 /** Answered, or not asked yet: nothing over the call. The button asks, and it drops in. */
-export const KnockGone: KnockStory = { name: 'Knock: gone', ...WIDE, args: { person: null, document: 'Launch plan', onLet: did('onLet'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
+export const KnockGone: KnockStory = { name: 'Knock: gone', ...WIDE, args: { person: null, document: 'Launch plan', onLet: did('onLet'), onEdit: did('onEdit'), onChoose: did('onChoose'), onNotNow: did('onNotNow') }, argTypes: { person: { control: false } }, render: (args) => <Knocking {...args} /> };
 
 /* ---------- photos ---------- */
 

@@ -4,7 +4,7 @@
  * acted on goes no further, so the call and the app don't act on it too, and anything else is left for them.
  */
 import type { BoardTool } from '@alcove/ui';
-import { typing, withModShift } from '~/lib/keys';
+import { typing, withShortcutKey } from '~/lib/keys';
 import type { Board } from './useBoard';
 
 interface BoardKey {
@@ -58,7 +58,7 @@ const onControl = (t: EventTarget | null): boolean => t instanceof Element && !!
 
 export function keyDown(board: Board, e: KeyboardEvent): void {
   if (typing(e.target) || e.altKey) return;
-  const mod = withModShift(e);
+  const mod = withShortcutKey(e);
   if (!mod && (e.metaKey || e.ctrlKey)) return;
   const k = e.key.toLowerCase();
   if (!mod && CALL_KEYS.has(k)) return;

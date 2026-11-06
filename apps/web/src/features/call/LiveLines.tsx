@@ -1,6 +1,6 @@
 /* The live transcript as it's written, on the call stage and in the room: the newest line at the bottom. */
 import type { CaptureGap, Speaker, TranscriptLine } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, IconButton, Unsure, UnsureKey, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, Unsure, UnsureKey, WsPutArrow, cn } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
@@ -11,11 +11,12 @@ import { position } from '~/lib/time';
  * Keeps a list scrolled to its newest line, unless the person has scrolled up to read. Only scrolling
  * up counts as reading back: new lines, a resized window and the glide after "Latest" never do.
  * `newest` changes with every new line: a count wouldn't, once the list has reached its cap and the oldest line goes as
- * each new one comes. `glide`: each new line slides the list up, instead of the list jumping to it.
+ * each new one comes. `glide`: each new line slides the list up, instead of the list jumping to it. `still`: it starts
+ * wherever it's put, for a list opened at a moment, and follows once someone comes down to the end.
  */
-function useFollow(newest: string, glide = false) {
+export function useFollow(newest: string, glide = false, still = false) {
   const ref = useRef<HTMLDivElement>(null);
-  const pinned = useRef(true);
+  const pinned = useRef(!still);
   const last = useRef(0);
   const [away, setAway] = useState(false);
   const reduce = useReducedMotion();
@@ -82,9 +83,14 @@ const Gap = ({ g }: { g: CaptureGap }) => <CaptureGapMark label={gapLabel(g)} de
 /**
  * A call's transcript: who spoke ("You" for the reader) and what they said, with the stretches nothing was captured
  * in marked where they fall, and what it isn't sure of dotted (words hard to hear, a line heard on two microphones),
- * explained once at the top. `onMark` bookmarks a line for the reader alone.
+ * explained once at the top. `onMark` bookmarks a line for the reader alone, and `quote` sends one into a document. `when`
+ * says when a line was said, which is how far in unless it says otherwise.
  */
-export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined }) {
+export function CallLines({ lines, gaps = [], me, onMark, quote, when = position }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onMark?: ((lineId: string) => void) | undefined;
+  quote?: { target: string; onQuote: (line: TranscriptLine) => void } | null | undefined;
+  when?: ((at: number) => string) | undefined;
+}) {
   const { ref, onScroll, away, jump } = useFollow(`${lines.length}:${lines.at(-1)?.id}:${gaps.length}`);
   const arrived = useArrivals(lines);
   const starts = groupStarts(lines);
@@ -99,17 +105,18 @@ export function CallLines({ lines, gaps = [], me, onMark }: { lines: TranscriptL
           return (
             <Fragment key={l.id}>
               {before.map((g) => <Gap key={`${g.kind}-${g.from}`} g={g} />)}
-              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', onMark && 'has-mark')}>
+              <div className={cn('tx-l', start && 'tx-start', arrived(l.id) && 'tx-in', onMark && 'has-mark', quote && 'has-put')}>
                 {start && l.speaker ? <Avatar person={l.speaker.person ?? { name: l.speaker.name }} size={26} /> : <span />}
                 <div className="min-w-0">
                   {start && (
                     <div className="tx-h">
                       {l.speaker && <b>{l.unsure?.speaker ? <Unsure of="speaker">{spokenName(l.speaker, me)}</Unsure> : spokenName(l.speaker, me)}</b>}
-                      <span className="ac-mono">{position(l.at)}</span>
+                      <span className="ac-mono">{when(l.at)}</span>
                     </div>
                   )}
                   <p>{l.unsure?.words ? <Unsure of="words">{l.text}</Unsure> : l.text}</p>
                 </div>
+                {quote && <WsPutArrow verb="Quote in" target={quote.target} onPut={() => quote.onQuote(l)} />}
                 {onMark && <IconButton icon="bookmark" label="Bookmark this line, for you alone" size={14} className="tx-mark" onClick={() => onMark(l.id)} />}
               </div>
             </Fragment>

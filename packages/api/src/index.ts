@@ -15,5 +15,5 @@ export * from './workspaces';
 export * from './workspaceDocuments';
 export * from './workspaceEditor';
 export * from './callWorkspace';
-export * from './callBoards';
 export * from './media';
+export * from './callBoards';

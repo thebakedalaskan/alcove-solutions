@@ -2,11 +2,12 @@
  * The Editor's whole surface: what it's given and what it gives back. Everything here is a plain value or a
  * handler, so screens wire it up without touching ProseMirror or knowing how a block is drawn.
  */
-import type { Person } from '@alcove/api';
+import type { DocAskPart, Person } from '@alcove/api';
 import type { IconName } from '@alcove/ui';
 import type { ReactNode, Ref } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type { Doc } from 'yjs';
+import type { DocSection } from './sections';
 
 /** A block or inline piece as plain data: ProseMirror's JSON for the nodes in schema.ts. */
 export interface BlockJSON {
@@ -17,8 +18,11 @@ export interface BlockJSON {
   text?: string | undefined;
 }
 
-/** Where blocks go. `replace` takes the place of that block; `all` takes the place of every block, leaving the title. */
-export type InsertAt = { after: string } | { before: string } | { replace: string } | 'start' | 'end' | 'caret' | 'all';
+/**
+ * Where blocks go. `replace` takes the place of that block; `all` takes the place of every block, leaving the title;
+ * `tail` goes at the end, in place of an empty last line.
+ */
+export type InsertAt = { after: string } | { before: string } | { replace: string } | 'start' | 'end' | 'tail' | 'caret' | 'all';
 
 /** A point in the window, from a pointer. */
 export interface Point { x: number; y: number }
@@ -58,17 +62,28 @@ export interface CommentDraft {
   block: string;
   rect: Rect;
   /** Marks the words and starts the thread with its first message. Returns the thread's ID. */
-  send: (message: { by: string; name: string; text: string }) => string;
+  send: (message: { by: string; name: string; text: string; tags?: { id: string; name: string }[] | undefined }) => string;
   cancel: () => void;
 }
 
-/** Someone pressed Ask on the selection. */
+/**
+ * Someone pressed Ask on the selection. The words stay marked, and held by what they are, until `done`: whatever others type
+ * meanwhile, what comes back goes where they are by then.
+ */
 export interface AskDraft {
+  /** The words selected, with tags spelled out, as they go to Alcove. */
   text: string;
   block: string;
   rect: Rect;
-  /** Puts `blocks` where the selection was. */
-  replace: (blocks: BlockJSON[]) => void;
+  /** Alcove's writing: the caret steps off the words, so typing on can't replace them, and dots show beside them. */
+  wait: () => void;
+  /**
+   * Puts in what came back, as it comes: words take the selection's place, and each line of a checklist follows the one before.
+   * If someone changed the words meanwhile, those stay, and this goes under them.
+   */
+  write: (part: DocAskPart) => void;
+  /** Lets go of the words, whether or not anything came. */
+  done: () => void;
 }
 
 /** The `/` items that need more than the editor has. `at` is where what they make should go, for `insertBlocks`. */
@@ -80,42 +95,94 @@ export interface MediaPick {
   rect: Rect | null;
 }
 
-/** A line of the transcript, for Quote what was said. */
-export interface MomentLine { id: string; person: Person | null; name: string; at: string; text: string }
+/** A line of the transcript, for Quote what was said. `at`: when, as an ISO time. `note`: the notes it'll be in, by ID, so whoever has them can hear it. */
+export interface MomentLine { id: string; person: Person | null; name: string; at: string; text: string; note: string | null }
 
-/** One line a `live` block shows. */
+/** One line a `live` block shows. `at` is when, as an ISO time, and `due` the words it was said in: each reader reads them their way. */
 export interface LiveLine { text: string; at: string; person?: string | null | undefined; name?: string | undefined; due?: string | undefined }
 
 export type LiveWhat = 'decided' | 'followups';
 
 /** What a document knows about the call it's open in. Without it, From the call isn't offered. */
 export interface EditorCall {
+  /** Which call. A `live` block belongs to the call it was added in, and stays as it was once that's over. */
+  id: string;
   /** Notes are on for this call. */
   notes: boolean;
   /** The last few lines of the transcript, newest first. */
   recent: () => MomentLine[];
   /** A `live` block was just added: fill it with `setLiveLines`. */
   onLive?: ((what: LiveWhat, block: string) => void) | undefined;
-  /** Hear it, on a quote. */
-  onHear?: ((moment: { line: string | null; at: string }) => void) | undefined;
 }
 
-/** A video playing for everyone, for the block it's in. */
-export interface VideoPlay { block: string; seconds: number; total: number }
+/** Where a video playing for everyone is, in seconds, and how long it is: 0 until that's known. */
+export interface VideoClock { seconds: number; total: number }
 
-/** What photos, videos and files need from outside. */
+/**
+ * A video playing for everyone in the call, for the blocks that hold it. It plays once, in the call, whether or not anyone
+ * has its document open: a block holding it shows the picture everyone's watching, with where it's got to.
+ */
+export interface VideoPlay {
+  /** The file playing, as a video block's `media` names it. */
+  media: string;
+  /** Read with `useSyncExternalStore`: it moves on every second or so, and nothing else has to draw again for it. */
+  clock: { subscribe: (listener: () => void) => () => void; getSnapshot: () => VideoClock };
+  /** Puts the picture in a block, until what it returns is called. The last block to ask has it. */
+  show: (into: HTMLElement) => () => void;
+}
+
+/**
+ * A stored file as this browser has it. `ready` holds a picture to show, which the handlers own and let go of themselves;
+ * `gone` is a file someone deleted for good, which shows as deleted, in older versions too.
+ */
+export type MediaState = { kind: 'loading' } | { kind: 'ready'; url: string } | { kind: 'gone' } | { kind: 'failed' };
+
+/** Stored files, as blocks show them: everything here is read while drawing, and `changes` says when to draw again. */
 export interface MediaHandlers {
-  /** Where a stored file can be read, or a local preview while it uploads. Undefined until there's something to show. */
+  /** A picture that's here: what `state` says when it's ready, for what only wants a picture. */
   url: (media: string) => string | undefined;
-  /** Try again, on a block that couldn't upload. */
-  onRetry?: ((block: string) => void) | undefined;
+  /** A stored picture as it stands. A block asks for it with `hold` while it's on the page. */
+  state?: ((media: string) => MediaState) | undefined;
+  /** Reads a stored picture for as long as a block shows it; what it returns lets go. */
+  hold?: ((media: string) => () => void) | undefined;
+  /** Whether a stored file that isn't a picture has been deleted for good: a file block's or a video's. */
+  gone?: ((media: string) => boolean) | undefined;
+  /** Keeps an eye on whether a stored file that isn't a picture is still there, while a block shows it; what it returns stops. */
+  watch?: ((media: string) => () => void) | undefined;
+  /** Counts every change to what the handlers say. Read it with `useSyncExternalStore`. */
+  changes?: { subscribe: (listener: () => void) => () => void; getSnapshot: () => number } | undefined;
+  /*
+   * `upload` below is what an upload is known by: its block's `upload` token, which follows the block wherever it's moved,
+   * or the block's ID for one without.
+   */
+  /** The file this browser is sending into a block, at its place in the block, to show while it goes. */
+  preview?: ((upload: string, index: number) => string | undefined) | undefined;
+  /** A block says it's uploading, and nobody is any more: it shows as failed. */
+  stalled?: ((upload: string) => boolean) | undefined;
+  /** Try again, on a block that couldn't upload: only where this browser still has what it was sending. */
+  onRetry?: ((upload: string) => void) | undefined;
+  canRetry?: ((upload: string) => boolean) | undefined;
+  /** A photo this browser couldn't read, which it still has: Add as a file puts the file in its block's place. */
+  canAddAsFile?: ((upload: string) => boolean) | undefined;
+  onAsFile?: ((upload: string, block: string) => void) | undefined;
+  /** Where a player reads a video from, asked for afresh. Rejects for one that's gone. */
+  stream?: ((media: string) => Promise<string>) | undefined;
+  /** A video found out how long it is: for a block that didn't say. */
+  onDuration?: ((block: string, seconds: number) => void) | undefined;
   /** The download on a file block. */
   onOpenFile?: ((file: { media: string; name: string }) => void) | undefined;
-  /** Play for everyone. Without it, a video shows no button. */
-  onPlay?: ((block: string) => void) | undefined;
+  /** A press on an empty Photos block: offer the picker again, against it. */
+  onChoose?: ((block: string, rect: Rect) => void) | undefined;
+  /** Delete for good, from a block's menu: the files in the block, for everyone, and everywhere they are. */
+  onDeleteFiles?: ((files: MediaDeletion) => void) | undefined;
+  /** Play for everyone, on a video: its block, and its file as `media` names it. Without it, a video shows no button. */
+  onPlay?: ((video: { block: string; media: string }) => void) | undefined;
   /** The video playing for everyone now, if it's in this document. */
   playing?: VideoPlay | null | undefined;
 }
+
+/** A block's files, on their way to being deleted for good. `what` names them: a file's name, or how many photos. */
+export interface MediaDeletion { block: string; media: string[]; what: 'photo' | 'photos' | 'video' | 'file'; name: string; rect: Rect }
 
 /** A word on the page, for the caller to show as a toast. */
 export interface EditorToast { icon: IconName; text: string; label?: string | undefined; run?: (() => void) | undefined }
@@ -145,7 +212,7 @@ export interface EditorProps {
   onOpenPerson?: ((id: string, rect: Rect) => void) | undefined;
   /** Someone was just tagged: tell them, or ask before sharing. */
   onTagged?: ((person: Person, block: string, rect: Rect | null) => void) | undefined;
-  /** Files were dropped on the page or pasted. `at` is where the line showed. */
+  /** Files were dropped on the page or pasted. `at` is where the line showed, or the empty Photos block they landed on. */
   onUpload?: ((files: File[], at: InsertAt) => void) | undefined;
   /** Photos, Video or File was picked from `/`. */
   onPick?: ((pick: MediaPick) => void) | undefined;
@@ -156,6 +223,8 @@ export interface EditorProps {
   onAttachMedia?: ((mediaId: string) => void) | undefined;
   media?: MediaHandlers | undefined;
   call?: EditorCall | undefined;
+  /** Hear it, on a quote, in a call or not: what plays that moment, for someone who has the notes it's in. It draws nothing for anyone else. */
+  hear?: ((moment: { note: string; line: string }) => ReactNode) | undefined;
   /** Comment was pressed, or ⌘⇧M, with words selected. Without it, there's no Comment button. */
   onComment?: ((draft: CommentDraft) => void) | undefined;
   /** Words with a comment on them, or the count in the margin, were pressed. */
@@ -173,6 +242,8 @@ export interface EditorProps {
   onMoveBlock?: ((block: MovingBlock, to: string) => boolean | Promise<boolean>) | undefined;
   blockDrop?: BlockDropTarget | undefined;
   onToast?: ((toast: EditorToast) => void) | undefined;
+  /** Blocks to tint, by ID: what changed in a version of the document. */
+  changed?: ReadonlySet<string> | undefined;
   /** Sits between the title and the first block: who wrote this and when. */
   byline?: ReactNode | undefined;
   /** Sits under the last block, above the space that adds a line. */
@@ -181,6 +252,13 @@ export interface EditorProps {
   whenBlank?: ReactNode | undefined;
   /** Where the caret starts when the document opens. */
   autoFocus?: 'title' | 'end' | undefined;
+  /**
+   * The audience's view of a presentation: only this section (sections.ts), and the title only with the first. Pass
+   * `readOnly` with it. A number past the last section shows the last.
+   */
+  section?: number | null | undefined;
+  /** The document's sections, now and whenever they change, for presenting it. */
+  onSections?: ((sections: readonly DocSection[]) => void) | undefined;
   ref?: Ref<EditorHandle> | undefined;
 }
 
@@ -188,6 +266,8 @@ export interface EditorProps {
 export interface EditorHandle {
   /** Puts the caret in the title, or at the start or end of the blocks. */
   focus: (where?: 'title' | 'start' | 'end') => void;
+  /** Gives the keyboard back to the text, with the caret at the end of whatever was selected. */
+  resume: () => void;
   focusBlock: (id: string, at?: 'start' | 'end') => void;
   /** Brings a block into view, 110 px from the top. `flash` makes it glow for 1.6 s, `smooth` takes 420 ms. */
   scrollToBlock: (id: string, options?: { smooth?: boolean | undefined; flash?: boolean | undefined }) => void;
@@ -203,15 +283,23 @@ export interface EditorHandle {
   blockJSON: (id: string) => BlockJSON | null;
   /** Where a block is now, to put it back there: after the block before it, or at the start. */
   placeOf: (id: string) => InsertAt;
-  /** Writes what every `live` block of this kind shows. Only writes if it changed, so any browser in the call can do this. */
+  /** What every block with text in it says now, for looking through without waiting on Alcove. */
+  blockWords: () => { id: string; text: string }[];
+  /** Writes what every `live` block of this kind in this call shows. Only writes if it changed, so any browser in the call can do this. */
   setLiveLines: (what: LiveWhat, lines: LiveLine[]) => void;
+  /** Whether this document has a `live` block of this call. */
+  hasLive: () => boolean;
   /** Opens `/` or `@` at the caret, for a phone's keyboard bar. */
   openSlash: () => void;
   openMention: () => void;
+  /** Tag someone in this document: their name on the last line, or a new one, with the caret after it. */
+  tag: (person: Person) => void;
   /** Bold, italic and so on, for a phone's keyboard bar. */
   toggleMark: (mark: 'bold' | 'italic' | 'strike' | 'inlineCode' | 'highlight') => void;
   /** Turns the block the caret is in into another kind, for a phone's keyboard bar. */
   turnInto: (kind: BlockKind) => void;
+  /** Adds a Photos block where the caret is, as `/` Photos does, and opens the picker: for a phone's keyboard bar. */
+  addPhotos: () => void;
 }
 
 /** The kinds of text block, as Turn into and `/` name them. */

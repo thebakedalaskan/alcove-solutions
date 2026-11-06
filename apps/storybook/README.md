@@ -28,6 +28,7 @@ src/world/boards.ts       the boards in it, written by the board package's own w
                           the stand-in's workspaces for the board's page
 src/media/livekit.ts      a scripted room in place of LiveKit: microphones, speaking, shares, your connection
 src/media/screens.ts      what other people share, drawn
+src/media/film.ts         a video for a document, drawn and recorded in the browser
 src/browser.ts            the browser as a story finds it: connection, devices, notifications, a page that goes
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
@@ -37,7 +38,7 @@ src/board.tsx             what board stories share: `BoardScene`, the real surfa
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
-stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, leaving
+stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, its workspace, leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md
 ```
@@ -58,13 +59,17 @@ aren't.
 
 **The demo world** is the design canvas's (`docs/design/canvas/appdata.js` and `data-*.js`): Vandelay Industries, you are
 Art Vandelay, and everyone is made up. Never write a real person's name. It's written the way the canvas writes it, with
-the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its workspaces
-are Product (Art runs it: a folder, a document closed to the workspace, the launch retro board, two things in Trash),
-Design (he edits; the onboarding flow board) and the company handbook (he can only read). What each document says is in
-`src/world/documents.ts`, in the editor's own blocks, and who it's shared with in the world's `shares`; a page can say what
-Alcove refused of it, which opens it couldn't-save. What each board holds is in `src/world/boards.ts`, drawn with
-`@alcove/board`'s own writers, with who else is on it (their pointers, and their faces in the workspace) and how it stands
-for this browser (`standing`: Reconnecting, Couldn't save, or taken away while it's open).
+the builders in `src/world/build.ts`, and checked against the contract's schemas whenever a scenario starts. Its Drive holds
+the homes of the day's calls (the standup's, the pricing sync's and the design review's, each with the call's folder at its
+top, opening the call's note), then Product (Art runs it: a folder, a document closed to the workspace, the launch retro
+board, two things in Trash), Design (he edits; the onboarding flow board) and the company handbook (he can only read). What
+each document says is in `src/world/documents.ts`, in the editor's own blocks: tags name people by address and the
+stand-in writes in their IDs, comment threads are written as the app writes them, and photos, a video and a file are drawn
+and recorded here (`src/media/screens.ts`) and kept in the world's `media`. Who a document's shared with is in `shares`, a
+tag waiting for Art in `mentions`, and what a call worked on in its note's `workedOn`. A page can say what Alcove refused of
+it, which opens it couldn't-save, and a block can say someone else is still uploading it. What each board holds is in
+`src/world/boards.ts`, drawn with `@alcove/board`'s own writers, with who else is on it (their pointers, and their faces in
+the workspace) and how it stands for this browser (`standing`: Reconnecting, Couldn't save, or taken away while it's open).
 
 ## Scenarios
 
@@ -250,6 +255,23 @@ story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do:
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
 from another call. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
 stories are always night, and come on a phone too (`phone()`).
+
+The call's workspace is played too. The first time Workspace opens, the call settles its home as the API does: the
+`StoryCall`'s `workspaceId` (chosen when it was scheduled) with the call's folder put at its top, else a new workspace
+named "<call title> · <day>" with the folder in it, which holds the live Notes, Follow-ups and Transcript. Someone who came
+in with the link gets nothing, so it's private to them. The script's `workspace` says what's brought to the call and who's
+in which document; beats move people (`goesTo`), present (`presents`, `movesPresenting`), play a video for everyone
+(`plays`), ask to see it (`asksToSee`) and tag you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
+ask, add a follow-up) changes the call as the server would. `addWalkthrough()` in `talk.ts` puts a document with a film
+in Product, drawn and recorded in the browser (`src/media/film.ts`) the first time it's played.
+
+```tsx
+/** Priya presents the launch plan two seconds in, and leaves four seconds later. */
+export const PresenterLeft = inCall({
+  scenario: 'busy', call: LAUNCH_REVIEW,
+  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, leaves(PRIYA))] }
+});
+```
 
 ## Extend the stand-in
 

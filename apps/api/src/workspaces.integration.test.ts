@@ -112,7 +112,7 @@ function stream(base: string, f: typeof fetch, id: string, pass?: string, slowMs
 const fill = (workspaceId: string, who: Account, n: number) => rewrite(workspaceId, (s) => {
   const at = new Date().toISOString();
   const items = { ...s.items };
-  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+  for (let i = 0; i < n; i++) items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: null, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: who.name, email: who.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
   return { ...s, items };
 });
 const treeOf = (l: WorkspaceLive) => l.getSnapshot().tree;
@@ -123,7 +123,7 @@ describe('a workspace', () => {
     const ann = await account();
     const { id } = await ann.api.workspaces.create('  Launch \n plan ');
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1 }]);
+    expect(await ann.api.workspaces.list()).toEqual([{ id, name: 'Launch plan', role: 'admin', people: 1, createdAt: expect.any(String), call: null }]);
     expect(await ann.api.workspaces.get(id)).toEqual({ id, name: 'Launch plan', role: 'admin', people: 1, items: [] });
     await ann.api.workspaces.rename(id, 'Launch');
     expect((await ann.api.workspaces.get(id)).name).toBe('Launch');
@@ -139,7 +139,7 @@ describe('a workspace', () => {
     await ann.api.workspaces.remove(id);
     expect(await code(ann.api.workspaces.get(id))).toBe('not-found');
     expect((await ann.api.workspaces.list()).map((w) => w.id)).toEqual([second.id]);
-    for (const t of ['owners', 'workspaces', 'workspace_members', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
+    for (const t of ['owners', 'workspaces', 'workspace_members', 'workspace_mentions', 'documents', 'document_access']) expect(await count(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [owner]), t).toBe(0);
     expect(await code(ann.api.workspaces.remove(id))).toBe('not-found');
   });
 
@@ -209,7 +209,7 @@ describe('people in a workspace', () => {
     expect(people.map((p) => [p.person.email, p.role, p.isMe])).toEqual([[ann.email, 'admin', true], [theo.email, 'edit', false], [later, 'read', false]]);
     expect(people[0]?.person.name).toBe(ann.name);
     expect(await ann.api.workspaces.list()).toEqual([expect.objectContaining({ id, people: 3 })]);
-    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3 }]);
+    expect(await theo.api.workspaces.list()).toEqual([{ id, name: 'Ours', role: 'edit', people: 3, createdAt: expect.any(String), call: null }]);
     expect((await theo.api.workspaces.people(id)).find((p) => p.isMe)?.person.email).toBe(theo.email);
 
     // Adding someone who's in it sets their role: the same person, not a second one.
@@ -342,7 +342,7 @@ describe('the tree', () => {
       const at = new Date().toISOString();
       const items = { ...s.items };
       for (let i = 0; i < 4998; i++) {
-        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null };
+        items[madeUp()] = { kind: 'document', name: `Doc ${i}`, parent: folder, pos: `V${i.toString(36).padStart(3, '0')}1`, by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null };
       }
       return { ...s, items };
     });
@@ -397,7 +397,7 @@ describe('the tree', () => {
     const ids = Array.from({ length: 4900 }, () => madeUp());
     await rewrite(id, (s) => {
       const items = { ...s.items };
-      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null }; });
+      ids.forEach((x, i) => { items[x] = { kind: 'folder', name: `Level ${i}`, parent: ids[i - 1] ?? top, pos: 'V', by: { name: ann.name, email: ann.email }, createdAt: at, editedAt: at, trashedAt: null, trashedBy: null, restricted: false, restrictedBy: null, call: null }; });
       return { ...s, items };
     });
     expect(await itemsOf(theo.api, id)).toHaveLength(4901);
@@ -750,7 +750,7 @@ describe('who can open what', () => {
     expect(await w.list()).toEqual([]);
     await ann.api.workspaces.share.set(id, given, [{ email: sam.email }], 'read');
 
-    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null }]);
+    expect(await w.list()).toEqual([{ id, name: null, role: null, people: null, createdAt: null, call: null }]);
     const tree = await w.get(id);
     expect(tree).toMatchObject({ id, name: null, role: null, people: null });
     expect(tree.items.map((i) => [i.id, i.parent, i.role])).toEqual([[given, null, 'read']]);
@@ -889,7 +889,7 @@ describe('who can open what', () => {
     expect((await kofi.api.workspaces.get(id)).items.map((i) => [i.id, i.role])).toEqual([[doc, 'read']]);
   });
 
-  it('sends what nobody can open any more to Trash, for its creator to find if they come back', async () => {
+  it('sends what only someone who left could open to Trash, for them to find if they come back; taken out, the admins get it', async () => {
     const ann = await account();
     const theo = await account();
     const kofi = await account();
@@ -900,9 +900,9 @@ describe('who can open what', () => {
     await theo.api.workspaces.share.restrict(id, alone, true);
     await theo.api.workspaces.share.restrict(id, shared, true);
     await theo.api.workspaces.share.set(id, shared, [{ email: kofi.email }], 'edit');
-    const theoId = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
+    const leave = async (who: Account) => who.api.workspaces.removePerson(id, (await who.api.workspaces.people(id)).find((p) => p.isMe)?.id ?? '');
 
-    await ann.api.workspaces.removePerson(id, theoId);
+    await leave(theo);
     // Nobody here can see it, it's not deleted, and it isn't given to anyone: an admin can't open it any more than before.
     expect(named(await itemsOf(ann.api, id))).toEqual(['Everyone’s']);
     expect(await refusal(ann.api.workspaces.items.get(id, alone))).toEqual(await refusal(ann.api.workspaces.items.get(id, madeUp())));
@@ -919,7 +919,7 @@ describe('who can open what', () => {
     expect((await theo.api.workspaces.items.get(id, alone)).trashedAt).toBeNull();
 
     // Not back, it goes as anything in Trash does.
-    await ann.api.workspaces.removePerson(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '');
+    await leave(theo);
     await maintain(h.deps, { trashAgeMs: 0 });
     expect(await count('SELECT count(*)::int AS n FROM documents WHERE document_id = $1', [alone])).toBe(0);
 
@@ -929,6 +929,14 @@ describe('who can open what', () => {
     expect(await code(kofi.api.workspaces.items.get(id, shared))).toBe('not-found');
     await maintain(h.deps, { trashAgeMs: 0 });
     expect(await count('SELECT count(*)::int AS n FROM documents WHERE document_id = $1', [shared])).toBe(0);
+
+    // Taken out by an admin, someone's words go to the admins, still restricted, and not to Trash: nobody changed that document.
+    const kofis = await make(kofi, id, 'document', 'Only Kofi’s');
+    await kofi.api.workspaces.share.restrict(id, kofis, true);
+    await ann.api.workspaces.removePerson(id, (await ann.api.workspaces.people(id)).find((p) => p.person.email === kofi.email)?.id ?? '');
+    expect(await ann.api.workspaces.items.get(id, kofis)).toMatchObject({ restricted: true, trashedAt: null, role: 'edit' });
+    expect((await ann.api.workspaces.share.list(id, kofis)).entries.map((e) => [e.person.email, e.role])).toEqual([[ann.email, 'edit']]);
+    expect(await code(kofi.api.workspaces.items.get(id, kofis))).toBe('not-found');
   });
 
   it('treats a board as a document: restricted, shared, duplicated and in Trash the same way', async () => {
@@ -1081,7 +1089,8 @@ describe('deleting an account', () => {
     const onlyThem = await workspace(one, 'Only them', [[two, 'admin']]);
     const owner = await ownerOf(onlyThem);
     await Promise.all([one.api.account.delete(), two.api.account.delete()]);
-    expect((await stays.api.workspaces.list()).map((w) => [w.name, w.role, w.people])).toEqual([['First', 'admin', 1], ['Second', 'admin', 1]]);
+    // The Drive lists the newest first.
+    expect((await stays.api.workspaces.list()).map((w) => [w.name, w.role, w.people])).toEqual([['Second', 'admin', 1], ['First', 'admin', 1]]);
     expect([first, second].every(Boolean)).toBe(true);
     expect(await count('SELECT count(*)::int AS n FROM owners WHERE owner_id = $1', [owner])).toBe(0);
   });
@@ -1185,9 +1194,13 @@ describe('a new address from the provider', () => {
     await ann.api.workspaces.share.set(elsewhere, given, [{ email: old }], 'edit');
     const live = moved.api.workspaces.live(id);
     await until(() => liveNames(live).length === 2, 'the stream');
+    const tagged = await make(ann, id, 'document', 'Tagged in');
+    await ann.api.workspaces.mention(id, tagged, { to: { email: old }, block: null });
 
     const after = await withGoogle(fresh, sub);
     expect(after.ownerId).toBe(moved.ownerId);
+    // What was waiting for them still is.
+    expect((await after.api.workspaces.mentions()).map((m) => m.document)).toEqual([tagged]);
 
     expect((await after.api.workspaces.get(id)).role).toBe('edit');
     expect((await after.api.workspaces.items.get(id, made)).role).toBe('edit');
@@ -1252,7 +1265,7 @@ describe('the live stream', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'document', 'Doc');
     const live = theo.api.workspaces.live(id);
-    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'connecting', tree: null, here: [], mentions: [] });
     await until(() => live.getSnapshot().status === 'live', 'the first line');
     expect(liveNames(live)).toEqual(['Doc']);
     let heard = 0;
@@ -1277,7 +1290,7 @@ describe('the live stream', () => {
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.removePerson(id, me);
     await until(() => live.getSnapshot().status === 'closed', 'being taken out to end the stream');
-    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [] });
+    expect(live.getSnapshot()).toEqual({ status: 'closed', tree: null, here: [], mentions: [] });
     live.close();
   });
 

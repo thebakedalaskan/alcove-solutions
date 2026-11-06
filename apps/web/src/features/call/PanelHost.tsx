@@ -55,7 +55,7 @@ export function useCallArea() {
 
 /** Where the horizon is, in the call's area: the ground under the dock, and how far it runs before the dock begins. */
 export function useHorizon(area: RefObject<HTMLDivElement | null>, bar: RefObject<HTMLElement | null>, size: Size): Horizon {
-  const [h, setH] = useState<Horizon>({ dock: 0, base: 0 });
+  const [h, setH] = useState<Horizon>({ dock: 0, dockEnd: 0, base: 0, top: 0, left: 0 });
   useLayoutEffect(() => {
     const a = area.current;
     const b = bar.current;
@@ -64,8 +64,8 @@ export function useHorizon(area: RefObject<HTMLDivElement | null>, bar: RefObjec
     const read = () => {
       const top = a.getBoundingClientRect();
       const dockBox = dock.getBoundingClientRect();
-      const next = { dock: Math.round(dockBox.left - top.left), base: Math.round(b.getBoundingClientRect().bottom - top.top - 10) };
-      setH((was) => (was.dock === next.dock && was.base === next.base ? was : next));
+      const next = { dock: Math.round(dockBox.left - top.left), dockEnd: Math.round(dockBox.right - top.left), base: Math.round(b.getBoundingClientRect().bottom - top.top - 10), top: Math.round(top.top), left: Math.round(top.left) };
+      setH((was) => (was.dock === next.dock && was.dockEnd === next.dockEnd && was.base === next.base && was.top === next.top && was.left === next.left ? was : next));
     };
     read();
     const ro = new ResizeObserver(read);
@@ -191,9 +191,12 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     }
     if (!p.going) return;
     setDrag(null);
+    const slipped = !!where && barely(p, where);
+    // A press that hardly went anywhere was a click on a tab, a little unsteady: the area held the pointer, so the tab heard nothing.
+    if (slipped && p.moving.kind === 'tab' && p.from instanceof HTMLElement) p.from.click();
     dragged.current = p.from;
     setTimeout(() => { dragged.current = null; });
-    const d = where && !barely(p, where) && spot(where.x, where.y, p.moving);
+    const d = where && !slipped && spot(where.x, where.y, p.moving);
     if (d) place(p.moving, d);
   };
   const follow = (e: PointerEvent) => {
@@ -273,7 +276,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     if (el && isTab(tab)) hold({ ...from, kind: 'item', moving: { kind: 'tab', id: tab }, from: el, going: false });
   };
   /** A drag let go over its own tab isn't a click on it. */
-  const click = (e: ReactMouseEvent) => { if (e.target instanceof Node && dragged.current?.contains(e.target)) { e.stopPropagation(); e.preventDefault(); } };
+  const click = (e: ReactMouseEvent) => { if (e.isTrusted && e.target instanceof Node && dragged.current?.contains(e.target)) { e.stopPropagation(); e.preventDefault(); } };
   const double = (e: ReactMouseEvent) => {
     if (!(e.target instanceof Element)) return;
     const key = e.target.closest('[data-div]')?.getAttribute('data-div');
@@ -368,7 +371,7 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
   const glow = drag?.drop ? dropBox(solved, size, drag.drop) : null;
   const shown = (leaf: Leaf) => { const r = rects[leaf]; if (r) last.current.set(leaf, r); return r ?? last.current.get(leaf) ?? null; };
   const slide = reduce || sizing ? { duration: 0 } : GLIDE;
-  const canMove = !A.phone;
+  const canMove = !A.phone && !facts.zen;
 
   /* The side panels, worked out only when they change: a drag's pointer moving doesn't touch what's in them. */
   const open = panels.groups.filter((g) => g.open);
@@ -388,12 +391,24 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
     // `open` follows `panels`, and `shown` is read from `solved`.
   }), [panels, solved, group, label, size, slide, reduce, canMove, A.float, A.phone]);
 
+  /*
+   * The workspace and the board stay here once they've been opened, closed or behind something else, so whatever's in them
+   * keeps its place. Opening one, it rises 8 px and fades in as everything else makes room. It comes up where it's going:
+   * only what's already showing glides.
+   */
+  const up = useRef({ ws: false, board: false });
+  useEffect(() => { up.current = { ws: facts.ws, board: facts.board }; });
   const surface = (leaf: 'ws' | 'board', name: string, draw: ((r: Box) => ReactNode) | undefined) => {
-    if (!draw || !facts[leaf]) return null;
+    if (!draw) return null;
     const r = shown(leaf);
     if (!r) return null;
+    const open = facts[leaf];
+    const place = open && !up.current[leaf] ? { duration: 0 } : slide;
+    const fade = reduce ? { duration: 0 } : open ? { duration: 0.24, ease: GLIDE.ease, delay: 0.09 } : { duration: 0.24, ease: GLIDE.ease };
     return (
-      <motion.section key={leaf} className={cn('ic-surface', !rects[leaf] && 'is-off')} aria-label={name} data-surface={leaf} initial={false} animate={at(r)} transition={slide}>
+      <motion.section key={leaf} className={cn('ic-surface', open ? !rects[leaf] && 'is-off' : 'is-closed')} aria-label={name} data-surface={leaf} aria-hidden={!open || undefined}
+        initial={{ ...at(r), opacity: 0, y: 8 }} animate={{ ...at(r), opacity: open ? 1 : 0, y: open ? 0 : 8 }}
+        transition={{ left: place, top: place, width: place, height: place, opacity: fade, y: reduce ? { duration: 0 } : { ...GLIDE, delay: open ? 0.06 : 0 } }}>
         {canMove && <button type="button" className="ic-grab" data-move={leaf} aria-label={`Drag to move the ${name.toLowerCase()}`} title="Drag to move" />}
         {draw(r)}
       </motion.section>

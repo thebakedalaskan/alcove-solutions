@@ -21,14 +21,14 @@ import { Route as AppTeamRouteImport } from './routes/_app/team'
 import { Route as CallCodeRouteImport } from './routes/call.$code'
 import { Route as JoinCodeRouteImport } from './routes/join.$code'
 import { Route as RecordLiveRouteImport } from './routes/record.live'
+import { Route as AppDriveIndexRouteImport } from './routes/_app/drive.index'
+import { Route as AppDriveWorkspaceIdRouteImport } from './routes/_app/drive.$workspaceId'
 import { Route as AppNotesIndexRouteImport } from './routes/_app/notes.index'
 import { Route as AppNotesNoteIdRouteImport } from './routes/_app/notes.$noteId'
-import { Route as AppWorkspaceIndexRouteImport } from './routes/_app/workspace.index'
-import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app/workspace.$workspaceId'
+import { Route as AppDriveWorkspaceIdIndexRouteImport } from './routes/_app/drive.$workspaceId.index'
+import { Route as AppDriveWorkspaceIdDocumentIdRouteImport } from './routes/_app/drive.$workspaceId.$documentId'
+import { Route as AppDriveWorkspaceIdTrashRouteImport } from './routes/_app/drive.$workspaceId.trash'
 import { Route as AppNotesSeriesSeriesIdRouteImport } from './routes/_app/notes.series.$seriesId'
-import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app/workspace.$workspaceId.index'
-import { Route as AppWorkspaceWorkspaceIdDocumentIdRouteImport } from './routes/_app/workspace.$workspaceId.$documentId'
-import { Route as AppWorkspaceWorkspaceIdTrashRouteImport } from './routes/_app/workspace.$workspaceId.trash'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -89,6 +89,16 @@ const RecordLiveRoute = RecordLiveRouteImport.update({
   path: '/record/live',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppDriveIndexRoute = AppDriveIndexRouteImport.update({
+  id: '/drive/',
+  path: '/drive/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDriveWorkspaceIdRoute = AppDriveWorkspaceIdRouteImport.update({
+  id: '/drive/$workspaceId',
+  path: '/drive/$workspaceId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNotesIndexRoute = AppNotesIndexRouteImport.update({
   id: '/notes/',
   path: '/notes/',
@@ -99,39 +109,29 @@ const AppNotesNoteIdRoute = AppNotesNoteIdRouteImport.update({
   path: '/notes/$noteId',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
-  id: '/workspace/',
-  path: '/workspace/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
-  id: '/workspace/$workspaceId',
-  path: '/workspace/$workspaceId',
-  getParentRoute: () => AppRoute,
-} as any)
+const AppDriveWorkspaceIdIndexRoute =
+  AppDriveWorkspaceIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppDriveWorkspaceIdRoute,
+  } as any)
+const AppDriveWorkspaceIdDocumentIdRoute =
+  AppDriveWorkspaceIdDocumentIdRouteImport.update({
+    id: '/$documentId',
+    path: '/$documentId',
+    getParentRoute: () => AppDriveWorkspaceIdRoute,
+  } as any)
+const AppDriveWorkspaceIdTrashRoute =
+  AppDriveWorkspaceIdTrashRouteImport.update({
+    id: '/trash',
+    path: '/trash',
+    getParentRoute: () => AppDriveWorkspaceIdRoute,
+  } as any)
 const AppNotesSeriesSeriesIdRoute = AppNotesSeriesSeriesIdRouteImport.update({
   id: '/notes/series/$seriesId',
   path: '/notes/series/$seriesId',
   getParentRoute: () => AppRoute,
 } as any)
-const AppWorkspaceWorkspaceIdIndexRoute =
-  AppWorkspaceWorkspaceIdIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
-  } as any)
-const AppWorkspaceWorkspaceIdDocumentIdRoute =
-  AppWorkspaceWorkspaceIdDocumentIdRouteImport.update({
-    id: '/$documentId',
-    path: '/$documentId',
-    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
-  } as any)
-const AppWorkspaceWorkspaceIdTrashRoute =
-  AppWorkspaceWorkspaceIdTrashRouteImport.update({
-    id: '/trash',
-    path: '/trash',
-    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -145,14 +145,14 @@ export interface FileRoutesByFullPath {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/notes/$noteId': typeof AppNotesNoteIdRoute
-  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
+  '/drive/': typeof AppDriveIndexRoute
   '/notes/': typeof AppNotesIndexRoute
-  '/workspace/': typeof AppWorkspaceIndexRoute
+  '/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
+  '/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
   '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
-  '/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
-  '/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
-  '/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/drive/$workspaceId/': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -167,12 +167,12 @@ export interface FileRoutesByTo {
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
   '/notes/$noteId': typeof AppNotesNoteIdRoute
+  '/drive': typeof AppDriveIndexRoute
   '/notes': typeof AppNotesIndexRoute
-  '/workspace': typeof AppWorkspaceIndexRoute
+  '/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
+  '/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
   '/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
-  '/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
-  '/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
-  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/drive/$workspaceId': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -188,14 +188,14 @@ export interface FileRoutesById {
   '/call/$code': typeof CallCodeRoute
   '/join/$code': typeof JoinCodeRoute
   '/record/live': typeof RecordLiveRoute
+  '/_app/drive/$workspaceId': typeof AppDriveWorkspaceIdRouteWithChildren
   '/_app/notes/$noteId': typeof AppNotesNoteIdRoute
-  '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
+  '/_app/drive/': typeof AppDriveIndexRoute
   '/_app/notes/': typeof AppNotesIndexRoute
-  '/_app/workspace/': typeof AppWorkspaceIndexRoute
+  '/_app/drive/$workspaceId/$documentId': typeof AppDriveWorkspaceIdDocumentIdRoute
+  '/_app/drive/$workspaceId/trash': typeof AppDriveWorkspaceIdTrashRoute
   '/_app/notes/series/$seriesId': typeof AppNotesSeriesSeriesIdRoute
-  '/_app/workspace/$workspaceId/$documentId': typeof AppWorkspaceWorkspaceIdDocumentIdRoute
-  '/_app/workspace/$workspaceId/trash': typeof AppWorkspaceWorkspaceIdTrashRoute
-  '/_app/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/_app/drive/$workspaceId/': typeof AppDriveWorkspaceIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -211,14 +211,14 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/drive/$workspaceId'
     | '/notes/$noteId'
-    | '/workspace/$workspaceId'
+    | '/drive/'
     | '/notes/'
-    | '/workspace/'
+    | '/drive/$workspaceId/$documentId'
+    | '/drive/$workspaceId/trash'
     | '/notes/series/$seriesId'
-    | '/workspace/$workspaceId/$documentId'
-    | '/workspace/$workspaceId/trash'
-    | '/workspace/$workspaceId/'
+    | '/drive/$workspaceId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -233,12 +233,12 @@ export interface FileRouteTypes {
     | '/join/$code'
     | '/record/live'
     | '/notes/$noteId'
+    | '/drive'
     | '/notes'
-    | '/workspace'
+    | '/drive/$workspaceId/$documentId'
+    | '/drive/$workspaceId/trash'
     | '/notes/series/$seriesId'
-    | '/workspace/$workspaceId/$documentId'
-    | '/workspace/$workspaceId/trash'
-    | '/workspace/$workspaceId'
+    | '/drive/$workspaceId'
   id:
     | '__root__'
     | '/'
@@ -253,14 +253,14 @@ export interface FileRouteTypes {
     | '/call/$code'
     | '/join/$code'
     | '/record/live'
+    | '/_app/drive/$workspaceId'
     | '/_app/notes/$noteId'
-    | '/_app/workspace/$workspaceId'
+    | '/_app/drive/'
     | '/_app/notes/'
-    | '/_app/workspace/'
+    | '/_app/drive/$workspaceId/$documentId'
+    | '/_app/drive/$workspaceId/trash'
     | '/_app/notes/series/$seriesId'
-    | '/_app/workspace/$workspaceId/$documentId'
-    | '/_app/workspace/$workspaceId/trash'
-    | '/_app/workspace/$workspaceId/'
+    | '/_app/drive/$workspaceId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -360,6 +360,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RecordLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/drive/': {
+      id: '/_app/drive/'
+      path: '/drive'
+      fullPath: '/drive/'
+      preLoaderRoute: typeof AppDriveIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/drive/$workspaceId': {
+      id: '/_app/drive/$workspaceId'
+      path: '/drive/$workspaceId'
+      fullPath: '/drive/$workspaceId'
+      preLoaderRoute: typeof AppDriveWorkspaceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/notes/': {
       id: '/_app/notes/'
       path: '/notes'
@@ -374,19 +388,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNotesNoteIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/workspace/': {
-      id: '/_app/workspace/'
-      path: '/workspace'
-      fullPath: '/workspace/'
-      preLoaderRoute: typeof AppWorkspaceIndexRouteImport
-      parentRoute: typeof AppRoute
+    '/_app/drive/$workspaceId/': {
+      id: '/_app/drive/$workspaceId/'
+      path: '/'
+      fullPath: '/drive/$workspaceId/'
+      preLoaderRoute: typeof AppDriveWorkspaceIdIndexRouteImport
+      parentRoute: typeof AppDriveWorkspaceIdRoute
     }
-    '/_app/workspace/$workspaceId': {
-      id: '/_app/workspace/$workspaceId'
-      path: '/workspace/$workspaceId'
-      fullPath: '/workspace/$workspaceId'
-      preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
-      parentRoute: typeof AppRoute
+    '/_app/drive/$workspaceId/$documentId': {
+      id: '/_app/drive/$workspaceId/$documentId'
+      path: '/$documentId'
+      fullPath: '/drive/$workspaceId/$documentId'
+      preLoaderRoute: typeof AppDriveWorkspaceIdDocumentIdRouteImport
+      parentRoute: typeof AppDriveWorkspaceIdRoute
+    }
+    '/_app/drive/$workspaceId/trash': {
+      id: '/_app/drive/$workspaceId/trash'
+      path: '/trash'
+      fullPath: '/drive/$workspaceId/trash'
+      preLoaderRoute: typeof AppDriveWorkspaceIdTrashRouteImport
+      parentRoute: typeof AppDriveWorkspaceIdRoute
     }
     '/_app/notes/series/$seriesId': {
       id: '/_app/notes/series/$seriesId'
@@ -395,58 +416,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppNotesSeriesSeriesIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/workspace/$workspaceId/': {
-      id: '/_app/workspace/$workspaceId/'
-      path: '/'
-      fullPath: '/workspace/$workspaceId/'
-      preLoaderRoute: typeof AppWorkspaceWorkspaceIdIndexRouteImport
-      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
-    }
-    '/_app/workspace/$workspaceId/$documentId': {
-      id: '/_app/workspace/$workspaceId/$documentId'
-      path: '/$documentId'
-      fullPath: '/workspace/$workspaceId/$documentId'
-      preLoaderRoute: typeof AppWorkspaceWorkspaceIdDocumentIdRouteImport
-      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
-    }
-    '/_app/workspace/$workspaceId/trash': {
-      id: '/_app/workspace/$workspaceId/trash'
-      path: '/trash'
-      fullPath: '/workspace/$workspaceId/trash'
-      preLoaderRoute: typeof AppWorkspaceWorkspaceIdTrashRouteImport
-      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
-    }
   }
 }
 
-interface AppWorkspaceWorkspaceIdRouteChildren {
-  AppWorkspaceWorkspaceIdDocumentIdRoute: typeof AppWorkspaceWorkspaceIdDocumentIdRoute
-  AppWorkspaceWorkspaceIdTrashRoute: typeof AppWorkspaceWorkspaceIdTrashRoute
-  AppWorkspaceWorkspaceIdIndexRoute: typeof AppWorkspaceWorkspaceIdIndexRoute
+interface AppDriveWorkspaceIdRouteChildren {
+  AppDriveWorkspaceIdDocumentIdRoute: typeof AppDriveWorkspaceIdDocumentIdRoute
+  AppDriveWorkspaceIdTrashRoute: typeof AppDriveWorkspaceIdTrashRoute
+  AppDriveWorkspaceIdIndexRoute: typeof AppDriveWorkspaceIdIndexRoute
 }
 
-const AppWorkspaceWorkspaceIdRouteChildren: AppWorkspaceWorkspaceIdRouteChildren =
-  {
-    AppWorkspaceWorkspaceIdDocumentIdRoute:
-      AppWorkspaceWorkspaceIdDocumentIdRoute,
-    AppWorkspaceWorkspaceIdTrashRoute: AppWorkspaceWorkspaceIdTrashRoute,
-    AppWorkspaceWorkspaceIdIndexRoute: AppWorkspaceWorkspaceIdIndexRoute,
-  }
+const AppDriveWorkspaceIdRouteChildren: AppDriveWorkspaceIdRouteChildren = {
+  AppDriveWorkspaceIdDocumentIdRoute: AppDriveWorkspaceIdDocumentIdRoute,
+  AppDriveWorkspaceIdTrashRoute: AppDriveWorkspaceIdTrashRoute,
+  AppDriveWorkspaceIdIndexRoute: AppDriveWorkspaceIdIndexRoute,
+}
 
-const AppWorkspaceWorkspaceIdRouteWithChildren =
-  AppWorkspaceWorkspaceIdRoute._addFileChildren(
-    AppWorkspaceWorkspaceIdRouteChildren,
-  )
+const AppDriveWorkspaceIdRouteWithChildren =
+  AppDriveWorkspaceIdRoute._addFileChildren(AppDriveWorkspaceIdRouteChildren)
 
 interface AppRouteChildren {
   AppHomeRoute: typeof AppHomeRoute
   AppRecordRoute: typeof AppRecordRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppTeamRoute: typeof AppTeamRoute
+  AppDriveWorkspaceIdRoute: typeof AppDriveWorkspaceIdRouteWithChildren
   AppNotesNoteIdRoute: typeof AppNotesNoteIdRoute
-  AppWorkspaceWorkspaceIdRoute: typeof AppWorkspaceWorkspaceIdRouteWithChildren
+  AppDriveIndexRoute: typeof AppDriveIndexRoute
   AppNotesIndexRoute: typeof AppNotesIndexRoute
-  AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
   AppNotesSeriesSeriesIdRoute: typeof AppNotesSeriesSeriesIdRoute
 }
 
@@ -455,10 +451,10 @@ const AppRouteChildren: AppRouteChildren = {
   AppRecordRoute: AppRecordRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppTeamRoute: AppTeamRoute,
+  AppDriveWorkspaceIdRoute: AppDriveWorkspaceIdRouteWithChildren,
   AppNotesNoteIdRoute: AppNotesNoteIdRoute,
-  AppWorkspaceWorkspaceIdRoute: AppWorkspaceWorkspaceIdRouteWithChildren,
+  AppDriveIndexRoute: AppDriveIndexRoute,
   AppNotesIndexRoute: AppNotesIndexRoute,
-  AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,
   AppNotesSeriesSeriesIdRoute: AppNotesSeriesSeriesIdRoute,
 }
 

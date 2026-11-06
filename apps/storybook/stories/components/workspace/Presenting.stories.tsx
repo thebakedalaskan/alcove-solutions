@@ -135,11 +135,11 @@ export const Fade: StoryObj<typeof WsFade> = { name: 'Fade', args: { id: '0', ch
 
 const LENGTH = 90;
 const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const FILM: WsPlaying = { title: 'Harbour launch film', mine: true, by: 'Art', on: true, at: clock(42), progress: 42 / LENGTH, volume: 0.8 };
+const FILM: WsPlaying = { title: 'Harbour launch film', mine: true, by: 'Art', canControl: true, on: true, at: clock(42), progress: 42 / LENGTH, volume: 0.8 };
 
 /**
- * The bar over the dock, under the workspace in a call. It runs while it plays; whoever started it can pause it or stop
- * it for everyone, and the volume is yours alone. Once it's stopped, the button plays it again.
+ * The bar over the dock, under the workspace in a call. It runs while it plays; whoever started it, or the organizer, can
+ * pause it, move it along or stop it for everyone, and the volume is yours alone. Once it's stopped, the button plays it again.
  */
 function Playing(args: ComponentProps<typeof WsPlayBar>) {
   const [playing, setPlaying] = useState(args.playing);
@@ -159,12 +159,13 @@ function Playing(args: ComponentProps<typeof WsPlayBar>) {
       {playing === null && <Button size="sm" icon="play" onClick={() => setPlaying({ ...FILM, at: clock(0), progress: 0 })}>Play Harbour launch film for everyone</Button>}
       <Box width="100%" height={560}><WsPane><ListOf ws={ws} /><DocOf ws={ws} onToggleList={did('onToggleList')} /></WsPane></Box>
       <WsPlayBar playing={playing} onToggle={() => { args.onToggle(); setPlaying((p) => p && { ...p, on: !p.on }); }}
+        onSeek={(progress) => { args.onSeek(progress); setPlaying((p) => p && { ...p, progress, at: clock(Math.round(progress * LENGTH)) }); }}
         onStop={() => { args.onStop(); setPlaying(null); }} onVolume={(volume) => { args.onVolume(volume); setPlaying((p) => p && { ...p, volume }); }} />
     </Stack>
   );
 }
 type PlayStory = StoryObj<typeof WsPlayBar>;
-const PLAY = { playing: FILM, onToggle: did('onToggle'), onStop: did('onStop'), onVolume: did('onVolume') };
+const PLAY = { playing: FILM, onToggle: did('onToggle'), onSeek: did('onSeek'), onStop: did('onStop'), onVolume: did('onVolume') };
 const playTypes: PlayStory['argTypes'] = { playing: { control: 'object' } };
 export const PlayYours: PlayStory = { name: 'Play bar: yours, playing', args: PLAY, argTypes: playTypes, render: (args) => <Playing key={JSON.stringify(args.playing)} {...args} /> };
 export const PlayPaused: PlayStory = { name: 'Play bar: yours, paused', args: { ...PLAY, playing: { ...FILM, on: false } }, argTypes: playTypes, render: (args) => <Playing key={JSON.stringify(args.playing)} {...args} /> };
@@ -201,7 +202,7 @@ function History(args: ComponentProps<typeof WsHistory> & { update: (next: Parti
           </WsDoc>
           {open && (
             <WsHistory versions={args.versions} selected={args.selected} onSelect={(id) => { args.onSelect(id); args.update({ selected: id }); }}
-              onRestore={() => { args.onRestore(); close(); if (version) say(wsToast.restoredVersion(version.when, did('onUndo'))); }} onClose={() => { args.onClose(); close(); }} />
+              onRestore={() => { args.onRestore?.(); close(); if (version) say(wsToast.restoredVersion(version.when, did('onUndo'))); }} onClose={() => { args.onClose(); close(); }} />
           )}
         </WsPane>
       </Box>

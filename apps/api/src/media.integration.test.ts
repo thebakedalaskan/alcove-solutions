@@ -1115,14 +1115,14 @@ describe('guests in a call', () => {
 
   it('put a picture on a board the call opens, which takes it when it’s deleted, as any document does', async () => {
     const org = await account();
-    const id = await workspace(org, 'Ours');
-    const owner = await ownerOf(id);
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    await host.setWorkspace(id);
+    // A board the call opens is made in its home, beside the call's folder.
     await host.openBoard({ template: 'blank' });
+    const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';
+    const owner = await ownerOf(id);
     // Everyone in the call can work on it, so the guest's seat is enough to put a picture on it and see it.
     await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat'", [owner, board])) === 1, 'the guest’s seat on the board');
     const opts = { pass: sam.pass };
@@ -1173,15 +1173,15 @@ describe('guests in a call', () => {
 
   it('can’t delete a picture for good through their seat, so it stays where it’s reused, and the organizer still can', async () => {
     const org = await account();
-    const id = await workspace(org, 'Ours');
-    const owner = await ownerOf(id);
-    const reused = await make(org, id, 'document', 'Reused here');
     const { host, guests } = await callWith(org, ['Sam Guest']);
     const [sam] = guests;
     if (!sam) throw new Error('nobody joined');
-    await host.setWorkspace(id);
+    // The board is made in the call's home, and the document that reuses its picture is there too.
     await host.openBoard({ template: 'blank' });
+    const id = host.getSnapshot().board.open?.workspaceId ?? '';
     const board = host.getSnapshot().board.open?.documentId ?? '';
+    const owner = await ownerOf(id);
+    const reused = await make(org, id, 'document', 'Reused here');
     await until(async () => (await count("SELECT count(*)::int AS n FROM document_access WHERE owner_id = $1 AND document_id = $2 AND kind = 'seat'", [owner, board])) === 1, 'the guest’s seat on the board');
     const opts = { pass: sam.pass };
     const bytes = bytesOf(16);

@@ -4,9 +4,12 @@
  * the call or removing you.
  */
 import type { Meta } from '@storybook/react-vite';
+import { screen } from 'storybook/test';
 import { at } from '../../src/api/script';
+import { current } from '../../src/api/state';
 import { inCall, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
+import { troubled } from '../pages/changes';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
 const meta = { title: 'Calls/Leaving', ...pages } satisfies Meta<PageArgs>;
@@ -19,9 +22,30 @@ const CHECK_IN_HERE = [{ who: KOFI }, { who: AIKO }, { who: MAYA }];
 export const LeaveSheet = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, { play: press('Leave') });
 export const LeaveSheetPhone = phone(LeaveSheet);
 
-/** End call for everyone: the sheet becomes Call ended, says who gets the notes, and follows them until they're ready. */
+/**
+ * End call for everyone: the sheet becomes Call ended, says who gets the notes, and follows them until they're ready, when
+ * it says only that they are.
+ */
 export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, { play: press('Leave', { then: ['End call for everyone'] }) });
 export const CallEndedPhone = phone(CallEnded);
+/** The same while the notes are still being written: they'll be ready in a minute, and the line says how they're coming along. */
+export const CallEndedWriting = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, {
+  play: async (c) => {
+    troubled({ 'notes.progress': 'hold' })(current());
+    await press('Leave', { then: ['End call for everyone'] })(c);
+  }
+});
+export const CallEndedWritingPhone = phone(CallEndedWriting);
+/** Once they're ready, the card says only that, and Read the notes opens them. */
+export const CallEndedReady = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, {
+  play: async (c) => {
+    await press('Leave', { then: ['End call for everyone'] })(c);
+    await c.step('Wait while they’re written. Ready, the card says so, and nothing about a minute', async () => {
+      await screen.findByText(/^Notes are ready/, {}, { timeout: 60000 });
+    });
+  }
+});
+export const CallEndedReadyPhone = phone(CallEndedReady);
 
 /** Leave and keep it going: Priya hosts, and the lobby says so, with Join and host to take it back. */
 export const LeaveItToPriya = inCall({ scenario: 'call-soon', call: REVIEW, script: REVIEW_LATE }, { play: press('Leave', { then: ['Leave and keep it going'] }) });

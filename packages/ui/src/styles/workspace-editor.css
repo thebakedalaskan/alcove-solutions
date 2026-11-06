@@ -24,7 +24,8 @@
 .ws-text .ProseMirror-gapcursor { display: none; position: relative; pointer-events: none; }
 .ws-text .ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: -2px; width: 20px; border-top: 1.5px solid var(--ink); animation: ws-blink 1.1s steps(1) infinite; }
 .ws-text.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
-.wb.ProseMirror-selectednode { outline: 2px solid var(--horizon); outline-offset: 2px; }
+/* A block selected whole, while the page has the keyboard: a photo just added isn't left wearing it. */
+.ws-text:focus .wb.ProseMirror-selectednode { outline: 2px solid var(--horizon); outline-offset: 2px; }
 .ws-dropcaret { background: var(--horizon); border-radius: 1px; pointer-events: none; }
 .wd-by-slot { margin-bottom: 20px; user-select: none; }
 
@@ -86,7 +87,7 @@
 @keyframes ws-blink { 50% { opacity: 0; } }
 
 /* inline pieces */
-.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: -4px; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
+.wn, .wdt, .wdl { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px 0 3px; border-radius: 7px; vertical-align: middle; font: 600 13.5px/1 var(--font-sans); white-space: nowrap; user-select: none; cursor: pointer; }
 .wn b, .wdt b, .wdl b { font-weight: 600; }
 .wn { background: var(--horizon-soft); color: var(--horizon); }
 .wn .ac-avatar { --ring: transparent; }
@@ -103,6 +104,7 @@
 .wb-rc.is-tag em { opacity: 1; }
 .rs { background: color-mix(in srgb, var(--horizon) 22%, transparent); border-radius: 3px; }
 .fs { background: var(--sun-soft); border-radius: 2px; }
+.wb-asking { margin-left: 6px; color: var(--ink-3); }
 .wc { background: var(--hl); color: inherit; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--gold); cursor: pointer; transition: background-color var(--duration-2) var(--ease-out), box-shadow var(--duration-2) var(--ease-out); }
 .wc.is-new { animation: wc-in var(--duration-2) var(--ease-out); }
 .wc.is-resolved { background: transparent; box-shadow: none; cursor: inherit; }
@@ -121,8 +123,16 @@
 .wb-gal { position: relative; flex: 1; min-width: 0; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .wb-gal.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .wb-gi .wb-img { aspect-ratio: 3 / 2; object-fit: cover; }
+/* A picture that's been deleted for good, or didn't come: said where it was, in the space it held. */
+/* A photo there's nothing to show of, because this browser couldn't read it: just what went wrong. */
+.wb-ph.is-bare { background: none; }
+.wb-ph.is-bare .wb-fail { position: static; }
+.wb-gone { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; color: var(--ink-3); font: 500 13.5px/1.3 var(--font-sans); text-align: center; }
+.wb-gi .wb-img.is-gone { display: grid; place-items: center; color: var(--ink-3); }
+.wb-vid .wb-gone { color: var(--stage-ink-2); }
 .wb-left { flex: 1; min-width: 0; font: 400 15.5px/26px var(--font-sans); color: var(--ink-2); word-break: break-word; }
 .wb-up { position: absolute; left: 10px; bottom: 10px; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 11px 0 8px; border-radius: 9px; background: color-mix(in srgb, var(--stage) 68%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
+.wb-up.is-leaving { opacity: 0; transition: opacity var(--duration-2) var(--ease-out); }
 .wb-gal .wb-up { bottom: 36px; }
 .wb-ring { --p: 0; flex: none; width: 16px; height: 16px; border-radius: 50%; background: conic-gradient(var(--sun-glow) calc(var(--p) * 1%), color-mix(in srgb, var(--stage-ink) 22%, transparent) 0); -webkit-mask: radial-gradient(circle 5px, transparent 98%, var(--ink) 100%); mask: radial-gradient(circle 5px, transparent 98%, var(--ink) 100%); }
 .wb-file .wb-ring { background: conic-gradient(var(--sun) calc(var(--p) * 1%), var(--line) 0); }
@@ -135,18 +145,27 @@
 .wb-hand.l { left: 7px; } .wb-hand.r { right: 7px; }
 .wb:hover .wb-hand { opacity: 1; }
 .wb-drop { flex: 1; display: flex; align-items: center; gap: 10px; height: 96px; padding: 0 18px; border-radius: 12px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: var(--ink-3); font: 500 14px/1.3 var(--font-sans); background: var(--sunk); }
+button.wb-drop { width: 100%; text-align: left; cursor: pointer; transition: color var(--duration-1) var(--ease-out), box-shadow var(--duration-1) var(--ease-out), background-color var(--duration-1) var(--ease-out); }
+button.wb-drop:hover { color: var(--ink-2); box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+.wb-drop.is-over { color: var(--horizon); box-shadow: inset 0 0 0 2px var(--horizon); background: var(--horizon-soft); }
 .wb-vid { position: relative; flex: 1; min-width: 0; border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; background: var(--stage); }
 .wb-vid .wb-img { height: 100%; object-fit: cover; }
+.wb-player { display: block; width: 100%; height: 100%; background: var(--stage); }
+.wb-vctl .wb-here { width: 32px; height: 32px; border-radius: 9px; color: var(--stage-ink); }
+.wb-vctl .wb-here:hover { background: color-mix(in srgb, var(--stage-ink) 14%, transparent); }
 .wb-vctl { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: inline-flex; align-items: center; gap: 10px; padding: 7px 12px 7px 7px; border-radius: 13px; background: color-mix(in srgb, var(--stage) 62%, transparent); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); color: var(--stage-ink); }
 .wb-vt { position: absolute; left: 12px; top: 12px; display: inline-flex; height: 24px; align-items: center; padding: 0 9px; border-radius: 7px; background: color-mix(in srgb, var(--stage) 55%, transparent); color: var(--stage-ink); font: 500 12px/1 var(--font-sans); }
 .wb-vt:empty { display: none; }
 .wb-vbar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: color-mix(in srgb, var(--stage-ink) 25%, transparent); }
 .wb-vfill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--sun-glow); transition: width 1s linear; }
+.wb-vlive { position: absolute; inset: 0; }
+.wb-vlive video { display: block; width: 100%; height: 100%; object-fit: contain; }
 .wb-vtime { position: absolute; right: 10px; bottom: 12px; padding: 4px 7px; border-radius: 7px; background: color-mix(in srgb, var(--stage) 60%, transparent); color: var(--stage-ink); }
 .wb-file { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 52px; margin: 6px 0; padding: 0 12px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
 .wb-file .i { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--sunk); color: var(--ink-2); }
 .wb-file .m { flex: 1; min-width: 0; } .wb-file b { display: block; font: 600 14px/1.25 var(--font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .wb-file small { font-size: 12.5px; color: var(--ink-3); }
 .wb-dl { color: var(--ink-3); }
+.wb-file.is-gone b { color: var(--ink-3); }
 .wb-doc { display: inline-flex; align-items: center; gap: 8px; height: 34px; margin: 4px 0; padding: 0 10px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 500 14px/1 var(--font-sans); }
 .wb-doc:hover { background: var(--sunk); }
 .wb-doc[disabled] { color: var(--ink-3); cursor: default; background: none; }
@@ -198,19 +217,23 @@
 .wv-sel button:hover, .wv-sel button[aria-pressed="true"] { background: color-mix(in srgb, var(--ground) 16%, transparent); }
 .wv-sel .sp { width: 1px; height: 18px; margin: 0 3px; background: color-mix(in srgb, var(--ground) 24%, transparent); }
 
+/* A narrow page has no margin to count in, so a line with comments makes room for it. */
+@container (max-width: 640px) {
+  .wb:has(> .wb-th) { padding-right: 30px; }
+  .wb-th { left: auto; right: -14px; margin-left: 0; }
+}
 /* a phone has no pointer to hover with, and a menu is a sheet */
 @media (hover: none) { .wb-gut { display: none; } }
 @media (max-width: 640px) {
   .wb-gut { display: none; }
-  .ws-float .ws-pop { left: 8px !important; right: 8px; top: auto !important; bottom: 8px; width: auto; border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
-  .wb-gal { grid-template-columns: minmax(0, 1fr); }
-  .wb-th { left: auto; right: -14px; }
+  .ws-float .ws-pop { left: 8px !important; right: 8px; top: auto !important; bottom: calc(8px + var(--kbar, 0px)); width: auto; border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
+  .wb-gal, .wb-gal.n3 { grid-template-columns: minmax(0, 1fr); }
 }
 
 .ws-float .ws-pop { position: fixed; left: 0; top: 0; }
 .ws-float .ws-ghost { pointer-events: none; }
-.wd-title.is-empty { position: relative; }
-.wd-title.is-empty::before { content: attr(data-ph); position: absolute; inset: 0 0 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ink-3); opacity: .7; pointer-events: none; }
+/* The name it'll have, in the title's place: as tall as it is, wrapped, with the caret over its first line. */
+.wd-title.is-empty::before { content: attr(data-ph); display: inline-block; vertical-align: top; width: 100%; margin-right: -100%; color: var(--ink-3); opacity: .7; pointer-events: none; }
 .wd-title { margin: 0; }
 .wd-tail { padding: 0; border: 0; background: none; }
 .ws-pane.is-reading .wb-rc { display: none; }

@@ -21,7 +21,7 @@ import { DEFAULT_PANELS, panelsSound, readBack, reset as resetPanels } from './p
 const vlog = log.child({ component: 'call-view' });
 
 export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', ratio: CALL_SHARE_ROOM.start, self: 'grid', corner: 'bottom-right' };
-export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], split: CALL_SHARE_SPLIT.start };
+export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], workspace: { open: false, document: null }, split: CALL_SHARE_SPLIT.start };
 const clamp = (v: number, r: { min: number; max: number }) => Math.max(r.min, Math.min(r.max, v));
 
 /* Preferences by account (its opaque owner ID); a browser without an account has one set of its own. */
@@ -181,11 +181,13 @@ export function useCallView(callId: string, account: string | null | undefined, 
     /** Shows a share as a tile: the others big now stay big, and nothing takes its place, now or when another share starts. */
     hideShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, picked(l, big).filter((s) => s !== id), id) })),
     setSplit: (split: number) => updateLayout((l) => ({ ...l, split: clamp(split, CALL_SHARE_SPLIT) })),
+    /** Where you are in the workspace, whatever else changes about how you see the call. */
+    keepWorkspace: (workspace: CallLayout['workspace']) => updateLayout((l) => (l.workspace.open === workspace.open && l.workspace.document === workspace.document ? l : { ...l, workspace })),
     /** Back to the call's layout: Auto, nobody pinned, the call's order and sizes, the panels where they start. Where you see yourself stays as it is. */
     reset: (): ViewSnapshot => {
       const was = { prefs, layout, panels };
       updatePrefs((p) => ({ ...p, mode: DEFAULT_PREFS.mode, ratio: DEFAULT_PREFS.ratio }));
-      updateLayout((l) => ({ ...EMPTY_LAYOUT, arrived: l.arrived }));
+      updateLayout((l) => ({ ...EMPTY_LAYOUT, arrived: l.arrived, workspace: l.workspace }));
       arrange(resetPanels);
       return was;
     },
@@ -196,7 +198,7 @@ export function useCallView(callId: string, account: string | null | undefined, 
       updateLayout(() => next.layout);
       return was;
     },
-    restore: (v: ViewSnapshot) => { updatePrefs(() => v.prefs); updateLayout((l) => ({ ...v.layout, arrived: l.arrived })); arrange(() => v.panels); }
+    restore: (v: ViewSnapshot) => { updatePrefs(() => v.prefs); updateLayout((l) => ({ ...v.layout, arrived: l.arrived, workspace: l.workspace })); arrange(() => v.panels); }
   };
 }
 export type CallView = ReturnType<typeof useCallView>;

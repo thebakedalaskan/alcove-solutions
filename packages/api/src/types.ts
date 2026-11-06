@@ -79,7 +79,9 @@ export const NotificationPrefsSchema = z.object({
   notesReady: z.boolean(),
   sharedWithYou: z.boolean(),
   notesRequested: z.boolean(),
-  followUpDue: z.boolean()
+  followUpDue: z.boolean(),
+  /** Someone tagged you in a document. On for anyone who hasn't said. */
+  tagged: z.boolean().default(true)
 });
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
 
@@ -257,7 +259,10 @@ export const MeetingSchema = z.object({
   joinMuted: z.boolean(),
   /** What was brought to the call. */
   documents: z.array(CallDocumentSchema),
-  /** The workspace the call uses, for its organizer: null until there is one, and for everyone else, who find out in the call what they can open. */
+  /**
+   * The call's home, for its organizer: the workspace its notes and transcript go to, in a folder of its own. Null until
+   * there is one, and for everyone else, who find out in the call what they can open.
+   */
   workspaceId: IDSchema.nullable(),
   /** How everyone invited has answered. */
   rsvps: RsvpCountsSchema,
@@ -349,7 +354,10 @@ export const MeetingInputSchema = z.object({
   joinMuted: z.boolean().optional(),
   /** Documents brought to the call, by the IDs the library gives them. */
   documents: z.array(IDSchema).max(MAX_CALL_DOCUMENTS).optional(),
-  /** The workspace the call uses, one the organizer can edit in. Null: the organizer's most recently used, when someone first opens it. */
+  /**
+   * The call's home: one of the organizer's workspaces they can edit in, where its notes and transcript go. Null: a new
+   * workspace made for the call, named after it and its date, when someone first opens it or the call ends with notes.
+   */
   workspaceId: IDSchema.nullable().optional(),
   /** Schedules a call for each occurrence, as one series with one link. */
   repeat: RepeatInputSchema.optional(),
@@ -751,10 +759,11 @@ export type NoteAddition = z.infer<typeof NoteAdditionSchema>;
 
 /**
  * A document or board worked on in the call, for someone who can open it now: anything else isn't listed, so nobody learns
- * from a note what they couldn't open. `by`: who changed it during the call.
+ * from a note what they couldn't open. `by`: who changed it during the call, by the name they were in the call under, and
+ * `isMe` for the one reading the note.
  */
 export const NoteWorkedOnSchema = z.object({
-  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema }))
+  workspaceId: IDSchema, id: IDSchema, kind: z.enum(['document', 'board']), name: z.string(), by: z.array(z.object({ name: z.string(), portrait: PortraitStyleSchema, isMe: z.boolean() }))
 });
 export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 
@@ -1042,6 +1051,8 @@ export const CallLayoutSchema = z.object({
    * big are big (as many as fit) and every other share is a tile; with none, shares follow the layout.
    */
   shares: z.array(z.object({ id: z.string().max(200), show: z.enum(['big', 'tile']) })).max(CALL_LAYOUT_MAX.shares),
+  /** Whether the workspace is open, and the document on it, so a reload finds you where you were. */
+  workspace: z.object({ open: z.boolean(), document: z.string().max(200).nullable() }).default({ open: false, document: null }),
   /** How the space splits between two shares side by side (CALL_SHARE_SPLIT). */
   split: z.number().min(CALL_SHARE_SPLIT.min).max(CALL_SHARE_SPLIT.max)
 });
@@ -1195,7 +1206,9 @@ export const NotificationOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('call'), code: CallCodeSchema }),
   z.object({ to: z.literal('note'), noteId: IDSchema }),
   z.object({ to: z.literal('notes') }),
-  z.object({ to: z.literal('home') })
+  z.object({ to: z.literal('home') }),
+  /** A line in a document, for someone tagged in it. */
+  z.object({ to: z.literal('document'), workspaceId: IDSchema, documentId: IDSchema, block: z.string().nullable() })
 ]);
 export type NotificationOpen = z.infer<typeof NotificationOpenSchema>;
 /**
