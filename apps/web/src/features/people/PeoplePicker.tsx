@@ -1,14 +1,13 @@
 /*
  * Pick people by name or email: colleagues from your company's directory, people you've had calls
- * with, or any address. The same picker invites people to a call, shares notes afterwards (where it offers your
- * groups first), fills a group, and (offering only colleagues who aren't on Alcove) invites people to Alcove.
+ * with, or any address. The same picker shares notes afterwards (where it offers your groups first), and (offering
+ * only people on Alcove) rings someone else in the lobby.
  */
 import type { Group, Person, PersonSuggestion } from '@alcove/api';
 import { Avatar, Button, Chip, GroupChip, Icon, Popover, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { fold, isEmail } from '~/lib/parse';
-import { byEmail, callName, sameEmail } from '~/lib/people';
+import { byEmail, callName, fold, isEmail, sameEmail } from '~/lib/people';
 import { q } from '~/lib/queries';
 
 export interface PickerOptions {
@@ -19,8 +18,6 @@ export interface PickerOptions {
   /** Addresses that are already in, so they aren't offered again. */
   skip: string[];
   preset?: Person[] | undefined;
-  /** Typed in to start with, e.g. a name that still needs an address. */
-  query?: string | undefined;
   /** Offer only these people, matched by name or address as you type, instead of anyone you could reach. */
   from?: PersonSuggestion[] | undefined;
   /** Your groups, offered before people until one is chosen: it reaches all of its people at once, under its name. */
@@ -30,11 +27,13 @@ export interface PickerOptions {
   onDone: (people: Person[], group?: Group | undefined) => void;
 }
 
-export function PeoplePicker({ open, onOpenChange, anchor, align = 'start', side = 'bottom', ...o }: PickerOptions & {
+export function PeoplePicker({ open, onOpenChange, anchor, align = 'start', side = 'bottom', stage = false, className, ...o }: PickerOptions & {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom';
+  /** It opens on the night stage. */
+  stage?: boolean | undefined; className?: string | undefined;
 }) {
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} align={align} side={side} label={o.title} className="pick-pop">
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} align={align} side={side} stage={stage} label={o.title} className={cn('pick-pop', className)}>
       <Picker {...o} onDone={(p, g) => { onOpenChange(false); o.onDone(p, g); }} />
     </Popover>
   );
@@ -47,14 +46,21 @@ const origin = (r: PersonSuggestion) =>
 /** Groups offered before anything is typed; typing finds any of them. */
 const GROUPS_FIRST = 3;
 
-function Picker({ title, cta, note, skip, preset, query: initial, from, groups, after, onDone }: PickerOptions) {
+function Picker({ title, cta, note, skip, preset, from, groups, after, onDone }: PickerOptions) {
   const [sel, setSel] = useState<Person[]>(preset ?? []);
   const [group, setGroup] = useState<Group | undefined>(undefined);
-  const [query, setQuery] = useState(initial ?? '');
+  const [query, setQuery] = useState('');
   const [act, setAct] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const team = useQuery(q.team()).data;
-  const found = useQuery({ ...q.people(query.trim()), enabled: !from }).data ?? [];
+  const search = useQuery({ ...q.people(query.trim()), enabled: !from });
+  const found = search.data ?? [];
+  /*
+   * Only a search for exactly what's in the field now finds anyone. While the next one's on its way, what the last one found
+   * stays in view, for the list not to jump at every key, but nothing takes it: neither Enter nor finishing, and it isn't lit.
+   * The address typed is always what's typed.
+   */
+  const current = from !== undefined || (search.data !== undefined && !search.isPlaceholderData);
 
   const typed = query.trim().toLowerCase();
   const taken = (p: { email: string }) => sel.some((s) => sameEmail(s, p)) || skip.some((e) => e.toLowerCase() === p.email.toLowerCase());
@@ -67,12 +73,13 @@ function Picker({ title, cta, note, skip, preset, query: initial, from, groups, 
   const offered = group ? [] : (groups ?? []).filter((g) => fresh(g) > 0 && (!typed || fold(g.name).includes(fold(typed)))).slice(0, typed ? MAX : GROUPS_FIRST);
   const at = Math.min(act, offered.length + shown.length - 1);
   const activeGroup = offered[at];
-  const active = shown[at - offered.length];
+  const lit = shown[at - offered.length];
+  const active = lit && (current || lit.person.email.toLowerCase() === typed) ? lit : undefined;
 
   useEffect(() => {
-    const t = requestAnimationFrame(() => { input.current?.focus({ preventScroll: true }); if (initial) input.current?.select(); });
+    const t = requestAnimationFrame(() => input.current?.focus({ preventScroll: true }));
     return () => cancelAnimationFrame(t);
-  }, [initial]);
+  }, []);
 
   const add = (p: Person) => {
     if (taken(p)) return;
@@ -133,7 +140,7 @@ function Picker({ title, cta, note, skip, preset, query: initial, from, groups, 
           );
         })}
         {shown.length ? shown.map((r, i) => (
-          <button key={r.person.email} type="button" role="option" aria-selected={r === active} className={cn('pick-row', r === active && 'on')} onMouseMove={() => setAct(offered.length + i)} onClick={() => add(r.person)}>
+          <button key={r.person.email} type="button" role="option" aria-selected={r === active} className={cn('pick-row', r === active && 'on', r.source === 'new' && 'is-new')} onMouseMove={() => setAct(offered.length + i)} onClick={() => add(r.person)}>
             <Avatar person={r.person} size={32} />
             <span className="min-w-0"><b>{r.source === 'new' ? r.person.email : r.person.name}</b><small>{origin(r)}</small></span>
             {r.source === 'team' && company && !from ? <Chip tone="outline">{company}</Chip> : null}

@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { MAX_DOC_ITEMS } from '@alcove/api';
 import { z } from 'zod';
 import { INTEL_SGX_ROOT_CA, NVIDIA_NRAS_ROOT_CA } from './roots';
 import { teeKeys } from './tee';
@@ -80,6 +81,39 @@ const EnvSchema = z.object({
   NVIDIA_ROOT_CA: RootCa('NVIDIA_ROOT_CA', NVIDIA_NRAS_ROOT_CA),
   /** At most this many shared-screen frames in one call's notes: about one a minute for four hours. Then screen notes turn off for everyone, saying why. */
   SCREEN_FRAMES_MAX: z.coerce.number().int().min(1).max(10_000).default(240),
+  /** How long a browser's stream of rings lasts, at most, before it opens a new one: under Cloud Run's 300-second request timeout. */
+  RING_STREAM_SECONDS: z.coerce.number().int().min(1).max(280).default(240),
+  /** How often a live stream says it's still there, and checks who's reading it, in ms. */
+  LIVE_PING_MS: z.coerce.number().int().min(10).default(25_000),
+  /** How long the API keeps a live stream open before letting go, for the browser to open it again: inside Cloud Run's request timeout, so nothing is cut. */
+  LIVE_STREAM_MS: z.coerce.number().int().min(10).default(280_000),
+  /** How long a read of a file lasts, at most, in ms: inside Cloud Run's request timeout, so a read that stopped can't hold its place for good. A player asks on from where it got to. */
+  MEDIA_READ_MS: z.coerce.number().int().min(10).max(290_000).default(280_000),
+  /** How long an instance keeps the service limits it read (limits.ts) before reading them again, in ms: a change made in the database is in force everywhere within this, with no restart. */
+  LIMITS_CACHE_MS: z.coerce.number().int().min(0).max(300_000).default(30_000),
+  /** How often the hub checks its LISTEN connection is alive, in ms, and how long that connection has to answer. */
+  HUB_CHECK_MS: z.coerce.number().int().min(10).default(15_000),
+  HUB_TIMEOUT_MS: z.coerce.number().int().min(10).default(5_000),
+  /** The most workspace and document streams an instance holds, everyone's together: each holds a request, and calls need the rest. */
+  LIVE_STREAMS_MAX: z.coerce.number().int().min(1).default(500),
+  /** The most of them from one address, whoever's signed in, so a handful of accounts can't take them all. */
+  LIVE_STREAMS_PER_ADDRESS: z.coerce.number().int().min(1).default(64),
+  /** How many workers open documents. The first takes big ones. */
+  DOC_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
+  /** How long a worker has for one job on a document, in ms. */
+  DOC_WORK_MS: z.coerce.number().int().min(1).default(20_000),
+  /** How much memory the worker for big documents has, in MiB. A document at its ceilings, of the worst shapes measured, peaks at about 550. */
+  DOC_HEAP_MB: z.coerce.number().int().min(16).default(640),
+  /** The most separate items a document's page can hold, which is what its memory follows: real blocks hold about 650 to 1,000 bytes an item once open, and a document opens and folds at its ceilings inside DOC_HEAP_MB. */
+  DOC_ITEMS_MAX: z.coerce.number().int().min(1).default(MAX_DOC_ITEMS),
+  /** How many jobs one person can have waiting for a worker: past this their browser is told to try again. */
+  DOC_WAITING_PER_PERSON: z.coerce.number().int().min(1).default(32),
+  /** How much of documents can be on its way to browsers at once, in MiB, and a quarter of that for any one person or address: past it, opening a big one waits for the browser to try again, and a stream that can't have its next line is let go of. */
+  DOC_SENDING_MB: z.coerce.number().int().min(1).default(64),
+  /** How many reads of a version an instance serves at once: each holds a request for as long as its reader takes. */
+  DOC_VERSION_READS: z.coerce.number().int().min(1).default(8),
+  /** How long someone stays here in a workspace after their browser last said so, in ms. Browsers say so every 10 seconds. */
+  LIVE_PRESENCE_MS: z.coerce.number().int().min(10).default(30_000),
   /** debug | info | warn | error | silent. */
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   /** json for log collectors (Cloud Run), pretty for a terminal. */

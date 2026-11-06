@@ -1,17 +1,18 @@
 /* Small pieces Home's cards share. */
 import { errorMessage, type CalendarEvent } from '@alcove/api';
 import { Icon, useToast } from '@alcove/ui';
+import { Link } from '@tanstack/react-router';
 import { listNames } from '~/lib/people';
 import { useAdoptEvent } from '~/lib/queries';
+import { position } from '~/lib/time';
 
-/** "Show 4 more" under a list that's longer than its first few, and "Show fewer" once it's open. */
-export function More({ all, more, onToggle }: { all: boolean; more: number; onToggle: () => void }) {
+/** The way back to where something was said: a note, opening at the moment when the notes know it. */
+export function Moment({ noteId, noteTitle, at }: { noteId: string; noteTitle: string; at?: number | undefined }) {
   return (
-    <div className="hm-more">
-      <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
-        {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
-      </button>
-    </div>
+    <Link to="/notes/$noteId" params={{ noteId }} search={{ at }} className="hm-moment" title={`From ${noteTitle}`}
+      aria-label={at === undefined ? `Open ${noteTitle}` : `Open the moment at ${position(at)} in ${noteTitle}`}>
+      <Icon name="moment" size={13} />{at === undefined ? 'Note' : position(at)}
+    </Link>
   );
 }
 
@@ -32,5 +33,5 @@ export function useMoveToAlcove() {
       return false;
     }
   };
-  return { move, busy: adopt.isPending };
+  return { move };
 }

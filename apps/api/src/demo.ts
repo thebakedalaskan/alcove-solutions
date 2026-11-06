@@ -8,11 +8,14 @@
  * vandelay.industries shares Art's company
  * directory. A demo account's calendar is a day of Alcove calls placed around the moment they sign
  * in, so the app opens on a day that looks real. Nothing here leaves the server: the calls are
- * ordinary sealed meetings in the account's vault. Google sign-in is real (../google.ts).
+ * ordinary sealed meetings in the account's vault. Around them it has a made-up week of busy times,
+ * worked out when they're asked for and stored nowhere. Google sign-in is real (../google.ts).
  */
 import type { DemoProvider, MeetingInput, PortraitStyle } from '@alcove/api';
+import { createHash } from 'node:crypto';
 import { ValidationError } from './errors';
 import { nameFrom, type Identity } from './identity';
+import { dayIn, zoned } from './zones';
 
 const ART: Identity = {
   subject: 'demo:art-vandelay',
@@ -50,12 +53,14 @@ const ROOM = {
   sky: ['#D1E0F5', '#A8BFE4', '#EEF4FD'], mist: ['#E0DDEE', '#BEB8D6', '#F2F0F9'], lilac: ['#E2D6F2', '#C3AEE0', '#F4EEFB'], peach: ['#F5DDD2', '#DDB9AD', '#FBEDE6']
 } as const satisfies Record<string, [string, string, string]>;
 
-/** Colleagues, as a company directory would list them. Theo and Kofi already use Alcove. */
+/** Colleagues, as a company directory would list them. Theo, Kofi, Aiko and Maya already use Alcove. */
 export const TEAM: readonly Contact[] = [
   { name: 'Theo Martin', title: 'Engineering', email: 'theo@vandelay.industries', onAlcove: true, portrait: { skin: '#E8C2A0', hair: '#5B3B25', style: 'short', shirt: '#2E3A8C', bg: '#D5DEFF', beard: true, room: [...ROOM.peri] } },
   { name: 'Kofi Asante', title: 'Design lead', email: 'kofi@vandelay.industries', onAlcove: true, portrait: { skin: '#7B4F35', hair: '#141010', style: 'buzz', shirt: '#3D35A8', bg: '#FFE1C4', glasses: true, room: [...ROOM.dusk] } },
   { name: 'Sam Ortiz', title: 'Product design', email: 'sam@vandelay.industries', onAlcove: false, portrait: { skin: '#DDB08B', hair: '#2B2019', style: 'wavy', shirt: '#C2577A', bg: '#FCDCD5', room: [...ROOM.peach] } },
-  { name: 'Lena Fischer', title: 'Research', email: 'lena@vandelay.industries', onAlcove: false, portrait: { skin: '#F0CDB0', hair: '#9A5A2E', style: 'bob', shirt: '#4A5A9C', bg: '#DCE3FB', room: [...ROOM.peri] } }
+  { name: 'Lena Fischer', title: 'Research', email: 'lena@vandelay.industries', onAlcove: false, portrait: { skin: '#F0CDB0', hair: '#9A5A2E', style: 'bob', shirt: '#4A5A9C', bg: '#DCE3FB', room: [...ROOM.peri] } },
+  { name: 'Aiko Tanaka', title: 'Design', email: 'aiko@vandelay.industries', onAlcove: true, portrait: { skin: '#F0D0B4', hair: '#15110F', style: 'bob', shirt: '#D98CB8', bg: '#E8E2FF', room: [...ROOM.lilac] } },
+  { name: 'Maya Chen', title: 'Product', email: 'maya@vandelay.industries', onAlcove: true, portrait: { skin: '#F1CBA8', hair: '#231813', style: 'long', shirt: '#4859D6', bg: '#E2E7FF', room: [...ROOM.sky] } }
 ];
 
 /** People outside the company Art has had calls with, as his calendar would show them. */
@@ -79,4 +84,44 @@ export function demoDay(now: Date): MeetingInput[] {
     { title: 'Interview: Jonas Weber', startsAt: at(first, 390), durationMinutes: 45, guests: ['jonas@weber.design', 'kofi@vandelay.industries'], notes: 'off' },
     { title: 'Studio stand-up', startsAt: at(first, 23 * 60), durationMinutes: 15, guests: ['theo@vandelay.industries', 'kofi@vandelay.industries', 'sam@vandelay.industries'], notes: 'off' }
   ];
+}
+
+/* ---------- a demo account's week ---------- */
+
+/** A stretch of someone's day, in half hours after nine. */
+interface Block { from: number; to: number }
+const HALF_HOUR = 30 * MIN;
+const NINE = 9 * 60;
+/** Nine to five, in half hours. */
+const WORKING_DAY = 16;
+
+/**
+ * One person's working day, the same every time for the same address and day: lunch some time from noon to two, and two
+ * to four calls of half an hour to an hour and a half, none on top of another. Nobody else's day looks like it.
+ */
+function workday(email: string, day: string): Block[] {
+  const seed = createHash('sha256').update(`alcove/demo-busy/v1\n${email}\n${day}`).digest();
+  const roll = (i: number, sides: number) => (seed[i] ?? 0) % sides;
+  const lunch = 6 + roll(0, 3);
+  const taken: Block[] = [{ from: lunch, to: lunch + 1 + roll(1, 2) }];
+  for (let i = 0, calls = 2 + roll(2, 3); i < calls; i++) {
+    const length = 1 + roll(3 + 2 * i, 3);
+    const from = roll(4 + 2 * i, WORKING_DAY - length + 1);
+    if (!taken.some((b) => from < b.to && b.from < from + length)) taken.push({ from, to: from + length });
+  }
+  return taken.sort((a, b) => a.from - b.from);
+}
+
+/**
+ * Reads sample people's busy times between two moments, in ms, each working day where the person asking is: Monday to
+ * Friday, nine to five. Each person's week comes from their address alone, so it's the same on every read, whoever asks.
+ */
+export function sampleWeek(range: { from: Date; to: Date }, timeZone: string): (email: string) => { from: number; to: number }[] {
+  const days: { day: string; nine: number }[] = [];
+  const last = dayIn(range.to, timeZone);
+  for (let day = dayIn(range.from, timeZone); day <= last; day = new Date(Date.parse(day) + 24 * 60 * MIN).toISOString().slice(0, 10)) {
+    const weekday = new Date(day).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) days.push({ day, nine: zoned(day, NINE, timeZone).getTime() });
+  }
+  return (email) => days.flatMap(({ day, nine }) => workday(email.trim().toLowerCase(), day).map((b) => ({ from: nine + b.from * HALF_HOUR, to: nine + b.to * HALF_HOUR })));
 }

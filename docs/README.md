@@ -11,6 +11,7 @@ behind people's backs, and notes only the people in the call can read.
 3. **How it works.** [Data and storage](engineering/data-and-storage.md),
    [Calls and recordings](engineering/calls-and-recordings.md), [Notes and inference](engineering/notes-and-inference.md),
    [Payments and usage](engineering/payments-and-usage.md), [Logging and errors](engineering/logging-and-errors.md).
+   [Agents and MCP](engineering/agents-and-mcp.md) covers connecting clients, permissions and safe retries.
 4. **Shipping.** [Deployment and acceptance](engineering/deployment-and-acceptance.md) and [infra/README.md](../infra/README.md).
 5. **Planning.** [Roadmap](delivery/roadmap.md) and [Decisions and provider assumptions](delivery/decisions-and-provider-assumptions.md).
 6. **Background.** [Stack and provider setup](references/stack-and-provider-setup.md) and [Source evidence](references/source-evidence.md),
@@ -19,8 +20,11 @@ behind people's backs, and notes only the people in the call can read.
 
 The design system the app uses is [`packages/ui`](../packages/ui): tokens in `src/styles.css`, `ac-`
 components in `src/styles/kit.css` and `src/components/`, rules in [`AGENTS.md`](../AGENTS.md#design-system).
-[`design/`](design/) and [`brand/`](brand/) are earlier interactive prototypes, on the previous palette and type.
+How the app is designed, page by page, and the design canvas every new design starts from are in [`design/`](design/README.md).
+What's built, every component, page and journey in each of its states, is in Storybook ([`apps/storybook`](../apps/storybook/README.md)).
 Rules for anyone changing the code, people or agents, are in [`AGENTS.md`](../AGENTS.md).
+Source placement, composition entry points and the enforced rules for new files are in
+[Folder ownership](engineering/folder-ownership.md); [the move map](engineering/folder-move-map.md) records the refactor.
 
 ## Provider boundaries
 

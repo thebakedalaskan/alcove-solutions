@@ -7,31 +7,37 @@
     "dev": "tsx watch --env-file=../../.env src/server.ts",
     "start": "tsx --env-file=../../.env src/server.ts",
     "migrate": "tsx --env-file=../../.env src/migrate-cli.ts",
+    "limits": "tsx --env-file=../../.env src/limits-cli.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "build": "esbuild src/server.ts src/migrate-cli.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
+    "build": "esbuild src/server.ts src/migrate-cli.ts src/limits-cli.ts src/live/docWorker.ts --bundle --platform=node --target=node24 --format=esm --outdir=dist --outbase=src --sourcemap --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\"",
     "start:prod": "node --enable-source-maps dist/server.js"
   },
   "dependencies": {
     "@alcove/api": "workspace:*",
+    "@alcove/board": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",
     "@hono/node-server": "^2.1.6",
+    "@modelcontextprotocol/server": "2.4.0",
     "@noble/ciphers": "^2.4.0",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@phala/dcap-qvl": "0.7.0",
     "hono": "^4.13.16",
     "jose": "^6.2.15",
+    "lib0": "^0.2.119",
     "livekit-server-sdk": "^2.19.2",
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-pretty": "^13.2.0",
+    "yjs": "^13.6.33",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@alcove/api-http": "workspace:*",
     "@livekit/rtc-ffi-bindings": "0.13.1",
     "@livekit/rtc-node": "^1.2.1",
+    "@modelcontextprotocol/client": "2.4.0",
     "@peculiar/asn1-schema": "2.11.1",
     "@peculiar/asn1-x509": "2.11.1",
     "@types/node": "^26.6.6",
@@ -40,6 +46,7 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
-    "vitest": "^5.1.0"
+    "vitest": "^5.1.0",
+    "y-protocols": "^1.0.7"
   }
 }

@@ -12,6 +12,8 @@
  *   ├─ IntegrityError       key-unavailable  403    error  stored data failed verification
  *   ├─ NotFoundError        not-found        404    info
  *   ├─ ConflictError        conflict         409    info   state changed / wrong state
+ *   │   └─ ClientTakenError                                a change from the server was worked out as a Yjs client someone wrote as first
+ *   ├─ TooLargeError        too-large        413    info   more than something can hold
  *   ├─ UnavailableError     unavailable      503    warn   not connected yet / rate limited
  *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
  *   └─ InternalError        unknown          500    error  our bug or a dependency failure
@@ -23,11 +25,11 @@
 import type { AlcoveErrorCode } from '@alcove/api';
 import type { Level, LogContext } from './log';
 
-type Status = 400 | 401 | 402 | 403 | 404 | 409 | 500 | 502 | 503;
+type Status = 400 | 401 | 402 | 403 | 404 | 409 | 413 | 500 | 502 | 503;
 const DEFAULTS: Record<AlcoveErrorCode, { status: Status; level: Level }> = {
   invalid: { status: 400, level: 'info' }, unauthenticated: { status: 401, level: 'info' },
   forbidden: { status: 403, level: 'warn' }, 'key-unavailable': { status: 403, level: 'warn' }, 'not-found': { status: 404, level: 'info' },
-  conflict: { status: 409, level: 'info' }, 'insufficient-credits': { status: 402, level: 'info' }, unavailable: { status: 503, level: 'warn' },
+  conflict: { status: 409, level: 'info' }, 'too-large': { status: 413, level: 'info' }, 'insufficient-credits': { status: 402, level: 'info' }, unavailable: { status: 503, level: 'warn' },
   network: { status: 502, level: 'error' }, unknown: { status: 500, level: 'error' }
 };
 export interface ErrorOptions { cause?: unknown; context?: LogContext; level?: Level }
@@ -53,6 +55,13 @@ export class ForbiddenError extends AppError { constructor(m: string, o?: ErrorO
 export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, o); } }
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
 export class ConflictError extends AppError { constructor(m: string, o?: ErrorOptions) { super('conflict', m, o); } }
+/**
+ * A change the server made to a document was worked out as a Yjs client the log has had by the time it was written, so it's
+ * taken back with the transaction writing it, and worked out again on the document as it now stands. It reaches whoever
+ * asked only when that keeps happening, as the document's changing that fast.
+ */
+export class ClientTakenError extends ConflictError { constructor(m = 'This document is changing too fast to change from here. Try again.', o?: ErrorOptions) { super(m, o); } }
+export class TooLargeError extends AppError { constructor(m: string, o?: ErrorOptions) { super('too-large', m, o); } }
 export class UnavailableError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unavailable', m, o); } }
 /**
  * NEAR AI's evidence for a model didn't check out, or couldn't be checked, so nothing with content was sent
@@ -64,6 +73,16 @@ export class UnverifiedError extends UnavailableError {}
  * so the notes worker waits and tries again instead of counting this as a failed attempt.
  */
 export class UnansweredError extends UnavailableError {}
+/**
+ * The database connection a request was using went before it answered: Postgres ended it, or it dropped on the way. A
+ * transaction on it goes with it, so the request can be tried again.
+ */
+export class LostConnectionError extends UnavailableError { constructor(m = 'Alcove lost its connection to the database. Try again.', o?: ErrorOptions) { super(m, o); } }
+/**
+ * Every database connection was in use for as long as a request may wait for one. Nothing about the request was wrong
+ * and nothing of it was done, so it can be tried again.
+ */
+export class DatabaseBusyError extends UnavailableError { constructor(m = 'Alcove is busy right now. Try again in a moment.', o?: ErrorOptions) { super(m, o); } }
 export class InternalError extends AppError { constructor(m = 'Something went wrong on our side.', o?: ErrorOptions) { super('unknown', m, o); } }
 export class DatabaseError extends InternalError {}
 export class ObjectStoreError extends InternalError {}

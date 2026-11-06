@@ -3,10 +3,11 @@ import { createApp } from './app';
 import { loadConfig } from './config';
 import { createPool } from './db';
 import { inference } from './inference';
+import { startWatching } from './features/billing/deposits';
+import { createDocPool } from './live/docPool';
+import { createHub } from './live/hub';
 import { configureLogging, flushLogs, log } from './log';
 import { maintain } from './maintenance';
-import { watch } from './modules/deposits';
-import { depositProviders } from './payments/provider';
 import { createLiveKit } from './livekit';
 import { migrate } from './migrate';
 import { createObjectStore } from './objects';
@@ -23,8 +24,9 @@ const pool = createPool(cfg.DATABASE_URL);
 const applied = await migrate(pool);
 slog.info(applied.length ? 'migrations applied' : 'database up to date', { applied });
 const objects = await createObjectStore(cfg);
-const deps = { cfg, pool, objects, livekit: createLiveKit(cfg) };
-const app = createApp(deps);
+const deps = { cfg, pool, objects, livekit: createLiveKit(cfg), hub: createHub(cfg.DATABASE_URL, { checkMs: cfg.HUB_CHECK_MS, timeoutMs: cfg.HUB_TIMEOUT_MS, maxStreams: cfg.LIVE_STREAMS_MAX, maxPerAddress: cfg.LIVE_STREAMS_PER_ADDRESS }), docs: createDocPool({ workers: cfg.DOC_WORKERS, timeoutMs: cfg.DOC_WORK_MS, heapMb: cfg.DOC_HEAP_MB, waitingPerPerson: cfg.DOC_WAITING_PER_PERSON }) };
+const stopping = new AbortController();
+const app = createApp(deps, stopping.signal);
 
 const mlog = log.child({ component: 'maintenance' });
 const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
@@ -33,26 +35,7 @@ const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_
 void upkeep();
 const timer = setInterval(() => void upkeep(), 5 * 60_000);
 timer.unref();
-
-// Open credit top-ups, checked with their provider every 5 seconds while top-ups are on. One pass at a time here;
-// other instances' passes skip the deposits this one has claimed.
-const dlog = log.child({ component: 'deposits' });
-let watching = false;
-const watchDeposits = async () => {
-  if (watching) return;
-  watching = true;
-  const t0 = performance.now();
-  try {
-    const r = await watch(deps);
-    if (r.checked) dlog.info('deposits watched', { ...r, ms: Math.round(performance.now() - t0) });
-  } catch (e) {
-    dlog.error('watching deposits failed', { err: e });
-  } finally {
-    watching = false;
-  }
-};
-const depositTimer = depositProviders(cfg) ? setInterval(() => void watchDeposits(), 5_000) : undefined;
-depositTimer?.unref();
+const stopWatchingDeposits = startWatching(deps);
 
 const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_HOST }, (info) => {
   slog.info('listening', { url: `http://${cfg.API_HOST}:${info.port}`, inference: inference(cfg).configured ? 'configured' : 'not configured' });
@@ -61,8 +44,10 @@ const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_H
 function shutdown(signal: string) {
   slog.info('shutting down', { signal });
   clearInterval(timer);
-  clearInterval(depositTimer);
-  server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); });
+  stopWatchingDeposits();
+  stopping.abort();
+  // Live streams go first: they'd hold the server open, and their browsers open them again on another instance.
+  void Promise.all([deps.hub.close(), deps.docs.close()]).finally(() => server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); }));
   setTimeout(() => { slog.warn('forced exit after 10s'); flushLogs(); process.exit(1); }, 10_000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));

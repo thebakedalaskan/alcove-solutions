@@ -32,7 +32,13 @@ Application Load Balancer for production custom domains. See
    - **Build:** web, API bundle and API container.
    - **Integration tests:** the real API against Postgres and an S3-compatible store, signing in the way
      the web app does, with local stand-ins for Google (an OpenID provider and the Calendar API) and for
-     NEAR AI Cloud.
+     NEAR AI Cloud. They're split across ten runners, each with its own Postgres, object store and LiveKit,
+     by how long each file took (`scripts/ci-tests.mjs`, timings in `scripts/ci-test-times.json`); a file
+     longer than a runner's share is split at its top-level `describe` blocks. The check fails unless every
+     test vitest lists ran once and passed. A pull request that only changes `apps/web`, `apps/storybook`,
+     `packages/ui`, `docs` or top-level Markdown skips them, since they test the API; pushes to `main`
+     always run them. When the runners drift apart, refresh the timings from a run's artifacts with
+     `node scripts/ci-tests.mjs times <dir>`.
 2. **Merge gate.** Import `.github/rulesets/main.json` to require pull requests and all four checks
    on an up-to-date branch. The checked-in ruleset is a configuration artifact; verify its live status.
 3. **Deploy** (`.github/workflows/deploy.yml`) requires repository variable `DEPLOY_ENABLED=true`.
@@ -54,8 +60,11 @@ Application Load Balancer for production custom domains. See
 
 The static build emits `dist/client/index.html` through TanStack's SPA prerender output path `/index`.
 Pages' native SPA fallback serves the shell for client routes while matching existing assets directly;
-the deployment includes no catch-all `_redirects` or top-level `404.html`. Manage the www-to-apex
-redirect as a Cloudflare zone Single Redirect. See
+the deployment includes no catch-all `_redirects` or top-level `404.html`. The shell is the root route
+alone, so every address hydrates it and then renders its own route. An address no other route takes
+matches the catch-all `routes/$.tsx` (Nothing here, with the Drive offered), not a not-found component on
+the root route, which would render where the shell has none and fail hydration (React error #418).
+Manage the www-to-apex redirect as a Cloudflare zone Single Redirect. See
 [Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 **Opening offline.** A service worker, `apps/web/public/sw.js`, keeps the build in the browser, so the app's
@@ -102,10 +111,42 @@ immutable repository and owner IDs, main ref, deploy workflow and permitted even
 Cloudflare account identifiers are repository variables; `CLOUDFLARE_API_TOKEN` is a secret in the
 `production` environment. Automatic deployment requires no environment reviewer gate.
 
-Cloud Run uses one instance, session affinity, gen2, one CPU, 512 MiB, port 8080 and a 300-second timeout.
+Cloud Run uses one instance, session affinity, gen2, one CPU, 2 GiB, port 8080, a 300-second timeout and 1,000
+requests at once: an open tab holds one for its stream of rings, so at the default of 80 they'd starve live calls.
+The API holds at most 300 of those streams, and 8 for any one account.
+A live stream of a workspace or a document holds a request too, for as long as it's open: at most 8 of a workspace and 16 of
+documents for any one person on an instance, 64 of both from one client address (`LIVE_STREAMS_PER_ADDRESS`), and 500 of both
+together for everyone (`LIVE_STREAMS_MAX`), past which they're refused with `503` and browsers try again, and the API lets go of
+each one after 280 seconds for the browser to open it again (`LIVE_STREAM_MS`; keep it under the timeout). Rings and these are
+counted apart and come to 800 together, which leaves 200 requests for calls and everything else with both full. Raise one of
+them only with that in mind. Node gives its heap about half of the container's memory, so 2 GiB is a
+heap of about 1,120 MiB. Documents are opened in worker threads with memory of their own, 640 MiB for the one that takes big
+documents and 96 MiB for the rest (`DOC_HEAP_MB`, `DOC_WORKERS`), outside that heap, so keep the two inside the container
+together: a document at its ceilings peaks at about 550 MiB in the big worker. What's on its way in and out is outside the heap
+too, at most 128 MiB of updates and 64 MiB of documents (`DOC_SENDING_MB`), plus what's waiting for a worker, at most 128 MiB.
+Before the limits were set from real blocks, a document at its item limit and an 8 MB one, in a 1 GiB container, peaked at
+884 MiB, which is why it's 2 GiB. Set a process-wide `--max-old-space-size` on no instance: it overrides what a worker is
+limited to. The bundle has a third file, `dist/live/docWorker.js`, which the image's `dist` already carries. Each instance holds one more Postgres connection, for `LISTEN`, once anyone streams from it, and
+checks it every 15 seconds (`HUB_CHECK_MS`, `HUB_TIMEOUT_MS`); it needs to reach Postgres directly, as Cloud SQL's
+connector does, because `LISTEN` doesn't work through a transaction-mode pooler.
+Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 request or a response that says its length
+over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
+streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
+(`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and a download starts again. Files pass through
+this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
+and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
+for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
+server with a 1,120 MiB heap and nothing else running, 920 pieces sent at once and 80 readers who stopped took it from 150 MiB
+to at most 840 MiB. With 20 people reading all their limits allow, a call's poll took 25 ms at the median, against 8 ms with
+nobody reading. Change the limits with the instance's memory, and measure again.
 CPU remains allocated between requests for background work: sweeping ended sessions, physical-deletion
 cleanup, and writing notes after a call or room recording stops. Sessions live in Postgres, so a restart
 signs nobody out, and notes jobs left behind by a restart are picked up by the next maintenance run.
+
+**Rolling back past the release that added files deletes them.** The release before it doesn't know
+`workspace_media_pieces`, so its maintenance takes every object of a file older than 24 hours for an orphan, and deletes it at its
+next run, within 5 minutes of starting. Nothing brings an object back. Fix forward instead. If a rollback can't be avoided, copy the
+object store first, and restore it once a release that knows files is back: the rows stay, so they'd find their objects again.
 
 NEAR AI has its own deployment switch. `NEAR_AI_ENABLED=true` binds `NEAR_AI_API_KEY` from
 `alcove-near-ai-api-key` into the API service (the migration job doesn't need it); the service is deployed
@@ -135,6 +176,47 @@ call codes or OAuth callback queries. Application structured logs remain. The ex
 outside bootstrap and needs separate verification; additional log sinks must also avoid retaining
 those raw entries.
 
+## Changing a limit
+
+Some limits can change while the service runs, with no release and no restart: so far, what files can take up. Each has a
+name, a default that holds while nothing's set, and a floor and a ceiling in code (`apps/api/src/limits.ts`) that hold
+whatever's set, so a typo can't make anything unsafe. A value is a row in `service_limits`, and each instance reads them
+again every 30 seconds (`LIMITS_CACHE_MS`), so a change is in force everywhere within a minute.
+
+| Limit | Default | Ceiling | Measures |
+| --- | --- | --- | --- |
+| `media.file_bytes` | 512 MiB | 4 GiB | One file. |
+| `media.workspace_bytes` | 100 GiB | 1 TiB | What a workspace stores, sealed: its `stored_bytes`. |
+| `media.account_day_bytes` | 20 GiB | 200 GiB | What one person uploads in a day (UTC), in every workspace. |
+
+Every floor is 0, and 0 means none: any of them at 0 stops every upload, with "Files can’t be uploaded right now." A ceiling is
+ten times the default, except a file's. A whole file is read in one response, which is cut at 280 seconds and, past 16 MiB,
+can't pick up where it stopped, so a file needs about 15 Mbit/s to download whole at 512 MiB, and about 120 Mbit/s at 4 GiB.
+The limits are the same for everyone, guests in a call included. Lowering one deletes nothing: it refuses the next upload, and
+the next piece of one already going ([Data and storage › Media](data-and-storage.md#media)).
+
+From a checkout, against whichever database `DATABASE_URL` names, `.env` locally or Cloud SQL through its proxy, as `migrate` is:
+
+```
+pnpm --filter @alcove/server limits list
+pnpm --filter @alcove/server limits set media.workspace_bytes 200GiB
+```
+
+`set` takes a whole number of bytes, or one with a unit (`KiB`, `MiB`, `GiB`, `TiB`), as `512MiB` or as `list` writes it,
+`512 MiB`. It refuses a name that isn't a limit and a value outside its bounds, at warn, and logs `service limit set` with the
+old value and the new. The image has it as `dist/limits-cli.js`,
+beside `dist/migrate-cli.js`. Or from Cloud SQL's console, in bytes:
+
+```sql
+INSERT INTO service_limits (name, value) VALUES ('media.workspace_bytes', 214748364800) ON CONFLICT (name) DO UPDATE SET value = excluded.value, updated_at = now();
+```
+
+`DELETE FROM service_limits WHERE name = 'media.workspace_bytes';` puts a limit back to its default. Each instance logs `service
+limit changed`, with the old value and the new, when it sees a change, however it was made, and the first time it reads the
+limits, for every one that isn't its default. If it can't read them, it keeps what was in force, says so at warn, and tries
+again next time. A row it can't use, a name that isn't a limit or a value below zero, is ignored with `service limit
+ignored` at warn, and its limit keeps its default. A value past its bounds is held to them, with `service limit clamped`.
+
 ## Acceptance
 
 These journeys describe existing coverage and release checks still required. Passing local integration
@@ -158,10 +240,13 @@ live transcript and written notes.
 | Verified private inference: each model's TDX quote (Intel collateral, TCB status, debug), OS image (MRTD and RTMR0–2 of a published dstack image), report data with a fresh nonce, RTMR3, measured compose, NVIDIA GPU verdict and OHTTP key checked before anything is sent; every request sealed by Oblivious HTTP to the model's attested key at its own endpoint, its reply sealed the same way; nothing sent when any check fails, each refusal logged with its code; notes waiting through a verification outage; a changed key verified again; a verification that runs out made again; the evidence kept with the note and shown on its page | API integration tests against stand-ins for NEAR AI, Intel's certification service and NVIDIA's attestation service under test roots, with the same verification code and the same measured images; the canary test shows nothing crosses the wire readable. Checked against NEAR AI Cloud, Intel and NVIDIA on 3 November 2026 (both models' evidence, the images reproduced with dstack-mr, a real transcription and notes); repeat on each release, and measure new images when NEAR AI moves |
 | Cross-owner isolation (calls, notes, audio, transcripts, recordings, asking) and origin checks | API integration tests |
 | At-rest leakage: canaries (including speech and a Google account's details) and refresh tokens absent from every table, object and log line, in plain, hex, base64 and base64url | API integration tests |
-| Deletion of a note, a meeting or a whole account removes rows, receipts and objects; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
+| Deletion of a note, a meeting or a whole account removes rows, receipts and objects; a call set not to keep its transcript or recording leaves no revision, row, receipt or object of it; maintenance removes ended sessions and orphaned objects and retries refused deletes | API integration tests |
+| Files in a workspace: uploaded in pieces and read back whole and by range, a failed piece tried again, an upload carrying on through a lost connection, a dropped upload swept, a reader who loses the document or a guest whose seat ends refused on their next range, a seat reaching only its document's files, the bytes and name absent from every table, object and log line, deleted physically by an editor or when their last document goes, what a process takes on limited, however many ask at once, a read that stopped giving way to someone waiting, a piece that stopped arriving cut, a room opening one board all seeing it, and storage limits, the same for guests as for anyone, changed in the database and in force within the cache window, and refusing without deleting | API integration tests. Play a video over 32 MiB against the deployed API on each release, in Chrome and Safari, pausing it for over 5 seconds while someone waits for a read and playing on: local servers have no response limit, and tests have no player |
 | A failed request's ID leads to its log lines; browser reports reach the server log | API integration tests |
+| More calls ending at once than there are database connections; a call from start to end, a hand-off and the notes on one connection; a request with no connection to be had fails in 10 seconds | API integration tests |
 | Sign in with Google: PKCE, state, nonce, signature, audience, expiry, verified email; refusals | API integration tests against a local OpenID provider; verify the real Google round trip on each release |
-| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release |
+| Google Calendar: the coming week's meetings, scheduled calls placed, changed and cancelled with Google's invitations, an organizer's own event made an Alcove call, when people are busy (a private calendar and a missing scope reading as unknown), expired and withdrawn access | API integration tests against a local Calendar stand-in; verify with a real calendar on each release, a Gmail guest's private calendar included |
+| Calls that repeat on Google Calendar: one recurring event and one invitation, a series across a change of the clocks, one call changed or cancelled, this and later calls from the first call and from a later one, a call made to repeat, and cancelling the whole series | API integration tests against a local Calendar stand-in, which expands rules as its authors understand Google to. Verify with a real calendar on each release that touches them: the stand-in can't show that Google accepts a single event turned recurring by `PATCH`, or a recurring event ended early with `recurrence` alone |
 | Real Microsoft and SSO sign-in | **Not implemented** (demo stand-ins in `apps/api/src/demo.ts`) |
 | Public DNS, certificates, CORS, CSP, deep links, JavaScript/CSS asset responses and deployed commit; a signed-in session contacts only Alcove's two origins, and pages carry no inserted beacon | Verify for each public release; assets must not redirect to the SPA shell |
 | The app opens offline: after one visit online, a reload without a connection gets the shell and its assets from the service worker, and a new release's worker replaces the previous cache | Verified by hand with headless Chrome against `wrangler pages dev` of a production build (offline through the DevTools protocol, then with the server stopped); verify for each public release |
@@ -174,7 +259,10 @@ live transcript and written notes.
 
 The Google provider is the external Testing app `Alcove` with its test users and the web client
 `AlcoveWeb`, whose redirect URIs are `$API_URL/v1/auth/google/callback` locally and in production.
-Sign-in asks for `openid email profile` and the Calendar events scope
-(`https://www.googleapis.com/auth/calendar.events`), with offline access for a refresh token. Keep
+Sign-in asks for `openid email profile`, the Calendar events scope
+(`https://www.googleapis.com/auth/calendar.events`) and free/busy on the calendars the account can see
+(`https://www.googleapis.com/auth/calendar.events.freebusy`), with offline access for a refresh token. Both
+scopes have to be on the consent screen, which is an operator step. Connections made before free/busy was added
+read their own calendar and nobody else's until the person agrees again. Keep
 credential values and test-user addresses out of documentation. Automated tests must remain API
 integration tests; the repository forbids a browser test suite.

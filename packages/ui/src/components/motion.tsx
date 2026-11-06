@@ -63,11 +63,11 @@ export function Words({ text, from = 0, className }: { text: string; from?: numb
   );
 }
 
-/** A check mark that draws itself when `done` flips on. */
-export function CheckDraw({ done, size = 12, className }: { done: boolean; size?: number; className?: string }) {
+/** A check mark that draws itself when `done` flips on, over `duration` seconds. */
+export function CheckDraw({ done, size = 12, duration = 0.36, className }: { done: boolean; size?: number; duration?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
-      <motion.path d="m5 12.6 4.4 4.4L19 7.6" initial={false} animate={{ pathLength: done ? 1 : 0, opacity: done ? 1 : 0 }} transition={{ duration: 0.36, ease: [0.22, 0.8, 0.24, 1] }} />
+      <motion.path d="m5 12.6 4.4 4.4L19 7.6" initial={false} animate={{ pathLength: done ? 1 : 0, opacity: done ? 1 : 0 }} transition={{ duration, ease: [0.22, 0.8, 0.24, 1] }} />
     </svg>
   );
 }

@@ -1,56 +1,87 @@
 /*
- * Alcove's look: an arched window at sunrise. Pages sit on `ground`, cards on `surface`; `sun` is the
- * only colour you can press, and `rec` only ever means notes or recording. The call is always night
- * (`stage`). Every colour, shadow, font, radius and easing comes from here. Light values live on
- * :root, dark values on .dark (set on <html> by ThemeProvider); .light and .dark on any element
- * scope one theme to that part of the page. Components are styled in
+ * Alcove's look: blue hour, an arched window as the sun goes down. Pages sit on `ground`, cards on `surface`,
+ * and the frame around every screen is dusk in both themes. `sun` is the only colour you can press: the pale
+ * of the sun itself by night, deep blue by day. `rec` only ever means notes or recording. The call is always
+ * night (`stage`), and `.stage` takes the dark values whatever the page's theme. Every colour, shadow, font,
+ * radius and easing comes from here. Light values live on :root, dark values on .dark (set on <html> by
+ * ThemeProvider); .light and .dark on any element scope one theme to that part of the page. A call is always
+ * night: .stage and .ac-stage take the dark values, and while a .stage is on screen so does the whole document,
+ * because its menus, sheets and tooltips are portalled out of it. Record is night too (.rec), and takes the document
+ * with it the same way, with search and the phone's bars, which sit outside the page. Components are styled in
  * styles/kit.css with the `ac-` prefix; the frame around every screen (side panel, phone bars, palette) in
- * styles/shell.css; Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes and a note in
- * styles/library.css (`lib-`, `pv-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
- * (`rec-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`, `wd-`, `wm-`, `wv-`, `wp-`, `wh-`,
- * `wl-`); the other screens in styles/{app,call,welcome}.css.
+ * styles/shell.css; the evening behind each page in styles/horizon.css; the cove the welcome page looks out of, and signing in
+ * sailing out of it, in styles/cove.css (`cv-`); Home in styles/home.css; the Team page in styles/team.css (`tp-`); Notes in
+ * styles/notes.css (`nt-`); a note and a series in styles/note.css (`nd-`); Settings in styles/settings.css (`set-`); Record in styles/record.css
+ * (`rec-`); starting and scheduling a call in styles/flow.css (`cf-`); the organizer's lobby, ringing and the page for
+ * picking a time in styles/ringing.css (`rg-`); the workspace, in a call and in the app, in styles/workspace.css (`wt-`,
+ * `wd-`, `wm-`, `wv-`, `wp-`, `wh-`, `wl-`); the board in styles/board.css; the welcome page in styles/welcome.css and its scenes'
+ * welcome-*.css (`lp-`); the other screens in styles/{app,call}.css.
  */
 @import "./fonts.css";
 @import "./styles/kit.css";
 @import "./styles/welcome.css";
+@import "./styles/welcome-note.css";
+@import "./styles/welcome-call.css";
+@import "./styles/welcome-team.css";
+@import "./styles/welcome-night.css";
 @import "./styles/shell.css";
 @import "./styles/app.css";
+@import "./styles/horizon.css";
+@import "./styles/cove.css";
 @import "./styles/home.css";
 @import "./styles/team.css";
 @import "./styles/record.css";
 @import "./styles/call.css";
+@import "./styles/notes.css";
+@import "./styles/drive.css";
 @import "./styles/library.css";
 @import "./styles/capture.css";
+@import "./styles/ringing.css";
 @import "./styles/screens.css";
 @import "./styles/catchup.css";
+@import "./styles/personal.css";
+@import "./styles/note.css";
 @import "./styles/onboarding.css";
 @import "./styles/settings.css";
+@import "./styles/agents.css";
+@import "./styles/flow.css";
 @import "./styles/workspace.css";
+@import "./styles/workspace-editor.css";
+@import "./styles/board.css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* `.light` and `.dark` also scope a theme to part of a page, whatever the page's own theme is. */
 :root, .light {
   /* Grounds */
-  --ground: #F6F5FA;
-  --surface: #FFFFFF;
+  --ground: #F3F7FC;
+  --surface: #FCFDFE;
   --surface-raised: #FFFFFF;
-  --sunk: #ECEAF3;
+  --sunk: #E7EEF5;
+  /* The frame around every screen: dusk, in both themes. */
+  --frame: #09172C;
   /* Edges */
-  --line: #E1DEEA;
-  --line-control: #8C86A3;
+  --line: #D9E1E9;
+  --line-control: #78889B;
   /* Text */
-  --ink: #1A1633;
-  --ink-2: #4D4868;
-  --ink-3: #686282;
+  --ink: #12223F;
+  --ink-2: #394967;
+  --ink-3: #55667F;
   /* Action: the sun is the only colour you can press. */
-  --sun: #C4461B;
-  --on-sun: #FFFFFF;
-  --sun-soft: #FDEBE3;
-  --sun-text: #A83A12;
-  --sun-glow: #FF7A45;
+  --sun: #153166;
+  --on-sun: #FEFAF1;
+  /* The sun's warmth, for small things that are chosen or happening now. Never a fill you press. */
+  --sun-soft: #FDEBDA;
+  --sun-text: #A63D02;
+  --sun-glow: #EB7C33;
+  /* The low sun and the haze along the horizon, for what stands in the scene. */
+  --dusk-sun: #FFDD97;
+  --dusk-haze: #FBCFD5;
   /* Information and focus */
-  --horizon: #5B4BE0;
-  --horizon-soft: #ECE9FF;
+  --horizon: #215DB3;
+  --horizon-soft: #DBE9FC;
+  /* What the notes wrote and want an answer to */
+  --rose: #B1366B;
+  --rose-soft: #FEE5EE;
   /* Notes and recording, nothing else */
   --rec: #C8213F;
   --rec-soft: #FCE4E9;
@@ -61,25 +92,36 @@
   /* What's highlighted or commented on in a document */
   --hl: rgb(255 181 71 / .28);
   /* The call stage: night in both themes */
-  --stage: #0B0A18;
-  --stage-tile: #1A1732;
-  --stage-raised: #25213F;
-  --stage-ink: #EEEDF8;
-  --stage-ink-2: #A7A2C0;
-  --speak: #A9B2FF;
+  --stage: #060D1A;
+  --stage-tile: #141E31;
+  --stage-raised: #1F2B42;
+  --stage-ink: #F2EEE6;
+  --stage-ink-2: #A9B9CA;
+  --speak: #9FC7FB;
+  /* What's chosen on the stage and on night controls, whatever theme is round them: the dark theme's sun. */
+  --stage-sun: #F6E8CC;
   /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
-  --stage-point: #5B4BE0;
+  --stage-point: #215DB3;
+  /* Each person's colour on a board, the same in both themes: their pointer, the ring on what they're writing in, and the ring
+     round a view that's theirs. Deep enough for white words, outlined in white on any sheet, and never the only way to tell
+     who: a pointer carries a face and a name. No green. */
+  --who-1: #5B4BE0;
+  --who-2: #C2406E;
+  --who-3: #2F6FD6;
+  --who-4: #96600F;
+  --who-5: #8A4FD0;
+  --who-6: #9C4A86;
   /* The sky: illustration, tour art and covers only */
-  --dawn-1: #141148;
-  --dawn-2: #3B2EA6;
-  --dawn-3: #C46CA8;
-  --dawn-4: #FFA06A;
+  --dawn-1: #17294A;
+  --dawn-2: #483963;
+  --dawn-3: #AF5E7F;
+  --dawn-4: #F18E6B;
   --focus: var(--horizon);
+  --sun-on-ink: #EB7C33;
 
-  --shadow-1: 0 1px 2px rgba(26, 22, 51, 0.06), 0 1px 1px rgba(26, 22, 51, 0.04);
-  --shadow-2: 0 2px 6px rgba(26, 22, 51, 0.05), 0 18px 40px -18px rgba(26, 22, 51, 0.28);
-  --shadow-3: 0 40px 90px -30px rgba(26, 22, 51, 0.45), 0 0 0 1px rgba(26, 22, 51, 0.06);
-  --shadow-sun: 0 14px 30px -12px rgba(242, 100, 58, 0.55);
+  --shadow-1: 0 1px 2px rgba(18, 34, 63, 0.06), 0 1px 1px rgba(18, 34, 63, 0.04);
+  --shadow-2: 0 2px 6px rgba(18, 34, 63, 0.05), 0 18px 40px -18px rgba(18, 34, 63, 0.28);
+  --shadow-3: 0 40px 90px -30px rgba(18, 34, 63, 0.45), 0 0 0 1px rgba(18, 34, 63, 0.06);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -128,22 +170,27 @@
   color-scheme: light;
 }
 
-.dark {
-  --ground: #0E0C1F;
-  --surface: #17142B;
-  --surface-raised: #211D3B;
-  --sunk: #0A0917;
-  --line: #2A2645;
-  --line-control: #77719C;
-  --ink: #F1EFF8;
-  --ink-2: #C2BCDA;
-  --ink-3: #9690B5;
-  --sun: #FF8A5B;
-  --on-sun: #1E0F0A;
-  --sun-soft: #3A1F1C;
-  --sun-text: #FFA582;
-  --horizon: #A99FFF;
-  --horizon-soft: #262058;
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.dusk.rec) {
+  --ground: #0F1F38;
+  --surface: #172944;
+  --surface-raised: #203350;
+  --sunk: #09172C;
+  --line: #283A54;
+  --line-control: #627692;
+  --ink: #F7F3EB;
+  --ink-2: #BFCAD7;
+  --ink-3: #94A5B7;
+  --sun: #F6E8CC;
+  --on-sun: #0E1E35;
+  --sun-soft: #483124;
+  --sun-text: #FAAD77;
+  --sun-glow: #FFAE5D;
+  --dusk-sun: #F3C992;
+  --dusk-haze: #844161;
+  --horizon: #8EBCEC;
+  --horizon-soft: #1F3856;
+  --rose: #ECA1BE;
+  --rose-soft: #4C2A3B;
   --rec: #FF6B83;
   --rec-soft: #3D1621;
   --caution: #F3B85A;
@@ -154,11 +201,73 @@
   --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
   --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
 
+  --focus: var(--horizon);
+  --sun-on-ink: #A63D02;
   color-scheme: dark;
 }
 
 /*
- * Tailwind utilities on the same names: bg-ground, text-ink-2, bg-sun, text-on-sun, shadow-2, shadow-sun, font-display, ease-out ...
+ * The board: a sheet of the page's own paper, with a little of the evening's warmth at its foot. Light values on :root and
+ * .light, and dark wherever everything above is, so on the stage a sheet is night unless it says `.light`: `BoardSheet`'s
+ * `theme`. What can come from the tokens above does, so a sheet scoped to one theme follows it. `note-*` are the sticky
+ * colours, which are content, and what's written on them. `line-ink` and `line-rose` are what's drawn, beside the `line`
+ * tokens for edges above, and `bd-marker` the highlighter, which is brighter and stronger at night so it still reads on a dark
+ * sheet. `bf-*` are frames.
+ */
+:root, .light {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 88%, var(--sun-soft)) 55%, color-mix(in srgb, var(--ground) 40%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink) 22%, transparent);
+  --bd-ring: color-mix(in srgb, var(--ink) 7%, transparent);
+  --bf-fill: rgb(255 255 255 / .68);
+  --bf-ring: color-mix(in srgb, var(--ink) 11%, transparent);
+  --bf-lift: 0 18px 34px -30px rgb(18 34 63 / .5);
+  --note-top: #FFFFFF;
+  --note-butter: #FFE0A0;
+  --note-peach: #FFCCAC;
+  --note-rose: #FCC3CF;
+  --note-lilac: #DBCBFA;
+  --note-sky: #C6D1FF;
+  --note-mist: #E7E3F0;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(18 34 63 / .05), 0 8px 16px -10px rgb(18 34 63 / .3);
+  --line-ink: color-mix(in srgb, var(--sun) 82%, var(--ground));
+  --line-rose: var(--rose);
+  --bd-marker: var(--sun-glow);
+  --bd-marker-alpha: .28;
+  /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
+  --bd-rise: 560ms;
+  --bd-glide: 700ms;
+  --bd-point: 120ms;
+}
+
+.dark, .stage, .ac-stage, .ac-pop.is-stage, :root:has(.stage), :root:has(.dusk.rec) {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 80%, var(--surface)) 55%, color-mix(in srgb, var(--surface) 88%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink-2) 16%, transparent);
+  --bd-ring: rgb(255 255 255 / .09);
+  --bf-fill: rgb(255 255 255 / .05);
+  --bf-ring: rgb(255 255 255 / .1);
+  --bf-lift: 0 18px 34px -30px rgb(0 0 0 / .7);
+  --note-top: var(--surface);
+  --note-butter: #704A12;
+  --note-peach: #5E3524;
+  --note-rose: #5C2A3C;
+  --note-lilac: #40337A;
+  --note-sky: #2E3A78;
+  --note-mist: #2C2850;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
+  --line-ink: var(--horizon);
+  --line-rose: var(--rose);
+  --bd-marker: var(--gold);
+  --bd-marker-alpha: .5;
+}
+
+/*
+ * Tailwind utilities on the same names: bg-ground, text-ink-2, bg-sun, text-on-sun, shadow-2, font-display, ease-out ...
  * Tailwind also writes the non-colour names into its theme layer as var(--x) of themselves; the unlayered
  * :root and .dark declarations above win the cascade, so the values are always the ones defined here.
  */
@@ -168,12 +277,13 @@
   --color-ink: var(--ink); --color-ink-2: var(--ink-2); --color-ink-3: var(--ink-3);
   --color-sun: var(--sun); --color-on-sun: var(--on-sun); --color-sun-soft: var(--sun-soft); --color-sun-text: var(--sun-text); --color-sun-glow: var(--sun-glow);
   --color-horizon: var(--horizon); --color-horizon-soft: var(--horizon-soft);
+  --color-rose: var(--rose); --color-rose-soft: var(--rose-soft); --color-frame: var(--frame);
   --color-rec: var(--rec); --color-rec-soft: var(--rec-soft);
   --color-caution: var(--caution); --color-caution-soft: var(--caution-soft); --color-gold: var(--gold);
   --color-stage: var(--stage); --color-stage-tile: var(--stage-tile); --color-stage-raised: var(--stage-raised);
   --color-stage-ink: var(--stage-ink); --color-stage-ink-2: var(--stage-ink-2); --color-speak: var(--speak);
   --color-dawn-1: var(--dawn-1); --color-dawn-2: var(--dawn-2); --color-dawn-3: var(--dawn-3); --color-dawn-4: var(--dawn-4); --color-focus: var(--focus);
-  --shadow-1: var(--shadow-1); --shadow-2: var(--shadow-2); --shadow-3: var(--shadow-3); --shadow-sun: var(--shadow-sun);
+  --shadow-1: var(--shadow-1); --shadow-2: var(--shadow-2); --shadow-3: var(--shadow-3);
   --radius-xs: var(--radius-xs); --radius-sm: var(--radius-sm); --radius-md: var(--radius-md); --radius-lg: var(--radius-lg); --radius-xl: var(--radius-xl);
   --radius-arch: var(--radius-arch); --radius-pill: var(--radius-pill);
   --font-display: var(--font-display); --font-sans: var(--font-sans); --font-mono: var(--font-mono);
@@ -211,7 +321,7 @@
 .ac-body-s { font: 400 13.5px/19px var(--font-sans); }
 .ac-label { font: 600 14px/18px var(--font-sans); }
 .ac-caption { font: 500 12px/16px var(--font-sans); }
-.ac-data { font: 400 13px/18px var(--font-mono); }
+.ac-data { font: 400 13px/18px var(--font-sans); font-variant-numeric: tabular-nums; }
 
 @utility tabular { font-variant-numeric: tabular-nums; }
 @utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }

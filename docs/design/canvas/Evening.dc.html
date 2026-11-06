@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One evening</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+<script src="appdata.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah ev" style="{{rootStyle}}">
+<sc-for list="{{moments}}" as="m" hint-placeholder-count="6">
+<figure class="ev-f" style="{{m.style}}">
+<div class="ev-s"><dc-import name="Scene" a="{{m.a}}" hint-size="100%,100%"></dc-import></div>
+<figcaption><b>{{m.name}}</b>{{m.line}}</figcaption>
+</figure>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"$preview":{"width":1560,"height":820}}'>
+var LIST = [
+  { id: 'home', name: 'Home', hz: 215, line: 'The sun on the line. All sky: this page is one action.' },
+  { id: 'record', name: 'Record', hz: 235, line: 'Night. The recorder is the sun, and it fills with colour as you record.' },
+  { id: 'team', name: 'Team', hz: 165, line: 'Low sun behind the people.' },
+  { id: 'notes', name: 'Notes', hz: 115, line: 'Just set. A band, with search in the middle.' },
+  { id: 'note', name: 'A note', hz: 85, line: 'The horizon is the call itself.' },
+  { id: 'settings', name: 'Settings', hz: 60, line: 'The last of the light. Mostly page.' }
+];
+class Component extends DCLogic {
+  renderVals() {
+    var AH = window.AH, hs = AH.hash(), mode = hs.mode || this.props.mode || 'dark';
+    return {
+      rootStyle: AH.rootStyle('blue-hour', mode, 17),
+      moments: LIST.map(function (m) { return { name: m.name, line: m.line, style: '--hz: ' + m.hz + 'px', a: AH.assign({ page: true }, AH.scene(m.id, 'blue-hour', mode)) }; })
+    };
+  }
+}
+</script>
+</body>
+</html>

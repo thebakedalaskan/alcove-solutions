@@ -11,6 +11,7 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { q } from '~/lib/queries';
 import { minutesUntil, untilLabel } from '~/lib/time';
+import { aheadOf, joinable, type Ahead } from '~/features/home/day';
 import { ArtCall, ArtNotes, ArtRoom, ArtSchedule, ArtSeal, ArtSun } from './art';
 import { arrival, rememberTour, tourSeen, useArrival } from './store';
 
@@ -24,31 +25,31 @@ const hook = (name: string) => (): HTMLElement | null => {
 type Draft = Omit<TourSlide, 'next'> & { called: string };
 
 /** The slides for Home as it is right now, in order. */
-function slidesFor(o: { next: Meeting | undefined; firstDay: boolean; calendar: boolean }): TourSlide[] {
+function slidesFor(o: { next: Meeting | undefined; join: Ahead | undefined; firstDay: boolean; calendar: boolean }): TourSlide[] {
   // Keyboard shortcuts are only worth mentioning where there's a keyboard.
   const keys = matchMedia('(hover: hover) and (pointer: fine)').matches;
   const drafts: Draft[] = [];
   const add = (d: Draft) => { if (d.target()) drafts.push(d); };
   add({
-    id: 'schedule', called: 'notes', title: 'Schedule in one line', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
-    text: `Press New call${keys ? ', or N,' : ''} and type the call the way you’d say it. Alcove finds the time and invites the people${o.calendar ? ', and puts it on your calendar' : ''}.`
+    id: 'schedule', called: 'notes', title: 'Start or schedule a call', art: <ArtSchedule />, prefer: ['right', 'below'], target: hook('new-call'),
+    text: `Press Start a call${keys ? ', or N,' : ''} to go now, or schedule it for later: who, when, then the details. Alcove suggests the times${o.calendar ? ' and puts it on your calendar' : ''}.`
   });
-  const notesOn = hook('notes');
-  add(notesOn()
-    ? { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['below', 'above', 'left', 'right'], target: notesOn, text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.' }
-    : { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['left', 'below', 'above'], target: hook('notes-example'), text: 'Your notes will look like this example: a summary, decisions and follow-ups. Only the people invited get them.' });
-  if (o.next) {
-    const mins = minutesUntil(o.next.startsAt);
+  const example = hook('notes-example');
+  add(example()
+    ? { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['left', 'below', 'above'], target: example, text: 'See what your notes will look like: a summary, decisions and follow-ups. Only the people invited get them.' }
+    : { id: 'notes', called: 'notes', title: 'Notes for your calls', art: <ArtNotes />, prefer: ['right', 'above', 'below'], target: hook('notes'), text: 'Notes are set when you schedule. Everyone in the call can see they’re on, and only the people invited get them.' });
+  if (o.join) {
+    const mins = minutesUntil(o.join.startsAt);
     add({
       id: 'join', called: 'how to join', title: 'Join a call', art: <ArtCall />, prefer: ['below', 'above', 'right'], target: hook('join'),
-      text: `${o.next.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ' or press J' : ''}. Captions and translation are in the call.`
+      text: `${o.join.title} ${mins <= 0 ? 'is happening now' : `starts ${untilLabel(mins)}`}. Join from here${keys ? ' or press J' : ''}. Captions and translation are in the call.`
     });
   }
   add({ id: 'room', called: 'the room', title: 'Record in the room', art: <ArtRoom />, prefer: ['right', 'below'], target: hook('room'), text: 'Meeting in person? Record on your phone, even offline. Notes are written when you’re back online.' });
   add({ id: 'sealed', called: 'privacy', title: 'Your notes stay yours', art: <ArtSeal />, prefer: ['left', 'below'], target: hook('sealed'), text: 'Notes are written in confidential compute, sealed hardware that Alcove can’t open. Only the people invited can read them.' });
   add({
     id: 'ready', called: 'where to start', title: 'You’re ready', art: <ArtSun />, prefer: ['right', 'below', 'left'], target: hook('new-call'),
-    text: `Start a call now, or describe one to schedule it.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`
+    text: `Start a call now, or schedule one for later.${o.firstDay && o.next?.notes === 'on' ? ` Your first notes arrive after ${o.next.title}.` : ''}`
   });
   return drafts.map((d, i) => {
     const after = drafts[i + 1];
@@ -74,8 +75,9 @@ export function TourHost() {
     // Home settles in first.
     const t = setTimeout(() => {
       const now = Date.now();
-      const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
-      const s = slidesFor({ next, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
+      const next = (upcoming ?? []).filter((m) => new Date(m.endsAt).getTime() > now && !m.offer).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
+      const join = joinable(aheadOf(upcoming ?? [], [], now), session.user.email, now);
+      const s = slidesFor({ next, join, firstDay: (notes ?? []).length === 0, calendar: calendar?.source === 'google' && !calendar.needsAccess });
       arrival.tourTaken();
       if (s.length) setSlides(s);
     }, tour.auto ? 350 : 250);

@@ -1,12 +1,11 @@
-import { clock, errorMessage, type TranscriptLine } from '@alcove/api';
-import { Icon, Popover, Spinner, buttonClass, cn, useRaisedToasts, useToast } from '@alcove/ui';
+import { clock, errorMessage } from '@alcove/api';
+import { Button, Horizon, Icon, Popover, RecorderSun, Spinner, buttonClass, cn, useRaisedToasts, useToast, useVoice, type IconName } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useEffect, useState, type ReactNode } from 'react';
-import { troubles } from '~/features/call/access';
-import { RoomLines } from '~/features/call/LiveLines';
-import { useLevels } from '~/features/call/Video';
-import { LocalMedia } from '~/features/call/media';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { troubles, type Trouble } from '~/features/call/media/access';
+import { RoomLines } from '~/features/call/notes/LiveLines';
+import { LocalMedia } from '~/features/call/media/media';
 import { StageRecording, type StageState } from '~/features/record/stage';
 import { UNNAMED, type Waiting } from '~/features/record/uploads';
 import { recordOfflineHere } from '~/lib/device';
@@ -14,13 +13,13 @@ import { ownerOf, requireAccount } from '~/lib/guards';
 import { log } from '~/lib/log';
 import { sessions, useLeaveGuard, useLive } from '~/lib/live';
 import { q } from '~/lib/queries';
-import { hm, shortDay } from '~/lib/time';
 
 /*
  * The stage recorder: one microphone on the table, no call. Record (/record) names the recording and opens this
- * screen, handing the name over in memory (sessions.roomTitle), never in the address; recording starts at once. It
- * records with or without a connection (features/record/stage.ts): offline, it's saved on this device and uploads
- * when the connection is back.
+ * screen, handing the name over in memory (sessions.roomTitle), never in the address; recording starts at once. It's the
+ * same night as Record, over the whole window: the orb fills while it records, your voice runs across the water, and what's
+ * said comes up under it. It records with or without a connection (features/record/stage.ts): offline, it's saved on this
+ * device and uploads when the connection is back.
  */
 export const Route = createFileRoute('/record/live')({
   beforeLoad: ({ context, preload }) => requireAccount(context.queryClient, preload),
@@ -32,6 +31,8 @@ export const Route = createFileRoute('/record/live')({
 const rlog = log.child({ component: 'room' });
 /** Said when finishing leaves the recording on this device to upload. */
 const SAVED = 'Saved on this device. It uploads when you’re back online.';
+/** How many recorded seconds the reminder keeps its place, whatever else there is to say about where the recording goes. */
+const REMINDER_S = 20;
 
 /** What finishing says when the recording stays on this device for now, by what it waits for. */
 function keptSaying(waiting: Waiting): string {
@@ -41,13 +42,11 @@ function keptSaying(waiting: Waiting): string {
 }
 
 /** Why what's recorded isn't reaching Alcove right now, and what happens to it (the recording is kept here meanwhile). */
-function awayWhy(s: StageState): { pill: string; saved: string; transcript: string } {
-  if (s.account === 'other') {
-    return { pill: 'Another account', saved: 'Someone else is signed in on this device now. It stays here until its own account signs in again.', transcript: 'What’s said now is transcribed once it uploads.' };
-  }
-  if (s.account === 'signed-out') return { pill: 'Signed out', saved: 'You’re signed out. It uploads once you sign in again.', transcript: 'What’s said now is transcribed once it uploads.' };
-  if (s.online) return { pill: 'Can’t reach Alcove', saved: 'Alcove isn’t answering right now. It’s sent when it does.', transcript: 'Alcove isn’t answering: what’s said now is transcribed once it does.' };
-  return { pill: 'Offline', saved: 'It uploads when you’re back online.', transcript: 'Offline: what’s said now is transcribed once you’re back online.' };
+function awayWhy(s: StageState): { pill: string; saved: string } {
+  if (s.account === 'other') return { pill: 'Another account', saved: 'Someone else is signed in here now. It stays until this account signs in again.' };
+  if (s.account === 'signed-out') return { pill: 'Signed out', saved: 'You’re signed out. It uploads once you sign in again.' };
+  if (s.online) return { pill: 'Can’t reach Alcove', saved: 'Alcove isn’t answering right now. It’s sent when it does.' };
+  return { pill: 'Offline', saved: 'It uploads when you’re back online.' };
 }
 
 function RecordLive() {
@@ -58,16 +57,12 @@ function RecordLive() {
     return () => media.stop();
   }, [media]);
   const { rec, failed } = useStageRecording(ownerOf(account));
-  if (failed) {
-    return (
-      <div className="stage ac-stage"><div className="stg room-stg">
-        <Top />
-        <div className="room-wait"><div className="wait-in"><Icon name="x" size={22} /><b>Couldn’t start recording</b><p>{failed}</p><Link to="/home" className={buttonClass()}>Go home</Link></div></div>
-      </div></div>
-    );
-  }
-  if (!rec) return <div className="stage ac-stage"><div className="stg room-stg"><Top /><div className="room-wait"><Spinner /></div></div></div>;
-  return <Recorder rec={rec} media={media} />;
+  return (
+    <div className="stage ac-stage rec-stage" role="region" aria-label="Recording">
+      <Horizon moment="record" />
+      {failed ? <Failed why={failed} /> : rec ? <Recorder rec={rec} media={media} /> : <Starting />}
+    </div>
+  );
 }
 
 /**
@@ -96,29 +91,60 @@ function useStageRecording(owner: string): { rec: StageRecording | null; failed:
   return { rec, failed };
 }
 
-function Top({ left, right }: { left?: ReactNode; right?: ReactNode }) {
-  const now = new Date();
+const home = cn(buttonClass({ variant: 'quiet', size: 'sm' }), 'rec-back');
+
+function Bar({ left, right }: { left?: ReactNode; right?: ReactNode }) {
+  return <header className="rec-bar">{left ?? <Link to="/home" className={home}><Icon name="left" size={16} />Home</Link>}{right}</header>;
+}
+
+/** The moment before it records: the same place, with the orb still to rise. */
+function Starting() {
   return (
-    <header className="stg-top">
-      {left ?? <Link to="/home" className="stg-back"><Icon name="left" size={17} />Home</Link>}
-      <div className="stg-mid"><span className="rm-title"><Icon name="room" size={16} />In the room · {shortDay(now)}, {hm(now)}</span></div>
-      <div className="stg-right">{right}</div>
-    </header>
+    <>
+      <Bar />
+      <div className="rec-hold">
+        <p className="rec-name is-live ac-clamp-1">{sessions.roomTitle ?? UNNAMED}</p>
+        <p className="rec-time">{clock(0)}</p>
+        <div className="rec-ctl"><Spinner /></div>
+      </div>
+    </>
   );
 }
 
-const wave = (l: number, i: number) => Math.max(6, Math.min(100, 10 + Math.abs(Math.sin(i * 0.5 + Date.now() / 400)) * 50 * (0.4 + l * 1.4)));
+function Failed({ why }: { why: string }) {
+  return (
+    <>
+      <RecorderSun orb="idle" voice="still" />
+      <Bar />
+      <div className="rec-hold">
+        <h1 className="rec-name is-live">Couldn’t start recording</h1>
+        <p className="rec-said is-warn">{why}</p>
+        <div className="rec-ctl"><Link to="/record" className={buttonClass({ variant: 'primary' })}>Back to Record</Link></div>
+      </div>
+    </>
+  );
+}
 
-/** What's said under the waveform: why it paused by itself, a microphone that isn't working, that it's saving here, or the reminder. */
-function Note({ s, media, trouble }: { s: StageState; media: LocalMedia; trouble: ReturnType<typeof troubles>[number] | undefined }) {
-  if (s.held === 'forgotten') return <p className="rm-note bad">You signed out on this device, so this recording can’t be kept. Nothing more is recorded.</p>;
-  if (trouble) return <p className="rm-note bad">{trouble.title} {trouble.how}{trouble.retry && <> <button type="button" className="rm-retry" onClick={() => void media.retry()}>Try again</button></>}</p>;
-  if (s.held === 'offline') return <p className="rm-note bad">Paused: you’re offline, and recording without a connection is off in Settings. Resume once you’re back online.</p>;
-  if (s.held === 'full') return <p className="rm-note bad">Paused: there’s no space left on this device to save the recording. Free some up, or get back online, then resume.</p>;
-  if (s.keeping && !s.connected) {
-    return <div className="rm-saved"><span className="rm-saved-ic"><Icon name="hardDrive" size={17} /></span><span>Saved on this device. {awayWhy(s).saved}<small>Encrypted as it records</small></span></div>;
-  }
-  return <p className="rm-note">Let everyone here know before you start talking.</p>;
+interface Say { text: string; sub?: string | undefined; icon?: IconName | undefined; warn?: boolean | undefined; retry?: boolean | undefined }
+
+const REMINDER: Say = { text: 'Listening. Let everyone here know it’s recording.' };
+
+/**
+ * What's said under the voice, one thing at a time: why it stopped by itself, a finish that failed, a microphone that isn't
+ * working, that it's paused, then the reminder for the first moments, even with no connection, and only after them that
+ * it's saving here or why the words are behind. Until the first words the reminder stays.
+ */
+function sayOf(s: StageState, trouble: Trouble | undefined, paused: boolean, finishing: boolean): Say | null {
+  if (s.held === 'forgotten') return { text: 'You signed out on this device, so this recording can’t be kept. Nothing more is recorded.', icon: 'alert', warn: true };
+  if (s.ending && !finishing) return { text: 'It hasn’t finished, and nothing more is recorded. Try Finish again.', icon: 'alert', warn: true };
+  if (trouble) return { text: `${trouble.title}${trouble.how ? ` ${trouble.how}` : ''}`, icon: 'micOff', warn: true, retry: trouble.retry };
+  if (!s.keeping && !s.online && !s.ending) return { text: 'Paused: you’re offline, and recording without a connection is off. Resume once you’re back.', icon: 'wifiOff', warn: true };
+  if (s.held === 'full') return { text: 'Paused: there’s no space left on this device. Free some up, or get back online, then resume.', icon: 'hardDrive', warn: true };
+  if (paused) return { text: 'Paused. Nothing is heard until you resume.' };
+  if (!s.ending && s.elapsed < REMINDER_S) return REMINDER;
+  if (s.keeping && !s.connected) return { text: `Saved on this device. ${awayWhy(s).saved}`, sub: 'What’s said now is written out then.', icon: 'hardDrive' };
+  if (s.heard) return { text: s.heard, icon: 'clock' };
+  return s.transcript.length || s.ending ? null : REMINDER;
 }
 
 function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
@@ -137,14 +163,15 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
   const [title, setTitle] = useState(s.title);
   /** Pausing, by request or by itself (see StageState.held): it looks paused at once, while what was heard goes. */
   const pausing = holding || (s.held !== null && s.status === 'recording');
-  const paused = s.status === 'paused' || pausing;
+  const forgotten = s.held === 'forgotten';
+  const paused = s.status === 'paused' || pausing || forgotten;
   /** What's recorded isn't reaching Alcove now, so it's saved here for now. */
   const saving = s.keeping && !s.connected;
-  const away = awayWhy(s);
-  const still = paused || s.ending || s.held === 'forgotten';
-  const bars = useLevels(media, 48, !still && m.mic && !!m.camera, wave);
+  const still = paused || s.ending;
   /* A microphone that isn't working: what's wrong and how to fix it, in place of the reminder. */
   const micTrouble = troubles(m, ['mic'])[0];
+  const sun = useRef<HTMLDivElement>(null);
+  useVoice({ sun, level: () => media.level(), on: !still && !micTrouble && m.mic && !!m.camera });
   useEffect(() => rec.onLost((msg) => toast(msg, { icon: 'x' })), [rec, toast]);
   const mic = media.micTrack();
   useEffect(() => { if (mic) rec.follow(mic); }, [rec, s.status, mic]);
@@ -181,54 +208,46 @@ function Recorder({ rec, media }: { rec: StageRecording; media: LocalMedia }) {
     setLeave(false);
     await rec.discard();
     sessions.recording = null;
-    if (!guard.proceed()) await navigate({ to: '/home' });
+    if (!guard.proceed()) await navigate({ to: '/record', replace: true });
     toast('Recording discarded. Nothing was kept.', { icon: 'trash' });
   };
-  const finishLabel = s.held === 'forgotten' ? 'End recording' : saving ? 'Finish and save' : 'Finish and write notes';
+  const finishLabel = forgotten ? 'End recording' : saving ? 'Finish and save' : 'Finish and write notes';
+  const say = sayOf(s, micTrouble, paused, busy);
 
   return (
-    <div className="stage ac-stage">
-      <div className="stg room-stg">
-        <Top left={
-          <Popover open={leave} onOpenChange={(o) => { setLeave(o); if (!o) guard.stay(); }} stage label="Leave the room" className="w-[290px]"
-            anchor={<button type="button" className="stg-back"><Icon name="left" size={17} />Home</button>}>
-            <button type="button" className="ac-pop-item" onClick={() => { setLeave(false); void finish(); }}><Icon name="stop" size={18} /><span><b>{finishLabel}</b><small>{s.held === 'forgotten' ? 'Nothing of it can be kept.' : saving ? 'Saves it here; it uploads by itself.' : 'Keeps what was recorded.'}</small></span></button>
-            <button type="button" className="ac-pop-item is-caution" onClick={() => void discard()}><Icon name="trash" size={18} /><span><b>Discard recording</b><small>Nothing is kept.</small></span></button>
-          </Popover>
-        } right={!s.connected && s.held !== 'forgotten' && <span className="off-pill" role="status"><Icon name="wifiOff" size={14} />{away.pill}</span>} />
-        <div className={cn('room', still && 'paused')}>
-          <div className="rm-hero">
-            <div className="rm-dot" aria-hidden="true"><i /></div>
-            <h1>{s.ending ? 'Finishing' : paused || s.held === 'forgotten' ? 'Paused' : 'Taking notes'}</h1>
-            <input className="rm-name" value={title} aria-label="Name these notes" spellCheck={false} maxLength={160}
-              onChange={(e) => setTitle(e.target.value)} onBlur={() => { const t = title.trim(); if (t && t !== s.title) rec.rename(t); else setTitle(s.title); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
-            <div className="rm-time ac-mono">{clock(s.elapsed)}</div>
-            <div className="rm-wave" aria-hidden="true">{bars.map((h, i) => <i key={i} style={{ height: `${still ? 6 : h}%` }} />)}</div>
-            <Note s={s} media={media} trouble={micTrouble} />
-            <div className="rm-ctrls">
-              <button type="button" className="stage-btn lg" aria-label={paused ? 'Resume' : 'Pause'} disabled={pausing || s.ending || s.held === 'forgotten'} onClick={() => (paused ? rec.resume() : void pause())}><Icon name={paused ? 'dot' : 'pause'} size={paused ? 20 : 24} /></button>
-              <button type="button" className="rm-stop" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={18} />}{finishLabel}</button>
-            </div>
-          </div>
-          <Heard lines={s.transcript} paused={paused} waiting={saving ? away.transcript : null} problem={s.heard} />
+    <>
+      {/* `ending` stays once finishing has begun, even if it failed; `busy` is whether it's finishing now. */}
+      <h1 className="sr-only">{busy ? 'Finishing' : still ? 'Paused' : 'Recording'}</h1>
+      <RecorderSun ref={sun} orb={busy ? 'set' : still ? 'paused' : 'live'} voice={still || micTrouble ? 'still' : 'live'} />
+      <Bar left={
+        <Popover open={leave} onOpenChange={(o) => { setLeave(o); if (!o) guard.stay(); }} stage label="Leave the room" className="rec-pop"
+          anchor={<Button variant="quiet" size="sm" icon="left" className="rec-back">Home</Button>}>
+          <button type="button" className="ac-pop-item" onClick={() => { setLeave(false); void finish(); }}><Icon name="stop" size={17} className="rec-sq" /><span><b>{finishLabel}</b><small>{forgotten ? 'Nothing of it can be kept.' : saving ? 'Saves it here. It uploads by itself.' : 'Keeps what was recorded.'}</small></span></button>
+          <button type="button" className="ac-pop-item is-caution" onClick={() => void discard()}><Icon name="trash" size={17} /><span><b>Discard recording</b><small>Nothing is kept.</small></span></button>
+        </Popover>
+      } right={!s.connected && !forgotten && <span className="rec-pill" role="status"><Icon name="wifiOff" size={15} />{awayWhy(s).pill}</span>} />
+      <div className="rec-hold">
+        <input className="rec-name is-live" value={title} placeholder={UNNAMED} aria-label="Name these notes" title="Rename" maxLength={160} autoComplete="off" spellCheck={false}
+          onChange={(e) => setTitle(e.target.value)} onBlur={() => { const t = title.trim(); if (t && t !== s.title) rec.rename(t); else setTitle(s.title); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+        <p className="rec-time" role="timer" aria-label="Time recorded">{clock(s.elapsed)}</p>
+        <div className="rec-ctl">
+          {/* Resuming while it can't record, with no connection and nowhere to keep it, would lose what's said. */}
+          <Button className="rec-pause" icon={paused ? 'recordDot' : 'pause'} disabled={pausing || s.ending || forgotten || (!s.keeping && !s.online)} onClick={() => (paused ? rec.resume() : void pause())}>{paused ? 'Resume' : 'Pause'}</Button>
+          <Button variant="primary" className="rec-finish" disabled={busy} onClick={() => void finish()}>{busy ? <Spinner /> : <Icon name="stop" size={16} className="rec-sq" />}{busy ? 'Finishing' : finishLabel}</Button>
         </div>
       </div>
-    </div>
-  );
-}
-
-/*
- * What's been said so far, under the controls, so the timer and the buttons stay in view. `waiting` says why what's
- * said now isn't transcribed yet (it's saved here meanwhile).
- */
-function Heard({ lines, paused, waiting, problem }: { lines: TranscriptLine[]; paused: boolean; waiting: string | null; problem: string | null }) {
-  const behind = waiting ?? problem;
-  return (
-    <section className="rm-live" aria-label="Transcript">
-      {lines.length ? <RoomLines lines={lines} />
-        : <p className="rm-wait">{paused ? 'Paused. Nothing is heard until you resume.' : waiting ?? 'Listening. What’s said appears here a few seconds later.'}</p>}
-      {behind && (lines.length > 0 || paused || !waiting) && <p className="rm-problem"><Icon name="clock" size={14} />{behind}</p>}
-    </section>
+      <section className="rec-heard" aria-label="What’s said">
+        {s.transcript.length > 0 && <RoomLines lines={s.transcript} />}
+        <div role="status" className="rec-note-at">
+          {say && (
+            <div className={cn('rec-said', say.warn && 'is-warn')}>
+              {say.icon && <Icon name={say.icon} size={17} />}
+              <p>{say.text}{say.sub && <small>{say.sub}</small>}{say.retry && <button type="button" className="rec-retry" onClick={() => void media.retry()}>Try again</button>}</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   );
 }

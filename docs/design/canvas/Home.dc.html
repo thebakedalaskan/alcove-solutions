@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="home.css">
+<link rel="stylesheet" href="pages.css">
+<script src="tokens.js"></script>
+<script src="home.js"></script>
+<script src="scene.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="ah sh hm" data-mode="{{mode}}" data-glass="{{glass}}" data-take="{{take}}" data-art="{{art}}" data-soon="{{soonFlag}}" style="{{shellStyle}}">
+<div class="sh-frame">
+<dc-import name="Side" s="{{side}}" hint-size="256px,100%"></dc-import>
+<main class="sh-panel">
+<div class="ah-scroll">
+<div class="hm-stage">
+<sc-if value="{{isPage}}" hint-placeholder-val="{{false}}"><dc-import name="SkyArt" a="{{pageData}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{isPage}}" hint-placeholder-val="{{false}}"><dc-import name="Visitors" moment="home" mode="{{mode}}" hint-size="100%,100%"></dc-import></sc-if>
+<div class="sh-bar">
+<span class="brand"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true"><defs><clipPath id="hma"><path d="M2 24.6V11a9 9 0 0 1 18 0v13.6z"></path></clipPath><linearGradient id="hms" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2A2373"></stop><stop offset=".42" stop-color="#5847DA"></stop><stop offset=".64" stop-color="#C470A9"></stop><stop offset=".74" stop-color="#FFA06A"></stop></linearGradient></defs><g clip-path="url(#hma)"><rect width="22" height="26" fill="url(#hms)"></rect><circle cx="11" cy="19.2" r="4.4" fill="#FFD58A"></circle><rect y="19.2" width="22" height="7" fill="#231C5E"></rect></g></svg>alcove</span>
+<div class="top-end"><button type="button" class="find" aria-label="Search or ask" onClick="{{openAsk}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg></button><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></div>
+</div>
+<div class="sh-in">
+<header class="pn-top">
+<h1 class="pn-date">{{date}}</h1>
+<div class="top-end">
+<button type="button" class="find{{hotAsk}}" onClick="{{openAsk}}" aria-label="Search or ask"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.search}}"></path></svg><span class="w">Search or ask</span><span class="k">⌘K</span></button>
+<button type="button" class="me" aria-label="Art, settings" onClick="{{goMe}}"><dc-import name="Faces" who="art" size="30" hint-size="30px,33px"></dc-import></button>
+</div>
+</header>
+
+<div class="hm-grid">
+<section class="st" aria-labelledby="st-h">
+<sc-if value="{{hasCardArt}}" hint-placeholder-val="{{true}}"><dc-import name="SkyArt" a="{{artData}}" hint-size="100%,100%"></dc-import></sc-if>
+<sc-if value="{{hasSoon}}" hint-placeholder-val="{{false}}">
+<div class="jn"><dc-import name="Faces" who="{{soon.faces}}" size="26" max="3" ring="var(--surface)" hint-size="56px,28px"></dc-import><span class="jn-t"><b class="clamp1">{{soon.title}}</b><small>{{soon.when}}</small></span><button type="button" class="b b-press{{hotPrimary}}" onClick="{{soonJoin}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Join<span class="k">J</span></button></div>
+</sc-if>
+<h2 class="st-t" id="st-h">{{startTitle}}</h2>
+<div class="st-a">
+<button type="button" class="b {{goCls}} b-lg st-go{{hotGo}}" onClick="{{go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.video}}"></path></svg>Start now</button>
+<button type="button" class="b b-sky b-lg{{hotLater}}" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.cal}}"></path></svg>Schedule</button>
+<button type="button" class="b b-sky b-lg b-icon" aria-label="Copy a link for a new call" title="Copy a link for a new call" onClick="{{copyNew}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.link}}"></path></svg></button>
+</div>
+<sc-if value="{{hasPeople}}" hint-placeholder-val="{{true}}">
+<div class="st-p">
+<sc-for list="{{people}}" as="p" hint-placeholder-count="1"><button type="button" class="st-who{{p.hotCls}}" aria-label="Ring {{p.name}}" title="Ring {{p.name}}" onClick="{{p.go}}"><dc-import name="Faces" who="{{p.id}}" size="26" hint-size="26px,29px"></dc-import><span>{{p.first}}</span></button></sc-for>
+<button type="button" class="st-add" aria-label="Add someone" title="Add someone" onClick="{{later}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.plus}}"></path></svg></button>
+</div>
+</sc-if>
+</section>
+
+<section class="pn hm-for" aria-labelledby="hm-for">
+<sc-if value="{{first}}" hint-placeholder-val="{{false}}">
+<div class="pn-h"><h2 id="hm-for">Get set up</h2></div>
+<div class="fg"><sc-for list="{{starts}}" as="s" hint-placeholder-count="3"><button type="button" class="ft is-setup" onClick="{{s.go}}"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{s.path}}"></path></svg></span><span class="ft-t">{{s.t}}</span><svg class="i go" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></sc-for></div>
+</sc-if>
+<sc-if value="{{notFirst}}" hint-placeholder-val="{{true}}">
+<div class="pn-h"><h2 id="hm-for">For you<span class="n">{{count}}</span></h2><sc-if value="{{hasUndo}}" hint-placeholder-val="{{false}}"><p class="pn-undo"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg>{{undoText}}<button type="button" class="act" onClick="{{undoLast}}">Undo</button></p></sc-if></div>
+<sc-if value="{{tiles}}" hint-placeholder-val="{{true}}">
+<div class="fg">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="2">
+<article class="ft{{r.cls}}">
+<div class="ft-h"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{r.icon}}"></path></svg></span><span class="ft-k">{{r.tag}}</span><button type="button" class="ft-m" aria-label="Open the moment at {{r.at}} in {{r.from}}" title="From {{r.from}}" onClick="{{r.goNote}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{r.at}}</button></div>
+<button type="button" class="ft-t clamp3" title="{{r.text}}" onClick="{{r.goNote}}">{{r.text}}</button>
+<sc-if value="{{r.open}}" hint-placeholder-val="{{true}}"><div class="ft-a"><button type="button" class="ft-yes{{r.hotYes}}" onClick="{{r.goYes}}">{{r.yes}}</button><button type="button" class="fy-x{{r.hotNo}}" aria-label="{{r.no}}" title="{{r.no}}" onClick="{{r.goNo}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg></button></div></sc-if>
+<sc-if value="{{r.answered}}" hint-placeholder-val="{{false}}"><div class="ft-a ft-done"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg><span>{{r.doneText}}</span><button type="button" class="act" onClick="{{r.undo}}">Undo</button></div></sc-if>
+</article>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{deck}}" hint-placeholder-val="{{false}}">
+<div class="dq" data-left="{{left}}">
+<article class="ft dq-top{{top.cls}}">
+<div class="ft-h"><span class="ft-i"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{top.icon}}"></path></svg></span><span class="ft-k">{{top.tag}}</span><button type="button" class="ft-m" aria-label="Open the moment at {{top.at}} in {{top.from}}" title="From {{top.from}}" onClick="{{top.goNote}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{top.at}}</button></div>
+<p class="dq-t clamp3">{{top.text}}</p>
+<div class="dq-a"><button type="button" class="ft-yes{{top.hotYes}}" onClick="{{top.goYes}}">{{top.yes}}</button><button type="button" class="dq-no{{top.hotNo}}" onClick="{{top.goNo}}">{{top.no}}</button><span class="dq-n tn">{{place}}</span></div>
+</article>
+</div>
+</sc-if>
+<sc-if value="{{hasMine}}" hint-placeholder-val="{{true}}">
+<div class="cl">
+<sc-for list="{{mine}}" as="m" hint-placeholder-count="2">
+<div class="cl-r{{m.cls}}"><button type="button" class="ck{{m.hotTick}}" role="checkbox" aria-checked="{{m.on}}" aria-label="Done: {{m.text}}" onClick="{{m.tick}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.check}}"></path></svg></button><span class="cl-t clamp1">{{m.text}}</span><button type="button" class="ft-m" aria-label="Open the moment at {{m.at}} in {{m.from}}" title="From {{m.from}}" onClick="{{m.goNote}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.wave}}"></path></svg>{{m.at}}</button><span class="cl-d{{m.dueCls}}">{{m.due}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{allClear}}" hint-placeholder-val="{{false}}"><p class="sec-note">Nothing waiting.</p></sc-if>
+</sc-if>
+</section>
+
+<sc-if value="{{showWeek}}" hint-placeholder-val="{{true}}">
+<section class="pn hm-week" aria-labelledby="hm-week">
+<div class="pn-h"><h2 id="hm-week"><button type="button" class="pn-link" onClick="{{goMore}}">This week<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></h2></div>
+<div class="wk pn-wk" role="group" aria-label="This week">
+<sc-for list="{{week}}" as="w" hint-placeholder-count="7"><button type="button" class="wk-d{{w.cls}}" aria-pressed="{{w.on}}" aria-label="{{w.label}}" onClick="{{w.go}}"><small>{{w.d}}</small><b>{{w.n}}</b><span class="wk-dots"><sc-for list="{{w.dots}}" as="d" hint-placeholder-count="1"><i></i></sc-for></span></button></sc-for>
+</div>
+<div class="al-list">
+<sc-for list="{{lines}}" as="r" hint-placeholder-count="3">
+<sc-if value="{{r.isNow}}" hint-placeholder-val="{{false}}"><div class="al-now"><span>{{r.clock}}</span><span class="dk-line"><i></i></span></div></sc-if>
+<sc-if value="{{r.isRow}}" hint-placeholder-val="{{true}}"><button type="button" class="al{{r.cls}}{{r.hotCls}}" onClick="{{r.go}}"><span class="a">{{r.when}}</span><span class="t clamp1">{{r.title}}</span></button></sc-if>
+</sc-for>
+<sc-if value="{{noLines}}" hint-placeholder-val="{{false}}"><p class="sec-note">{{noLinesText}}</p></sc-if>
+</div>
+</section>
+</sc-if>
+
+<section class="pn hm-notes" aria-labelledby="hm-notes">
+<div class="pn-h"><h2 id="hm-notes"><button type="button" class="pn-link" onClick="{{goAll}}">Recent notes<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.right}}"></path></svg></button></h2></div>
+<sc-for list="{{noteRows}}" as="n" hint-placeholder-count="1"><button type="button" class="nr{{n.hotCls}}" onClick="{{n.go}}"><dc-import name="Faces" who="{{n.face}}" size="26" hint-size="26px,29px"></dc-import><span class="t clamp1">{{n.title}}</span><span class="w">{{n.day}}</span></button></sc-for>
+<sc-if value="{{noNotes}}" hint-placeholder-val="{{false}}"><p class="sec-note">Notes show up here after a call.</p></sc-if>
+</section>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<nav class="phone-tabs" aria-label="Main">
+<sc-for list="{{nav}}" as="n" hint-placeholder-count="4"><button type="button" class="phone-tab{{n.cls}}" onClick="{{n.go}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{n.icon}}"></path></svg>{{n.label}}</button></sc-for>
+</nav>
+<dc-import name="Overlays" ov="{{ov}}" hint-size="0px,0px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"go":{"editor":null,"default":null},"take":{"editor":null,"default":"page"},"art":{"editor":"enum","options":["sea","ridges","rings"],"default":"sea"},"fy":{"editor":"enum","options":["tiles","deck"],"default":"tiles"},"pal":{"editor":"enum","options":["blue-hour","afterglow","first-light","open-sky"],"default":"blue-hour"},"mode":{"editor":"enum","options":["dark","light"],"default":"dark"},"scene":{"editor":"enum","options":["today","soon","first"],"default":"today"},"step":{"editor":null,"default":"home"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.__toast); }
+  renderVals() {
+    var AH = window.AH, hs = AH.hash(), self = this;
+    var v = AH.vm(this, 'home', { pal: 'blue-hour', mode: 'dark' });
+    var S = v.S, st = v.st;
+    v.notFirst = !v.first;
+    v.noNotes = !v.hasNotes;
+
+    /* How the page is arranged, and how the sunset is drawn. */
+    v.take = hs.take || this.props.take || 'page';
+    v.art = hs.art || this.props.art || 'sea';
+    v.isPage = v.take === 'page';
+    v.hasCardArt = !v.isPage;
+    v.showWeek = !v.isPage;
+    v.artData = v.isPage ? null : AH.art(v.art, v.pal, v.mode, v.take === 'bar' ? 'bar' : 'card');
+    v.pageData = v.isPage ? AH.pageArt(v.art, v.pal, v.mode) : null;
+    if (v.pageData) v.pageData = AH.assign({}, v.pageData, { page: true });
+
+    /* Starting a call is the job of the page. One filled button per view: Join takes it when a call is about to start. */
+    var soon = S.imminent || null;
+    v.hasSoon = !!soon;
+    v.soon = soon || {};
+    v.soonFlag = soon ? 'true' : 'false';
+    v.soonJoin = function () { self.setState({ page: 'lobby', lobbyTitle: soon.title, lobbySub: '', hot: '' }); };
+    v.startTitle = S.first ? 'Start your first call' : 'Start a call';
+    v.goCls = soon ? 'b-sky' : 'b-press';
+    v.hotGo = v.hot('go');
+    v.hotLater = v.hot('later2');
+    v.go = function () { self.setState({ page: 'lobby', lobbyTitle: 'Art’s call', lobbySub: '', hot: '' }); };
+    v.later = function () { self.setState({ modal: 'who', guests: [], slot: 't17', fromCard: true, hot: '' }); };
+    v.copyNew = function () { v.toast('Link copied. Anyone with it can ask to join.'); };
+    v.people = (S.people || []).map(function (p, i) {
+      return {
+        id: p.id, name: p.name, first: p.name.split(' ')[0], hotCls: i === 0 ? v.hot('ring') : '',
+        go: function () { self.setState({ page: 'lobby', lobbyTitle: 'Call with ' + p.name.split(' ')[0], lobbySub: p.name.split(' ')[0] + ' gets a ring as you join.', hot: '' }); }
+      };
+    });
+    v.hasPeople = v.people.length > 0;
+    var count = v.forCount;
+    v.count = count || '';
+    /* In the whole-app prototype the side panel really goes places. */
+    var goTo = this.props.go;
+    v.side = AH.assign({}, v.side, {
+      startCls: 'b-tint',
+      nav: v.side.nav.map(function (n) {
+        var k = n.label === 'Home' ? AH.assign({}, n, { count: count, hasCount: count > 0 }) : n;
+        return typeof goTo === 'function' ? AH.assign({}, k, { go: function () { goTo(n.label.toLowerCase()); } }) : k;
+      })
+    });
+    v.goMe = function () { if (typeof goTo === 'function') goTo('settings'); };
+
+    /* This week: only calls with someone else on them, each on one line. */
+    var SHORT = { Tomorrow: 'Thu', Friday: 'Fri', Monday: 'Mon' };
+    var past = S.calls.filter(function (x) { return x.state === 'past'; }).map(function (x) {
+      return { isRow: true, isNow: false, day: 'Today', when: x.time, title: x.title, cls: ' is-past', hotCls: '', go: function () { self.setState({ page: 'note', noteId: x.note, hot: '' }); } };
+    });
+    var ahead = v.coming.filter(function (c) { return !(soon && c.id === soon.id); }).map(function (c) {
+      return { isRow: true, isNow: false, day: c.day, when: (SHORT[c.day] ? SHORT[c.day] + ' ' : '') + c.time, title: c.title, cls: '', hotCls: c.hotCls, go: c.go };
+    });
+    if (st.day) v.lines = past.concat(ahead).filter(function (r) { return r.day === st.day; });
+    else v.lines = S.first ? [] : past.concat([{ isNow: true, isRow: false, clock: v.clock }]).concat(ahead.slice(0, Math.max(0, 4 - past.length)));
+    v.noLines = v.lines.length === 0;
+    v.noLinesText = st.day ? 'Nothing on ' + st.day + '.' : 'No calls yet.';
+
+    /* For you: what needs an answer, as tiles or one at a time, then your follow-ups to tick off. */
+    var fy = hs.fy || this.props.fy || 'tiles', open = v.rows.filter(function (r) { return r.open; }), answered = v.rows.filter(function (r) { return r.answered; });
+    var last = answered[answered.length - 1];
+    v.tiles = fy !== 'deck' && v.rows.length > 0;
+    v.deck = fy === 'deck' && open.length > 0;
+    v.top = open[0] || {};
+    v.left = Math.min(open.length - 1, 2);
+    v.place = v.rows.length > 1 ? (v.rows.length - open.length + 1) + ' of ' + v.rows.length : '';
+    v.hasUndo = fy === 'deck' && !!last;
+    v.undoText = last ? last.doneText : '';
+    v.undoLast = last ? last.undo : null;
+    v.allClear = v.rows.length === 0 && !v.hasMine;
+    v.noteRows = v.notes.map(function (n) { return AH.assign({}, n, { face: (n.faces || 'art').split(',')[0], day: n.when.split(',')[0] }); });
+    return v;
+  }
+}
+</script>
+</body>
+</html>

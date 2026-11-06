@@ -1,0 +1,331 @@
+<!-- title: One moment of a journey -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="fr is-call {{frCls}}" data-theme="{{theme}}">
+
+<sc-if value="{{isCall}}" hint-placeholder-val="{{true}}">
+<div class="stage ac-stage">
+<div class="cs {{csCls}}">
+<header class="ic-top">
+<span class="ttl">{{title}}</span>
+<span class="ac-time clock">{{clock}}</span>
+<span class="vr v1"></span>
+<div class="nz"><span class="ac-notes-sign is-stage"><span class="ac-rec-dot"></span>Notes on</span></div>
+<sc-if value="{{hasRoom}}" hint-placeholder-val="{{false}}"><span class="ac-chip" style="background: rgb(255 255 255 / .08); color: var(--stage-ink)"><ic n="door" s="14"></ic>{{room}}</span></sc-if>
+<div class="end">
+<button type="button" class="ac-btn is-secondary is-sm ic-catch"><ic n="history" s="16"></ic><span class="catchtxt">Catch up</span></button>
+<button type="button" class="ic-sicon" aria-label="Confidential compute, verified"><ic n="sealed" s="19"></ic></button>
+<button type="button" class="ic-faces" aria-label="People in this call"><dc-import name="Faces" who="{{facesWho}}" size="26" max="5" ring="var(--stage)" hint-size="110px,28px"></dc-import><span>{{count}}</span></button>
+</div>
+</header>
+
+<div class="cs-main">
+<div class="cs-box {{boxCls}}" style="{{boxStyle}}">
+<sc-if value="{{isGrid}}" hint-placeholder-val="{{false}}">
+<div class="cs-grid {{gridCls}}">
+<sc-if value="{{boardTile}}" hint-placeholder-val="{{false}}">
+<button type="button" class="cs-btile {{h.btile}}" onClick="{{c.btile}}" aria-label="Open the board">
+<div class="cs-mini" style="width: 1114px; height: 682px; transform: scale({{tileScale}})"><dc-import name="Paper" m="{{miniModel}}" w="1114" h="674" hint-size="1114px,682px"></dc-import></div>
+<span class="ac-tile-name"><dc-import name="Faces" who="art" size="18" ring="transparent" hint-size="18px,20px"></dc-import>Art’s board</span>
+<span class="open"><ic n="expand" s="16"></ic></span>
+</button>
+</sc-if>
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="7">
+<div class="ac-tile {{t.cls}}" style="background: {{t.ground}}"><dc-import name="Faces" who="{{t.id}}" fig="true" hint-size="100%,100%"></dc-import><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isBoard}}" hint-placeholder-val="{{false}}">
+<dc-import name="Paper" m="{{paper}}" w="{{pw}}" h="{{ph}}" hot="{{hot}}" live="{{live}}" follow="{{liveFollow}}" jump="{{liveJump}}" shot="{{liveShot}}" on-go="{{go}}" on-live="{{onLive}}" hint-size="100%,100%"></dc-import>
+</sc-if>
+
+<sc-if value="{{isShared}}" hint-placeholder-val="{{false}}">
+<div class="cs-scr is-big"><span class="ms-at" style="width: {{scr.w}}px; height: {{scr.h}}px"><span class="ms-k2" style="transform: scale({{scr.k}})"><mock></mock></span></span><span class="ac-tile-name"><dc-import name="Faces" who="{{sharer}}" size="18" ring="transparent" hint-size="18px,20px"></dc-import><span class="stl"><span>{{sharerName}}</span> is sharing</span></span><button type="button" class="cs-smore" aria-label="More for Priya’s screen"><ic n="more" s="17"></ic></button></div>
+</sc-if>
+
+<sc-if value="{{isRooms}}" hint-placeholder-val="{{false}}">
+<div class="cs-rooms">
+<sc-for list="{{rooms}}" as="r" hint-placeholder-count="3">
+<section class="cs-room">
+<h3>{{r.name}}<span class="ac-time" style="color: var(--stage-ink-2)">{{r.left}}</span></h3>
+<div class="cs-room-t" style="grid-template-rows: repeat({{r.n}}, minmax(0, 1fr))">
+<sc-for list="{{r.tiles}}" as="t" hint-placeholder-count="2">
+<div class="ac-tile {{t.cls}}" style="background: {{t.ground}}"><dc-import name="Faces" who="{{t.id}}" fig="true" hint-size="100%,100%"></dc-import><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></div>
+</sc-for>
+</div>
+<div class="cs-room-b"><ic n="presentation" s="15"></ic>{{r.board}}</div>
+</section>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isPresent}}" hint-placeholder-val="{{false}}">
+<div class="cs-pres">
+<div class="pm">
+<div class="shown">
+<span class="tag"><ic n="eye" s="15"></ic>Everyone sees this</span>
+<dc-import name="Paper" m="{{paper}}" w="{{pw}}" h="{{ph}}" hint-size="100%,100%"></dc-import>
+</div>
+<div class="ctl"><button type="button" aria-label="Back a frame"><ic n="chevronLeft" s="20"></ic></button><span>{{pres.pos}}</span><button type="button" class="{{h.presNext}}" aria-label="Next frame" onClick="{{c.presNext}}"><ic n="chevronRight" s="20"></ic></button><button type="button" class="stop {{h.presStop}}" onClick="{{c.presStop}}">Stop presenting</button></div>
+</div>
+<aside class="side">
+<div class="lab">Next</div>
+<div class="nx"><div class="cs-mini" style="position: absolute; left: 0; top: 0; width: 1114px; height: 682px; transform: scale(.2226); transform-origin: 0 0"><dc-import name="Paper" m="{{presNext}}" w="1114" h="674" hint-size="1114px,682px"></dc-import></div></div>
+<div class="pn"><div class="lab" style="margin-bottom: 8px">Only you see this</div>{{pres.note}}</div>
+</aside>
+</div>
+</sc-if>
+
+<sc-if value="{{isNoAccess}}" hint-placeholder-val="{{false}}">
+<div class="cs-noaccess"><div><ic n="lock" s="28"></ic><h3>A board you can’t open</h3><p>Aiko keeps it in a workspace you’re not in.</p><button type="button" class="ac-btn is-secondary">Ask Aiko for access</button></div></div>
+</sc-if>
+</div>
+
+<sc-if value="{{hasCol}}" hint-placeholder-val="{{false}}">
+<div class="cs-div"><button type="button" class="ic-divider {{h.divider}}" aria-label="Drag to change how much room each side gets" onClick="{{c.divider}}" onPointerDown="{{divDown}}" onPointerMove="{{divMove}}" onPointerUp="{{divUp}}"><i></i></button></div>
+<div class="cs-col">
+<sc-if value="{{colShare}}" hint-placeholder-val="{{false}}">
+<div class="cs-scr" style="height: {{scr.h}}px"><span class="ms-at" style="width: {{scr.w}}px; height: {{scr.h}}px"><span class="ms-k2" style="transform: scale({{scr.k}})"><mock></mock></span></span><button type="button" class="cs-sbig {{h.shareTile}}" aria-label="Show Priya’s screen big" onClick="{{c.shareTile}}"></button><span class="ac-tile-name"><dc-import name="Faces" who="{{sharer}}" size="18" ring="transparent" hint-size="18px,20px"></dc-import><span class="stl"><span>{{sharerName}}</span> is sharing</span></span><button type="button" class="cs-smore {{h.shareMore}}" aria-label="More for Priya’s screen" onClick="{{c.shareMore}}"><ic n="more" s="17"></ic></button></div>
+</sc-if>
+<sc-if value="{{colBoard}}" hint-placeholder-val="{{false}}">
+<button type="button" class="cs-colbd {{h.btile2}}" style="height: {{colBH}}px" aria-label="Go back to the board" onClick="{{c.btile2}}"><div class="cs-mini" style="width: 1114px; height: 674px; transform: scale({{colBK}})"><dc-import name="Paper" m="{{miniModel}}" w="1114" h="674" hint-size="1114px,674px"></dc-import></div><span class="ac-tile-name"><dc-import name="Faces" who="art" size="16" ring="transparent" hint-size="16px,18px"></dc-import>Art’s board</span></button>
+</sc-if>
+<div class="cs-colgrid" style="--cols: {{colCols}}">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="7">
+<button type="button" class="ac-tile {{t.cls}} {{t.hot}}" style="background: {{t.ground}}" onClick="{{t.go}}" aria-label="{{t.name}}"><dc-import name="Faces" who="{{t.id}}" fig="true" hint-size="100%,100%"></dc-import><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{showStrip}}" hint-placeholder-val="{{false}}">
+<div class="cs-strip" aria-label="People">
+<sc-for list="{{tiles}}" as="t" hint-placeholder-count="7">
+<button type="button" class="ac-tile {{t.cls}} {{t.hot}}" style="background: {{t.ground}}" onClick="{{t.go}}" aria-label="{{t.name}}"><dc-import name="Faces" who="{{t.id}}" fig="true" hint-size="100%,100%"></dc-import><span class="ac-tile-name"><sc-if value="{{t.talk}}" hint-placeholder-val="{{false}}"><span class="ac-level" aria-hidden="true"><i></i><i></i><i></i></span></sc-if>{{t.name}}</span></button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{isSetup}}" hint-placeholder-val="{{false}}">
+<aside class="cs-side" aria-label="Breakout rooms">
+<div class="cs-panel-h"><span>Breakout rooms</span><span class="sp"></span><button type="button" class="ac-icon-btn" aria-label="Close the panel"><ic n="x" s="18"></ic></button></div>
+<div class="cs-panel-b">
+<div class="ic-rtop">
+<span>Rooms</span>
+<div class="ac-seg"><button type="button" aria-pressed="false">2</button><button type="button" aria-pressed="true">3</button></div>
+<span>Length</span>
+<div class="ac-seg"><button type="button" aria-pressed="false">5 min</button><button type="button" aria-pressed="true">10 min</button><button type="button" aria-pressed="false">15 min</button></div>
+<span>Board</span>
+<div class="ac-seg cs-seg3"><button type="button" aria-pressed="{{setup.none}}">None</button><button type="button" class="{{h.segEach}}" aria-pressed="{{setup.each}}" onClick="{{c.segEach}}">In each room</button><button type="button" class="{{h.segShared}}" aria-pressed="{{setup.shared}}" onClick="{{c.segShared}}">Shared</button></div>
+</div>
+<sc-if value="{{setup.isEach}}" hint-placeholder-val="{{false}}">
+<div class="cs-rline"><span>Only that room sees its board. When rooms close, every board comes back to the main room.</span><button type="button" class="from"><ic n="layoutTemplate" s="15"></ic><span>What, why, next</span><ic n="down" s="14"></ic></button></div>
+</sc-if>
+<sc-if value="{{setup.isShared}}" hint-placeholder-val="{{false}}">
+<div class="cs-rline"><span>One board, a frame for each room. Everyone can see every frame while they work.</span><button type="button" class="from"><ic n="presentation" s="15"></ic><span>Launch retro</span><ic n="down" s="14"></ic></button></div>
+</sc-if>
+<div class="ic-boardh"><span class="ac-eyebrow">Who goes where</span><button type="button" class="ac-icon-btn" aria-label="Shuffle people"><ic n="shuffle" s="17"></ic></button></div>
+<div class="ic-board" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
+<sc-for list="{{setupRooms}}" as="r" hint-placeholder-count="3">
+<div class="ic-col"><div class="ch"><span class="ic-rname" style="flex: 1; font: 600 12.5px/1.2 var(--font-sans); overflow: hidden; white-space: nowrap; text-overflow: ellipsis">{{r.name}}</span><span class="cnt">{{r.n}}</span></div>
+<sc-for list="{{r.people}}" as="p" hint-placeholder-count="2"><div class="ic-rp"><dc-import name="Faces" who="{{p.id}}" size="22" ring="transparent" hint-size="22px,24px"></dc-import><span class="nm">{{p.name}}</span></div></sc-for>
+</div>
+</sc-for>
+</div>
+</div>
+<div class="cs-panel-f"><button type="button" class="ac-btn is-primary {{h.openRooms}}" onClick="{{c.openRooms}}"><ic n="door" s="18"></ic>Open 3 rooms</button></div>
+</aside>
+</sc-if>
+
+<sc-if value="{{isNotes}}" hint-placeholder-val="{{false}}">
+<aside class="cs-side" aria-label="Call panel">
+<div class="ic-side-head"><div class="ac-tabs" role="tablist" aria-label="Call panel"><button type="button" role="tab" class="ac-tab" aria-selected="true">Notes</button><button type="button" role="tab" class="ac-tab" aria-selected="false">Transcript</button><button type="button" role="tab" class="ac-tab" aria-selected="false">Ask</button><button type="button" role="tab" class="ac-tab" aria-selected="false">Chat</button><button type="button" role="tab" class="ac-tab" aria-selected="false">People</button></div><button type="button" class="ac-icon-btn" aria-label="Close the panel"><ic n="x" s="18"></ic></button></div>
+<div class="cs-panel-b">
+<div class="cs-nh"><span class="ac-notes-sign" style="height: 26px"><span class="ac-rec-dot"></span>Notes on</span><span>Written as people talk</span></div>
+<div class="ac-eyebrow" style="margin-top: 16px">Decided</div>
+<div class="cs-nr"><ic n="check" s="13"></ic><span>Kofi owns launch comms from now on</span></div>
+<div class="cs-nr"><ic n="check" s="13"></ic><span>Staging refreshes every night</span></div>
+<div class="ac-eyebrow" style="margin-top: 16px">Next</div>
+<div class="cs-nr"><dc-import name="Faces" who="theo" size="18" ring="transparent" hint-size="18px,20px"></dc-import><span>Theo writes the launch runbook</span></div>
+</div>
+</aside>
+</sc-if>
+
+<sc-if value="{{isLive}}" hint-placeholder-val="{{false}}">
+<aside class="cs-side" aria-label="Rooms are open">
+<div class="cs-panel-h"><span>Rooms are open</span><span class="sp"></span><button type="button" class="ac-icon-btn" aria-label="Close the panel"><ic n="x" s="18"></ic></button></div>
+<div class="cs-panel-b">
+<div class="cs-time"><b>{{liveLeft}}</b><span>Everyone comes back when time is up</span></div>
+<sc-for list="{{liveRooms}}" as="r" hint-placeholder-count="3">
+<div class="cs-rc {{r.cls}}">
+<div class="t"><span>{{r.name}}</span><button type="button" class="ac-btn {{r.btn}} {{r.hot}}" onClick="{{r.go}}">{{r.label}}</button></div>
+<div class="l"><ic n="presentation" s="15"></ic><span>{{r.line}}</span></div>
+<div class="ppl"><dc-import name="Faces" who="{{r.who}}" size="20" ring="var(--surface)" hint-size="40px,22px"></dc-import><span>{{r.names}}</span></div>
+</div>
+</sc-for>
+<div class="cs-chipmsg"><ic n="send" s="16"></ic>Message every room</div>
+</div>
+<div class="cs-panel-f"><button type="button" class="ac-btn is-secondary {{h.bringBack}}" onClick="{{c.bringBack}}">Bring everyone back now</button></div>
+</aside>
+</sc-if>
+</div>
+
+<footer class="cs-dock">
+<div class="ac-dock" role="toolbar" aria-label="Call controls">
+<span class="ac-dock-split"><button type="button" class="ac-dock-btn" aria-label="Mute"><ic n="mic" s="20"></ic></button><button type="button" class="ac-dock-chev" aria-label="Microphone"><ic n="up" s="14"></ic></button></span>
+<span class="ac-dock-split"><button type="button" class="ac-dock-btn" aria-label="Turn camera off"><ic n="video" s="20"></ic></button><button type="button" class="ac-dock-chev" aria-label="Camera"><ic n="up" s="14"></ic></button></span>
+<button type="button" class="ac-dock-btn" aria-label="Share a tab, window or screen"><ic n="screen" s="20"></ic></button>
+<button type="button" class="ac-dock-btn {{boardOn}} {{h.dockBoard}}" aria-label="Board" title="Board · B" onClick="{{c.dockBoard}}"><ic n="presentation" s="20"></ic></button>
+<button type="button" class="ac-dock-btn {{handOn}} {{h.dockHand}}" aria-label="Raise your hand" onClick="{{c.dockHand}}"><ic n="hand" s="20"></ic></button>
+<span class="ac-dock-split"><button type="button" class="ac-dock-btn" aria-label="Turn on captions"><ic n="captions" s="20"></ic></button><button type="button" class="ac-dock-chev" aria-label="Caption language"><ic n="up" s="14"></ic></button></span>
+<span class="ac-dock-sep"></span>
+<sc-if value="{{hostDock}}" hint-placeholder-val="{{true}}"><button type="button" class="ac-dock-btn {{roomsOn}} {{h.dockRooms}}" aria-label="Breakout rooms" onClick="{{c.dockRooms}}"><ic n="door" s="20"></ic></button></sc-if>
+<button type="button" class="ac-dock-btn" aria-label="Notes"><ic n="notesPen" s="20"></ic></button>
+<button type="button" class="ac-dock-btn" aria-label="Chat"><ic n="chat" s="20"></ic></button>
+<button type="button" class="ac-dock-btn" aria-label="More"><ic n="more" s="20"></ic></button>
+<span class="ac-dock-sep"></span>
+<button type="button" class="ac-dock-leave {{h.leave}}" onClick="{{c.leave}}"><ic n="signOut" s="18"></ic><span class="lt">Leave</span></button>
+</div>
+</footer>
+</div>
+
+<sc-if value="{{showLauncher}}" hint-placeholder-val="{{false}}">
+<div class="bl" style="--ox: {{launchX}}px" role="dialog" aria-label="Open a board">
+<div class="bl-h"><span>New board</span><small>{{launchNote}}</small></div>
+<div class="bl-tpl">
+<button type="button" class="bl-c {{h.tplBlank}}" onClick="{{c.tplBlank}}"><span class="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true"><path d="M40 24v12M34 30h12" stroke="var(--ink-3)" stroke-width="1.6" stroke-linecap="round" fill="none"></path></svg></span><span class="lb">Blank</span></button>
+<button type="button" class="bl-c {{h.tplRetro}}" onClick="{{c.tplRetro}}"><span class="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true"><rect x="7" y="10" width="20" height="40" rx="3" fill="#FFE0A0"></rect><rect x="30" y="10" width="20" height="40" rx="3" fill="#FCC3CF"></rect><rect x="53" y="10" width="20" height="40" rx="3" fill="#C6D1FF"></rect></svg></span><span class="lb">Retro</span></button>
+<button type="button" class="bl-c {{h.tplIdeas}}" onClick="{{c.tplIdeas}}"><span class="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true"><rect x="10" y="12" width="15" height="15" rx="2" fill="#FFE0A0"></rect><rect x="32" y="8" width="15" height="15" rx="2" fill="#DBCBFA"></rect><rect x="54" y="16" width="15" height="15" rx="2" fill="#FFCCAC"></rect><rect x="20" y="33" width="15" height="15" rx="2" fill="#C6D1FF"></rect><rect x="44" y="36" width="15" height="15" rx="2" fill="#FCC3CF"></rect></svg></span><span class="lb">Ideas</span></button>
+<button type="button" class="bl-c {{h.tplFlow}}" onClick="{{c.tplFlow}}"><span class="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true"><g fill="none" stroke="var(--ink-2)" stroke-width="1.6" stroke-linejoin="round"><rect x="6" y="23" width="18" height="14" rx="7"></rect><path d="M41 19 53 30 41 41 29 30Z"></path><rect x="60" y="11" width="15" height="12" rx="2"></rect><rect x="60" y="37" width="15" height="12" rx="2"></rect><path d="M24 30h5M53 30h3v-13h4M56 30v13h4"></path></g></svg></span><span class="lb">Flow</span></button>
+</div>
+<sc-if value="{{hasRecents}}" hint-placeholder-val="{{true}}">
+<div class="bl-sub">From Product</div>
+<button type="button" class="bl-r {{h.rec0}}" onClick="{{c.rec0}}"><span class="bl-th"><svg viewBox="0 0 38 38" aria-hidden="true"><g fill="none" stroke="var(--ink-2)" stroke-width="1.4" stroke-linejoin="round"><rect x="3" y="15" width="10" height="8" rx="4"></rect><path d="M22 11 29 19 22 27 15 19Z"></path><path d="M13 19h2M29 19h6"></path></g></svg></span><span><b>Onboarding flow</b><small>Aiko</small></span><span class="when">Mon</span></button>
+<button type="button" class="bl-r"><span class="bl-th"><svg viewBox="0 0 38 38" aria-hidden="true"><rect x="5" y="8" width="8" height="22" rx="2" fill="#FFE0A0"></rect><rect x="15" y="8" width="8" height="22" rx="2" fill="#FCC3CF"></rect><rect x="25" y="8" width="8" height="22" rx="2" fill="#C6D1FF"></rect></svg></span><span><b>September retro</b><small>Art</small></span><span class="when">2 Oct</span></button>
+</sc-if>
+<sc-if value="{{askAccess}}" hint-placeholder-val="{{false}}">
+<div class="bl-q"><p><b>Theo and Sam can’t open Onboarding flow.</b> It’s in Aiko’s workspace.</p><div class="acts"><button type="button" class="ac-btn is-primary {{h.letIn}}" onClick="{{c.letIn}}">Let them in for this call</button><button type="button" class="ac-btn is-secondary {{h.notThem}}" onClick="{{c.notThem}}">Open without them</button></div></div>
+</sc-if>
+<div class="bl-f"><ic n="sealed" s="15"></ic><span>{{launchFoot}}</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{showTileMenu}}" hint-placeholder-val="{{false}}">
+<div class="cs-tm" style="top: {{tmTop}}px" role="menu">
+<button type="button" class="mi {{h.goTo}}" onClick="{{c.goTo}}"><ic n="locate" s="17"></ic><span>Go to <span>{{tmName}}</span></span></button>
+<button type="button" class="mi {{h.followIt}}" onClick="{{c.followIt}}"><ic n="eye" s="17"></ic><span>Follow <span>{{tmName}}</span></span></button>
+<div class="ln"></div>
+<button type="button" class="mi"><ic n="pin" s="17"></ic><span>Pin <span>{{tmName}}</span></span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{showShareMenu}}" hint-placeholder-val="{{false}}">
+<div class="cs-menu" style="left: {{smX}}px; top: {{smY}}px" role="menu">
+<button type="button" class="mi {{h.shareBig}}" onClick="{{c.shareBig}}"><ic n="expand" s="17"></ic><span>Show big</span></button>
+<button type="button" class="mi {{h.shareShot}}" onClick="{{c.shareShot}}"><ic n="image" s="17"></ic><span>Put on the board</span></button>
+<div class="ln"></div>
+<button type="button" class="mi"><ic n="eye" s="17"></ic><span>Zoom in</span></button>
+<button type="button" class="mi"><ic n="upRight" s="17"></ic><span>Open in its own window</span></button>
+</div>
+</sc-if>
+
+<sc-if value="{{hasCaption}}" hint-placeholder-val="{{false}}">
+<div class="ac-caption cs-cap"><div class="who">Priya</div><p>The changelog should go out before the post, not after.</p></div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{false}}">
+<div class="cs-toast" role="status"><ic d="{{toast.d}}" s="17"></ic><span>{{toast.t}}</span><sc-if value="{{toast.hasAct}}" hint-placeholder-val="{{false}}"><button type="button">{{toast.act}}</button></sc-if></div>
+</sc-if>
+<sc-if value="{{fxRise}}" hint-placeholder-val="{{false}}"><div class="fx-rise" data-theme="light"></div></sc-if>
+<sc-if value="{{fxMove}}" hint-placeholder-val="{{false}}"><div class="fx-move"></div></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isNote}}" hint-placeholder-val="{{false}}">
+<div class="nb">
+<dc-import name="Sidebar" who="art" hint-size="272px,800px"></dc-import>
+<main class="nb-m">
+<span class="ac-eyebrow">Wednesday 4 November · 45 min</span>
+<h1>Launch retro</h1>
+<div class="nb-meta"><dc-import name="Faces" who="art,priya,theo,kofi,maya" size="26" max="5" hint-size="110px,28px"></dc-import><span>7 people</span><span class="ac-notes-sign" style="height: 24px">Written in confidential compute</span></div>
+<p class="nb-sum">{{note.sum}}</p>
+<sc-if value="{{note.main}}" hint-placeholder-val="{{true}}">
+<section class="nb-sec"><div class="ac-eyebrow">Board</div>
+<button type="button" class="nb-card {{h.noteBoard}}" onClick="{{c.noteBoard}}">
+<span class="nb-th"><div class="cs-mini" style="width: 1114px; height: 682px; transform: scale(.2693)"><dc-import name="Paper" m="{{miniModel}}" w="1114" h="674" hint-size="1114px,682px"></dc-import></div></span>
+<span><h3>Launch retro</h3><p>3 frames, 13 notes, saved in Product. Everyone invited can open it.</p><span class="go">Open the board<ic n="right" s="15"></ic></span></span>
+</button>
+</section>
+<section class="nb-sec"><div class="ac-eyebrow">Follow-ups from the board</div>
+<div class="nb-acts">
+<div class="nb-act"><dc-import name="Faces" who="kofi" size="24" ring="transparent" hint-size="24px,26px"></dc-import>Kofi owns launch comms from now on</div>
+<div class="nb-act"><dc-import name="Faces" who="kofi" size="24" ring="transparent" hint-size="24px,26px"></dc-import>Refresh staging every night</div>
+<div class="nb-act"><dc-import name="Faces" who="theo" size="24" ring="transparent" hint-size="24px,26px"></dc-import>Write the launch runbook</div>
+</div>
+</section>
+</sc-if>
+<sc-if value="{{note.rooms}}" hint-placeholder-val="{{false}}">
+<section class="nb-sec"><div class="ac-eyebrow">3 breakout rooms · 10 min</div>
+<div class="nb-rooms">
+<sc-for list="{{noteRooms}}" as="r" hint-placeholder-count="3">
+<button type="button" class="nb-room {{r.hot}}" onClick="{{r.go}}">
+<span class="nb-th" style="display: block"><div class="cs-mini" style="width: 1114px; height: 682px; transform: scale(.2288)"><dc-import name="Paper" m="{{r.mini}}" w="1114" h="674" hint-size="1114px,682px"></dc-import></div></span>
+<h3>{{r.name}}</h3><p>{{r.line}}</p>
+</button>
+</sc-for>
+</div>
+</section>
+</sc-if>
+</main>
+</div>
+</sc-if>
+
+<sc-if value="{{isPage}}" hint-placeholder-val="{{false}}">
+<div class="pg">
+<dc-import name="Paper" m="{{paper}}" w="1194" h="776" hint-size="100%,100%"></dc-import>
+<div class="bpg-acts"><dc-import name="Faces" who="priya,kofi" size="30" ring="var(--bd-ground)" hint-size="56px,32px"></dc-import><button type="button" class="ac-btn is-primary"><ic n="video" s="18"></ic>Start a call here</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{isPhone}}" hint-placeholder-val="{{false}}">
+<div class="pc">
+<div class="pc-top"><b>{{title}}</b><span class="ac-time">{{clock}}</span><span class="sp"></span><span class="ac-notes-sign is-stage" style="height: 24px; padding: 0 9px 0 8px; font-size: 11.5px"><span class="ac-rec-dot"></span>Notes on</span></div>
+<div class="pc-body">
+<div class="pc-faces">
+<sc-for list="{{phoneTiles}}" as="t" hint-placeholder-count="4">
+<div class="ac-tile {{t.cls}}" style="background: {{t.ground}}"><dc-import name="Faces" who="{{t.id}}" fig="true" hint-size="100%,100%"></dc-import><span class="ac-tile-name">{{t.name}}</span></div>
+</sc-for>
+</div>
+<div class="pc-paper">
+<dc-import name="Paper" m="{{paper}}" w="374" h="{{ph}}" hint-size="100%,100%"></dc-import>
+<sc-if value="{{showPhoneAdd}}" hint-placeholder-val="{{true}}"><button type="button" class="pc-add {{h.phAdd}}" aria-label="Add a sticky" onClick="{{c.phAdd}}"><ic n="plus" s="24"></ic></button></sc-if>
+</div>
+</div>
+<div class="pc-dock"><div class="ac-dock" role="toolbar" aria-label="Call controls">
+<button type="button" class="ac-dock-btn" aria-label="Mute"><ic n="mic" s="20"></ic></button>
+<button type="button" class="ac-dock-btn" aria-label="Camera"><ic n="video" s="20"></ic></button>
+<button type="button" class="ac-dock-btn is-on" aria-label="Board"><ic n="presentation" s="20"></ic></button>
+<button type="button" class="ac-dock-btn" aria-label="Chat"><ic n="chat" s="20"></ic></button>
+<button type="button" class="ac-dock-btn" aria-label="More"><ic n="more" s="20"></ic></button>
+<button type="button" class="ac-dock-leave" aria-label="Leave"><ic n="signOut" s="18"></ic></button>
+</div></div>
+<sc-if value="{{phoneSheet}}" hint-placeholder-val="{{false}}">
+<div class="pc-sheet" data-theme="{{theme}}"><div class="grab"></div>
+<div class="pc-note">Tag plans before launch</div>
+<div class="row"><button type="button" class="sw c-butter" aria-pressed="true" aria-label="Butter"><i class="swatch"></i></button><button type="button" class="sw c-peach" aria-pressed="false" aria-label="Peach"><i class="swatch"></i></button><button type="button" class="sw c-rose" aria-pressed="false" aria-label="Rose"><i class="swatch"></i></button><button type="button" class="sw c-lilac" aria-pressed="false" aria-label="Lilac"><i class="swatch"></i></button><button type="button" class="sw c-sky" aria-pressed="false" aria-label="Sky"><i class="swatch"></i></button></div>
+<button type="button" class="ac-btn is-primary {{h.phPut}}" onClick="{{c.phPut}}">Add to Support</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"node":{"editor":"text","default":"full"},"hot":{"editor":null,"default":""},"fx":{"editor":null,"default":""},"phone":{"editor":"boolean","default":false},"dark":{"editor":"boolean","default":false},"live":{"editor":"boolean","default":false},"share":{"editor":"boolean","default":false},"onGo":{"editor":null},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return window.AS.vals(this); }
+}
+</script>

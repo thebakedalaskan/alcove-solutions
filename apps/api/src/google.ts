@@ -4,10 +4,12 @@
  * The server swaps the code for an ID token, checks Google's signature, the issuer, the audience,
  * the expiry and the nonce, and accepts only an email address Google has verified, because notes
  * are shared by email. It also asks for the Calendar (events only) with offline access, so Alcove
- * can show someone's meetings and put the calls they schedule on their calendar. Someone can
- * decline the calendar on Google's consent screen and still sign in.
+ * can show someone's meetings and put the calls they schedule on their calendar, and for free/busy on
+ * the calendars they can see, to find a time that suits people. Someone can decline the calendar on
+ * Google's consent screen and still sign in.
  */
 import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { GoogleSignInPopupIdSchema } from '@alcove/api';
 import { z } from 'zod';
 import type { Config } from './config';
 import type { Deps } from './context';
@@ -21,7 +23,9 @@ const glog = log.child({ component: 'google' });
 /** How long a browser has to come back from Google. */
 export const ATTEMPT_MINUTES = 10;
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-const SCOPE = `openid email profile ${CALENDAR_SCOPE}`;
+/** When people are free, on calendars this account can see. Connections from before it was asked for read nobody's. */
+const FREEBUSY_SCOPE = 'https://www.googleapis.com/auth/calendar.events.freebusy';
+const SCOPE = `openid email profile ${CALENDAR_SCOPE} ${FREEBUSY_SCOPE}`;
 
 /** Why a sign-in didn't happen, as the welcome screen explains it. */
 export type Refusal = 'unavailable' | 'cancelled' | 'expired' | 'unverified' | 'failed' | 'busy';
@@ -50,7 +54,9 @@ const Claims = z.object({
 const Attempt = z.object({
   state: z.string(), nonce: z.string(), verifier: z.string(), until: z.number(),
   /** A second pass that asked Google for consent again, and where it should land afterwards. */
-  consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional()
+  consent: z.boolean().default(false), next: z.enum(['/ready', '/home', '/move']).optional(),
+  /** A random completion channel, absent from attempts made before popup sign-in was introduced. */
+  popup: GoogleSignInPopupIdSchema.nullable().default(null)
 });
 const HEADER = { v: 1 as const, kind: 'sign-in-attempt', ownerId: '', provider: 'google' };
 
@@ -108,11 +114,11 @@ function refuse(reason: Refusal, context: Record<string, string | number | boole
  * `consent`, Google asks again even if the person agreed before, which is the only way to get a new
  * refresh token; `hint` picks the account so they aren't asked which one.
  */
-export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined } = {}): Promise<{ url: string; attempt: string }> {
+export async function begin(d: Deps, o: { consent?: boolean; hint?: string | undefined; next?: Next | undefined; popup?: string | undefined } = {}): Promise<{ url: string; attempt: string }> {
   const cfg = d.cfg;
   if (!configured(cfg)) throw new UnavailableError('Google sign-in isn’t set up on this server.');
   const { endpoints } = await provider(cfg.GOOGLE_ISSUER);
-  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}) };
+  const a = { state: b64u(random(32)), nonce: b64u(random(32)), verifier: b64u(random(32)), until: Date.now() + ATTEMPT_MINUTES * 60_000, consent: !!o.consent, ...(o.next ? { next: o.next } : {}), popup: o.popup ?? null };
   const url = new URL(endpoints.authorization_endpoint);
   url.search = new URLSearchParams({
     client_id: cfg.GOOGLE_CLIENT_ID, redirect_uri: redirectUri(cfg), response_type: 'code', scope: SCOPE,
@@ -183,6 +189,12 @@ function openAttempt(d: Deps, cookie: string | undefined): z.infer<typeof Attemp
     glog.info('google sign-in attempt cookie rejected', { err: e });
     return null;
   }
+}
+
+/** Only an authentic attempt with its matching state can choose a completion channel, even for an expired refusal. */
+export function popupFor(d: Deps, q: Record<string, string>, cookie: string | undefined): string | undefined {
+  const attempt = openAttempt(d, cookie);
+  return attempt && same(q['state'] ?? '', attempt.state) ? attempt.popup ?? undefined : undefined;
 }
 
 /** Checks what came back from Google. Refusals are expected (a cancel, a stale tab) and returned, not thrown. */

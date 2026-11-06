@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Feature ownership and package boundaries
+        run: node scripts/check-structure.mjs
       - name: Integration tests only (no unit, browser or Storybook tests)
         run: node scripts/check-tests.mjs
       - name: Strict typing (no any, assertions, non-null or suppressions)
@@ -57,9 +59,35 @@ jobs:
       - name: API container builds
         run: docker build -f apps/api/Dockerfile -t alcove-api:ci .
 
-  integration:
-    name: Integration tests
+  # Whether a pull request changes anything the integration tests run. They test the API, so one that only touches the
+  # web app, the design system, Storybook or docs leaves them as main has them. Pushes to main always run them.
+  scope:
+    name: Scope
     runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.scope.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        # A pull request is checked out as its merge commit; its first parent is the base it merges into.
+        with: { fetch-depth: 2 }
+      - id: scope
+        env: { EVENT: '${{ github.event_name }}' }
+        run: |
+          if [ "$EVENT" != pull_request ]; then echo "api=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          git diff --name-only HEAD^1 HEAD | tee changed.txt
+          if grep -qvE '^(apps/web/|apps/storybook/|packages/ui/|docs/)|^[^/]+\.md$' changed.txt; then echo "api=true"; else echo "api=false"; fi >> "$GITHUB_OUTPUT"
+
+  # The integration tests, split across ten runners by how long each file takes (scripts/ci-tests.mjs). Each runner has
+  # its own Postgres, object store and LiveKit, and runs its share one file at a time, as the whole suite used to run.
+  shard:
+    name: Integration shard ${{ matrix.shard }}/10
+    needs: scope
+    if: needs.scope.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     services:
       db:
         image: postgres:17
@@ -103,4 +131,34 @@ jobs:
           for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:7880/ && exit 0; sleep 1; done; docker logs livekit; exit 1
       - name: Wait for the object store
         run: for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:9310/ && exit 0; sleep 1; done; exit 1
-      - run: pnpm turbo run test
+      - name: This runner's share of the tests
+        run: node scripts/ci-tests.mjs run ${{ matrix.shard }} 10
+        env: { REPORTS: '${{ runner.temp }}/reports' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: 'integration-${{ matrix.shard }}', path: '${{ runner.temp }}/reports', retention-days: 7, if-no-files-found: ignore }
+
+  # The one check the branch rules require: every runner passed, and every test vitest lists ran on one of them, once.
+  integration:
+    name: Integration tests
+    needs: [scope, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scope decided
+        if: needs.scope.result != 'success'
+        run: exit 1
+      - name: Nothing the integration tests run changed
+        if: needs.scope.outputs.api != 'true'
+        run: echo "This pull request only changes the web app, the design system, Storybook or docs, so main's integration tests stand."
+      - uses: actions/checkout@v4
+        if: needs.scope.outputs.api == 'true'
+      - uses: actions/download-artifact@v4
+        if: needs.scope.outputs.api == 'true'
+        with: { pattern: 'integration-*', path: reports, merge-multiple: true }
+      - name: Every test ran once, and passed
+        if: needs.scope.outputs.api == 'true'
+        run: node scripts/ci-tests.mjs check reports
+      - name: Every runner finished
+        if: needs.scope.outputs.api == 'true' && needs.shard.result != 'success'
+        run: exit 1

@@ -1,7 +1,8 @@
 /*
  * Browser notifications, while Alcove is open in a tab and someone is signed in: a call you organize about to start,
- * notes that are ready, notes shared with you, a follow-up due today, and someone asking for notes in a call you
- * organize. Each follows its switch in Settings and the browser's permission, which only Settings asks for, on a press.
+ * notes that are ready, notes shared with you, a follow-up due today, someone tagging you in a document, and someone
+ * asking for notes in a call you organize. Each follows its switch in Settings and the browser's permission, which only
+ * Settings asks for, on a press.
  *
  * One tab in the browser notifies: it holds a Web Lock (`alcove.notify`) until it closes, and the next tab takes over
  * then. Only that tab reads for them; asks for notes come from the call's own tab. They're made from what the app
@@ -13,11 +14,11 @@
  * build has none, and shows them from the page. Clicking one brings a window forward, and that window goes to the
  * call's join page, the note, Notes or Home itself, so leaving a call or a recording still asks first (public/sw.js).
  */
-import { WorkerMessageSchema, notesAreOn, type CallState, type Meeting, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
+import { WorkerMessageSchema, firstName, notesAreOn, type CallState, type Meeting, type MentionNotice, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { askerOf } from '~/features/call/Capture';
+import { askerOf } from '~/features/call/notes/Capture';
 import { dueFrom, dueOf } from '~/features/home/day';
 import { log } from '~/lib/log';
 import { callName } from '~/lib/people';
@@ -63,7 +64,7 @@ function watchPermission() {
 const subscribe = (f: () => void) => { watchPermission(); listeners.add(f); return () => { listeners.delete(f); }; };
 export const useNotifyPermission = (): NotifyPermission => useSyncExternalStore(subscribe, permissionNow, () => 'default');
 
-/** Asks the browser to allow notifications. Only ever on a press: Settings' Turn on browser notifications. */
+/** Asks the browser to allow notifications. Only ever on a press: Turn on, in Settings. */
 export async function askToNotify(): Promise<NotifyPermission> {
   if (!supported()) return 'unsupported';
   try {
@@ -138,7 +139,7 @@ async function notesOnScreen(): Promise<Set<string>> {
 
 /* ---------- showing each once ---------- */
 
-type Kind = 'call' | 'ready' | 'shared' | 'asked' | 'due' | 'notes' | 'followUps';
+type Kind = 'call' | 'ready' | 'shared' | 'asked' | 'due' | 'notes' | 'followUps' | 'tagged';
 interface Alert { key: string; kind: Kind; title: string; body: string; open: NotificationOpen }
 type Go = (o: NotificationOpen) => void;
 
@@ -211,6 +212,7 @@ function useGo(): Go {
     if (o.to === 'note') void router.navigate({ to: '/notes/$noteId', params: { noteId: o.noteId } });
     else if (o.to === 'notes') void router.navigate({ to: '/notes' });
     else if (o.to === 'home') void router.navigate({ to: '/home' });
+    else if (o.to === 'document') void router.navigate({ to: '/drive/$workspaceId/$documentId', params: { workspaceId: o.workspaceId, documentId: o.documentId }, ...(o.block ? { hash: o.block } : {}) });
     else {
       // Already at the call: the window coming forward is all it takes.
       const at = router.state.location.pathname;
@@ -261,7 +263,13 @@ function followUpDue(a: OpenAction): Timed[] {
   }];
 }
 
-const NONE: NotificationPrefs = { beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false };
+/** Someone tagging you, wherever you are in the app. A workspace that's in front of you has said so by then, and it isn't here. */
+const tagAlert = (m: MentionNotice): Alert => ({
+  key: `tagged:${m.id}`, kind: 'tagged', title: `${firstName(m.by.name)} tagged you`, body: m.name || 'Untitled',
+  open: { to: 'document', workspaceId: m.workspaceId, documentId: m.document, block: m.block }
+});
+
+const NONE: NotificationPrefs = { beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false, tagged: false };
 /** A tab that notifies can sit hidden for days with nothing else reading: what it depends on it reads by itself. */
 const KEEP_READING = { refetchInterval: NOTES_MS, refetchIntervalInBackground: true };
 
@@ -310,6 +318,8 @@ export function useNotifications() {
 
   const calls = useQuery({ ...q.upcoming(), enabled: want.beforeCall > 0, refetchIntervalInBackground: true }).data;
   const inbox = useQuery({ ...q.inbox(), enabled: want.followUpDue, refetchInterval: INBOX_MS, refetchIntervalInBackground: true }).data;
+  const tags = useQuery({ ...q.mentions(), enabled: want.tagged, refetchInterval: NOTES_MS, refetchIntervalInBackground: true }).data;
+  useEffect(() => { if (owner !== undefined && tags) showOnce(owner, tags.map(tagAlert), go); }, [owner, tags, go]);
   const reading = want.notesReady || want.sharedWithYou;
   const list = useQuery({
     ...q.notes(), enabled: reading, refetchIntervalInBackground: true,

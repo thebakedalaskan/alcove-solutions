@@ -1,10 +1,11 @@
-/* The call stage, always night: tiles, the dock and captions. */
+/* The call stage, always night: tiles, the dock, captions, pointers on a share, and how loud someone is for you. */
 import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
 import { Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
+import { IconButton, Scope, Slider } from './primitives';
 
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
 function withAlpha(hex: string, a: number): string {
@@ -52,9 +53,9 @@ export function CallTile({ person, name, speaking = false, muted = false, hand =
   );
 }
 
-/** The call's controls in one floating bar, bottom-centre on the stage. */
-export function CallDock({ children, label = 'Call controls', className }: { children: ReactNode; label?: string; className?: string | undefined }) {
-  return <div className={cn('ac-dock', className)} role="toolbar" aria-label={label}>{children}</div>;
+/** The call's controls in one floating bar, bottom-centre on the stage. `tucked`: only what's marked `keep` shows. */
+export function CallDock({ children, label = 'Call controls', tucked = false, className }: { children: ReactNode; label?: string; tucked?: boolean | undefined; className?: string | undefined }) {
+  return <div className={cn('ac-dock', tucked && 'is-tucked', className)} role="toolbar" aria-label={label}>{children}</div>;
 }
 
 /**
@@ -77,7 +78,7 @@ export const DockButton = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttribute
 });
 
 /** A dock control with a menu: the button, and a narrow chevron beside it that opens the menu. */
-export const DockSplit = ({ children }: { children: ReactNode }) => <span className="ac-dock-split">{children}</span>;
+export const DockSplit = ({ children, className }: { children: ReactNode; className?: string | undefined }) => <span className={cn('ac-dock-split', className)}>{children}</span>;
 export const DockChevron = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { label: string; on?: boolean }>(
   function DockChevron({ label, on = false, className, type = 'button', ...rest }, ref) {
     return (
@@ -89,7 +90,13 @@ export const DockChevron = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttribut
 
 export const DockSeparator = () => <span className="ac-dock-sep" aria-hidden="true" />;
 
-/** Leave: the last item in the dock and its only text button. */
+/** A dock control in words, for the one thing a tucked dock has to say. */
+export const DockWords = forwardRef<HTMLButtonElement, Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: IconName; children: ReactNode }>(
+  function DockWords({ icon, children, className, type = 'button', ...rest }, ref) {
+    return <button ref={ref} type={type} className={cn('ac-dock-words', className)} {...rest}><Icon name={icon} size={15} /><span>{children}</span></button>;
+  });
+
+/** Leave: the last item in the dock and its only text button. Where a dock has no room for its word, the word is hidden only from sight, so it's still Leave's name. */
 export const DockLeave = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(function DockLeave({ className, children = 'Leave', type = 'button', ...rest }, ref) {
   return <button ref={ref} type={type} className={cn('ac-dock-leave', className)} {...rest}><Icon name="signOut" size={18} /><span className="lt">{children}</span></button>;
 });
@@ -121,4 +128,32 @@ export function SharePointer({ person, name, style, className }: { person: Avata
       <PointerTag person={person} name={name} />
     </span>
   );
+}
+
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+
+/**
+ * How loud one person is for you, from their tile's menu and from People: a slider and a quick mute, for you alone. Only
+ * your own playback changes. Unmuting goes back to the level they had (the caller keeps it). `level` runs from 0 (muted
+ * for you) to 1.
+ */
+export function VolumeControl({ name, level, onChange, onToggle }: { name: string; level: number; onChange: (level: number) => void; onToggle: () => void }) {
+  const muted = level === 0;
+  return (
+    <div className="ic-vol">
+      <div className="ic-vol-h"><span>Volume for you</span><Scope>Only you</Scope></div>
+      <div className="ic-vol-row">
+        <IconButton icon={muted ? 'speakerOff' : level < 0.5 ? 'speakerLow' : 'speaker'} size={17} on={muted}
+          label={muted ? `Unmute ${name} for you` : `Mute ${name} for you`} onClick={onToggle} />
+        <Slider value={level} step={0.05} label={`How loud ${name} is for you`} valueText={muted ? 'Muted for you' : pct(level)} onChange={onChange} />
+        <span className="n">{muted ? 'Off' : pct(level)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** How someone's level reads beside their name: nothing at full volume. */
+export function volumeTag(level: number): string | null {
+  if (level >= 1) return null;
+  return level === 0 ? 'Muted for you' : `${pct(level)} for you`;
 }

@@ -5,14 +5,15 @@
  *   Kwrap             = HKDF-SHA256(Kowner, salt=decode(ownerId), info="alcove/owner-wrap/v1")
  *   KeyEnvelope       = {v,ownerId,scopeId,keyVersion,nonce,ciphertext}, header as associated data
  *   Record            = {header,nonce,ciphertext} with XChaCha20-Poly1305 and AD = JCS(header)
+ *   Binary record     = uint32(length of JCS(header)) || JCS(header) || nonce || ciphertext: the same seal, for what's too big for text
  *   Blind index       = HMAC(HKDF(Kmaster, "alcove/index/v1"), purpose || 0x00 || value): finds people without storing who they are
  */
-import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { hchacha, xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { randomBytes } from '@noble/hashes/utils.js';
-import { timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { IntegrityError, InternalError, KeyError, ValidationError } from './errors';
 
@@ -33,7 +34,8 @@ export function random(n: number): Uint8Array<ArrayBuffer> {
 }
 /** Id128: 16 random bytes as 22 characters of unpadded base64url. */
 export const id128 = (): string => b64u(random(16));
-export const sha = (b: Uint8Array): Uint8Array => sha256(b);
+/** Through OpenSSL: a piece of a file is hashed on the one core every call runs on, and this takes a tenth of the time. */
+export const sha = (b: Uint8Array): Uint8Array => new Uint8Array(createHash('sha256').update(b).digest());
 export const H = (tag: string, body: Uint8Array): Uint8Array => sha256(concat(utf8(tag), new Uint8Array([0]), body));
 export function concat(...parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
@@ -69,11 +71,13 @@ export const ownerRootWrapKey = (kmaster: Uint8Array, ownerId: string): Uint8Arr
 export const ownerWrapKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/owner-wrap/v1');
 /** Key for a mutable encrypted state row (call state, jobs). Derived from Kowner under its own label, scoped to the row. */
 export const stateKey = (root: Uint8Array, ownerId: string, scope: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), `alcove/state/v1/${scope}`);
+/** Names what someone can't open on a call. Nothing is stored under it: a name is worked out each time it's told. */
+export const closedDocumentKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/closed-document/v1');
 export const operationCommitKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-commit/v1');
 export const operationResultKey = (root: Uint8Array, ownerId: string): Uint8Array => derive(live(root), unb64u(ownerId, 32), 'alcove/operation-result/v1');
 /** Proves an unwrapped root is the owner's without storing anything that reveals it. */
 export const rootCheck = (root: Uint8Array, ownerId: string): Uint8Array => hmac(sha256, derive(live(root), unb64u(ownerId, 32), 'alcove/root-check/v1'), utf8(ownerId));
-export const serviceKey = (kservice: Uint8Array, purpose: 'accounting'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
+export const serviceKey = (kservice: Uint8Array, purpose: 'accounting' | 'agents'): Uint8Array => derive(live(kservice), new Uint8Array(0), `alcove/service/${purpose}/v1`);
 /** Seals what a browser carries between leaving to sign in with a provider and coming back. */
 export const signInAttemptKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/sign-in-attempt/v1');
 /** Names a provider's photo by an opaque token, so browsers fetch it from Alcove and never from the provider. */
@@ -98,13 +102,15 @@ export function openStable(key: Uint8Array, label: string, token: string): Uint8
 }
 /** Signs call passes: what lets someone in a call (guests included) make that call's requests. */
 export const callPassKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/call-pass/v1');
+/** Signs the tokens in files' URLs: what says who's asking when a picture or a player can't send a header. */
+export const mediaTokenKey = (kmaster: Uint8Array): Uint8Array => derive(live(kmaster), new Uint8Array(0), 'alcove/media-token/v1');
 export const mac = (key: Uint8Array, data: Uint8Array): Uint8Array => hmac(sha256, key, data);
 /**
  * A keyed hash that lets the server find a person (by sign-in account or email) without storing
  * who they are. Emails are compared trimmed and lower-cased.
  */
-export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'call-code', value: string): Uint8Array {
-  const v = purpose === 'email' ? value.trim().toLowerCase() : value;
+export function blindIndex(kmaster: Uint8Array, purpose: 'subject' | 'email' | 'invite' | 'ring' | 'call-code' | 'call-seat' | 'addition-author' | 'upload-guest', value: string): Uint8Array {
+  const v = purpose === 'email' || purpose === 'invite' || purpose === 'ring' ? value.trim().toLowerCase() : value;
   return hmac(sha256, derive(live(kmaster), new Uint8Array(0), 'alcove/index/v1'), concat(utf8(purpose), new Uint8Array([0]), utf8(v)));
 }
 
@@ -147,7 +153,70 @@ export function openRecord(key: Uint8Array, expected: RecordHeader, record: Uint
     throw new IntegrityError('A record failed its integrity check.', { cause: err, context: { kind: expected.kind } });
   }
 }
+/**
+ * How many bytes a record opens to, from how long it is: everything around its ciphertext follows from the header, the
+ * nonce is always the same length and base64url isn't padded. So a recording's length is known without reading it.
+ */
+export function recordPlainBytes(header: RecordHeader, recordBytes: number): number {
+  const encoded = recordBytes - utf8(jcs({ header, nonce: b64u(new Uint8Array(24)), ciphertext: '' })).length;
+  return Math.floor(encoded / 4) * 3 + Math.max(0, (encoded % 4) - 1) - 16;
+}
 export const sealJson = (key: Uint8Array, header: RecordHeader, value: Json): Uint8Array => sealRecord(key, header, utf8(jcs(value)));
 export function openJson<S extends z.ZodType>(key: Uint8Array, header: RecordHeader, record: Uint8Array, schema: S): z.infer<S> {
   return schema.parse(JSON.parse(fromUtf8(openRecord(key, header, record))));
+}
+
+/* ---------- binary records ---------- */
+const NONCE_BYTES = 24;
+const TAG_BYTES = 16;
+/** "expand 32-byte k", as ChaCha20 reads it. */
+const SIGMA = new Uint32Array([0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]);
+/**
+ * XChaCha20-Poly1305 is ChaCha20-Poly1305 under a key HChaCha20 makes from the first 16 bytes of the nonce, with the last 8
+ * as its nonce. That leaves OpenSSL to do the bytes, the same bytes, in a sixth of the time: all of it on the core calls use.
+ */
+function subkeyFor(key: Uint8Array, nonce: Uint8Array): { subkey: Uint8Array; iv: Uint8Array } {
+  const words = new Uint32Array(8);
+  hchacha(SIGMA, new Uint32Array(live(key).slice().buffer), new Uint32Array(nonce.slice(0, 16).buffer), words);
+  const iv = new Uint8Array(12);
+  iv.set(nonce.subarray(16), 4);
+  return { subkey: new Uint8Array(words.buffer), iv };
+}
+/** A record of bytes, kept as bytes: a third smaller than base64 in JSON, with nothing to parse. Everything else about it is a record. */
+export function sealBinary(key: Uint8Array, header: RecordHeader, plaintext: Uint8Array): Uint8Array {
+  const head = utf8(jcs(header));
+  const at = 4 + head.length;
+  const nonce = random(NONCE_BYTES);
+  const { subkey, iv } = subkeyFor(key, nonce);
+  const out = new Uint8Array(at + NONCE_BYTES + plaintext.length + TAG_BYTES);
+  new DataView(out.buffer).setUint32(0, head.length);
+  out.set(head, 4);
+  out.set(nonce, at);
+  const c = createCipheriv('chacha20-poly1305', subkey, iv, { authTagLength: TAG_BYTES }).setAAD(head);
+  out.set(c.update(plaintext), at + NONCE_BYTES);
+  c.final();
+  out.set(c.getAuthTag(), out.length - TAG_BYTES);
+  subkey.fill(0);
+  return out;
+}
+/** Opens a binary record and checks that its header is exactly the one expected. */
+export function openBinary(key: Uint8Array, expected: RecordHeader, record: Uint8Array): Uint8Array {
+  const head = utf8(jcs(expected));
+  const at = 4 + head.length;
+  const said = record.length < at + NONCE_BYTES + TAG_BYTES ? undefined : record.subarray(0, at);
+  if (!said || new DataView(said.buffer, said.byteOffset, 4).getUint32(0) !== head.length || !equalBytes(said.subarray(4), head)) {
+    throw new IntegrityError('Record header doesn’t match its location.', { context: { kind: expected.kind } });
+  }
+  const { subkey, iv } = subkeyFor(key, record.subarray(at, at + NONCE_BYTES));
+  try {
+    const c = createDecipheriv('chacha20-poly1305', subkey, iv, { authTagLength: TAG_BYTES }).setAAD(head);
+    c.setAuthTag(record.subarray(record.length - TAG_BYTES));
+    const plain = c.update(record.subarray(at + NONCE_BYTES, record.length - TAG_BYTES));
+    c.final();
+    return plain;
+  } catch (err) {
+    throw new IntegrityError('A record failed its integrity check.', { cause: err, context: { kind: expected.kind } });
+  } finally {
+    subkey.fill(0);
+  }
 }

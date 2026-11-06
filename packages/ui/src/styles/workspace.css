@@ -1,12 +1,12 @@
 /*
- * The workspace: documents and folders beside a page, in a call and in the app. It follows the person's theme, like
- * the call's side panel. Classes: ws- the pane and what floats over the call, wt- the list, wd- a document, wm- menus,
+ * The workspace: documents and folders beside a page, in a call and in the app. It follows the person's theme in the
+ * app, and in a call it's night like the rest of the call. Classes: ws- the pane and what floats over the call, wt- the list, wd- a document, wm- menus,
  * wv- popovers, wp- presenting, wh- history, wl- the call's live pages. A document's blocks and the editor's menus are
  * in workspace-editor.css; the call's frame, tiles and panels in call.css. On a phone (640px and under) popovers become
  * sheets and the list goes full width, by themselves: nothing has to say so.
  */
-.wd-stop kbd { font-family: var(--font-mono); }
-:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar, .ws-ncard) .ac-i { flex: none; display: block; }
+.wd-stop kbd { font-family: var(--font-sans); }
+:where(.ws-pane, .ws-pop, .ws-play, .wv-knock, .ws-toasts, .ws-ghost, .ws-kbar) .ac-i { flex: none; display: block; }
 .wt-in:focus-visible, .wv-fi:focus-visible, .wm-in:focus-visible, .wp-notes:focus-visible, .wl-add input:focus-visible, .wl-find input:focus-visible, .wv-f input:focus-visible { outline: none; }
 
 @keyframes ws-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -26,25 +26,31 @@
 .ws-pane.is-away .wd { visibility: hidden; }
 
 /* ------------------------------------------------------------ the list */
-.wt { flex: none; width: 244px; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); transition: margin-left var(--duration-2) var(--ease-out), visibility 0s; }
-.ws-pane.tree-off .wt { margin-left: -244px; visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
+/* The list takes more of a wide pane, so a workspace's name has room to say itself. */
+.wt { --wt-w: 244px; flex: none; width: var(--wt-w); display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); transition: margin-left var(--duration-2) var(--ease-out), visibility 0s; }
+@container ws-pane (min-width: 900px) { .wt { --wt-w: 264px; } }
+@container ws-pane (min-width: 1100px) { .wt { --wt-w: 292px; } }
+.ws-pane.tree-off .wt { margin-left: calc(-1 * var(--wt-w)); visibility: hidden; transition: margin-left var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
 .ws-pane.tree-off.list-peek .wt { position: absolute; z-index: 6; left: 0; top: 0; bottom: 0; margin-left: 0; visibility: visible; box-shadow: var(--shadow-3); transition: none; }
 .wt-head { flex: none; display: flex; align-items: center; gap: 2px; height: 52px; padding: 0 8px; }
 .wt-space { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 6px; border-radius: 10px; color: var(--ink-3); transition: background-color var(--duration-1); }
 .wt-space:hover, .wt-space[data-state="open"] { background: var(--sunk); }
-.wt-space .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1 var(--font-sans); color: var(--ink); }
+.wt-space.is-edit, .wt-space.is-edit:hover { gap: 8px; background: var(--sunk); padding-right: 8px; }
+.wt-space .n { text-align: left; font: 600 14px/18px var(--font-sans); color: var(--ink); }
 .wt-mark { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--horizon-soft); color: var(--horizon); }
 .wt-ib { width: 30px; height: 30px; border-radius: 8px; color: var(--ink-3); }
 .wt-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; padding: 0 8px 12px; scrollbar-width: thin; }
 .wt-scroll:first-child { padding-top: 6px; }
-.wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); user-select: none; }
+.wt-sec { padding: 12px 8px 6px; border-radius: 8px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); user-select: none; }
 .wt-sec.is-into { background: var(--horizon-soft); color: var(--horizon); }
 .wt-r { position: relative; display: flex; align-items: center; height: 32px; padding-left: calc(var(--d) * 16px); border-radius: 9px; color: var(--ink-2); user-select: none; transition: background-color var(--duration-1); }
 .wt-r:hover { background: var(--sunk); }
 .wt-r.is-cur { background: var(--sunk); color: var(--ink); }
 .wt-r.is-into { background: var(--horizon-soft); color: var(--horizon); box-shadow: inset 0 0 0 1.5px var(--horizon); }
-.wt-r.is-ghosted { opacity: .4; }
 .wt-r.is-flash { animation: ws-flash 1.4s var(--ease-out); }
+/* The keyboard's ring goes round the row, with the buttons that show on it. */
+.wt-r:has(.wt-open:focus-visible) { outline: 2px solid var(--focus); outline-offset: -2px; }
+.wt-open:focus-visible { outline: none; }
 .wt-tw { flex: none; display: grid; place-items: center; width: 20px; height: 32px; color: var(--ink-3); transition: transform var(--duration-1) var(--ease-out); }
 .wt-tw.is-open { transform: rotate(90deg); }
 .wt-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 4px 0 0; text-align: left; font: 500 13.5px/1 var(--font-sans); color: inherit; }
@@ -52,7 +58,7 @@
 .wt-r[data-area="tree"]:not(:has(.wt-tw)) .wt-open { padding-left: 20px; }
 .wt-open .ac-i { color: var(--ink-3); }
 .wt-open .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
-.wt-c { flex: none; margin-left: auto; padding: 2px 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-3); font: 500 11.5px/1.1 var(--font-mono); }
+.wt-c { flex: none; margin-left: auto; padding: 2px 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-3); font: 500 11.5px/1.1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wt-r.is-live .wt-open .ac-i { color: var(--rec); }
 .wt-r.is-live.is-quiet .wt-open .ac-i { color: var(--ink-3); }
 .wt-f { flex: none; display: inline-flex; padding: 0 6px 0 0; border-radius: 6px; }
@@ -68,6 +74,11 @@
 .wt-line { position: absolute; right: 8px; height: 2px; margin-top: -1px; background: var(--horizon); border-radius: 2px; pointer-events: none; }
 .wt-line::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); box-shadow: inset 0 0 0 2px var(--horizon); }
 .wt-empty { padding: 10px 14px; font-size: 13px; line-height: 1.4; color: var(--ink-3); }
+.wt-bin { flex: none; padding: 0 8px 6px; }
+.wt-trash { display: flex; align-items: center; gap: 8px; width: 100%; height: 30px; padding: 0 8px; border-radius: 9px; color: var(--ink-3); font: 500 13px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.wt-trash:hover, .wt-trash.is-cur { background: var(--sunk); color: var(--ink-2); }
+.wt-trash .n { min-width: 0; line-height: 1.3; }
+.wt-trash.is-into { background: var(--caution-soft); color: var(--caution); box-shadow: inset 0 0 0 1.5px var(--caution); }
 .wt-foot { flex: none; display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-top: 1px solid var(--line); color: var(--ink-3); font: 500 12px/1 var(--font-sans); white-space: nowrap; overflow: hidden; }
 .wt-foot .ac-i { color: var(--sun-text); }
 
@@ -75,9 +86,12 @@
 .wd { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--surface); container-type: inline-size; }
 .wd-head { flex: none; display: flex; align-items: center; gap: 6px; height: 52px; padding: 0 10px; }
 .wd-ib { width: 32px; height: 32px; color: var(--ink-3); }
-.wd-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
-.wd-crumbs .c { flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
-.wd-crumbs .c.is-last { color: var(--ink); flex: 0 1 auto; min-width: 0; }
+/* Laid out from the document back: a folder that doesn't fit whole wraps onto a line that's cut off, so nothing is ever squeezed to a letter. */
+.wd-crumbs { flex: 1; min-width: 0; height: 17px; display: flex; flex-flow: row-reverse wrap; justify-content: flex-end; align-content: flex-start; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-3); font: 500 13px/1 var(--font-sans); white-space: nowrap; }
+.wd-crumbs .cw { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+/* A long path gives up its folders first: where you are stays readable. */
+.wd-crumbs .c { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.wd-crumbs .is-last .c { color: var(--ink); max-width: none; }
 .wd-save { flex: none; display: inline-flex; align-items: center; gap: 5px; margin-right: 4px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
 .wd-save.is-offline, .wd-save.is-failed { color: var(--caution); }
 .wd-save.is-live { color: var(--rec); gap: 6px; }
@@ -96,6 +110,11 @@
 .wd-off, .wd-gone { background: var(--caution-soft); color: var(--caution); }
 .wd-gone span { flex: 1; min-width: 0; }
 .wd-ro { background: var(--sunk); color: var(--ink-2); }
+/* What didn't save says why, and what can be done with it beside that, under it when there's no room. */
+.wd-unsaved { flex-wrap: wrap; row-gap: 6px; }
+.wd-unsaved > .t { flex: 1 1 320px; min-width: 0; }
+.wd-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ac-empty-act .wd-acts { justify-content: center; }
 .wd-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
 .wd-page { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
 .wd-title { min-height: 44px; outline: none; font: 450 38px/1.14 var(--font-display); letter-spacing: -.02em; font-variation-settings: 'opsz' 40; color: var(--ink); word-break: break-word; }
@@ -110,17 +129,21 @@
 .wd-tpl:hover { background: var(--sunk); }
 .wd-tpl b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
 .wd-tpl small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+.wd.is-bare > .wd-head { display: none; }
 .wd-none svg { animation: ws-fade var(--duration-3) var(--ease-out); }
 .wd-none { height: 100%; display: grid; align-content: center; justify-items: center; gap: 8px; padding: 32px; text-align: center; color: var(--ink-3); }
 .wd-none b { margin-top: 10px; font: 480 24px/1.2 var(--font-display); letter-spacing: -.015em; color: var(--ink); }
-.wd-none p { max-width: 34ch; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); }
+.wd-none p { max-width: 34ch; font-size: 14.5px; line-height: 1.5; color: var(--ink-3); text-wrap: balance; }
 .wd-none .ac-empty-act { margin-top: 10px; flex-wrap: nowrap; gap: 8px; }
+
+.ws-dragging, .ws-dragging * { cursor: grabbing; }
+.ws-dragging .wt-acts { display: none; }
 
 /* ------------------------------------------------------------ popovers */
 .ws-pop { z-index: 60; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); outline: none; font: 400 15px/22px var(--font-sans); animation: ws-pop var(--duration-1) var(--ease-out); transform-origin: var(--radix-popover-content-transform-origin, top left); }
 .wm { width: 264px; padding: 6px; outline: none; }
 .wm-list { position: relative; max-height: 352px; overflow: auto; scrollbar-width: thin; }
-.wm-h { padding: 10px 10px 5px; font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.wm-h { padding: 10px 10px 5px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
 .wm-s { height: 1px; margin: 5px 8px; background: var(--line); }
 .wm-x { display: flex; align-items: center; gap: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .wm-r { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 5px 10px; border-radius: 10px; text-align: left; color: var(--ink); font: 500 14px/1.25 var(--font-sans); transition: background-color var(--duration-1); }
@@ -138,8 +161,12 @@
 .wu-p { display: block; border-radius: 8px; overflow: hidden; }
 .wu-p img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; }
 .wu-p:hover { outline: 2px solid var(--horizon); outline-offset: 1px; }
+/* A photo on its way, holding its place; the videos and files already in the workspace, as rows. */
+.wu-w { display: block; aspect-ratio: 3 / 2; background: var(--sunk); }
+.wu-f { display: grid; gap: 1px; margin: 0 -4px; }
+.wu-f .wm-r small { font-variant-numeric: tabular-nums; }
 .wm.is-upload { width: 268px; }
-.wm.is-role { width: 180px; }
+.wm.is-role { width: max-content; min-width: 216px; max-width: 300px; }
 .wv-person { width: 264px; display: grid; gap: 8px; padding: 12px; }
 .wv-person .hd { display: flex; align-items: center; gap: 10px; }
 .wv-person .hd span { min-width: 0; overflow-wrap: anywhere; }
@@ -151,15 +178,20 @@
 .wv-ask p { min-width: 0; overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; color: var(--ink-2); }
 .wv-ask b { color: var(--ink); font-weight: 600; }
 .wv-ask .ac, .wv-switch .ac { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.wv-cmt { width: 320px; padding: 10px; display: grid; gap: 8px; }
+.wv-cmt { width: 320px; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .wv-cmt .q { padding: 6px 8px; border-radius: 8px; background: var(--hl); font-size: 13px; line-height: 1.35; color: var(--ink-2); }
-.wv-cmt .in { display: flex; align-items: center; gap: 8px; }
+.wv-cmt .in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.wv-cmt .in .wm-in { flex: 1; width: 0; }
+.wv-tags { order: -1; flex: 0 0 100%; max-height: 208px; margin: -2px 0 2px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.wv-tags .wm-h:first-child { padding-top: 2px; }
+.wn-w { color: var(--horizon); font-weight: 600; }
 .wm-in { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border: 0; border-radius: 10px; background: var(--sunk); color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
 .wm-in:focus { box-shadow: inset 0 0 0 2px var(--focus); }
 .wm-in::placeholder { color: var(--ink-3); }
-.ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--sun); color: var(--on-sun); }
+.ws-send { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
 .wv-th { display: flex; align-items: center; gap: 8px; }
 .wv-th .q1 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 6px; border-radius: 6px; background: var(--hl); font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.wv-ms { display: grid; gap: 8px; max-height: min(320px, 50vh); overflow: auto; scrollbar-width: thin; }
 .wv-m { display: flex; gap: 8px; }
 .wv-m b { font: 600 13.5px/1.2 var(--font-sans); }
 .wv-m > div { min-width: 0; }
@@ -170,10 +202,13 @@
 .wv-f input { flex: 1; min-width: 0; height: 30px; border: 0; padding: 0; background: none; color: var(--ink); font: 400 14px/1 var(--font-sans); outline: none; }
 .wv-f input::placeholder { color: var(--ink-3); }
 .wv-f:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+/* A person the field found lines up with the people under it, and its hover reaches past them. */
+.wv-share > .wm-r { width: calc(100% + 20px); margin: 0 -10px; }
+.wv-rows { display: grid; gap: 8px; max-height: 280px; overflow: auto; scrollbar-width: thin; }
 .wv-pr { display: flex; align-items: center; gap: 10px; min-height: 40px; }
-.wv-pr .m { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wv-pr b { display: block; font: 600 14px/1.25 var(--font-sans); }
-.wv-pr small { font-size: 12.5px; color: var(--ink-3); }
+.wv-pr .m { flex: 1; min-width: 0; }
+.wv-pr b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/1.25 var(--font-sans); }
+.wv-pr small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 .wv-pr .role { flex: none; display: inline-flex; align-items: center; gap: 3px; font: 500 13px/1 var(--font-sans); color: var(--ink-2); }
 .wv-pr button.role { border-radius: 6px; }
 .wv-pr button.role:hover { color: var(--ink); }
@@ -182,10 +217,14 @@
 .wv-foot { display: flex; align-items: center; gap: 7px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 .wv-foot .ac-i { color: var(--sun-text); }
 .wv-switch { width: 320px; padding: 14px; display: grid; gap: 6px; }
+/* The question holds focus as it opens, for whoever reads it out; it isn't a control, so it draws no ring. */
+.wv-switch:focus { outline: none; }
 .wv-switch b { overflow-wrap: anywhere; font: 600 15px/1.25 var(--font-sans); }
 .wv-switch p { font-size: 13.5px; line-height: 1.42; color: var(--ink-2); }
 .wv-switch .warn { display: flex; gap: 7px; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 10px; background: var(--caution-soft); color: var(--caution); }
 .wv-switch .warn .ac-i { margin-top: 2px; }
+/* The question takes the menu's place in the popover that's already open, so it pops in itself, 140 ms. */
+.ws-pop > .wv-switch { animation: ws-pop var(--duration-1) var(--ease-out); }
 .wv-pres { width: 320px; padding: 12px; display: grid; gap: 8px; }
 .wv-pres .wv-pv { position: relative; height: 120px; padding: 14px 16px; border-radius: 10px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
 .wv-pres .wv-pv b { display: block; font: 450 20px/1.1 var(--font-display); }
@@ -201,7 +240,22 @@
 .wv-find .f { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 4px; color: var(--ink-3); }
 .wv-fi { flex: 1; min-width: 0; height: 30px; padding: 1px 2px; border: 0; background: none; color: var(--ink); font: 400 15.5px/1 var(--font-sans); outline: none; }
 .wv-fi::placeholder { color: var(--ink-3); }
-.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 400px; margin-left: -200px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
+.wv-more { justify-content: center; min-height: 34px; color: var(--ink-3); }
+.wv-said { width: 360px; max-width: 100%; max-height: min(420px, 60vh); padding: 6px; overflow: auto; scrollbar-width: thin; }
+.wv-said .answer { margin: 0; padding: 10px 10px 4px; animation: none; }
+.wv-said .answer p { font-size: 14.5px; line-height: 1.5; color: var(--ink); }
+.wv-said .pal-src { padding: 6px 10px 2px; }
+.wv-keyrow { margin: 4px 2px 0; padding-top: 4px; border-top: 1px solid var(--line); }
+.wv-keyrow .wm-r { min-height: 32px; color: var(--ink-3); }
+.wv-keys { position: fixed; left: 0; right: 0; top: 13vh; width: 1040px; max-width: calc(100vw - 32px); max-height: calc(100vh - 13vh - 16px); margin: 0 auto; overflow: auto; }
+.wv-keys-esc { position: absolute; top: 14px; right: 14px; }
+.ky { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px 40px; padding: 32px 36px; }
+.ky-g { display: grid; gap: 6px; align-content: start; }
+.ky-g h3 { margin: 0 0 6px; font: 500 12px/1 var(--font-sans); color: var(--ink-3); }
+.ky-r { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; font-size: 14.5px; line-height: 1.25; }
+.ky-r kbd { flex: none; display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 6px; background: var(--surface); color: var(--ink-2); font: 500 12px/1 var(--font-mono); box-shadow: inset 0 0 0 1px var(--line), inset 0 -1px 0 var(--line); }
+.ky-note { grid-column: 1 / -1; font-size: 14px; line-height: 1.4; color: var(--ink-3); }
+.wv-knock { position: fixed; z-index: 56; left: 50%; top: 74px; width: 440px; margin-left: -220px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; padding: 12px; border-radius: 16px; background: var(--surface-raised); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .wv-knock .ac-avatar { align-self: end; }
 .wv-knock b { overflow-wrap: anywhere; font: 600 14.5px/1.25 var(--font-sans); }
 .wv-knock p { font-size: 13.5px; line-height: 1.3; color: var(--ink-2); }
@@ -211,10 +265,17 @@
 .ws-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
 .ws-toasts { position: fixed; z-index: 70; left: 16px; bottom: 16px; display: grid; gap: 8px; justify-items: start; max-width: 300px; pointer-events: none; }
 .ac-toast.ws-toast { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 7px 8px 7px 14px; border-radius: var(--radius-lg); background: var(--stage-ink); color: var(--stage); font: 500 14px/1.3 var(--font-sans); box-shadow: 0 18px 40px -14px rgb(0 0 0 / .7); pointer-events: auto; }
-.ac-toast.ws-toast > .ac-i { color: #C4461B; }
+.ac-toast.ws-toast > .ac-i { color: #A63D02; }
 .ac-toast.ws-toast > span { padding-right: 4px; }
 .ac-toast.ws-toast button { flex: none; height: 30px; padding: 0 11px; border-radius: var(--radius-pill); font-weight: 600; color: var(--stage); background: color-mix(in srgb, var(--stage) 10%, transparent); white-space: nowrap; }
 .ac-toast.ws-toast button:hover { background: color-mix(in srgb, var(--stage) 18%, transparent); }
+
+/* In the app, toasts sit in the corner of the page beside the list, clear of the side panel and the sealed line. */
+@media (min-width: 641px) {
+  .main.is-full .ws-toasts { left: calc(var(--side) + var(--pane-left) + 260px); bottom: 36px; max-width: 420px; }
+  .main.is-full:has(.ws-pane.tree-off) .ws-toasts { left: calc(var(--side) + var(--pane-left) + 16px); }
+}
+@media (min-width: 641px) and (max-width: 860px) { .main.is-full .ws-toasts { bottom: 108px; } }
 
 /* ------------------------------------------------------------ history and presenting */
 .wh { flex: none; width: 260px; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--surface); animation: ws-side var(--duration-2) var(--ease-out); }
@@ -228,13 +289,19 @@
 .wh-r b { display: block; font: 600 13.5px/1.25 var(--font-sans); }
 .wh-r small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .wh-r .ac-time { flex: none; font-size: 11.5px; color: var(--ink-3); }
+.wh-r.is-fixed, .wh-r.is-fixed:hover { background: none; }
+.wh-n { padding: 6px 8px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 .wh-f { flex: none; padding: 10px; }
 .wh-f .ac-btn { width: 100%; }
+.wh-f p { margin-bottom: 8px; padding: 0 2px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.wh-f .ac { display: grid; gap: 4px; }
 .wp-tag { flex: none; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; background: var(--horizon-soft); color: var(--horizon); font: 500 13.5px/1 var(--font-sans); }
 .wp-tag b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; font-weight: 600; }
 .wp-tag span { color: inherit; opacity: .78; }
 .wp-tag .wp-name { flex: 0 999 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
 .wp-tag .ac-btn { flex: none; margin-left: auto; }
+.wp-tag .wp-acts { flex: none; display: inline-flex; gap: 4px; margin-left: auto; }
+.wp-tag .wp-acts .ac-btn { margin-left: 0; }
 .ws-live, .wp-tag .ws-live { width: 8px; height: 8px; border-radius: 50%; background: var(--horizon); opacity: 1; animation: ws-pulse 1.8s var(--ease-out) infinite; }
 .ws-pane.is-reading .wt { display: none; }
 .ws-pane.is-reading .wd-page { max-width: 880px; padding: 36px 72px 28px; }
@@ -243,7 +310,7 @@
 .ws-pane.is-reading .wb.is-h2 .wb-t { font: 450 34px/1.15 var(--font-display); letter-spacing: -.02em; }
 .ws-pane.is-reading .wb.is-h2 { margin: 0 0 12px; }
 .ws-pane.is-reading .wb-box { margin-top: 7px; pointer-events: none; }
-.ws-pane.is-reading .wb-th, .ws-pane.is-reading .rc { display: none; }
+.ws-pane.is-reading .wb-th { display: none; }
 .ws-pane.is-reading .wb-cap { pointer-events: none; }
 .ws-pane.is-reading .wn, .ws-pane.is-reading .wdt { font-size: 15px; height: 26px; vertical-align: -6px; }
 .wp { flex: none; width: 288px; display: flex; flex-direction: column; gap: 14px; padding: 14px; border-left: 1px solid var(--line); background: color-mix(in srgb, var(--sunk) 38%, var(--surface)); }
@@ -252,16 +319,25 @@
 .wp-sec .ac-eyebrow { font-size: 11px; color: var(--ink-3); }
 .wp-now { display: flex; gap: 12px; align-items: flex-start; }
 .wp-now .n { flex: none; font: 450 30px/1 var(--font-display); }
-.wp-now .n small { display: block; margin-top: 4px; font: 500 11px/1 var(--font-mono); color: var(--ink-3); }
+.wp-now .n small { display: block; margin-top: 4px; font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; color: var(--ink-3); }
 .wp-now > div { min-width: 0; overflow-wrap: anywhere; }
 .wp-now b { display: block; font: 600 14.5px/1.25 var(--font-sans); }
 .wp-now div small { display: block; margin-top: 3px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 .wp-go { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
 .wp-notes { width: 100%; height: 100%; min-height: 80px; resize: none; padding: 10px; border: 0; border-radius: 10px; background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); font: 400 14px/1.5 var(--font-sans); outline: none; }
 .wp-notes:focus { box-shadow: inset 0 0 0 2px var(--focus); }
+/* What everyone watches sits over your own pane, which waits underneath just as you left it: caret, scroll and all. */
+.ws-over { position: absolute; inset: 0; z-index: 4; display: flex; }
+/* Notes turned off, with the way to ask for them back on the same line, or under it where there's no room. */
+.wl-off > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+/* A page or a presentation that holds focus for someone who was typing when what they were in went: it's where they are, not a control. */
+.ws-over:focus, .ws-over .wd-scroll:focus, .ws-pane .wd-scroll:focus { outline: none; }
+.ws-pane.is-under { visibility: hidden; isolation: isolate; }
+.ws-pane.is-reading .wb.is-out, .ws-pane.is-reading .wd-title.is-out { display: none; }
+.ws-pane.is-reading .wp { animation: ws-side var(--duration-2) var(--ease-out); }
 
 /* ------------------------------------------------------------ playing a video for everyone */
-.ws-play { position: fixed; z-index: 50; left: 50%; bottom: 92px; margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
+.ws-play { position: fixed; z-index: 50; left: 50%; bottom: calc(92px + var(--lift, 0px)); transition: bottom var(--duration-2) var(--ease-out); margin-left: -280px; display: flex; align-items: center; gap: 12px; width: 560px; height: 52px; padding: 0 10px 0 8px; border-radius: 16px; background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08), 0 18px 36px -14px rgb(0 0 0 / .7); font: 400 15px/22px var(--font-sans); }
 .ws-pb, .ws-px { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: var(--stage-ink); }
 .ws-pb { background: rgb(255 255 255 / .1); }
 .ws-px:hover, .ws-pb:hover { background: rgb(255 255 255 / .16); }
@@ -277,23 +353,43 @@
 .ws-play .vb i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--stage-ink); pointer-events: none; }
 .ws-play .vb input { position: absolute; left: 0; right: 0; top: -10px; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
 .ws-play .v small { font-size: 11.5px; }
+.ws-play .bar.can-seek { overflow: visible; }
+.ws-play .bar.can-seek i { border-radius: 2px; }
+.ws-play .bar:has(:focus-visible) { outline: 2px solid var(--speak); outline-offset: 4px; }
+.ws-play .bar input { position: absolute; left: 0; right: 0; top: -10px; width: 100%; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
+.ws-play .ws-ph { flex: none; margin-right: auto; }
+/* Where the one player in a call waits while no block on screen holds its picture: playing, heard, and out of sight. */
+.ws-vhold { position: fixed; left: 0; top: 0; width: 2px; height: 2px; overflow: hidden; opacity: 0; pointer-events: none; }
 
 /* ------------------------------------------------------------ outside the call: the same workspace in the app */
 .ws-pane.in-app { background: var(--surface); }
-.ws-ncard { display: grid; gap: 6px; align-content: start; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-1); }
-.ws-ncard .ac-eyebrow { margin-bottom: 4px; font-size: 11.5px; color: var(--ink-3); }
-.ws-ndocs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.ws-ndoc { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--ink-3); }
-.ws-ndoc:hover { background: var(--sunk); }
-.ws-ndoc span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.ws-ndoc b { display: block; font: 600 14px/1.25 var(--font-sans); color: var(--ink); }
-.ws-ndoc small { display: block; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
+/* What was worked on in a call, on its note: a row for each document, between hairlines like the note's own lists. */
+.ws-ndocs { display: grid; border-bottom: 1px solid var(--line); }
+.ws-ndoc { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; min-height: 56px; padding: 9px 2px 9px 0; border-top: 1px solid var(--line); text-align: left; color: var(--ink-3); transition: color var(--duration-1) var(--ease-out); }
+.ws-ndoc > .ac-i { flex: none; display: block; }
+.ws-ndoc > .ac-i:first-child { justify-self: center; }
+.ws-ndoc > .ac-i:last-child { transition: transform var(--duration-1) var(--ease-out); }
+.ws-ndoc:hover { color: var(--ink-2); }
+.ws-ndoc:hover > .ac-i:last-child { transform: translateX(2px); }
+.ws-ndoc span { min-width: 0; overflow-wrap: anywhere; }
+.ws-ndoc b { display: block; font: 500 15px/1.4 var(--font-sans); color: var(--ink); }
+.ws-ndoc small { display: block; font: 400 13px/1.4 var(--font-sans); color: var(--ink-3); }
+
+/* ------------------------------------------------------------ Trash */
+.wx-l { margin: 18px -8px 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.wx-r { display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 6px 4px 0; border-radius: 10px; transition: background-color var(--duration-1); }
+.wx-r:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
+.wx-o { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 4px 8px; text-align: left; color: var(--ink-3); border-radius: 9px; }
+.wx-o .m { min-width: 0; }
+.wx-o b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.wx-o small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; font-size: 12.5px; line-height: 1.3; color: var(--ink-3); }
 
 /* ------------------------------------------------------------ the call's live pages */
 .wl { max-width: 760px; margin: 0 auto; padding: 22px 72px 40px; }
 .wl-t { min-height: 44px; font: 450 38px/1.14 var(--font-display); letter-spacing: -.02em; font-variation-settings: 'opsz' 40; color: var(--ink); }
 .wl-s { font: 500 13.5px/1.35 var(--font-sans); color: var(--ink-3); }
 .wl-sum { font: 400 16.5px/1.55 var(--font-sans); color: var(--ink); }
+.wl .ac-notice { margin: 14px 0 12px; }
 .wl-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 24px 0 6px; }
 .wl-h .ac-eyebrow { font-size: 11.5px; color: var(--ink-2); }
 .wl-all { display: inline-flex; align-items: center; gap: 4px; font: 600 13px/1 var(--font-sans); color: var(--ink-3); }
@@ -302,15 +398,16 @@
 .wl-r:hover { background: var(--sunk); }
 .wl-r .mk { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 2px; border-radius: 5px; background: var(--sun-soft); color: var(--sun-text); }
 .wl-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.wl-at { flex: none; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-mono); }
+.wl-at { flex: none; height: 22px; padding: 0 6px; border-radius: 6px; background: var(--sunk); color: var(--ink-2); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wl-at:hover { background: var(--sun-soft); color: var(--sun-text); }
 .wl-todo { display: flex; align-items: flex-start; gap: 4px; margin: 0 -8px; padding: 7px 8px; border-radius: 9px; font: 500 15px/1.4 var(--font-sans); }
 .wl-todo:hover { background: color-mix(in srgb, var(--sunk) 60%, transparent); }
 .wl-todo .wb-box { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin: 2px 8px 0 1px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--line-control); color: transparent; transition: background-color var(--duration-1), box-shadow var(--duration-1), transform var(--duration-1); }
 .wl-todo .wb-box:hover { box-shadow: inset 0 0 0 1.5px var(--ink-2); }
 .wl-todo .wb-box:active { transform: scale(.9); }
+.wl-todo .wb-box:disabled { box-shadow: inset 0 0 0 1.5px var(--line); transform: none; }
 .wl-todo .wb-box[aria-checked="true"] { background: var(--sun); color: var(--on-sun); box-shadow: none; }
-.wl-todo.is-done .wl-tx { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
+.wl-todo.is-done .wl-w { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 .wl-todo .src { display: block; margin-top: 1px; padding: 0; font: 400 12.5px/1.3 var(--font-sans); color: var(--ink-3); text-decoration: none; }
 .wl-todo button.src:hover { color: var(--ink); text-decoration: underline; }
 .wl-todo .who { flex: 0 1 auto; min-width: 0; max-width: 40%; display: inline-flex; align-items: center; gap: 5px; margin-left: 8px; font: 500 13px/1.5 var(--font-sans); color: var(--ink-2); }
@@ -318,7 +415,7 @@
 .wl-due { flex: none; width: 76px; text-align: right; font: 500 12.5px/1.7 var(--font-sans); color: var(--ink-3); }
 .wl-seg { display: inline-flex; gap: 2px; margin: 14px 0 8px; padding: 3px; border-radius: 10px; background: var(--sunk); }
 .wl-seg button { height: 28px; padding: 0 10px; border-radius: 7px; color: var(--ink-2); font: 600 13px/1 var(--font-sans); }
-.wl-seg button span { margin-left: 6px; color: var(--ink-3); font: 500 11.5px/1 var(--font-mono); }
+.wl-seg button span { margin-left: 6px; color: var(--ink-3); font: 500 11.5px/1 var(--font-sans); font-variant-numeric: tabular-nums; }
 .wl-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
 .wl-add { display: flex; align-items: center; gap: 9px; margin: 8px -8px 0; padding: 0 8px; height: 38px; border-radius: 9px; color: var(--ink-3); }
 .wl-add:focus-within { background: var(--sunk); }
@@ -337,19 +434,26 @@
 .wl-line.is-now p { color: var(--ink-3); }
 .wl-line.is-now .ws-dots { color: var(--rec); align-self: center; }
 .ws-put { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1); }
-.wl-r:hover .ws-put, .wl-line:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
+.wl-r:hover .ws-put, .wl-line:hover .ws-put, .ic-nr:hover .ws-put, .tx-l:hover .ws-put, .ws-put:focus-visible { opacity: 1; }
 .ws-put:hover { background: var(--line); color: var(--ink); }
 .ws-pane.is-zen .wd-page, .ws-pane.is-zen .wl { max-width: 840px; }
 
 /* A narrow document: the page gives up its margins first, then the path. */
 @container (max-width: 640px) {
   .wd-page { padding-left: 46px; padding-right: 22px; }
-  .wd-crumbs .c:not(.is-last), .wd-crumbs .ac-i { display: none; }
-  .wd-save { display: none; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
+  .wd-save:not(.is-failed) { display: none; }
   .wl { padding-left: 24px; padding-right: 22px; }
   .wl-due { display: none; }
 }
 @container (max-width: 470px) { .wd-faces { display: none; } }
+
+/* A pane with little room to spare: a presentation gives up its wide margins before its words get cramped. */
+@container ws-pane (max-width: 900px) {
+  .ws-pane.is-reading .wd-page { padding: 28px 32px 24px; }
+  .ws-pane.is-reading .wd-title { font-size: 38px; }
+  .wp { width: 256px; }
+}
 
 /* A narrow pane: what sits beside the page floats over it instead of squeezing it. */
 @container ws-pane (max-width: 640px) {
@@ -360,11 +464,18 @@
   .ws-pane.is-reading .wd-title { font-size: 34px; }
 }
 
-/* Nothing to hover on a touch screen, so what hovering shows stays. */
+/* Nothing to hover on a touch screen, so what hovering shows stays, and there are no keys to list. */
 @media (hover: none) {
   .wt-acts { width: auto; padding-right: 3px; overflow: visible; }
   .ws-put { opacity: 1; }
+  .wv-keyrow { display: none; }
 }
+/* The keyboard list takes the columns it has room for. */
+@media (max-width: 960px) {
+  .wv-keys { top: 16px; max-height: calc(100vh - 32px); }
+  .ky { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 28px 24px; }
+}
+@media (max-width: 620px) { .ky { grid-template-columns: minmax(0, 1fr); } }
 
 /* ------------------------------------------------------------ the keyboard bar, and on a phone */
 .ws-kbar { position: fixed; z-index: 40; left: 0; right: 0; bottom: var(--keyboard, 0px); height: 72px; display: flex; align-items: center; gap: 2px; padding: 0 8px 12px; background: var(--surface); box-shadow: inset 0 1px 0 var(--line); color: var(--ink-2); }
@@ -373,6 +484,11 @@
 @media (max-width: 640px) {
   .ws-pane { border-radius: 22px 22px 0 0; }
   .ws-pane.in-app { border-radius: 0; box-shadow: none; }
+  .main.is-full, .shell.is-bare .main.is-full { padding: 0 0 calc(82px + env(safe-area-inset-bottom, 0px)); }
+  .main.is-full .ws-toasts { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+  .main.is-full:has(.ws-pane.phone-tree) .ws-toasts { bottom: calc(176px + env(safe-area-inset-bottom, 0px)); }
+  /* Record stands up out of the tab bar, into the foot of the list and of History. */
+  .main.is-full .wt, .main.is-full .wh { padding-bottom: 24px; }
   .wt, .ws-pane.tree-off .wt { position: absolute; z-index: 5; inset: 0; width: 100%; margin-left: 0; border-right: 0; background: var(--surface); visibility: visible; transform: translateX(-100%); transition: transform var(--duration-2) var(--ease-out); }
   .ws-pane.phone-tree .wt { transform: none; }
   .wt-r { height: 44px; }
@@ -380,9 +496,11 @@
   .wt-tw { height: 44px; }
   .wt-foot { height: 34px; }
   .wd-head { height: 48px; padding: 0 6px; }
-  .wd-head .ac-btn, .wd-save { display: none; }
-  .wd-crumbs .c:not(.is-last), .wd-crumbs .ac-i { display: none; }
+  .wd.is-bare > .wd-head { display: flex; }
+  .wd-head .ac-btn, .wd-save:not(.is-failed) { display: none; }
+  .wd-crumbs .cw:not(.is-last) { display: none; }
   .wd-page { padding: 6px 22px 12px; }
+  .wd:has(> .wd-off, > .wd-gone, > .wd-ro) .wd-page { padding-top: 18px; }
   .wd-title { font-size: 31px; }
   .wl { padding: 6px 22px 12px; }
   .wl-t { font-size: 31px; }
@@ -390,18 +508,29 @@
   .wd-stop { margin-left: auto; }
   .wd-stop kbd { display: none; }
   .wd-tpls { grid-template-columns: minmax(0, 1fr); }
-  .wh { left: 0; width: auto; border-left: 0; }
-  [data-radix-popper-content-wrapper]:has(> .ws-pop) { inset: auto 8px 8px !important; min-width: 0 !important; transform: none !important; }
-  .ws-pop { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
+  .wh { top: auto; left: 0; width: auto; height: 46%; border-left: 0; border-top: 1px solid var(--line); }
+  .ws-pane:has(> .wh) .wd { max-height: 54%; }
+  /* A sheet on a phone, but not a role's menu: that one opens inside a sheet, against the role it changes. */
+  [data-radix-popper-content-wrapper]:has(> .ws-pop):not(:has(.wm.is-role)) { inset: auto 8px calc(8px + var(--kbar, 0px)) !important; min-width: 0 !important; transform: none !important; }
+  .ws-pop:not(:has(.wm.is-role)) { border-radius: 22px; animation: ws-sheet var(--duration-2) var(--ease-out); }
   .ws-pop > * { width: auto; }
+  /* A phone has no keys to press, and Record stands taller than a short sheet, so it steps back while one's up. */
+  [data-radix-popper-content-wrapper] > .ws-pop kbd { display: none; }
+  body:has([data-radix-popper-content-wrapper] > .ws-pop, .ws-float .ws-pop) .tab-rec { visibility: hidden; }
+  /* So does a toast, which would sit on the sheet's rows: what it says has been said by the time someone's choosing here. */
+  body:has([data-radix-popper-content-wrapper] > .ws-pop, .ws-float .ws-pop) .ac-toasts { visibility: hidden; }
   .wm-r.is-phone { display: flex; }
   .wv-find { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-width: none; margin: 0; }
-  .wv-knock { left: 8px; right: 8px; width: auto; margin-left: 0; }
+  .wv-find .ac-kbd { display: none; }
+  /* Low on a phone, over the dock's top edge: at the top it would cover the list's button it tells the organizer to use. */
+  .wv-knock { left: 8px; right: 8px; top: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: auto; margin-left: 0; }
+  /* Too narrow for its answers side by side: what's shared takes the row, and the other two share the next. */
+  .wv-knock .ac { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wv-knock .ac .ac-btn.is-primary { grid-column: 1 / -1; }
   .ws-toasts { left: 12px; right: 12px; bottom: 82px; max-width: none; }
   .ws-play { left: 12px; right: 12px; width: auto; margin-left: 0; gap: 10px; }
   .ws-play .m { flex: 1; min-width: 0; }
   .ws-play .m b, .ws-play .m small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
-  .ws-ndocs { grid-template-columns: minmax(0, 1fr); }
 }

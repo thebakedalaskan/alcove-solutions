@@ -5,11 +5,13 @@ Alcove is private video calls with an AI note taker. This repo is a pnpm + Turbo
 ```
 apps/web            TanStack Start app (React 19, Tailwind v4, Motion). SPA mode.
 apps/api            The API (@alcove/server): Hono, Postgres, S3-compatible objects, sign-in, crypto.
+apps/storybook      Storybook: the foundations, every component, page and journey, the real app on a stand-in API.
 packages/ui         The design system: tokens, components, illustrations. Everything visual lives here.
 packages/api        The contract: zod schemas, the AlcoveApi interface, wire shapes. No implementation.
 packages/api-http   The browser client: REST, NDJSON, audio uploads, live sessions.
+packages/board      The shape of a board's Y.Doc and the logic the app and API share. No React.
 infra/              Deployment guide and GCP bootstrap. .github/ holds CI, deploy and the branch ruleset.
-docs/               Product, engineering and design docs. Keep them true to the code.
+docs/               Product, engineering and design docs. Keep them true to the code. docs/design/ also holds the design canvas.
 ```
 
 ## Commands
@@ -17,12 +19,36 @@ docs/               Product, engineering and design docs. Keep them true to the 
 ```
 pnpm install
 pnpm dev            # Postgres + RustFS in Docker, API on :8787, web app on http://localhost:3000
+pnpm storybook      # Storybook on http://localhost:6006: no Docker, no API
 pnpm migrate        # apply database migrations (the API also does this at start)
 pnpm typecheck      # strict-typing guard, then tsc in every package
 pnpm test           # test-policy guard, then integration tests
 pnpm build
 pnpm check          # all of the above
 ```
+
+## Folder ownership (enforced)
+
+Read [docs/engineering/folder-ownership.md](docs/engineering/folder-ownership.md) before adding or moving code.
+It defines the target map, feature owners and the composition rules. Run `pnpm check:structure`; this also runs
+in `pnpm typecheck`, `pnpm check` and CI. Scoped `AGENTS.md` files add the rules for each area.
+
+- Pick the feature owner first. Colocate its implementation, private helpers/types and server integration suites.
+  Cross-feature/infrastructure suites live in `apps/api/src/integration`; shared fixtures live in `src/testing`.
+- `call` is the running call; `calls` is making, scheduling, listing and entering calls. Use their documented
+  subfeatures, not a new loose file at either root. Backend behavior lives in `apps/api/src/features/<owner>`.
+- Routes, `apps/api/src/app.ts` and the HTTP client entry point compose feature behavior. New HTTP handlers,
+  subscriptions, recorders and capture/connection lifecycles belong to the owning feature. Extract a coherent
+  responsibility with explicit inputs and cleanup; moving a giant entry point intact does not finish a refactor.
+- Import the owning file directly within a package. No folder barrels, old-path re-exports, compatibility shims
+  or generic `utils`, `common`, `misc` and `helpers` buckets. Keep deliberate public package entry points.
+- Shared infrastructure needs a concrete responsibility and callers in more than one feature. Existing crypto,
+  database, logging, ownership, test harness and worker infrastructure stays shared; never duplicate it per feature.
+- Every move updates imports, package export targets, worker/assets/build paths, CI timing keys, existing consumers
+  and docs in the same change. Delete the old path, preserve test discovery/assertions and all other policy guards.
+- For a new feature owner or a changed package responsibility, update the map, scoped rules and structure policy
+  together and explain the decision. Do not loosen a guard merely to make a check green. Review responsibilities
+  and dependencies, not arbitrary file-size limits.
 
 ## No backwards compatibility, no legacy code
 
@@ -32,8 +58,8 @@ exception is data that's already stored: it survives every deploy (next section)
 - **Remove, don't keep.** No compatibility shims, deprecated aliases, fallbacks for an old shape, "kept
   for now" fields, re-exports of moved code, or commented-out code. If nothing should use it any more,
   it's deleted.
-- **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`
-  and the app together. Nothing on the wire parses or accepts both the old and the new form.
+- **One shape at a time.** A contract change in `packages/api` updates the server, `@alcove/api-http`,
+  the app and Storybook's stand-in API together. Nothing on the wire parses or accepts both the old and the new form.
 - **No flags that keep an old flow alive** next to its replacement.
 - **Tests follow the same rule.** Integration tests only, never unit tests (see Testing). Delete tests
   for removed behaviour instead of adapting them to keep it alive.
@@ -69,12 +95,17 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
   e.g. "create account → schedule → join → record → leave → note saved".
   Don't test individual functions, hooks or components in isolation.
 - **No browser tests.** No Playwright, Cypress, Puppeteer, WebdriverIO or Vitest browser mode.
-- **No component or Storybook tests.** No Storybook, no `*.stories.*`, no Testing Library, no jsdom
-  or happy-dom.
+- **No component tests.** No Testing Library, no jsdom or happy-dom.
+- **Storybook shows; it never tests.** It lives in `apps/storybook` alone: its packages, its `.storybook/` and
+  `*.stories.tsx` are allowed there and nowhere else. No Storybook test runner, Vitest addon or Chromatic, no Testing
+  Library as a dependency, and no `expect(` in its source: a journey plays its steps with Storybook's `userEvent` and
+  checks nothing.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
-- When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
-  `*.integration.test.ts`) with the flow it enables. Tests sign in through the real API
+- CI splits the integration tests across ten runners (`scripts/ci-tests.mjs`) and fails unless every test ran once.
+  Keep test files independent of each other: each runs on whichever runner its timing puts it on.
+- When you add a feature, extend its colocated `apps/api/src/features/<owner>/*.integration.test.ts`
+  (or `apps/api/src/integration/flows.integration.test.ts` for a cross-feature flow). Tests sign in through the real API
   (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out
   sessions or key checks.
 
@@ -113,6 +144,9 @@ See `.claude/skills/strict-typescript/SKILL.md` for worked examples.
   there instead of calling `api` inside a component, except for streaming and live sessions.
 - Changing what the backend must provide means changing `packages/api` first, then the server and
   `@alcove/api-http`. Every response is parsed with the contract's schemas on the client.
+- Storybook's stand-in (`apps/storybook/src/api`) implements `AlcoveApi` too, so a contract change doesn't compile until
+  it's extended: give it the new method or data, a scenario where it shows, and the stories that show it, in the same
+  pull request. A branch that changes `packages/api` extends it when it merges.
 - Live things (calls, room recordings) are `LiveStore`s that push whole snapshots. Read them with
   `useLive()`. Don't mirror their state in React state.
 - The app reaches the API at `/api` (Vite proxy locally) or `VITE_ALCOVE_API_URL` in production.
@@ -147,51 +181,84 @@ Read `docs/engineering/logging-and-errors.md`.
 
 ## Design system
 
+Before you design or restyle anything, read [docs/design/](docs/design/README.md): the principles behind the look, how each
+page is designed, how to make a design canvas from the kit in `docs/design/canvas/`, and how to build one into the app.
+
+- Storybook (`apps/storybook`, `pnpm storybook`) is the record of what's built: every foundation, component, page and
+  journey, rendered by the real code on made-up data. A change to a component or a page updates its stories in the same
+  pull request: a page's scenarios (states) and its journeys, numbered as `docs/product/user-flows.md` is. The design
+  canvas is for new ideas, and its boards don't have to follow the app.
+
 - Use components from `@alcove/ui` before writing markup. If something is missing and reusable, add it
   to `packages/ui`, not to the app. Components: `Button` (primary, secondary, quiet; `buttonClass()` for
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
-  `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `CallTile`, `CallDock`,
-  `Caption`, `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `NoteTile`, `PersonCard`, `Timeline` with
-  `TimelineItem` and `TimelineNow`, `SidebarNav`, `ComposerLine`, `Field`, `CopyField` (a long value to copy exactly, such as an address), `Select` (a listbox; an option's `mark` is drawn beside its name), `CryptoMark` (a stablecoin's or network's logo, served with the app), `Tabs`,
-  `Segmented`, `SettingsCard` and `SettingRow`, `MinutesCard` (the minutes of notes left), `ThemePreview`, `MicLevel`, `TourDialog`, `Coachmark`,
-  `EmptyState`, and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
+  in a popover: one, or several with ticks), `CallTile`, `CallDock`, `VolumeControl` (how loud someone is for you, said
+  beside their name by `volumeTag`),
+  `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
+  the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
+  `LinkRow` (a link with Copy), `GuestCard`, `TimeChoice` and `DoneTick` (a public page with one card), `Caption`, `Emoji` (the 8 bundled Fluent Emoji), `Reactions` and `ReactionAdd` (reactions under a chat message), `NotesPanel`, `TranscriptLine` (with `Unsure` and `UnsureKey` for what a transcript isn't sure of), `Card`, `Fold`, `ShowMore` (Show 4 more under a list), `Evening` (a page on the evening: `Horizon`, the scene behind it, set by `moment`), `Cove` (the land the welcome page looks out of, a `Horizon`'s `land`) and `SailOut` (signing in, out of that cove to Home), `SidebarNav`, `ComposerLine` (the palette's one line), `Field`, `CopyField` (a long value to copy exactly, such as an address), `Select` (a listbox; an option's `mark` is drawn beside its name), `CryptoMark` (a stablecoin's or network's logo, served with the app), `Tabs`,
+  `Segmented`, `SettingsPart`, `SettingRow` and `SettingFact` (Settings' sheet: a heading, then a label and a control on one axis), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
+  the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
+  `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
+  `BackgroundPicker` (what shows behind someone on camera, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
+  For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
+  `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
+  calls), `WayCard`, `PersonToken`, `QuadFaces`, `TimeCard`, `WeekGrid`, `Flood` and `useSmoothHeight`.
   The workspace kit is in `components/workspace/`, every part stateless, taking plain data and handlers: `WsPane` holds
-  `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`) and `WsDoc` (`WsDocHead` with `WsSaveState`,
-  `WsFollowBar`, `WsOfflineBar`, `WsGoneBar`, `WsReadOnlyBar`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`,
-  `WsEmpty`, `WsNoAccess`), with `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` above the head.
+  `WsList` (`WsListHead`, `WsSection`, `WsRow`, `WsRenameRow`, `WsDropLine`, `WsTrashRow`) and `WsDoc` (`WsDocHead` with
+  `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
+  `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
+  `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
+  `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` in place of the head.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
-  `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`; `WsPersonCard`, `WsMentionPrompt`,
-  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsPresentPreview`, `WsUploadPicker`. The call's
-  own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKnock`,
+  `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsPresentPreview`, `WsUploadPicker`. The call's
+  own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
-  `NoteTile` and `TimelineItem` take the router's `Link` as `link` to open something; a `TimelineItem` can take
-  `actions` instead (a row's menu: an `IconButton` as the anchor of a `Popover` with a `tip`).
+  The board's parts are in `components/board.tsx`, and take data and handlers with no idea of Yjs: `BoardLayout`, `BoardSheet` and
+  `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
+  `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
+  `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
+  `BoardMap`, `BoardMenu`, `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
+  board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
+  A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
-  values on `:root`, dark on `.dark` (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
-  `bg-surface`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `shadow-sun`, `rounded-lg`,
+  values on `:root`, dark on `.dark` and the night surfaces, `.stage` and `.ac-stage`, with the whole document going dark while a `.stage` or Record (`.rec`) is up so what's portalled out of it stays night (`.light` and `.dark` on any element scope one theme to that part of a page), with Tailwind utilities on the same names (`bg-ground`,
+  `bg-surface`, `bg-frame`, `text-ink-2`, `bg-sun`, `text-sun-text`, `shadow-2`, `rounded-lg`,
   `font-display`, `ease-out` ...). Component classes carry the `ac-` prefix and live in
-  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, phone top bar and tab bar,
-  palette) in `styles/shell.css`; Home in `styles/home.css` (its classes start with `hm-`); the Team page in
-  `styles/team.css` (its classes start with `tp-`); Notes and a note in `styles/library.css` (`lib-`, `pv-`);
+  `packages/ui/src/styles/kit.css`; the frame around every screen (side panel, the page's rounded edge, search and
+  you at its top right, phone top bar and tab bar, palette) in `styles/shell.css`; the evening behind each page in `styles/horizon.css` (`dusk` the page, `hz-` the scene); the cove the welcome page looks out of, and signing in sailing out of it, in `styles/cove.css` (`cv-`); Home in `styles/home.css` (`hm-`); the Team page in
+  `styles/team.css` (its classes start with `tp-`); Notes in `styles/notes.css` (`nt-`); the Drive in `styles/drive.css` (`dv-`); a note and a series in `styles/note.css` (`nd-`);
   Settings in `styles/settings.css` (its classes start with `set-`); Record in `styles/record.css` (its classes
-  start with `rec-`); the workspace in `styles/workspace.css` (`wt-` the list, `wd-` a document, `wm-` menus, `wv-`
-  popovers, `wp-` presenting, `wh-` history, `wl-` the call's live pages); the other screens in `styles/app.css`,
-  `call.css` and `welcome.css`.
+  start with `rec-`); starting and scheduling a call in `styles/flow.css` (its classes start with `cf-`); the organizer's
+  lobby, ringing and the page for picking a time in `styles/ringing.css` (`rg-`); the workspace in `styles/workspace.css`
+  (`wt-` the list, `wd-` a document, `wm-` menus, `wv-` popovers, `wp-` presenting, `wh-` history, `wl-` the call's live
+  pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
+  `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
+  Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
+  `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
+  page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
 - Icons come from Lucide through `Icon` in `@alcove/ui` (one stroke family, 1.8 stroke). Add a name to its map
   rather than drawing an SVG; use an icon button with a tooltip, not a text label, for tile and toolbar actions.
 - Every screen must work in light and dark. Check both, and check phone and wide screens.
-- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `shadow-sun`, one
-  per view. `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
-  information and focus use `horizon`. The mark (`Mark`, `Logo`) is branding, never state. No green.
-- Type: Newsreader (`font-display`) for page-level headings only, Hanken Grotesk for everything you read
-  and operate, IBM Plex Mono for times, data and eyebrows. Fonts are served from `packages/ui/src/fonts`.
+- `sun` is the only colour you can press: primary buttons are a solid `sun` fill with `on-sun` text and no
+  shadow, one per view. It's navy by day and cream by night, so it never glows against the page. The side panel's
+  Start a call is tinted, so the page's own action is the one filled button in view. The warmth lives in `sun-text` and `sun-soft`.
+  `rec` only ever means notes or recording (`NotesSign`, `RecDot`). Problems use `caution`,
+  information and focus use `horizon`, and a decision waiting on someone uses `rose`. The mark (`Mark`, `Logo`) is branding, never state. No green.
+- Type: Newsreader (`font-display`) for page-level headings, a board's name and its frame titles, and nothing
+  else; Hanken Grotesk for everything you read and operate, times and data included (`tabular-nums`, or `ac-mono`,
+  keeps digits in step), and IBM Plex Mono only for code and hashes. Labels and eyebrows are sentence case, never
+  uppercase. Fonts are served from `packages/ui/src/fonts`.
 - The call is always night: the stage uses `stage`, `stage-tile`, `stage-raised`, `stage-ink`,
-  `stage-ink-2`, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
+  `stage-ink-2`, `stage-sun` for what's chosen on night controls whatever theme is round them, and whoever speaks gets the `speak` ring. People appear in the arch, never a circle.
 - Motion: use `motion/react` and the shared helpers (`CountUp`, `Words`, `CheckDraw`, `Dots`, `Reveal`,
   `RevealGroup`, the `EASE` curves) with the `duration-*` and `ease-*` tokens. Respect reduced motion; the global stylesheet already shortens CSS
   animations.
@@ -202,3 +269,5 @@ Read `docs/engineering/logging-and-errors.md`.
 
 - UI copy is plain and specific: say what happens, not slogans. No marketing taglines.
 - People and pronouns: use names or "they".
+- Demo data, examples and designs use made-up people only (the demo company is Vandelay Industries). Never write a real
+  person's name.

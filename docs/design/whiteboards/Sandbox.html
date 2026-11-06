@@ -1,0 +1,32 @@
+<!-- title: Try the board -->
+<x-dc>
+<helmet>
+<style>body{margin:0}</style>
+</helmet>
+<div class="sx" data-theme="light">
+<div class="sx-bar"><button type="button" class="ac-btn is-secondary is-sm" onClick="{{toggle}}"><ic n="screen" s="16"></ic>{{label}}</button><span>{{line}}</span></div>
+<div class="pl-frame"><dc-import name="Scene" node="sandbox" live="true" share="{{share}}" hint-size="1280px,800px"></dc-import></div>
+<div class="sx-try">
+<div><b>Add</b><span>Double-click anywhere. While typing, Tab starts the next one.</span></div>
+<div><b>Move and line up</b><span>Drag stickies. Lines stay attached, and guides show what they line up with.</span></div>
+<div><b>Connect</b><span>Hover a sticky, then drag from a dot to another, or to empty space for a new one.</span></div>
+<div><b>Find people</b><span>Click a face to go to them or follow them.</span></div>
+<div><b>Look around</b><span>Scroll to pan, ⌘ and scroll to zoom. Space and drag works too.</span></div>
+<div><b>Sort</b><span>Show everything, drag round the pile of ideas, then Sort into themes.</span></div>
+<div><b>Tools</b><span>N sticky, T text, S shape, L line, P pen, F frame. Esc goes back to Select.</span></div>
+<div><b>Undo</b><span>⌘Z takes back your changes and leaves everyone else’s.</span></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1090}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var self = this, on = !!(this.state && this.state.on);
+    return {
+      share: on, label: on ? 'Stop Priya’s share' : 'Have Priya share a screen',
+      line: on ? 'Keep working on the board. Drag the line between them, or use ⋯ on the screen to put a picture on the board.' : 'See how the board and a shared screen sit together.',
+      toggle: function () { self.setState({ on: !on }); }
+    };
+  }
+}
+</script>

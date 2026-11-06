@@ -3,7 +3,7 @@ import { Avatar, Button, Chip, Dots, Icon, Logo, Notice, useRaisedToasts, useToa
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { LocalMedia } from '~/features/call/media';
+import { LocalMedia } from '~/features/call/media/media';
 import { carried } from '~/features/move/MoveSheet';
 import { thisDevice } from '~/features/move/device';
 import { keepClaim, takeClaim, takeCode } from '~/features/move/stash';
@@ -11,7 +11,7 @@ import { WaysIn, type Auth, type Busy } from '~/features/welcome/WaysIn';
 import { api } from '~/lib/api';
 import { sessions, useLive } from '~/lib/live';
 import { log } from '~/lib/log';
-import { googleSignInUrl, useSignIn } from '~/lib/queries';
+import { useGoogleSignIn, useSignIn } from '~/lib/queries';
 
 /*
  * The new device's side of moving a call here (docs: Calls and recordings › Moving to another device). The code
@@ -100,6 +100,7 @@ function Moving({ move }: { move: CallMoveIn }) {
   const toast = useToast();
   const reduce = useReducedMotion();
   const signIn = useSignIn();
+  const googleSignIn = useGoogleSignIn();
   const [busy, setBusy] = useState<Busy>(null);
   const [asking, setAsking] = useState(false);
 
@@ -124,7 +125,17 @@ function Moving({ move }: { move: CallMoveIn }) {
   /* The organizer and invited people move only to a device signed in to their account: signing in here doesn't leave the move. */
   const auth: Auth = {
     busy, leaving: false,
-    google: () => { keepClaim(move.claim); setBusy('google'); location.assign(googleSignInUrl('/move')); },
+    google: () => {
+      keepClaim(move.claim);
+      setBusy('google');
+      void googleSignIn.start('/move').then(async (r) => {
+        if (r === 'redirecting') return;
+        takeClaim();
+        if (r && 'session' in r) await move.refresh();
+        setBusy(null);
+      }).catch((e: unknown) => { takeClaim(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
+    },
+    cancelGoogle: googleSignIn.cancel,
     go: async (provider: DemoProvider, email?: string) => {
       setBusy(provider);
       try { await signIn.mutateAsync({ provider, email: provider === 'sso' ? email?.trim() : undefined }); await move.refresh(); }

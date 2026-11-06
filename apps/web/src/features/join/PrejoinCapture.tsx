@@ -2,7 +2,7 @@
  * What the call captures and who gets the notes, before anyone joins: the call's capture summary (the same for
  * everyone, from `@alcove/ui`), with who gets the notes said for the person looking. One component for every pre-join.
  */
-import { firstName, type CaptureState, type NotesSetting, type Person } from '@alcove/api';
+import { firstName, type CaptureState, type NotesChoices, type NotesSetting, type Person } from '@alcove/api';
 import { CaptureSummary } from '@alcove/ui';
 import { listNames } from '~/lib/people';
 
@@ -20,6 +20,6 @@ function whoGets(a: NotesAudience, organizer: string): string | undefined {
 }
 
 /** `taker`: whose browser takes the notes, "the host" while someone stands in for the organizer. */
-export function PrejoinCapture({ notes, capture, audience, organizerName, taker }: { notes: NotesSetting; capture: CaptureState | null; audience: NotesAudience; organizerName: string; taker?: string | undefined }) {
-  return <CaptureSummary notes={notes} capture={capture} who={whoGets(audience, firstName(organizerName))} taker={taker} />;
+export function PrejoinCapture({ notes, choices, capture, audience, organizerName, taker }: { notes: NotesSetting; choices: NotesChoices; capture: CaptureState | null; audience: NotesAudience; organizerName: string; taker?: string | undefined }) {
+  return <CaptureSummary notes={notes} choices={choices} capture={capture} who={whoGets(audience, firstName(organizerName))} taker={taker} />;
 }

@@ -1,15 +1,14 @@
 /*
- * Your follow-ups: the ones you took on and haven't done, from every note you have, grouped by when
- * they're due. Ticking one off crosses it out where it is until you leave Home; ticking it again puts it back.
+ * Your follow-ups: the ones you took on and haven't done, from every note you have, soonest first. Ticking one off
+ * crosses it out where it is until you leave Home; ticking it again puts it back.
  */
 import { errorCode, errorMessage, type OpenAction } from '@alcove/api';
-import { Card, Check, EmptyState, cn, useToast } from '@alcove/ui';
+import { Check, ShowMore, cn, useToast } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { useUpdateAction } from '~/lib/queries';
-import { dayMonth } from '~/lib/time';
-import { DUE_GROUPS, dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from './day';
-import { More } from './parts';
+import { dueFrom, dueLabel, dueOf, groupOf, type Due, type DueGroup } from './day';
+import { Moment } from './parts';
 
 const FIRST = 6;
 const RANK: Record<DueGroup, number> = { overdue: 0, week: 1, later: 2, none: 3 };
@@ -24,7 +23,7 @@ function order(x: Todo, y: Todo): number {
   return dx !== dy ? dx - dy : y.a.noteStartedAt.localeCompare(x.a.noteStartedAt);
 }
 
-export function FollowUps({ open: openActions, now }: { open: OpenAction[]; now: number }) {
+export function FollowUps({ open: openActions, now, onAnswer }: { open: OpenAction[]; now: number; onAnswer: () => void }) {
   const toast = useToast();
   const update = useUpdateAction();
   const today = new Date(now);
@@ -32,17 +31,17 @@ export function FollowUps({ open: openActions, now }: { open: OpenAction[]; now:
   const [touched, setTouched] = useState<ReadonlyMap<string, OpenAction>>(new Map());
   const [done, setDone] = useState<ReadonlySet<string>>(new Set());
   const [all, setAll] = useState(false);
-  /* Follow-ups that arrive while you're here (taken on from Waiting on you) rise in. */
+  /* Follow-ups that arrive while you're here (taken on from a tile) rise in. */
   const [first] = useState(() => new Set(openActions.map((a) => `${a.noteId}:${a.id}`)));
 
   const byKey = new Map<string, OpenAction>(openActions.map((a) => [`${a.noteId}:${a.id}`, a]));
   for (const [key, a] of touched) if (!byKey.has(key)) byKey.set(key, a);
   const todos: Todo[] = [...byKey].map(([key, a]) => { const due = dueOf(a.due, dueFrom(a)); return { key, a, due, group: groupOf(due, today) }; }).sort(order);
-  const left = todos.filter((t) => !done.has(t.key)).length;
   const visible = all || todos.length <= FIRST + 1 ? todos : todos.slice(0, FIRST);
 
   /* Each tick waits for its own answer, so ticking several in a row can't lose one's rollback. */
   const tick = async (t: Todo, on: boolean) => {
+    onAnswer();
     setTouched((m) => new Map(m).set(t.key, t.a));
     const flip = (v: boolean) => setDone((s) => { const n = new Set(s); if (v) n.add(t.key); else n.delete(t.key); return n; });
     flip(on);
@@ -56,47 +55,30 @@ export function FollowUps({ open: openActions, now }: { open: OpenAction[]; now:
     }
   };
 
+  if (!todos.length) return null;
   return (
-    <Card title="Your follow-ups" className="hm-fu" aside={todos.length > 0 ? <span>{left ? `${left} open` : 'All done'}</span> : undefined}>
-      {todos.length ? (
-        <>
-          {DUE_GROUPS.map(({ id, label }) => {
-            const rows = visible.filter((t) => t.group === id);
-            if (!rows.length) return null;
-            return (
-              <div key={id} className="hm-fu-group">
-                <h4 className="hm-grp">{label}</h4>
-                <ul>
-                  {rows.map((t) => {
-                    const ticked = done.has(t.key);
-                    // A day gets a chip, and so do words that fit in one ("Next week", "ASAP"); longer words stay with the note they came from.
-                    const said = t.due?.kind === 'words' ? t.due.text : t.due?.words;
-                    const chip = t.due && !(said && said.length > 16) ? dueLabel(t.due, today) : undefined;
-                    return (
-                      <li key={t.key} className={cn('hm-todo', ticked && 'is-done', !first.has(t.key) && !touched.has(t.key) && 'is-new')}>
-                        <Check checked={ticked} onChange={(on) => void tick(t, on)} label={`${ticked ? 'Done' : 'Mark done'}: ${t.a.text}`} />
-                        <div className="min-w-0">
-                          <div className="txt">{t.a.text}</div>
-                          <div className="from">
-                            <Link to="/notes/$noteId" params={{ noteId: t.a.noteId }} search={{ at: t.a.at }} className="hm-src">{t.a.noteTitle}</Link>
-                            {(!t.due || said) && ` · ${dayMonth(new Date(t.a.noteStartedAt))}`}
-                            {said && !chip && ` · due ${said.charAt(0).toLowerCase()}${said.slice(1)}`}
-                            {ticked && ' · done today'}
-                          </div>
-                        </div>
-                        {chip && <span className={cn('hm-due', chip === 'Today' && 'is-now', t.group === 'overdue' && 'is-late')} title={t.a.due}>{chip}</span>}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            );
-          })}
-          {todos.length > FIRST + 1 && <More all={all} more={todos.length - FIRST} onToggle={() => setAll((a) => !a)} />}
-        </>
-      ) : (
-        <EmptyState title="Nothing on your plate" className="hm-empty">When a call ends, what you said you’d do shows up here, with when it’s due.</EmptyState>
-      )}
-    </Card>
+    <>
+      <ul className="hm-list" aria-label="Your follow-ups">
+        {visible.map((t) => {
+          const ticked = done.has(t.key);
+          // A day gets a label, and so do words that fit in one ("Next week", "ASAP"); longer words go under the follow-up.
+          const said = t.due?.kind === 'words' ? t.due.text : t.due?.words;
+          const long = said && said.length > 16 ? said : undefined;
+          const label = t.due && !long ? dueLabel(t.due, today) : undefined;
+          return (
+            <li key={t.key} className={cn('hm-todo', ticked && 'is-done', !first.has(t.key) && !touched.has(t.key) && 'is-new')}>
+              <Check checked={ticked} onChange={(on) => void tick(t, on)} label={`${ticked ? 'Done' : 'Mark done'}: ${t.a.text}`} />
+              <span className="hm-todo-b">
+                <Link to="/notes/$noteId" params={{ noteId: t.a.noteId }} search={{ at: t.a.at }} className="hm-todo-t ac-clamp-1" title={t.a.text}>{t.a.text}</Link>
+                {long && <small className="ac-clamp-1">Due {long.charAt(0).toLowerCase()}{long.slice(1)}</small>}
+              </span>
+              <Moment noteId={t.a.noteId} noteTitle={t.a.noteTitle} at={t.a.at} />
+              <span className={cn('hm-todo-d', label === 'Today' && 'is-now', t.group === 'overdue' && 'is-late')} title={t.a.due}>{label}</span>
+            </li>
+          );
+        })}
+      </ul>
+      {todos.length > FIRST + 1 && <ShowMore all={all} more={todos.length - FIRST} onToggle={() => setAll((a) => !a)} />}
+    </>
   );
 }

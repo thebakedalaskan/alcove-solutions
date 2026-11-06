@@ -16,7 +16,9 @@
  * without one can't be made out. The notes model writes from the transcript it was sent, screens included, so
  * tests can see the transcript arrived intact and the reply was checked before use; asked across notes, it
  * answers from the lines of each note it was sent and cites them by note, plus a note it wasn't sent, as a model
- * can make one up. Every request body is kept as it arrived, so tests can show that nothing readable crossed the
+ * can make one up; and asked to compare a call with earlier ones in its series, it reads "instead" in a decision and
+ * "Answer:" at the start of a line, with labels and moments that aren't there among them, as a model can make them up.
+ * Every request body is kept as it arrived, so tests can show that nothing readable crossed the
  * wire; each request with content records the attested key it was sealed to; and the evidence can be made to lie,
  * so tests can show what Alcove refuses.
  */
@@ -48,6 +50,8 @@ export type Tamper =
   | 'nvidia-root' | 'nvidia-expired' | 'nvidia-not-ca' | 'nras-down' | 'jwks-down'
   | 'report-down' | 'refuse' | 'reply-sealed';
 export type Task = 'transcript' | 'notes';
+/** How a reply can fail: the service down, prose instead of JSON, empty notes, or a reply that ran out of tokens part way. */
+export type Failure = 'down' | 'prose' | 'stub' | 'cut-off' | 'empty' | 'partial' | 'lines';
 
 export interface FakeNear {
   /** What the API is configured with to use this NEAR AI, and the stand-in Intel and NVIDIA that vouch for it. */
@@ -80,10 +84,29 @@ export interface FakeNear {
   rotate(task: Task): void;
   /** How long NVIDIA's verdicts hold, in seconds. */
   verdictLifetime(seconds: number): void;
-  /** The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, or with the shape and nothing in it. */
-  failNext(n: number, how: 'down' | 'prose' | 'stub'): void;
+  /**
+   * The next `n` chat replies fail: the service is down, the model answers in prose instead of JSON, with the shape and
+   * nothing in it, with an empty object, with an object that has a summary and nothing else that's any use, with every
+   * point's lines in the wrong shape, or runs out of tokens part way. With `only`, just the requests with that in their
+   * prompt fail, and count: one part of a note goes wrong while the rest is written.
+   */
+  failNext(n: number, how: Failure, only?: string | undefined): void;
   /** The next chat reply takes this long, as a busy model does. */
-  slowNext(ms: number): void;
+  slowNext(ms: number, only?: string | undefined): void;
+  /** The next request to the notes model waits for this before it's answered, as if something happened while the model wrote. */
+  holdNext(then: () => Promise<void>): void;
+  /**
+   * From now on the notes model writes the follow-up it hears in `line` as `text`, in catch-ups and in the notes, as a
+   * model words a thing afresh each time; '' and it no longer lists it; null and it goes back to the words it hears.
+   */
+  reword(line: string, text: string | null): void;
+  /**
+   * What the notes model says the follow-up it hears in `line` is, from now on, when it's told the follow-ups so far or
+   * what was ticked. By default it knows its own, however it worded them. 'new' leaves the label out, as for something it
+   * doesn't recognise; 'invented' gives one it wasn't told; any other text is a line, and it gives the label of that
+   * line's follow-up, so one can take another's, or two can claim one. null goes back to knowing its own.
+   */
+  identify(line: string, as: string | null): void;
   close(): Promise<void>;
 }
 
@@ -239,7 +262,27 @@ function notesIn(prompt: string): { n: number; heard: Heard[] }[] {
 const wordsAsked = (user: string) => (/\nQuestion: (.*)$/s.exec(user)?.[1] ?? '').toLowerCase().split(/\W+/).filter((w) => w.length > 3);
 
 /** What the notes model writes for a system prompt, a user message and the images sent with it. */
-function notesReply(system: string, user: string, images: Buffer[]): unknown {
+/** What's listed in a prompt with a label, as "F2 (Kofi) Send the deck". */
+const labelledIn = (prompt: string, letter: string): { label: string; text: string }[] => prompt.split('\n').flatMap((l) => {
+  const m = new RegExp(`^(${letter}\\d+) (?:\\([^)]*\\) )?(.*)$`).exec(l);
+  return m ? [{ label: m[1] ?? '', text: m[2] ?? '' }] : [];
+});
+
+/** What the stand-in remembers between requests: how to word what it hears, every way it has worded it, and what it's been told to say each one is. */
+interface Memory { reworded: Map<string, string>; worded: Map<string, Set<string>>; identified: Map<string, string> }
+
+function notesReply(system: string, user: string, images: Buffer[], memory: Memory): unknown {
+  const { reworded, worded, identified } = memory;
+  /** How it words what it hears, remembered, as a model reads its own words back. */
+  const remembered = (line: string, text: string) => { if (text) worded.set(line, (worded.get(line) ?? new Set()).add(text)); return text; };
+  /** The label of the follow-up it hears in `line`, among those it was told: its own, unless it's been told to say otherwise. */
+  const which = (line: string, listed: { label: string; text: string }[], letter: string): string | null => {
+    const how = identified.get(line);
+    if (how === 'new') return null;
+    if (how === 'invented') return `${letter}99`;
+    const of = how ?? line;
+    return listed.find((k) => k.text === of || worded.get(of)?.has(k.text))?.label ?? null;
+  };
   if (system.startsWith('You read one frame')) {
     // Reads what a test wrote on the frame, exactly; a frame without it can't be made out.
     const shown = images[0] ? shownIn(images[0]) : null;
@@ -263,17 +306,51 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
       cites: [...hits.map((x) => ({ note: x.note, at: x.h.at })), { note: notes.length + 1, at: 0 }]
     };
   }
+  if (system.startsWith('You pick out ideas')) {
+    // Offers each line that suggests something, unless it's on offer already, in the frame whose title shares a word with it
+    // (else the first), with the line's words up to its first comma; and, as a model can, one from a line it wasn't sent,
+    // which Alcove must drop, and words for a line about staging that weren't said there, which give way to the line's own.
+    const frames = labelledIn(user, 'F');
+    const offered = new Set(user.split('\n').flatMap((l) => (l.startsWith('- ') ? [l.slice(2)] : [])));
+    const ideas = heard.filter((h) => /\b(should|let's|what if|idea|need to)\b/i.test(h.text) && !offered.has(h.text)).map((h) => {
+      const words = new Set(h.text.toLowerCase().split(/\W+/).filter((w) => w.length > 3));
+      const frame = frames.find((f) => f.text.toLowerCase().split(/\W+/).some((w) => words.has(w)))?.label ?? frames[0]?.label ?? null;
+      return { text: h.text, said: /staging/i.test(h.text) ? 'We agreed to drop staging.' : h.text.split(',')[0] ?? h.text, line: h.ref, frame };
+    });
+    return { ideas: [...ideas, { text: 'Something nobody said.', line: `L${heard.length + 9}`, frame: null }] };
+  }
+  if (system.startsWith('You sort the stickies')) {
+    // Groups the stickies by their first word, naming each group after it; and, as a model can, names one it wasn't sent and
+    // puts one in two themes, which Alcove must drop.
+    const fence = /<stickies-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/stickies-\1>/.exec(user)?.[2] ?? '';
+    const stickies = labelledIn(fence, 'S');
+    const groups = new Map<string, string[]>();
+    for (const x of stickies) {
+      const key = (x.text.split(/\s+/)[0] ?? '').toLowerCase();
+      groups.set(key, [...(groups.get(key) ?? []), x.label]);
+    }
+    const first = stickies[0]?.label;
+    return { themes: [...[...groups].map(([key, labels]) => ({ name: key.charAt(0).toUpperCase() + key.slice(1), stickies: labels })), { name: 'Strays', stickies: ['S99', ...(first ? [first] : [])] }] };
+  }
+  if (system.startsWith('You edit a passage')) {
+    // Says what it was given, so tests can see what went and came back.
+    const selection = /<selection-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/selection-\1>/.exec(user)?.[2] ?? '';
+    return user.includes('"items"') ? { items: selection.split(/\s*;\s*/) } : { text: `Shorter: ${selection}` };
+  }
   if (system.startsWith('You help someone catch up')) {
     // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
     // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
     const nowhere = heard.length + 7;
     const cited = (h: Heard) => ({ text: h.text, lines: [h.ref, `L${nowhere}`, 0] });
+    const known = labelledIn(user, 'F');
     return {
       summary: `Catching up on ${heard.length} lines.`,
       decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
       proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
       open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
-      next: heard.filter((h) => /\bwill\b/i.test(h.text)).map((h) => ({ ...cited(h), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null }))
+      next: heard.filter((h) => /\bwill\b|ます。$/i.test(h.text)).map((h) => ({
+        ...cited(h), ...(known.length ? { id: which(h.text, known, 'F') } : {}), text: remembered(h.text, reworded.get(h.text) ?? h.text), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null
+      }))
     };
   }
   if (system.startsWith('You translate')) {
@@ -287,30 +364,78 @@ function notesReply(system: string, user: string, images: Buffer[]): unknown {
   if (system.startsWith('You write the notes')) {
     // Written again, told what people already settled: like a model can, it lists the decisions again anyway, in other words.
     const again = user.includes('Already settled');
-    const decided = (h: Heard) => ({ ...item(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text });
+    /*
+     * Each entry points at the line it came from and, as a model can, at lines that aren't there. A line that disagrees
+     * ("No, ...") is pointed at as cutting against whatever came just before it. And like a model told what to do by
+     * something said in the call, it says what only people can: that things are confirmed, and that someone took them on.
+     */
+    const nowhere = heard.length + 7;
+    const ticks = labelledIn(user, 'T');
+    /*
+     * Each sticky in a board's Actions frame is a follow-up, labelled with the sticky it is, with whoever the sticky names
+     * first ("Kofi: ..."). One that says "forgotten" is left out, as a model can leave one out.
+     */
+    const onBoards = labelledIn(user, 'B').filter((b) => !/\bforgotten\b/i.test(b.text)).map((b) => {
+      const named = /^(\w+): (.+)$/.exec(b.text);
+      return { text: named?.[2] ?? b.text, owner: named?.[1] ?? null, due: null, at: null, lines: [], against: [], board: b.label };
+    });
+    const boards = user.split('\n').filter((l) => l === '<board>').length;
+    const refs = (h: Heard) => {
+      const next = heard[heard.indexOf(h) + 1];
+      return { lines: [h.ref, `L${nowhere}`, 0], against: next && /^no\b/i.test(next.text) ? [next.ref, nowhere] : [] };
+    };
+    const decided = (h: Heard) => ({ ...item(h), ...refs(h), text: again ? `Agreed: ${h.text.replace(/^we (?:agreed|decided) (?:to )?/i, '')}` : h.text, state: 'confirmed', disputes: [{ by: 'the model' }], changes: [{ what: 'confirmed' }] });
+    /** A sentence nothing said backs: the model's word alone, which the notes must keep marked as that. */
+    const unbacked = /\bunbacked\b/i.test(user) ? [{ text: 'Everyone agreed to double the budget.', at: heard[0]?.at ?? 0, lines: [nowhere], against: [] }] : [];
     return {
-      summary: `Heard ${heard.length} lines. It ended on: ${heard.at(-1)?.text ?? ''}`,
-      decisions: heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided),
-      questions: heard.filter((h) => h.text.trim().endsWith('?')).map(item),
-      actions: heard.flatMap((h) => {
+      summary: `Heard ${heard.length} lines.${boards ? ` Read ${boards} ${boards === 1 ? 'board' : 'boards'}.` : ''} It ended on: ${heard.at(-1)?.text ?? ''}`,
+      decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
+      questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
+      actions: [...heard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
-        if (!m) return [];
+        const told = { ...(ticks.length ? { ticked: which(h.text, ticks, 'T') } : {}), takenOn: true, done: true, changes: [{ what: 'took-on' }] };
+        if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h), ...refs(h), ...told }] : [];
         const rest = m[2] ?? '';
-        return [{ text: rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h) }];
-      }),
+        return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), ...told }];
+      }), ...onBoards],
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
       // Each screen, with what was said while it was up.
       screens: screens.map((x) => ({ n: x.n, description: `${x.title}, shown while: ${heard.find((h) => h.screen?.n === x.n)?.text ?? 'nothing was said'}` }))
     };
   }
+  if (system.startsWith('You compare one meeting')) {
+    // A decision saying "instead" replaces each earlier one it shares a long word with; a line starting "Answer:"
+    // answers each earlier question it shares one with. Then a label and a moment that aren't there, as a model can make them up.
+    const labelled = (letter: string) => user.split('\n').flatMap((l) => { const m = new RegExp(`^${letter}(\\d+): (.*)$`).exec(l); return m ? [{ label: `${letter}${m[1]}`, text: m[2] ?? '' }] : []; });
+    const long = (s: string) => s.toLowerCase().split(/\W+/).filter((w) => w.length > 4);
+    const shares = (a: string, b: string) => long(a).some((w) => long(b).includes(w));
+    const mine = labelled('N').filter((n) => /\binstead\b/i.test(n.text));
+    let room: number | null = null;
+    const replies = user.split('\n').flatMap((l) => {
+      const head = /^Breakout room (\d+), /.exec(l);
+      if (head) room = Number(head[1]);
+      return heardIn(l).filter((x) => /^Answer: /.test(x.text)).map((x) => ({ ...x, room }));
+    });
+    return {
+      replaced: [...labelled('E').flatMap((e) => mine.filter((n) => shares(n.text, e.text)).map((n) => ({ earlier: e.label, by: n.label }))), { earlier: 'E99', by: 'N1' }, { earlier: 'E1', by: 'N99' }],
+      answered: [...labelled('Q').flatMap((q) => replies.filter((r) => shares(r.text, q.text)).map((r) => ({ earlier: q.label, at: r.at, room: r.room }))), { earlier: 'Q99', at: 1, room: null }]
+    };
+  }
   const question = /\nQuestion: (.*)$/s.exec(user)?.[1] ?? '';
   const words = wordsAsked(user);
   if (system.startsWith('You answer a question about a series')) {
-    // Answers from the first transcript line, newest meeting first, that shares a word with the question.
-    const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => heardIn(block).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), h })))
-      .find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
-    return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, at: found.h.at }] : [] };
+    // Answers from the first transcript line, newest meeting first, that shares a word with the question, in the call's
+    // transcript or a breakout room's.
+    const found = user.split(/\n(?=Meeting \d+: )/).flatMap((block) => {
+      let room: number | null = null;
+      return block.split('\n').flatMap((l) => {
+        const head = /^Breakout room (\d+), .*, transcript:$/.exec(l);
+        if (head) room = Number(head[1]);
+        return heardIn(l).map((h) => ({ meeting: Number(/^Meeting (\d+): /.exec(block)?.[1] ?? 0), room, h }));
+      });
+    }).find(({ h }) => words.some((w) => h.text.toLowerCase().includes(w)));
+    return { answer: found ? `From meeting ${found.meeting}: ${found.h.text}` : 'That wasn’t covered in these meetings.', sources: found ? [{ meeting: found.meeting, room: found.room, at: found.h.at }] : [] };
   }
   const hit = heard.find((h) => words.some((w) => h.text.toLowerCase().includes(w)));
   // A call still going on is asked about with its lines numbered: the answer points at them (and at one that isn't there).
@@ -430,8 +555,12 @@ export async function startFakeNear(): Promise<FakeNear> {
   const images: FakeNear['images'] = [];
   const transcriptions: FakeNear['transcriptions'] = [];
   let failing = 0;
-  let failure: 'down' | 'prose' | 'stub' = 'down';
+  let failure: Failure = 'down';
+  let failingOnly: string | undefined;
   let slow = 0;
+  let slowOnly: string | undefined;
+  let holding: (() => Promise<void>) | null = null;
+  const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map() };
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
@@ -526,20 +655,26 @@ export async function startFakeNear(): Promise<FakeNear> {
       const comment = commentOf(img);
       images.push({ bytes: img.length, marker: /^SCREEN:(\{.*\})\|/s.exec(comment)?.[1] ?? null, salt: comment.slice(comment.lastIndexOf('|') + 1) });
     }
-    if (slow) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
+    if (slow && (slowOnly === undefined || user.includes(slowOnly))) { const ms = slow; slow = 0; await new Promise((r) => setTimeout(r, ms)); }
+    if (holding) { const then = holding; holding = null; await then(); }
     let content: string;
-    if (failing > 0) {
+    let finish = 'stop';
+    if (failing > 0 && (failingOnly === undefined || user.includes(failingOnly))) {
       failing--;
       if (failure === 'down') return { status: 503, body: { error: { message: 'Service unavailable' } } };
-      content = failure === 'stub'
+      if (failure === 'cut-off') { finish = 'length'; content = JSON.stringify(notesReply(system, user, sent, memory)).slice(0, 60); }
+      else content = failure === 'stub'
         ? JSON.stringify({ summary: '...', decisions: [], questions: [], actions: [], chapters: [], suggestedQuestions: [], screens: [] })
-        : 'Here are your notes! The team talked about a few things.';
-    } else content = JSON.stringify(notesReply(system, user, sent));
+        : failure === 'empty' ? '{}'
+          : failure === 'partial' ? JSON.stringify({ summary: 'Catching up.', decided: 'none of it' })
+            : failure === 'lines' ? JSON.stringify({ summary: 'Catching up.', decided: [{ text: 'We agreed on something.', lines: 3 }], proposed: [], open: [], next: [{ text: 'Kofi will do something.', lines: 'L3' }] })
+            : 'Here are your notes! The team talked about a few things.';
+    } else content = JSON.stringify(notesReply(system, user, sent, memory));
     return {
       status: 200,
       body: {
         id: `chatcmpl-${randomUUID().replace(/-/g, '')}`, object: 'chat.completion', model, created: Math.floor(Date.now() / 1000),
-        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
+        choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finish }], usage: { prompt_tokens: Math.round(user.length / 4), completion_tokens: 200 }
       }
     };
   }
@@ -632,8 +767,11 @@ export async function startFakeNear(): Promise<FakeNear> {
       models[task] = { ...machine(m.name, m.image, m.compose, ohttpIds++), appId: m.appId };
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
-    failNext(count, how) { failing = count; failure = how; },
-    slowNext(ms) { slow = ms; },
+    failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
+    slowNext(ms, only) { slow = ms; slowOnly = only; },
+    holdNext(then) { holding = then; },
+    reword(line, text) { if (text === null) memory.reworded.delete(line); else memory.reworded.set(line, text); },
+    identify(line, as) { if (as === null) memory.identified.delete(line); else memory.identified.set(line, as); },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };
 }

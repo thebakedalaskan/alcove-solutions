@@ -4,7 +4,7 @@
  */
 import { Avatar, CallTile, Icon, NotesSign, type IconName } from '@alcove/ui';
 import { animate, useReducedMotion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CAST, firstOf, type CastId } from '~/features/notes/cast';
 import { shortDay } from '~/lib/time';
 
@@ -34,27 +34,25 @@ function GlassChip({ icon, children }: { icon: IconName; children: string }) {
   return <span className="ta-chip ta-glass"><Icon name={icon} size={14} />{children}</span>;
 }
 
-/** Schedule in one line: a sentence types itself and turns into the call's chips. */
+/** Start or schedule a call: one question at a time, and each answer settles into the call. */
 export function ArtSchedule() {
-  const text = 'Design review with Theo tomorrow at 3';
   const t = useClock(5.7, 4.5);
-  const typed = Math.round(text.length * clamp01((t - 0.35) / 1.7));
   const gone = 1 - ramp(t, 4.9, 0.3, in2);
   const tomorrow = new Date(Date.now() + 86_400_000);
-  const chips = [
-    <GlassChip key="d" icon="cal">{shortDay(tomorrow)}</GlassChip>,
-    <GlassChip key="t" icon="clock">15:00 – 15:30</GlassChip>,
-    <span key="p" className="ta-chip ta-glass"><Avatar person={CAST.theo} size={18} />Theo</span>,
-    <span key="n" className="ta-chip is-notes"><Icon name="notes" size={14} />Notes on</span>
+  const asked = t < 1.6 ? 'Who’s it with?' : t < 2.85 ? 'When works?' : 'Notes on?';
+  const answers: { at: number; chip: ReactNode }[] = [
+    { at: 0.85, chip: <span className="ta-chip ta-glass"><Avatar person={CAST.theo} size={18} />Theo</span> },
+    { at: 2.1, chip: <GlassChip icon="cal">{`${shortDay(tomorrow)}, 15:00`}</GlassChip> },
+    { at: 3.35, chip: <span className="ta-chip is-notes"><Icon name="notes" size={14} />Notes on</span> }
   ];
   return (
     <div className="ta">
       <div className="ta-stack">
-        <div className="ta-cmp ta-glass"><Icon name="video" size={16} /><span style={{ opacity: gone }}>{text.slice(0, typed)}</span><i className="ta-caret" /></div>
+        <div className="ta-cmp ta-glass"><Icon name="video" size={16} /><span style={{ opacity: gone }}>{asked}</span></div>
         <div className="ta-chips">
-          {chips.map((c, i) => {
-            const p = ramp(t, 2.23 + i * 0.12, 0.42, (x) => x);
-            return <span key={c.key ?? i} style={{ opacity: clamp01(p) * gone, translate: `0 ${8 * (1 - out3(p))}px`, scale: String(0.94 + 0.06 * backOut(1.7)(p)) }}>{c}</span>;
+          {answers.map((a) => {
+            const p = ramp(t, a.at, 0.42, (x) => x);
+            return <span key={a.at} style={{ opacity: clamp01(p) * gone, translate: `0 ${8 * (1 - out3(p))}px`, scale: String(0.94 + 0.06 * backOut(1.7)(p)) }}>{a.chip}</span>;
           })}
         </div>
       </div>
@@ -102,7 +100,7 @@ export function ArtCall() {
       <div className="ta-call">
         <div className="ta-tiles">{lines.map(([id], i) => <CallTile key={id} person={CAST[id]} name={firstOf(id)} speaking={i === k} />)}</div>
         <div className="ta-cap ta-glass">
-          <div className="who"><Avatar person={CAST[who]} size={14} />{firstOf(who)}<span className="lbl">CAPTIONS</span></div>
+          <div className="who"><Avatar person={CAST[who]} size={14} />{firstOf(who)}<span className="lbl">Captions</span></div>
           <p>{said.split(' ').map((w, i) => { const p = ramp(local, i * 0.11, 0.3); return <span key={`${k}-${i}`} style={{ opacity: p, translate: `0 ${4 * (1 - p)}px` }}>{w}&nbsp;</span>; })}</p>
         </div>
       </div>
@@ -123,7 +121,7 @@ export function ArtRoom() {
       <div className="ta-room">
         <div className="ta-phone">
           <div className="scr">
-            <span className="rec"><i />REC 04:12</span>
+            <span className="ta-rec"><i />Rec 04:12</span>
             <div className="ta-wave">{Array.from({ length: 14 }, (_, i) => <i key={i} style={{ scale: `1 ${0.25 + 0.75 * Math.abs(Math.sin(t * (2.4 + (i % 5) * 0.55) + i * 1.7))}` }} />)}</div>
           </div>
         </div>

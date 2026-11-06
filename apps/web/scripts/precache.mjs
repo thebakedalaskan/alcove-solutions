@@ -1,7 +1,8 @@
 // node apps/web/scripts/precache.mjs <dist/client>
 // Runs after `vite build` (the web app's build script). Writes the list of every file this build emitted
 // into dist/client/sw.js, so the service worker caches exactly this build: the shell, index.html, which it
-// asks for as / (Cloudflare Pages redirects /index.html there), and everything else but Pages' _headers.
+// asks for as / (Cloudflare Pages redirects /index.html there), and everything else but Pages' _headers and the
+// camera backgrounds' model.
 // The version is a hash of every file, the worker included, so any change makes a new worker and a new cache.
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -12,10 +13,12 @@ if (!dir) throw new Error('usage: precache.mjs <dist/client>');
 const PLACEHOLDER = "const BUILD = { version: '', files: [] };";
 // Pages reads _headers and _redirects itself and never serves them.
 const NOT_SERVED = new Set(['_headers', '_redirects']);
+// Camera backgrounds' model and WebAssembly (tens of MB): fetched only by someone who picks a background, never cached ahead.
+const ON_DEMAND = 'mediapipe/';
 
 const files = readdirSync(dir, { recursive: true, encoding: 'utf8' })
   .map((path) => path.split(sep).join('/'))
-  .filter((path) => !NOT_SERVED.has(path) && !path.split('/').some((part) => part.startsWith('.')) && statSync(join(dir, path)).isFile())
+  .filter((path) => !NOT_SERVED.has(path) && !path.startsWith(ON_DEMAND) && !path.split('/').some((part) => part.startsWith('.')) && statSync(join(dir, path)).isFile())
   .sort();
 if (!files.includes('index.html')) throw new Error(`${dir} has no index.html: run vite build first`);
 if (!files.includes('sw.js')) throw new Error(`${dir} has no sw.js: it comes from apps/web/public`);

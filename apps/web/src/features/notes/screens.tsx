@@ -5,11 +5,12 @@
  * and plays the call from there. Images come from the API for whoever has the note.
  */
 import type { ScreenMoment, ScreenRef } from '@alcove/api';
-import { Button, Card, Icon, IconButton, Modal, ScreenLegibility, ScreenMomentCard, ScreenShot } from '@alcove/ui';
+import { Icon, IconButton, Modal, ScreenLegibility, ScreenMomentCard, ScreenShot } from '@alcove/ui';
 import { useEffect, useState } from 'react';
 import { api } from '~/lib/api';
 import { spokenName } from '~/lib/people';
 import { position } from '~/lib/time';
+import { Moment } from './parts';
 
 /** Whose screen and when: "Priya’s screen · 0:42–1:30", or "Your screen" for your own. */
 export function screenMeta(m: ScreenMoment, me: string | undefined): string {
@@ -20,6 +21,9 @@ export function screenMeta(m: ScreenMoment, me: string | undefined): string {
   return `${whose} · ${when}`;
 }
 
+/** Bookmarking a shared screen for yourself: which are bookmarked, and bookmarking one or taking it off. Only you see them. */
+export interface ScreenMarks { has(frameId: string): boolean; toggle(frameId: string): void }
+
 /** What's open in the viewer: a moment, and the part of it something pointed at. */
 export interface OpenScreen { id: string; region?: number | undefined }
 /** Opens a moment of a note's shared screens, at the part something points at when it does. */
@@ -28,7 +32,7 @@ export type ScreenOpener = (s: OpenScreen) => void;
 /** A moment among the transcript lines: its thumbnail, what it is, whose and when, and what it shows. */
 export function ScreenMomentRow({ noteId, m, me, written, onOpen }: { noteId: string; m: ScreenMoment; me: string | undefined; written: boolean; onOpen: ScreenOpener }) {
   return (
-    <ScreenMomentCard src={api.notes.screenUrl(noteId, m.id)} width={m.width} height={m.height} title={m.title} meta={screenMeta(m, me)}
+    <ScreenMomentCard className="nd-scr" src={api.notes.screenUrl(noteId, m.id)} width={m.width} height={m.height} title={m.title} meta={screenMeta(m, me)}
       description={m.description || undefined} legible={written ? m.legible : undefined} onOpen={() => onOpen({ id: m.id })} />
   );
 }
@@ -50,9 +54,9 @@ export function ScreenRefChip({ screen, screens, onOpen }: { screen: ScreenRef; 
  * One moment of a note's shared screens, opened: the frame, the part meant outlined, what it is and whose, what the
  * notes say it shows, how legible it was, the text read on it, and the call from there. Arrows move through them.
  */
-export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSeek }: {
+export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSeek, marks }: {
   noteId: string; screens: ScreenMoment[]; open: OpenScreen | null; me: string | undefined;
-  onOpen: ScreenOpener; onClose: () => void; onSeek?: ((s: number) => void) | undefined;
+  onOpen: ScreenOpener; onClose: () => void; onSeek?: ((s: number) => void) | undefined; marks?: ScreenMarks | undefined;
 }) {
   const i = open ? screens.findIndex((m) => m.id === open.id) : -1;
   const m = screens[i];
@@ -99,27 +103,12 @@ export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSee
           </div>
           <div className="scr-f">
             <span className="ac-mono">{i + 1} of {screens.length}</span>
-            {onSeek && <Button variant="secondary" icon="play" onClick={() => { onSeek(m.at); onClose(); }}>Play from {position(m.at)}</Button>}
+            {marks && <IconButton icon={marks.has(m.id) ? 'bookmarked' : 'bookmark'} label={marks.has(m.id) ? 'Remove your bookmark' : 'Bookmark this screen, for you alone'} on={marks.has(m.id)} onClick={() => marks.toggle(m.id)} />}
+            <Moment at={m.at} onSeek={onSeek && ((s) => { onSeek(s); onClose(); })} />
           </div>
         </>
       )}
     </Modal>
-  );
-}
-
-/** What was on screen in the call, beside the note: each moment small, with when it was shown. Each opens the frame. */
-export function ScreensCard({ noteId, screens, onOpen }: { noteId: string; screens: ScreenMoment[]; onOpen: ScreenOpener }) {
-  return (
-    <Card title="On screen" aside={<span className="ac-mono">{screens.length}</span>}>
-      <div className="scr-list">
-        {screens.map((m) => (
-          <button key={m.id} type="button" className="scr-item" onClick={() => onOpen({ id: m.id })} aria-label={`Open the screen at ${position(m.at)}: ${m.title || 'untitled'}`}>
-            <ScreenShot src={api.notes.screenUrl(noteId, m.id)} alt="" width={m.width} height={m.height} />
-            <span><b>{m.title || 'A shared screen'}</b><small className="ac-mono">{position(m.at)}</small></span>
-          </button>
-        ))}
-      </div>
-    </Card>
   );
 }
 

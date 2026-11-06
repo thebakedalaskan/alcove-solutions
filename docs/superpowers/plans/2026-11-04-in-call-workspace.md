@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - AGENTS.md applies to every task. Read it first, and `.claude/skills/strict-typescript/SKILL.md` before writing TypeScript.
-- Canvas source, the UI spec for every task: `CANVAS=/private/tmp/claude-501/-Users-benjaminkurrek--superset-worktrees-the-privacy-suite-create-depth-artifact-showing-c9732571/5ccd2617-49e8-452a-bb4a-15d67de25532/scratchpad/canvas`. `$CANVAS/src/` has `ws.css`, `WS.src.html`, `ws-core.js`, `ws-ui.js`, `ws-layout.js`, `ws-journeys.js`, `ws-data.js`. `$CANVAS/project/` is the built canvas, servable with `support.js`. Read it; never copy its fictional data into the app.
+- Canvas source, the UI spec for every task: `CANVAS=<the session scratch folder>/canvas`. `$CANVAS/src/` has `ws.css`, `WS.src.html`, `ws-core.js`, `ws-ui.js`, `ws-layout.js`, `ws-journeys.js`, `ws-data.js`. `$CANVAS/project/` is the built canvas, servable with `support.js`. Read it; never copy its fictional data into the app.
 - Fidelity: same layout, spacing, type, colours, motion durations and words as the canvas. Port `ws.css` rather than restyling. A difference needs a reason.
 - UI copy is the canvas's words, exactly. Use "they" for people. No "coming soon".
 - Boards are out of scope: no New board, Board block, B key or Board dock button.
@@ -36,12 +36,12 @@
 ### Task A1: Workspaces, tree and access
 
 **Files:**
-- Create: `apps/api/migrations/NNNN_workspaces.sql`, `packages/api/src/workspaces.ts`, `apps/api/src/modules/workspaces.ts`, `apps/api/src/modules/access.ts`, `apps/api/src/workspaces.integration.test.ts`
+- Create: `apps/api/migrations/NNNN_workspaces.sql`, `packages/api/src/workspaces.ts`, `apps/api/src/modules/workspaces.ts`, `apps/api/src/modules/workspaceAccess.ts`, `apps/api/src/workspaces.integration.test.ts`
 - Modify: `packages/api/src/client.ts`, `packages/api/src/index.ts`, `apps/api/src/app.ts`, `packages/api-http/src/index.ts`, `apps/api/src/modules/account.ts` (deletion), `apps/api/src/maintenance.ts`, `docs/engineering/data-and-storage.md`, `docs/engineering/privacy-keys-and-sessions.md`
 
 **Interfaces:**
 - Produces: `api.workspaces` on `AlcoveApi`: `list`, `create`, `rename`, `remove`, `people`, `addPerson`, `setRole`, `removePerson`, `items` (`create`, `rename`, `move`, `duplicate`, `trash`, `restore`, `deleteForever`), `share` (`list`, `set`, `remove`, `restrict`), `live(id): WorkspaceLive`. `WorkspaceLive extends LiveStore<WorkspaceView>` with `tree`, `people here` and a `close()`.
-- Produces in `access.ts`: `readerOf(c)`, `workspaceFor(d, reader, workspaceId)`, `requireDocument(reader, workspace, documentId, need: 'read' | 'edit')`. Later tasks use these and nothing else to decide access.
+- Produces in `workspaceAccess.ts`: `readerOf(c)`, `workspaceFor(d, reader, workspaceId)`, `requireDocument(reader, workspace, documentId, need: 'read' | 'edit')`. Later tasks use these and nothing else to decide access.
 - Produces: `apps/api/src/live/hub.ts`, the per-instance hub with its `LISTEN` connection, used by B1.
 
 - [ ] Tests first in `workspaces.integration.test.ts`: create, list, rename a workspace; members and roles; create, rename, move, reorder, duplicate, trash, restore, delete an item; a cycle is refused; a restricted document is absent from others' trees and `not-found` by ID; a document shared to a non-member shows that document alone; a read member can't change anything; deleting an account leaves no member rows, and an empty workspace goes; two API instances (`h.secondServer()`) see each other's tree changes on the live stream; the leakage test finds no name, folder or email in any column, object or log.
@@ -51,11 +51,11 @@
 ### Task A2: Call panels
 
 **Files:**
-- Create: `apps/web/src/features/call/panels.ts`, `apps/web/src/features/call/Panels.tsx`
+- Create: `apps/web/src/features/call/panels.ts`, `apps/web/src/features/call/PanelHost.tsx` (not `Panels.tsx`: `./Panels` resolves to `panels.ts` on a case-insensitive disk)
 - Modify: `apps/web/src/routes/call.$code.tsx`, `apps/web/src/features/call/Stage.tsx`, `stageLayout.ts`, `Panel.tsx`, `ViewMenu.tsx`, `TopBar.tsx`, `view.ts`, `packages/api/src/live.ts` (the prefs schema), `packages/ui/src/styles/call.css`, `packages/ui/src/components/call.tsx`, `docs/engineering/calls-and-recordings.md`
 
 **Interfaces:**
-- Produces `panels.ts`, pure: `PanelTree`, `adapt`, `solve(tree, size, facts) -> { rects, dividers, tiles, gave }`, `moveLeaf`, `tearTab`, `swapLeaves`, `dragDivider`, `preset`, `reset`, people modes `tiles | arches | hidden`. Leaves: `people`, `share:<id>`, `g:<group>` (a tabbed group), and `ws` (a slot C1 fills; empty and never shown until then).
+- Produces `panels.ts`, pure: `adapt`, `solve(tree, size, facts) -> { rects, dividers, tiles, gave }`, `moveLeaf` (a drop in the middle swaps), `tearTab`, `dragDivider`, `preset`, `reset`, people modes `tiles | arches | hidden`. Leaves: `people`, `share:<id>`, `g:<group>` (a tabbed group), and `ws` (a slot C1 fills; empty and never shown until then).
 - Produces `<PanelHost>` taking a render prop per leaf kind.
 
 - [ ] Port `$CANVAS/src/ws-layout.js` to typed, pure `panels.ts`. Keep its numbers: minimums, give-way order, snap at half, double-click to even.

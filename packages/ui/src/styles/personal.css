@@ -1,0 +1,85 @@
+/* Your own notes (apps/web/src/features/personal): in the call's panel, at night like the rest of the call, and beside a
+   note (own-). */
+
+/* The head of the panel's view: who it's for, and marking a moment. */
+.own-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--line); }
+.own-head .t { flex: 1; min-width: 0; font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
+
+/* Everything kept, oldest first. */
+.own-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.own-row { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; padding: 10px 6px 10px 2px; border-radius: var(--radius-md); }
+.own-row + .own-row { border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
+/* The entry a preview is about, so it's plain which one goes. */
+.own-row.is-picked { background: var(--horizon-soft); box-shadow: inset 2px 0 0 var(--horizon); }
+.own-mk { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--sunk); color: var(--ink-2); }
+.own-row.is-bookmark .own-mk { background: var(--sun-soft); color: var(--sun-text); }
+.own-b { display: grid; gap: 5px; min-width: 0; }
+.own-t { margin: 0; font-size: 14px; line-height: 1.45; color: var(--ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+.own-q { margin: 0; font-size: 13px; line-height: 1.4; color: var(--ink-2); overflow-wrap: anywhere; }
+.own-quote { margin: 0; padding-left: 9px; border-left: 2px solid var(--line-control); font-size: 13.5px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+.own-quote b { margin-right: 6px; font-weight: 600; color: var(--ink); }
+.own-away { margin: 0; display: flex; align-items: flex-start; gap: 6px; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.own-away .ac-i { flex: none; margin-top: 2px; }
+.own-m { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 22px; font-size: 12px; color: var(--ink-3); }
+.own-m .ac-time { font-size: 11.5px; line-height: 1; color: var(--ink-3); }
+.own-room { display: inline-flex; align-items: center; gap: 4px; }
+.own-shared { display: inline-flex; align-items: center; gap: 4px; color: var(--horizon); font-weight: 500; }
+/* What you can do to one: on hover or focus, always on touch screens. */
+.own-acts { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; opacity: 0; transition: opacity var(--duration-1); }
+.own-row:hover .own-acts, .own-row:focus-within .own-acts { opacity: 1; }
+@media (hover: none) { .own-acts { opacity: 1; } }
+.own-acts .ac-icon-btn { width: 28px; height: 28px; border-radius: 8px; color: var(--ink-3); }
+.own-acts .ac-icon-btn:hover { background: var(--sunk); color: var(--ink); }
+.own-sure { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; font-size: 12.5px; color: var(--ink-2); }
+.own-edit { display: grid; gap: 6px; }
+.own-edit textarea { width: 100%; min-height: 34px; padding: 7px 9px; border: 0; border-radius: var(--radius-sm); outline: 0; resize: none; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 400 14px/1.45 var(--font-sans); }
+.own-edit textarea:focus { box-shadow: inset 0 0 0 2px var(--focus); }
+.own-edit .btns { display: flex; align-items: center; gap: 10px; }
+
+/* Writing: who it's for sits in the box you type in, so it's said before anything is. */
+.own-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 4px 8px; padding: 9px 9px 9px 11px; border-radius: var(--radius-md); background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1); }
+.own-compose:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+.own-compose .to { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.own-compose .to .ac-scope { background: var(--surface); color: var(--ink-2); }
+.own-compose textarea { width: 100%; min-height: 24px; max-height: 140px; padding: 2px 0; border: 0; outline: 0; resize: none; background: transparent; color: var(--ink); font: 400 14.5px/1.45 var(--font-sans); }
+.own-compose textarea::placeholder { color: var(--ink-3); }
+.own-compose .ac-btn { width: 36px; height: 36px; padding: 0; }
+.ic-foot .own-compose .ac-btn { width: 36px; }
+
+/* What would go to the shared notes: the words, where, and who. It opens where the entry is, never over it. */
+.own-pv { display: grid; gap: 10px; margin-top: 10px; padding: 12px; scroll-margin-block: 24px 110px; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); }
+.own-pv .h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 600 13.5px/1.3 var(--font-sans); color: var(--ink); }
+.own-pv textarea { width: 100%; min-height: 64px; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); outline: 0; resize: vertical; background: var(--sunk); box-shadow: inset 0 0 0 1px var(--line); color: var(--ink); font: 400 14px/1.45 var(--font-sans); }
+.own-pv textarea:focus { box-shadow: inset 0 0 0 2px var(--focus); }
+.own-pv .hint { font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
+.own-pv dl { display: grid; gap: 2px; margin: 0; font-size: 13px; line-height: 1.4; }
+.own-pv dt { font-size: 12px; color: var(--ink-3); }
+.own-pv dt:not(:first-child) { margin-top: 6px; }
+.own-pv dd { display: flex; align-items: flex-start; gap: 7px; min-width: 0; margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.own-pv dd .ac-faces { flex: none; }
+.own-pv .btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.own-pv .bad { font-size: 13px; line-height: 1.45; color: var(--caution); }
+
+/* Keeping an answer. */
+.own-keep { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; }
+.own-keep .kept { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--ink-3); }
+.ic-qa .a .own-keep { margin-top: 2px; }
+.ic-qa .a .own-keep .lk { font-size: 12.5px; }
+
+/* Bookmarking a line in the call: it has its own room at the end of the line, and shows on hover or focus, always on
+   touch screens. */
+.tx-l { position: relative; }
+.tx-l.has-mark { padding-right: 30px; }
+.tx-l.has-put { padding-right: 30px; }
+.tx-l.has-mark.has-put { padding-right: 58px; }
+.tx-l .ws-put { position: absolute; right: 0; top: 2px; }
+.tx-l.has-mark .ws-put { right: 28px; }
+.tx-l .tx-mark { position: absolute; right: 0; top: 2px; width: 26px; height: 26px; border-radius: 8px; color: var(--ink-3); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
+.tx-l:hover .tx-mark, .tx-l:focus-within .tx-mark { opacity: 1; }
+@media (hover: none) { .tx-l .tx-mark { opacity: 1; } }
+.tx-l .tx-mark:hover { background: var(--sunk); color: var(--ink); }
+/* On a phone the mark is in the More menu, and in the panel's Yours view. Six tabs fit a little closer. */
+@media (max-width: 560px) {
+  .ic-side-head .ac-tab { padding: 0 6px; font-size: 13px; }
+  .ic-side-head .ac-tab[aria-selected="true"]::after { left: 5px; right: 5px; }
+}

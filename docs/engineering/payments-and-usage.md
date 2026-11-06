@@ -41,7 +41,7 @@ support.
 | --- | --- |
 | Billing account per owner, welcome grant, history | Working. Deleting the account deletes its billing account and history; signing in again opens a new account with the welcome grant |
 | Balance and history sealed under `Kservice` (never under owner keys) | Working |
-| Charging for notes | Working. When the notes worker writes a note, `billing.charge` takes 25 credits a minute (rounded up, at least one) in the same transaction, under a row lock, as a history entry "Notes, N min". A note finished without notes (nothing was transcribed, or the notes model failed three times) costs nothing, and neither do the live transcript or asking. |
+| Charging for notes | Working. When the notes worker writes a note, `billing.charge` takes 25 credits a minute (rounded up, at least one) in the same transaction, under a row lock, as a history entry "Notes, N min". A note finished without notes (nothing was transcribed, or the notes model failed three times) costs nothing, and neither do the live transcript, a call's live notes, catching up, asking, or asking about a selection in a document: NEAR AI's requests for those go on Alcove's key, and nobody's credits, the organizer's or whoever is watching's, pay for them. |
 | Minutes charged | The minutes recorded: the seconds of encrypted audio across every segment of the note's recording, rounded up. Time in a call with notes off is free. |
 | Used this month | Working. The balance (`GET /v1/credits`) carries `usedThisMonth`: the credits charged since 00:00 UTC on the 1st of the current month, summed from the history's charges by the time each was made. In minutes of notes, that's `usedThisMonth / perMinute`. |
 | Admission | Not built: nothing checks the balance before recording or transcribing, and a charge can take it below zero |
@@ -66,7 +66,7 @@ support.
 ## How a top-up works
 
 1. **Routes.** `GET /v1/credits/routes` lists one route per stablecoin and chain on the allowlist in
-   `payments/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), with its minimum (in
+   `features/billing/oneclick.ts` that 1Click currently lists in `/v0/tokens` (cached for 10 minutes), with its minimum (in
    tokens, and the credits it buys), the tiers, the presets and credits per minute. The app prices a choice from the
    tiers before asking; the server's quote is what counts.
 2. **Address.** `POST /v1/credits/top-ups { routeId, credits }` prices the credits (`priceFor`) and asks 1Click for a
@@ -82,7 +82,7 @@ support.
    owner, ID, provider, state and when to look again. The top-up says what to send (`asked`), and shows its address
    only while it's `waiting`: an address is for one payment. Once 1Click reports what was deposited, the top-up says
    so (`received`), with the credits it added once settled.
-3. **Watching.** The watcher (`watch` in `modules/deposits.ts`, run every 5 s from `server.ts`, one pass at a time)
+3. **Watching.** The watcher (`watch` in `features/billing/deposits.ts`, run every 5 s by `startWatching`, which `server.ts` starts; one pass at a time)
    claims up to 20 due deposits with `FOR UPDATE SKIP LOCKED`, pushing their next check ahead by a lease longer than
    a worst-case pass (5 rounds of 4, each one 1Click call and up to 8 statements at their 15 s timeouts, half as much
    again: about 17 minutes) so another API instance skips them, then asks 1Click's `/v0/status` about each, 4 at a

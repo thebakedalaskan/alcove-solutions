@@ -1,286 +1,161 @@
-/* The pieces of a note page, shared by real notes and the example. */
+/* The pieces of a note page, shared by real notes, the example and a series. */
 import {
-  firstName, type ActionItem, type ActionPatch, type AnswerPart, type CaptureGap, type Change, type Chapter, type Decision, type DecisionPatch, type Person,
-  type Question, type QuestionPatch, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
+  mayDecide, mayDispute, proposerOf,
+  type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteReader, type RoomRef,
+  type Question, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, Button, CaptureGapMark, Card, Check, Faces, Icon, IconButton, Popover, SealedBadge, TimeChip, UnsureKey, buttonClass, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, UnsureKey, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useReducedMotion } from 'motion/react';
+import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { KeepAnswer } from '~/features/personal/parts';
 import { gapLabel, gapsAfter, gapsBefore } from '~/lib/capture';
 import { ariaShortcut, withMod } from '~/lib/keys';
 import { sameEmail, spokenName } from '~/lib/people';
-import { hm, position, shortDay } from '~/lib/time';
-import { AnswerView, useAnswer, type Cite } from './answer';
-import { LineRow, type Correcting } from './lines';
-import { peopleLine, roleLine } from './meta';
+import { position, shortDay } from '~/lib/time';
+import { AnswerView, useAnswer, type Answer, type Cite } from './answer';
+import { byName, notTheirs } from './entries';
+import { LineRow, type Correcting, type FromLine, type LineMarks } from './lines';
+import { roleLine } from './meta';
+import { usePlayerAt, type PlayerState } from './Player';
 import { capital } from '~/lib/words';
 
-/**
- * A note's head: chips for its state, its series and how you got it; the title; when and who, you first; and
- * (`proof`) where it was written, with what was checked about the models that wrote it.
- */
-export function DocHead({ title, when, people, me, chips, proof }: { title: string; when: string; people: Person[]; me: string | undefined; chips?: ReactNode; proof?: ReactNode }) {
+/** A part of the note, with its heading: what kind of thing it holds gives it its colour, and `count` says what's waiting. */
+/** A part of a note under its heading. `id`: where a link goes to it, as a call's folder goes to a note's follow-ups. */
+export function Section({ title, count, kind, id, className, children }: { title: string; count?: ReactNode; kind?: 'decide' | 'follow' | undefined; id?: string | undefined; className?: string | undefined; children: ReactNode }) {
   return (
-    <>
-      {chips && <div className="lead-chips">{chips}</div>}
-      <h1>{title}</h1>
-      <div className="doc-meta"><span className="ac-mono">{when}</span><span className="who"><Faces people={people} size={26} /><span>{peopleLine(people, me)}</span></span></div>
-      {proof && <div className="doc-proof">{proof}</div>}
-    </>
-  );
-}
-
-export function Section({ title, count, children, className, style }: { title: string; count?: ReactNode; children: ReactNode; className?: string | undefined; style?: CSSProperties | undefined }) {
-  return (
-    <section className={cn('sec', className)} style={style}>
-      <div className="sec-h"><h3>{title}</h3>{count !== undefined && <small>{count}</small>}</div>
+    <section id={id} className={cn('nd-s', kind && `is-${kind}`, className)}>
+      <h2>{title}{count !== undefined && <span className="n">{count}</span>}</h2>
       {children}
     </section>
   );
 }
 
+/** A moment as a chip that goes there, from anywhere on the page. With nothing to go to, it isn't drawn. */
+export function Moment({ at, onSeek }: { at: number | undefined; onSeek: ((s: number) => void) | undefined }) {
+  if (at === undefined || !onSeek) return null;
+  return <button type="button" className="hm-moment" aria-label={`Go to the moment at ${position(at)}`} title="Go to this moment" onClick={() => onSeek(at)}><Icon name="moment" size={13} />{position(at)}</button>;
+}
+
 /* ---------- decisions, open questions and follow-ups: what the notes heard, until people say so ---------- */
 
-/** Who did something, as the reader sees them: "you", or a first name. */
-const byName = (by: Change['by'], me: string | undefined) => (me && sameEmail(by, { email: me }) ? 'you' : firstName(by.name));
-/** A name as kept in a change; someone known only by their address goes by the part before the @. */
-const named = (s: string | undefined) => (s ? (s.includes('@') ? s.slice(0, s.indexOf('@')) : firstName(s)) : 'nobody');
-const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)}, ${hm(d)}`; };
 /** Shows where something was on a shared screen ("On screen" with the moment), on the note page. */
 export type ScreenRefShown = (screen: ScreenRef) => ReactNode;
 
-/** One change, as a sentence. */
-function changeLine(c: Change, me: string | undefined): string {
-  const who = capital(byName(c.by, me));
-  switch (c.what) {
-    case 'confirmed': return `${who} confirmed it`;
-    case 'rejected': return `${who} said it wasn’t decided`;
-    case 'superseded': return `${who} said it no longer holds`;
-    case 'answered': return `${who} said it was answered`;
-    case 'reopened': return `${who} reopened it`;
-    case 'reworded': return `${who} reworded it`;
-    case 'took-on': return c.before ? `${who} took it on from ${named(c.before)}` : `${who} took it on`;
-    case 'reassigned': return c.after ? `${who} gave it to ${named(c.after)}` : `${who} took the owner off`;
-    case 'due': return c.after ? `${who} set it due ${c.after}` : `${who} removed the due date`;
-    case 'done': return `${who} ticked it`;
-    case 'undone': return `${who} unticked it`;
-  }
-}
+/** Whoever last reworded a decision that's still proposed: these are their words now, whoever proposed it. */
+const wordsBy = (d: Decision) => (d.state === 'proposed' ? d.changes.findLast((c) => c.what === 'reworded')?.by : undefined);
+
+/** Whose words a proposed decision is in: whoever last reworded it, whoever proposed it, or the notes. */
+export const proposedLine = (d: Decision, me: string | undefined): string => {
+  const words = wordsBy(d);
+  if (words) return `Reworded by ${byName(words, me)}`;
+  const p = proposerOf(d);
+  return `Proposed by ${p ? byName(p, me) : 'the notes'}`;
+};
+
+/** The latest change to where a decision stands. */
+export const lastMove = (d: Decision) => d.changes.findLast((c) => c.what !== 'reworded' && c.what !== 'disputed' && c.what !== 'undisputed');
 
 /** Where a decision stands, in a sentence: confirmed by whom, said not to be decided or to no longer hold, or nobody has confirmed it yet. */
 export function decisionLine(d: Decision, me: string | undefined): string {
-  const last = [...d.changes].reverse().find((c) => c.what !== 'reworded');
+  const last = lastMove(d);
   if (d.state === 'confirmed' && last) return `Confirmed by ${byName(last.by, me)}`;
   if (d.state === 'rejected' && last) return `${capital(byName(last.by, me))} said this wasn’t decided`;
   if (d.state === 'superseded' && last) return `${capital(byName(last.by, me))} said this no longer holds`;
-  return 'Proposed by the notes. Nobody has confirmed it yet';
-}
-/** Every change to something, one per line, for its tooltip. */
-const history = (changes: Change[], me: string | undefined) => (changes.length ? changes.map((c) => `${changeLine(c, me)}, ${when(c.at)}`).join('\n') : undefined);
-
-function DecisionRow({ d, n, me, onChange, onSeek, shown }: { d: Decision; n: number; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(d.text);
-  useEffect(() => { if (!editing) setText(d.text); }, [d.text, editing]);
-  const save = () => { const t = text.trim(); setEditing(false); if (t && t !== d.text) onChange?.(d, { text: t }); };
-  return (
-    <div className={cn('dec', d.state)}>
-      <span className="n">{String(n).padStart(2, '0')}</span>
-      <div className="dec-b">
-        {editing
-          ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this decision" onChange={(e) => setText(e.target.value)} onBlur={save}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(d.text); setEditing(false); } }} />
-          : <span className="t">{d.text}</span>}
-        <div className="dec-s" title={history(d.changes, me)}>
-          {d.state === 'confirmed' && <Icon name="check" size={14} />}
-          <span>{decisionLine(d, me)}</span>
-          {d.screen && shown?.(d.screen)}
-          {onChange && (
-            <>
-              {(d.state === 'proposed' || d.state === 'rejected') && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>Confirm</button>}
-              {d.state === 'proposed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'rejected' })}>It wasn’t decided</button>}
-              {d.state === 'confirmed' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'superseded' })}>It no longer holds</button>}
-              {d.state === 'superseded' && <button type="button" className="lk" onClick={() => onChange(d, { state: 'confirmed' })}>It still holds</button>}
-              {(d.state === 'confirmed' || d.state === 'rejected') && <button type="button" className="lk quiet" onClick={() => onChange(d, { state: 'proposed' })}>{d.state === 'confirmed' ? 'Undo' : 'Reopen'}</button>}
-              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
-            </>
-          )}
-        </div>
-      </div>
-      {d.at !== undefined ? <TimeChip seconds={d.at} onSeek={onSeek} /> : <span />}
-    </div>
-  );
+  if (last?.what === 'reopened') return `${capital(byName(last.by, me))} reopened this. Nobody has confirmed it since`;
+  return `${proposedLine(d, me)}. Nobody has confirmed it yet`;
 }
 
-/** What the call settled. Each stays proposed until someone who has the notes confirms it. */
-export function Decisions({ items, me, onChange, onSeek, shown }: {
-  items: Decision[]; me: string | undefined; onChange?: ((d: Decision, patch: DecisionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
-}) {
-  return <>{items.map((d, i) => <DecisionRow key={d.id} d={d} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
-}
+/** Saying a decision wasn't decided: rejecting it, for whoever may; otherwise saying so for the organizer to settle. */
+export const notDecided = (d: Decision, reader: NoteReader): DecisionPatch | undefined =>
+  (mayDecide(d, 'rejected', reader) ? { state: 'rejected' } : mayDispute(d, reader) ? { dispute: true } : undefined);
 
 /** Where an open question stands, in a sentence: still open, reopened by someone, or answered. */
 export function questionLine(x: Question, me: string | undefined): string {
-  const last = [...x.changes].reverse().find((c) => c.what !== 'reworded');
+  const last = x.changes.findLast((c) => c.what !== 'reworded');
   if (x.state === 'answered') return last ? `${capital(byName(last.by, me))} said this was answered` : 'Answered';
   return last?.what === 'reopened' ? `Reopened by ${byName(last.by, me)}` : 'Not answered yet';
 }
 
-function QuestionRow({ x, n, me, onChange, onSeek, shown }: { x: Question; n: number; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined }) {
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(x.text);
-  useEffect(() => { if (!editing) setText(x.text); }, [x.text, editing]);
-  const save = () => { const t = text.trim(); setEditing(false); if (t && t !== x.text) onChange?.(x, { text: t }); };
-  return (
-    <div className={cn('dec', 'ques', x.state)}>
-      <span className="n">{String(n).padStart(2, '0')}</span>
-      <div className="dec-b">
-        {editing
-          ? <input className="inline-edit" autoFocus value={text} maxLength={300} aria-label="Reword this question" onChange={(e) => setText(e.target.value)} onBlur={save}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setText(x.text); setEditing(false); } }} />
-          : <span className="t">{x.text}</span>}
-        <div className="dec-s" title={history(x.changes, me)}>
-          {x.state === 'answered' && <Icon name="check" size={14} />}
-          <span>{questionLine(x, me)}</span>
-          {x.screen && shown?.(x.screen)}
-          {onChange && (
-            <>
-              <button type="button" className="lk" onClick={() => onChange(x, { state: x.state === 'open' ? 'answered' : 'open' })}>{x.state === 'open' ? 'It was answered' : 'Reopen'}</button>
-              {!editing && <button type="button" className="lk quiet" onClick={() => setEditing(true)}>Reword</button>}
-            </>
-          )}
-        </div>
-      </div>
-      {x.at !== undefined ? <TimeChip seconds={x.at} onSeek={onSeek} /> : <span />}
-    </div>
-  );
-}
-
-/** What the call asked and didn't settle. Each stays open until someone who has the notes says it was answered. */
-export function Questions({ items, me, onChange, onSeek, shown }: {
-  items: Question[]; me: string | undefined; onChange?: ((x: Question, patch: QuestionPatch) => void) | undefined; onSeek?: ((s: number) => void) | undefined; shown?: ScreenRefShown | undefined;
-}) {
-  return <>{items.map((x, i) => <QuestionRow key={x.id} x={x} n={i + 1} me={me} onChange={onChange} onSeek={onSeek} shown={shown} />)}</>;
-}
-
-/** Who a follow-up is for, in a sentence: suggested by the notes, given by someone, or taken on. */
+/** Who a follow-up is for, in a sentence: suggested by the notes or by someone, turned down, taken on, or to take on again. */
 export function actionLine(a: ActionItem, me: string | undefined): string {
-  if (!a.owner) return 'Nobody is on this yet';
+  if (!a.owner) {
+    const no = a.changes.findLast((c) => c.what === 'declined');
+    return no ? `${notTheirs(no, me)}. Nobody is on this yet` : 'Nobody is on this yet';
+  }
   const mine = !!me && !!a.owner.person && sameEmail(a.owner.person, { email: me });
   const them = mine ? 'you' : spokenName(a.owner, me);
   if (a.takenOn) return mine ? 'You took this on' : `${them} took this on`;
-  const gave = [...a.changes].reverse().find((c) => c.what === 'reassigned');
+  // Nobody with an address can't answer, so nobody is waited for.
+  if (!a.owner.person?.email) return `The notes suggest ${them}. They can’t take it on here, so give it to someone who has the notes`;
   const ask = mine ? 'Take it on if it’s yours' : `Waiting for ${them} to take it on`;
-  return gave ? `${capital(byName(gave.by, me))} gave this to ${them}. ${ask}` : `The notes suggest ${them}. ${ask}`;
-}
-
-function ActionMenu({ a, me, people, onChange }: { a: ActionItem; me: string | undefined; people: Person[]; onChange: (a: ActionItem, patch: ActionPatch) => void }) {
-  const [open, setOpen] = useState(false);
-  const [due, setDue] = useState(a.due ?? '');
-  const [text, setText] = useState(a.text);
-  useEffect(() => { if (open) { setDue(a.due ?? ''); setText(a.text); } }, [open, a.due, a.text]);
-  const apply = (patch: ActionPatch) => { setOpen(false); onChange(a, patch); };
-  const owner = a.owner?.person?.email;
-  return (
-    <Popover open={open} onOpenChange={setOpen} align="end" label="Change this follow-up" className="act-pop"
-      anchor={<IconButton icon="more" label="Change this follow-up" size={16} className="act-more" />}>
-      <div className="ac-pop-h">Who it’s for</div>
-      {people.map((p) => {
-        const on = !!owner && sameEmail(p, { email: owner });
-        return (
-          <button key={p.email} type="button" className={cn('ac-pop-item', on && 'sel')} onClick={() => apply({ owner: p.email })}>
-            <Avatar person={p} size={22} />
-            <span><b>{p.name}{me && sameEmail(p, { email: me }) ? ' (you)' : ''}</b>{on && <small>{a.takenOn ? 'Took it on' : 'Hasn’t taken it on yet'}</small>}</span>
-          </button>
-        );
-      })}
-      {a.owner && <button type="button" className="ac-pop-item" onClick={() => apply({ owner: null })}><Icon name="x" size={18} /><span><b>Nobody yet</b></span></button>}
-      <div className="ac-pop-sep" />
-      <form className="act-field" onSubmit={(e) => { e.preventDefault(); apply({ due: due.trim() || null }); }}>
-        <label htmlFor={`due-${a.id}`}>Due</label>
-        <input id={`due-${a.id}`} className="ac-input" value={due} maxLength={40} placeholder="Wednesday, end of March…" autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setDue(e.target.value)} />
-        <Button type="submit" variant="secondary" size="sm">Save</Button>
-      </form>
-      <form className="act-field" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t) apply({ text: t }); }}>
-        <label htmlFor={`txt-${a.id}`}>Wording</label>
-        <input id={`txt-${a.id}`} className="ac-input" value={text} maxLength={300} autoComplete="off" onFocus={(e) => e.currentTarget.select()} onChange={(e) => setText(e.target.value)} />
-        <Button type="submit" variant="secondary" size="sm">Save</Button>
-      </form>
-      {a.changes.length > 0 && (
-        <>
-          <div className="ac-pop-sep" />
-          <div className="ac-pop-h">Changes</div>
-          <ul className="act-hist">{[...a.changes].reverse().slice(0, 8).map((c, i) => <li key={`${c.at}-${i}`}><span>{changeLine(c, me)}</span><span className="ac-mono">{when(c.at)}</span></li>)}</ul>
-        </>
-      )}
-    </Popover>
-  );
-}
-
-/**
- * What people said they'd do. The notes only suggest who: the person it's for takes it on, and
- * anyone who has the notes can give it to someone else, date it, reword it or tick it.
- */
-export function FollowUps({ actions, me, people = [], onToggle, onChange, shown }: {
-  actions: ActionItem[]; me: string | undefined; people?: Person[] | undefined;
-  onToggle?: ((a: ActionItem, done: boolean) => void) | undefined; onChange?: ((a: ActionItem, patch: ActionPatch) => void) | undefined; shown?: ScreenRefShown | undefined;
-}) {
-  return (
-    <>
-      {actions.map((a) => {
-        const mine = !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me });
-        return (
-          <div key={a.id} className={cn('act', a.done && 'done')}>
-            <Check checked={a.done} onChange={(on) => onToggle?.(a, on)} label={`Mark done: ${a.text}`} />
-            <div className="act-b"><span className="t">{a.text}</span><span className="act-s">{actionLine(a, me)}{a.screen && shown?.(a.screen)}</span></div>
-            <span className="act-who">
-              {a.owner && (
-                <span className={cn('ac-owner', !a.takenOn && 'maybe')} title={a.takenOn ? 'Took it on' : 'Suggested. Hasn’t taken it on yet'}>
-                  <Avatar person={a.owner.person ?? { name: a.owner.name }} size={22} />{spokenName(a.owner, me)}
-                </span>
-              )}
-              {mine && !a.takenOn && onChange && <Button variant="secondary" size="sm" onClick={() => onChange(a, { takeOn: true })}>Take it on</Button>}
-            </span>
-            <span className="due">{a.due ?? ''}</span>
-            {onChange ? <ActionMenu a={a} me={me} people={people} onChange={onChange} /> : <span />}
-          </div>
-        );
-      })}
-    </>
-  );
+  const last = a.changes.findLast((c) => c.what === 'reopened' || c.what === 'reassigned');
+  if (last?.what === 'reopened') return mine ? `${capital(byName(last.by, me))} changed this since you took it on. Take it on again if it’s still yours` : `${capital(byName(last.by, me))} changed this since ${them} took it on. Waiting for them to take it on again`;
+  if (last) return `${capital(byName(last.by, me))} gave this to ${them}. ${ask}`;
+  const proposer = proposerOf(a);
+  const who = proposer ? byName(proposer, me) : 'the notes';
+  return `${capital(who)} ${who === 'you' || !proposer ? 'suggest' : 'suggests'} ${them}. ${ask}`;
 }
 
 /** Lines a written note shows before its whole transcript is opened. */
-const FIRST_LINES = 3;
+const FIRST_LINES = 5;
+
+/** Where the page went, for the transcript to go there too: a new one each time, so going to the same moment again still does. */
+export interface Focus { at: number }
+
+/** The line said at a moment. */
+const lineAt = (lines: TranscriptLine[], at: number) => Math.max(0, lines.findLastIndex((l) => l.at <= at + 0.5));
 
 /**
- * The transcript of a written note: its first lines under the summary, and all of it on request; all of it at
- * `focus` when a link brought someone to a moment in it. Pauses and shared screens after the lines shown wait too.
- * With `correct`, whoever may corrects lines in place (lines.tsx).
+ * What was said in a call, under a heading: its first lines, and all of it on request, or once something goes to a moment
+ * further on. `player` marks the line being said as the recording plays. Pauses and shared screens after the lines shown
+ * wait too, and `onScreens` opens the first of them from here meanwhile. `live`: the call is still going. With `correct`, whoever may
+ * corrects lines in place (lines.tsx); with `marks`, they bookmark lines for themselves. `kinds` says which lines
+ * something in the notes came from. `top` is what goes above the lines.
  */
-export function Transcript({ lines, gaps, seconds, me, onSeek, focus, screens, correct }: {
-  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined;
+export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, live = false, screens, onScreens, correct, fromLine, marks, kinds, top }: {
+  lines: TranscriptLine[]; gaps: CaptureGap[]; seconds: number; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: Focus | undefined; player: PlayerState; live?: boolean | undefined;
+  screens?: ScreensShown | undefined; onScreens?: ((m: ScreenMoment) => void) | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; top?: ReactNode;
 }) {
-  const [open, setOpen] = useState(focus !== undefined);
-  useEffect(() => { if (focus !== undefined) setOpen(true); }, [focus]);
+  const reduce = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const [went, setWent] = useState<Focus | undefined>(undefined);
+  // Going to a line further on opens the rest, in the same drawing, so the line is there to scroll to.
+  if (focus !== went) { setWent(focus); if (focus && lineAt(lines, focus.at) >= FIRST_LINES) setOpen(true); }
+  useEffect(() => {
+    if (!focus) return;
+    document.getElementById(MOMENT)?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  }, [focus, reduce]);
+  // The line being said, once anyone has gone anywhere or pressed play.
+  const said = usePlayerAt(player, (p) => (p > 0 ? lineAt(lines, p) : -1));
+  const lit = said >= 0 ? said : focus ? lineAt(lines, focus.at) : -1;
   const all = open || lines.length <= FIRST_LINES;
   const shown = all ? lines : lines.slice(0, FIRST_LINES);
   const last = shown.at(-1)?.at ?? 0;
   const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
+  const hidden = (screens?.moments ?? []).filter((m) => !all && m.at > last);
+  const [nextHidden] = hidden;
   return (
-    <>
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} />
-      {lines.length > FIRST_LINES && (
-        <div className="tr-more">
-          <button type="button" className={cn(buttonClass({ size: 'sm' }), 'tr-toggle')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-            {open ? 'Show less' : `Show all ${Math.max(1, Math.round(seconds / 60))} minutes`}<Icon name="down" size={16} />
-          </button>
+    <section className="nd-s nd-tr">
+      <div className="nd-sh"><h2>Transcript</h2><UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="nd-key" /></div>
+      {top}
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
+      {(lines.length > FIRST_LINES || nextHidden) && (
+        <div className="nd-allrow">
+          {lines.length > FIRST_LINES && (
+            <button type="button" className="nd-all" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? 'Show less' : live ? 'Show all so far' : `Show all ${Math.max(1, Math.round(seconds / 60))} minutes`}<Icon name="down" size={14} />
+            </button>
+          )}
+          {nextHidden && onScreens && <button type="button" className="nd-act nd-scrlink" onClick={() => onScreens(nextHidden)}><Icon name="monitor" size={15} />{hidden.length} shared {hidden.length === 1 ? 'screen' : 'screens'}</button>}
         </div>
       )}
-    </>
+    </section>
   );
 }
+
+/** Which lines something in the notes came from, by kind, for a mark beside them. */
+export type LineKinds = ReadonlyMap<string, 'decide' | 'follow'>;
 
 /** One key per person: guests have no email, so the person's ID tells them apart. */
 const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name}`) : '');
@@ -288,38 +163,50 @@ const voiceOf = (s: Speaker | undefined) => (s ? (s.person?.id ?? `name:${s.name
 /** Where a link to a moment lands: the transcript line said then, which the router scrolls to the middle of the view. */
 const MOMENT = 'moment';
 const CENTER: ScrollIntoViewOptions = { block: 'center' };
-/** The parts of a link to a note that open it at a moment. */
-const atMoment = (at: number) => ({ search: { at: Math.round(at) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** The parts of a link to a note that open it at a moment, in a breakout room's section when it was said there. */
+const atMoment = (at: number, room?: RoomRef | undefined) => ({ search: { at: Math.round(at), ...(room ? { room: room.id } : {}) }, hash: MOMENT, hashScrollIntoView: CENTER });
+/** Where a link to a breakout room's section lands. */
+export const roomAnchor = (id: string) => `room-${id}`;
+/** The parts of a link to a note that open it at a breakout room's section, or at a moment, when it has one. */
+export const inNote = (at: number | undefined, room: RoomRef | undefined) =>
+  (at !== undefined ? atMoment(at, room) : room ? { search: { room: room.id }, hash: roomAnchor(room.id), hashScrollIntoView: CENTER } : {});
+
+/**
+ * Links to notes under this open in a new tab, each still opened with the reader's access checked: from a call or its
+ * pre-join, leaving the page would leave the call, or turn the camera off.
+ */
+export const NotesApart = createContext(false);
+/** A link's target, under `NotesApart`. */
+export function useNotesApart() {
+  return useContext(NotesApart) ? { target: '_blank', rel: 'noopener' } : {};
+}
 
 /** A note's shared screens among its transcript lines: the moments, and how each is drawn (it opens the frame). */
 export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) => ReactNode }
 
 /**
- * What was said, line by line, with the stretches nothing was captured in marked where they fall, what was on a
- * shared screen just before the lines said while it was up, and what the transcript isn't sure of dotted and explained
- * at the top. A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line said at
- * that moment is marked, and is where a moment's link lands. With `correct`, whoever may corrects lines in place
- * (lines.tsx).
+ * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
+ * shared screen just before the lines said while it was up. A speaker's lines in a row share one name; a room recording
+ * names nobody. With `focus`, the line said at that moment is where a moment's link lands, and `lit` is the line to mark.
+ * With `correct`, whoever may corrects lines in place (lines.tsx). With `marks`, they bookmark lines for themselves.
  */
-export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, correct, className }: {
-  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined;
-  screens?: ScreensShown | undefined; correct?: Correcting | undefined; className?: string | undefined;
+export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, screens, correct, fromLine, marks, kinds, className }: {
+  lines: TranscriptLine[]; gaps?: CaptureGap[] | undefined; me: string | undefined; onSeek?: ((s: number) => void) | undefined; focus?: number | undefined; lit?: number | undefined;
+  screens?: ScreensShown | undefined; correct?: Correcting | undefined; fromLine?: FromLine | undefined; marks?: LineMarks | undefined; kinds?: LineKinds | undefined; className?: string | undefined;
 }) {
-  const here = focus === undefined ? -1 : Math.max(0, lines.findLastIndex((l) => l.at <= focus + 0.5));
-  const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} />;
+  const here = focus === undefined ? -1 : lineAt(lines, focus);
+  const on = lit ?? here;
+  const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} className="nd-gapline" />;
   const moments = screens?.moments ?? [];
   const shown = (m: ScreenMoment) => <Fragment key={m.id}>{screens?.row(m)}</Fragment>;
   return (
-    <div className={cn('tr', className)}>
-      <UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="tr-key" />
+    <div className={cn('nd-lines', !lines.some((l) => l.speaker) && 'is-nameless', className)}>
       {lines.map((l, i) => {
-        const time = <TimeChip seconds={l.at} onSeek={onSeek} />;
-        const mark = i === here ? { id: MOMENT, className: 'here' } : {};
         const before = gapsBefore(gaps, lines, i);
         const up = gapsBefore(moments, lines, i);
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
-        const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && i !== here && !before.length && !up.length;
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} mark={mark} time={time} me={me} correct={correct} /></Fragment>;
+        const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && !before.length && !up.length;
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} me={me} correct={correct} fromLine={fromLine} marks={marks} /></Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
       {gapsAfter(moments, lines).map(shown)}
@@ -327,33 +214,30 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, screens, 
   );
 }
 
-/** A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. */
-export function MomentLink({ noteId, at }: { noteId: string; at: number }) {
+/**
+ * A moment in a call's notes, as a link: they open with the transcript at that line, and the audio waiting there. In a
+ * breakout room's section, that room's. `chip`: as the moment chips on a note look, for a page that's a note's neighbour.
+ */
+export function MomentLink({ noteId, at, room, chip = false }: { noteId: string; at: number; room?: RoomRef | undefined; chip?: boolean | undefined }) {
   return (
-    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at)} className="ac-time-chip" title={`Open the notes at ${position(at)}`}>
-      {position(at)}
+    <Link to="/notes/$noteId" params={{ noteId }} {...atMoment(at, room)} {...useNotesApart()} className={chip ? 'hm-moment' : 'ac-time-chip'} title={`Open the notes at ${position(at)}${room ? `, in ${room.name}` : ''}`}>
+      {chip && <Icon name="moment" size={13} />}{position(at)}
     </Link>
   );
 }
 
-/** The chapters of a call, with the stretches nothing was captured in between them, where they fell. */
-export function Chapters({ chapters, gaps = [], pos, onSeek }: { chapters: Chapter[]; gaps?: CaptureGap[] | undefined; pos: number; onSeek?: ((s: number) => void) | undefined }) {
-  const current = chapters.findLastIndex((c) => c.at <= pos);
-  const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} className="chap-gap" />;
+/** The chapters of a call as a list, for a phone: the line has no room for them, or for what they say. */
+export function ChapterList({ chapters, onGo }: { chapters: Chapter[]; onGo: ((c: Chapter) => void) | undefined }) {
+  if (!chapters.length) return null;
   return (
-    <Card title="Chapters" aside={<span className="ac-mono">{chapters.length}</span>}>
-      <div className="chaps">
-        {chapters.map((c, i) => (
-          <Fragment key={`${c.at}-${c.title}`}>
-            {gapsBefore(gaps, chapters, i).map(gap)}
-            <button type="button" className={cn('chap', i === Math.max(0, current) && 'on')} onClick={() => onSeek?.(c.at)} disabled={!onSeek}>
-              <span className="ac-mono">{position(c.at)}</span><span><b>{c.title}</b><small>{c.summary}</small></span>
-            </button>
-          </Fragment>
-        ))}
-        {gapsAfter(gaps, chapters).map(gap)}
-      </div>
-    </Card>
+    <section className="nd-b nd-chapters">
+      <h2>Chapters</h2>
+      {chapters.map((c) => (
+        <button key={`${c.at}-${c.title}`} type="button" className="nd-chap" disabled={!onGo} onClick={() => onGo?.(c)}>
+          <span className="nd-c-d">{position(c.at)}</span><span><b>{c.title}</b>{c.summary && <small>{c.summary}</small>}</span>
+        </button>
+      ))}
+    </section>
   );
 }
 
@@ -369,30 +253,30 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   const long = recipients.length > FIRST_PEOPLE + 2;
   const shown = !long || all ? recipients : recipients.filter((r, i) => i < FIRST_PEOPLE || fresh?.has(r.person.email));
   return (
-    <Card title="Who has these notes" aside={<span className="ac-mono">{recipients.length}</span>}>
-      <div className="rcpt">
-        {shown.map((r) => (
-          <div key={r.person.email} className={cn('rc', fresh?.has(r.person.email) && 'fresh')}>
-            <Avatar person={r.person} size={30} />
-            <span className="min-w-0"><b>{r.person.name}{me && sameEmail(r.person, { email: me }) ? <i> (you)</i> : null}</b><small>{roleLine(r, me)}</small></span>
-          </div>
-        ))}
-      </div>
-      {long && <button type="button" className="lk quiet rcpt-more" aria-expanded={all} onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${recipients.length}`}</button>}
-      <div className="seal"><SealedBadge inline title={onlyThese(recipients.length)} /></div>
-    </Card>
+    <section className="nd-b">
+      <h2>Who has these notes</h2>
+      {shown.map((r) => (
+        <div key={r.person.email} className={cn('nd-p', fresh?.has(r.person.email) && 'is-fresh')}>
+          <Avatar person={r.person} size={26} />
+          <span className="nd-p-n ac-clamp-1">{r.person.name}{me && sameEmail(r.person, { email: me }) ? ' (you)' : ''}</span>
+          <span className="nd-p-r">{roleLine(r, me)}</span>
+        </div>
+      ))}
+      {long && <button type="button" className="nd-act nd-showall" aria-expanded={all} onClick={() => setAll((a) => !a)}>{all ? 'Show fewer' : `Show all ${recipients.length}`}</button>}
+      <p className="nd-open"><Icon name="sealed" size={14} />{onlyThese(recipients.length)}</p>
+    </section>
   );
 }
 
 /** A cite's key among an answer's: a moment, a shared screen, or one of a series' calls (at a moment when it can tell). */
-const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}@${c.at ?? ''}`);
+const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}/${c.room?.id ?? ''}@${c.at ?? ''}`);
 
-/** One of a series' calls an answer comes from: its day, and the moment when the answer could tell. */
-function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
+/** One of a series' calls an answer comes from: its day, its breakout room and the moment when the answer could tell. */
+export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
   const day = shortDay(new Date(c.startedAt));
   return (
-    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...(c.at === undefined ? {} : atMoment(c.at))} className="src-chip" title={`Open the notes from ${c.title}, ${day}`}>
-      <Icon name="notes" size={13} />{day}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
+    <Link to="/notes/$noteId" params={{ noteId: c.noteId }} {...inNote(c.at, c.room)} {...useNotesApart()} className="src-chip" title={`Open the notes from ${c.title}, ${day}${c.room ? `, in ${c.room.name}` : ''}`}>
+      <Icon name="notes" size={13} />{day}{c.room && <span>{c.room.name}</span>}{c.at !== undefined && <span className="ac-mono">{position(c.at)}</span>}
     </Link>
   );
 }
@@ -400,18 +284,24 @@ function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
 /**
  * Ask about a call, or about the calls in a series. Answers stream in, with where they come from:
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
+ * Only the person asking sees a question or its answer, and neither is kept unless they keep it (`onKeep`).
  */
-export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call' }: {
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', waiting = 'Reading the call in confidential compute', onKeep }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
+  /** What it says until the first words arrive. */
+  waiting?: string | undefined;
+  /** Keeps an answer in your own notes. */
+  onKeep?: ((a: Answer) => Promise<unknown>) | undefined;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
   const [text, setText] = useState('');
-  const { answer, ask: start } = useAnswer(ask);
+  const [keptFor, setKeptFor] = useState<string | null>(null);
+  const { answer, ask: start, reset } = useAnswer(ask);
   /*
    * The bar stays in view while the note is read; its suggestions show at the end of the note, or while asking. The
    * end is marked just above the bar, so the suggestions appearing (below the mark) can't push it out of view again.
@@ -436,27 +326,31 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
   };
   return (
     <>
-      <div ref={end} aria-hidden="true" />
-      <div className="ask">
-        {answer && (
-          <AnswerView answer={answer} className="ac-card">
-            {answer.cites.length > 0 && (
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
-                {answer.cites.map((c) => (c.type === 'cite' ? <TimeChip key={citeKey(c)} seconds={c.at} onSeek={onSeek} />
-                  : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
-                    : <SourceLink key={citeKey(c)} c={c} />))}
-              </div>
-            )}
-          </AnswerView>
-        )}
-        {(atEnd || focus) && suggestions.length > 0 && (
-          <div className="ask-sugg">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
-        )}
-        <div className="ask-bar">
-          <Icon name="ask" size={20} />
+      <div ref={end} className="nd-end-mark" aria-hidden="true" />
+      <div className="nd-askdock">
+        <div className="nd-up">
+          {answer && (
+            <AnswerView answer={answer} waiting={waiting} onClose={() => { reset(); input.current?.focus(); }} className="nd-ans">
+              {(answer.cites.length > 0 || (onKeep && answer.done && answer.text)) && (
+                <div className="nd-ans-f">
+                  {answer.cites.map((c) => (c.type === 'cite' ? <Moment key={citeKey(c)} at={c.at} onSeek={onSeek} />
+                    : c.type === 'screen' ? <Fragment key={citeKey(c)}>{shown?.({ id: c.id, sure: true, ...(c.region === undefined ? {} : { region: c.region }) })}</Fragment>
+                      : <SourceLink key={citeKey(c)} c={c} />))}
+                  {onKeep && answer.done && answer.text && <KeepAnswer kept={keptFor === `${answer.q}\n${answer.text}`} onKeep={() => onKeep(answer).then(() => setKeptFor(`${answer.q}\n${answer.text}`))} />}
+                </div>
+              )}
+            </AnswerView>
+          )}
+          {!answer && (atEnd || focus) && suggestions.length > 0 && (
+            <div className="nd-suggs">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
+          )}
+        </div>
+        <div className="nd-ask">
+          <Icon name="ask" size={18} />
           <input ref={input} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
-            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={label} aria-keyshortcuts={ariaShortcut('J')} />
-          <Button variant="primary" size="sm" icon="send" onClick={() => run(text)}>Ask</Button>
+            onKeyDown={(e) => { if (e.key === 'Enter') run(text); }} placeholder={label} autoComplete="off" aria-label={`${label}, for you alone`} aria-keyshortcuts={ariaShortcut('J')} />
+          <span className="nd-only"><Icon name="lock" size={13} />Only you</span>
+          <IconButton icon="arrowUp" label="Ask" className="nd-ask-go" onClick={() => run(text)} />
         </div>
       </div>
     </>

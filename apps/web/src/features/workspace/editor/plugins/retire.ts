@@ -1,0 +1,464 @@
+/*
+ * Blocks leaving the page without their elements being deleted (`@alcove/api/retire` says why), and what's left to tidy afterwards.
+ *
+ * - Anything done here that takes a block off the page, however it was done, puts an empty stand-in back where it was. So
+ *   ProseMirror still has one node per element, the writer never deletes an element, and the element is retired just
+ *   before the rest is written, in the same change. The stand-in is what the element will be, so the two stay the same
+ *   document.
+ * - `moveBlock` works on the Yjs elements directly. Left to y-prosemirror, which compares by position, a move would rewrite
+ *   the text of every block it passes, and the words of anyone typing in those would land in the wrong place.
+ * - A caret doesn't stay in a block that isn't on the page: it goes where the words went, or to the next block.
+ * - Words someone was typing as the block left stay safe where they are. Only their author folds them into the block they
+ *   were meant for, so it happens once, and that's only tidying: nothing is lost if it never happens.
+ * - If two people move one block, two elements end up with one ID. Every browser retires the same one, unless someone has
+ *   typed in it since: then it stays too. A browser opening a document does the same, in case both left first.
+ * - What this browser deleted that someone copied as they moved the block is deleted again, once it can be matched exactly.
+ */
+import { holdsNothing, KEPT_ATTRS, newBlockId, retire, settleUndone } from '@alcove/api/retire';
+import { Fragment, type Node as PMNode } from 'prosemirror-model';
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from 'prosemirror-state';
+import type { EditorView } from 'prosemirror-view';
+import { ySyncPluginKey, yUndoPluginKey } from 'y-prosemirror';
+import * as Y from 'yjs';
+import { allBlocks, blockAt, findBlock, type BlockRef } from '../commands';
+import { attrsToCut, cutWords, followUndo, gatherWords, isNewIn, movedIn, settleCopies, strayWords, wordsToCut, type CopiedWords, type StrayWords } from '../retire';
+import type { EditorRuntime } from '../runtime';
+import { blockIdOf, isGone, schema, textAttr } from '../schema';
+import { setAttr, type Caret } from '../write';
+import { elementOf, syncOf, type SyncBinding, type SyncState } from '../ydoc';
+import { fromSync } from './blockIds';
+import { flash } from './decor';
+
+/** A block on its way off the page: its element, and the stand-in ProseMirror now has for it. */
+interface Leaving { element: Y.XmlElement; node: PMNode }
+
+const key = new PluginKey<readonly Leaving[]>('retire');
+
+interface HeldCaret { id: string; anchor: number; head: number }
+
+/** A selection inside one block, as offsets into it. Those survive the block going somewhere else. */
+function caretOf(state: EditorState): HeldCaret | null {
+  const sel = state.selection;
+  if (!(sel instanceof TextSelection)) return null;
+  const a = blockAt(sel.$anchor), h = blockAt(sel.$head);
+  return a?.id && a.id === h?.id ? { id: a.id, anchor: sel.anchor - a.pos, head: sel.head - a.pos } : null;
+}
+
+function putCaret(view: EditorView, held: HeldCaret): void {
+  const { doc } = view.state;
+  const ref = findBlock(doc, held.id);
+  if (!ref) return;
+  const inside = (n: number) => ref.pos + Math.max(1, Math.min(ref.node.nodeSize - 1, n));
+  view.dispatch(view.state.tr.setSelection(TextSelection.between(doc.resolve(inside(held.anchor)), doc.resolve(inside(held.head)))));
+}
+
+/** A block's element, as it reads now. Texts side by side become one, because y-prosemirror's reader merges a browser's own by deleting one. */
+function copyOf(element: Y.XmlElement): Y.XmlElement {
+  const copy = new Y.XmlElement(element.nodeName);
+  for (const [key, value] of Object.entries<unknown>(element.getAttributes())) if (key !== 'gone') setAttr(copy, key, value);
+  const children: (Y.XmlElement | Y.XmlText)[] = [];
+  let words: unknown[] | null = null;
+  const endWords = () => {
+    if (!words) return;
+    const text = new Y.XmlText();
+    text.applyDelta(words);
+    children.push(text);
+    words = null;
+  };
+  for (const child of element.toArray()) {
+    if (child instanceof Y.XmlText) words = [...(words ?? []), ...child.toDelta()];
+    else if (child instanceof Y.XmlElement) {
+      endWords();
+      children.push(copyOf(child));
+    }
+  }
+  endWords();
+  copy.insert(0, children);
+  return copy;
+}
+
+/** Roughly what a copy of a block adds to a document for good: the same for each line and each cell, whatever it says, because what it replaces goes when the document is compacted. */
+function copyCost(node: PMNode): number {
+  let cost = 1;
+  node.descendants((child) => {
+    if (child.isTextblock) cost += 1;
+    return !child.isTextblock;
+  });
+  return cost;
+}
+
+/**
+ * What a move has to copy. A table leaves every cell behind, for anyone offline typing in one. So a table stays where it is
+ * if what it goes past costs less: those move to its other side, and the blocks end up in the same order.
+ */
+function whatMoves(blocks: readonly BlockRef[], here: number, there: number, side: 'before' | 'after'): { moving: readonly BlockRef[]; around: BlockRef | null } {
+  const block = blocks[here];
+  if (!block) return { moving: [], around: null };
+  const past = here < there ? blocks.slice(here + 1, side === 'before' ? there : there + 1) : blocks.slice(side === 'before' ? there : there + 1, here);
+  const cheaper = past.reduce((cost, b) => cost + copyCost(b.node), 0) < copyCost(block.node);
+  return block.node.type === schema.nodes.table && cheaper && past.every((b) => b.id) ? { moving: past, around: block } : { moving: [block], around: null };
+}
+
+/** Moves a block to one side of another, for everyone. Returns false if it's already there. */
+export function moveBlock(rt: EditorRuntime, id: string, target: string, side: 'before' | 'after'): boolean {
+  const view = rt.readOnly ? null : rt.view;
+  const sync = view ? syncOf(view.state) : null;
+  if (!view || !sync || id === target) return false;
+  const fragment = sync.type;
+  if (!elementOf(fragment, id) || !elementOf(fragment, target)) return false;
+  /* On the page it's beside there already, whatever may be between them in the document. */
+  const blocks = allBlocks(view.state.doc);
+  const here = blocks.findIndex((b) => b.id === id), there = blocks.findIndex((b) => b.id === target);
+  if (here < 0 || there < 0 || here + (side === 'before' ? 1 : -1) === there) return false;
+  const { moving, around } = whatMoves(blocks, here, there, side);
+  const held = caretOf(view.state);
+  const undo = yUndoPluginKey.getState(view.state)?.undoManager;
+  /* Its own step: ⌘Z takes back the move, not the move and the typing either side of it. */
+  undo?.stopCapturing();
+  sync.doc.transact(() => {
+    const leaving = moving.flatMap((b) => { const found = b.id ? elementOf(fragment, b.id) : null; return found && b.id ? [{ id: b.id, element: found.element }] : []; });
+    /* Going down, what it goes past lands above it, and going up, below it. */
+    const staying = around?.id ? elementOf(fragment, around.id) : null;
+    const landing = staying ? staying.index + (here < there ? 0 : 1) : (elementOf(fragment, target)?.index ?? 0) + (side === 'after' ? 1 : 0);
+    fragment.insert(landing, leaving.map((block) => copyOf(block.element)));
+    for (const block of leaving) retire(block.element, newBlockId(), block.id);
+  }, ySyncPluginKey);
+  undo?.stopCapturing();
+  if (held?.id && moving.some((b) => b.id === held.id)) putCaret(view, held);
+  flash(view, id);
+  return true;
+}
+
+/** The same blocks in the same order, which is every keystroke. */
+function sameBlocks(a: PMNode, b: PMNode): boolean {
+  if (a.childCount !== b.childCount) return false;
+  for (let i = 0; i < a.childCount; i += 1) {
+    const x = a.child(i), y = b.child(i);
+    if (x !== y && (x.type !== y.type || blockIdOf(x) !== blockIdOf(y))) return false;
+  }
+  return true;
+}
+
+/** What's left in a block once it's retired: what it's made of, and whatever this release can't read. */
+const emptied = (node: PMNode): Fragment => {
+  const parts: PMNode[] = [];
+  node.forEach((part) => {
+    if (part.type === schema.nodes.unsupportedInline) parts.push(part);
+    else if (!node.inlineContent) parts.push(part.type.create(part.attrs, emptied(part)));
+  });
+  return Fragment.fromArray(parts);
+};
+
+/** What an element is after it's retired. */
+function standIn(node: PMNode, id: string, target: string): PMNode {
+  const kept = Object.fromEntries(Object.entries(node.attrs).filter(([name]) => KEPT_ATTRS.has(name)));
+  return node.type.create({ ...kept, id, gone: target }, emptied(node));
+}
+
+/** Whether the block at `pos` before these changes is still there after them, for a block with no ID to tell by. */
+function outlives(transactions: readonly Transaction[], pos: number): number | null {
+  let at = pos;
+  for (const t of transactions) {
+    const mapped = t.mapping.mapResult(at, 1);
+    if (mapped.deleted) return null;
+    at = mapped.pos;
+  }
+  return at;
+}
+
+/** Puts a stand-in back for every block these changes took off the page. Returns what has to be retired. */
+function keepBlocks(tr: Transaction, transactions: readonly Transaction[], before: EditorState, sync: SyncState): Leaving[] {
+  const after = tr.doc;
+  if (sameBlocks(before.doc, after)) return [];
+  const here = new Map<PMNode, number>();
+  const blockAtPos = new Map<number, PMNode>();
+  const byId = new Map<string, { node: PMNode; pos: number }>();
+  after.forEach((node, pos, index) => {
+    if (index === 0) return;
+    here.set(node, pos);
+    blockAtPos.set(pos, node);
+    const id = blockIdOf(node);
+    if (id) byId.set(id, { node, pos });
+  });
+  const elements = sync.type.toArray();
+  const out: Leaving[] = [];
+  let cursor = after.child(0).nodeSize;
+  let above: PMNode | null = null;
+  /* What goes back between two blocks that stayed, in one step: one each would make deleting a long stretch take for ever. */
+  let run: PMNode[] = [];
+  const putBack = () => {
+    const nodes = Fragment.fromArray(run);
+    if (nodes.size > 0) tr.insert(cursor, nodes);
+    cursor += nodes.size;
+    run = [];
+  };
+  before.doc.forEach((node, pos, index) => {
+    if (index === 0) return;
+    const id = blockIdOf(node);
+    const same = id ? byId.get(id) : undefined;
+    const stays = here.get(node) ?? (same?.node.type === node.type ? same?.pos : id === null ? outlives(transactions, pos) : null);
+    if (stays !== undefined && stays !== null) {
+      putBack();
+      above = blockAtPos.get(stays) ?? null;
+      cursor = tr.mapping.map(stays) + (above?.nodeSize ?? 0);
+      return;
+    }
+    const element = elements[index];
+    const found = element instanceof Y.XmlElement && sync.binding.mapping.get(element) === node ? element : id ? elementOf(sync.type, id)?.element : undefined;
+    if (!found) return;
+    /* Already off the page: it only has to stay in the document. */
+    if (isGone(node)) { run.push(node); return; }
+    /* It changed into something else that kept its ID, or it was joined to the block above: its words are at the end of that. */
+    const joined: PMNode | null = above;
+    const target = same ? id : node.textContent !== '' && joined?.textContent.endsWith(node.textContent) ? blockIdOf(joined) : null;
+    const left = standIn(node, newBlockId(), target ?? '');
+    run.push(left);
+    out.push({ element: found, node: left });
+  });
+  putBack();
+  return out;
+}
+
+/** The nearest place for a caret that can't stay in the block at `index`: on the way it was going. */
+export function beside(doc: PMNode, index: number, upwards: boolean): Selection {
+  const blocks = allBlocks(doc);
+  const after = blocks.find((b) => b.index > index), before = blocks.filter((b) => b.index < index).at(-1);
+  const next = upwards ? before ?? after : after ?? before;
+  if (!next) return TextSelection.create(doc, doc.child(0).nodeSize - 1);
+  if (next.node.isAtom) return NodeSelection.create(doc, next.pos);
+  return next === before ? Selection.near(doc.resolve(next.pos + next.node.nodeSize - 1), -1) : Selection.near(doc.resolve(next.pos + 1), 1);
+}
+
+/** A caret in a block that's left the page goes where its words went, the same way from their end, or else beside it. */
+function keepCaretOnPage(tr: Transaction, before: EditorState): void {
+  const sel = tr.selection;
+  const inside = sel instanceof NodeSelection && sel.$from.depth === 0 ? { node: sel.node, index: sel.$from.index(0) } : blockAt(sel.$head);
+  if (!inside || !isGone(inside.node)) return;
+  const { $head } = before.selection;
+  /* Its own arrow key took it there, across a block's edge, or the block left the page under it. */
+  const walked = inside.node === blockAt($head)?.node ? false : before.doc.eq(tr.doc);
+  if (walked) {
+    const next = beside(tr.doc, inside.index, sel.head < $head.pos);
+    tr.setSelection(sel instanceof TextSelection && !sel.empty ? TextSelection.between(sel.$anchor, next.$head) : next);
+    return;
+  }
+  const target = textAttr(inside.node, 'gone');
+  const to = target ? findBlock(tr.doc, target) : null;
+  if (!to) { tr.setSelection(beside(tr.doc, inside.index, false)); return; }
+  const line = to.node.type === schema.nodes.toggle ? to.node.child(0) : to.node;
+  if (!line.isTextblock) { tr.setSelection(beside(tr.doc, to.index - 1, false)); return; }
+  const fromEnd = $head.parent.content.size - $head.parentOffset;
+  tr.setSelection(TextSelection.create(tr.doc, to.pos + (line === to.node ? 1 : 2) + Math.max(0, line.content.size - fromEnd)));
+}
+
+/** Which elements are `id`-for-`id` copies, and of what: every browser picks the same ones. */
+function doubles(fragment: Y.XmlFragment): { element: Y.XmlElement; keeper: Y.XmlElement; id: string }[] {
+  const first = new Map<string, Y.XmlElement>();
+  const out: { element: Y.XmlElement; keeper: Y.XmlElement; id: string }[] = [];
+  const older = (a: Y.XmlElement, b: Y.XmlElement) => {
+    const x = a._item?.id, y = b._item?.id;
+    return !x || !y ? false : x.client !== y.client ? x.client < y.client : x.clock < y.clock;
+  };
+  for (const child of fragment.toArray()) {
+    if (!(child instanceof Y.XmlElement)) continue;
+    const id: unknown = child.getAttribute('id');
+    if (typeof id !== 'string') continue;
+    const seen = first.get(id);
+    if (!seen) first.set(id, child);
+    else if (older(child, seen)) { first.set(id, child); out.push({ element: seen, keeper: child, id }); } else out.push({ element: child, keeper: seen, id });
+  }
+  return out;
+}
+
+/** Writes that only tidy up, so they're no step of anyone's to undo, and don't take away what could be redone. */
+const TIDYING = Symbol('tidying');
+
+/** What this browser deleted that someone's copy of the block has: `deleted` if that was the whole block. */
+interface Cut { words: CopiedWords; attrs: readonly string[]; copy: Y.XmlElement; deleted: boolean }
+
+/** What's left to do after a change: words to gather, blocks that came, undos to settle, and what this browser deleted that a copy brought back. */
+interface Tidying {
+  strays: readonly StrayWords[];
+  arrived: readonly string[];
+  unnamed: readonly Y.XmlElement[];
+  redone: readonly Y.XmlElement[];
+  cuts: readonly Cut[];
+}
+
+/** y-prosemirror's record of which node each element is, cleared for what's inside a block about to change under it. */
+function forget(binding: SyncBinding, type: Y.XmlElement): void {
+  for (const child of type.toArray()) {
+    binding.mapping.delete(child);
+    if (child instanceof Y.XmlElement) forget(binding, child);
+  }
+}
+
+/** The same record, for a stand-in: what's left inside it is its structure, and texts with nothing in them need no entry. */
+function remember(binding: SyncBinding, element: Y.XmlElement, node: PMNode): void {
+  binding.mapping.set(element, node);
+  let index = 0;
+  for (const part of element.toArray()) {
+    if (!(part instanceof Y.XmlElement) || index >= node.childCount) continue;
+    remember(binding, part, node.child(index));
+    index += 1;
+  }
+}
+
+const lastCaret = new WeakMap<EditorView, Caret>();
+
+/** Where the caret was before the change being written, which says where that change started. */
+export const caretBefore = (view: EditorView): Caret | null => lastCaret.get(view) ?? null;
+
+const retired = new WeakMap<EditorView, readonly Leaving[]>();
+
+/**
+ * Retires what's left the page. This goes first in the same Yjs change as whatever else is being written, so nobody hears of
+ * a block leaving without the words that went with it, and a join can't be split into what adds and what takes away.
+ */
+export function retireLeaving(view: EditorView): void {
+  const sync = syncOf(view.state);
+  const leaving = key.getState(view.state) ?? [];
+  if (!sync || leaving.length === 0 || leaving === retired.get(view)) return;
+  for (const { element, node } of leaving) {
+    forget(sync.binding, element);
+    retire(element, blockIdOf(node) ?? newBlockId(), textAttr(node, 'gone') ?? '');
+    remember(sync.binding, element, node);
+  }
+  retired.set(view, leaving);
+}
+
+export function retirePlugin(rt: EditorRuntime): Plugin {
+  return new Plugin<readonly Leaving[]>({
+    key,
+    state: {
+      init: () => [],
+      apply(tr, was) {
+        const leaving: readonly Leaving[] | undefined = tr.getMeta(key);
+        const kept = tr.getMeta('appendedTransaction') === undefined ? [] : was;
+        return leaving ? [...kept, ...leaving] : kept;
+      }
+    },
+
+    /* The last word on who writes: whatever a key or a menu does, someone who can only read changes nothing. */
+    filterTransaction: (tr) => !tr.docChanged || fromSync(tr) || !(rt.readOnly || rt.halted),
+
+    appendTransaction(transactions, before, after) {
+      const sync = syncOf(after);
+      if (!sync) return null;
+      const tr = after.tr;
+      const local = !transactions.some(fromSync);
+      if (local && transactions.some((t) => t.docChanged && t.getMeta('appendedTransaction') === undefined)) {
+        const leaving = keepBlocks(tr, transactions, before, sync);
+        if (leaving.length > 0) tr.setMeta(key, leaving);
+        /* A block that came back with someone's words is an ordinary block once someone works on it. */
+        const worked = blockAt(tr.selection.$head);
+        if (worked && textAttr(worked.node, 'gone') !== null && !isGone(worked.node)) tr.setNodeAttribute(worked.pos, 'gone', null);
+        /* There's always somewhere to write. */
+        if (allBlocks(tr.doc).length === 0) {
+          const end = tr.doc.content.size;
+          tr.insert(end, schema.nodes.line.create({ id: newBlockId() }));
+          tr.setSelection(TextSelection.create(tr.doc, end + 1));
+        }
+      }
+      keepCaretOnPage(tr, before);
+      if (!tr.docChanged && !tr.selectionSet) return null;
+      return transactions.some((t) => t.getMeta('addToHistory') === false) ? tr.setMeta('addToHistory', false) : tr;
+    },
+
+    view(view) {
+      const sync = syncOf(view.state);
+      if (!sync) return {};
+      const { doc, binding, type: fragment } = sync;
+      const mine = new Set([doc.clientID]);
+
+      /* Writing here, after the fact, can wait until the change that needs it is over: y-prosemirror keeps track of the selection between them. */
+      const tidy = ({ strays, arrived, unnamed, redone, cuts }: Tidying) => {
+        queueMicrotask(() => {
+          if (view.isDestroyed || rt.readOnly || rt.halted) return;
+          const here = blockAt(view.state.selection.$head)?.node;
+          let landed: { id: string; offset: number } | null = null;
+          const copies = doubles(fragment);
+          if (strays.length > 0 || copies.length > 0 || unnamed.length > 0 || redone.length > 0 || cuts.length > 0) {
+            const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
+            doc.transact(() => {
+              /* First, so words gathered below go into the copy that stays. */
+              for (const copy of copies) settleCopies(copy.element, copy.keeper, copy.id, newBlockId());
+              for (const stray of strays) {
+                const into = elementOf(fragment, stray.target);
+                const offset = into ? gatherWords(stray, into.element, undo, mine) : null;
+                if (offset !== null && here !== undefined && binding.mapping.get(stray.element) === here) landed = { id: stray.target, offset };
+              }
+              for (const element of unnamed) settleUndone(element);
+              /* And what a redo puts back is on the page again, even a blank line. */
+              for (const element of redone) element.removeAttribute('gone');
+              /* A block deleted here that someone moved first stays deleted, with whatever they'd have kept of it. */
+              for (const { words, attrs, copy, deleted } of cuts) {
+                cutWords(words);
+                for (const key of attrs) copy.removeAttribute(key);
+                if (deleted && holdsNothing(copy)) retire(copy, newBlockId(), '');
+              }
+            }, TIDYING);
+          }
+          if (landed) {
+            const { id, offset }: { id: string; offset: number } = landed;
+            const ref = findBlock(view.state.doc, id);
+            const line = ref?.node.type === schema.nodes.toggle ? ref.node.child(0) : ref?.node;
+            if (ref && line?.isTextblock) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, ref.pos + (line === ref.node ? 1 : 2) + Math.min(offset, line.content.size))));
+          }
+          /* Others see a block arrive where it was dropped, as whoever dropped it does. */
+          for (const id of arrived) flash(view, id);
+        });
+      };
+
+      const after = (tr: Y.Transaction) => {
+        if (tr.local) mine.add(doc.clientID);
+        const undone = tr.origin instanceof Y.UndoManager;
+        if (rt.readOnly || rt.halted || (tr.local && !undone)) return;
+        const strays: StrayWords[] = [];
+        const arrived: string[] = [];
+        const unnamed: Y.XmlElement[] = [];
+        const redone: Y.XmlElement[] = [];
+        const cuts: Cut[] = [];
+        tr.changed.forEach((keys, type) => {
+          if (!(type instanceof Y.XmlElement) || type.parent !== fragment) return;
+          if (undone && keys.has('id') && type.getAttribute('id') === undefined) unnamed.push(type);
+          if (tr.origin instanceof Y.UndoManager && tr.origin.redoing && keys.has('id') && !keys.has('gone') && type.getAttribute('gone') !== undefined) redone.push(type);
+          if (!keys.has('gone')) return;
+          /* All of this has to be read now: what the change deleted is gone when it ends. */
+          const moved = tr.local ? null : movedIn(type, tr);
+          const copy = moved ? elementOf(fragment, moved.target)?.element : undefined;
+          /* A block this browser moved itself still has its words, in its own copy: only what it deleted has to follow someone else's. */
+          const words = moved && copy && !moved.was ? wordsToCut(type, copy, moved, tr) : null;
+          const attrs = copy && words ? attrsToCut(type, copy, tr) : [];
+          const deleted = moved?.was === '' && copy !== undefined && isNewIn(copy, tr);
+          if (copy && words && (words.length > 0 || attrs.length > 0 || deleted)) cuts.push({ words, attrs, copy, deleted });
+          const gone: unknown = type.getAttribute('gone');
+          if (typeof gone !== 'string' || gone === '') return;
+          const into = elementOf(fragment, gone)?.element;
+          const stray = strayWords(type, into, tr, mine);
+          if (stray) strays.push(stray);
+          const undo: Y.UndoManager | undefined = yUndoPluginKey.getState(view.state)?.undoManager;
+          if (!tr.local && into) {
+            if (undo) followUndo(undo, type, into, tr, mine);
+            if (into.nodeName === type.nodeName) arrived.push(gone);
+          }
+        });
+        const touched: ReadonlyMap<unknown, unknown> = tr.changed;
+        if (undone || strays.length > 0 || arrived.length > 0 || cuts.length > 0 || touched.has(fragment)) tidy({ strays, arrived, unnamed, redone, cuts });
+      };
+
+      /* Two people may have moved a block and left before hearing each other. */
+      tidy({ strays: [], arrived: [], unnamed: [], redone: [], cuts: [] });
+
+      doc.on('afterTransaction', after);
+      return {
+        /* Before ySyncPlugin's own, which writes the change. */
+        update(_, previous) {
+          const { $from } = previous.selection;
+          lastCaret.set(view, { line: $from.parent, offset: $from.parentOffset });
+        },
+        destroy() { doc.off('afterTransaction', after); }
+      };
+    }
+  });
+}

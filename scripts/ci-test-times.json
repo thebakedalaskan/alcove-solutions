@@ -1,0 +1,416 @@
+{
+ "src/features/meetings/availability.integration.test.ts": {
+  "seconds": 1.6,
+  "groups": {
+   "reading someone’s own calendar": 0.5,
+   "reading other people’s calendars": 0.4,
+   "what asking about busy times leaves behind": 0.2,
+   "a demo account’s week": 0.4
+  }
+ },
+ "src/features/workspaces/board-at-once.integration.test.ts": {
+  "seconds": 6.4,
+  "groups": {
+   "ideas from the call added at the same moment": 5.3,
+   "two branches from one idea at once": 1.1
+  }
+ },
+ "src/features/workspaces/board-more.integration.test.ts": {
+  "seconds": 12.1,
+  "groups": {
+   "a table": 4.0,
+   "a picture put on a board from More": 2.6,
+   "a template from More": 1.0,
+   "Night board": 1.4,
+   "a comment from More, on a board in a call": 2.0,
+   "a download of a board": 0.5,
+   "what More adds": 0.8
+  }
+ },
+ "src/features/calls/board-timer-votes.integration.test.ts": {
+  "seconds": 33.7,
+  "groups": {
+   "the timer": 4.9,
+   "a vote": 16.4,
+   "at the same moment": 1.7,
+   "who is told of them": 4.0,
+   "with neither whoever started it nor the organizer in the call": 4.0,
+   "what a session leaves on the board": 1.9,
+   "what the previous release stored": 0.8
+  }
+ },
+ "src/features/calls/boardHelps.integration.test.ts": {
+  "seconds": 22.2,
+  "groups": {
+   "ideas from the call": 19.8,
+   "Sort into themes": 2.4
+  }
+ },
+ "src/features/calls/boards-in-calls.integration.test.ts": {
+  "seconds": 138.9,
+  "groups": {
+   "a new board": 31.4,
+   "closing a board": 2.2,
+   "a saved board": 29.4,
+   "someone who joins the invite during a call": 1.5,
+   "a board the call made": 6.1,
+   "what someone decided about a board the call made": 5.4,
+   "keeping seats in step": 0.9,
+   "the workspace a board is saved in": 2.7,
+   "breakout rooms": 1.5,
+   "boards in breakout rooms": 36.9,
+   "presenting a board": 11.7,
+   "a busy workspace": 0.9,
+   "what the previous release stored": 8.3
+  }
+ },
+ "src/features/workspaces/boards.integration.test.ts": {
+  "seconds": 41.5,
+  "groups": {
+   "people at a board at once": 1.1,
+   "undo": 6.4,
+   "arriving and coming back": 6.4,
+   "who can do what": 3.5,
+   "a template": 4.5,
+   "copies and versions": 4.2,
+   "search": 0.9,
+   "the server’s own clients": 0.7,
+   "what an honest browser sends": 5.1,
+   "what’s kept": 4.0,
+   "a board’s own page": 4.8
+  }
+ },
+ "src/features/calls/boardsAfter.integration.test.ts": {
+  "seconds": 9.3,
+  "groups": {
+   "the note after a call with a board": 8.2,
+   "bringing a board to a call": 1.2
+  }
+ },
+ "src/features/calls/callHomes.integration.test.ts": {
+  "seconds": 15.6,
+  "groups": {
+   "a call’s home": 5.5,
+   "the call’s folder": 2.6,
+   "who’s in a home made for a call": 5.7,
+   "who’s who in a workspace’s documents": 0.9,
+   "what’s kept of a home": 0.7,
+   "what the previous release stored": 0.2
+  }
+ },
+ "src/features/calls/callWorkspace.integration.test.ts": {
+  "seconds": 82.6,
+  "groups": {
+   "which workspace a call uses": 8.2,
+   "someone who can’t open it": 4.1,
+   "a guest in a call": 4.2,
+   "the call’s follow-ups": 20.4,
+   "what was worked on": 2.5,
+   "presenting": 10.0,
+   "presenter notes": 1.6,
+   "playing a video together": 6.8,
+   "the next call’s agenda": 6.2,
+   "asking Alcove about a selection": 3.8,
+   "a live call comes first": 7.1,
+   "reading the call": 2.5,
+   "what a call leaves in the record": 0.4,
+   "what the previous release stored": 0.6,
+   "every ID from a request": 1.0,
+   "what’s kept": 3.2
+  }
+ },
+ "src/features/calls/calls.integration.test.ts": {
+  "seconds": 107.0,
+  "groups": {
+   "calls on LiveKit": 0.2,
+   "end-to-end encryption": 17.6,
+   "breakout rooms, each with its own keys": 42.3,
+   "keeping in step": 21.4,
+   "host controls": 5.3,
+   "ending": 5.2,
+   "joining by link": 11.5,
+   "devices": 0.6,
+   "screen sharing": 2.9
+  }
+ },
+ "src/features/calls/capture.integration.test.ts": {
+  "seconds": 10.8,
+  "groups": {
+   "what a call captures": 10.8
+  }
+ },
+ "src/features/notes/carryover.integration.test.ts": {
+  "seconds": 69.2,
+  "groups": {
+   "what carries over into a call": 7.2,
+   "a series scheduled to repeat": 2.6,
+   "asking across the series during a call": 15.6,
+   "what later calls did to what earlier ones left": 26.4,
+   "breakout rooms in what carries over": 9.1,
+   "a call that keeps no transcript": 4.8,
+   "what stays out of what’s stored": 3.5
+  }
+ },
+ "src/features/calls/catchup.integration.test.ts": {
+  "seconds": 85.9,
+  "groups": {
+   "catching up during a call": 85.9
+  }
+ },
+ "src/features/meetings/connections.integration.test.ts": {
+  "seconds": 15.9,
+  "groups": {
+   "a server with one connection to the database": 3.9,
+   "every connection taken": 11.8,
+   "a connection lost in the middle of a request": 0.2
+  }
+ },
+ "src/features/notes/decisions.integration.test.ts": {
+  "seconds": 40.8,
+  "groups": {
+   "decisions": 10.0,
+   "follow-ups": 5.8,
+   "what backs an entry": 6.7,
+   "the record, read back": 12.0,
+   "agreeing to what was read": 1.5,
+   "guests": 1.4,
+   "notes that couldn’t be written": 2.0,
+   "asking across your notes": 1.3
+  }
+ },
+ "src/integration/flows.integration.test.ts": {
+  "seconds": 122.6,
+  "groups": {
+   "public readiness": 0.1,
+   "signing in": 1.0,
+   "signing in with Google": 0.9,
+   "Google Calendar": 1.0,
+   "people and team": 0.9,
+   "meetings": 0.3,
+   "calls with notes": 9.5,
+   "live transcript and written notes": 23.7,
+   "in the call: hands, spotlight, breakout rooms and captions": 7.3,
+   "verified private inference": 14.0,
+   "confirming what the notes say": 1.5,
+   "the inbox": 3.8,
+   "finding what was said": 2.7,
+   "asking your notes": 13.6,
+   "pinned notes": 0.8,
+   "who has the notes": 3.4,
+   "room recordings": 3.2,
+   "credits": 1.1,
+   "deleting an account": 15.3,
+   "the shared demo account": 0.3,
+   "privacy at rest": 15.3,
+   "confidential computing": 0.3,
+   "maintenance": 1.5,
+   "logging and errors": 0.9
+  }
+ },
+ "src/features/calls/guests.integration.test.ts": {
+  "seconds": 17.4,
+  "groups": {
+   "the call’s link, before joining": 3.0,
+   "signed-in people let in from the link": 11.4,
+   "what guests see": 0.6,
+   "failing safely": 0.6,
+   "what a guest’s pass reaches": 1.9
+  }
+ },
+ "src/features/calls/hosting.integration.test.ts": {
+  "seconds": 38.3,
+  "groups": {
+   "host hand-off": 38.3
+  }
+ },
+ "src/features/meetings/invited.integration.test.ts": {
+  "seconds": 10.7,
+  "groups": {
+   "people invited to a call": 7.8,
+   "calls started now": 0.6,
+   "making calls": 0.6,
+   "changing a scheduled call": 0.3,
+   "offering times": 1.4
+  }
+ },
+ "src/features/notes/keep.integration.test.ts": {
+  "seconds": 30.1,
+  "groups": {
+   "keeping the transcript": 5.1,
+   "keeping the recording": 6.3,
+   "a call with breakout rooms": 15.5,
+   "reading shared screens from the start": 0.3,
+   "a call sealed by the previous release": 0.2,
+   "what a call keeps unless it’s told otherwise": 2.7
+  }
+ },
+ "src/features/workspaces/library.integration.test.ts": {
+  "seconds": 9.5,
+  "groups": {
+   "the library": 4.0,
+   "a call’s documents": 4.6,
+   "guests in a call": 1.0
+  }
+ },
+ "src/features/calls/liveNotes.integration.test.ts": {
+  "seconds": 90.3,
+  "groups": {
+   "one set of live notes for the call": 13.7,
+   "who reads what of them": 32.8,
+   "breakout rooms": 10.2,
+   "ticking a follow-up": 9.9,
+   "adding a follow-up": 10.7,
+   "into the note": 5.2,
+   "when notes are off or paused": 2.2,
+   "what stays": 5.6
+  }
+ },
+ "src/features/workspaces/media.integration.test.ts": {
+  "seconds": 179.6,
+  "groups": {
+   "a file in a document": 7.2,
+   "a failure on the way": 27.1,
+   "who can read a file": 1.6,
+   "a file’s URL": 0.6,
+   "guests in a call": 7.3,
+   "a picture on a board": 16.7,
+   "reusing a file": 0.8,
+   "what a process takes on at once": 99.7,
+   "storage limits": 10.1,
+   "deleting a file": 1.6,
+   "deleting": 7.0
+  }
+ },
+ "src/integration/migrations.integration.test.ts": {
+  "seconds": 0.5,
+  "groups": {
+   "migrations": 0.5
+  }
+ },
+ "src/features/calls/moves.integration.test.ts": {
+  "seconds": 17.0,
+  "groups": {
+   "moving to another device": 11.2,
+   "coming back after a connection drops": 5.8
+  }
+ },
+ "src/integration/nextRelease.integration.test.ts": {
+  "seconds": 4.6,
+  "groups": {
+   "what the next release stores": 4.6
+  }
+ },
+ "src/features/notes/personal.integration.test.ts": {
+  "seconds": 41.2,
+  "groups": {
+   "your own notes in a call": 6.2,
+   "bookmarks": 5.6,
+   "answers you keep": 6.4,
+   "adding to the shared notes": 10.9,
+   "when notes go": 9.8,
+   "what’s stored": 2.4
+  }
+ },
+ "src/features/calls/pointing.integration.test.ts": {
+  "seconds": 7.6,
+  "groups": {
+   "pointing at shared screens": 7.6
+  }
+ },
+ "src/features/meetings/repeats.integration.test.ts": {
+  "seconds": 12.5,
+  "groups": {
+   "a repeating call, from start to end": 0.8,
+   "scheduling calls that repeat": 0.7,
+   "the series link": 2.3,
+   "cancelling calls in a series": 1.3,
+   "changing calls in a series": 3.6,
+   "older kinds of series": 1.2,
+   "when Google fails": 0.8,
+   "deleting an account": 0.2,
+   "a big series": 1.4,
+   "what the server keeps to itself": 0.2
+  }
+ },
+ "src/features/calls/rings.integration.test.ts": {
+  "seconds": 81.8,
+  "groups": {
+   "ringing": 17.4,
+   "who can be rung, and by whom": 21.4,
+   "the stream": 41.4,
+   "privacy": 1.5
+  }
+ },
+ "src/features/recordings/screens.integration.test.ts": {
+  "seconds": 47.7,
+  "groups": {
+   "shared screens in the notes": 47.7
+  }
+ },
+ "src/features/notes/series.integration.test.ts": {
+  "seconds": 21.3,
+  "groups": {
+   "memory across a series": 21.3
+  }
+ },
+ "src/features/recordings/transcripts.integration.test.ts": {
+  "seconds": 13.8,
+  "groups": {
+   "a transcript that says what it isn’t sure of": 13.8
+  }
+ },
+ "src/features/workspaces/workspaceDocuments.integration.test.ts": {
+  "seconds": 266.0,
+  "groups": {
+   "a document": 5.5,
+   "through a dropped connection": 12.0,
+   "the log": 8.9,
+   "streams": 7.3,
+   "who can do what": 4.8,
+   "awareness": 2.1,
+   "presence": 4.3,
+   "versions": 5.6,
+   "reading a document on the server": 2.1,
+   "what’s kept": 6.1,
+   "limits": 9.5,
+   "what a browser sends": 9.0,
+   "a document that’s too much": 66.2,
+   "a full document": 4.1,
+   "restoring": 9.0,
+   "a big paste": 4.2,
+   "a version on its way out": 4.9,
+   "streams, read closely": 6.1,
+   "a refusal": 14.8,
+   "a new address": 2.2,
+   "what fits in a document": 7.7,
+   "after a refusal": 13.8,
+   "workers, shared fairly": 16.0,
+   "streams nobody reads": 3.1,
+   "at the limit": 15.7,
+   "what it has already": 19.3,
+   "lines nobody reads": 1.7
+  }
+ },
+ "src/features/workspaces/workspaceTags.integration.test.ts": {
+  "seconds": 8.4,
+  "groups": {
+   "a tag": 4.3,
+   "who can open a document, for whoever’s tagging": 0.5,
+   "where people are": 3.6
+  }
+ },
+ "src/features/workspaces/workspaces.integration.test.ts": {
+  "seconds": 33.6,
+  "groups": {
+   "a workspace": 1.4,
+   "people in a workspace": 0.3,
+   "the tree": 6.2,
+   "who can open what": 4.5,
+   "deleting an account": 1.0,
+   "limits": 1.5,
+   "a new address from the provider": 0.7,
+   "the live stream": 15.7,
+   "guests in a call": 2.3
+  }
+ }
+}

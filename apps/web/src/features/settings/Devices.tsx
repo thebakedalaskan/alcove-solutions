@@ -1,20 +1,22 @@
 /*
  * The microphone, speaker and camera this browser uses: the same choices the join screen and the call remember
- * (features/call/devices.ts), kept in this browser only. Nothing opens by itself: "Check the level" opens the
- * microphone for a few seconds, to show how loud it hears you, and it closes sooner when pressed again or when the
- * card leaves the screen. Choosing a device doesn't open it. The camera is never opened: you see yourself when you
+ * (features/call/media/devices.ts), kept in this browser only. Nothing opens by itself: "Check the level" opens the
+ * microphone for a few seconds, to show how loud it hears you, and it closes sooner when pressed again or when this
+ * part leaves the screen. Choosing a device doesn't open it. The camera is never opened: you see yourself when you
  * join a call, never before.
  */
-import { Button, Icon, MicLevel, Select, SettingRow, SettingsCard, Switch, Tooltip, buttonClass, cn, useToast, type SelectOption } from '@alcove/ui';
-import { useEffect, useState, type ReactNode } from 'react';
-import { stateOf, troubles } from '~/features/call/access';
-import { canChooseSpeaker, permissions, plainName, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Device, type Permission } from '~/features/call/devices';
-import { LocalMedia } from '~/features/call/media';
+import { Button, Icon, MicLevel, Select, SettingFact, SettingRow, SettingsPart, Tooltip, cn, useToast, type SelectOption } from '@alcove/ui';
+import { useEffect, useRef, useState } from 'react';
+import { stateOf, troubles } from '~/features/call/media/access';
+import { canChooseSpeaker, permissions, plainName, readPrefs, rememberDevice, useDevices, watchPermissions, type Capture, type Device, type Permission } from '~/features/call/media/devices';
+import { LocalMedia } from '~/features/call/media/media';
 import { useLive } from '~/lib/live';
-import { Named, useSaved } from './save';
+import { Setting, SwitchSetting, useSaved } from './save';
 
 /** How long Check the level keeps the microphone open. */
 const CHECK_SECONDS = 8;
+/** How finely the level is drawn. */
+const LEVEL_BARS = 26;
 
 /** What the browser says about the microphone and the camera, kept current; null until it has said. */
 function usePermissions(): Record<Capture, Permission> | null {
@@ -65,9 +67,7 @@ const option = (d: Device): SelectOption<string> => ({
 /** The first of `ids` that's plugged in, else the first listed (the browser's default comes first). */
 const pick = (devices: Device[], ...ids: (string | null | undefined)[]) => ids.find((id) => id && devices.some((d) => d.id === id)) ?? devices[0]?.id;
 
-const fact = (icon: 'micOff' | 'video' | 'videoOff', text: string): ReactNode => <span className="set-fixed"><Icon name={icon} size={15} />{text}</span>;
-
-export function DevicesCard() {
+export function DevicesPart() {
   const [media] = useState(() => new LocalMedia());
   const m = useLive(media);
   const perms = usePermissions();
@@ -75,18 +75,25 @@ export function DevicesCard() {
   const saved = useSaved();
   const toast = useToast();
   const [checking, setChecking] = useState(false);
+  const [left, setLeft] = useState(CHECK_SECONDS);
   const [tried, setTried] = useState(false);
   const [mic, setMic] = useState(() => readPrefs().mic);
   const [speaker, setSpeaker] = useState(() => readPrefs().speaker);
   const [cam, setCam] = useState(() => readPrefs().cam);
   const [playing, setPlaying] = useState(false);
-  // Open only while checking: a few seconds at most, and not once the card is off the screen or the tab is hidden.
+  // Open only while checking: a few seconds at most, and not once this part is off the screen or the tab is hidden.
   useEffect(() => {
     if (!checking) return;
     if (!shown) { setChecking(false); return; }
     void media.start({ mic: true, cam: false });
-    const t = setTimeout(() => setChecking(false), CHECK_SECONDS * 1000);
-    return () => { clearTimeout(t); media.stop(); };
+    const began = Date.now();
+    setLeft(CHECK_SECONDS);
+    const t = setInterval(() => {
+      const gone = (Date.now() - began) / 1000;
+      if (gone < CHECK_SECONDS) setLeft(Math.ceil(CHECK_SECONDS - gone));
+      else setChecking(false);
+    }, 200);
+    return () => { clearInterval(t); media.stop(); };
   }, [checking, shown, media]);
   const level = useMicLevel(media, checking && m.mic);
   // Browsers name devices only once they're allowed, so the lists are read again as that changes.
@@ -97,6 +104,19 @@ export function DevicesCard() {
   const micId = pick(devices.mic, checking ? m.micId : undefined, mic);
   const speakerId = pick(devices.speaker, speaker);
   const camId = pick(devices.cam, cam);
+  const hasMics = devices.mic.length > 0 && micId !== undefined;
+  const canPick = canChooseSpeaker();
+  const hasSpeakers = canPick && devices.speaker.length > 0 && speakerId !== undefined;
+
+  // A refused microphone takes Check the level with it, and one that starts takes Try again: focus stays on the row.
+  const micRow = useRef<HTMLDivElement>(null);
+  const troubled = trouble !== undefined;
+  const wasTroubled = useRef(troubled);
+  useEffect(() => {
+    if (wasTroubled.current === troubled) return;
+    wasTroubled.current = troubled;
+    if (document.activeElement === document.body) micRow.current?.focus({ preventScroll: true });
+  }, [troubled]);
 
   const check = () => { setTried(true); setChecking((on) => !on); };
   const retry = () => { if (checking) void media.retry(); else check(); };
@@ -109,50 +129,55 @@ export function DevicesCard() {
   };
   const chooseSpeaker = (id: string) => { setSpeaker(id); media.chooseSpeaker(id); saved('Speaker'); };
   const test = async () => {
+    if (playing) return;
     // Through the chosen speaker while it's plugged in, else the system's.
     if (speaker && devices.speaker.some((d) => d.id === speaker)) media.chooseSpeaker(speaker);
     setPlaying(true);
     try { await media.playTestSound(); } finally { setPlaying(false); }
   };
 
-  const micControl = trouble ? (
-    <>
-      {fact('micOff', stateOf('mic', trouble.problem))}
-      {trouble.retry && <Button variant="secondary" size="sm" icon="retry" onClick={retry}>Try again</Button>}
-    </>
-  ) : (
-    <>
-      <Tooltip label={checking ? 'Stop checking' : `Opens the microphone for ${CHECK_SECONDS} seconds to show how loud it is. Nothing is recorded.`}>
-        <button type="button" className={cn(buttonClass({ variant: 'quiet', size: 'sm' }), 'set-check')} aria-pressed={checking} onClick={check}>
-          <span aria-hidden="true"><MicLevel level={level} /></span>Check the level
-        </button>
-      </Tooltip>
-      {devices.mic.length > 0 && micId && <Select label="Microphone" icon="mic" value={micId} options={devices.mic.map(option)} onChange={chooseMic} align="end" />}
-    </>
-  );
-  const camera = devices.cam.length > 0 && camId
-    ? <Select label="Camera" icon="video" value={camId} options={devices.cam.map(option)} align="end" onChange={(id) => { rememberDevice('cam', id); setCam(id); saved('Camera'); }} />
-    : perms?.cam === 'denied' ? fact('videoOff', 'Camera blocked') : perms?.cam === 'granted' ? fact('videoOff', 'No camera') : fact('video', 'Not allowed yet');
-
   return (
-    <SettingsCard id="devices" title="Microphone, speaker and camera" lead="Used in calls and in the room. You can switch them during a call too.">
-      <SettingRow label={<Named>Microphone</Named>} control={micControl}
-        help={trouble ? trouble.how ?? trouble.title : `${perms?.mic === 'prompt' ? 'Your browser asks first. ' : ''}Check the level, then speak to see it move. Nothing is recorded.`} />
-      <SettingRow label={<Named>Speaker</Named>}
-        help={canChooseSpeaker() ? undefined : 'This browser plays sound through the speaker your system uses. Change it in your computer’s sound settings.'}
+    <SettingsPart id="devices" title="Microphone, speaker and camera" tag="This browser only">
+      {trouble ? (
+        <SettingRow ref={micRow} tabIndex={-1} label="Microphone" help={trouble.how ?? trouble.title}
+          control={(
+            <div className="set-line">
+              <SettingFact icon="micOff" tone="no">{stateOf('mic', trouble.problem)}</SettingFact>
+              {trouble.retry && <Button variant="quiet" size="sm" icon="retry" onClick={retry}>Try again</Button>}
+            </div>
+          )} />
+      ) : (
+        <Setting ref={micRow} tabIndex={-1} stack label="Microphone" help={checking ? 'Speak, and watch it move. Nothing is recorded.' : perms?.mic === 'prompt' ? 'Your browser asks first.' : undefined}
+          control={(
+            <>
+              {hasMics && <Select label="Microphone" value={micId} options={devices.mic.map(option)} onChange={chooseMic} />}
+              <div className={cn('set-lvl', checking && 'is-on')}>
+                {checking && <MicLevel level={level} bars={LEVEL_BARS} className="set-ticks" />}
+                <Tooltip label={checking ? 'Stop checking' : `Opens the microphone for ${CHECK_SECONDS} seconds. Nothing is recorded.`}>
+                  <button type="button" className={cn('set-test', !hasMics && 'is-flush')} aria-pressed={checking} onClick={check}>
+                    {checking ? `Stop · ${left} s` : <><span className="set-bars" aria-hidden="true"><i /><i /><i /><i /></span>Check the level</>}
+                  </button>
+                </Tooltip>
+              </div>
+            </>
+          )} />
+      )}
+      <Setting stack label="Speaker" help={canPick ? undefined : 'This browser uses the speaker your system uses. Change it in your computer’s sound settings.'}
         control={(
           <>
-            <Button variant="quiet" size="sm" icon="speaker" disabled={playing} onClick={() => void test()}>{playing ? 'Playing' : 'Play test sound'}</Button>
-            {canChooseSpeaker() && devices.speaker.length > 0 && speakerId && (
-              <Select label="Speaker" value={speakerId} options={devices.speaker.map(option)} align="end" onChange={chooseSpeaker} />
-            )}
+            {hasSpeakers && <Select label="Speaker" value={speakerId} options={devices.speaker.map(option)} onChange={chooseSpeaker} />}
+            {!canPick && <SettingFact>System speaker</SettingFact>}
+            <button type="button" className={cn('set-test', playing && 'is-busy', !hasSpeakers && 'is-flush')} aria-disabled={playing || undefined} onClick={() => void test()}>
+              <Icon name="speaker" size={15} />{playing ? 'Playing' : 'Play test sound'}
+            </button>
           </>
         )} />
-      <SettingRow label={<Named>Camera</Named>} control={camera}
-        help={devices.cam.length > 0 || perms?.cam === 'denied' || perms?.cam === 'granted' ? 'You see yourself when you join a call, never before.'
-          : 'You see yourself when you join a call, never before. Allow the camera there, and you can pick one here too.'} />
-      <SettingRow label={<Named>Reduce background noise</Named>} help="Keyboards, fans and traffic, in calls and in the room."
-        control={<Switch label="Reduce background noise" checked={m.noiseReduction} onChange={(on) => void media.setNoiseReduction(on).then(() => saved('Reduce background noise'))} />} />
-    </SettingsCard>
+      {devices.cam.length > 0 && camId
+        ? <Setting wide label="Camera" control={<Select label="Camera" value={camId} options={devices.cam.map(option)} onChange={(id) => { rememberDevice('cam', id); setCam(id); saved('Camera'); }} />} />
+        : perms?.cam === 'denied' ? <SettingRow label="Camera" help="Allow the camera for this site in your browser’s settings." control={<SettingFact icon="videoOff" tone="no">Camera blocked</SettingFact>} />
+          : perms?.cam === 'granted' ? <SettingRow label="Camera" control={<SettingFact icon="videoOff">No camera</SettingFact>} />
+            : <SettingRow label="Camera" help="Allow it when you next join a call, and you can pick one here." control={<SettingFact icon="video">Not allowed yet</SettingFact>} />}
+      <SwitchSetting label="Reduce background noise" checked={m.noiseReduction} onChange={(on) => void media.setNoiseReduction(on).then(() => saved('Reduce background noise'))} />
+    </SettingsPart>
   );
 }

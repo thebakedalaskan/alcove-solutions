@@ -1,35 +1,84 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { errorCode, type ActionPatch, type DecisionPatch, type DemoProvider, type Group, type InstantCallInput, type LinePatch, type MeetingInput, type NoteKind, type NotesSetting, type Patch, type Preferences, type QuestionPatch, type TopUp } from '@alcove/api';
-import { queryOptions, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import type { AgentDecisionInput, AgentTokenInput } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type TopUp, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
+import { forgetEdits } from '~/features/workspace/keep';
+import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
+import { forgetPlaces } from '~/features/workspace/places';
+import { forgetWords } from '~/features/workspace/words';
+import { announceSignIn, announceSignOut } from './signedOut';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
+import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
 
 export const qk = {
+  agents: ['agents'] as const,
+  agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
   session: ['session'] as const,
   prefs: ['prefs'] as const,
   team: ['team'] as const,
+  workspaces: ['workspaces'] as const,
   people: (query: string) => ['people', query] as const,
   meetings: ['meetings'] as const,
   upcoming: ['meetings', 'upcoming'] as const,
   byCode: (code: string) => ['meetings', 'code', code] as const,
   card: (code: string) => ['calls', 'card', code] as const,
   calendar: ['meetings', 'calendar'] as const,
+  meeting: (id: string) => ['meetings', 'one', id] as const,
+  busy: (emails: readonly string[], from: ISODate, to: ISODate) => ['meetings', 'busy', from, to, ...emails] as const,
+  documents: ['documents'] as const,
   notes: ['notes'] as const,
   noteList: (kind?: NoteKind, text?: string) => ['notes', 'list', kind ?? 'all', text ?? ''] as const,
   note: (id: string) => ['notes', 'one', id] as const,
+  /** Your own notes on a note: never anyone else's, so nothing here is ever shown to someone who signs in after you (signing in starts the cache over). */
+  personal: (id: string) => ['notes', 'personal', id] as const,
+  addition: (id: string, entryId: string) => ['notes', 'addition', id, entryId] as const,
   inbox: ['notes', 'inbox'] as const,
   /** Everything about series: what carries over changes whenever a note or a call in one does. */
   allSeries: ['series'] as const,
   series: (id: string) => ['series', id] as const,
+  callSeries: (code: string) => ['series', 'call', code] as const,
   balance: ['credits'] as const,
   topUpRoutes: ['top-ups', 'routes'] as const,
   topUps: ['top-ups', 'list'] as const,
   topUp: (id: string) => ['top-ups', 'one', id] as const,
-  trust: ['trust'] as const
+  trust: ['trust'] as const,
+  workspacePeople: (id: string) => ['workspaces', id, 'people'] as const,
+  personIds: (id: string, emails: readonly string[]) => ['workspaces', id, 'ids', ...emails] as const,
+  workspaceMedia: (id: string) => ['workspaces', id, 'media'] as const,
+  mentions: ['workspaces', 'mentions'] as const,
+  documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
+  documentVersions: (id: string, documentId: string) => ['workspaces', id, 'versions', documentId] as const,
+  documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
+  /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
+  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const,
+  presenterFrameNotes: (id: string, boardId: string) => ['workspaces', id, 'presenter-notes', boardId, 'frames'] as const,
+  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
+  workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
+  boardsToBring: ['workspaces', 'boards'] as const
 };
+
+/** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
+export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
+/** How many of the newest workspaces the Board menu looks in: a call's home is new, so what a team has is across the Drive. */
+const BOARD_SPACES = 12;
+/**
+ * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
+ * first. One that can't be read now is left out.
+ */
+async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<BoardToBring[]> {
+  const trees = await Promise.all(spaces.slice(0, BOARD_SPACES).map((w) => api.workspaces.get(w.id).catch((e: unknown) => {
+    log.child({ component: 'boards' }).info('a workspace’s boards couldn’t be read for the Board menu', { workspaceId: w.id, code: errorCode(e) });
+    return null;
+  })));
+  return trees.flatMap((t) => (t ? t.items.flatMap((i): BoardToBring[] => (i.kind === 'board' && i.trashedAt === null && i.role === 'edit'
+    ? [{ workspaceId: t.id, workspace: t.name, id: i.id, name: i.name, by: i.by?.name ?? null, editedAt: i.editedAt }] : [])) : []))
+    .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
+}
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
 export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
@@ -55,9 +104,12 @@ export const topUpOpen = (t: TopUp): boolean => t.state === 'waiting' || t.state
 const topUpsKey = queryOptions({ queryKey: qk.topUps, queryFn: (): Promise<TopUp[]> => api.credits.topUps() }).queryKey;
 
 export const q = {
-  session: () => queryOptions({ queryKey: qk.session, queryFn: () => api.auth.getSession(), staleTime: 60_000 }),
+  agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
+  agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
+  session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
   prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: () => api.account.preferences() }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
+  workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: () => api.workspaces.list() }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
   upcoming: () => queryOptions({ queryKey: qk.upcoming, queryFn: () => api.meetings.upcoming(), refetchInterval: 60_000 }),
   byCode: (code: string) => queryOptions({ queryKey: qk.byCode(code), queryFn: () => api.meetings.byCode(code) }),
@@ -86,9 +138,23 @@ export const q = {
   calendar: () => queryOptions({ queryKey: qk.calendar, queryFn: () => api.calendar.get(), staleTime: 60_000, refetchInterval: 3 * 60_000, retry: false }),
   notes: (kind?: NoteKind, text?: string) => queryOptions({ queryKey: qk.noteList(kind, text), queryFn: () => api.notes.list({ kind, text }), placeholderData: (prev) => prev }),
   note: (id: string) => queryOptions({ queryKey: qk.note(id), queryFn: () => api.notes.get(id) }),
+  personal: (id: string) => queryOptions({ queryKey: qk.personal(id), queryFn: () => api.notes.personal(id).get(), retry: false }),
+  /** What adding an entry to the shared notes would do, read fresh each time it's opened: the people who'd get it can change. */
+  addition: (id: string, entryId: string) => queryOptions({ queryKey: qk.addition(id, entryId), queryFn: () => api.notes.previewAddition(id, entryId), staleTime: 0, gcTime: 0, retry: false }),
   inbox: () => queryOptions({ queryKey: qk.inbox, queryFn: () => api.notes.inbox() }),
   /** What carries over in a series, from the notes you have; put together fresh each time it's asked for. */
   series: (id: string) => queryOptions({ queryKey: qk.series(id), queryFn: () => api.series.get(id), retry: false }),
+  /**
+   * What carries over into a call, for someone signed in, by its link: null when nothing can. Read again every minute
+   * while it's on screen, and whenever the page comes back into view: a note someone stops having goes from here too,
+   * however long the call has been open. A session that ended elsewhere is just another way of having nothing here:
+   * thrown, it would send them out of their call to sign in, and a call doesn't need one.
+   */
+  callSeries: (code: string) => queryOptions({
+    queryKey: qk.callSeries(code),
+    queryFn: () => api.calls.series(code).catch((e: unknown) => { if (errorCode(e) === 'unauthenticated') return null; throw e; }),
+    retry: false, staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true
+  }),
   balance: () => queryOptions({ queryKey: qk.balance, queryFn: () => api.credits.balance() }),
   /**
    * The ways to pay for credits. A server that can't take payments answers unavailable: nothing says so, the way to
@@ -127,44 +193,180 @@ export const q = {
     refetchInterval: (query) => (query.state.data && topUpOpen(query.state.data) ? 5000 : false)
   }),
   /** Checked when the app opens (the side panel and the call both show it), then every ten minutes. */
-  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 })
+  trust: () => queryOptions({ queryKey: qk.trust, queryFn: checkTrust, staleTime: 10 * 60_000, refetchInterval: 10 * 60_000, retry: 1 }),
+
+  /* Starting and scheduling calls. */
+  /** One call as it is now, for its card: the answers people have given change while it's open. */
+  meeting: (id: string) => queryOptions({ queryKey: qk.meeting(id), queryFn: () => api.meetings.get(id), retry: false }),
+  /** When you and these people are busy. Nothing is kept: it's read when it's asked for, and a failed read is said plainly, not retried. */
+  busy: (emails: readonly string[], range: { from: ISODate; to: ISODate }) => queryOptions({
+    queryKey: qk.busy(emails, range.from, range.to), queryFn: () => api.calendar.busy([...emails], range), staleTime: 60_000, retry: false
+  }),
+  /** What you can bring to a call. */
+  documents: () => queryOptions({ queryKey: qk.documents, queryFn: () => api.documents.list(), staleTime: 60_000, retry: false }),
+  /** Who's in a workspace, for anyone in it. */
+  workspacePeople: (id: string) => queryOptions({ queryKey: qk.workspacePeople(id), queryFn: () => api.workspaces.people(id) }),
+  /** The IDs a workspace's documents know these people by (features/workspace/ids.ts). An ID never changes. */
+  personIds: (id: string, emails: readonly string[], pass?: string | undefined) => queryOptions({ queryKey: qk.personIds(id, emails), queryFn: () => api.workspaces.ids(id, [...emails], pass ? { pass } : undefined), staleTime: Infinity }),
+  /** What you've been tagged in and haven't seen, anywhere. */
+  mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
+  /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
+  documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
+  /** What History lists, read afresh each time it opens. `pass`: a guest's. */
+  documentVersions: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersions(id, documentId), queryFn: () => api.workspaces.versions(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
+  /** A version never changes, so what's read stays good for as long as it's being looked at, and goes soon after. */
+  documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
+  /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
+  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity }),
+  /** Your notes beside each frame of a board, by frame. */
+  presenterFrameNotes: (id: string, boardId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterFrameNotes(id, boardId), queryFn: () => api.workspaces.presenterNotes.frames(id, boardId, pass ? { pass } : undefined), staleTime: Infinity }),
+  /** One document or folder as you see it: what it's called now, and what you can do with it. */
+  workspaceItem: (id: string, itemId: string) => queryOptions({ queryKey: qk.workspaceItem(id, itemId), queryFn: () => api.workspaces.items.get(id, itemId), retry: false }),
+  /**
+   * A workspace as you see it: what's in it that you can open, by your own name for each. What a board links to is named from
+   * it, and what you can link to is listed from it. Someone else may rename or move something, so it's good for half a minute.
+   * `pass`: in a call, the call's.
+   */
+  workspaceTree: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceTree(id), queryFn: () => api.workspaces.get(id, pass ? { pass } : undefined), staleTime: 30_000, retry: false }),
+  /**
+   * Every file you can reach in a workspace, the newest first, with the documents you reach each through: what the picker
+   * offers to reuse, and how a file block knows its file was deleted for good. A guest reads it with their pass.
+   */
+  workspaceMedia: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceMedia(id), queryFn: () => api.workspaces.media.list(id, { pass }), staleTime: 30_000 }),
+  /** The boards the Board menu offers to bring, from across your Drive: read as it opens, and good for half a minute. */
+  /** What the Board menu offers from `spaces`, your Drive's workspaces as `workspaces` reads them: the boards in the newest. */
+  boardsToBring: (spaces: readonly WorkspaceSummary[]) => queryOptions({
+    queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
+  })
 };
+
+/**
+ * What carries over into a call, while `on`. A read that fails keeps the last answer, as queries do, which would keep
+ * showing what someone may not read any more: once the server says so, there's nothing. A dropped connection changes nothing.
+ */
+export function useCallSeries(code: string, on: boolean): Series | null {
+  const r = useQuery({ ...q.callSeries(code), enabled: on });
+  const refused = r.error !== null && ['forbidden', 'not-found'].includes(errorCode(r.error));
+  return refused ? null : r.data ?? null;
+}
 
 /* ---------- account ---------- */
 
-/** Where the browser goes to sign in with Google; it comes back to /ready, /home or /welcome?signin=… */
-/** Where Google sign-in starts. `next: '/move'` comes back to a move to this device that was waiting for it. */
-export const googleSignInUrl = (next?: '/move' | undefined) => api.auth.signInUrl('google', next ? { next } : undefined);
+/** Google signs in in a popup; the API, rather than its completion message, confirms the session. */
+export function useGoogleSignIn() {
+  const qc = useQueryClient();
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => pending.current?.abort(), []);
+  const mutation = useMutation({
+    mutationFn: async ({ finished, signal }: { finished: ReturnType<typeof openGoogleSignIn>; signal: AbortSignal }) => {
+      try {
+        const result = await finished;
+        if (signal.aborted) return null;
+        if (!result || result === 'redirecting' || result.type !== 'complete') return result;
+        await waitForGoogleReturn(signal);
+        if (signal.aborted) return null;
+        const session = await api.auth.getSession();
+        if (signal.aborted) return null;
+        if (!session) throw new AlcoveApiError('unauthenticated', 'Google sign-in didn’t open a session. Try again.');
+        return { next: result.next, session };
+      } catch (e) {
+        if (signal.aborted) return null;
+        throw e;
+      }
+    },
+    onSuccess: (r, { signal }) => {
+      if (signal.aborted || !r || r === 'redirecting' || !('session' in r)) return;
+      forgetWords();
+      announceSignIn(r.session.ownerId);
+      qc.clear();
+      qc.setQueryData(qk.session, r.session);
+      // Signing in rotates background access; refresh through the session query to reopen its picture fence.
+      void qc.fetchQuery({ ...q.session(), staleTime: 0 }).catch((e: unknown) => {
+        log.child({ component: 'account' }).warn('session could not be refreshed after sign-in', { err: e });
+      });
+    }
+  });
+  return {
+    start: async (next?: '/move') => {
+      pending.current?.abort();
+      const controller = new AbortController();
+      pending.current = controller;
+      // Open before handing the promise to the mutation, while the browser still has the button press.
+      const finished = openGoogleSignIn((popup) => api.auth.signInUrl('google', { next, popup }), controller.signal);
+      const result = await mutation.mutateAsync({ finished, signal: controller.signal });
+      return controller.signal.aborted ? null : result;
+    },
+    cancel: () => pending.current?.abort()
+  };
+}
 
 /** Signing in or out changes whose data everything is, so the cache starts over. */
 export function useSignIn() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { provider: DemoProvider; email?: string | undefined }) => api.auth.signIn(v.provider, { email: v.email }),
-    onSuccess: (r) => { qc.clear(); qc.setQueryData(qk.session, r.session); }
+    onSuccess: (r) => {
+      forgetWords();
+      if (r.session) announceSignIn(r.session.ownerId);
+      qc.clear();
+      qc.setQueryData(qk.session, r.session);
+      // Cached sign-in data is fresh for a minute. Read the authenticated session now to reopen the picture fence.
+      if (r.session) void qc.fetchQuery({ ...q.session(), staleTime: 0 }).catch((e: unknown) => {
+        log.child({ component: 'account' }).warn('session could not be refreshed after sign-in', { err: e });
+      });
+    }
   });
 }
 /**
  * Signed out (or the account deleted) on this device: whatever it kept for the account goes too, the recordings
- * waiting to upload among it (features/record/offline.ts; anyone else's stay), and its notifications, those showing too.
+ * waiting to upload among it (features/record/offline.ts; anyone else's stay), its notifications, those showing too, and
+ * the words of its workspaces this tab held for Find.
  */
-async function forgetHere(qc: QueryClient) {
+async function forgetHere(owner: string | undefined, deleted: boolean) {
+  forgetWords();
+  // The mutation captured this account before its request. A session refresh may already have cleared the cache.
+  if (owner) {
+    announceSignOut(owner, deleted);
+    forgetPlaces(owner);
+  }
   await forgetNotified();
-  const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
   if (!owner) return;
   try { await forgetAccount(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete what this device kept for the account', { err: e }); }
+  try { await forgetEdits(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the edits this device kept for the account', { err: e }); }
+  try { await forgetPictures(owner); } catch (e) { log.child({ component: 'account' }).error('couldn’t delete the backgrounds this device kept for the account', { err: e }); }
 }
 export function useSignOut() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.auth.signOut(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); } });
+  // With no connection it fails now. Queued, it would happen by itself at some moment nobody chose.
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async () => {
+      const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+      await api.auth.signOut();
+      return owner;
+    },
+    onSuccess: async (owner) => { await forgetHere(owner, false); qc.clear(); qc.setQueryData(qk.session, null); }
+  });
 }
 /**
  * Deletes the account for good. Every browser it was signed in on is signed out, this one included. `onDeleted` runs
- * then, even if the screen that asked has gone meanwhile.
+ * then, even if the screen that asked has gone meanwhile. It's never queued for later, as signing out isn't. The cookie
+ * decides whose account goes and another tab can have changed it since this page was drawn, so it first asks who's
+ * signed in, and goes ahead only for the account on this screen.
  */
 export function useDeleteAccount(onDeleted: () => void) {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.account.delete(), onSuccess: async () => { await forgetHere(qc); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); } });
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: async () => {
+      const here = qc.getQueryData(q.session().queryKey)?.ownerId;
+      const now = await api.auth.getSession();
+      if (!here || now?.ownerId !== here) throw new AlcoveApiError('forbidden', 'Who’s signed in here changed in another tab, so nothing was deleted. Reload this page.');
+      await api.account.delete();
+      return here;
+    },
+    onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
+  });
 }
 /*
  * Changes to preferences show at once and reach the server one at a time, in order (two at once would refuse each
@@ -182,8 +384,8 @@ function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Pr
 }
 const prefsWrite = (qc: QueryClient) => {
   const key = q.prefs().queryKey;
-  /** The fields this change set that nothing has changed since. */
-  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && p[k] === patch[k];
+  /** The fields this change set that nothing has changed since. By value: the cache keeps its own copy of what it's given. */
+  const untouched = (p: Preferences, patch: Patch<Preferences>) => (k: keyof Preferences) => patch[k] !== undefined && replaceEqualDeep(p[k], patch[k]) === p[k];
   return {
     ...PREFS_WRITE,
     show: async (patch: Patch<Preferences>) => {
@@ -281,13 +483,14 @@ export function useCancelTopUp() {
 
 export function useScheduleCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({ networkMode: 'always', mutationFn: (input: MeetingInput) => api.meetings.create(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
 /** A call changed or went: Home's calls, and any series it's the next call of, catch up. */
 const callsChanged = (qc: QueryClient) => { void qc.invalidateQueries({ queryKey: qk.meetings }); void qc.invalidateQueries({ queryKey: qk.allSeries }); };
+/** Changes a call. In a series, `scope: 'following'` changes this call and every later one. */
 export function useUpdateCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput> }) => api.meetings.update(v.id, v.input), onSuccess: () => callsChanged(qc) });
+  return useMutation({ mutationFn: (v: { id: string; input: Patch<MeetingInput>; scope?: ChangeScope | undefined }) => api.meetings.update(v.id, v.input, { scope: v.scope }), onSuccess: () => callsChanged(qc) });
 }
 /** Makes one of your own calendar events an Alcove call; an occurrence of a recurring event joins its series. */
 export function useAdoptEvent() {
@@ -299,15 +502,42 @@ export const calendarConnectUrl = () => api.calendar.connectUrl();
 /** Forgets the Google connection; the calendar then asks for access again. */
 export function useDisconnectCalendar() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
+  return useMutation({ networkMode: 'always', mutationFn: () => api.calendar.disconnect(), onSuccess: (cal) => { qc.setQueryData(qk.calendar, cal); } });
 }
+/**
+ * Cancels a call. In a series, `scope: 'following'` cancels this call and every later one. Its link leads nowhere now, so
+ * what's cached of the link goes with it: coming Back to it reads that first, and opens no lobby or camera on the way.
+ */
 export function useCancelCall() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => api.meetings.cancel(id), onSuccess: () => callsChanged(qc) });
+  return useMutation({
+    mutationFn: (v: { id: string; code: string; scope?: ChangeScope | undefined }) => api.meetings.cancel(v.id, { scope: v.scope }),
+    onSuccess: (_r, v) => {
+      qc.removeQueries({ queryKey: qk.byCode(v.code) });
+      qc.removeQueries({ queryKey: qk.card(v.code) });
+      callsChanged(qc);
+    }
+  });
+}
+/** Says whether you're coming to a call you're invited to. The card shows the answer at once, and goes back if it's refused. */
+export function useAnswerCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; answer: Rsvp }) => api.meetings.answer(v.id, v.answer),
+    onMutate: async (v) => {
+      const key = qk.meeting(v.id);
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData(q.meeting(v.id).queryKey);
+      qc.setQueryData(q.meeting(v.id).queryKey, (m) => m && { ...m, rsvp: v.answer });
+      return { before };
+    },
+    onError: (_e, v, ctx) => { if (ctx?.before) qc.setQueryData(q.meeting(v.id).queryKey, ctx.before); },
+    onSuccess: (m) => { qc.setQueryData(q.meeting(m.id).queryKey, m); void qc.invalidateQueries({ queryKey: qk.upcoming }); }
+  });
 }
 export function useStartNow() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
+  return useMutation({ networkMode: 'always', mutationFn: (input: InstantCallInput) => api.calls.startNow(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.meetings }) });
 }
 /** Schedules the next call after a call (starting its series if it isn't in one): the same clock time here, a week on. */
 export function useScheduleNext() {
@@ -327,13 +557,36 @@ function changed(qc: QueryClient, n: { id: string }) {
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.allSeries });
 }
-/** A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. */
+/**
+ * A note that was deleted or removed meanwhile: its notes and inbox items go from the lists. One that changed since it
+ * was read refused what was asked of it, so it's read again, and the person sees what it says now.
+ */
 const gone = (qc: QueryClient, e: unknown) => {
-  if (errorCode(e) !== 'not-found') return;
+  const code = errorCode(e);
+  if (code === 'conflict') for (const queryKey of [qk.notes, qk.allSeries]) void qc.invalidateQueries({ queryKey });
+  if (code !== 'not-found') return;
   void qc.invalidateQueries({ queryKey: ['notes', 'list'] });
   void qc.invalidateQueries({ queryKey: qk.inbox });
 };
-/** Confirms, rejects, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
+/** Adds a decision the notes didn't hear, in the reader's words; the answer is the note as it is now. */
+export function useProposeDecision() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: DecisionProposal }) => api.notes.proposeDecision(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Adds a follow-up the notes didn't hear; the answer is the note as it is now. */
+export function useProposeAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; proposal: ActionProposal }) => api.notes.proposeAction(v.noteId, v.proposal),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.inbox }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Confirms, rejects, disputes, reopens, rewords or supersedes a decision; the answer is the note as it is now. */
 export function useUpdateDecision() {
   const qc = useQueryClient();
   return useMutation({
@@ -350,7 +603,15 @@ export function useUpdateQuestion() {
     onSuccess: (n) => changed(qc, n)
   });
 }
-/** Takes on, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
+/** Says the notes got it wrong, a later call didn't replace that decision or answer that question, or takes that back. */
+export function useUpdateRevisit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { noteId: string; revisitId: string; dismissed: boolean }) => api.notes.updateRevisit(v.noteId, v.revisitId, { dismissed: v.dismissed }),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Takes on, turns down, gives, dates, rewords or ticks a follow-up; the answer is the note as it is now. */
 export function useUpdateAction() {
   const qc = useQueryClient();
   return useMutation({
@@ -365,6 +626,35 @@ export function useCorrectLine() {
   return useMutation({
     mutationFn: (v: { noteId: string; lineId: string; patch: LinePatch }) => api.notes.correctLine(v.noteId, v.lineId, v.patch),
     onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Changes your own notes on a note; the answer is all of them as they are now. */
+export function useOwnNotes(noteId: string) {
+  const qc = useQueryClient();
+  const own = api.notes.personal(noteId);
+  const done = { onSuccess: (p: PersonalNotes) => { qc.setQueryData(qk.personal(noteId), p); }, onError: (e: unknown) => gone(qc, e) };
+  return {
+    add: useMutation({ mutationFn: (input: PersonalInput) => own.add(input), ...done }),
+    edit: useMutation({ mutationFn: (v: { entryId: string; text: string }) => own.edit(v.entryId, v.text), ...done }),
+    remove: useMutation({ mutationFn: (entryId: string) => own.remove(entryId), ...done })
+  };
+}
+/** Adds one of your own entries to the shared notes, as previewed. The answer is the note, for everyone; your own notes say where the copy is. */
+export function useAddToShared(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { entryId: string; body: PromoteBody }) => api.notes.addToShared(noteId, v.entryId, v.body),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
+  });
+}
+/** Takes something out of the shared notes, for everyone. */
+export function useTakeBack(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (additionId: string) => api.notes.takeBack(noteId, additionId),
+    onSuccess: (n) => { changed(qc, n); void qc.invalidateQueries({ queryKey: qk.personal(noteId) }); },
+    onError: (e) => gone(qc, e)
   });
 }
 /** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */
@@ -388,6 +678,19 @@ export function useShareNote() {
     onError: (_e, v) => { void qc.invalidateQueries({ queryKey: qk.note(v.id) }); }
   });
 }
+/**
+ * Reads a note again, for what can't ask through here: the browser's audio element fetches for itself and can't say
+ * why it failed, or how much more has been recorded. A session that's over shows up here, where the query layer deals
+ * with it. Gives back the note as it is now.
+ */
+export function useRecheckNote(id: string) {
+  const qc = useQueryClient();
+  return useCallback(async () => {
+    await qc.refetchQueries({ queryKey: qk.note(id), exact: true }, { throwOnError: true });
+    return qc.getQueryData(q.note(id).queryKey);
+  }, [qc, id]);
+}
+
 export function useDeleteNote() {
   const qc = useQueryClient();
   return useMutation({
@@ -397,4 +700,185 @@ export function useDeleteNote() {
       for (const key of [['notes', 'list'], qk.inbox, qk.meetings, qk.allSeries]) void qc.invalidateQueries({ queryKey: key });
     }
   });
+}
+
+/* ---------- ringing, and picking a time ---------- */
+
+/**
+ * Which of these people are busy right now, by lowercase address, as far as their calendars can be read: nobody is
+ * "busy" whose calendar can't be. Read when it's asked for; a failed read just says nobody is.
+ */
+export const busyNow = (emails: string[]) => queryOptions({
+  queryKey: ['calendar', 'busy-now', emails],
+  queryFn: async (): Promise<ReadonlySet<string>> => {
+    const now = new Date();
+    const b = await api.calendar.busy(emails, { from: now.toISOString(), to: new Date(now.getTime() + 60_000).toISOString() });
+    return new Set(b.people.filter((p) => p.busy?.some((i) => new Date(i.from) <= now && now < new Date(i.to))).map((p) => p.email.toLowerCase()));
+  },
+  staleTime: 60_000, retry: false, enabled: emails.length > 0
+});
+/** Answers a ring. */
+export function useRingAnswer() {
+  return useMutation({ mutationFn: (v: { id: string; reply: RingReply }) => api.rings.answer(v.id, v.reply) });
+}
+/** Settles a call that offers times on one of them. When someone got there first, the link's card is read again before this finishes: it says the time they took. */
+export function usePickTime(code: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (at: string) => api.calls.pick(code, at),
+    onError: (e) => (errorCode(e) === 'conflict' ? qc.invalidateQueries({ queryKey: qk.card(code) }) : undefined)
+  });
+}
+
+/* ---------- workspaces ---------- */
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (name: string) => api.workspaces.create(name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+export function useRenameWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
+}
+/** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
+export function useRenameBoard(pass: string) {
+  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, { pass }) });
+}
+/**
+ * Sort into themes on a board: what the stickies picked say goes to confidential compute through the board's document, and
+ * nothing of it is kept. A blank sticky has nothing to sort by and stays where it is, and each is cut to what the notes model
+ * takes. Fewer than two with words, or more than it takes at once, is refused here in the server's own words, without asking it.
+ * `pass`: the call's, in a call, where the server refuses while notes are paused.
+ */
+export function useSortStickies(pass?: string | undefined) {
+  return useMutation({
+    mutationFn: async (v: { workspaceId: string; documentId: string; stickies: readonly { id: string; text: string }[] }) => {
+      const stickies = v.stickies.flatMap((s) => {
+        const text = s.text.trim().slice(0, MAX_SORT_STICKY).trim();
+        return text ? [{ id: s.id, text }] : [];
+      });
+      if (stickies.length < 2) throw new AlcoveApiError('invalid', SORT_TOO_FEW);
+      if (stickies.length > MAX_SORT_STICKIES) throw new AlcoveApiError('invalid', SORT_TOO_MANY);
+      return (await api.workspaces.sortStickies(v.workspaceId, v.documentId, { stickies }, pass ? { pass } : undefined)).themes;
+    }
+  });
+}
+/** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
+export function useFirstDocument() {
+  return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
+}
+/**
+ * Changes to a workspace's tree. Nothing's cached: what changed reaches the list on the workspace's stream. What can be brought
+ * to a call is read again after each, as it lists these documents. `pass`: a guest's.
+ */
+export function useItemChanges(workspaceId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  const w = api.workspaces;
+  const as = pass ? { pass } : undefined;
+  const library = () => qc.invalidateQueries({ queryKey: qk.documents });
+  return {
+    create: useMutation({ mutationFn: (input: ItemInput) => w.items.create(workspaceId, input), onSuccess: library }),
+    // One at a time, so what's typed last is what's kept.
+    rename: useMutation({ scope: { id: `workspace-rename:${workspaceId}` }, mutationFn: (v: { id: string; name: string }) => w.items.rename(workspaceId, v.id, v.name, as), onSuccess: library }),
+    move: useMutation({ mutationFn: (v: { id: string; to: ItemPlace }) => w.items.move(workspaceId, v.id, v.to), onSuccess: library }),
+    duplicate: useMutation({ mutationFn: (id: string) => w.items.duplicate(workspaceId, id), onSuccess: library }),
+    trash: useMutation({ mutationFn: (id: string) => w.items.trash(workspaceId, id), onSuccess: library }),
+    restore: useMutation({ mutationFn: (id: string) => w.items.restore(workspaceId, id, as), onSuccess: library }),
+    deleteForever: useMutation({ mutationFn: (id: string) => w.items.deleteForever(workspaceId, id), onSuccess: library })
+  };
+}
+/** Tells someone they were tagged. `pass`: someone in a call. */
+export function useMention(workspaceId: string, pass?: string | undefined) {
+  return useMutation({ mutationFn: (v: MentionBody & { document: string }) => api.workspaces.mention(workspaceId, v.document, { to: v.to, block: v.block }, pass ? { pass } : undefined) });
+}
+/** You've heard about a tag. */
+export function useMentionSeen() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+}
+/** Keeps your notes for presenting a document. Empty text deletes them. */
+export function useSavePresenterNotes(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) => api.workspaces.presenterNotes.set(workspaceId, documentId, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
+  });
+}
+/** Keeps your notes beside one frame of a board: what's kept is what the board's notes say from then on. Empty text takes them away. */
+export function useSavePresenterFrameNote(workspaceId: string, boardId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ frame, text }: { frame: string; text: string }) => api.workspaces.presenterNotes.setFrame(workspaceId, boardId, frame, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, { frame, text }: { frame: string; text: string }) => qc.setQueryData(qk.presenterFrameNotes(workspaceId, boardId), (was: PresenterFrameNotes | undefined) => {
+      const { [frame]: _gone, ...rest } = was?.frames ?? {};
+      return { frames: text ? { ...rest, [frame]: text } : rest };
+    })
+  });
+}
+/** Makes a new document of words that didn't reach the one they were written in (`DocSession.unsentCopy`). */
+export function useSaveCopy() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { workspaceId: string; input: ItemInput & { state: Uint8Array } }) => api.workspaces.saveCopy(v.workspaceId, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.documents })
+  });
+}
+/**
+ * A workspace's files: reusing one in another document, and deleting one for good, everywhere. Each reads the list of files
+ * again after, as uploads do.
+ */
+export function useMediaChanges(workspaceId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.workspaceMedia(workspaceId) });
+  const m = api.workspaces.media;
+  return {
+    attach: useMutation({ mutationFn: (v: { documentId: string; media: string }) => m.attach(workspaceId, v.documentId, v.media, { pass }), onSettled: reread }),
+    remove: useMutation({ mutationFn: (v: { documentId: string; media: string }) => m.remove(workspaceId, v.documentId, v.media, { pass }), onSettled: reread })
+  };
+}
+
+/** Who has a document: adding someone, taking them off, and closing it to the workspace. */
+export function useDocumentShare(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.documentShare(workspaceId, documentId) });
+  const s = api.workspaces.share;
+  return {
+    set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role, pass ? { pass } : undefined), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry, pass ? { pass } : undefined), onSuccess: reread }),
+    restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted, pass ? { pass } : undefined), onSuccess: reread })
+  };
+}
+/** Putting a document back to a version, for everyone. What it said is kept as a version first, so the list has one more. */
+export function useRestoreVersion(workspaceId: string, documentId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (version: string) => {
+      await api.workspaces.restoreVersion(workspaceId, documentId, version, pass ? { pass } : undefined);
+      return qc.fetchQuery({ ...q.documentVersions(workspaceId, documentId, pass), staleTime: 0 });
+    }
+  });
+}
+/** Who's in a workspace: adding someone, changing what they can do, and taking them out, or yourself. */
+export function useWorkspacePeople(workspaceId: string) {
+  const qc = useQueryClient();
+  const reread = () => qc.invalidateQueries({ queryKey: qk.workspacePeople(workspaceId) });
+  const w = api.workspaces;
+  return {
+    add: useMutation({ mutationFn: (v: { email: string; role: WorkspaceRole }) => w.addPerson(workspaceId, v.email, v.role), onSuccess: reread }),
+    setRole: useMutation({ mutationFn: (v: { id: string; role: WorkspaceRole }) => w.setRole(workspaceId, v.id, v.role), onSuccess: reread }),
+    remove: useMutation({ mutationFn: (id: string) => w.removePerson(workspaceId, id), onSuccess: reread })
+  };
+}
+
+/** Credentials live in the active form only, never in a query or a persisted mutation. */
+export function useCreateAgentToken() {
+  const qc = useQueryClient();
+  return useMutation({ gcTime: 0, mutationFn: (input: AgentTokenInput) => api.agents.createToken(input), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+}
+export function useRevokeAgent() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.agents.revoke(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.agents }) });
+}
+export function useAgentDecision(requestId: string) {
+  return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
 }

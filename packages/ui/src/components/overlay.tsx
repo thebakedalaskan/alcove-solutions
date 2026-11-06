@@ -1,5 +1,5 @@
 import { Dialog as RDialog, Popover as RPopover, Tooltip as RTooltip } from 'radix-ui';
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { forwardRef, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 
@@ -14,11 +14,13 @@ const EDGE = 12;
  * to it after the panel closes, or after something it opened, and not when a script focuses it.
  * `takeFocus={false}` for one that opens as you hover or focus its anchor: focus doesn't move into it when it
  * opens, nor back to the anchor when it closes, so Tab carries on past it and moving the mouse away doesn't
- * open it again.
+ * open it again. `caret` points it at its anchor, and it keeps pointing there when the panel slides to stay in the window.
+ * `onCloseFocus` puts focus somewhere else when it closes: return true once it has, as a Modal's does.
  */
-export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, label, tip, className }: {
+export function Popover({ open, onOpenChange, anchor, children, align = 'start', side = 'bottom', stage = false, takeFocus = true, caret = false, onCloseFocus, label, tip, className }: {
   open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; children: ReactNode;
-  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; label: string; tip?: ReactNode; className?: string;
+  align?: 'start' | 'center' | 'end'; side?: 'top' | 'bottom'; stage?: boolean; takeFocus?: boolean; caret?: boolean | undefined;
+  onCloseFocus?: (() => boolean) | undefined; label: string; tip?: ReactNode; className?: string;
 }) {
   const returning = useRef(false);
   const trigger = <RPopover.Trigger asChild>{anchor}</RPopover.Trigger>;
@@ -41,11 +43,12 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
           // Radix focuses the anchor right after this, synchronously, if it focuses it at all (not when it already has
           // focus, or after a click elsewhere), so the mark lasts only until then.
           onCloseAutoFocus={(e) => {
-            if (!takeFocus) { e.preventDefault(); return; }
+            if (!takeFocus || onCloseFocus?.()) { e.preventDefault(); return; }
             returning.current = true;
             queueMicrotask(() => { returning.current = false; });
           }}>
           {children}
+          {caret && <RPopover.Arrow className="ac-pop-caret" width={18} height={9} />}
         </RPopover.Content>
       </RPopover.Portal>
     </RPopover.Root>
@@ -53,8 +56,8 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-/** One choice in a Select. `mark` is drawn before its name, in the list and on the button once chosen (a logo, say). */
-export interface SelectOption<T extends string> { value: T; label: string; mark?: ReactNode | undefined }
+/** One choice in a Select. `mark` is drawn before its name, in the list and on the button once chosen (a logo, say); `icon` is drawn in the list when there's no mark. */
+export interface SelectOption<T extends string> { value: T; label: string; icon?: IconName | undefined; mark?: ReactNode | undefined }
 
 /**
  * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
@@ -150,7 +153,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
     else if (e.key === 'Tab') setOpen(false);
     else if (printable(e)) to = match(e.key, i);
     else return;
-    /* Handled here: the page's own shortcuts (N for a new call) mustn't see it. Escape is left to the popover. */
+    /* Handled here: the page's own shortcuts (N to start a call) mustn't see it. Escape is left to the popover. */
     e.preventDefault();
     e.stopPropagation();
     if (to !== undefined) focusAt(to);
@@ -162,7 +165,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
         className={cn('ac-select', stage && 'is-stage', className)}>
         {options[chosen]?.mark ?? (icon && <Icon name={icon} size={15} />)}
         <span className="v ac-clamp-1">{shown}</span>
-        <Icon name={stage ? 'down' : 'chevronsUpDown'} size={15} />
+        <Icon name="down" size={15} />
       </RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
@@ -179,7 +182,7 @@ export function Select<T extends string>({ value, onChange, options, label, icon
             <div key={o.value} role="option" tabIndex={-1} aria-selected={i === chosen} className="ac-option"
               onClick={() => choose(i)}
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
-              {o.mark}
+              {o.mark ?? (o.icon && <Icon name={o.icon} size={16} className="lead" />)}
               <span>{o.label}</span>
               {i === chosen && <Icon name="check" size={15} />}
             </div>
@@ -194,23 +197,25 @@ export function Select<T extends string>({ value, onChange, options, label, icon
 const focusedElement = (): HTMLElement | null =>
   typeof document !== 'undefined' && document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
 
-/**
- * A single sheet that drops from the top: one input, never a stack of forms. Closing it puts focus back
- * where it was when it opened, since a shortcut can open it from anywhere, with no button to go back to.
- */
-export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+/** What has focus when something opens, to go back to when it closes: a shortcut can open it from anywhere, with no button to return to. */
+function useFocusBack(open: boolean) {
   const [shown, setShown] = useState(open);
-  const [back, setBack] = useState<HTMLElement | null>(null);
+  const [back, setBack] = useState<HTMLElement | null>(() => (open ? focusedElement() : null));
   if (open !== shown) {
     setShown(open);
     if (open) setBack(focusedElement());
   }
+  return (e: Event) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } };
+}
+
+/** A single sheet that drops from the top around one input, for finding something. Closing it puts focus back where it was. */
+export function Sheet({ open, onOpenChange, label, children, className }: { open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; className?: string }) {
+  const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)}
-          onCloseAutoFocus={(e) => { if (back?.isConnected) { e.preventDefault(); back.focus({ preventScroll: true }); } }}>
+        <RDialog.Content aria-describedby={undefined} className={cn('ac-sheet', className)} onCloseAutoFocus={focusBack}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>
@@ -233,20 +238,28 @@ export function Tooltip({ label, children, side = 'top' }: { label: ReactNode; c
 
 /**
  * A modal over the page: centred for a choice that needs room (what to share), or rising from the
- * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil.
+ * bottom for a quick decision (leaving a call). The rest of the page waits behind a veil. Something with
+ * several questions asks them one at a time inside the one modal: no window ever opens over another.
+ * Closing it puts focus back where it was when it opened, since a shortcut can open it from anywhere;
+ * `onCloseFocus` puts it somewhere else instead, when what it came from has gone (return true once it has).
+ * Focus starts on the first thing to press, or with `focusSelf` on the modal, for one that's mostly to read.
  */
-export function Modal({ open, onOpenChange, label, children, placement = 'center', className }: {
+export const Modal = forwardRef<HTMLDivElement, {
   open: boolean; onOpenChange: (open: boolean) => void; label: string; children: ReactNode; placement?: 'center' | 'bottom'; className?: string | undefined;
-}) {
+  onCloseFocus?: (() => boolean) | undefined; focusSelf?: boolean | undefined;
+}>(function Modal({ open, onOpenChange, label, children, placement = 'center', className, onCloseFocus, focusSelf = false }, ref) {
+  const focusBack = useFocusBack(open);
   return (
     <RDialog.Root open={open} onOpenChange={onOpenChange}>
       <RDialog.Portal>
         <RDialog.Overlay className="ac-scrim" />
-        <RDialog.Content aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}>
+        <RDialog.Content ref={ref} aria-describedby={undefined} className={cn('ac-modal', placement === 'bottom' && 'is-bottom', className)}
+          onOpenAutoFocus={focusSelf ? (e) => { e.preventDefault(); if (e.currentTarget instanceof HTMLElement) e.currentTarget.focus(); } : undefined}
+          onCloseAutoFocus={(e) => { if (onCloseFocus?.()) e.preventDefault(); else focusBack(e); }}>
           <RDialog.Title className="sr-only">{label}</RDialog.Title>
           {children}
         </RDialog.Content>
       </RDialog.Portal>
     </RDialog.Root>
   );
-}
+});
