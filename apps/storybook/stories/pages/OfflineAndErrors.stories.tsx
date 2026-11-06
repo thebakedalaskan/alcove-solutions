@@ -1,7 +1,7 @@
 /*
  * What a screen shows when it can't load: offline, it says so and what still works (Record, for someone signed in on this
  * browser who records without a connection); anything else, that the page didn't load, with Try again; and an address
- * that leads nowhere (features/shell/OfflinePage.tsx, routes/__root.tsx).
+ * that leads nowhere, with the Drive offered (features/shell/OfflinePage.tsx, routes/$.tsx).
  */
 import type { Meta } from '@storybook/react-vite';
 import { phone } from '../../src/call';
@@ -28,5 +28,8 @@ export const CantReachAlcove = page('/home', 'busy', {
 /** Anything else: the page didn't load, with Try again. */
 export const DidntLoad = page('/home', 'busy', { beforeEach: changing(troubled({ 'notes.inbox': 'failed' })) });
 export const DidntLoadPhone = phone(DidntLoad);
-/** An address that leads nowhere. */
+/** An address that leads nowhere: Go home, or Open the Drive. */
 export const NothingHere = page('/nowhere', 'busy');
+export const NothingHerePhone = phone(NothingHere);
+/** A link from when workspaces were at /workspace: nothing's there now, and the Drive, where they are, is offered. */
+export const OldWorkspaceLink = page('/workspace/AbCdEfGhIjKlMnOpQrStUv/AbCdEfGhIjKlMnOpQrStUv', 'busy');

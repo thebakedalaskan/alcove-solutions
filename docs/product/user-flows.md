@@ -404,7 +404,8 @@ put them, and one dock at the bottom.
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
   in People. A ring that isn't answered never says they're offline: Alcove can't know.
 - **Someone asking to join.** A card drops in for the organizer with **Not now** and **Let in**, and stays until it's
-  answered. On your own, while nobody else is here, **Just you so far** keeps the link to hand.
+  answered. On your own, while nobody else is here, **Just you so far** keeps the link to hand: at the bottom left of the
+  stage, or, while the workspace is open, at the foot of its list, under Trash, where it covers none of it.
 - **Catching up**, for you alone, and not saved unless you keep an answer. **Catch up** (top bar or **More**) reads what you most likely
   missed: your time away if you just came back, what was said before you came if you joined late, or the last
   five minutes. In **Ask**, a chip says what's read (**Whole call** at first) and changes it: the last 5 or 15
