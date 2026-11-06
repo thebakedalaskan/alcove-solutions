@@ -79,6 +79,8 @@ change, in production or locally (`pnpm db:reset` is only for starting your own 
   checks nothing.
 - Test files are named `*.integration.test.ts` and run in Node with Vitest.
 - `scripts/check-tests.mjs` enforces this and runs first in `pnpm test`. Don't weaken or bypass it.
+- CI splits the integration tests across ten runners (`scripts/ci-tests.mjs`) and fails unless every test ran once.
+  Keep test files independent of each other: each runs on whichever runner its timing puts it on.
 - When you add a feature, extend `apps/api/src/flows.integration.test.ts` (or add another
   `*.integration.test.ts`) with the flow it enables. Tests sign in through the real API
   (`api.auth.signIn` on a `h.browser()` from `apps/api/src/testing/harness.ts`); never stub out
@@ -214,8 +216,9 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   pages); the board in `styles/board.css` (`bz-` the board and its rail, `bd-` the sheet and its chrome, `bf-` frames,
   `bo-` objects, `bc-` pointers, `bs-` selection, `bx-` the bar on what's selected, `bfly-` a tool's options, `bp-` small menus, `bpg-` its own page, `bl-` the
   Board menu, `pc-` the phone's add sheet; its tokens are `--bd-*`, `--bf-*`, `--note-*`, and `--line-ink` and `--line-rose` beside the existing
-  `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the other
-  screens in `styles/app.css`, `call.css` and `welcome.css`.
+  `--line` and `--line-control`; `.bt`, `.bi`, `.bm`, `.swatch`, `.c-*` and `.k-*` are unscoped there, so those names are taken); the welcome
+  page in `styles/welcome.css`, with its scenes in `welcome-note.css`, `welcome-call.css`, `welcome-team.css` and
+  `welcome-night.css` (`lp-`); the other screens in `styles/app.css` and `call.css`.
   Truncate to one or two lines with `ac-clamp-1` / `ac-clamp-2` (left-aligned): unlike `nowrap`, long text
   can't make a column wider than the screen.
   No raw hex in the app, except on the always-night call stage and in illustrations.
