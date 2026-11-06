@@ -77,8 +77,8 @@ function useHead(onNaming: (n: 'new' | 'rename') => void) {
   const spaces = useQuery({ ...q.workspaces(), enabled: ws.owner !== null });
   const close = () => { setOpen(false); setPeople(false); };
   const about: WsMenuRow[] = [];
-  if (ws.sent.role !== null) about.push({ icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setPeople(true) });
-  if (ws.sent.role === 'admin') about.push({ icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
+  if (ws.sent.role !== null) about.push({ id: 'people', icon: 'people', label: 'People', sub: peopleWords(ws.sent.people), onSelect: () => setPeople(true) });
+  if (ws.sent.role === 'admin') about.push({ id: 'rename', icon: 'pen', label: 'Rename', onSelect: () => { close(); onNaming('rename'); } });
   const named = namesIn(spaces.data ?? []);
   const list = (spaces.data ?? []).map((w) => spaceChoice(w, named));
   const choices = list.some((s) => s.id === ws.workspaceId) ? list : [{ id: ws.workspaceId, name: ws.spaceName, sub: peopleWords(ws.sent.people) }, ...list];

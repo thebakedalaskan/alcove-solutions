@@ -183,7 +183,7 @@ export interface WsShareMatch { id: string; person: AvatarPerson; sub: string; o
 function RolePicker({ role, who }: { role: WsShareRole; who: string }) {
   const [open, setOpen] = useState(false);
   if (!role.options) return <span className="role">{role.label}</span>;
-  const rows = role.options.map((o): WsMenuRow => ({ label: o.label, sub: o.sub, ticked: o.ticked, tone: o.caution ? 'caution' : undefined, onSelect: () => { o.onSelect(); setOpen(false); } }));
+  const rows = role.options.map((o): WsMenuRow => ({ id: o.label, label: o.label, sub: o.sub, ticked: o.ticked, tone: o.caution ? 'caution' : undefined, onSelect: () => { o.onSelect(); setOpen(false); } }));
   return (
     <WsPopover open={open} onOpenChange={setOpen} label={`What ${who} can do`} align="end" anchor={<button type="button" className="role" aria-label={`${who}: ${role.label}`}>{role.label}<Icon name="down" size={13} /></button>}>
       <WsMenu label={`What ${who} can do`} rows={rows} className="is-role" />

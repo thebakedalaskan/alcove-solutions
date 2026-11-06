@@ -68,17 +68,17 @@ export function KeyboardBar({ editor }: { editor: EditorHandle }) {
   const then = (run: () => void) => () => { setStyles(false); run(); };
   const rows: WsMenuRow[] = [
     { type: 'head', label: 'The words you’ve selected' },
-    { label: 'Bold', icon: 'bold', onSelect: then(() => editor.toggleMark('bold')) },
-    { label: 'Italic', icon: 'italic', onSelect: then(() => editor.toggleMark('italic')) },
-    { label: 'Strikethrough', icon: 'strike', onSelect: then(() => editor.toggleMark('strike')) },
-    { label: 'Highlight', icon: 'highlighter', onSelect: then(() => editor.toggleMark('highlight')) },
+    { id: 'bold', label: 'Bold', icon: 'bold', onSelect: then(() => editor.toggleMark('bold')) },
+    { id: 'italic', label: 'Italic', icon: 'italic', onSelect: then(() => editor.toggleMark('italic')) },
+    { id: 'strike', label: 'Strikethrough', icon: 'strike', onSelect: then(() => editor.toggleMark('strike')) },
+    { id: 'highlight', label: 'Highlight', icon: 'highlighter', onSelect: then(() => editor.toggleMark('highlight')) },
     { type: 'sep' },
     { type: 'head', label: 'This line' },
-    { label: 'Text', icon: 'para', onSelect: then(() => editor.turnInto('paragraph')) },
-    { label: 'Heading 1', icon: 'h1', onSelect: then(() => editor.turnInto('h1')) },
-    { label: 'Heading 2', icon: 'h2', onSelect: then(() => editor.turnInto('h2')) },
-    { label: 'Heading 3', icon: 'h3', onSelect: then(() => editor.turnInto('h3')) },
-    { label: 'Quote', icon: 'quote', onSelect: then(() => editor.turnInto('quote')) }
+    { id: 'paragraph', label: 'Text', icon: 'para', onSelect: then(() => editor.turnInto('paragraph')) },
+    { id: 'h1', label: 'Heading 1', icon: 'h1', onSelect: then(() => editor.turnInto('h1')) },
+    { id: 'h2', label: 'Heading 2', icon: 'h2', onSelect: then(() => editor.turnInto('h2')) },
+    { id: 'h3', label: 'Heading 3', icon: 'h3', onSelect: then(() => editor.turnInto('h3')) },
+    { id: 'quote', label: 'Quote', icon: 'quote', onSelect: then(() => editor.turnInto('quote')) }
   ];
   return (
     <>
