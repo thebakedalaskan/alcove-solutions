@@ -189,7 +189,7 @@ Journeys: close's last steps, notes. Boards on the note and in sub-notes with `m
 
 ### Task 17: More, and the phone
 
-Image, From your workspace, Table, Mind map, Comment, Templates, Download as an image, Download as a PDF, Night board; journey: phone at 390 px. A table's cell makes its `Y.Text` when someone focuses it, not on their first letter, and rebinds if another browser's wins, so two people starting in one empty cell lose at most what they typed within one sync.
+Image, From your workspace, Table, Mind map, Comment, Templates, Download as an image, Download as a PDF, Night board; journey: phone at 390 px. A table's cell makes its `Y.Text` when someone focuses it, not on their first letter, and rebinds if another browser's wins, so two people starting in one empty cell lose at most what they typed within one sync. More draws only the items it's given (`moreItems`), so each one wired here appears as it's wired: on a board's own page it holds Comment alone until then. A board's page on a phone opens fitting everything, about 21% for the launch retro, where nothing can be read and pins are bigger than stickies: open it at a readable zoom, or on the first frame, as the canvas's phone does (browser review, M9).
 
 ### Task 18: Every journey, end to end
 
