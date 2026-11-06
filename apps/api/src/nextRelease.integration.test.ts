@@ -143,7 +143,8 @@ describe('what the next release stores', () => {
     expect((await action(art, host, { type: 'hand', up: true })).status).toBe(200);
     expect((await settle(host, (x) => x.participants.some((p) => p.isMe && p.hand))).breakouts.open?.rooms.length).toBe(2);
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
-    expect(after.board).toMatchObject({ open: { main: { timer, vote } }, rooms, landing, ideas });
+    // Whether a room's board is kept yet is this release's to decide as it saves, so only what the next release wrote is compared.
+    expect(after.board).toMatchObject({ open: { main: { timer, vote } }, rooms: rooms.map(({ kept: _kept, ...r }) => r), landing, ideas });
     expect(after.breakouts.open).toMatchObject({ board: working });
     expect(after.workspace.worked).toContainEqual(noted);
     await host.leave();
