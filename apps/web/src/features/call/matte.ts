@@ -1,0 +1,213 @@
+/*
+ * Alcove's matte: finds the person in each camera frame and puts something else behind them. LiveKit's
+ * ProcessorWrapper (backdrop.ts) feeds it frames and makes the track; this replaces LiveKit's own transformer, whose
+ * yes/no mask with nothing carried between frames made the edge shimmer while someone sat still.
+ *
+ * Each frame:
+ * 1. MediaPipe's landscape selfie segmenter (144×256, on this device) gives how sure it is that each pixel is the
+ *    person, from 0 to 1.
+ * 2. That's smoothed over time: where it changes a little (the model being unsure) it moves slowly, so the edge
+ *    settles; where it changes a lot (someone moving) it follows at once, so nothing trails.
+ * 3. matteGl.ts sizes it up to the frame along the camera's own colour edges, and lays the person over the blurred
+ *    room or a picture.
+ */
+import { FilesetResolver, ImageSegmenter } from '@mediapipe/tasks-vision';
+import { VideoTransformer, type VideoTransformerInitOptions } from '@livekit/track-processors';
+import { log } from '~/lib/log';
+import { MatteGl, type Edges } from './matteGl';
+
+const mlog = log.child({ component: 'matte' });
+
+/** What shows behind someone: blur, or a picture's URL. */
+export type Look = { blur: true } | { picture: string };
+export type MatteOptions = { look: Look };
+
+const ASSETS = { wasm: '/mediapipe/wasm', model: '/mediapipe/selfie_segmenter_landscape.tflite' };
+/** The model's own input size: what each frame is made before it's segmented. */
+const MASK_W = 256;
+const MASK_H = 144;
+
+/* How the mask settles over time: per frame, it moves SLOW of the way to the new reading where they differ by LO or
+ * less, FAST where they differ by HI or more, and in between along a smooth curve. */
+const SLOW = 0.12;
+const FAST = 0.8;
+const LO = 0.08;
+const HI = 0.35;
+/** How the edge is drawn: colour difference that still counts as the same surface, and where the edge fades from
+ * room to person. Leaning low keeps a little room rather than cutting into someone's head. */
+const EDGES: Edges = { colorSigma: 0.1, lo: 0.3, hi: 0.6 };
+/** The blur's spread, in pixels of the camera frame. */
+const BLUR_SIGMA = 14;
+/** How many frames between debug lines with the time each took. */
+const REPORT_EVERY = 300;
+
+const smoothstep = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+export class Matte extends VideoTransformer<MatteOptions> {
+  private options: MatteOptions;
+  private segmenter: ImageSegmenter | null = null;
+  private draw: MatteGl | null = null;
+  /** The frame made small for the model. */
+  private small: OffscreenCanvas | null = null;
+  private smallCtx: OffscreenCanvasRenderingContext2D | null = null;
+  /** The mask as it's settled so far, MASK_W×MASK_H. */
+  private steady: Float32Array | null = null;
+  private picture: { path: string; bitmap: ImageBitmap } | null = null;
+  private failed = false;
+  private timing = { frames: 0, ms: 0 };
+
+  constructor(options: MatteOptions) {
+    super();
+    this.options = options;
+  }
+
+  static get isSupported(): boolean {
+    return typeof OffscreenCanvas !== 'undefined' && new OffscreenCanvas(1, 1).getContext('webgl2') !== null;
+  }
+
+  override async init(opts: VideoTransformerInitOptions): Promise<void> {
+    await super.init(opts);
+    await this.start();
+  }
+
+  override async restart(opts: VideoTransformerInitOptions): Promise<void> {
+    this.canvas = opts.outputCanvas;
+    this.inputVideo = opts.inputElement;
+    this.isDisabled = false;
+    this.drop();
+    await this.start();
+  }
+
+  async update(options: MatteOptions): Promise<void> {
+    this.options = options;
+    await this.showLook();
+  }
+
+  override async destroy(): Promise<void> {
+    await super.destroy();
+    this.drop();
+    this.segmenter?.close();
+    this.segmenter = null;
+    this.picture?.bitmap.close();
+    this.picture = null;
+  }
+
+  transform(frame: VideoFrame, controller: TransformStreamDefaultController<VideoFrame>): void {
+    const canvas = this.canvas;
+    if (this.isDisabled || this.failed || !canvas || !this.draw || !this.segmenter || !this.smallCtx || !this.small || frame.codedWidth === 0) {
+      controller.enqueue(frame);
+      return;
+    }
+    const started = performance.now();
+    try {
+      const width = frame.displayWidth;
+      const height = frame.displayHeight;
+      if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+      this.smallCtx.drawImage(frame, 0, 0, MASK_W, MASK_H);
+      const steady = this.settle(this.personIn(this.small, started));
+      this.draw.draw(frame, steady, MASK_W, MASK_H, width, height, BLUR_SIGMA, EDGES);
+      controller.enqueue(new VideoFrame(canvas, { timestamp: frame.timestamp }));
+      frame.close();
+      this.timed(performance.now() - started);
+    } catch (e) {
+      // Showing the camera as it is beats showing nothing; one line, not one per frame.
+      this.failed = true;
+      mlog.error('the matte failed, so frames pass through as they are', { err: e });
+      controller.enqueue(frame);
+    }
+  }
+
+  /* ---------- each frame ---------- */
+
+  /** How sure the model is that each pixel is the person, MASK_W×MASK_H, top row first. */
+  private personIn(image: OffscreenCanvas, at: number): Float32Array {
+    const got: { mask: Float32Array | null } = { mask: null };
+    // The masks only live inside the callback, so the person's is copied out.
+    this.segmenter?.segmentForVideo(image, at, (result) => {
+      const masks = result.confidenceMasks ?? [];
+      // The selfie models give one mask, the person; a model with a background mask first gives the person last.
+      const person = masks[masks.length - 1];
+      got.mask = person ? person.getAsFloat32Array().slice() : null;
+    });
+    if (!got.mask) throw new Error('The segmenter gave no mask.');
+    return got.mask;
+  }
+
+  /** `reading` folded into the settled mask, which it returns. */
+  private settle(reading: Float32Array): Float32Array {
+    const steady = this.steady;
+    if (!steady || steady.length !== reading.length) { this.steady = reading; return reading; }
+    for (let i = 0; i < reading.length; i++) {
+      const now = reading[i] ?? 0;
+      const was = steady[i] ?? 0;
+      const k = SLOW + (FAST - SLOW) * smoothstep(LO, HI, Math.abs(now - was));
+      steady[i] = was + k * (now - was);
+    }
+    return steady;
+  }
+
+  private timed(ms: number): void {
+    this.timing.frames += 1;
+    this.timing.ms += ms;
+    if (this.timing.frames < REPORT_EVERY) return;
+    mlog.debug('matte frame time', { frames: this.timing.frames, msPerFrame: Math.round((this.timing.ms / this.timing.frames) * 10) / 10 });
+    this.timing = { frames: 0, ms: 0 };
+  }
+
+  /* ---------- setting up ---------- */
+
+  private async start(): Promise<void> {
+    const canvas = this.canvas;
+    if (!canvas) throw new Error('The matte has no canvas to draw on.');
+    // The base class set up LiveKit's drawing on this canvas; this draws its own instead.
+    this.gl?.cleanup();
+    const gl = canvas instanceof OffscreenCanvas ? canvas.getContext('webgl2') : canvas.getContext('webgl2');
+    if (!(gl instanceof WebGL2RenderingContext)) throw new Error('This browser has no WebGL2 for the matte.');
+    this.draw = new MatteGl(gl);
+    this.small = new OffscreenCanvas(MASK_W, MASK_H);
+    this.smallCtx = this.small.getContext('2d', { willReadFrequently: false });
+    this.steady = null;
+    this.failed = false;
+    if (!this.segmenter) {
+      const files = await FilesetResolver.forVisionTasks(ASSETS.wasm);
+      // Its own canvas, so MediaPipe's WebGL state never meets the drawing's.
+      this.segmenter = await ImageSegmenter.createFromOptions(files, {
+        baseOptions: { modelAssetPath: ASSETS.model, delegate: 'GPU' },
+        canvas: new OffscreenCanvas(1, 1),
+        runningMode: 'VIDEO',
+        outputConfidenceMasks: true,
+        outputCategoryMask: false
+      });
+    }
+    await this.showLook();
+  }
+
+  private async showLook(): Promise<void> {
+    const look = this.options.look;
+    if (!('picture' in look)) { this.draw?.setPicture(null); return; }
+    let picture = this.picture;
+    if (picture?.path !== look.picture) {
+      const bitmap = await loadPicture(look.picture);
+      this.picture?.bitmap.close();
+      picture = { path: look.picture, bitmap };
+      this.picture = picture;
+    }
+    this.draw?.setPicture(picture.bitmap);
+  }
+
+  private drop(): void {
+    this.draw?.destroy();
+    this.draw = null;
+    this.small = null;
+    this.smallCtx = null;
+    this.steady = null;
+  }
+}
+
+async function loadPicture(src: string): Promise<ImageBitmap> {
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = src;
+  await img.decode();
+  return createImageBitmap(img);
+}

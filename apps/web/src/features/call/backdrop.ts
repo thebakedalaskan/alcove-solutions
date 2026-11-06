@@ -1,25 +1,21 @@
 /*
- * Puts something else behind someone on camera: blur, or a picture. LiveKit's background processor finds the person
- * in each frame (MediaPipe's selfie segmenter, on this device) and draws the rest over, before anything is encrypted
- * or sent. Its code is loaded only once someone picks a background, and the model and its WebAssembly come from
- * Alcove's own origin (vite.config.ts, public/mediapipe): nothing is fetched from anywhere else.
+ * Puts something else behind someone on camera: blur, or a picture. Alcove's matte (matte.ts) finds the person in
+ * each frame (MediaPipe's selfie segmenter, on this device) and draws the rest over, and LiveKit's ProcessorWrapper
+ * makes a track of it, before anything is encrypted or sent. Its code is loaded only once someone picks a
+ * background, and the model and its WebAssembly come from Alcove's own origin (vite.config.ts, public/mediapipe):
+ * nothing is fetched from anywhere else.
  */
-import type { BackgroundProcessor, SwitchBackgroundProcessorOptions } from '@livekit/track-processors';
+import type { ProcessorWrapper } from '@livekit/track-processors';
+import type { Look, Matte, MatteOptions } from './matte';
 
-type Processor = ReturnType<typeof BackgroundProcessor>;
-/** What the processor shows behind someone, ready for it: blur, or a picture's URL. */
-export type Look = { blur: true } | { picture: string };
-
-const ASSETS = { tasksVisionFileSet: '/mediapipe/wasm', modelAssetPath: '/mediapipe/selfie_segmenter.tflite' };
-const BLUR_RADIUS = 14;
-
-const modeOf = (look: Look): SwitchBackgroundProcessorOptions =>
-  'picture' in look ? { mode: 'virtual-background', imagePath: look.picture } : { mode: 'background-blur', blurRadius: BLUR_RADIUS };
+export type { Look } from './matte';
+type Processor = ProcessorWrapper<MatteOptions, Matte>;
 
 let support: Promise<boolean> | null = null;
 /** Whether this browser can do it: WebGL2, and a way to make a video track from frames. Asked once per page. */
 export function canBackdrop(): Promise<boolean> {
-  support ??= import('@livekit/track-processors').then((m) => m.supportsBackgroundProcessors(), () => false);
+  support ??= Promise.all([import('@livekit/track-processors'), import('./matte')])
+    .then(([lk, m]) => lk.ProcessorWrapper.isSupported && m.Matte.isSupported, () => false);
   return support;
 }
 
@@ -35,17 +31,17 @@ export class Backdrop {
 
   /** The track it makes from `camera` with `look` behind: from the same processor while the camera's the same. */
   async show(camera: MediaStreamTrack, look: Look): Promise<MediaStreamTrack> {
-    const [{ BackgroundProcessor }, { Track }] = await Promise.all([import('@livekit/track-processors'), import('livekit-client')]);
+    const [{ ProcessorWrapper }, { Matte }, { Track }] = await Promise.all([import('@livekit/track-processors'), import('./matte'), import('livekit-client')]);
     if (this.processor && this.source === camera) {
-      await this.processor.switchTo(modeOf(look));
+      await this.processor.updateTransformerOptions({ look });
     } else {
       const element = this.play(camera);
       const opts = { kind: Track.Kind.Video, track: camera, element };
       if (this.processor) {
         await this.processor.restart(opts);
-        await this.processor.switchTo(modeOf(look));
+        await this.processor.updateTransformerOptions({ look });
       } else {
-        const p = BackgroundProcessor({ ...modeOf(look), assetPaths: ASSETS });
+        const p = new ProcessorWrapper<MatteOptions, Matte>(new Matte({ look }), 'alcove-backdrop');
         this.processor = p;
         await p.init(opts);
       }

@@ -181,6 +181,9 @@ importers:
       '@livekit/track-processors':
         specifier: 0.8.2
         version: 0.8.2(@types/dom-mediacapture-transform@0.1.12)(livekit-client@2.23.0(@types/dom-mediacapture-record@1.0.22))
+      '@mediapipe/tasks-vision':
+        specifier: 0.10.14
+        version: 0.10.14
       '@tanstack/react-query':
         specifier: ^5.105.3
         version: 5.105.3(@types/react@19.3.0)(react@19.3.1)

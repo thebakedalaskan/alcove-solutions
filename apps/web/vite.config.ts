@@ -11,12 +11,11 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 const apiPort = loadEnv('development', '../..', 'API_')['API_PORT'] ?? '8787';
 
 /*
- * MediaPipe's WebAssembly for camera backgrounds (features/call/backdrop.ts), served from this origin at
- * /mediapipe/wasm: the exact version LiveKit's background processor was built with, never fetched from a CDN. The
- * model it runs is in public/mediapipe.
+ * MediaPipe's WebAssembly for camera backgrounds (features/call/matte.ts), served from this origin at
+ * /mediapipe/wasm: the exact version the app imports, never fetched from a CDN. The model it runs is in
+ * public/mediapipe.
  */
-const fromProcessor = createRequire(createRequire(import.meta.url).resolve('@livekit/track-processors'));
-const MEDIAPIPE_WASM = join(dirname(fromProcessor.resolve('@mediapipe/tasks-vision')), 'wasm');
+const MEDIAPIPE_WASM = join(dirname(createRequire(import.meta.url).resolve('@mediapipe/tasks-vision')), 'wasm');
 function mediapipe(): Plugin {
   const files = readdirSync(MEDIAPIPE_WASM);
   return {
