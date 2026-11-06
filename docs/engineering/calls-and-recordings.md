@@ -1752,9 +1752,7 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
   its size) and shows and sends the drawn one, so the preview, your tile and the call all have it and nothing in
   `livekit.ts` changes. It happens before anything is encrypted or sent. A new camera track goes through the
   processor before it's put in, so what's behind someone never goes out for a frame; if the background can't be
-  drawn the camera turns off and says so. In development, a switch under the picker shows the matte in quarters
-  (the model's reading, the settled mask, the edge, the result) with how much each moves per frame (`matteDebug.ts`).
-  The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
+  drawn the camera turns off and says so. The matte's code and its 16 MB model load only once someone has a background (the service worker doesn't keep
   them), and the
   model (`public/mediapipe`) and its WebAssembly (served by a plugin in `vite.config.ts`, the version of
   `@mediapipe/tasks-vision` the app imports) come from Alcove's own origin: nothing is fetched elsewhere, and the policy allows
