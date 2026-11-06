@@ -10,7 +10,7 @@ import {
   AlcoveApiError, DOC_SEED, servedType, type DocSession, type DocSize, type DocStatus, type DocUnsentCopy, type DocVersion, type DocVersionSummary,
   type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MediaPictureOptions, type MediaUploadOptions, type MentionBody, type MentionNotice,
   type SearchDoc, type ShareEntry, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspaceMedia, type WorkspaceMention, type WorkspacePerson,
-  type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
+  type WorkspaceHere, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree, type WorkspaceView, type WorkspaceWhere
 } from '@alcove/api';
 import { itemsOnPage } from '@alcove/api/retire';
 import { Awareness } from 'y-protocols/awareness';
@@ -165,15 +165,29 @@ export function mention(id: string, documentId: string, _tag: MentionBody): void
   editable(id, documentId);
 }
 
+/** Someone tags you in a document: it waits in the world until it's seen, and the workspace's stream says so at once. */
+export function tagYou(tag: MentionNotice): void {
+  current().mentions.unshift(tag);
+  for (const live of watching) live.refresh(tag.workspaceId);
+}
+
 /* ---------- live ---------- */
+
+/** Who else is in each workspace now, by its ID: people in a call (src/api/call.ts) say where they are. */
+const presence = new Map<string, WorkspaceHere[]>();
+/** Everyone else in a workspace, whole, as its stream says it whenever that changes. */
+export function hereIn(id: string, here: WorkspaceHere[]): void {
+  presence.set(id, here);
+  for (const live of watching) live.refresh(id);
+}
 
 const watching = new Set<LiveWorkspace>();
 class LiveWorkspace extends Pushed<WorkspaceView> implements WorkspaceLive {
   constructor(private readonly id: string) {
-    super({ status: 'live', tree: structuredClone(treeFor(id)), here: [], mentions: mentionsIn(id) });
+    super({ status: 'live', tree: structuredClone(treeFor(id)), here: presence.get(id) ?? [], mentions: mentionsIn(id) });
     watching.add(this);
   }
-  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), mentions: mentionsIn(id) })); }
+  refresh(id: string): void { if (id === this.id) this.update((v) => ({ ...v, tree: structuredClone(treeFor(id)), here: presence.get(id) ?? [], mentions: mentionsIn(id) })); }
   present(_where: WorkspaceWhere): void { /* Nobody else is here to see where you are. */ }
   async seen(mentionId: string): Promise<void> {
     await pause(60);
@@ -342,6 +356,7 @@ export function forgetDocuments(): void {
   for (const d of docs.values()) d.destroy();
   docs.clear();
   watching.clear();
+  presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();
 }
