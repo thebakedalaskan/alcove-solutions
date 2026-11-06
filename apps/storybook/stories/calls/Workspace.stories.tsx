@@ -73,6 +73,12 @@ const pickDesign = (home: string): Play => async (c) => {
 /** The design review's first Workspace: a new home named after the call and the day, with the call's folder in it. */
 export const OnItsHome = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openWorkspace });
 export const OnItsHomePhone = phone(OnItsHome);
+/** On your own with the workspace open: the link for anyone to ask to join stays on the stage, as it does without the workspace, clear of the list. */
+export const JustYou = inCall({
+  scenario: 'on-their-own',
+  call: { id: 'm-alone', title: 'Contract review', startsAt: iso(0, 16, 10), minutes: 30, code: 'ctr-revw-ana', guests: [] }
+}, { play: openWorkspace });
+export const JustYouPhone = phone(JustYou);
 
 /** The organizer's picker: their workspaces, the call's home marked "This call's home", and New workspace. */
 export const ThePicker = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }, { play: openPicker('Design review · 4 Nov') });

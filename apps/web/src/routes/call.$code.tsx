@@ -1236,6 +1236,17 @@ function InCall({ session }: { session: CallSession }) {
     };
   });
   const justYou = organizer && others.length === 0 && !open && team.data !== undefined && !ringable(team.data, me?.person).length;
+  /**
+   * On your own, the link for anyone to ask to join: at the bottom left of the stage, or at the foot of the workspace's list
+   * while that's in sight, where it covers nothing (`WorkspaceCall.foot`). One element while it's the same, so the workspace
+   * doesn't draw again for it.
+   */
+  const aloneCard = useMemo(() => (justYou && !cc ? (
+    <div className="rg-alone">
+      <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
+      <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
+    </div>
+  ) : null), [justYou, cc, state.code]);
   const alone = others.length === 0 && !open && !justYou && !waiting.length && !(organizer && team.isPending) && (
     <div className="ic-spill"><Icon name="link" size={15} /><span className="tx2">Nobody else is here yet</span>
       <button type="button" className="sp-btn is-strong" onClick={() => copy(state.code)}>Copy link</button>
@@ -1357,6 +1368,8 @@ function InCall({ session }: { session: CallSession }) {
     };
   }, [solved, size, seatsKey, top, bottom, layout.prefs.ratio, layout.layout.split, horizon, loudKey, zenKey, surfaces.ws]);
   const clear = mainRoom(solved);
+  /** The workspace is open and in sight. What's clear starts at its left, so its list has the bottom left of it. */
+  const wsInSight = work.open && !!solved.rects.ws;
   /** What a panel is called, on its handle and for the keyboard. */
   const panelName = (leaf: Leaf): string => {
     if (leaf === 'people') return 'People';
@@ -1438,7 +1451,7 @@ function InCall({ session }: { session: CallSession }) {
 
   /* Presenting: what's presented where you are, drawn over your own page or worked on beside it (presenting.ts). */
   const presenting = usePresenting({
-    session, present: space.present, participants: state.participants, open: work.open, inSight: work.open && !!solved.rects.ws,
+    session, present: space.present, participants: state.participants, open: work.open, inSight: wsInSight,
     show: work.act.show, hide: work.act.hide, go: work.act.go, say: work.act.say, failed: work.act.failed
   });
   /* A video played for everyone: the call's one player, until the call ends here (PlayTogether.tsx). */
@@ -1470,8 +1483,8 @@ function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} panels={panels} solved={solved} facts={facts} arrange={layout.arrange} arrangeLive={layout.arrangeLive} onLive={setResizing} onArranged={onCustom}
           label={panelName} group={sidePanel} swap={phone && swap} handle={hostHandle}
           ws={work.mounted && !callOver ? () => (
-            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={work.open && !!solved.rects.ws} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
-              listOff={!solved.A.list} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenting={presenting} playing={playing} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
+            <WorkspacePanel workspace={space} organizer={organizer} pass={session.ticket.pass} at={work.at} settled={work.settled} showing={wsInSight} finding={work.finding} zen={zenOffered ? zenOn : null} people={spacePeople} invited={spaceInvited} reach={work.reach}
+              listOff={!solved.A.list} listPeek={work.peek} listWanted={work.listWanted} live={liveCall} act={work.act} presenting={presenting} playing={playing} foot={wsInSight ? aloneCard : null} onToggleList={toggleList} onShowList={onShowList} onToggleZen={toggleZen} />
           ) : undefined}
           tiles={(
             <>
@@ -1493,12 +1506,7 @@ function InCall({ session }: { session: CallSession }) {
                     {state.waiting.length > 2 && <button type="button" className="rg-more" onClick={() => openPanel('people')}><Icon name="people" size={15} />{state.waiting.length - 2} more asking</button>}
                   </div>
                 )}
-                {justYou && !cc && (
-                  <div className="rg-alone">
-                    <div><b>Just you so far</b><p>Anyone with the link can ask to join.</p></div>
-                    <LinkRow link={shownUrl(state.code)} onCopy={() => copyUrl(state.code)} />
-                  </div>
-                )}
+                {!wsInSight && aloneCard}
               </motion.div>
             </>
           )} />
