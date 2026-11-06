@@ -11,7 +11,8 @@
 import { addReply, addThread, hasBox, observeComments, readThreads, resolveThread, type BoardAuthor, type BoardObject, type BoardReply, type BoardThread, type BoardView, type PlacedObject } from '@alcove/board';
 import { firstName } from '@alcove/api';
 import { BoardComment, WsCommentCompose, WsCommentThread, WsPopover, type AvatarPerson, type WsComment } from '@alcove/ui';
-import { useEffect, useMemo, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react';
+import type * as Y from 'yjs';
 import { useBoardState, type Board } from './useBoard';
 
 /** What a board's comments need from wherever it is. */
@@ -90,12 +91,18 @@ export class BoardCommentsStore {
   }
 }
 
+/** How many times each board's comments have changed: a new count is what has them read again. */
+const said = new WeakMap<Y.Doc, number>();
+
 /** The threads on what's on the board, read again as comments change, or as what they're on comes and goes. */
 function useThreads(board: Board): BoardThread[] {
   const view = useBoardState(board, (s) => s.view);
-  const [said, setSaid] = useState(0);
-  useEffect(() => observeComments(board.doc, () => setSaid((n) => n + 1)), [board]);
-  return useMemo(() => (said >= 0 ? readThreads(board.doc, view) : []), [board, view, said]);
+  const subscribe = useCallback((changed: () => void) => observeComments(board.doc, () => {
+    said.set(board.doc, (said.get(board.doc) ?? 0) + 1);
+    changed();
+  }), [board]);
+  const times = useSyncExternalStore(subscribe, () => said.get(board.doc) ?? 0);
+  return useMemo(() => readThreads(board.doc, view), [board, view, times]);
 }
 
 const useOpen = (store: BoardCommentsStore): CommentOpen => useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
