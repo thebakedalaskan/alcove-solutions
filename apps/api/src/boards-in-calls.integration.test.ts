@@ -1763,7 +1763,9 @@ describe('boards in breakout rooms', () => {
     looking();
     // It saved the rooms closed: nothing's open in them, their boards are on their way back, and their part of the keys is gone.
     const kept = await keptOf(r);
-    expect({ rooms: kept.breakouts.open, open: Object.keys(kept.board.open), landing: kept.board.landing !== null }).toEqual({ rooms: null, open: ['main'], landing: true });
+    // Their boards are on their way back, or already back if the landing that save started has finished.
+    const back = kept.board.landing !== null || (await mainBoard(r))?.board.frames.some((f) => f.title === 'One') === true;
+    expect({ rooms: kept.breakouts.open, open: Object.keys(kept.board.open), back }).toEqual({ rooms: null, open: ['main'], back: true });
     expect(await keysOf(r.host.ticket.callId, r.one)).toBe(0);
     // Each room's board is everyone invited's at once, and comes back with whatever's done next.
     await until(async () => (await entries(one)) === 3, 'One’s board to be everyone invited’s');
