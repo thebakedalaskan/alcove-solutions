@@ -307,7 +307,7 @@ describe('host hand-off', () => {
     expect(code(await kofi.call.remove(host.ticket.identity).catch((e: unknown) => e))).toBe('invalid');
     expect(code(await kofi.call.setNotes(false).catch((e: unknown) => e))).toBe('forbidden');
     expect(code(await kofi.call.pause().catch((e: unknown) => e))).toBe('forbidden');
-    expect((await asMember(kofi.call, '/actions', { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5 })).status).toBe(403);
+    expect((await asMember(kofi.call, '/actions', { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } })).status).toBe(403);
     expect(code(await kofi.call.remove(kofi.call.ticket.identity).catch((e: unknown) => e))).toBe('invalid');
     await kofi.call.remove(guest.call.ticket.identity);
     await waitFor(() => !members(kofi.call).includes(guest.call.ticket.identity), 'Sam out of the group');
@@ -366,7 +366,7 @@ describe('host hand-off', () => {
   it('hands the call on while breakout rooms are open: the stand-in makes every room’s group, and nobody moves', async () => {
     const { host, hostRoom, people: [priya, kofi, lena] } = await hostedCall(['Priya', 'Kofi', 'Lena']);
     if (!priya || !kofi || !lena) throw new Error('Priya, Kofi and Lena expected');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = (await settle(host, (x) => x.breakouts.open !== null, 'rooms open')).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -400,7 +400,7 @@ describe('host hand-off', () => {
     const { org, host, hostRoom, people: [kofi, mia, lena], guest } = await hostedCall(['Kofi', 'Mia', 'Lena'], { guest: 'Sam' });
     if (!kofi || !mia || !lena || !guest) throw new Error('Kofi, Mia, Lena and Sam expected');
     const sam = guest.call;
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = (await settle(host, (x) => x.breakouts.open !== null, 'rooms open')).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await inPlace(kofi.call, design);
     await inPlace(mia.call, design);

@@ -3,21 +3,26 @@
  * itself under it, and its seal, which says how it's saving. Reconnecting and Couldn't save take the pill at the top of the
  * sheet too, as in a call. Someone who can only look has no tools, and the seal says View only. Who else is here sits at the
  * end of the bar, beside Start a call here. What's done offline is kept on this device, as a document's is, and goes when
- * the connection's back; a board that goes from under someone says so in its place.
+ * the connection's back; a board that goes from under someone says so in its place. More beside the tools has what it has in a
+ * call: a picture kept in the board's files, a link to something in this workspace, a table, a mind map, a comment and a
+ * template. On a phone the page is the phone's board: no tools beside it, + to add a sticky, and it opens where it can be read.
  */
-import { firstName, type DocStatus, type WorkspaceItem } from '@alcove/api';
+import { errorCode, firstName, type WorkspaceItem } from '@alcove/api';
 import type { BoardReply } from '@alcove/board';
-import { BoardPill, BoardPop, Button, WsCantOpen, WsDoc, WsDocHead, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
-import { useQuery } from '@tanstack/react-query';
+import { BoardPop, Button, WsCantOpen, WsDoc, WsDocHead, WsGoneBar, WsOfflineEmpty, WsPopover, WsUnavailable, wsToast, type AvatarPerson, type BoardNaming, type IconName } from '@alcove/ui';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Transaction } from 'yjs';
+import { boardPictures, boardUpload, linkableIn } from '~/features/board/around';
 import type { BoardCommenting } from '~/features/board/comments';
 import { BoardSurface } from '~/features/board/lazy';
+import type { BoardLinks } from '~/features/board/more/objects';
 import { useBoardPeople } from '~/features/board/people';
-import { FollowingPill } from '~/features/board/pills';
+import { FollowingPill, StandingPill } from '~/features/board/pills';
+import { sealedOnPage, standingOf, useChangesSinceSaved, type PopRow } from '~/features/board/standing';
 import { useCallFlow } from '~/features/shell/context';
-import { useLive, useOnline } from '~/lib/live';
-import { q } from '~/lib/queries';
+import { useLive, useMedia, useOnline } from '~/lib/live';
+import { log } from '~/lib/log';
+import { q, useSortStickies } from '~/lib/queries';
 import { focusRow } from './actions';
 import { useWs, type Ws } from './context';
 import { canKeepEdits } from './keep';
@@ -28,67 +33,29 @@ import { foldersAbove, nameOf } from './tree';
 /** Where a board is: its workspace and the folders it's in. Its own name is on its bar, below. */
 const crumbsAbove = (ws: Ws, item: WorkspaceItem): string[] => [...(ws.sent.name === null ? [] : [ws.spaceName]), ...foldersAbove(ws.tree, item.id).map(nameOf)];
 
+const blog = log.child({ component: 'board-page' });
+
+/**
+ * Start a call here: the start flow, with this board brought to the call from your library, and opened for everyone as the
+ * call starts when you can add to it. What you can bring is read as the page opens, so it's there by the time you press.
+ */
+function useStartHere(workspaceId: string, item: WorkspaceItem, name: string): () => void {
+  const flow = useCallFlow();
+  const qc = useQueryClient();
+  useQuery(q.documents());
+  return useCallback(() => {
+    qc.ensureQueryData(q.documents()).then((library) => {
+      const brought = library.workspaces.find((w) => w.id === workspaceId)?.documents.find((d) => d.item === item.id);
+      flow.start(brought ? { documents: [brought], ...(item.role === 'edit' ? { open: { workspaceId, documentId: item.id, name } } : {}) } : {});
+    }, (e: unknown) => {
+      blog.info('what you can bring wasn’t read; the call starts without the board', { workspaceId, code: errorCode(e) });
+      flow.start();
+    });
+  }, [flow, qc, workspaceId, item.id, item.role, name]);
+}
+
 /** What's open from the bar: the menu under the name, what the seal says, or the share sheet. */
 type Pop = 'name' | 'seal' | 'share' | null;
-
-/** How long changes go on counting as one, so a drag or a sentence is one change and not a hundred. */
-const ONE_CHANGE_MS = 1_000;
-
-/**
- * How many changes made here haven't been saved: each run of edits with no pause in it is one, counted from when everything
- * was last saved. It's what Couldn't save says is only on this screen.
- */
-function useChangesSinceSaved(opened: Opened, status: DocStatus): number {
-  const { doc } = opened.session;
-  const [count, setCount] = useState(0);
-  const last = useRef(0);
-  const saved = status.status === 'saved' && !status.unsent;
-  useEffect(() => { if (saved) setCount(0); }, [saved]);
-  useEffect(() => {
-    const changed = (tr: Transaction) => {
-      // Someone else's, or nothing at all, such as the board reading itself as it opens.
-      if (!tr.local || (tr.changed.size === 0 && tr.deleteSet.clients.size === 0)) return;
-      const now = Date.now();
-      if (now - last.current > ONE_CHANGE_MS) setCount((n) => n + 1);
-      last.current = now;
-    };
-    doc.on('afterTransaction', changed);
-    return () => doc.off('afterTransaction', changed);
-  }, [doc]);
-  return count;
-}
-
-/** A line the seal's pop says. */
-interface PopRow { icon: IconName; text: string }
-
-/**
- * What the seal and the pill say for how the board stands, and what the seal says when it's pressed: the same standing, in the
- * same words. Where it's kept is said only while it's there.
- */
-interface Standing { seal: string; icon: IconName; title: string; pop: { title: string; rows: PopRow[] }; pill?: { icon: IconName; title: string; text: string; action?: { label: string; run: () => void } | undefined } | undefined }
-
-const UNREAD: PopRow = { icon: 'sealed', text: 'Alcove can’t read it.' };
-
-/** `kept` says where it's saved, for someone in the workspace, and null for anyone else. */
-function standingOf(status: DocStatus, offline: boolean, readOnly: boolean, changes: number, tryAgain: (() => void) | undefined, kept: PopRow | null): Standing {
-  const where = kept ? [kept] : [];
-  if (readOnly) {
-    const text = 'You can look round and follow people.';
-    return { seal: 'View only', icon: 'eye', title: `View only. ${text}`, pop: { title: 'View only', rows: [{ icon: 'eye', text }, ...where, UNREAD] } };
-  }
-  if (status.status === 'failed' || (status.closed === 'session' && status.unsent)) {
-    const text = changes > 1 ? `Your last ${changes} changes are only here.` : 'Your last change is only here.';
-    return {
-      seal: 'Not saved', icon: 'cloudOff', title: `Couldn’t save. ${text}`, pop: { title: 'Couldn’t save', rows: [{ icon: 'cloudOff', text }, UNREAD] },
-      pill: { icon: 'cloudOff', title: 'Couldn’t save', text, action: tryAgain && { label: 'Try again', run: tryAgain } }
-    };
-  }
-  if (offline) {
-    const text = 'Keep going. Your changes are safe here.';
-    return { seal: 'Reconnecting', icon: 'wifiOff', title: `Reconnecting. ${text}`, pop: { title: 'Reconnecting', rows: [{ icon: 'wifiOff', text }, UNREAD] }, pill: { icon: 'wifiOff', title: 'Reconnecting', text } };
-  }
-  return { seal: 'Sealed', icon: 'sealed', title: 'Sealed. Alcove can’t read this board.', pop: { title: 'Sealed', rows: [...where, UNREAD] } };
-}
 
 /** "Rename, share or copy a link": what the menu under the name lets this person do, for its tip. */
 function nameTip(doing: readonly string[]): string {
@@ -173,8 +140,8 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const offline = status.status === 'offline' || (!online && status.status !== 'failed');
   useOpensAgain(status, ready, reopen);
   useBackOnline(ws, session, offline, status);
-  const changes = useChangesSinceSaved(opened, status);
-  const flow = useCallFlow();
+  const changes = useChangesSinceSaved(opened.session, status);
+  const { mutateAsync: sortIn } = useSortStickies(ws.pass);
   const [pop, setPop] = useState<Pop>(null);
   const [naming, setNaming] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -186,10 +153,12 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
   const readOnly = item.role !== 'edit' || trashed || status.role === 'read' || status.refused === 'read-only' || (status.closed !== null && status.closed !== 'session');
   const canShare = member && item.role === 'edit';
   const name = nameOf(item);
+  const startHere = useStartHere(ws.workspaceId, item, name);
   // Edits kept on this device go again from there when it opens again: without them, nothing would be left to try.
   const tryAgain = ws.owner !== null && canKeepEdits() ? reopen : undefined;
   // Someone it's shared with from outside the workspace isn't told what the workspace is called.
-  const standing = standingOf(status, offline && ready, readOnly, changes, tryAgain, member ? { icon: 'lock', text: `Saved in ${ws.spaceName}.` } : null);
+  const kept: PopRow | null = member ? { icon: 'lock', text: `Saved in ${ws.spaceName}.` } : null;
+  const standing = standingOf({ status, offline: offline && ready, readOnly, changes, tryAgain, kept, sealed: sealedOnPage(kept) });
 
   /*
    * Who's here, by what they're known by in the workspace: their face from who's in it now, else from its people, else their
@@ -214,6 +183,22 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
     face: (r: BoardReply) => face(r.by, r.name),
     onResolved: (reopenThread) => ws.say(wsToast.resolved(reopenThread))
   }), [readOnly, ws.me, me, face, ws.say]);
+
+  /*
+   * What the board reaches outside itself, as it does in a call: the pictures on it, read through it; Image and From your
+   * workspace under More, for whoever can add to it; and each link's name for this person, which opens it here.
+   */
+  const { workspaceId, pass, items: inTree, go } = ws;
+  const pictures = useMemo(() => boardPictures(workspaceId, item.id, pass), [workspaceId, item.id, pass]);
+  const upload = useMemo(() => (readOnly ? undefined : boardUpload(workspaceId, item.id, pass)), [readOnly, workspaceId, item.id, pass]);
+  const linkable = useMemo(() => linkableIn(inTree), [inTree]);
+  const links = useMemo((): BoardLinks => {
+    const named = new Map(linkable.map((i) => [i.id, i]));
+    return { itemFor: (id) => named.get(id) ?? null, open: (id) => go({ kind: 'document', id }) };
+  }, [linkable, go]);
+  const toLink = useMemo(() => (readOnly ? undefined : { items: linkable.filter((i) => i.id !== item.id) }), [readOnly, linkable, item.id]);
+  // The workspace's own phone width, where the list and the page take turns.
+  const phone = useMedia('(max-width: 640px)');
 
   const nameButton = () => wrap.current?.querySelector<HTMLElement>('.bd-head .nm') ?? null;
   const backToName = () => requestAnimationFrame(() => nameButton()?.focus({ preventScroll: true }));
@@ -265,13 +250,12 @@ function OpenedBoard({ ws, item, opened, reopen }: { ws: Ws; item: WorkspaceItem
       <WsGoneBar what="board" who={trashed ? who : null} onRestore={item.role === 'edit' ? () => ws.actions.restore(item.id) : undefined} unsent={status.unsent} />
       <div ref={wrap} className="bpg">
         <Suspense>
-          <BoardSurface doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : 'page'} name={name} naming={nameField}
+          <BoardSurface doc={session.doc} awareness={session.awareness} mode={readOnly ? 'pageRead' : phone ? 'pagePhone' : 'page'} name={name} naming={nameField}
             nameTitle={nameTitle} seal={standing.seal} sealIcon={standing.icon} sealTitle={standing.title} everyone={everyone} people={people} comments={commenting}
+            pictures={pictures} upload={upload} workspace={toLink} links={links}
             onName={() => setPop((p) => (p === 'name' ? null : 'name'))} onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}
-            onCall={() => flow.start({ name })}
-            pill={(following, stop) => standing.pill
-              ? <BoardPill icon={standing.pill.icon} title={standing.pill.title} text={standing.pill.text} action={standing.pill.action?.label} onAction={standing.pill.action?.run} />
-              : following && <FollowingPill person={following} onStop={stop} />}>
+            onCall={startHere} onSort={readOnly ? undefined : (stickies) => sortIn({ workspaceId: ws.workspaceId, documentId: item.id, stickies })}
+            pill={(following, stop) => ({ standing: standing.pill && <StandingPill pill={standing.pill} />, following: following && <FollowingPill person={following} onStop={stop} /> })}>
             {pop === 'name' && <NameMenu items={items} onClose={closePop} />}
             {pop === 'seal' && <SealPop title={standing.pop.title} rows={standing.pop.rows} onClose={closePop} />}
           </BoardSurface>

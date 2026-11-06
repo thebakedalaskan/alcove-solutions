@@ -4,10 +4,13 @@
  * whether something's still there are never out of date.
  */
 import type { CallDocument, Document, DocumentKind, DocumentLibrary, WorkspaceTree } from '@alcove/api';
+import { z } from 'zod';
 import type { Deps, Owner } from '../context';
 import { b64u, closedDocumentKey, mac, utf8 } from '../crypto';
 import { NotFoundError, ValidationError } from '../errors';
 import { log } from '../log';
+import { findItem } from '../vault';
+import { WorkedDocument } from './callSpace';
 import { accountReader, broughtFrom, whoseItIs, type BroughtKind, type Reader, type Who } from './workspaceAccess';
 import { list, tree } from './workspaces';
 
@@ -36,7 +39,7 @@ const closedId = (viewer: Owner, meetingId: string, kept: string): string =>
 
 /** What can be brought from a workspace as someone sees it, newest first. Who sees what is settled by then. */
 const bringable = (t: WorkspaceTree): Document[] => t.items.flatMap((x): Document[] => (
-  x.kind !== 'folder' && x.trashedAt === null ? [{ id: broughtId(t.id, x.id), name: x.name, kind: KINDS[x.kind], by: whoseItIs(x.by), updatedAt: x.editedAt }] : []
+  x.kind !== 'folder' && x.trashedAt === null ? [{ id: broughtId(t.id, x.id), item: x.id, name: x.name, kind: KINDS[x.kind], by: whoseItIs(x.by), updatedAt: x.editedAt }] : []
 )).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
 /** A workspace as someone sees it, unless it went, or they lost it, since it was listed. */
@@ -74,6 +77,20 @@ export async function validDocuments(o: Owner, ids: string[], kept: readonly str
   const theirs = new Set(adding.length ? (await library(o)).workspaces.flatMap((w) => w.documents.map((d) => d.id)) : []);
   const unknown = adding.filter((id) => !theirs.has(id)).length;
   if (unknown || new Set(ids).size !== ids.length) throw new ValidationError('Bring documents from your own library, each once.', { context: { documents: ids.length, unknown } });
+}
+
+/** What a note keeps of what was worked on in its call, read on its own (modules/notes.ts has the rest). */
+const NoteWorked = z.object({ workedOn: z.array(WorkedDocument).default([]) });
+/**
+ * The boards open for everyone in a call, as what its organizer can bring (`Document.id`), for the next call in its series to
+ * bring as well: there they're offered first, as anything brought is. One they can't bring now isn't carried.
+ */
+export async function boardsFrom(o: Owner, noteId: string | undefined): Promise<string[]> {
+  const note = noteId ? await findItem(o, o.pool, 'note', noteId, NoteWorked) : undefined;
+  const ids = (note?.manifest.workedOn ?? []).filter((x) => x.kind === 'board' && x.open !== null).map((x) => broughtId(x.workspaceId, x.documentId));
+  if (!ids.length) return [];
+  const theirs = new Set((await library(o)).workspaces.flatMap((w) => w.documents.map((d) => d.id)));
+  return [...new Set(ids)].filter((id) => theirs.has(id));
 }
 
 /**

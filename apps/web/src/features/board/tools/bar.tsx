@@ -2,10 +2,10 @@
  * The selection bar: a small bar that only appears on what's picked, and never while it's being dragged or typed in. What it
  * offers depends on what's picked, and nothing is offered that can't be done to it.
  */
-import { isAttached, setObjects, type BoardObject, type BoardTheme, type BoardView, type Camera } from '@alcove/board';
+import { isAttached, setObjects, type BoardObject, type BoardView, type Camera } from '@alcove/board';
 import { BoardSelectionBar } from '@alcove/ui';
 import { endBox, placed, selectionRing } from '../selection';
-import { useBoardState, type Board } from '../useBoard';
+import { useBoardState, type Board, type SortAsk } from '../useBoard';
 import { lineFromHere } from './line';
 import { colourOf, colourSelected, hasSizes, sizeSelected, stackSelected, stacks, tidySelected } from './selected';
 
@@ -35,7 +35,7 @@ function barSpot(view: BoardView, picked: readonly BoardObject[], cam: Camera): 
   return { x: x * cam.z + cam.x, y: Math.max(TOP, y * cam.z + cam.y - ABOVE) };
 }
 
-export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera; onSort?: ((stickies: readonly string[]) => Promise<readonly BoardTheme[]>) | undefined }) {
+export function SelectedBar({ board, cam, onSort }: { board: Board; cam: Camera; onSort?: SortAsk | undefined }) {
   const view = useBoardState(board, (s) => s.view);
   const sorting = useBoardState(board, (s) => s.sorting);
   const sel = useBoardState(board, (s) => s.sel);

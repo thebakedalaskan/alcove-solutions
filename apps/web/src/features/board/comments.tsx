@@ -74,8 +74,12 @@ export class BoardCommentsStore {
     this.listeners.forEach((l) => l());
   }
 
-  /** Opens what's said on `on`, or a new comment there: one thread to a thing, so a comment on something talked about joins in. */
+  /**
+   * Opens what's said on `on`, or a new comment there: one thread to a thing, so a comment on something talked about joins in.
+   * What was picked is let go, so its bar and handles don't sit over the pin or under the sheet beside it.
+   */
   on(id: string, view: BoardView): void {
+    this.board.select([]);
     const there = unresolvedOn(readThreads(this.board.doc, view), id);
     this.set(there ? { thread: there.id } : { on: id });
   }
@@ -206,9 +210,11 @@ export function CommentSheets({ board, sheet, store, commenting }: { board: Boar
 function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: () => HTMLElement | null; store: BoardCommentsStore; commenting: BoardCommenting; open: Exclude<CommentOpen, null> }) {
   const view = useBoardState(board, (s) => s.view);
   const threads = useThreads(board);
-  const [words, setWords] = useState('');
   const key = open === 'picking' ? '' : 'thread' in open ? open.thread : open.on;
-  useEffect(() => { setWords(''); }, [key]);
+  // What's typed belongs to what it's typed on: another thread, or the comment just sent becoming one, starts empty.
+  const [draft, setDraft] = useState({ key, words: '' });
+  const words = draft.key === key ? draft.words : '';
+  const setWords = (to: string) => setDraft({ key, words: to });
   const { me } = commenting;
 
   // A thread, or what a comment's being written on, that goes while it's open takes its sheet with it.
@@ -240,7 +246,12 @@ function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: 
     return <div className="bo-pick" onPointerDown={pick} />;
   }
   if (gone) return null;
-  const close = (to: boolean) => { if (!to) store.close(); };
+  // Closing takes the field with it: the keys go back to the sheet first.
+  const close = (to: boolean) => {
+    if (to) return;
+    sheet()?.focus({ preventScroll: true });
+    store.close();
+  };
   const on = 'on' in open ? open.on : threads.find((t) => t.id === open.thread)?.on;
   const at = () => besideOf(sheet(), board, open, on);
 
@@ -249,6 +260,9 @@ function Open({ board, sheet, store, commenting, open }: { board: Board; sheet: 
     const send = () => {
       const text = words.trim();
       if (!text) return;
+      // The thread takes the field's place, and its own field takes the keys: they go to the sheet in between, so nothing
+      // focused is taken out from under them.
+      sheet()?.focus({ preventScroll: true });
       store.set({ thread: addThread(board.doc, open.on, text, me, COMMENTS) });
     };
     return (

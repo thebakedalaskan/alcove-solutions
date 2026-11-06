@@ -267,7 +267,7 @@ describe('pointing at shared screens', () => {
     expect(await opened(sam, host, await sealed(host, after))).toEqual(after);
 
     // In a breakout room, what's sealed opens for the room's people and nobody in another part of the call.
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail, miaEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail, miaEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const design = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms[0]?.id ?? '';
     await Promise.all([inPlace(kofi, design), inPlace(mia, design)]);
     await waitFor(() => keyOf(kofi) === keyOf(mia), 'the room on one set of keys');

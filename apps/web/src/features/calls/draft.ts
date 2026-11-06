@@ -57,10 +57,10 @@ const CALLS_TO_START_WITH = 4;
 /** Past this many people, Details offers big-call settings, already on. */
 export const BIG_CALL = 25;
 
-export function newDraft(prefs: Preferences | undefined, preset: { people: readonly Person[]; name?: string | undefined }): Draft {
+export function newDraft(prefs: Preferences | undefined, preset: { people: readonly Person[]; name?: string | undefined; documents?: readonly Document[] | undefined }): Draft {
   return {
     tokens: tokensFor(preset.people, preset.name), unread: [], at: null, minutes: DEFAULT_MINUTES, repeat: NOT_REPEATING, offer: null, title: '', titled: false,
-    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [], home: null
+    notes: prefs?.notesDefault ?? 'on', choices: DEFAULT_NOTES_CHOICES, joinMuted: null, documents: [...(preset.documents ?? [])], home: null
   };
 }
 

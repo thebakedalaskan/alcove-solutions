@@ -429,7 +429,8 @@ export function PanelHost({ area, size, panels, solved, facts, arrange, arrangeL
       ))}
       {glow && <div className={cn('ic-drop', drag?.drop && `is-${drag.drop.side}`)} style={at({ x: glow.x + 4, y: glow.y + 4, w: Math.max(0, glow.w - 8), h: Math.max(0, glow.h - 8) })} />}
       {drag && <div className="ic-ghost" style={{ left: drag.x + 12, top: drag.y + 10 }}><Icon name="grip" size={15} /><span>{drag.label}</span></div>}
-      {swap && <div className="ic-swapbar">{swap}</div>}
+      {/* On a phone, under the people, and the status bar while it says anything. */}
+      {swap && <div className="ic-swapbar" style={solved.A.apart && facts.top > 0 ? { translate: `0 ${facts.top}px` } : undefined}>{swap}</div>}
       <span className="sr-only" role="status">{said}</span>
     </div>
   );

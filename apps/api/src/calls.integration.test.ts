@@ -439,7 +439,7 @@ describe('breakout rooms, each with its own keys', () => {
     if (!kofi || !lena) throw new Error('two people expected');
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, guest);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -502,7 +502,7 @@ describe('breakout rooms, each with its own keys', () => {
   it('moves someone’s keys with them: the old room’s keys move on without them, and they’re in the new room’s', async () => {
     const { org, host, people: [kofi, mia, lena] } = await roomsCall(['Kofi', 'Mia', 'Lena']);
     if (!kofi || !mia || !lena) throw new Error('three people expected');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(mia.call, design);
@@ -546,7 +546,7 @@ describe('breakout rooms, each with its own keys', () => {
     const { org, host, code: c, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena'], { notes: 'on' });
     if (!kofi || !lena) throw new Error('two people expected');
     await host.transcribe(speech('We start together.', 0, 0), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -633,7 +633,7 @@ describe('breakout rooms, each with its own keys', () => {
     if (!kofi || !lena) throw new Error('two people');
     await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -747,7 +747,7 @@ describe('breakout rooms, each with its own keys', () => {
     };
     const settled = (place: string) => () => { const k = kofi.crypto.getSnapshot(); return k.status === 'in' && k.place === place && Boolean(k.media?.send); };
     await steer(settled('main'), 'Kofi in the main room');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await steer(settled(design), 'Kofi in Design');
 
@@ -773,8 +773,8 @@ describe('breakout rooms, each with its own keys', () => {
     const [kofi, lena] = a.people;
     const [maya] = b.people;
     if (!kofi || !lena || !maya) throw new Error('three people');
-    a.host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 5 });
-    b.host.openRooms({ rooms: [{ name: 'Theirs', emails: [maya.email] }, { name: 'Other', emails: [] }], minutes: 5 });
+    a.host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
+    b.host.openRooms({ rooms: [{ name: 'Theirs', emails: [maya.email] }, { name: 'Other', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(a.host);
     const [theirs = ''] = await roomIds(b.host);
     await inPlace(kofi.call, design);
@@ -812,7 +812,7 @@ describe('breakout rooms, each with its own keys', () => {
   it('keeps the rooms when the organizer reconnects: everyone rejoins their own room on new keys, the organizer is back where it was, and earlier chat stays behind', async () => {
     const { org, host, code: c, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena'], { notes: 'on' });
     if (!kofi || !lena) throw new Error('two people');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -856,7 +856,7 @@ describe('breakout rooms, each with its own keys', () => {
   it('closes rooms whose time is up whether or not anyone says so, and brings everyone back on new keys', async () => {
     const { host, people: [kofi, lena] } = await roomsCall(['Kofi', 'Lena']);
     if (!kofi || !lena) throw new Error('two people');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 1 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email] }, { name: 'Support', emails: [lena.email] }], minutes: 1, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi.call, design);
     await inPlace(lena.call, support);
@@ -883,7 +883,7 @@ describe('breakout rooms, each with its own keys', () => {
     if (!kofi || !mia || !lena || !ade) throw new Error('four people');
     const before = h.near.prompts.length;
     await host.transcribe(speech('Two rooms, then back here.', 0, 0), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email, ade.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email, ade.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     for (const [who, room] of [[kofi, design], [mia, design], [lena, support], [ade, support]] as const) await inPlace(who.call, room);
     // One scribe in each room, one of the people sent there, and everyone there is told whose browser it is.
@@ -1019,7 +1019,7 @@ describe('breakout rooms, each with its own keys', () => {
     const { org, host, people: [kofi, mia, lena] } = await roomsCall(['Kofi', 'Mia', 'Lena'], { notes: 'on' });
     if (!kofi || !mia || !lena) throw new Error('three people');
     await host.transcribe(speech('Before the rooms.', 0, 0), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofi.email, mia.email] }, { name: 'Support', emails: [lena.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     const opened = host.getSnapshot().breakouts.open?.from ?? 0;
     for (const [who, room] of [[kofi, design], [mia, design], [lena, support]] as const) await inPlace(who.call, room);
@@ -1728,7 +1728,7 @@ describe('joining by link', () => {
     await settle(host, (x) => x.capture.mode === 'on');
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
     await host.transcribe(speech('Before the rooms.', 0, 0), host.ticket.identity);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     const design = (await settle(host, (x) => x.breakouts.open !== null)).breakouts.open?.rooms.find((r) => r.name === 'Design')?.id ?? '';
     // Kofi, the one person sent to Design, is its scribe: his browser hears Design and sends what's said there.
     await settle(kofi, (x) => x.capture.room?.id === design && x.capture.room.scribe === kofi.ticket.identity);

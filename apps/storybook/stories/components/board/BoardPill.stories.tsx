@@ -1,7 +1,8 @@
 /*
- * BoardPill: anything the whole board shares, in one place under the bar: a timer, a vote and its results, who you're
- * following, who's presenting, a room's time and the connection. At night on any sheet, with its one action at the end.
- * `soon` turns it amber as a room's time runs out. Every word here is the design canvas's.
+ * BoardPill: anything the whole board shares, in one place under the bar, one thing at a time: a timer, a vote and its results,
+ * who you're following, who's presenting, a room's time and the connection. At night on any sheet, with its one action at the
+ * end, for whoever can use it: Stop and End the vote for whoever started them or the organizer, Done for them too. `soon`
+ * turns it amber in a timer's last minute and as a room's time runs out. Every word here is the design canvas's.
  */
 import { BoardBar, BoardPill, ICON_NAMES } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -22,12 +23,27 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** A timer everyone sees count down, with what it's for. It chimes softly at the end. */
-export const Timer: Story = {};
+/**
+ * A timer everyone sees count down, with what it's for, as whoever started it sees it: with Stop. Its time changes on screen
+ * only: a screen reader is told as it starts, with a minute left, as it runs out and as it stops, never each second.
+ */
+export const Timer: Story = { args: { said: '' } };
+/** The same timer for everyone else, with nothing to press. */
+export const TimerForEveryoneElse: Story = { name: 'Timer, for everyone else', args: { action: undefined, said: '' } };
+/** Its last minute: the clock and the time turn amber. */
+export const NearItsEnd: Story = { name: 'Near its end', args: { time: '0:48', soon: true, said: '1 minute left.' } };
+/** At the end it says so, and stays until it's stopped or someone starts another. The call chimes once, softly. */
+export const TimesUp: Story = { name: 'Time’s up', args: { text: 'Time’s up', time: '0:00', soon: true, said: 'Time’s up.' } };
 /** A vote: how many of your votes are left, and ending it. Nobody sees the count until it ends. */
 export const Voting: Story = { args: { icon: 'vote', title: 'Voting', text: '2 of 3 votes left', time: undefined, action: 'End the vote' } };
+/** The same vote for everyone else who can add to the board: their own votes left. */
+export const VotingForEveryoneElse: Story = { name: 'Voting, for everyone else', args: { icon: 'vote', title: 'Voting', text: '3 of 3 votes left', time: undefined, action: undefined } };
+/** For someone who can only look at the board: there's a vote, and nothing to vote with. */
+export const VotingYouCanOnlyLook: Story = { name: 'Voting, for someone who can only look', args: { icon: 'vote', title: 'Voting', text: undefined, time: undefined, action: undefined } };
 /** The vote's results, on the stickies, until Done. */
 export const Results: Story = { args: { icon: 'vote', title: 'Results', text: '7 people voted', time: undefined, action: 'Done' } };
+/** The same results for everyone else, until whoever started it is done. */
+export const ResultsForEveryoneElse: Story = { name: 'Results, for everyone else', args: { icon: 'vote', title: 'Results', text: '7 people voted', time: undefined, action: undefined } };
 /** Following someone: the sheet shows what they see, and Stop takes you back to your own view. */
 export const Following: Story = { args: { icon: 'eye', title: 'Following Priya', text: undefined, time: undefined, action: 'Stop' } };
 /** Someone is presenting: you see their frame, and can look round on your own. */
@@ -35,11 +51,18 @@ export const Presenting: Story = { args: { icon: 'play', title: 'Art is presenti
 /** Looking round while Art presents: one press takes you back to Art's frame. */
 export const LookingAround: Story = { name: 'Looking around', args: { icon: 'play', title: 'Art is presenting', text: undefined, time: undefined, action: 'Back to Art' } };
 /** In a breakout room: its name and the time it has left. */
-export const InARoom: Story = { name: 'In a room', args: { icon: 'door', title: 'Comms', text: undefined, time: '9:12', action: undefined } };
+export const InARoom: Story = { name: 'In a room', args: { icon: 'door', title: 'Comms', text: undefined, time: '9:12', action: undefined, said: '' } };
 /** A minute left: amber, and it says the board comes back to the main room with you. */
-export const ComingBack: Story = { name: 'Coming back', args: { icon: 'door', title: 'Comms', text: 'This board comes back with you', time: '1:00', soon: true, action: undefined } };
+export const ComingBack: Story = { name: 'Coming back', args: { icon: 'door', title: 'Comms', text: 'This board comes back with you', time: '1:00', soon: true, action: undefined, said: '' } };
+/**
+ * The last ten seconds: rooms are closing, and everyone comes back to the main room. A room's time counts down on screen only:
+ * a screen reader is told at ten seconds, and again as they close, never each second.
+ */
+export const RoomsClose: Story = { name: 'Rooms close', args: { icon: 'door', title: 'Comms', text: 'Rooms close in 10 seconds', time: '0:10', soon: true, action: undefined, said: 'Rooms close in 10 seconds.' } };
+/** In a room on the one board every room shares: it isn't private, and the pill says so all along. */
+export const OnTheSharedBoard: Story = { name: 'On the shared board', args: { icon: 'door', title: 'Comms', text: 'Everyone can see this board', time: '9:12', action: undefined, said: '' } };
 /** Rooms on one shared board: how many, and their time. */
-export const RoomsOnOneBoard: Story = { name: 'Rooms on one board', args: { icon: 'door', title: '3 rooms on this board', text: undefined, time: '9:12', action: undefined } };
+export const RoomsOnOneBoard: Story = { name: 'Rooms on one board', args: { icon: 'door', title: '3 rooms on this board', text: undefined, time: '9:12', action: undefined, said: '' } };
 /** The connection dropped. You keep working, and what you add goes up when it's back. */
 export const Reconnecting: Story = { args: { icon: 'wifiOff', title: 'Reconnecting', text: 'Keep going. Your changes are safe here.', time: undefined, action: undefined } };
 /** Changes that couldn't be saved: how many are only on this screen, and Try again. */

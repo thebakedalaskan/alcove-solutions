@@ -436,7 +436,7 @@ describe('moving to another device', () => {
     await inGroup(laptop);
     const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, sam);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = await roomIds(host);
     await inPlace(laptop, design);
     host.visitRoom(design);
@@ -479,7 +479,7 @@ describe('moving to another device', () => {
     await inGroup(laptop);
     const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
     await inGroup(kofi);
-    laptop.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10 });
+    laptop.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = await roomIds(laptop);
     await inPlace(kofi, design);
     laptop.visitRoom(design);

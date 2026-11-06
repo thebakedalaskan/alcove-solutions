@@ -6,7 +6,7 @@
  * (./access.ts). A call can offer times instead of settling on one, until someone with its link picks, and calls can
  * repeat, as one series with one link (./repeats.ts).
  */
-import { DEFAULT_NOTES_CHOICES, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
+import { DEFAULT_NOTES_CHOICES, MAX_CALL_DOCUMENTS, MeetingStatusSchema, NotesChoicesSchema, NotesSettingSchema, firstName, type CallDocument, type ChangeScope, type InstantCallInput, type Meeting, type MeetingInput, type NotesSetting, type Patch, type Person, type Repeat, type Rsvp, type RsvpCounts } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../context';
 import { id128, random } from '../crypto';
@@ -20,7 +20,7 @@ import { me, preferences, profile, type Profile } from './account';
 import * as calendar from './calendar';
 import { followInvites, invitesOf } from './callWorkspace';
 import { indexCode } from './codes';
-import { documentsFor, keptIds, shownOn, validDocuments } from './documents';
+import { boardsFrom, documentsFor, keptIds, shownOn, validDocuments } from './documents';
 import { personOf } from './portraits';
 import { cancelInSeries, changeInSeries, leadsTo, repeatsOf, schedule } from './repeats';
 import { accountReader, requireRole, workspaceFor } from './workspaceAccess';
@@ -471,18 +471,23 @@ async function sweepUnjoined(o: Owner, db: Db): Promise<number> {
   return stale.length;
 }
 
-/** A call that starts now: "<first name>'s call" unless it has a title, with the default notes setting unless set. */
+/**
+ * A call that starts now: "<first name>'s call" unless it has a title, with the default notes setting unless set. What it
+ * brings comes from the organizer's own library, as a scheduled call's does: Start a call here on a board brings the board.
+ */
 export async function startNow(o: Owner, input: InstantCallInput): Promise<{ code: string }> {
   const organizer = await me(o);
   const notes = input.notes ?? (await preferences(o)).notesDefault;
+  const documents = input.documents ?? [];
+  await validDocuments(o, documents);
   const start = new Date();
   const manifest: MeetingManifest = {
     title: input.title?.trim() || `${firstName(organizer.name)}’s call`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 60 * 60_000).toISOString(),
     guests: cleanGuests(input.guests ?? [], organizer.email), notes, code: makeCode(), status: 'scheduled',
-    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents: [], workspaceId: null, agenda: null
+    instant: true, choices: DEFAULT_NOTES_CHOICES, joinMuted: false, documents, workspaceId: null, agenda: null
   };
   const { itemId, swept } = await tx(o.pool, async (c) => ({ swept: await sweepUnjoined(o, c), itemId: await store(o, c, manifest) }));
-  mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes, swept });
+  mlog.info('instant call created', { meetingId: itemId, guests: manifest.guests.length, notes, documents: documents.length, swept });
   return { code: manifest.code };
 }
 
@@ -490,13 +495,16 @@ export async function startNow(o: Owner, input: InstantCallInput): Promise<{ cod
 
 /**
  * Schedules the next call in a call's series, starting the series if the call isn't in one: the
- * same title, people, length and notes setting, at `startsAt`, which has to be still to come and
+ * same title, people, length, notes setting and what it brings, with the boards open for everyone in this
+ * one too, at `startsAt`, which has to be still to come and
  * after the call. The app sends the same clock time a week on, worked out where the organizer is,
  * so a change of the clocks in between doesn't move it. It goes on the calendar like any scheduled
  * call. An occurrence of a recurring Google Calendar event has its next one on the calendar already,
  * so that one is made an Alcove call from there instead.
  */
 export async function scheduleNext(o: Owner, id: string, startsAt: string): Promise<Meeting> {
+  // The boards open for everyone in this call are brought to the next, read before anything's held, as it opens workspaces.
+  const boards = await boardsFrom(o, (await findItem(o, o.pool, 'meeting', id, MeetingManifest))?.manifest.noteId);
   const made = await tx(o.pool, async (c) => {
     await lockItem(o, c, id);
     const cur = await getItem(o, c, 'meeting', id, MeetingManifest, 'That meeting');
@@ -509,12 +517,12 @@ export async function scheduleNext(o: Owner, id: string, startsAt: string): Prom
     const seriesId = from.seriesId ?? id128();
     if (!from.seriesId) await saveRevision(o, c, id, cur.revisionId, { ...from, seriesId });
     const manifest: MeetingManifest = {
-      title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId, instant: false, choices: from.choices, joinMuted: from.joinMuted, documents: from.documents,
-      workspaceId: from.workspaceId, agenda: null, ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
+      title: from.title, ...times, guests: from.guests, notes: from.notes, code: makeCode(), status: 'scheduled', seriesId, instant: false, choices: from.choices, joinMuted: from.joinMuted,
+      documents: [...new Set([...from.documents, ...boards])].slice(0, MAX_CALL_DOCUMENTS), workspaceId: from.workspaceId, agenda: null, ...(from.seriesCode ? { seriesCode: from.seriesCode } : {})
     };
     return { itemId: await store(o, c, manifest), manifest, started: !from.seriesId };
   });
-  mlog.info('next call in a series scheduled', { meetingId: made.itemId, after: id, seriesStarted: made.started, guests: made.manifest.guests.length, notes: made.manifest.notes });
+  mlog.info('next call in a series scheduled', { meetingId: made.itemId, after: id, seriesStarted: made.started, guests: made.manifest.guests.length, notes: made.manifest.notes, documents: made.manifest.documents.length, boards: boards.length });
   await placeOnCalendar(o, made.itemId);
   return own(o, made.itemId);
 }

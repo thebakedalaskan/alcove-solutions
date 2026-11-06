@@ -182,6 +182,42 @@ body:has(.nd-askdock) .ac-toasts:not(.on-stage) { bottom: 92px; }
 .nd-s > h2 .n { font-weight: 500; color: var(--ink-3); }
 .nd-s.is-decide > h2 { color: var(--rose); }
 .nd-s.is-follow > h2 { color: var(--horizon); }
+/*
+ * The boards open in the call, under the summary (NoteBoard, NoteRoomBoard). The call's: a live picture of all of it beside
+ * its name, what's on it and who can open it, or above them on a phone; the whole card opens it. Each breakout room's: a card
+ * side by side with the others', its picture on top, folding to a stack on a phone; one click opens it.
+ */
+.nd-boards { display: grid; gap: 12px; }
+.nd-board { position: relative; display: grid; grid-template-columns: minmax(200px, 300px) minmax(0, 1fr); align-items: center; gap: 22px; padding: 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); transition: box-shadow var(--duration-1) var(--ease-out); }
+.nd-board:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
+.nd-board:has(.nd-board-open:focus-visible) { box-shadow: 0 0 0 2px var(--horizon); }
+.nd-board-pic { position: relative; display: block; overflow: hidden; aspect-ratio: 5 / 3; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px var(--nd-hair); }
+.nd-board-pic > .nd-board-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
+.nd-board-t { display: grid; justify-items: start; gap: 6px; min-width: 0; padding-right: 8px; }
+.nd-board-t h3 { font: 600 17px/1.3 var(--font-sans); color: var(--ink); }
+.nd-board-t p { max-width: 36em; font: 400 14.5px/1.5 var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.nd-board-open { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; border-radius: 6px; font: 600 14.5px/1.3 var(--font-sans); color: var(--sun-text); outline: none; }
+.nd-board-open::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-lg); }
+.nd-board:hover .nd-board-open .ac-i { transform: translateX(2px); }
+.nd-board-open .ac-i { transition: transform var(--duration-1) var(--ease-out); }
+.nd-rboards { display: grid; gap: 10px; }
+.nd-boards + .nd-rboards { margin-top: 18px; }
+.nd-rboards-h { font: 500 12px/1.3 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.nd-rboards-g { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.nd-rboard { display: grid; align-content: start; min-width: 0; padding: 10px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: 0 0 0 1px var(--nd-hair); text-align: left; transition: box-shadow var(--duration-1) var(--ease-out); }
+.nd-rboard:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink) 24%, transparent), var(--shadow-1); }
+.nd-rboard:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--horizon); }
+.nd-rboard .nd-board-pic { aspect-ratio: 9 / 4; }
+.nd-rboard b { margin-top: 10px; font: 600 14.5px/1.3 var(--font-sans); color: var(--ink); }
+.nd-rboard .ln { margin-top: 3px; font: 400 13px/1.4 var(--font-sans); color: var(--ink-2); }
+.nd-rboard .rc { margin-top: 4px; font: 400 12.5px/1.4 var(--font-sans); color: var(--ink-3); }
+@media (max-width: 640px) {
+  .nd-board { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .nd-board-t { padding: 0 4px 4px; }
+  .nd-rboards-g { grid-template-columns: minmax(0, 1fr); }
+  .nd-rboard .nd-board-pic { aspect-ratio: 5 / 2; }
+}
+
 /* What was worked on in the call (WsWorkedOn): its rows between the note's own hairlines. */
 .nd-worked .ws-ndocs, .nd-worked .ws-ndoc { border-color: var(--nd-hair); }
 .nd-none { padding: 12px 0 2px; border-top: 1px solid var(--nd-hair); font: 400 15px/22px var(--font-sans); color: var(--ink-3); }

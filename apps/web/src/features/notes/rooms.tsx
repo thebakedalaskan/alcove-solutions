@@ -1,10 +1,13 @@
 /*
  * Each breakout room's own section of a call's notes (docs: Notes and inference › Breakout rooms), under the call's
- * notes: closed until opened, each with the room's name, its people in the arch and how long it was open. Inside,
- * the room's summary, decisions, open questions, follow-ups and chapters, written from what was said in that room
- * alone, and what was said there. Everyone with the call's notes reads every room's section.
+ * notes: closed until opened, each with the room's name, its people in the arch, how long it was open and whether it had
+ * a board, whose card is with the call's boards, under the summary (Boards.tsx). Inside, the room's summary, decisions,
+ * open questions, follow-ups (its board's under their own heading) and chapters, written from what was said and written
+ * in that room alone, and what was said there. Everyone with the call's notes reads every room's section.
  */
-import { minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type NoteReader, type NoteRoom, type Person, type Question, type QuestionPatch } from '@alcove/api';
+import {
+  minutesLabel, type ActionItem, type ActionPatch, type Decision, type DecisionPatch, type NoteReader, type NoteRoom, type NoteWorkedOn, type Person, type Question, type QuestionPatch
+} from '@alcove/api';
 import { Faces, Fold, Notice, UnsureKey, cn } from '@alcove/ui';
 import type { ReactNode } from 'react';
 import { listNames } from '~/lib/people';
@@ -32,31 +35,36 @@ export interface Settling {
  * the reader correct a room's lines and settle what its notes say, as they do the call's. `tryAgain` is under a room
  * whose notes couldn't be written, for someone who can have them written again. `marks` bookmarks a room's lines for
  * the reader, as with the call's. `open` is the room a link came to, which starts open, at `at` in what was said there
- * when the link came to a moment.
+ * when the link came to a moment. `boards` are the call's, each in the room it was open in.
  */
-export function RoomSections({ rooms, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
-  rooms: NoteRoom[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
+export function RoomSections({ rooms, boards = [], me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+  rooms: NoteRoom[]; boards?: readonly NoteWorkedOn[] | undefined; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
   open?: string | undefined; at?: number | undefined;
 }) {
   return (
     <Section title="Breakout rooms" count={rooms.length} className="nd-rooms">
-      {rooms.map((r) => <RoomFold key={r.id} room={r} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks} open={r.id === open} at={r.id === open ? at : undefined} />)}
+      {rooms.map((r) => (
+        <RoomFold key={r.id} room={r} boards={boards.filter((b) => b.room === r.id)} me={me} writing={writing} correct={correct} fromLine={fromLine} settle={settle} tryAgain={tryAgain} marks={marks}
+          open={r.id === open} at={r.id === open ? at : undefined} />
+      ))}
     </Section>
   );
 }
 
-function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
-  room: NoteRoom; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode; marks?: LineMarks | undefined;
-  open: boolean; at: number | undefined;
+function RoomFold({ room, boards, me, writing, correct, fromLine, settle, tryAgain, marks, open, at }: {
+  room: NoteRoom; boards: readonly NoteWorkedOn[]; me: string | undefined; writing: boolean; correct?: Correcting | undefined; fromLine?: FromLine | undefined; settle?: Settling | undefined; tryAgain?: ReactNode;
+  marks?: LineMarks | undefined; open: boolean; at: number | undefined;
 }) {
   const people = room.people.flatMap((x): Person[] => (x.person ? [x.person] : []));
   const said = room.transcript.length > 0;
+  const spoken = room.actions.filter((a) => a.from === null);
+  const fromBoards = room.actions.filter((a) => a.from === 'board');
   return (
     <Fold id={roomAnchor(room.id)} open={open} className="nd-fold" summary={(
       <>
         <b>{room.name}</b>
         {people.length > 0 && <Faces people={people} size={22} max={5} />}
-        <small>{minutesLabel(Math.max(0, room.to - room.from))}{people.length ? ` · ${listNames(people)}` : ''}</small>
+        <small>{minutesLabel(Math.max(0, room.to - room.from))}{people.length ? ` · ${listNames(people)}` : ''}{boards.length ? ` · ${boards.length === 1 ? 'a board' : `${boards.length} boards`}` : ''}</small>
       </>
     )}>
       {!said ? <p className="nd-rs">Nothing was said here while notes were on.</p> : (
@@ -66,8 +74,13 @@ function RoomFold({ room, me, writing, correct, fromLine, settle, tryAgain, mark
               : <><Notice tone="caution" icon="pen">This room’s notes couldn’t be written. What was said is below.</Notice>{tryAgain}</>}
           {(room.decisions.length > 0 || settle) && <Part title="Decided" kind="decide"><Decisions items={room.decisions} room me={me} reader={settle?.reader} onChange={settle?.onDecision} />{settle?.decisionForm(room.id)}</Part>}
           {room.questions.length > 0 && <Part title="Still open"><Questions items={room.questions} room me={me} onChange={settle?.onQuestion} /></Part>}
-          {(room.actions.length > 0 || settle) && (
-            <Part title="Follow-ups" kind="follow"><FollowUps actions={room.actions} room me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />{settle?.actionForm(room.id)}</Part>
+          {(spoken.length > 0 || settle) && (
+            <Part title="Follow-ups" kind="follow"><FollowUps actions={spoken} room me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />{settle?.actionForm(room.id)}</Part>
+          )}
+          {fromBoards.length > 0 && (
+            <Part title={boards.length > 1 ? 'Follow-ups from the boards' : 'Follow-ups from the board'} kind="follow">
+              <FollowUps actions={fromBoards} room me={me} reader={settle?.reader} people={settle?.people} onToggle={settle?.onToggle} onChange={settle?.onAction} />
+            </Part>
           )}
           {room.chapters.length > 0 && (
             <Part title="Chapters">

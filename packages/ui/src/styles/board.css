@@ -53,9 +53,13 @@
 /* On a phone the sheet is the whole space between the faces and the dock, and nothing sits above it. */
 .bz.is-phone { padding: 0; background: none; }
 .bz.is-phone .bd { border-radius: 14px; box-shadow: none; }
+/* A board's own page on a phone keeps its edge on the day round it. */
+.bz.is-page.is-phone .bd { box-shadow: 0 0 0 1px var(--bd-ring), var(--shadow-2); }
+/* There's no map on a phone, where + has its corner: a drag and a pinch find the way round. */
+.bz.is-phone .bd-head .mp { display: none; }
 
 /* ---------------------------------------------------------------- the sheet */
-.bd { --focus: var(--horizon); position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: 18px; isolation: isolate; background: var(--bd-wash); color: var(--ink); font: 400 15px/22px var(--font-sans); box-shadow: 0 0 0 1px rgb(255 255 255 / .07), 0 24px 60px -30px rgb(0 0 0 / .8); outline: none; touch-action: none; user-select: none; -webkit-user-select: none; transition: --fc var(--duration-2) var(--ease-out); }
+.bd { --focus: var(--horizon); position: relative; width: 100%; height: 100%; overflow: clip; border-radius: 18px; isolation: isolate; background: var(--bd-wash); color: var(--ink); font: 400 15px/22px var(--font-sans); box-shadow: 0 0 0 1px rgb(255 255 255 / .07), 0 24px 60px -30px rgb(0 0 0 / .8); outline: none; touch-action: none; user-select: none; -webkit-user-select: none; transition: --fc var(--duration-2) var(--ease-out); }
 .bd.is-new { animation: bd-open var(--bd-rise) var(--ease-in-out) both; }
 .bd.is-page { border-radius: 0; box-shadow: none; }
 .bd.is-mini { border-radius: 0; box-shadow: none; pointer-events: none; }
@@ -94,6 +98,9 @@
 /* A frame's body takes no press, which is the sheet's anyway, so that a title under another frame can still be pressed: a frame is only picked by its title. */
 .bf { position: absolute; border-radius: 32px 32px 18px 18px; background: var(--bf-fill); box-shadow: inset 0 0 0 1px var(--bf-ring), var(--bf-lift); pointer-events: none; }
 .bf.is-land { animation: bf-land var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+/* What a room's frame holds lands with it, and its lines fade in with it. */
+.bo.is-land { animation: bf-land var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
+.bd-svg path.is-land { animation: bd-settle var(--bd-glide) var(--ease-out) both; animation-delay: var(--d, 0ms); }
 .bf.is-dim { opacity: .35; }
 .bf.is-theme { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line); border-radius: 18px; }
 /* A title can run a little past its frame, as "What happened" does in a room, and still stop short of the next one. */
@@ -153,6 +160,8 @@
 .bo.is-other { outline: 2px solid var(--pc); outline-offset: 2px; }
 .bo.is-lift { z-index: 3; transform: rotate(-1.5deg) scale(1.03); box-shadow: 0 2px 2px rgb(18 34 63 / .08), 0 22px 30px -14px rgb(18 34 63 / .4); }
 .bo.is-top { outline: 2.5px solid var(--horizon); outline-offset: 3px; }
+/* A sticky in a vote, with the keys on it: Enter or Space votes for it. */
+.bo.is-ballot:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 3px; }
 .bo.is-muted { opacity: .4; }
 .bo.is-live-edit .bo-t { visibility: hidden; }
 
@@ -229,6 +238,8 @@
 /* Everything about the board that isn't a tool: frosted, its name as a heading, and the seal as the app shows it. */
 .bd-head { position: absolute; z-index: 11; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 2px; height: 46px; padding: 0 8px 0 6px; background: var(--bd-bar); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--bf-ring); color: var(--ink-2); container-type: inline-size; transition: opacity var(--duration-2) var(--ease-out); }
 .bd-head.is-faded { opacity: 0; pointer-events: none; }
+/* The bar fades in as it comes, as it does when a presentation gives someone their own view back. */
+.bd-head { animation: bd-fade var(--duration-2) var(--ease-out) backwards; }
 .bd-head .sp { flex: 1; min-width: 8px; }
 .bd-head .nm { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 7px; border-radius: 9px; font: 450 19px/1 var(--font-display); letter-spacing: -.012em; font-variation-settings: 'opsz' 20; color: var(--ink); white-space: nowrap; }
 .bd-head .nm:hover { background: var(--sunk); }
@@ -253,10 +264,11 @@
 @container (max-width: 760px) { .bd-head.is-full .sv { flex-shrink: 1; } .bd-head.is-full .nm { max-width: 220px; } }
 @container (max-width: 640px) { .bd-head .nm .ac-i:first-child { display: none; } }
 @container (max-width: 600px) { .bd-head .sv { min-width: 0; } .bd-head .sv span { display: none; } }
-/* A phone's bar keeps the name, the seal, undo, redo, how near you are and More: a pinch zooms, and the map and running a session are for bigger screens. */
-@container (max-width: 480px) { .bd-head .zm, .bd-head .run { display: none; } }
-/* On a board's own page the name keeps room to be read, however narrow, and the page's own button comes in close. */
-@container (max-width: 480px) { .bd-head .nm { min-width: 84px; } .bd-head .vr { display: none; } .bd-head .bpg-acts { margin-left: 2px; } }
+/*
+ * Narrow, as on a phone: the name, the seal, the session's Timer and Vote and More stay, and the name keeps room to be read;
+ * undo, zoom and the map go, as a pinch zooms. On a board's own page, the page's own button comes in close.
+ */
+@container (max-width: 480px) { .bd-head .zm, .bd-head .pct, .bd-head .ur { display: none; } .bd-head .vr { margin: 0 2px; } .bd-head .nm { min-width: 84px; } .bd-head .bpg-acts { margin-left: 2px; } }
 
 /* The board's own button, on top of IconButton */
 .bt { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; color: var(--ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
@@ -271,9 +283,13 @@
 .bd-map b { position: absolute; display: block; border-radius: 3px; box-shadow: 0 0 0 1.5px var(--horizon); }
 
 /* ---------------------------------------------------------------- night, floating on the sheet */
-/* What's going on, for everyone: one pill, at the top of the sheet. Night, because it's about the call. */
-.bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
-.bd.is-clean .bd-pill { top: 14px; }
+/*
+ * What's going on, for everyone: one pill, at the top of the sheet. Night, because it's about the call. As wide as what it says,
+ * up to the sheet's width: placed from the middle, it would otherwise have only half the sheet to fit in.
+ */
+.bd-pill { position: absolute; z-index: 12; left: 50%; top: 58px; translate: -50% 0; display: inline-flex; align-items: center; gap: 9px; width: max-content; max-width: calc(100% - 24px); height: 38px; padding: 0 16px 0 13px; border-radius: 999px; background: var(--stage-raised); color: var(--stage-ink); font: 500 13.5px/1 var(--font-sans); white-space: nowrap; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 14px 28px -12px rgb(6 13 26 / .6); animation: bd-drop var(--duration-3) var(--ease-out) both; }
+/* With no bar, as when presenting, the pill comes up to the top. */
+.bd.is-clean:not(:has(.bd-head)) .bd-pill { top: 14px; }
 .bd-pill .ac-i { flex: none; color: var(--sun); transition: color var(--duration-2) var(--ease-out); }
 .bd-pill b { font-weight: 600; }
 /* What a pill says gives way before its title does, and the title is cut last of all. */
@@ -285,11 +301,16 @@
 .bd-pill.has-act { padding-right: 5px; }
 .bd-pill button { flex: none; height: 28px; margin-left: 3px; padding: 0 12px; border-radius: 999px; background: rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); }
 .bd-pill button:hover { background: rgb(255 255 255 / .2); }
-/* A board's own page on a phone: what the pill says wraps rather than being cut, since the seal has only its icon there. */
+/*
+ * A board on a phone, on its own page or in a call: what the pill says wraps rather than being cut, since the seal has only its
+ * icon there. A call's phone board is always narrow, and a page's is when its column is.
+ */
 @container (max-width: 480px) {
   .bd.is-page .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
   .bd.is-page .bd-pill > b, .bd.is-page .bd-pill > span:not(.sep, .t) { overflow: visible; white-space: normal; -webkit-line-clamp: unset; }
 }
+.bz.is-phone:not(.is-page) .bd-pill { height: auto; min-height: 38px; padding-block: 7px; border-radius: 19px; white-space: normal; text-align: center; flex-wrap: wrap; justify-content: center; row-gap: 2px; width: max-content; }
+.bz.is-phone:not(.is-page) .bd-pill > :is(b, span:not(.sep, .t)) { overflow: visible; white-space: normal; -webkit-line-clamp: unset; }
 
 /* Anything small that floats over the sheet is night, like the dock beside it */
 .bx, .bx-sw, .bfly, .bd-heard { color: var(--stage-ink); background: var(--stage-raised); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 16px 30px -14px rgb(6 13 26 / .55); }
@@ -340,6 +361,8 @@
 /* Small menus on the board */
 .bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(18 34 63 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bp .hd { padding: 10px 10px 8px; font: 600 14px/1.25 var(--font-sans); letter-spacing: -.005em; }
+/* Who can add to it: the workspace's Share sheet, which has its own width and room. */
+.bp.bp-share { width: auto; max-width: calc(100% - 24px); padding: 0; }
 .bp .sub { padding: 0 10px 10px; font-size: 13px; line-height: 1.42; color: var(--ink-3); }
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
 .bp .mi:hover { background: var(--sunk); }
@@ -368,6 +391,13 @@
 .bd-tray .ln small { display: block; font-size: 12px; line-height: 1.3; color: var(--ink-3); }
 .bd-tray .ac-btn.is-sm { height: 32px; padding: 0 12px; font-size: 13px; }
 .bd-tray .ft { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 6px 4px; }
+/* A narrow tray, as on a phone: what it's written in goes under its name, rather than squeezing in beside it. */
+.bd-tray { container-type: inline-size; }
+@container (max-width: 440px) {
+  .bd-tray .hd { flex-wrap: wrap; height: auto; min-height: 40px; padding-block: 4px 6px; row-gap: 0; }
+  .bd-tray .hd .bt { margin-left: auto; }
+  .bd-tray .hd .sp { order: 3; flex-basis: 100%; margin-left: 0; padding-left: 24px; }
+}
 
 /* A blank board */
 .bd-empty { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: grid; justify-items: center; gap: 8px; text-align: center; pointer-events: none; color: var(--ink); transition: opacity var(--duration-2) var(--ease-out); }
@@ -426,8 +456,50 @@
 .bd-tile.is-col .ac-tile-name { left: 8px; bottom: 8px; gap: 6px; height: 24px; padding: 0 8px 0 5px; border-radius: 7px; font-size: 12px; }
 .bd-tile .open { position: absolute; right: 10px; top: 10px; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); }
 
+/* ---------------------------------------------------------------- More's objects */
+/* What Templates and From your workspace offer, beside the rail where More was. */
+.bfly.is-list { top: calc(50% - 82px); width: 264px; max-height: min(360px, calc(100% - 24px)); overflow: auto; grid-auto-rows: min-content; }
+.bfly.is-list .hd { padding: 4px 8px 2px; font: 600 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--stage-ink-2); }
+.bfly.is-list .item { width: 100%; }
+.bfly.is-list .item .lb { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.bfly.is-list .item small { flex: none; color: var(--stage-ink-2); font-size: 12px; }
+.bfly.is-list .none { margin: 0; padding: 6px 8px 8px; max-width: 240px; font-size: 13px; line-height: 1.4; color: var(--stage-ink-2); }
+/* A table: cells share its size by their rows' and columns' sizes; the first row reads as its head. */
+.bo.k-table { border-radius: 10px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--note-shadow); }
+.bo-grid { display: grid; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
+.bo-cell { position: relative; min-width: 0; min-height: 0; overflow: hidden; padding: 9px 11px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.bo-cell .bo-t { font: 400 14.5px/1.35 var(--font-sans); color: var(--ink); }
+.bo-cell.is-head { background: var(--sunk); }
+.bo-cell.is-head .bo-t { font-weight: 600; }
+.bo-cell.is-live-edit .bo-t { visibility: hidden; }
+.bo-cell .bo-edit { padding: 9px 11px; font: 400 14.5px/1.35 var(--font-sans); }
+.bo-cell.is-head .bo-edit { font-weight: 600; }
+.bo-add { position: absolute; z-index: 3; display: grid; place-items: center; width: calc(26px * var(--iz, 1)); height: calc(26px * var(--iz, 1)); border-radius: 50%; background: var(--ink); color: var(--ground); box-shadow: var(--shadow-2); }
+.bo-add svg { width: calc(14px * var(--iz, 1)); height: calc(14px * var(--iz, 1)); }
+.bo-add.is-row { left: 50%; bottom: 0; translate: -50% 50%; }
+.bo-add.is-col { right: 0; top: 50%; translate: 50% -50%; }
+/* A mind map's idea: a pill of words, the first one bigger, joined to what it branches from by a curve. */
+.bo.k-node { display: flex; align-items: center; justify-content: center; padding: 8px 18px; border-radius: 999px; text-align: center; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1.5px var(--line-ink), var(--note-shadow); }
+.bo.k-node.is-first { background: var(--note-butter); color: var(--note-ink); box-shadow: 0 0 0 2px var(--line-ink), var(--note-shadow); }
+.bo.k-node .bo-t { font: 500 15px/1.25 var(--font-sans); }
+.bo.k-node.is-first .bo-t { font: 600 17px/1.25 var(--font-sans); }
+.bo.k-node .bo-t:empty::before { content: "An idea"; color: var(--ink-3); }
+.bo.k-node.is-first .bo-t:empty::before { content: "The main idea"; color: color-mix(in srgb, var(--note-ink) 55%, transparent); }
+.bo.k-node .bo-edit { display: flex; padding: 8px 18px; text-align: center; font: 500 15px/1.25 var(--font-sans); }
+.bo.k-node.is-first .bo-edit { font: 600 17px/1.25 var(--font-sans); }
+.bd-svg path.branch { stroke: var(--line-ink); stroke-width: 2; }
+/* Something from the workspace: what it is and its name, as its reader knows it, or that they can't open it. */
+.bo.k-link { display: flex; align-items: center; gap: 12px; padding: 0 12px 0 14px; border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--note-shadow); }
+.bo-li { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--sunk); color: var(--ink-2); }
+.bo.k-link .bo-t { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font: 600 15px/1.3 var(--font-sans); }
+.bo.k-link.is-closed .bo-t { font-weight: 500; color: var(--ink-2); }
+.bo-open { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: var(--ink-2); }
+.bo-open:hover { background: var(--sunk); color: var(--ink); }
+
 /* ---------------------------------------------------------------- a phone */
 .pc-add { position: absolute; z-index: 14; right: 14px; bottom: 14px; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--sun); color: var(--on-sun); }
+/* While ideas from the call are open over the foot of the sheet, + steps aside: they're added from there. */
+.bd:has(.bd-tray) .pc-add { display: none; }
 .pc-sheet { position: absolute; z-index: 20; left: 0; right: 0; bottom: 0; padding: 12px 16px 18px; border-radius: 24px 24px 0 0; color: var(--ink); background: var(--surface-raised); box-shadow: var(--shadow-3); animation: bd-sheet var(--duration-3) var(--ease-out) both; }
 .pc-sheet .grab { width: 40px; height: 4px; margin: 0 auto 12px; border-radius: 2px; background: var(--line); }
 .pc-sheet .pc-note { position: relative; display: block; width: 100%; min-height: 132px; padding: 14px; border: 0; border-radius: 8px; resize: none; outline: none; background: var(--nc, var(--note-butter)); color: var(--note-ink); font: 500 18px/1.32 var(--font-sans); }
@@ -435,10 +507,53 @@
 .pc-sheet .row .sw { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; }
 .pc-sheet .row .sw[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--horizon); }
 .pc-sheet .ac-btn { width: 100%; margin-top: 12px; height: 48px; }
+.pc-sheet .pc-note::placeholder { color: color-mix(in srgb, var(--note-ink) 45%, transparent); }
+/* Under the sheet: a press anywhere else puts it away. */
+.pc-shade { position: absolute; z-index: 19; inset: 0; border-radius: inherit; background: rgb(6 13 26 / .28); animation: bd-settle var(--duration-2) var(--ease-out) both; }
 
 /* ---------------------------------------------------------------- motion */
 @keyframes bd-open { from { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); } to { clip-path: inset(0 0 0 0 round 18px); } }
+/* Presenting: whoever's presenting has, round the board as everyone sees it, where they are and the way on, and beside it the next frame and their notes */
+.bd-pres { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; container: bd-pres / inline-size; }
+.bd-pres-in { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; height: 100%; }
+.bd-pres .pm { position: relative; display: grid; grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; }
+.bd-pres .shown { position: relative; min-width: 0; min-height: 0; }
+.bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr) 248px; gap: 10px; }
+.bd-pres.is-on .pm { grid-template-rows: minmax(0, 1fr) auto; gap: 10px; }
+.bd-pres.is-on .shown { border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 2px var(--speak); }
+.bd-pres .tag { position: absolute; z-index: 13; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 9px; border-radius: 9px; background: var(--stage-raised); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); pointer-events: none; }
+.bd-pres .tag .ac-i { color: var(--speak); }
+.bd-pres .ctl { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; color: var(--stage-ink); font: 500 13px/1 var(--font-mono); }
+.bd-pres .ctl .at { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+.bd-pres .ctl button { display: grid; place-items: center; height: 44px; border-radius: 12px; background: rgb(255 255 255 / .08); color: var(--stage-ink); transition: background var(--duration-1) var(--ease-out), opacity var(--duration-1) var(--ease-out); }
+.bd-pres .ctl button:hover:not([aria-disabled="true"]) { background: rgb(255 255 255 / .14); }
+.bd-pres .ctl button:focus-visible { outline: 2px solid var(--horizon); outline-offset: 2px; }
+.bd-pres .ctl .go { width: 44px; }
+.bd-pres .ctl .go[aria-disabled="true"] { opacity: .38; cursor: default; }
+.bd-pres .ctl .stop { padding: 0 14px; margin-left: 14px; font: 600 13.5px/1 var(--font-sans); }
+.bd-pres .side { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 10px; min-height: 0; color: var(--stage-ink); }
+.bd-pres .lab { font: 500 11.5px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--stage-ink-2); }
+.bd-pres .nx { position: relative; height: 150px; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); background: var(--bd-ground); }
+.bd-pres .nx .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
+.bd-pres .nx .end { position: absolute; inset: 0; display: grid; place-items: center; background: var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); }
+.bd-pres .pn { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px; border-radius: 12px; background: rgb(255 255 255 / .05); cursor: text; }
+.bd-pres .pn:focus-within { box-shadow: inset 0 0 0 1px var(--horizon); }
+.bd-pres .pn textarea { flex: 1; min-height: 0; width: 100%; padding: 0; border: 0; resize: none; background: none; color: var(--stage-ink); font: 400 13.5px/1.45 var(--font-sans); outline: none; }
+.bd-pres .pn textarea::placeholder { color: var(--stage-ink-2); }
+/* A narrow stage: the frame, the way on under it, and the notes under that. The next frame waits for a wider one. */
+@container bd-pres (max-width: 640px) {
+  .bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .bd-pres .side { grid-template-rows: auto; }
+  .bd-pres .side > .lab, .bd-pres .nx { display: none; }
+  .bd-pres .pn { max-height: 104px; }
+  .bd-pres .ctl { gap: 6px; }
+  .bd-pres .ctl .stop { margin-left: 6px; }
+}
+
+/* The rise played backwards, as a board closed for everyone goes. */
+@keyframes bd-sink { from { clip-path: inset(0 0 0 0 round 18px); } to { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); opacity: 0; } }
 @keyframes bz-rail { from { opacity: 0; transform: translateX(-40px); } }
+@keyframes bd-fade { from { opacity: 0; } }
 @keyframes bf-land { from { opacity: 0; transform: translateY(60px) scale(.92); } }
 @keyframes bo-pop { from { opacity: 0; transform: translateY(8px) scale(.9); } }
 @keyframes bc-dot { 0%, 60%, 100% { opacity: .35; } 30% { opacity: 1; } }

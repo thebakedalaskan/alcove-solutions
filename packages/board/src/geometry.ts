@@ -40,6 +40,41 @@ export function bounds(boxes: readonly Box[]): Box {
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
+/** How far apart `freeNear` keeps what it places from what's there, and how far it looks for room, in rings round the spot. */
+const ROOM = 24;
+const RINGS = 24;
+/** The strip above a frame its title takes, in board units. */
+const TITLE = 44;
+/**
+ * The nearest place to `at`, a box's top left, where a `w` by `h` box lands on nothing: `at` itself if nothing's there, else
+ * the first free place in rings round it, nearest first. Things go into frames, so a frame is room, as long as the box is
+ * wholly in it or wholly out of it and clear of its title. Where there's no room near it at all, `at`.
+ */
+export function freeNear(view: BoardView, at: { x: number; y: number }, w: number, h: number): { x: number; y: number } {
+  const step = Math.max(ROOM, Math.round(Math.min(w, h) / 2));
+  const reach = step * RINGS + Math.max(w, h);
+  const near = view.objects.filter(hasBox).filter((o) => o.x < at.x + w + reach && at.x - reach < o.x + o.w && o.y - TITLE < at.y + h + reach && at.y - reach < o.y + o.h);
+  const meets = (a: Box, b: Box, gap: number) => a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;
+  const free = (x: number, y: number) => {
+    const box = { x, y, w, h };
+    return !near.some((o) => (o.k === 'frame'
+      ? (meets(box, o, 0) && !holds({ x: o.x + ROOM / 2, y: o.y + ROOM / 2, w: o.w - ROOM, h: o.h - ROOM }, box)) || meets(box, { x: o.x, y: o.y - TITLE, w: o.w, h: TITLE }, 0)
+      : meets(box, o, ROOM)));
+  };
+  if (free(at.x, at.y)) return at;
+  for (let ring = 1; ring <= RINGS; ring++) {
+    const spots: { x: number; y: number }[] = [];
+    for (let i = -ring; i <= ring; i++) {
+      spots.push({ x: at.x + i * step, y: at.y - ring * step }, { x: at.x + i * step, y: at.y + ring * step });
+      if (i > -ring && i < ring) spots.push({ x: at.x - ring * step, y: at.y + i * step }, { x: at.x + ring * step, y: at.y + i * step });
+    }
+    spots.sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y) || a.y - b.y || a.x - b.x);
+    const found = spots.find((s) => free(s.x, s.y));
+    if (found) return found;
+  }
+  return at;
+}
+
 /** Top to bottom, then left to right, with ids settling a tie so that every browser agrees. */
 export function reading<T extends PlacedObject>(objects: readonly T[]): T[] {
   return [...objects].sort((a, b) => a.y - b.y || a.x - b.x || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

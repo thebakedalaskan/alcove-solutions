@@ -28,6 +28,12 @@ export const DocCaretStateSchema = z.object({
 export type DocCaretState = z.infer<typeof DocCaretStateSchema>;
 
 /**
+ * Which connection to a call an awareness state is on (`CallParticipant.id`), as the server stamps it on every one it passes
+ * on, whatever a browser says of itself: how a person's tile finds their pointer on a board. Null outside a call.
+ */
+export const DocCallerStateSchema = z.object({ user: z.object({ callIdentity: z.string().max(128).nullish() }).nullish() });
+
+/**
  * What another browser's awareness says it's sending into a document: the blocks its uploads are going into. A block that
  * says it's uploading with nobody saying this of it any more was left when its browser went.
  */

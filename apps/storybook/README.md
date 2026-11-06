@@ -38,9 +38,9 @@ src/board.tsx             what board stories share: `BoardScene`, the real surfa
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
-stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, its workspace, leaving
+stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, its workspace, a board, leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
-stories/journeys/         one file per section of docs/product/user-flows.md
+stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
 ```
 
 **The stand-ins.** `main.ts` swaps two of the app's files for Storybook's, by the file an import lands on (so `~/lib/api`,
@@ -70,6 +70,9 @@ tag waiting for Art in `mentions`, and what a call worked on in its note's `work
 it, which opens it couldn't-save, and a block can say someone else is still uploading it. What each board holds is in
 `src/world/boards.ts`, drawn with `@alcove/board`'s own writers, with who else is on it (their pointers, and their faces in
 the workspace) and how it stands for this browser (`standing`: Reconnecting, Couldn't save, or taken away while it's open).
+After the launch retro (`afterTheRetro` in `src/api/scenarios.ts`, which a story's `beforeEach` puts in its world), Art's
+note has, under its summary, the retro board and then a board from each of three breakout rooms side by side, all saved in
+Product, then the follow-ups from the retro board's Actions frame.
 
 ## Scenarios
 
@@ -161,7 +164,9 @@ over the page is found with `screen` from `storybook/test`, since it isn't insid
 ## Add a journey
 
 `stories/journeys/<nn>-<section>.stories.tsx`, one file per section of `docs/product/user-flows.md` (`04-start-a-call`,
-title `Journeys/4 Start or schedule a call`), a story per journey, named with its number there. The play function clicks
+title `Journeys/4 Start or schedule a call`), a story per journey, named with its number there. A part of a section with
+numbered steps of its own gets a file after its section's, named with the steps each journey takes
+(`06b-a-board-in-the-call`, title `Journeys/6 A board in the call`, a story `1–2 Start a board`). The play function clicks
 the way a person would, finding what it clicks by role and label, in labelled steps that say what happens, as the canvas's
 journey captions do. It never checks: no `expect` (the policy script refuses it). `findBy…` waits for what the next step
 needs.
@@ -253,7 +258,11 @@ A call is one of the scenario's (its link's code) or a `StoryCall` the story put
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
 story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do: 'host-drops' }`, `{ do: 'reconnect' }`,
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
-from another call. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
+from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
+room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
+the world's first workspace. Someone else can open a board for everyone (`{ do: 'open-board' }`, with what `draw` puts on it),
+present it (`{ do: 'present' }`), move everyone on (`{ do: 'present-move' }`) and stop; you present the board open where you
+are, as the server lets you, and your presenter notes last as long as the story. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
 stories are always night, and come on a phone too (`phone()`).
 
 The call's workspace is played too. The first time Workspace opens, the call settles its home as the API does: the
@@ -270,6 +279,28 @@ in Product, drawn and recorded in the browser (`src/media/film.ts`) the first ti
 export const PresenterLeft = inCall({
   scenario: 'busy', call: LAUNCH_REVIEW,
   script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, leaves(PRIYA))] }
+});
+```
+
+A board in the call is played as well. Whoever opens one, you or someone in the script (`opensBoard`), the call makes it in
+its home, named after the call and filled from its template as the server fills it, and everyone on it is on its awareness
+as the server passes them on, their pointer and view with them, so their tiles find them. A board you can't open
+(`closedToYou`) says who brought it and nothing else. The script's `board` says what the others put on whatever board opens,
+a sticky at a time on a frame by its title, and how they vote when a vote ends; `addsSticky` puts one on at a moment of its
+own. The timer and the vote run as the server keeps them (`startsTimer`, `startsVote`, `endsVote`, `clearsVote`), and
+whatever you do on the board (open one, close it, start a timer or a vote, vote, end it) changes the call as the server
+would. `stories/calls/boards.ts` has the launch retro the board stories share, for any call story to put on its stage.
+What More puts on a board works here as it does in the app: a picture goes into the board's own files (`media.upload`) and
+back through `media.picture`, From your workspace lists the board's workspace as the stand-in's tree has it, and the
+downloads save a file. `stories/calls/BoardMore.stories.tsx` has each of More's items on the launch review, held in Product so
+its documents are there to link, and `14 On a phone` in the board's journeys adds a sticky through +, and starts a timer and a
+vote, at a phone's size.
+
+```tsx
+/** Priya opens the launch retro a second in, the others fill it as they talk, and she starts a vote on Could improve. */
+export const Voting = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, board: RETRO, cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(12, startsVote(PRIYA, 'Could improve', 3))] }
 });
 ```
 

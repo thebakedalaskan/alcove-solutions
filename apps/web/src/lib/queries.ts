@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import { AlcoveApiError, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -48,8 +48,29 @@ export const qk = {
   documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
   /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
   presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const,
-  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const
+  presenterFrameNotes: (id: string, boardId: string) => ['workspaces', id, 'presenter-notes', boardId, 'frames'] as const,
+  workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
+  workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
+  boardsToBring: ['workspaces', 'boards'] as const
 };
+
+/** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
+export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
+/** How many of the newest workspaces the Board menu looks in: a call's home is new, so what a team has is across the Drive. */
+const BOARD_SPACES = 12;
+/**
+ * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
+ * first. One that can't be read now is left out.
+ */
+async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<BoardToBring[]> {
+  const trees = await Promise.all(spaces.slice(0, BOARD_SPACES).map((w) => api.workspaces.get(w.id).catch((e: unknown) => {
+    log.child({ component: 'boards' }).info('a workspace’s boards couldn’t be read for the Board menu', { workspaceId: w.id, code: errorCode(e) });
+    return null;
+  })));
+  return trees.flatMap((t) => (t ? t.items.flatMap((i): BoardToBring[] => (i.kind === 'board' && i.trashedAt === null && i.role === 'edit'
+    ? [{ workspaceId: t.id, workspace: t.name, id: i.id, name: i.name, by: i.by?.name ?? null, editedAt: i.editedAt }] : [])) : []))
+    .sort((a, b) => b.editedAt.localeCompare(a.editedAt));
+}
 
 /** What the API says it runs on, and whether its answer is bound to the nonce this browser sent. */
 export interface Trust { tee: 'none' | 'dstack'; bound: boolean; at: number }
@@ -145,13 +166,26 @@ export const q = {
   documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
   /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
   presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity }),
+  /** Your notes beside each frame of a board, by frame. */
+  presenterFrameNotes: (id: string, boardId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterFrameNotes(id, boardId), queryFn: () => api.workspaces.presenterNotes.frames(id, boardId, pass ? { pass } : undefined), staleTime: Infinity }),
   /** One document or folder as you see it: what it's called now, and what you can do with it. */
   workspaceItem: (id: string, itemId: string) => queryOptions({ queryKey: qk.workspaceItem(id, itemId), queryFn: () => api.workspaces.items.get(id, itemId), retry: false }),
+  /**
+   * A workspace as you see it: what's in it that you can open, by your own name for each. What a board links to is named from
+   * it, and what you can link to is listed from it. Someone else may rename or move something, so it's good for half a minute.
+   * `pass`: in a call, the call's.
+   */
+  workspaceTree: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceTree(id), queryFn: () => api.workspaces.get(id, pass ? { pass } : undefined), staleTime: 30_000, retry: false }),
   /**
    * Every file you can reach in a workspace, the newest first, with the documents you reach each through: what the picker
    * offers to reuse, and how a file block knows its file was deleted for good. A guest reads it with their pass.
    */
-  workspaceMedia: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceMedia(id), queryFn: () => api.workspaces.media.list(id, { pass }), staleTime: 30_000 })
+  workspaceMedia: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceMedia(id), queryFn: () => api.workspaces.media.list(id, { pass }), staleTime: 30_000 }),
+  /** The boards the Board menu offers to bring, from across your Drive: read as it opens, and good for half a minute. */
+  /** What the Board menu offers from `spaces`, your Drive's workspaces as `workspaces` reads them: the boards in the newest. */
+  boardsToBring: (spaces: readonly WorkspaceSummary[]) => queryOptions({
+    queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
+  })
 };
 
 /**
@@ -562,6 +596,29 @@ export function useRenameWorkspace() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
 }
+/** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
+export function useRenameBoard(pass: string) {
+  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, { pass }) });
+}
+/**
+ * Sort into themes on a board: what the stickies picked say goes to confidential compute through the board's document, and
+ * nothing of it is kept. A blank sticky has nothing to sort by and stays where it is, and each is cut to what the notes model
+ * takes. Fewer than two with words, or more than it takes at once, is refused here in the server's own words, without asking it.
+ * `pass`: the call's, in a call, where the server refuses while notes are paused.
+ */
+export function useSortStickies(pass?: string | undefined) {
+  return useMutation({
+    mutationFn: async (v: { workspaceId: string; documentId: string; stickies: readonly { id: string; text: string }[] }) => {
+      const stickies = v.stickies.flatMap((s) => {
+        const text = s.text.trim().slice(0, MAX_SORT_STICKY).trim();
+        return text ? [{ id: s.id, text }] : [];
+      });
+      if (stickies.length < 2) throw new AlcoveApiError('invalid', SORT_TOO_FEW);
+      if (stickies.length > MAX_SORT_STICKIES) throw new AlcoveApiError('invalid', SORT_TOO_MANY);
+      return (await api.workspaces.sortStickies(v.workspaceId, v.documentId, { stickies }, pass ? { pass } : undefined)).themes;
+    }
+  });
+}
 /** A document in a workspace made a moment ago, before anything in it is on screen: a call's new workspace starts with one. */
 export function useFirstDocument() {
   return useMutation({ mutationFn: (workspaceId: string) => api.workspaces.items.create(workspaceId, { kind: 'document' }) });
@@ -603,6 +660,17 @@ export function useSavePresenterNotes(workspaceId: string, documentId: string, p
     onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
   });
 }
+/** Keeps your notes beside one frame of a board: what's kept is what the board's notes say from then on. Empty text takes them away. */
+export function useSavePresenterFrameNote(workspaceId: string, boardId: string, pass?: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ frame, text }: { frame: string; text: string }) => api.workspaces.presenterNotes.setFrame(workspaceId, boardId, frame, text, pass ? { pass } : undefined),
+    onSuccess: (_: void, { frame, text }: { frame: string; text: string }) => qc.setQueryData(qk.presenterFrameNotes(workspaceId, boardId), (was: PresenterFrameNotes | undefined) => {
+      const { [frame]: _gone, ...rest } = was?.frames ?? {};
+      return { frames: text ? { ...rest, [frame]: text } : rest };
+    })
+  });
+}
 /** Makes a new document of words that didn't reach the one they were written in (`DocSession.unsentCopy`). */
 export function useSaveCopy() {
   const qc = useQueryClient();
@@ -632,8 +700,8 @@ export function useDocumentShare(workspaceId: string, documentId: string, pass?:
   const s = api.workspaces.share;
   return {
     set: useMutation({ mutationFn: (v: { to: ShareTarget[]; role: DocumentRole }) => s.set(workspaceId, documentId, v.to, v.role, pass ? { pass } : undefined), onSuccess: reread }),
-    remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry), onSuccess: reread }),
-    restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted), onSuccess: reread })
+    remove: useMutation({ mutationFn: (entry: string) => s.remove(workspaceId, documentId, entry, pass ? { pass } : undefined), onSuccess: reread }),
+    restrict: useMutation({ mutationFn: (restricted: boolean) => s.restrict(workspaceId, documentId, restricted, pass ? { pass } : undefined), onSuccess: reread })
   };
 }
 /** Putting a document back to a version, for everyone. What it said is kept as a version first, so the list has one more. */

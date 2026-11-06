@@ -3,7 +3,7 @@
  * closing it to the workspace), and the people in a workspace, from the name at the top of the list.
  */
 import { errorCode, errorMessage, firstName, type DocumentRole, type Person, type PersonSuggestion, type WorkspaceItem, type WorkspacePerson, type WorkspaceRole } from '@alcove/api';
-import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow } from '@alcove/ui';
+import { WsShareSheet, wsToast, type WsShareMatch, type WsShareRole, type WsShareRow, type WsToastData } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useSettled } from '~/lib/live';
@@ -42,19 +42,27 @@ function useAdding(known: (p: Person) => boolean, add: (person: Pick<Person, 'na
   };
 }
 
-/** Share, on a document someone can edit. */
+/** Share, on a document someone can edit, in its workspace: in a call, the call hears of each change at once. */
 export function ShareSheet({ item }: { item: WorkspaceItem }) {
   const ws = useWs();
+  return <ShareSheetFor workspaceId={ws.workspaceId} item={item} say={ws.say} pass={ws.pass} />;
+}
+
+/**
+ * Share, wherever it opens: in the document's workspace, or from a board's name in a call. `say` shows what it did. `pass`: the
+ * call it's opened from, which is told of each change at once.
+ */
+export function ShareSheetFor({ workspaceId, item, say, pass }: { workspaceId: string; item: WorkspaceItem; say: (toast: WsToastData) => void; pass?: string | undefined }) {
   const name = nameOf(item);
-  const share = useQuery(q.documentShare(ws.workspaceId, item.id));
-  const people = useQuery(q.workspacePeople(ws.workspaceId)).data ?? [];
-  const changes = useDocumentShare(ws.workspaceId, item.id);
-  const refused = (e: unknown) => { ws.say(wsToast.failed(errorMessage(e))); };
+  const share = useQuery(q.documentShare(workspaceId, item.id));
+  const people = useQuery(q.workspacePeople(workspaceId)).data ?? [];
+  const changes = useDocumentShare(workspaceId, item.id, pass);
+  const refused = (e: unknown) => { say(wsToast.failed(errorMessage(e))); };
   const entries = share.data?.entries ?? [];
   const restricted = share.data?.restricted ?? item.restricted;
   const adding = useAdding(
     (p) => entries.some((e) => e.person.email === p.email) || (!restricted && people.some((w) => w.person.email === p.email)),
-    (p) => { changes.set.mutateAsync({ to: [{ email: p.email }], role: 'edit' }).then(() => { ws.say(wsToast.canOpen(firstName(p.name) || p.email, 'edit', name)); }, refused); }
+    (p) => { changes.set.mutateAsync({ to: [{ email: p.email }], role: 'edit' }).then(() => { say(wsToast.canOpen(firstName(p.name) || p.email, 'edit', name)); }, refused); }
   );
 
   const setRole = (email: string, role: DocumentRole) => { changes.set.mutateAsync({ to: [{ email }], role }).catch(refused); };

@@ -4,7 +4,7 @@ import type { CallMoveIn } from './moves';
 import type { PersonalApi, PromoteBody, PromotionPreview } from './personal';
 import type { IncomingRing, RingReply } from './rings';
 import type { ActionPatch, ActionProposal, ClientLogEntry, DecisionPatch, DecisionProposal, DemoProvider, LinePatch, QuestionPatch, RevisitPatch } from './wire';
-import type { DocAskBody, DocAskPart, DocSession, DocSessionOptions, DocVersion, DocVersionSummary, PresenterNotes, SearchDoc } from './workspaceDocuments';
+import type { BoardSortBody, BoardThemes, DocAskBody, DocAskPart, DocSession, DocSessionOptions, DocVersion, DocVersionSummary, PresenterFrameNotes, PresenterNotes, SearchDoc } from './workspaceDocuments';
 import type { DocumentRole, DocumentShare, ItemInput, ItemPlace, MentionBody, MentionNotice, ShareTarget, WorkspaceItem, WorkspaceLive, WorkspacePerson, WorkspaceReadOptions, WorkspaceRole, WorkspaceSummary, WorkspaceTree } from './workspaces';
 import type {
   AnswerPart, Attestation, Busy, Calendar, ChangeScope, CreditBalance, DocumentLibrary, ID, ISODate, InstantCallInput, Meeting, MeetingInput, Note, NoteFound, NoteKind, NotesSetting, Inbox,
@@ -278,9 +278,10 @@ export interface AlcoveApi {
        * seat takes the pass of the call it's in, and ends with the call.
        */
       set(id: ID, documentId: ID, to: ShareTarget[], role: DocumentRole, opts?: WorkspaceReadOptions): Promise<void>;
-      remove(id: ID, documentId: ID, entryId: ID): Promise<void>;
+      /** Takes someone off. From a call, with its pass, the call is told at once, as it is of anything here. */
+      remove(id: ID, documentId: ID, entryId: ID, opts?: WorkspaceReadOptions): Promise<void>;
       /** Restricts a document to its creator and the people it's shared with, or opens it to the workspace again. Whoever restricts it keeps it. */
-      restrict(id: ID, documentId: ID, restricted: boolean): Promise<void>;
+      restrict(id: ID, documentId: ID, restricted: boolean, opts?: WorkspaceReadOptions): Promise<void>;
     };
     /**
      * Files in a workspace's documents and boards. A file is reached through a document that has it: whoever can open
@@ -372,6 +373,10 @@ export interface AlcoveApi {
       get(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<PresenterNotes>;
       /** Empty text deletes them. */
       set(id: ID, documentId: ID, text: string, opts?: WorkspaceReadOptions): Promise<void>;
+      /** What you keep beside each frame of a board, by frame: yours alone, as your notes on a document are. */
+      frames(id: ID, boardId: ID, opts?: WorkspaceReadOptions): Promise<PresenterFrameNotes>;
+      /** One frame's. Empty text deletes them. */
+      setFrame(id: ID, boardId: ID, frame: string, text: string, opts?: WorkspaceReadOptions): Promise<void>;
     };
     /**
      * The format bar's Make this shorter and Turn this into a checklist: what's selected goes to the notes model in confidential
@@ -379,6 +384,13 @@ export interface AlcoveApi {
      * call it waits while notes are paused, like everything that reaches the AI.
      */
     ask(id: ID, documentId: ID, body: DocAskBody, opts?: WorkspaceReadOptions): AsyncIterable<DocAskPart>;
+    /**
+     * A board's Sort into themes: the stickies picked go to the notes model in confidential compute, which names a few themes
+     * and says which stickies go in each, for the person asking to put on the board in one step. Needs `edit`. Nothing is
+     * kept. It works whether notes are on or off; in a call, with its pass, it's refused while the call is paused, like
+     * everything that reaches the AI.
+     */
+    sortStickies(id: ID, documentId: ID, body: BoardSortBody, opts?: WorkspaceReadOptions): Promise<BoardThemes>;
   };
   credits: {
     balance(): Promise<CreditBalance>;

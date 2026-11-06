@@ -13,13 +13,17 @@
  *
  * What arrives in its own time, such as Sort's answer, is a step of its own (`separate`), whatever step is under way, so neither
  * takes back the other, and dropping a blank sticky's step leaves it be. It can be taken back by itself (`undoStep`).
+ *
+ * Something this browser has just put on the board that someone else's arrives exactly on, at the same moment, is moved to the
+ * next free spot as if it had been put there in the first place (`amend`): every step that holds it takes the new place for the
+ * old, so undoing what put it there takes it away from where it is now, and no undo or redo puts it back on the other.
  */
 import * as Y from 'yjs';
 import { asPlace, placesIn, rootList, setPlace } from './places';
 import { isRecord, listOf, mapOf, recordOf, rootMap, same } from './read';
 import { BOARD_COMMENTS, BOARD_OBJECTS, BOARD_PLACES, PLACE_FIELDS, type NewPlace, type Place } from './shape';
 import { difference } from './text';
-import { inLine, placeFrom, put, putThread, tidy, type TableAxis } from './write';
+import { fillCells, inLine, placeFrom, put, putThread, tableIn, tidy, type TableAxis } from './write';
 
 /** What became of an undo or redo: whether anything changed, or what went wrong, for the caller to log. */
 export type StepResult = { ok: true; changed: boolean } | { ok: false; error: unknown };
@@ -49,6 +53,12 @@ export interface BoardHistory {
   separate<T>(change: () => T): { result: T; step: BoardStep | null };
   /** Takes back one step by itself, wherever it is in the undo, if it's still there to take back. */
   undoStep(step: BoardStep): StepResult;
+  /**
+   * Moves something this browser put on the board as if it had been put there in the first place: `change` moves `id`, and every
+   * step that holds it, the one in progress too, takes its new place for the old one. Whatever else `change` does is a step of
+   * its own. Returns what `change` returned.
+   */
+  amend<T>(id: string, change: () => T): T;
   subscribe(listener: () => void): () => void;
   destroy(): void;
 }
@@ -101,6 +111,8 @@ const wordsOf = (value: unknown): string => (typeof value === 'string' ? value :
 const idOf = (value: unknown): unknown => recordOf(value)['id'];
 
 const PLACED = new Set<string>(PLACE_FIELDS);
+/** Where a copy says something is and the frame it's in: the fields of its place. */
+const placeOf = (copy: Copy): Copy => Object.fromEntries(PLACE_FIELDS.map((key) => [key, copy[key]]));
 
 /**
  * An object or thread as plain values, its place joined in, or null if there isn't one. A box or a frame in its Y.Map isn't where
@@ -134,7 +146,8 @@ function touched(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): Set<stri
 
 /**
  * The cells a transaction wrote in, as an id and a key, and whether what it wrote is still there. A cell that someone made and that went
- * again before it reached this browser, or that lost the merge to another, is written but not there. A cell going with its row is no write.
+ * again before it reached this browser, or that lost the merge to another, is written but not there. A cell going with its row is no write,
+ * and nor is an empty one made with its row or column: there are no words in it.
  */
 function cellsWritten(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): [string, string, boolean][] {
   const cells: [string, string, boolean][] = [];
@@ -145,6 +158,8 @@ function cellsWritten(events: readonly Y.YEvent<Y.AbstractType<unknown>>[]): [st
     else if (event instanceof Y.YMapEvent) {
       for (const cell of event.keysChanged) {
         const action = event.keys.get(cell)?.action;
+        const made = typeof cell === 'string' ? event.target.get(cell) : undefined;
+        if (action === 'add' && made instanceof Y.Text && made.length === 0) continue;
         if (typeof cell === 'string' && action !== 'delete') cells.push([id, cell, action !== undefined]);
       }
     }
@@ -437,6 +452,9 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
             const only = (copy: Copy): Copy => ({ ...after, cells: Object.fromEntries(Object.entries(recordOf(copy['cells'])).filter(([key]) => away.has(key))) });
             const box = fieldsBack(m, before, after, now, { back: notes(at.back), wrote: notes(at.wrote), away });
             if (Object.keys(box).length) moveTo(placeFrom(id, { ...now, ...box }));
+            // A row or column it brings back comes with its cells, as one added does.
+            const table = tableIn(m);
+            if (table) fillCells(table);
             if (away.size) waiting.unshift({ ...entry, before: only(before), after: only(after) });
           } else waiting.unshift(entry);
         }
@@ -508,6 +526,43 @@ export function makeHistory(doc: Y.Doc, origin: unknown): BoardHistory {
         open = wasOpen;
         if (step.length) {
           keep(undos, step);
+          redos.length = 0;
+        }
+        tell();
+      }
+    },
+    amend<T>(id: string, change: () => T) {
+      const held = pending, heldLatest = [...latest], wasOpen = open;
+      const was = things?.copies.get(id) ?? null;
+      pending = [];
+      latest.clear();
+      open = true;
+      let made: Entry[] = [];
+      try {
+        const result = change();
+        made = take();
+        return result;
+      } finally {
+        // What a change that stopped part way did is in the doc all the same.
+        if (!made.length) made = take();
+        pending = held;
+        for (const [key, entry] of heldLatest) latest.set(key, entry);
+        open = wasOpen;
+        const now = things?.copies.get(id) ?? null;
+        if (things && was && now) {
+          const from = placeOf(was), to = placeOf(now);
+          const moved = (copy: Copy | null): Copy | null => (copy && PLACE_FIELDS.every((key) => same(copy[key], from[key])) ? { ...copy, ...to } : copy);
+          for (const step of [...undos, ...redos, held]) {
+            for (const entry of step) {
+              if (entry.root !== things || entry.id !== id) continue;
+              entry.before = moved(entry.before);
+              entry.after = moved(entry.after);
+            }
+          }
+        }
+        const rest = made.filter((entry) => entry.root !== things || entry.id !== id);
+        if (rest.length) {
+          keep(undos, rest);
           redos.length = 0;
         }
         tell();

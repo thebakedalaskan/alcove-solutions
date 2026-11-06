@@ -1,8 +1,14 @@
-import type { Meeting, Person } from '@alcove/api';
+import type { Document, Meeting, Person } from '@alcove/api';
 import { createContext, useContext } from 'react';
 
-/** What Start a call opens with: people already picked, the group's name when they're one, and `later` to go straight to scheduling: to When, with people picked. */
-export interface StartOptions { people?: Person[] | undefined; name?: string | undefined; later?: boolean | undefined }
+/** A board to open for everyone once a call starts, where it's saved, by its name. */
+export interface BoardToOpen { workspaceId: string; documentId: string; name: string }
+/**
+ * What Start a call opens with: people already picked, the group's name when they're one, `later` to go straight to scheduling
+ * (to When, with people picked), and what the call brings from your library. `open` is a board among them that opens for
+ * everyone as the call starts: Start a call here, on a board's page, asks for that.
+ */
+export interface StartOptions { people?: Person[] | undefined; name?: string | undefined; later?: boolean | undefined; documents?: Document[] | undefined; open?: BoardToOpen | undefined }
 /**
  * Starting and opening calls, from anywhere inside the app shell. `start` opens Start a call. `open` opens a call's
  * card; `onGone` is where focus goes if the call is cancelled from it, since the row it came from goes too.

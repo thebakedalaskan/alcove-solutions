@@ -1,5 +1,5 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, BoardSortBodySchema, DocFollowUpTickSchema, PresenterFrameNoteBodySchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
 } from '@alcove/api';
@@ -175,6 +175,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const followUpLimiter = rateLimit(60, 60_000);
   /** Saying you're looking at the live notes, per connection to a call: a browser does every 5 seconds. Refreshes have their own limit, for each view of each part of the call. */
   const notesWatchLimiter = rateLimit(120, 60_000);
+  /** Looking for ideas from the call: a browser with a board open looks every 15 seconds or so, and only one a minute reads anything. */
+  const ideasWatchLimiter = rateLimit(30, 60_000);
+  /** Sorting a board's stickies into themes, for each person. */
+  const sortLimiter = rateLimit(20, 60_000);
   /** Reading the call's follow-ups, per connection to a call: a browser showing them does every 5 seconds, and each read opens the documents worked on. */
   const followUpsLimiter = rateLimit(30, 60_000);
   /** Asking to see the workspace, per person in a call: each ask reaches the organizer. */
@@ -522,11 +526,11 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     return c.json(await calls.previewWorkspace(v, c.req.param('id'), c.req.param('workspace')));
   });
   /* What opening a saved board would mean, for the menu to ask before anything opens. */
-  app.get('/v1/live/calls/:id/boards/:document', async (c) => {
+  app.get('/v1/live/calls/:id/boards/:workspace/:document', async (c) => {
     const v = c.get('viewer');
     calls.requireIn(v, 'board-check');
     spaceLimiter(v.pass.person, 'workspace');
-    return c.json(await calls.boardCheck(v, c.req.param('id'), c.req.param('document')));
+    return c.json(await calls.boardCheck(v, c.req.param('id'), c.req.param('workspace'), c.req.param('document')));
   });
   app.use('/v1/live/calls/:id/follow-ups', capped(1024));
   app.get('/v1/live/calls/:id/follow-ups', async (c) => {
@@ -673,6 +677,17 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     calls.requireIn(v, 'live-notes');
     notesWatchLimiter(v.pass.identity, 'live-notes');
     return c.json({ refreshed: await calls.watchNotes(v, c.req.param('id')) });
+  });
+  /**
+   * Ideas from the call: they come with the call (`board.ideas`). This says someone has its board open, which is what has them
+   * looked for: a look that finds it's time reads what was said lately, and answers once that's done, for everyone in that part
+   * of the call; any other look answers at once.
+   */
+  app.post('/v1/live/calls/:id/ideas/watch', async (c) => {
+    const v = c.get('viewer');
+    calls.requireIn(v, 'board-ideas');
+    ideasWatchLimiter(v.pass.identity, 'board-ideas');
+    return c.json({ found: await calls.watchIdeas(v, c.req.param('id')) });
   });
   app.get('/v1/live/calls/:id/transcript/:line', async (c) => {
     const v = c.get('viewer');
@@ -830,12 +845,29 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     await presenterNotes.write(d, r, c.req.param('id'), c.req.param('doc'), (await body(c, PresenterNotesBodySchema)).text);
     return c.json({ kept: true });
   });
+  /* And beside each frame of a board, by frame: the frame goes in the body, never the path. */
+  app.use('/v1/workspaces/:id/documents/:doc/presenter-notes/frames', capped(32 * 1024));
+  app.get('/v1/workspaces/:id/documents/:doc/presenter-notes/frames', async (c) => c.json(await presenterNotes.readFrames(d, await readerOf(c), c.req.param('id'), c.req.param('doc'))));
+  app.post('/v1/workspaces/:id/documents/:doc/presenter-notes/frames', async (c) => {
+    const r = await readerOf(c);
+    presenterLimiter(access.limitKey(r), 'presenter notes');
+    const { frame, text } = await body(c, PresenterFrameNoteBodySchema);
+    await presenterNotes.writeFrame(d, r, c.req.param('id'), c.req.param('doc'), frame, text);
+    return c.json({ kept: true });
+  });
   /* Asking Alcove about what's selected: what goes to the notes model isn't kept, here or anywhere, and it answers only someone who can edit. */
   app.use('/v1/workspaces/:id/documents/:doc/ask', capped(64 * 1024));
   app.post('/v1/workspaces/:id/documents/:doc/ask', async (c) => {
     const r = await readerOf(c);
     askLimiter(access.limitKey(r), 'ask-selection');
     return c.json(await workspaceDocuments.askAlcove(d, r, c.req.param('id'), c.req.param('doc'), await body(c, DocAskBodySchema)));
+  });
+  /* Sorting a board's stickies into themes: what goes to the notes model isn't kept, here or anywhere, and it answers only someone who can edit. */
+  app.use('/v1/workspaces/:id/documents/:doc/sort', capped(64 * 1024));
+  app.post('/v1/workspaces/:id/documents/:doc/sort', async (c) => {
+    const r = await readerOf(c);
+    sortLimiter(access.limitKey(r), 'board-sort');
+    return c.json(await workspaceDocuments.sortStickies(d, r, c.req.param('id'), c.req.param('doc'), await body(c, BoardSortBodySchema)));
   });
   /* The words of everything a reader can open: for searching in the browser, one document a line. */
   app.get('/v1/workspaces/:id/search', async (c) => {
@@ -1236,8 +1268,9 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     await workspaces.share(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), to, role);
     return c.json({ shared: true });
   });
-  app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c), ws(c), itemOf(c), c.req.param('entry')); return c.json({ removed: true }); });
-  app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted); return c.json({ changed: true }); });
+  // From a call, with its pass, a change to who has something is told to that call at once.
+  app.delete('/v1/workspaces/:id/items/:item/share/:entry', async (c) => { await workspaces.unshare(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), c.req.param('entry')); return c.json({ removed: true }); });
+  app.post('/v1/workspaces/:id/items/:item/restrict', async (c) => { await workspaces.restrict(d, await member(c, c.req.header(CALL_PASS_HEADER)), ws(c), itemOf(c), (await body(c, RestrictBodySchema)).restricted); return c.json({ changed: true }); });
 
   /* credits */
   app.get('/v1/credits', async (c) => c.json(await billing.balance(d, c.get('owner').ownerId)));

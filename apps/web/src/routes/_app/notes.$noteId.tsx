@@ -6,6 +6,7 @@ import { Button, Dots, Evening, Faces, Icon, Notice, RecDot, cn, useToast } from
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { NoteBoardCards, NoteRoomBoardCards, type RoomBoard } from '~/features/notes/Boards';
 import { CallLine, marksOf } from '~/features/notes/CallLine';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
@@ -262,14 +263,35 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   // whether any has notes, which stay when a call isn't set to keep what they were written from.
   const settle = ready ? { reader, onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person), decisionForm, actionForm } : undefined;
   const tryAgain = mine ? <Button size="sm" className="nd-retry" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button> : null;
-  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={ready ? proposing : undefined} settle={settle} tryAgain={tryAgain} marks={yours.lines} open={room} at={at} /> : null;
+  // The boards open in the call: the main room's with the call's notes, each room's in its section.
+  const boards = note.workedOn.filter((w) => w.kind === 'board');
+  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} boards={boards} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={ready ? proposing : undefined} settle={settle} tryAgain={tryAgain} marks={yours.lines} open={room} at={at} /> : null;
   /** Keeps an answer in your own notes, with what it comes from: nothing else keeps one. */
   const keep = (a: Answer) => yours.own.add.mutateAsync({
     kind: 'answer', question: a.q, answer: a.text,
     points: a.cites.flatMap((c): PersonalPoint[] => (c.type === 'cite' ? [{ kind: 'moment', at: c.at }] : c.type === 'screen' ? [{ kind: 'screen', frameId: c.id }] : []))
   });
   const toConfirm = note.decisions.filter((d) => d.state === 'proposed').length;
-  const forYou = note.actions.filter((a) => !a.done && !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me })).length;
+  // What was said, and what the notes took from a board's Actions frame, each under its own heading.
+  const said = note.actions.filter((a) => a.from === null);
+  const fromBoards = note.actions.filter((a) => a.from === 'board');
+  const mainBoards = boards.filter((b) => b.room === null);
+  const yoursOf = (actions: readonly ActionItem[]) => actions.filter((a) => !a.done && !!me && !!a.owner?.person && sameEmail(a.owner.person, { email: me })).length;
+  const forYou = yoursOf(said);
+  const boardForYou = yoursOf(fromBoards);
+  // The boards, right under the summary as the canvas has them: the call's, then each breakout room's, side by side.
+  const roomBoards = note.rooms.flatMap((r): RoomBoard[] => { const own = boards.filter((b) => b.room === r.id); return own.map((b) => ({ room: r, board: b, several: own.length > 1 })); });
+  const boardSection = !going && (mainBoards.length > 0 || roomBoards.length > 0) ? (
+    <Section title={mainBoards.length + roomBoards.length > 1 ? 'Boards' : 'Board'} id="boards">
+      <NoteBoardCards boards={mainBoards} />
+      <NoteRoomBoardCards rooms={roomBoards} held={note.rooms} />
+    </Section>
+  ) : null;
+  const boardFollowUps = !going && ready && written && fromBoards.length > 0 ? (
+    <Section title={mainBoards.length > 1 ? 'Follow-ups from the boards' : 'Follow-ups from the board'} kind="follow" id="board-follow-ups" count={boardForYou ? `${boardForYou} for you` : undefined}>
+      <FollowUps actions={fromBoards} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} />
+    </Section>
+  ) : null;
 
   /* The horizon. */
   const marks = useMemo(() => marksOf(note.decisions, note.actions), [note.decisions, note.actions]);
@@ -321,6 +343,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
               <>
                 {writingAgain}
                 <p className="nd-sum">{note.summary}</p>
+                {boardSection}
+                {boardFollowUps}
                 <Section title="Decided" kind="decide" id="decided" count={toConfirm ? `${toConfirm} to confirm` : undefined}>
                   {note.decisions.length > 0 ? <Decisions items={note.decisions} me={me} reader={reader} onChange={changeDecision} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything decided.</p>}
                   {decisionForm()}
@@ -329,7 +353,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                   <Section title="Still open"><Questions items={note.questions} me={me} onChange={changeQuestion} onSeek={seek} shown={onScreen} /></Section>
                 )}
                 <Section title="Follow-ups" kind="follow" id="follow-ups" count={forYou ? `${forYou} for you` : undefined}>
-                  {note.actions.length > 0 ? <FollowUps actions={note.actions} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything to follow up.</p>}
+                  {said.length > 0 ? <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} /> : <p className="nd-none">The notes didn’t hear anything to follow up.</p>}
                   {actionForm()}
                 </Section>
               </>
@@ -355,6 +379,8 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 {!live && progress && <Steps steps={progress.steps} />}
               </section>
             )}
+            {/* Until there's a summary, the boards come after how the notes stand. */}
+            {!(ready && written) && boardSection}
             {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}
             {!going && <WorkedOn worked={note.workedOn} />}
           </div>

@@ -2,9 +2,11 @@
  * A board's own page, in the workspace beside the list (user-flows 13): the launch retro with Priya and Kofi on it, as the
  * whiteboards canvas's page has it, and a board nobody has added to yet; then every way its seal can stand, from the canvas's
  * States board (Reconnecting, Couldn't save, View only, and a board you can't open any more), what's under its name and in
- * its seal, who can add to it, someone outside the workspace it was shared with, a comment, in Trash, at night and on a phone.
+ * its seal, who can add to it, someone outside the workspace it was shared with, a comment, More beside the tools, in Trash, at
+ * night, as a night board by day, and on a phone, where it's the phone's board and + adds a sticky.
  */
 import type { WorkspaceItem } from '@alcove/api';
+import { setNight } from '@alcove/board';
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { itemId } from '../../src/api/scenarios';
@@ -29,6 +31,11 @@ function retro(w: World, item: Partial<WorkspaceItem>, board: Partial<BoardSpec>
   w.boards[RETRO_ID] = { ...w.boards[RETRO_ID], ...board };
 }
 const standing = (s: NonNullable<BoardSpec['standing']>) => (w: World): void => retro(w, {}, { standing: s });
+/** Someone made it a night board: it's the board's own setting, so it's saved on it. */
+const night = (w: World): void => {
+  const drawn = w.boards[RETRO_ID]?.draw;
+  retro(w, {}, { draw: (doc) => { drawn?.(doc); setNight(doc, true, 'story'); } });
+};
 /** Art can only look at it: it was shared with him to read. */
 const reading = (w: World): void => retro(w, { role: 'read' });
 /** Priya moved it to Trash this afternoon. */
@@ -86,9 +93,28 @@ export const TheSeal = page(RETRO, 'busy', {
 export const AComment = page(RETRO, 'busy', {
   play: async ({ userEvent }) => { await userEvent.click(await screen.findByRole('button', { name: 'Comment from Maya Chen' }, SOON)); }
 });
+/** More, at the foot of the tools: a picture, something from Product, a table, a mind map, a comment and a template, as in a call. */
+export const MoreBesideTheTools = page(RETRO, 'busy', {
+  play: async ({ userEvent }) => {
+    await screen.findByRole('application', { name: 'Launch retro' }, SOON);
+    await userEvent.click(await screen.findByRole('button', { name: /^More: images/ }, SOON));
+    await screen.findByRole('button', { name: 'Comment' }, SOON);
+  }
+});
+/** A night board: the board's own setting, so it's dark on the page by day, for everyone who opens it. */
+export const NightBoard = page(RETRO, 'busy', { beforeEach: changing(night) });
 /** The onboarding flow in Design, where Art edits. */
 export const AFlow = page(FLOW, 'busy');
 export const Night = page(RETRO, 'busy', { globals: { theme: 'dark' } });
 export const NightReconnecting = page(RETRO, 'busy', { beforeEach: changing(standing('offline')), globals: { theme: 'dark' } });
+/** On a phone the page is the phone's board: it opens where it can be read, and + is the one tool. */
 export const Phone = page(RETRO, 'busy', { globals: PHONE });
+/** + on a phone: one sticky, its colour, and a button that says where it's going, on a sheet in your own theme. */
+export const PhoneAdd = page(RETRO, 'busy', {
+  globals: PHONE,
+  play: async ({ userEvent }) => {
+    await userEvent.click(await screen.findByRole('button', { name: 'Add a sticky' }, SOON));
+    await screen.findByRole('button', { name: /^Add to / }, SOON);
+  }
+});
 export const PhoneUnderItsName = page(RETRO, 'busy', { globals: { ...PHONE, theme: 'dark' }, play: underTheName });

@@ -683,7 +683,7 @@ describe('breakout rooms', () => {
     const { org, host, kofi, lena, kofiEmail, lenaEmail } = await roomsCall();
     const MAIN = 'We agreed to split into two rooms.';
     await say(host, MAIN);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi, design);
     await inPlace(lena, support);
@@ -781,7 +781,7 @@ describe('breakout rooms', () => {
   async function tickedFromWhatKofiMissed() {
     const r = await roomsCall();
     await say(r.host, TASK);
-    r.host.openRooms({ rooms: [{ name: 'Design', emails: [r.kofiEmail] }, { name: 'Support', emails: [r.lenaEmail] }], minutes: 10 });
+    r.host.openRooms({ rooms: [{ name: 'Design', emails: [r.kofiEmail] }, { name: 'Support', emails: [r.lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = await roomIds(r.host);
     await inPlace(r.kofi, design);
     await say(r.host, 'The hall is for Kofi’s surprise party.', 3000);
@@ -843,7 +843,7 @@ describe('breakout rooms', () => {
     const first = host.watchNotes();
     await notesOf(host);
     first();
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = await roomIds(host);
     await inPlace(kofi, design);
     await scribing(kofi, design);
@@ -862,7 +862,7 @@ describe('breakout rooms', () => {
   it('won’t let anyone tick notes that read what they may not, whoever they are', async () => {
     const late = unique('priya');
     const { host, kofi, kofiEmail, lenaEmail, code: c } = await roomsCall([late]);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = await roomIds(host);
     await inPlace(kofi, design);
     await sayNow(host, TASK, 1000);
@@ -884,7 +884,7 @@ describe('breakout rooms', () => {
 
   it('stops a paused room’s notes while the others go on', async () => {
     const { host, kofi, lena, kofiEmail, lenaEmail } = await roomsCall();
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = '', support = ''] = await roomIds(host);
     await inPlace(kofi, design);
     await inPlace(lena, support);
@@ -1320,7 +1320,7 @@ describe('adding a follow-up', () => {
     await inGroup(lena);
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
     await host.addFollowUp('Added in the main room');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await inPlace(kofi, design);
 
@@ -1352,7 +1352,7 @@ describe('adding a follow-up', () => {
     await inGroup(lena);
     await host.appendAudio(piece(audioBytes('rooms'), 0, 0));
     await say(host, 'Kofi will book the hall by Friday.');
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10 });
+    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [lenaEmail] }], minutes: 10, board: { mode: 'none', template: 'blank' } });
     const [design = ''] = (await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms.map((r) => r.id) ?? [];
     await inPlace(kofi, design);
     await say(host, 'The hall is for Kofi’s surprise party.', 3000);

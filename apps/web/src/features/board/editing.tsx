@@ -4,7 +4,7 @@
  * one sticky. It always shows the Y.Text, never the view, because the view cuts text past the limit and this is where
  * someone can see and fix all of it. Keys stop here: letters are letters, and nothing on the call or the board hears them.
  */
-import { BOARD_LIMITS, difference, objectText, observeBoard, type BoardObject, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
+import { BOARD_LIMITS, bindCell, difference, objectText, observeBoard, type BoardObject, type BoardView, type PlacedObject, type TextChange } from '@alcove/board';
 import { BoardEdit, fitBoardEdit } from '@alcove/ui';
 import { useLayoutEffect, useRef } from 'react';
 import type * as Y from 'yjs';
@@ -156,25 +156,39 @@ export function holdKeys(then: () => void): void {
 /** Which of an object's fields is typed in: a frame has a title. */
 export const textField = (o: BoardObject | undefined): 't' | 'title' => (o?.k === 'frame' ? 'title' : 't');
 
-/** The textarea for one object, focused with the caret at the end, as it opens. `field` says what it writes in, and a `title` keeps to one line. */
-export function BoardTyping({ board, id, label, field = 't' }: { board: Board; id: string; label: string; field?: 't' | 'title' | undefined }) {
+/** A table's cell, by its row and column. */
+export interface BoardCell { row: string; col: string }
+
+/**
+ * The textarea for one object, focused with the caret at the end, as it opens. `field` says what it writes in, and a `title`
+ * keeps to one line. In a table, `cell` says which: its words came with its row and column, and if someone else's win, as they can
+ * in a cell the table was missing, this follows them.
+ */
+export function BoardTyping({ board, id, label, field = 't', cell }: { board: Board; id: string; label: string; field?: 't' | 'title' | undefined; cell?: BoardCell | undefined }) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const row = cell?.row, col = cell?.col;
   useLayoutEffect(() => {
     const el = ref.current;
-    let text = objectText(board.doc, id, field);
-    if (!el || !text) return undefined;
-    let binding = bindText(el, text, board.origin);
-    const stopFitting = fitBoardEdit(el);
-    // Undo makes a deleted object again with a new Y.Text. Someone can be typing in it, and a reconnect can bring the delete and the undo at once, so nothing closes this field: without following, what they type next would go nowhere.
-    const follow = (): void => {
-      const now = objectText(board.doc, id, field);
-      if (!now || now === text) return;
-      binding.stop();
-      text = now;
-      binding = bindText(el, now, board.origin);
+    if (!el) return undefined;
+    const bound: { text: Y.Text | null; binding: { flush: () => void; stop: () => void } | null } = { text: null, binding: null };
+    // The words to type in, now and whenever they're another Y.Text: undo makes a deleted object again with a new one, and a
+    // reconnect can bring the delete and the undo at once, so nothing closes this field; where a table was missing a cell, one
+    // someone else made at the same moment can win. Without following, what they type next would go nowhere. Words that go
+    // altogether leave the field as it is.
+    const use = (now: Y.Text | null): void => {
+      if (!now || now === bound.text) return;
+      bound.binding?.stop();
+      bound.text = now;
+      bound.binding = bindText(el, now, board.origin);
     };
-    const stopFollowing = observeBoard(board.doc, follow);
-    board.flushTyping = () => binding.flush();
+    const stopFollowing = row !== undefined && col !== undefined
+      ? bindCell(board.doc, id, row, col, board.origin, use)
+      : observeBoard(board.doc, () => use(objectText(board.doc, id, field)));
+    if (row === undefined) use(objectText(board.doc, id, field));
+    const { binding } = bound;
+    if (!binding) { stopFollowing(); return undefined; }
+    const stopFitting = fitBoardEdit(el);
+    board.flushTyping = () => bound.binding?.flush();
     const key = (e: KeyboardEvent): void => {
       // ⌘ and Ctrl shortcuts aren't typing, so they're the app's as usual. Anything else goes no further than this field.
       if (!e.metaKey && !e.ctrlKey) e.stopPropagation();
@@ -184,9 +198,17 @@ export function BoardTyping({ board, id, label, field = 't' }: { board: Board; i
         board.finishEdit();
         board.focusSheet();
       }
+      const kind = board.getSnapshot().view.byId.get(id)?.k;
+      // A mind map's idea: Tab branches from it, and Enter starts another beside it.
+      if (kind === 'node' && (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey))) {
+        e.preventDefault();
+        if (e.key === 'Tab') board.branch(); else board.nextIdea();
+        return;
+      }
       if (e.key === 'Tab') {
         e.preventDefault();
-        if (field === 'title') {
+        if (row !== undefined) board.nextCell(e.shiftKey);
+        else if (field === 'title') {
           board.finishEdit();
           board.focusSheet();
         } else {
@@ -209,9 +231,11 @@ export function BoardTyping({ board, id, label, field = 't' }: { board: Board; i
         // The event says what's taking focus, whoever moved it. The page may not show it yet, and nothing having focus would read as focus lost.
         const to = e.relatedTarget instanceof Element ? e.relatedTarget : document.activeElement;
         // Back with the page in front, a word being composed is over: Chrome ends it when a node moves, and doesn't say so.
-        if (to === el && document.hasFocus()) binding.flush();
-        // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on.
-        if (to === el || board.getSnapshot().edit !== id) return;
+        if (to === el && document.hasFocus()) bound.binding?.flush();
+        // Switching to another window takes focus but leaves this field active. You'd expect to come back and carry on. Nor is
+        // anything lost when typing has moved on: to another object, or to another cell of this table, whose field has focus now.
+        const now = board.getSnapshot();
+        if (to === el || now.edit !== id || (row !== undefined && (now.cell?.row !== row || now.cell.col !== col))) return;
         if ((!to || to === document.body) && !pressed) board.fieldLost();
         else board.finishEdit();
       });
@@ -233,13 +257,13 @@ export function BoardTyping({ board, id, label, field = 't' }: { board: Board; i
       board.flushTyping = null;
       stopFollowing();
       stopFitting();
-      binding.stop();
+      bound.binding?.stop();
       removeEventListener('mousedown', press, true);
       removeEventListener('focus', back);
       el.removeEventListener('keydown', key);
       el.removeEventListener('blur', blur);
     };
-  }, [board, id, field]);
+  }, [board, id, field, row, col]);
   return <BoardEdit ref={ref} label={label} rows={1} maxLength={BOARD_LIMITS.text} />;
 }
 

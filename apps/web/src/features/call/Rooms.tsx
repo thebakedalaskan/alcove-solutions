@@ -1,11 +1,12 @@
 /*
- * Breakout rooms, in the side panel: a board to set them up (how many, how long, who goes where),
- * then an overview while they're open (the shared timer, each room, renaming it, moving someone to
- * another room, a message to every room, and bringing everyone back). The rooms themselves are call
- * state on the server, each with its own encryption keys; only the organizer opens them, and only
- * people invited to the call are sent to one. Guests stay in the main room.
+ * Breakout rooms, in the side panel: a board to set them up (how many, how long, what they have to work on, who goes
+ * where), then an overview while they're open (the shared timer, each room and whether it's on its board, renaming it,
+ * moving someone to another room, a message to every room, and bringing everyone back). The rooms themselves are call
+ * state on the server, each with its own encryption keys; only the organizer opens them, and only people invited to the
+ * call are sent to one. Guests stay in the main room. A room's board is sealed to it, so the overview says only that a
+ * room is on it.
  */
-import type { Breakouts, Person } from '@alcove/api';
+import type { BoardTemplate, BreakoutBoard, BreakoutBoardMode, Breakouts, Person } from '@alcove/api';
 import { Avatar, Button, EmptyState, Icon, IconButton, Popover, Segmented, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
@@ -20,20 +21,50 @@ const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const RING = 169.6;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 
+/** What a board for rooms can start from, as the Board menu names them. */
+const TEMPLATES: { id: BoardTemplate; label: string }[] = [
+  { id: 'what-why-next', label: 'What, why, next' }, { id: 'retro', label: 'Retro' }, { id: 'ideas', label: 'Ideas' }, { id: 'flow', label: 'Flow' }, { id: 'blank', label: 'Blank' }
+];
+/** What the Board row's line says about each choice. */
+const BOARD_LINE: Record<Exclude<BreakoutBoardMode, 'none'>, string> = {
+  each: 'Only that room sees its board. When rooms close, every board comes back to the main room.',
+  shared: 'One board, a frame for each room. Everyone can see every frame while they work.'
+};
+
+/** What a new board for the rooms starts from: a choice, in the line under the Board row. */
+function StartsFrom({ template, onPick }: { template: BoardTemplate; onPick: (t: BoardTemplate) => void }) {
+  const [open, setOpen] = useState(false);
+  const label = TEMPLATES.find((t) => t.id === template)?.label ?? 'Blank';
+  return (
+    <Popover open={open} onOpenChange={setOpen} side="bottom" align="start" label="What it starts from" className="ic-menu narrow"
+      anchor={<button type="button" className="from" aria-label={`Starts from ${label}. Change it`}><Icon name="layoutTemplate" size={15} /><span>{label}</span><Icon name="down" size={14} /></button>}>
+      {TEMPLATES.map((t) => (
+        <button key={t.id} type="button" className="mi" aria-pressed={t.id === template} onClick={() => { setOpen(false); onPick(t.id); }}>
+          <Icon name={t.id === template ? 'check' : 'layoutTemplate'} size={17} /><span className="t">{t.label}</span>
+        </button>
+      ))}
+    </Popover>
+  );
+}
+
 function shuffled(ids: string[], n: number): string[][] {
   const a = [...ids];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; const u = a[j]; if (t !== undefined && u !== undefined) { a[i] = u; a[j] = t; } }
   return Array.from({ length: n }, (_, k) => a.filter((_, i) => i % n === k));
 }
 
-export function RoomsSetup({ people, guests, onOpen }: {
+export function RoomsSetup({ people, guests, boardName, onOpen }: {
   people: RoomCandidate[];
   /** How many people here joined with the link: they stay in the main room. */
   guests: number;
-  onOpen: (rooms: { name: string; ids: string[] }[], minutes: number) => void;
+  /** The board open in the main room now, by name: rooms sharing a board share that one. Null when there's none. */
+  boardName: string | null;
+  onOpen: (rooms: { name: string; ids: string[] }[], minutes: number, board: BreakoutBoard) => void;
 }) {
   const [n, setN] = useState<'2' | '3'>('2');
   const [len, setLen] = useState<'5' | '10' | '15'>('5');
+  const [mode, setMode] = useState<BreakoutBoardMode>('none');
+  const [template, setTemplate] = useState<BoardTemplate>('what-why-next');
   const [names, setNames] = useState(['Room 1', 'Room 2', 'Room 3']);
   const [assign, setAssign] = useState<string[][]>(() => shuffled(people.map((p) => p.id), 2));
   const [move, setMove] = useState<{ id: string; x: number; y: number; over: number | null } | null>(null);
@@ -87,7 +118,17 @@ export function RoomsSetup({ people, guests, onOpen }: {
           <Segmented label="How many rooms" value={n} onChange={(v) => { setN(v); setAssign(shuffled(people.map((p) => p.id), Number(v))); }} options={[{ value: '2', label: '2' }, { value: '3', label: '3' }]} />
           <span>Length</span>
           <Segmented label="How long" value={len} onChange={setLen} options={[{ value: '5', label: '5 min' }, { value: '10', label: '10 min' }, { value: '15', label: '15 min' }]} />
+          <span>Board</span>
+          <Segmented label="Board" className="ic-seg3" value={mode} onChange={setMode} options={[{ value: 'none', label: 'None' }, { value: 'each', label: 'In each room' }, { value: 'shared', label: 'Shared' }]} />
         </div>
+        {mode !== 'none' && (
+          <div key={mode} className="ic-rline">
+            <span>{BOARD_LINE[mode]}</span>
+            {mode === 'shared' && boardName !== null
+              ? <span className="from is-fixed"><Icon name="presentation" size={15} /><span className="ac-clamp-1">{boardName}</span></span>
+              : <StartsFrom template={template} onPick={setTemplate} />}
+          </div>
+        )}
         <div className="ic-boardh"><span className="ac-eyebrow">Who goes where</span><IconButton icon="shuffle" label="Shuffle people" onClick={() => setAssign(shuffled(people.map((p) => p.id), rooms))} /></div>
         <div className="ic-board" style={{ gridTemplateColumns: `repeat(${rooms}, minmax(0, 1fr))` }}>
           {assign.slice(0, rooms).map((ids, k) => (
@@ -120,7 +161,7 @@ export function RoomsSetup({ people, guests, onOpen }: {
       </div>
       <div className="ic-foot">
         <Button variant="primary" icon="door" className="w-full" disabled={!people.length}
-          onClick={() => onOpen(assign.slice(0, rooms).map((ids, k) => ({ name: (names[k] ?? '').trim() || `Room ${k + 1}`, ids })), Number(len))}>
+          onClick={() => onOpen(assign.slice(0, rooms).map((ids, k) => ({ name: (names[k] ?? '').trim() || `Room ${k + 1}`, ids })), Number(len), { mode, template })}>
           Open {rooms} rooms
         </Button>
       </div>
@@ -217,6 +258,8 @@ export function RoomsLive({ open, elapsed, members, people, activity, me, onJoin
                       : <span>{inRoom.length ? `${inRoom.length} ${inRoom.length === 1 ? 'person' : 'people'}${here ? ', you too' : ''}` : 'Nobody in this room'}</span>}
                   {r.paused ? <span className="end ac-chip"><Icon name="pause" size={13} />Notes paused</span> : coming > 0 && <span className="end">{coming} not here yet</span>}
                 </div>
+                {/* What's on a room's board is sealed to the room: the organizer sees it only by joining. */}
+                {r.board && <div className="onb"><Icon name="presentation" size={15} /><span>{here ? 'You’re here, so you can see it' : 'On the board now. Join to see it.'}</span></div>}
                 {r.people.length > 0 && (
                   <div className="ic-rchips">
                     {r.people.map((p) => {
