@@ -51,7 +51,7 @@ const OUT_DECIMALS = 6;
 
 const TokensSchema = z.array(z.object({ assetId: z.string(), decimals: z.number().int().min(0).max(36) }));
 const units = z.string().regex(/^\d+$/);
-/** What a quote was for, as 1Click repeats it back in a quote and in every status. */
+/** What a quote was for, as 1Click repeats it back in a quote. */
 const Asked = z.object({
   originAsset: z.string(), destinationAsset: z.string(), recipient: z.string(), recipientType: z.string(), refundTo: z.string(), refundType: z.string()
 });
@@ -64,33 +64,28 @@ const QuoteResponseSchema = z.object({
   quote: z.object({ depositAddress: z.string().min(1), depositMemo: z.string().nullish(), deadline: z.string().datetime(), amountIn: units, minAmountIn: units })
 });
 
-/**
- * What /v0/status says about a deposit: its status, the quote it is about (repeated back) and the swap details, read
- * for what was sent so far, and once the swap is done.
- */
-const StatusSchema = z.object({ status: z.string(), quoteResponse: z.unknown(), swapDetails: z.unknown() });
-const Echo = z.object({ quoteRequest: Asked, quote: z.object({ depositAddress: z.string(), depositMemo: z.string().nullish() }) });
+/** What /v0/status says about a deposit: its status and the swap details, read for what was sent so far, and once the swap is done. */
+const StatusSchema = z.object({ status: z.string(), swapDetails: z.unknown() });
 /** What an unfinished swap says arrived so far, when it says. */
 const seen = z.object({ depositedAmount: units.nullish() });
 /**
  * A finished swap: what was sent, what reached the treasury as USDC (micro-USDC) and what was refunded to it instead,
- * each with 1Click's own decimal rendering of it. A swap that succeeded must say what came out, a refunded one what was
- * refunded; only the other may be missing (0).
+ * each with 1Click's own decimal rendering of it when it gives one. A swap that succeeded must say what came out, a
+ * refunded one what was refunded; only the other may be missing (0).
  */
 const settled = z.object({
-  depositedAmount: units, depositedAmountFormatted: z.string(),
+  depositedAmount: units, depositedAmountFormatted: z.string().nullish(),
   amountOut: units.nullish(), amountOutFormatted: z.string().nullish(),
   refundedAmount: units.nullish(), refundedAmountFormatted: z.string().nullish(),
   intentHashes: z.array(z.string().min(1)).min(1)
 });
 /**
  * Whether an amount in a token's smallest unit says the same as 1Click's own decimal rendering of it ("1500000" and
- * "1.5" at 6 decimals). When they disagree, the units aren't what this code assumes (the token's decimals), so the
- * amount isn't credited. A missing amount is 0; any amount above 0 must come with its rendering.
+ * "1.5" at 6 decimals), when there is one. When they disagree, the units aren't what this code assumes (the token's
+ * decimals), so the amount isn't credited.
  */
 function agrees(amount: string | null | undefined, formatted: string | null | undefined, decimals: number): boolean {
-  if (amount === null || amount === undefined) return true;
-  if (formatted === null || formatted === undefined) return BigInt(amount) === 0n;
+  if (amount === null || amount === undefined || formatted === null || formatted === undefined) return true;
   const m = /^(\d+)(?:\.(\d+))?$/.exec(formatted);
   if (!m) return false;
   const fraction = m[2] ?? '';
@@ -98,8 +93,8 @@ function agrees(amount: string | null | undefined, formatted: string | null | un
   return BigInt(`${m[1] ?? '0'}${fraction.padEnd(decimals, '0')}`) === BigInt(amount);
 }
 const SETTLED = {
-  SUCCESS: settled.extend({ amountOut: units, amountOutFormatted: z.string() }),
-  REFUNDED: settled.extend({ refundedAmount: units, refundedAmountFormatted: z.string() })
+  SUCCESS: settled.extend({ amountOut: units }),
+  REFUNDED: settled.extend({ refundedAmount: units })
 } as const;
 /** 1Click's statuses for a deposit still on its way, in Alcove's terms. */
 const IN_PROGRESS = new Map<string, OpenDepositState>([
@@ -207,11 +202,6 @@ export function oneClick(o: { baseUrl: string; apiKey: string | undefined; treas
       if (data.status === 'SUCCESS' || data.status === 'REFUNDED') {
         // Money came. Whatever here can't be read or trusted makes it doubtful: nothing is credited, and the caller
         // logs it once and leaves it to reach support.
-        const echo = Echo.safeParse(data.quoteResponse);
-        if (!echo.success || echo.data.quote.depositAddress !== deposit.address || (echo.data.quote.depositMemo || null) !== deposit.memo
-          || !sameRequest(echo.data.quoteRequest, { originAsset: deposit.route.id, destinationAsset: NEAR_USDC, recipient: o.treasury, recipientType: 'INTENTS', refundTo: o.treasury, refundType: 'INTENTS' })) {
-          return { state: 'doubtful', reason: 'status-for-another-quote' };
-        }
         const s = SETTLED[data.status].safeParse(data.swapDetails);
         if (!s.success) return { state: 'doubtful', reason: 'unreadable-finished-swap' };
         const d = deposit.route.decimals;

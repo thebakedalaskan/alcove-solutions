@@ -57,8 +57,6 @@ export interface SwapDetails {
   intentHashes: string[]; nearTxHashes: string[]; amountIn: string | null; amountOut: string | null; depositedAmount: string | null; refundedAmount: string | null;
   originChainTxHashes: { hash: string; explorerUrl: string }[]; destinationChainTxHashes: { hash: string; explorerUrl: string }[];
 }
-/** What a status repeats back about the quote it's for, changed as a misbehaving 1Click might. */
-export interface Echo { depositAddress?: string; depositMemo?: string | null; quoteRequest?: Partial<QuoteRequestBody> }
 
 export interface FakeOneClick {
   /** What the API is configured with to use this 1Click. */
@@ -69,14 +67,11 @@ export interface FakeOneClick {
   apiKeys: string[];
   /** Every deposit address quoted so far, oldest first. */
   addresses(): string[];
+  /** What 1Click reports for a deposit from now on: its status and what happened to the swap. */
+  set(address: string, status: string, swapDetails?: Partial<SwapDetails>): void;
   /**
-   * What 1Click reports for a deposit from now on: its status, what happened to the swap, and (to misbehave) what it
-   * repeats back about the quote.
-   */
-  set(address: string, status: string, swapDetails?: Partial<SwapDetails>, echo?: Echo): void;
-  /**
-   * The next quote answers with these instead of what was asked (the amount, 99% of it, a new address, the deadline
-   * asked for, the request itself), as a misbehaving 1Click might.
+   * The next quote answers with these instead of what was asked (the amount, 99% of it, the deadline asked for, the
+   * request itself), as a misbehaving 1Click might.
    */
   nextQuote(o: NextQuote): void;
   /** /v0/tokens lists this asset with these decimals from now on (null: as it really is). */
@@ -95,7 +90,7 @@ async function text(req: IncomingMessage): Promise<string> {
   for await (const c of req) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c)));
   return Buffer.concat(chunks).toString('utf8');
 }
-interface NextQuote { amountIn?: string; minAmountIn?: string; depositAddress?: string; deadline?: string; quoteRequest?: Partial<QuoteRequestBody> }
+interface NextQuote { amountIn?: string; minAmountIn?: string; deadline?: string; quoteRequest?: Partial<QuoteRequestBody> }
 const noSwap = (): SwapDetails => ({
   intentHashes: [], nearTxHashes: [], amountIn: null, amountOut: null, depositedAmount: null, refundedAmount: null, originChainTxHashes: [], destinationChainTxHashes: []
 });
@@ -121,7 +116,7 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   const quotes: QuoteRequestBody[] = [];
   const apiKeys: string[] = [];
   /** Each deposit address, with the quote response that made it and what it reports. */
-  const deposits = new Map<string, { quoteResponse: QuoteResponse; decimals: number; status: string; swapDetails: SwapDetails; echo: Echo; updatedAt: string }>();
+  const deposits = new Map<string, { quoteResponse: QuoteResponse; decimals: number; status: string; swapDetails: SwapDetails; updatedAt: string }>();
   const listed = new Map<string, number>();
   let isDown = false;
   let override: NextQuote = {};
@@ -135,9 +130,9 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
     const decimals = TOKENS.find((t) => t.assetId === q.originAsset)?.decimals ?? 6;
     const amountUsd = (Number(q.amount) / 1e6).toFixed(2);
     const {
-      amountIn = q.amount, minAmountIn = ((BigInt(q.amount) * 99n) / 100n).toString(), deadline = q.deadline,
-      depositAddress = `0xcanary-deposit-address-${randomBytes(12).toString('hex')}`
+      amountIn = q.amount, minAmountIn = ((BigInt(q.amount) * 99n) / 100n).toString(), deadline = q.deadline
     } = override;
+    const depositAddress = `0xcanary-deposit-address-${randomBytes(12).toString('hex')}`;
     const quoteRequest = { ...q, ...override.quoteRequest };
     override = {};
     const response: QuoteResponse = {
@@ -152,21 +147,16 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
         deadline, timeWhenInactive: deadline, timeEstimate: 20
       }
     };
-    deposits.set(depositAddress, { quoteResponse: response, decimals, status: 'PENDING_DEPOSIT', swapDetails: noSwap(), echo: {}, updatedAt: new Date().toISOString() });
+    deposits.set(depositAddress, { quoteResponse: response, decimals, status: 'PENDING_DEPOSIT', swapDetails: noSwap(), updatedAt: new Date().toISOString() });
     send(res, 201, response);
   }
   function status(url: URL, res: ServerResponse) {
     const address = url.searchParams.get('depositAddress') ?? '';
     const d = deposits.get(address);
     if (!d) return send(res, 404, { message: 'Deposit address not found' });
-    const { quoteResponse: r, echo } = d;
     send(res, 200, {
       correlationId: randomBytes(16).toString('hex'),
-      quoteResponse: {
-        ...r,
-        quoteRequest: { ...r.quoteRequest, ...echo.quoteRequest },
-        quote: { ...r.quote, ...(echo.depositAddress === undefined ? {} : { depositAddress: echo.depositAddress }), ...(echo.depositMemo === undefined ? {} : { depositMemo: echo.depositMemo }) }
-      },
+      quoteResponse: d.quoteResponse,
       status: d.status,
       updatedAt: d.updatedAt,
       swapDetails: rendered(d.swapDetails, d.decimals)
@@ -191,10 +181,10 @@ export async function startFakeOneClick(): Promise<FakeOneClick> {
   return {
     settings, quotes, apiKeys,
     addresses: () => [...deposits.keys()],
-    set(address, s, swapDetails = {}, echo = {}) {
+    set(address, s, swapDetails = {}) {
       const d = deposits.get(address);
       if (!d) throw new Error('1Click never quoted that deposit address');
-      deposits.set(address, { ...d, status: s, swapDetails: { ...d.swapDetails, ...swapDetails }, echo: { ...d.echo, ...echo }, updatedAt: new Date().toISOString() });
+      deposits.set(address, { ...d, status: s, swapDetails: { ...d.swapDetails, ...swapDetails }, updatedAt: new Date().toISOString() });
     },
     nextQuote(o) { override = o; },
     listDecimals(assetId, decimals) { if (decimals === null) listed.delete(assetId); else listed.set(assetId, decimals); },

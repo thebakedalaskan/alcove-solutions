@@ -42,8 +42,8 @@ export interface OpenedDeposit extends DepositAddress { expiresAt: string; amoun
 /**
  * What has happened to a deposit so far, in Alcove's terms. Amounts are micro-USD; `sentMicroUsd` on an open deposit
  * is what the provider has seen arrive, when it says; `providerRef` is the provider's name for the settlement.
- * `doubtful`: the provider says the swap finished, but its answer doesn't read, isn't about this deposit, or its
- * amounts don't agree with themselves. Money came, so the deposit is `arriving`, and nothing is credited on it.
+ * `doubtful`: the provider says the swap finished, but its answer doesn't read, or its amounts don't agree with
+ * themselves. Money came, so the deposit is `arriving`, and nothing is credited on it.
  */
 export type DepositCheck =
   | { state: OpenDepositState; sentMicroUsd?: bigint | undefined }
@@ -53,8 +53,8 @@ export type DepositCheck =
   | { state: 'failed'; reason: string };
 /** Why a finished swap isn't credited: a short code, logged with the deposit's ID and never with what it is about. */
 export type DoubtReason =
-  | 'unreadable-finished-swap' | 'amounts-disagree-with-formatted' | 'status-for-another-quote'
-  | 'nothing-sent' | 'less-reached-treasury-than-sent' | 'more-than-a-top-up-buys' | 'settlement-already-used';
+  | 'unreadable-finished-swap' | 'amounts-disagree-with-formatted'
+  | 'nothing-sent' | 'less-reached-treasury-than-sent' | 'more-than-a-top-up-buys';
 
 /** An amount of a USD stablecoin, at face value, in micro-USD (rounded down). */
 export function toMicroUsd(amount: bigint, decimals: number): bigint {

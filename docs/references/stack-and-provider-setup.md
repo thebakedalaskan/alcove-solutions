@@ -68,27 +68,23 @@ refused (401), which makes top-ups unavailable.
   `depositType: ORIGIN_CHAIN`, `originAsset` the route's asset, `amount` the price of the credits chosen in the
   token's smallest unit (the response's `amountIn` must equal it and its `minAmountIn` be within 1.5% below it, its
   `quoteRequest` must repeat what was asked, and its `deadline` be between 1 hour and 7 days away, or the top-up is
-  refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept; a `depositAddress` handed out
-  before is refused the same way),
+  refused as unavailable and logged at error; `amountIn` and `minAmountIn` are kept),
   `destinationAsset` USDC on NEAR (`nep141:17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1`),
   `recipient` and `refundTo` the treasury with `recipientType` and `refundType` `INTENTS`, `slippageTolerance: 100`,
   `deadline` 24 hours ahead (1Click sets its own, later one: 3 days out when checked on 6 November 2026; the
   response's `deadline` is the one used), `dry: false`. The whole response, signature included, is kept sealed for disputes.
 - `GET /v0/status?depositAddress=…` (and `depositMemo`): the status; while open, `swapDetails.depositedAmount` when
   it's there (what arrived so far, shown on a `short` deposit); on `SUCCESS` or `REFUNDED` the `swapDetails`
-  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited. The status's `quoteResponse`
-  must be this deposit's quote: its `quote.depositAddress` and `depositMemo` ours, its `quoteRequest` the treasury as
-  `recipient` and `refundTo` (both `INTENTS`), the route's `originAsset` and USDC on NEAR as `destinationAsset`.
+  (`depositedAmount`, `amountOut`, `refundedAmount`, `intentHashes`) that are credited.
   `depositedAmount` and `refundedAmount` are read in the token's pinned decimals and `amountOut` in USDC's 6; each
-  above 0 must come with, and equal, 1Click's own `…Formatted` value (`depositedAmountFormatted` always, the
-  `amountOutFormatted` of a `SUCCESS`, the `refundedAmountFormatted` of a `REFUNDED`). `amountOut` plus
-  `refundedAmount` must be at least 98.5% of `depositedAmount`, which must be above 0 and at most 8,000 USD; the first
-  intent hash may settle one deposit only. If any of this fails nothing is credited, it's logged at error once, and
+  must equal 1Click's own `…Formatted` value when it gives one (`depositedAmountFormatted`, `amountOutFormatted`,
+  `refundedAmountFormatted`). `amountOut` plus `refundedAmount` must be at least 98.5% of `depositedAmount`, which
+  must be above 0 and at most 8,000 USD. If any of this fails nothing is credited, it's logged at error once, and
   the deposit stays `arriving` until it fails at the deadline and reaches support. A status Alcove doesn't know
   keeps the deposit as it is until the deadline, where it fails.
 - **No webhook.** Alcove polls: every 10 s for a deposit's first 15 minutes, every minute until 2 hours, then every
   5 minutes (a cancelled one every 5 minutes throughout) until 24 hours after its address expires, when it's asked a
-  last time (6 hours later, once, if it can't answer then, and hourly after that until it does); a minute after an
+  last time (and hourly after that until it does, if it can't answer then); a minute after an
   error. Past the deadline the checks thin out (hourly for a day, every 6 hours for a week, then daily), open deposits
   are checked before that long tail, and a failed, expired or cancelled deposit is asked about until 30 days after its address expired, and is
   credited if 1Click settles it then. A `SUCCESS` or `REFUNDED` whose `swapDetails` don't read counts as still
