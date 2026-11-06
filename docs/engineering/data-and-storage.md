@@ -127,7 +127,11 @@ with the same thing. Browsers exchange binary updates through the API, which sea
 `apps/api/src/modules/documentText.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
 its own words, through `@alcove/board`, which is what knows a board's Y.Doc; everything else below is the same for anything
 that holds a Y.Doc. A document's blocks are the root fragment `content`, its comment threads the root map `comments`, and
-the editor's schema decides the rest.
+the editor's schema decides the rest. A board's are its root maps `objects` and `comments` and its list `places`
+(`packages/board/src/shape.ts`): a comment thread there is pinned to an object (`on`), stays when it's `resolved`, and each
+reply keeps who wrote it, `by` (what they're known by in the workspace, which finds their face) and `name`; a reply from
+before replies said who wrote them reads as nobody's. A document links a board by its ID alone, in a `board` block, so its
+name reaches only whoever's own list has it.
 
 Yjs trusts what it's given, and what's in a document comes from browsers. So nothing here is taken on trust: an update is
 checked before it's stored ([what gets in](#what-gets-into-a-document)), a document is only ever opened in a worker

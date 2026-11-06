@@ -225,6 +225,25 @@ One modal, one question at a time, and a sheet on a phone.
 Always night, in both themes, on the stage tokens. People are in arches, never circles, and whoever speaks gets the `speak`
 ring. The camera appears only here and on the join screen.
 
+## A board
+
+`features/workspace/BoardPane.tsx`, beside the list, drawing `features/board/` (`BoardSurface`, `mode` `page`, or `pageRead`
+for someone who can only look), `styles/board.css` (`bz-`, `bd-`, `bp`, `bpg-`). The board was designed as the whiteboards
+canvas's page and its States board.
+
+- The board fills where a document would be, on the ground, under the workspace's head, which says where it is (the
+  workspace and its folders) and holds the list's button. Its tools are the call's dock turned on its side, made day.
+- Its bar is the page's head: the name, with everything about the board itself under it (Rename in its place, Saved in,
+  Who can add to it, Copy link); the seal; Undo and Redo; how near you are and the map; and at the end the faces of
+  whoever else is on it and Start a call here, the one primary button.
+- The seal says how it stands: Sealed, Reconnecting, Not saved or View only. Reconnecting and Couldn't save also take the
+  one pill at the top of the sheet, ahead of following someone.
+- A comment is a pin, the face of whoever started it on the corner of what it's on, one size however near you are; the
+  thread opens beside it in the workspace's comment sheet.
+- A narrow bar gives way in order: the faces, then Start a call here's words (its camera stays), then zooming and the map.
+  The name keeps room to be read.
+- In a document a board is a small picture of one with its name on it, which opens it (`wb-board`).
+
 ## Not yet on the canvas
 
 These screens follow the same rules but have no section here and no board yet:
