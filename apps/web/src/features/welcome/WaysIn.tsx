@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { clearReturn, returnToAgent, returnToCall } from '~/lib/afterSignIn';
 import { isEmail } from '~/lib/people';
 import { useGoogleSignIn, useSignIn } from '~/lib/queries';
+import { forgetSailOut } from '~/lib/sailOut';
 
 export type Busy = DemoProvider | 'google' | null;
 export interface Auth { busy: Busy; leaving: boolean; google: () => void; cancelGoogle?: (() => void) | undefined; go: (provider: DemoProvider, email?: string) => Promise<void> }
@@ -18,7 +19,8 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * One sign-in for the whole page, so every set of buttons shows the same busy state. `call`: signing in from that
- * call's join page, which carries on there (Google comes back to it) instead of going to Home.
+ * call's join page, which carries on there (Google comes back to it) instead of going to Home, and doesn't sail out of
+ * the welcome page's cove.
  */
 export function useAuth(o: { call?: string | undefined; agent?: string | undefined } = {}): Auth {
   const signIn = useSignIn();
@@ -49,17 +51,19 @@ export function useAuth(o: { call?: string | undefined; agent?: string | undefin
     busy, leaving,
     google: () => {
       setBusy('google');
-      if (o.call) returnToCall(o.call);
-      if (o.agent) returnToAgent(o.agent);
+      // Signing in to join a call or connect an agent carries on there, so it doesn't sail out of the welcome page's cove.
+      if (o.call) { returnToCall(o.call); forgetSailOut(); }
+      if (o.agent) { returnToAgent(o.agent); forgetSailOut(); }
       void googleSignIn.start().then(async (r) => {
         if (r === 'redirecting') return;
         if (r && 'session' in r) await enter(r.next);
-        else { clearReturn(); setBusy(null); }
-      }).catch((e: unknown) => { clearReturn(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
+        else { clearReturn(); forgetSailOut(); setBusy(null); }
+      }).catch((e: unknown) => { clearReturn(); forgetSailOut(); toast(errorMessage(e), { icon: 'x' }); setBusy(null); });
     },
     cancelGoogle: googleSignIn.cancel,
     go: async (provider, email) => {
       setBusy(provider);
+      if (o.call || o.agent) forgetSailOut();
       try {
         const r = await signIn.mutateAsync({ provider, email: provider === 'sso' ? email?.trim() : undefined });
         await enter(r.isNew ? '/ready' : '/home');

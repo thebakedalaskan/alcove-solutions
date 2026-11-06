@@ -47,6 +47,7 @@ Home is for starting a call and for what's yours. It's nearly all sky.
   - **Beside it**: Coming up, one line per call, where a calendar meeting has a menu; then Recent notes. A card to connect a
     calendar appears when it's needed.
 - **First day:** Get set up tiles take For you's place. Start your first call is the title.
+- **Signed in from the welcome page,** Home opens by sailing out of the welcome page's cove (see [Welcome](#welcome)).
 
 ## Notes
 
@@ -265,15 +266,28 @@ designed as the whiteboards canvas's page and its States board, and on a phone a
 
 ## Welcome
 
-`routes/welcome.tsx`, `features/welcome/`, `styles/welcome.css` and its scenes' `welcome-*.css` (`lp-`). It has no board on
-the canvas.
+`routes/welcome.tsx`, `features/welcome/`, `styles/welcome.css` and its scenes' `welcome-*.css` (`lp-`), with the cove in
+`components/cove.tsx` and `styles/cove.css` (`cv-`). It has no board on the canvas.
 
 Signed out, before anything else: what Alcove is, told as one evening on the app's own scene. Each part is a `Sky`
 (`features/welcome/Sky.tsx`): the evening behind it, a sky as tall as what stands on it, and the water under the horizon.
 
-- **The hero** is Home's sunset. The headline, one line and the ways in sit on the sky: Continue with Google is the one
-  filled button, then Microsoft and single sign-on. The sun is half risen under them, lifts when you point at Google, and
-  sets as the page scrolls on.
+- **The hero** looks out of a cove at Home's sunset, so it isn't Home's open sea. The headline, one line and the ways in
+  sit on the sky: Continue with Google is the one filled button, then Microsoft and single sign-on. The sun is half risen
+  under them in the mouth of the bay, lifts when you point at Google and stays up while Google opens, and sets as the page
+  scrolls on.
+- **The cove** (`Cove`, drawn into the Horizon as its `land`):
+  - three headlands a side, far, mid and near, their tops rolling hills with stands of pines and cypresses, each ending
+    in a cliff face down to the water with a band on it lit by the sun's rim
+  - sea stacks by the mouth of the bay, and every one of them mirrored in the water, the reflection broken by ripples
+  - foam at the nearest cliffs' feet, which reach the foot of the window, and ripples in the bay
+  - its own colours, light and dark: each headland paler and hazier the further out it stands
+  - drawn from plain numbers, so a seed always draws the same cove (the hero's is 5)
+  - no cliff, tree or stack within 24px of the words on the sky (the headline, the line, the ways in and the nav), measured
+    where they rest, and drawn again when they move or the window changes size. Where the words reach across a narrow
+    window, as on a phone, the whole land lies lower, so its hills and trees stay whole instead of being cut flat
+  - boats, ships and whatever leaps pass behind the cliffs, and gulls fly in front. What's on the water starts below its
+    reflections
 - **On its water,** the note a call leaves (`NoteScene`). It writes itself, then its call runs along its own horizon with
   the sun as the playhead, visiting each decision and follow-up.
 - **The call** is a night window on the water, in both themes (`CallTour`). Its seven steps scroll past the call, which
@@ -287,7 +301,20 @@ Signed out, before anything else: what Alcove is, told as one evening on the app
 - **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
 - **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
   records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
-- **The last ask** is morning on the same sea: the sun comes up as the page reaches it. The footer sits on the water.
+- **The last ask** is morning on the same sea, in a cove of its own (seed 11): the sun comes up as the page reaches it.
+  The footer sits on the water.
+- **Signing in sails out of the cove to Home.** Every way in on the page keeps where the hero's cove stands on screen as
+  it's pressed (`lib/sailOut.ts`), across the trip to Google and back, and Home plays it once as it opens (`SailOut`,
+  `features/home/SailOut.tsx`), in about three and a half seconds:
+  1. the cove comes in where it was, its sun where it was, lifted or setting
+  2. the headlands go by on either side, nearest first, and the bay's ripples slide away
+  3. the horizon comes up to Home's and the sun eases to Home's size, its middle only ever rising
+  4. 60% of the way out, Alcove's frame forms round the sea: the side panel slides in, and the page takes its rounded edge
+     with the sun where Home's is (a phone has no frame, so the sea stays whole)
+  5. Home's parts rise in as the sea clears, leaving the real Home
+
+  A new account has its arrival instead, and with reduced motion Home just opens. It's decorative: it takes no focus, and
+  a press, a key or the wheel clears it at once.
 - The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, like the side
   panel's Start a call. The logo appears once, in the nav.
 

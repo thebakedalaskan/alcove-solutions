@@ -1,12 +1,17 @@
 /*
  * Journeys into Alcove (docs/product/user-flows.md › 1. Sign in), which the canvas never drew. Microsoft and single sign-on
  * sign in on the spot, as the stand-in does; Google's own pages can't open in Storybook, so its journey plays up to the
- * hand-off, and the way back from Google that didn't sign anyone in is the welcome page's address.
+ * hand-off, and the way back from Google that didn't sign anyone in is the welcome page's address. A way in on the welcome
+ * page keeps where its cove stood, as the real buttons do, so signing in again sails out of it to Home; a new account has
+ * its arrival instead.
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { page, pages, type PageArgs, type PageStory } from '../../src/page';
-import { first, LATER, SOON } from './play';
+import { first, LATER, pause, SOON } from './play';
+
+/** Signing in from the welcome page sails out of its cove to Home: about three and a half seconds. */
+const SAILING_OUT = 3600;
 
 const meta = { title: 'Journeys/1 Sign in', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -80,6 +85,9 @@ export const SignInAgain: PageStory = {
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
       await screen.findByRole('region', { name: 'For you8' }, LATER);
     });
+    await step('Out of the welcome page’s cove to sea: the headlands go by, the horizon comes up to Home’s, the frame forms round it and Home rises in', async () => {
+      await pause(SAILING_OUT);
+    });
   }
 };
 
@@ -104,6 +112,9 @@ export const GoogleDidntSignIn: PageStory = {
     await step('Another way in still works: Continue with Microsoft', async () => {
       await userEvent.click(await first(screen.findAllByRole('button', { name: 'Continue with Microsoft' }, SOON)));
       await screen.findByRole('heading', { name: 'Wednesday 4 November', level: 1 }, LATER);
+    });
+    await step('Home opens out of the welcome page’s cove', async () => {
+      await pause(SAILING_OUT);
     });
   }
 };
