@@ -184,7 +184,12 @@ The call itself stays in the API: who's let in, notes and the transcript.
   `participant_left` webhook. Anyone let in who isn't in the room 90 seconds later is taken out too. That covers
   a tab closed while asking, and a webhook that was missed. It's checked 90 seconds after the commit that let
   them in, and at every upkeep, and 90 seconds leaves time for a tab in the background, which can take a minute
-  to notice it was let in. The page of whoever hosts sends nothing as it goes, so their reload comes back still
+  to notice it was let in. When Alcove learns a connection went without it saying so (that webhook, that check, or
+  the same person back on a new page while the old one was still in), its time in the call ends when Alcove last
+  heard from it, not when it found out. A page in a call asks at least every 6 seconds, so the time after that is
+  never counted as theirs, and a guest with the link reads nothing said in it. The API keeps that moment in memory
+  (it runs as one instance); after a restart, until the page asks again, such a stay ends when they were let in.
+  The page of whoever hosts sends nothing as it goes, so their reload comes back still
   hosting. Whoever hosts ends the call for everyone with **End call for everyone** (`leave` with `end: true`): the
   normal ending above, then the room is deleted (everyone else is disconnected with "room deleted"). They can leave it
   going instead, with someone else hosting ([Host hand-off](#host-hand-off)). Their connection dropping doesn't end
