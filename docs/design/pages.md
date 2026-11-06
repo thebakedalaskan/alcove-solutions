@@ -249,13 +249,37 @@ designed as the whiteboards canvas's page and its States board, and on a phone a
   tools beside it and no map, and + at the bottom right opens the add sheet in the person's own theme.
 - In a document a board is a small picture of one with its name on it, which opens it (`wb-board`).
 
+## Welcome
+
+`routes/welcome.tsx`, `features/welcome/`, `styles/welcome.css` and its scenes' `welcome-*.css` (`lp-`). It has no board on
+the canvas.
+
+Signed out, before anything else: what Alcove is, told as one evening on the app's own scene. Each part is a `Sky`
+(`features/welcome/Sky.tsx`): the evening behind it, a sky as tall as what stands on it, and the water under the horizon.
+
+- **The hero** is Home's sunset. The headline, one line and the ways in sit on the sky: Continue with Google is the one
+  filled button, then Microsoft and single sign-on. The sun is half risen under them, lifts when you point at Google, and
+  sets as the page scrolls on.
+- **On its water,** the note a call leaves (`NoteScene`). It writes itself, then its call runs along its own horizon with
+  the sun as the playhead, visiting each decision and follow-up.
+- **The call** is a night window on the water, in both themes (`CallTour`). Its steps scroll past the call, which stays in
+  view and plays each one with a pointer that shows every click. Under 1080px the call sticks at the top.
+- **Find a time** is the Team moment (`TeamScene`): the team stands on the horizon with the sun low past the end of the
+  line. Picking people lays their busy hours out across the week, with the times everyone is free.
+- **Your agent** (`AgentScene`) books a call over MCP, beside the tools it can use.
+- **Recording in the room** is Record's night, inset on the water (`RecordScene`): the recorder stands on the horizon,
+  records offline and sets, then the session notes rise. **What Alcove can see** (`SealedScene`) sits on its water.
+- **The last ask** is morning on the same sea: the sun comes up as the page reaches it. The footer sits on the water.
+- The nav is fixed over the sky. It turns night over the night windows, and its Get started is tinted, like the side
+  panel's Start a call. The logo appears once, in the nav.
+
 ## Not yet on the canvas
 
 These screens follow the same rules but have no section here and no board yet:
 - the join screen (`routes/join.$code.tsx`) and the organizer's lobby
 - a guest picking a time (`features/calls/PickTime.tsx`)
 - a scheduled call's card
-- welcome and sign-in (`routes/welcome.tsx`, `features/welcome/`)
+- sign-in's other ways in, on the join and move pages (`features/welcome/WaysIn.tsx`)
 - onboarding: arrival and the tour (`features/onboarding/`)
 - moving a call to another device (`routes/move.tsx`)
 - the offline page (`features/shell/OfflinePage.tsx`)
