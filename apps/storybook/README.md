@@ -253,7 +253,13 @@ export const SomeoneSharingPhone = phone(SomeoneSharing);
 export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
 /** A play that presses a button in the dock, then one in what it opens. */
 export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: ['End call for everyone'] }) });
+/** A play that opens what's yours: at the top right, or from the grid at the top of More on a phone, then a tab of your side. */
+export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW }, { play: reach('Notes', { tab: 'Transcript' }) });
 ```
+
+The dock's More is found by what its label starts with (`MORE`), so it's never mistaken for a board's own More. `clearSide`
+puts your side away first, for a story about something else (a call opens Notes by itself on a wide screen while notes are on),
+and `plays()` runs plays one after another.
 
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the

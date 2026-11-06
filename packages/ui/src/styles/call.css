@@ -609,7 +609,7 @@
 .ic-nr .nr-text { overflow-wrap: anywhere; }
 .ic-nr.is-done .nr-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--line-control); }
 /* A finger needs more than the box. Rows are never closer than this reaches, even with one line and nothing under it. */
-@media (hover: none), (max-width: 600px) { .ic-nr .ac-check::after { content: ""; position: absolute; inset: -6px -12px; } }
+@media (hover: none), (max-width: 599px) { .ic-nr .ac-check::after { content: ""; position: absolute; inset: -6px -12px; } }
 .ic-sum { font: 400 14px/1.6 var(--font-sans); color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .ic-sum.is-open { display: block; }
 .ic-more-text { margin-top: 4px; padding: 2px 0; font: 600 12.5px/1.2 var(--font-sans); color: var(--ink-2); }

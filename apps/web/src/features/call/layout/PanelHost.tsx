@@ -253,6 +253,10 @@ export function PanelHost({ area, size, main, panels, solved, facts, arrange, ar
 
   /* Your side: at the right of the area, the main area having made room, or on a phone a sheet risen over the call. */
   const sideBox: Box = { x: size.w - (side?.width ?? 0), y: 0, w: side?.width ?? 0, h: size.h };
+  // A sheet over the call takes the keys as it rises, and as it changes what it shows: what's under it can't be reached.
+  const sheet = useRef<HTMLElement>(null);
+  const sheetView = side?.phone ? side.view : null;
+  useEffect(() => { if (sheetView) sheet.current?.focus({ preventScroll: true }); }, [sheetView]);
   const away = reduce ? { opacity: 0 } : side?.phone ? { y: '100%' } : { x: sideBox.w + 40 };
   const here = side?.phone ? { opacity: 1, y: 0 } : { ...at(sideBox), opacity: 1, x: 0 };
   return (
@@ -270,7 +274,7 @@ export function PanelHost({ area, size, main, panels, solved, facts, arrange, ar
       <AnimatePresence>
         {measured.current && side?.phone && <motion.div key="scrim" className="ic-scrim" aria-hidden="true" onClick={side.onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : { duration: 0.24 }} />}
         {measured.current && side && (
-          <motion.aside key={side.phone ? 'sheet' : 'side'} className={cn('ic-side', side.theme, side.phone && 'is-sheet')} aria-label={side.label} data-view={side.view}
+          <motion.aside key={side.phone ? 'sheet' : 'side'} ref={side.phone ? sheet : undefined} tabIndex={side.phone ? -1 : undefined} className={cn('ic-side', side.theme, side.phone && 'is-sheet')} aria-label={side.label} data-view={side.view}
             initial={side.phone ? away : { ...at(sideBox), ...away }} animate={here} exit={away}
             transition={reduce ? { duration: 0 } : side.phone ? SLIDE : { ...slide, x: SLIDE }}>
             <ThemeScope theme={side.theme}>{side.children}</ThemeScope>
