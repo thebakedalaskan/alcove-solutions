@@ -100,3 +100,5 @@
   .lp-rec-up { padding-bottom: calc(var(--orb) + 50px); }
   .lp-rec .hz-star:is(:nth-child(2), :nth-child(8)) { display: none; }
 }
+/* The night's one cloud keeps above the heading rather than drifting through it. */
+.lp-night .hz-puff > div { translate: 0 calc(var(--hz) * -.2); }
