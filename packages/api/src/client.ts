@@ -135,7 +135,7 @@ export interface AlcoveApi {
     answer(id: ID, reply: RingReply): Promise<void>;
   };
   documents: {
-    /** The documents you can bring to a call. */
+    /** What you can bring to a call: every document and board you can open, by workspace. */
     list(): Promise<DocumentLibrary>;
   };
   recordings: {

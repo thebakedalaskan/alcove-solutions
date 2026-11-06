@@ -40,11 +40,10 @@ export function soonCalls(): Meeting[] {
 
 /** What a demo account at the company can bring to a call: the company's workspaces. */
 export function library(): DocumentLibrary {
-  const doc = (id: string, name: string, kind: 'doc' | 'sheet' | 'board', by: string, hoursAgo: number) => ({ id, name, kind, by, updatedAt: new Date(Date.parse(iso(0, 16, 12)) - hoursAgo * 3_600_000).toISOString() });
+  const doc = (id: string, name: string, kind: 'doc' | 'board', by: string, hoursAgo: number) => ({ id, name, kind, by, updatedAt: new Date(Date.parse(iso(0, 16, 12)) - hoursAgo * 3_600_000).toISOString() });
   return {
-    source: 'sample',
     workspaces: [
-      { id: 'product', name: 'Product', documents: [doc('vandelay.launch-plan', 'Launch plan', 'doc', 'Priya', 2), doc('vandelay.launch-checklist', 'Launch checklist', 'sheet', 'Maya', 5), doc('vandelay.pricing-copy', 'Pricing page copy', 'doc', 'Lena', 26)] },
+      { id: 'product', name: 'Product', documents: [doc('vandelay.launch-plan', 'Launch plan', 'doc', 'Priya', 2), doc('vandelay.launch-checklist', 'Launch checklist', 'doc', 'Maya', 5), doc('vandelay.pricing-copy', 'Pricing page copy', 'doc', 'Lena', 26)] },
       { id: 'design', name: 'Design', documents: [doc('vandelay.onboarding-flow', 'Onboarding flow', 'board', 'Aiko', 50)] }
     ]
   };

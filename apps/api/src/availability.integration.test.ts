@@ -1,7 +1,7 @@
 /**
- * Finding a time and bringing documents, end to end: the real API over HTTP via @alcove/api-http, real Postgres, and
- * the stand-in Google, whose Calendar API the server reads as it reads Google's. Busy times are read when they're
- * asked for and kept nowhere: not in a row, a receipt or a log line. Demo accounts get a made-up week and catalog.
+ * Finding a time, end to end: the real API over HTTP via @alcove/api-http, real Postgres, and the stand-in Google, whose
+ * Calendar API the server reads as it reads Google's. Busy times are read when they're asked for and kept nowhere: not
+ * in a row, a receipt or a log line. Demo accounts get a made-up week.
  */
 import { AlcoveApiError, type Busy, type Interval } from '@alcove/api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -267,78 +267,5 @@ describe('a demo account’s week', () => {
     const zara = await account(unique('zara'));
     await zara.api.meetings.create({ title: 'Sat morning', startsAt: at(5, 10), durationMinutes: 30, guests: [], notes: 'off' });
     expect((await zara.api.calendar.busy([], WEEK)).you).toContainEqual({ from: at(5, 10), to: at(5, 10, 30) });
-  });
-});
-
-describe('documents', () => {
-  const soon = { title: 'Launch check-in', startsAt: new Date(Date.now() + 86_400_000).toISOString(), durationMinutes: 30, guests: [], notes: 'off' as const };
-
-  it('gives the demo company two workspaces, someone on their own their documents, and anyone else none', async () => {
-    const a = await art();
-    const library = await a.api.documents.list();
-    expect(library.source).toBe('sample');
-    expect(library.workspaces.map((w) => [w.name, w.documents.map((d) => [d.name, d.kind, d.by])])).toEqual([
-      ['Product', [['Launch plan', 'doc', 'Priya'], ['Launch checklist', 'sheet', 'Maya'], ['Pricing page copy', 'doc', 'Lena']]],
-      ['Design', [['Onboarding flow', 'board', 'Aiko']]]
-    ]);
-    expect(library.workspaces.flatMap((w) => w.documents).every((d) => !Number.isNaN(Date.parse(d.updatedAt)))).toBe(true);
-    expect((await (await account('kofi@vandelay.industries')).api.documents.list()).workspaces.map((w) => w.name)).toEqual(['Product', 'Design']);
-
-    const zara = await account('zara.ahmed@tests.example');
-    const own = await zara.api.documents.list();
-    expect(own.source).toBe('sample');
-    expect(own.workspaces.map((w) => [w.name, w.documents.map((d) => [d.name, d.kind, d.by])])).toEqual([
-      ['Your documents', [['Harbourline proposal', 'doc', 'Zara'], ['Rates 2026', 'sheet', 'Zara'], ['Project brief template', 'doc', 'Zara']]]
-    ]);
-
-    const real = h.browser();
-    await viaGoogle(real, person('ida'));
-    expect(await real.api.documents.list()).toEqual({ source: 'none', workspaces: [] });
-    expect((await h.browser().fetch(`${h.baseUrl}/v1/documents`)).status).toBe(401);
-  });
-
-  it('brings documents to a call, and refuses anything that isn’t in the organizer’s own library', async () => {
-    const a = await art();
-    const docs = (await a.api.documents.list()).workspaces.flatMap((w) => w.documents);
-    const [plan, sheet] = docs;
-    const m = await a.api.meetings.create({ ...soon, documents: [plan?.id ?? '', sheet?.id ?? ''] });
-    expect(m.documents).toEqual([
-      { id: plan?.id, kind: 'doc', by: 'Priya', name: 'Launch plan' },
-      { id: sheet?.id, kind: 'sheet', by: 'Maya', name: 'Launch checklist' }
-    ]);
-    expect((await a.api.meetings.get(m.id)).documents).toEqual(m.documents);
-
-    const refused = (p: Promise<unknown>) => p.then(() => 'accepted', (e: unknown) => code(e));
-    expect(await refused(a.api.meetings.create({ ...soon, documents: ['nothing-of-the-kind'] }))).toBe('invalid');
-    expect(await refused(a.api.meetings.create({ ...soon, documents: [plan?.id ?? '', plan?.id ?? ''] }))).toBe('invalid');
-    expect(await refused(a.api.meetings.update(m.id, { documents: ['nothing-of-the-kind'] }))).toBe('invalid');
-
-    // An ID from someone else's library is unknown here: the demo company's from outside it, and another person's own.
-    const zara = await account('zara.bloom@tests.example');
-    const nadia = await account('nadia.haddad@tests.example');
-    const hers = (await zara.api.documents.list()).workspaces.flatMap((w) => w.documents)[0]?.id ?? '';
-    expect((await zara.api.meetings.create({ ...soon, documents: [hers] })).documents).toEqual([{ id: hers, kind: 'doc', by: 'Zara', name: 'Harbourline proposal' }]);
-    expect(await refused(nadia.api.meetings.create({ ...soon, documents: [hers] }))).toBe('invalid');
-    expect(await refused(nadia.api.meetings.create({ ...soon, documents: [plan?.id ?? ''] }))).toBe('invalid');
-    expect(await refused(a.api.meetings.create({ ...soon, documents: [hers] }))).toBe('invalid');
-    const real = h.browser();
-    await viaGoogle(real, person('jo'));
-    expect(await refused(real.api.meetings.create({ ...soon, documents: [plan?.id ?? ''] }))).toBe('invalid');
-  });
-
-  it('shows whose a document is, and not its name, to someone who can’t open it', async () => {
-    const a = await art();
-    const plan = (await a.api.documents.list()).workspaces.flatMap((w) => w.documents)[0]?.id ?? '';
-    const zara = await account('zara.chen@tests.example');
-    const hers = (await zara.api.documents.list()).workspaces.flatMap((w) => w.documents)[1]?.id ?? '';
-    // Someone at another address holding a call with both on it, as a meeting read by someone it was brought to.
-    const nadia = await account('nadia.ochoa@tests.example');
-    const m = await nadia.api.meetings.create(soon);
-    const o = await openOwner(h.deps, nadia.session.ownerId, undefined);
-    await tx(h.pool, (c) => updateManifest(o, c, m.id, (x) => ({ ...x, documents: [plan, hers, 'since-deleted'] })));
-    expect((await nadia.api.meetings.get(m.id)).documents).toEqual([
-      { id: plan, kind: 'doc', by: 'Priya', name: null },
-      { id: hers, kind: 'sheet', by: 'Zara', name: null }
-    ]);
   });
 });

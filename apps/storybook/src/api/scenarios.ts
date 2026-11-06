@@ -163,7 +163,7 @@ function onTheirOwn(): World {
   ];
   return {
     session: session({ user: solo, ownerId: solo.id }), prefs: PREFS, team: null, notes: specs.map((s) => writeNote(s, solo)), personal: {},
-    meetings: [], calendar: connected([]), credits: CREDITS, documents: { source: 'sample', workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
+    meetings: [], calendar: connected([]), credits: CREDITS, documents: { workspaces: [{ id: 'own', name: 'Your documents', documents: [] }] },
     workspaces: [], pages: {}, shares: {}, boards: {}, rings: [], writing: null
   };
 }
