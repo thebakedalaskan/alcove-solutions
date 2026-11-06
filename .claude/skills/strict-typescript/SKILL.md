@@ -21,7 +21,7 @@ const parsed = DBSchema.safeParse(JSON.parse(raw));
 if (parsed.success) return parsed.data;
 ```
 
-All domain types come from zod schemas in `packages/api/src/types.ts` and `live.ts`
+All domain types come from feature-owned zod schemas in `packages/api/src/{identity,meetings,calls,notes,recordings,workspaces}` (see `docs/engineering/folder-ownership.md`)
 (`export type Meeting = z.infer<typeof MeetingSchema>`). A new API shape starts as a schema.
 The HTTP client parses every response with one (`req(MeetingSchema, 'GET', ...)`).
 

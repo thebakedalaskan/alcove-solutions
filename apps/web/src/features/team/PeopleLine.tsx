@@ -8,7 +8,7 @@ import { errorMessage, type NoteSummary, type Person, type Team } from '@alcove/
 import { Avatar, Button, GhostArch, Icon, IconButton, PickList, Popover, PopoverClose, buttonClass, cn, useToast, type PickRow } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { useFloodToCall } from '~/features/calls/parts';
+import { useFloodToCall } from '~/features/calls/flow/parts';
 import { useCallFlow } from '~/features/shell/context';
 import { callName, fold } from '~/lib/people';
 import { useStartNow } from '~/lib/queries';

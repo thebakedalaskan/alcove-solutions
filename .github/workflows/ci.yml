@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Feature ownership and package boundaries
+        run: node scripts/check-structure.mjs
       - name: Integration tests only (no unit, browser or Storybook tests)
         run: node scripts/check-tests.mjs
       - name: Strict typing (no any, assertions, non-null or suppressions)

@@ -3,7 +3,7 @@
  * (`~` is apps/web/src, as in the app), with Tailwind as the app uses it, and two of its modules stood in for:
  *
  *   apps/web/src/lib/api.ts              → src/api/index.ts, the stand-in AlcoveApi serving the story's scenario
- *   apps/web/src/features/call/livekit.ts → src/media/livekit.ts, a scripted room in place of LiveKit
+ *   apps/web/src/features/call/media/livekit.ts → src/media/livekit.ts, a scripted room in place of LiveKit
  *
  * They're found by the file an import lands on, not by how it's spelled, so `~/lib/api`, `./api` and `../lib/api` all
  * get the stand-in. Nothing in apps/web or packages/* knows Storybook exists.
@@ -19,7 +19,7 @@ const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 /** The app's modules Storybook replaces, by the file they are, and what replaces each. */
 const STAND_INS = new Map([
   [here('../../web/src/lib/api.ts'), here('../src/api/index.ts')],
-  [here('../../web/src/features/call/livekit.ts'), here('../src/media/livekit.ts')]
+  [here('../../web/src/features/call/media/livekit.ts'), here('../src/media/livekit.ts')]
 ]);
 /** Only imports that could land on one of them are looked at twice. */
 const MAYBE = /(^|\/)(api|livekit)(\.ts)?$/;

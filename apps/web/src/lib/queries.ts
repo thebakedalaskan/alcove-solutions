@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
 import { forgetEdits } from '~/features/workspace/keep';
-import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/backgrounds';
+import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
 import { announceSignIn, announceSignOut } from './signedOut';

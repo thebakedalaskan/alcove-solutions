@@ -8,10 +8,10 @@ import { Avatar, Button, Faces, Icon, buttonClass, cn, useToast } from '@alcove/
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef } from 'react';
-import { useScheduled } from '~/features/calls/CallFlow';
-import { DEFAULT_MINUTES } from '~/features/calls/draft';
-import { useFloodToCall } from '~/features/calls/parts';
-import { ringable } from '~/features/calls/RingWords';
+import { useScheduled } from '~/features/calls/flow/CallFlow';
+import { DEFAULT_MINUTES } from '~/features/calls/flow/draft';
+import { useFloodToCall } from '~/features/calls/flow/parts';
+import { ringable } from '~/features/calls/ringing/RingWords';
 import { useCallFlow } from '~/features/shell/context';
 import { q, useScheduleCall, useStartNow } from '~/lib/queries';
 import { minutesUntil, untilLabel } from '~/lib/time';

@@ -3,9 +3,9 @@ import { Button, Horizon, Icon, Popover, RecorderSun, Spinner, buttonClass, cn, 
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { troubles, type Trouble } from '~/features/call/access';
-import { RoomLines } from '~/features/call/LiveLines';
-import { LocalMedia } from '~/features/call/media';
+import { troubles, type Trouble } from '~/features/call/media/access';
+import { RoomLines } from '~/features/call/notes/LiveLines';
+import { LocalMedia } from '~/features/call/media/media';
 import { StageRecording, type StageState } from '~/features/record/stage';
 import { UNNAMED, type Waiting } from '~/features/record/uploads';
 import { recordOfflineHere } from '~/lib/device';

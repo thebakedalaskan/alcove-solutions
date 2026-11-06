@@ -9,8 +9,8 @@
  * instead, to upload later (offline.ts).
  */
 import type { AudioPiece, RoomRecording, RoomRecordingState, TranscriptClip } from '@alcove/api';
-import { NotesRecorder } from '~/features/call/media';
-import { SpeechClips } from '~/features/call/speech';
+import { NotesRecorder } from '~/features/call/notes/recorder';
+import { SpeechClips } from '~/features/call/notes/speech';
 
 /** Where a room recording's audio and speech go. */
 export type RoomSink = Pick<RoomRecording, 'appendAudio' | 'transcribe'>;

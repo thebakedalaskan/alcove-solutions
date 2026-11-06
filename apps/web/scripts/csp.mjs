@@ -21,7 +21,7 @@ for (const file of readdirSync(dir).filter((f) => f.endsWith('.html'))) {
 }
 const csp = [
   "default-src 'self'",
-  // WebAssembly from this origin only: MediaPipe's, which draws camera backgrounds (features/call/backdrop.ts).
+  // WebAssembly from this origin only: MediaPipe's, which draws camera backgrounds (features/call/media/backgrounds/backdrop.ts).
   `script-src 'self' 'wasm-unsafe-eval' ${[...hashes].join(' ')}`,
   "style-src 'self' 'unsafe-inline'",
   `img-src 'self' data: blob: ${api}`,

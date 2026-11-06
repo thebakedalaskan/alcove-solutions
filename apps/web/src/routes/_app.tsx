@@ -2,7 +2,7 @@ import { IconButton, WsDoc, WsOfflineEmpty, WsPane, cn, useToast } from '@alcove
 import { useQueryClient } from '@tanstack/react-query';
 import { Outlet, createFileRoute, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CallFlowHost, useCallFlowHost } from '~/features/calls/CallFlow';
+import { CallFlowHost, useCallFlowHost } from '~/features/calls/flow/CallFlow';
 import { useKeptUploads } from '~/features/record/uploads';
 import { useKeptEdits } from '~/features/workspace/sendKept';
 import { useArrival } from '~/features/onboarding/store';

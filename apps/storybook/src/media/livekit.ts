@@ -1,5 +1,5 @@
 /*
- * Stands in for apps/web/src/features/call/livekit.ts in Storybook (.storybook/main.ts points every import of it here).
+ * Stands in for apps/web/src/features/call/media/livekit.ts in Storybook (.storybook/main.ts points every import of it here).
  * LiveKit can't run here, so the room is scripted: the call screen drives it exactly as it drives LiveKit's room, and it
  * answers as LiveKit would from the call's script (src/api/script.ts).
  *
@@ -15,8 +15,8 @@
  * Nothing is ever sent or played: nobody else's browser is here to hear it.
  */
 import type { CallSession, LiveStore } from '@alcove/api';
-import type * as Real from '~/features/call/livekit';
-import type { LocalMedia } from '~/features/call/media';
+import type * as Real from '~/features/call/media/livekit';
+import type { LocalMedia } from '~/features/call/media/media';
 import { ScriptedCall, type RoomSide } from '../api/call';
 import { pause } from '../api/live';
 import { drawnScreen, type Screen } from './screens';

@@ -1,5 +1,5 @@
 {
- "src/availability.integration.test.ts": {
+ "src/features/meetings/availability.integration.test.ts": {
   "seconds": 1.6,
   "groups": {
    "reading someone’s own calendar": 0.5,
@@ -8,14 +8,14 @@
    "a demo account’s week": 0.4
   }
  },
- "src/board-at-once.integration.test.ts": {
+ "src/features/workspaces/board-at-once.integration.test.ts": {
   "seconds": 6.4,
   "groups": {
    "ideas from the call added at the same moment": 5.3,
    "two branches from one idea at once": 1.1
   }
  },
- "src/board-more.integration.test.ts": {
+ "src/features/workspaces/board-more.integration.test.ts": {
   "seconds": 12.1,
   "groups": {
    "a table": 4.0,
@@ -27,7 +27,7 @@
    "what More adds": 0.8
   }
  },
- "src/board-timer-votes.integration.test.ts": {
+ "src/features/calls/board-timer-votes.integration.test.ts": {
   "seconds": 33.7,
   "groups": {
    "the timer": 4.9,
@@ -39,14 +39,14 @@
    "what the previous release stored": 0.8
   }
  },
- "src/boardHelps.integration.test.ts": {
+ "src/features/calls/boardHelps.integration.test.ts": {
   "seconds": 22.2,
   "groups": {
    "ideas from the call": 19.8,
    "Sort into themes": 2.4
   }
  },
- "src/boards-in-calls.integration.test.ts": {
+ "src/features/calls/boards-in-calls.integration.test.ts": {
   "seconds": 138.9,
   "groups": {
    "a new board": 31.4,
@@ -64,7 +64,7 @@
    "what the previous release stored": 8.3
   }
  },
- "src/boards.integration.test.ts": {
+ "src/features/workspaces/boards.integration.test.ts": {
   "seconds": 41.5,
   "groups": {
    "people at a board at once": 1.1,
@@ -80,14 +80,14 @@
    "a board’s own page": 4.8
   }
  },
- "src/boardsAfter.integration.test.ts": {
+ "src/features/calls/boardsAfter.integration.test.ts": {
   "seconds": 9.3,
   "groups": {
    "the note after a call with a board": 8.2,
    "bringing a board to a call": 1.2
   }
  },
- "src/callHomes.integration.test.ts": {
+ "src/features/calls/callHomes.integration.test.ts": {
   "seconds": 15.6,
   "groups": {
    "a call’s home": 5.5,
@@ -98,7 +98,7 @@
    "what the previous release stored": 0.2
   }
  },
- "src/callWorkspace.integration.test.ts": {
+ "src/features/calls/callWorkspace.integration.test.ts": {
   "seconds": 82.6,
   "groups": {
    "which workspace a call uses": 8.2,
@@ -119,7 +119,7 @@
    "what’s kept": 3.2
   }
  },
- "src/calls.integration.test.ts": {
+ "src/features/calls/calls.integration.test.ts": {
   "seconds": 107.0,
   "groups": {
    "calls on LiveKit": 0.2,
@@ -133,13 +133,13 @@
    "screen sharing": 2.9
   }
  },
- "src/capture.integration.test.ts": {
+ "src/features/calls/capture.integration.test.ts": {
   "seconds": 10.8,
   "groups": {
    "what a call captures": 10.8
   }
  },
- "src/carryover.integration.test.ts": {
+ "src/features/notes/carryover.integration.test.ts": {
   "seconds": 69.2,
   "groups": {
    "what carries over into a call": 7.2,
@@ -151,13 +151,13 @@
    "what stays out of what’s stored": 3.5
   }
  },
- "src/catchup.integration.test.ts": {
+ "src/features/calls/catchup.integration.test.ts": {
   "seconds": 85.9,
   "groups": {
    "catching up during a call": 85.9
   }
  },
- "src/connections.integration.test.ts": {
+ "src/features/meetings/connections.integration.test.ts": {
   "seconds": 15.9,
   "groups": {
    "a server with one connection to the database": 3.9,
@@ -165,7 +165,7 @@
    "a connection lost in the middle of a request": 0.2
   }
  },
- "src/decisions.integration.test.ts": {
+ "src/features/notes/decisions.integration.test.ts": {
   "seconds": 40.8,
   "groups": {
    "decisions": 10.0,
@@ -178,7 +178,7 @@
    "asking across your notes": 1.3
   }
  },
- "src/flows.integration.test.ts": {
+ "src/integration/flows.integration.test.ts": {
   "seconds": 122.6,
   "groups": {
    "public readiness": 0.1,
@@ -207,7 +207,7 @@
    "logging and errors": 0.9
   }
  },
- "src/guests.integration.test.ts": {
+ "src/features/calls/guests.integration.test.ts": {
   "seconds": 17.4,
   "groups": {
    "the call’s link, before joining": 3.0,
@@ -217,13 +217,13 @@
    "what a guest’s pass reaches": 1.9
   }
  },
- "src/hosting.integration.test.ts": {
+ "src/features/calls/hosting.integration.test.ts": {
   "seconds": 38.3,
   "groups": {
    "host hand-off": 38.3
   }
  },
- "src/invited.integration.test.ts": {
+ "src/features/meetings/invited.integration.test.ts": {
   "seconds": 10.7,
   "groups": {
    "people invited to a call": 7.8,
@@ -233,7 +233,7 @@
    "offering times": 1.4
   }
  },
- "src/keep.integration.test.ts": {
+ "src/features/notes/keep.integration.test.ts": {
   "seconds": 30.1,
   "groups": {
    "keeping the transcript": 5.1,
@@ -244,7 +244,7 @@
    "what a call keeps unless it’s told otherwise": 2.7
   }
  },
- "src/library.integration.test.ts": {
+ "src/features/workspaces/library.integration.test.ts": {
   "seconds": 9.5,
   "groups": {
    "the library": 4.0,
@@ -252,7 +252,7 @@
    "guests in a call": 1.0
   }
  },
- "src/liveNotes.integration.test.ts": {
+ "src/features/calls/liveNotes.integration.test.ts": {
   "seconds": 90.3,
   "groups": {
    "one set of live notes for the call": 13.7,
@@ -265,7 +265,7 @@
    "what stays": 5.6
   }
  },
- "src/media.integration.test.ts": {
+ "src/features/workspaces/media.integration.test.ts": {
   "seconds": 179.6,
   "groups": {
    "a file in a document": 7.2,
@@ -281,26 +281,26 @@
    "deleting": 7.0
   }
  },
- "src/migrations.integration.test.ts": {
+ "src/integration/migrations.integration.test.ts": {
   "seconds": 0.5,
   "groups": {
    "migrations": 0.5
   }
  },
- "src/moves.integration.test.ts": {
+ "src/features/calls/moves.integration.test.ts": {
   "seconds": 17.0,
   "groups": {
    "moving to another device": 11.2,
    "coming back after a connection drops": 5.8
   }
  },
- "src/nextRelease.integration.test.ts": {
+ "src/integration/nextRelease.integration.test.ts": {
   "seconds": 4.6,
   "groups": {
    "what the next release stores": 4.6
   }
  },
- "src/personal.integration.test.ts": {
+ "src/features/notes/personal.integration.test.ts": {
   "seconds": 41.2,
   "groups": {
    "your own notes in a call": 6.2,
@@ -311,13 +311,13 @@
    "what’s stored": 2.4
   }
  },
- "src/pointing.integration.test.ts": {
+ "src/features/calls/pointing.integration.test.ts": {
   "seconds": 7.6,
   "groups": {
    "pointing at shared screens": 7.6
   }
  },
- "src/repeats.integration.test.ts": {
+ "src/features/meetings/repeats.integration.test.ts": {
   "seconds": 12.5,
   "groups": {
    "a repeating call, from start to end": 0.8,
@@ -332,7 +332,7 @@
    "what the server keeps to itself": 0.2
   }
  },
- "src/rings.integration.test.ts": {
+ "src/features/calls/rings.integration.test.ts": {
   "seconds": 81.8,
   "groups": {
    "ringing": 17.4,
@@ -341,25 +341,25 @@
    "privacy": 1.5
   }
  },
- "src/screens.integration.test.ts": {
+ "src/features/recordings/screens.integration.test.ts": {
   "seconds": 47.7,
   "groups": {
    "shared screens in the notes": 47.7
   }
  },
- "src/series.integration.test.ts": {
+ "src/features/notes/series.integration.test.ts": {
   "seconds": 21.3,
   "groups": {
    "memory across a series": 21.3
   }
  },
- "src/transcripts.integration.test.ts": {
+ "src/features/recordings/transcripts.integration.test.ts": {
   "seconds": 13.8,
   "groups": {
    "a transcript that says what it isn’t sure of": 13.8
   }
  },
- "src/workspaceDocuments.integration.test.ts": {
+ "src/features/workspaces/workspaceDocuments.integration.test.ts": {
   "seconds": 266.0,
   "groups": {
    "a document": 5.5,
@@ -391,7 +391,7 @@
    "lines nobody reads": 1.7
   }
  },
- "src/workspaceTags.integration.test.ts": {
+ "src/features/workspaces/workspaceTags.integration.test.ts": {
   "seconds": 8.4,
   "groups": {
    "a tag": 4.3,
@@ -399,7 +399,7 @@
    "where people are": 3.6
   }
  },
- "src/workspaces.integration.test.ts": {
+ "src/features/workspaces/workspaces.integration.test.ts": {
   "seconds": 33.6,
   "groups": {
    "a workspace": 1.4,

@@ -16,7 +16,7 @@ import { Worker } from 'node:worker_threads';
 import { z } from 'zod';
 import { UnavailableError } from '../errors';
 import { log } from '../log';
-import { DOC_TASKS, type DocTasks } from '../modules/documentWork';
+import { DOC_TASKS, type DocTasks } from '../features/workspaces/document-work';
 
 const plog = log.child({ component: 'doc-pool' });
 

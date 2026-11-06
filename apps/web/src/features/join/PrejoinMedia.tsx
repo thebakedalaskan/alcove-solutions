@@ -6,10 +6,10 @@ import type { Person } from '@alcove/api';
 import { Avatar, CallDock, DockButton, cn } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { PrejoinDevices } from '~/features/call/DevicePickers';
-import { Video, useLevels } from '~/features/call/Video';
-import { useDevices } from '~/features/call/devices';
-import { LocalMedia } from '~/features/call/media';
+import { PrejoinDevices } from '~/features/call/media/DevicePickers';
+import { Video, useLevels } from '~/features/call/media/Video';
+import { useDevices } from '~/features/call/media/devices';
+import { LocalMedia } from '~/features/call/media/media';
 import { sessions, useLive } from '~/lib/live';
 import { q } from '~/lib/queries';
 

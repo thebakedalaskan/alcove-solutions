@@ -1,7 +1,7 @@
 import type { CallParticipant, CallSession, CallState, LiveStore } from '@alcove/api';
 import { useBlocker } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { LocalMedia } from '~/features/call/media';
+import type { LocalMedia } from '~/features/call/media/media';
 import type { StageRecording } from '~/features/record/stage';
 
 export function useLive<S>(store: LiveStore<S>): S {

@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./retire": "./src/retire.ts"
+    "./retire": "./src/workspaces/retire.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

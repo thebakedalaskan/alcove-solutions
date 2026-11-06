@@ -8,7 +8,7 @@ import { Button, Icon, SettingFact, SettingRow, SettingsPart, Spinner, useToast 
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { forgetView } from '~/features/call/view';
+import { forgetView } from '~/features/call/layout/view';
 import { forgetTour } from '~/features/onboarding/store';
 import { q, useDeleteAccount } from '~/lib/queries';
 import { hm, hoursAndMinutes } from '~/lib/time';

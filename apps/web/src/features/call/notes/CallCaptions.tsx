@@ -1,0 +1,42 @@
+import { CAPTION_LANGUAGES, notesAreOn, type CaptionLanguage, type CaptureMode } from '@alcove/api';
+import { Avatar, Caption, Icon } from '@alcove/ui';
+import type { ReactNode } from 'react';
+import { callName } from '~/lib/people';
+import type { LiveCaption } from './captions';
+
+export const captionLanguageName = (l: CaptionLanguage | null) => (l ? CAPTION_LANGUAGES.find((x) => x.code === l)?.name ?? l : 'As spoken');
+
+export function CaptionLanguageMenu({ language: lang, onPick }: { language: CaptionLanguage | null; onPick: (language: CaptionLanguage | null) => void }) {
+  return (
+    <>
+      <div className="ac-eyebrow">Captions in</div>
+      {[null, ...CAPTION_LANGUAGES.map((l) => l.code)].map((code) => {
+        const info = CAPTION_LANGUAGES.find((x) => x.code === code);
+        return (
+          <button key={code ?? 'spoken'} type="button" className="ic-opt" role="menuitemradio" aria-checked={lang === code}
+            onClick={() => onPick(code)}>
+            <span className="nm">{info ? info.name : 'As spoken'}{info && info.name !== info.english && <span className="sub"> · {info.english}</span>}</span><Icon name="check" size={16} className="tick" />
+          </button>
+        );
+      })}
+      <p className="hint">Translated in confidential compute. Everyone picks their own language. The call is still transcribed for notes when captions are off.</p>
+    </>
+  );
+}
+
+export function CallCaption({ caption, language: lang, hearing, mode, languageButton: capButton }: {
+  caption: LiveCaption | null;
+  language: CaptionLanguage | null;
+  hearing: boolean;
+  mode: CaptureMode;
+  languageButton: ReactNode;
+}) {
+  return caption && hearing ? (
+    <Caption who={<>{caption.line.speaker?.person && <Avatar person={caption.line.speaker.person} size={18} />}<span className="name">{caption.line.speaker ? callName(caption.line.speaker.person ?? { name: caption.line.speaker.name, email: '' }) : ''}</span>{caption.translated && lang && <span className="lang">→ {lang.toUpperCase()}</span>}{capButton}</>}
+      original={caption.translated ? caption.line.text : undefined}>{caption.text}</Caption>
+  ) : (
+    <Caption who={<><Icon name="captions" size={15} /><span className="name">Captions</span>{capButton}</>}>
+      <span className="ic-cap-wait">{hearing ? 'What’s said appears here as people talk.' : notesAreOn(mode) ? 'Nothing is transcribed for captions right now: the host’s browser can’t listen.' : mode === 'paused' ? 'Notes are paused, so nothing is transcribed for captions.' : 'Notes are off, so nothing is being transcribed for captions.'}</span>
+    </Caption>
+  );
+}

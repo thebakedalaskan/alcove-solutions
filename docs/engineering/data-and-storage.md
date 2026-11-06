@@ -172,7 +172,7 @@ workspace, the newest. The name of a document is never in the record or on the l
 
 What a document or board holds is a Yjs document: a CRDT, so people can type at once, offline or not, and always end up
 with the same thing. Browsers exchange binary updates through the API, which seals each and keeps it. Only
-`apps/api/src/modules/documentText.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
+`apps/api/src/features/workspaces/document-text.ts` and `documentOps.ts` know what's inside one, and they go by `kind`, so a board says
 its own words, through `@alcove/board`, which is what knows a board's Y.Doc; everything else below is the same for anything
 that holds a Y.Doc. A document's blocks are the root fragment `content`, its comment threads the root map `comments`, and
 the editor's schema decides the rest. A board's are its root maps `objects` and `comments` and its list `places`
@@ -269,7 +269,7 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
   A real block holds about 650 to 1,000 bytes an item once it's open.
 - **Reading it on the server.** Nothing on the event loop opens a document, so other modules ask by name: `readDocument(w, id,
   'todos', { kind })`, and `writeDocument(w, id, 'retitle', { name }, { by, callId, holding })`, which goes through the same log,
-  so what the server writes reaches browsers as an update. `apps/api/src/modules/documentOps.ts` holds what can be asked: a
+  so what the server writes reaches browsers as an update. `apps/api/src/features/workspaces/document-ops.ts` holds what can be asked: a
   plain function of the document and plain data, one line each, which a worker can import. Every change the server makes
   goes through `writeDocument`, or `restoreVersion` to put a version back, and both write it only as Yjs clients the log
   hasn't had, asked under the row's lock in the transaction that appends it (`requireNewClients`): two updates that say
@@ -317,7 +317,7 @@ checked before it's stored ([what gets in](#what-gets-into-a-document)), a docum
 
 ### What gets into a document
 
-`apps/api/src/modules/documentFirewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
+`apps/api/src/features/workspaces/document-firewall.ts` reads every update before it's stored, byte by byte, and builds nothing from it.
 It goes by Yjs's structs and never by what a document means, so a board goes through the same door as a page. Whoever can't
 write there hears so first, before anything of it is read. Refused means a reason in the log and no row, and a browser hears
 which kind it was: `400 invalid` for what no honest client could send, and `413 too-large` for what's only too much, which
@@ -361,7 +361,7 @@ What depends on the log is checked under the document's lock, against `document_
 ### Opening a document
 
 Yjs has no limit on what opening a document can cost, and a shape that takes minutes can't always be told from one that
-doesn't without the whole document. So every Y.Doc on the server is in a worker thread (`live/docPool.ts`, `modules/documentWork.ts`):
+doesn't without the whole document. So every Y.Doc on the server is in a worker thread (`live/docPool.ts`, `features/workspaces/document-work.ts`):
 loading, merging, compacting, encoding a `sync`, restoring, searching, and anything `readDocument` or `writeDocument` asks.
 Sealed rows go in with the document's key, which is wiped when the job ends, and sealed bytes and plain data come out, so big
 records are opened and sealed there too.
@@ -476,7 +476,7 @@ A file is anything someone puts in a document or on a board: a picture, video, a
 workspace, as a row in `workspace_media`, and is reached only through a document that has it, a row in
 `workspace_media_uses`, because a guest's seat covers one document: a seat reaches that document's files and no others
 ([Privacy › Files](privacy-keys-and-sessions.md#files)). The API seals uploads, as it seals everything: a file reaches the
-process readable and is sealed there (`apps/api/src/modules/media.ts`).
+process readable and is sealed there (`apps/api/src/features/workspaces/media.ts`).
 
 - **What's kept.** A `workspace-media` record: its name, type, size, and its width and height where the browser knew them.
   And its bytes, in pieces of exactly 4 MiB but the last, each a `media-piece` binary record in an object under a random name,
@@ -568,7 +568,7 @@ process readable and is sealed there (`apps/api/src/modules/media.ts`).
   block's menu, is `remove`. A version in History and a presentation in a call draw from the same (`useMediaView` in
   `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
-  (`MEDIA_LIMITS` in `modules/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
+  (`MEDIA_LIMITS` in `features/workspaces/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
   their bodies are read; past that they're refused with `503 unavailable` and the client tries again. A piece has to keep
   coming: one that brings less than 256 KiB in 10 seconds, stopped or only trickling, is cut, and the client tries again. At
   most 32 reads are open, 8 for any one person, from when they start until their response has gone, whether it finished or the

@@ -11,7 +11,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 const apiPort = loadEnv('development', '../..', 'API_')['API_PORT'] ?? '8787';
 
 /*
- * MediaPipe's WebAssembly for camera backgrounds (features/call/matte.ts), served from this origin at
+ * MediaPipe's WebAssembly for camera backgrounds (features/call/media/backgrounds/matte.ts), served from this origin at
  * /mediapipe/wasm: the exact version the app imports, never fetched from a CDN. The model it runs is in
  * public/mediapipe.
  */

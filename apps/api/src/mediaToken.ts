@@ -1,7 +1,7 @@
 /*
  * Media tokens. A picture or a player can't send a header, and a guest has no cookie, so the URL a file is read from
  * carries this instead: who's asking and what for, MAC'd as a call pass is, under a key of its own derived from KMASTER, for
- * 12 hours. It decides nothing: every request brings it to modules/media.ts, which asks modules/workspaceAccess.ts again. It holds
+ * 12 hours. It decides nothing: every request brings it to features/workspaces/media.ts, which asks features/workspaces/access.ts again. It holds
  * only opaque IDs, because it's in a URL, and a call pass never is: a seat is named, and nothing of the pass goes in here.
  */
 import { z } from 'zod';

@@ -7,7 +7,7 @@ import type { CalendarEvent } from '@alcove/api';
 import { EmptyState, Icon, IconButton, Popover, ShowMore, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useId, useRef, useState } from 'react';
-import { waitingLine } from '~/features/calls/words';
+import { waitingLine } from '~/features/calls/scheduling/words';
 import { freshCalls, useCallFlow } from '~/features/shell/context';
 import { daysFromToday, hm, shortDay, weekday } from '~/lib/time';
 import { isOffered, peopleOn, seriesIdOf, started, whoOn, type Ahead } from './day';

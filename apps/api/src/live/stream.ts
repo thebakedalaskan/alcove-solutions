@@ -10,7 +10,7 @@ import type { Deps } from '../context';
 import { b64u } from '../crypto';
 import { AuthError } from '../errors';
 import { log, type LogContext } from '../log';
-import { readerOf, type Credentials, type Who } from '../modules/workspaceAccess';
+import { readerOf, type Credentials, type Who } from '../features/workspaces/access';
 import { findSession } from '../sessions';
 import type { Room, RoomMember, Snapshot } from './room';
 

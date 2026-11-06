@@ -133,7 +133,7 @@ Files in a workspace are shaped by the same limits. Cloud Run refuses an HTTP/1 
 over 32 MiB, so a file goes up in pieces of 4 MiB, an answer to a range sends at most 16 MiB, and a whole file over that
 streams without a length ([Data and storage › Media](data-and-storage.md#media)). The API ends a read itself at 280 seconds
 (`MEDIA_READ_MS`), inside the timeout: a player asks on from where it got to, and a download starts again. Files pass through
-this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `modules/media.ts`),
+this one process, so what they hold in it and what they take of its core are limited (`MEDIA_LIMITS` in `features/workspaces/media.ts`),
 and past those limits a request is refused rather than taken on. At most 96 requests at once are files. The limits were set
 for 1 GiB and stayed when the instance went to 2 GiB, because the rest is for documents' worker threads. Measured on the built
 server with a 1,120 MiB heap and nothing else running, 920 pieces sent at once and 80 readers who stopped took it from 150 MiB
