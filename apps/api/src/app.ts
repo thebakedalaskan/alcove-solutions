@@ -1,8 +1,9 @@
 import {
-  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
+  ActionPatchSchema, ActionProposalSchema, AUDIO_HEADERS, CallIdentity, AskBodySchema, DOC_UPDATE_TYPE, DocAwarenessBodySchema, ItemInputSchema, ItemPlaceSchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, PresenceBodySchema, RestrictBodySchema, ShareBodySchema, WorkspaceInputSchema, WorkspacePersonInputSchema, WorkspaceRolePatchSchema, AskSoFarBodySchema, BusyBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, ClientLogBatchSchema, DecisionPatchSchema, DecisionProposalSchema, FRAME_HEADERS, InstantCallInputSchema, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MEDIA_PIECE_BYTES, CallHandOffBodySchema, CallLeaveBodySchema, ChangeScopeSchema, DocAskBodySchema, DocFollowUpTickSchema, PresenterNotesBodySchema,
   LinePatchSchema, MeetingInputSchema, NextCallBodySchema, NoteKindSchema, NotesSettingSchema, OPERATION_HEADER, PeopleSearchBodySchema, PickTimeBodySchema, PreferencesSchema, QuestionPatchSchema, REQUEST_ID_HEADER, RecordingActionSchema, RevisitPatchSchema, RoomRecordingInputSchema, RsvpBodySchema, SeriesAskBodySchema, ShareInputSchema, RingAnswerBodySchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema,
   ShareEndedBodySchema, ShareIdSchema, SignInBodySchema, TeamInviteBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type Meeting, type CallAction
 } from '@alcove/api';
+import type { HttpBindings } from '@hono/node-server';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
@@ -13,7 +14,7 @@ import type { Deps, Owner } from './context';
 import { b64u, equalBytes, mac, random, operationCommitKey, operationResultKey, openJson, sealJson, unb64u, utf8 } from './crypto';
 import { bytea, exec, maybeOne } from './db';
 import { AuthError, ConflictError, ForbiddenError, NotFoundError, TooLargeError, UnavailableError, ValidationError, notFound, toAppError, type AppError } from './errors';
-import { addLogContext, log, withLogContext } from './log';
+import { addLogContext, log, withLogContext, type Level } from './log';
 import * as google from './google';
 import { inference } from './inference';
 import { CALL_PASS_HEADER, readPass } from './callPass';
@@ -28,6 +29,7 @@ import * as billing from './modules/billing';
 import * as calendar from './modules/calendar';
 import * as calls from './modules/calls';
 import * as documents from './modules/documents';
+import * as media from './modules/media';
 import * as meetings from './modules/meetings';
 import * as moves from './modules/moves';
 import * as notes from './modules/notes';
@@ -44,14 +46,14 @@ import * as workspaces from './modules/workspaces';
 import * as writer from './modules/writer';
 import type { Clip } from './modules/transcripts';
 
-type Env = { Variables: { owner: Owner; viewer: calls.Viewer; requestId: string; receipt: string | undefined } };
+type Env = { Bindings: HttpBindings; Variables: { owner: Owner; viewer: calls.Viewer; requestId: string; receipt: string | undefined; refusedAt: Level | undefined } };
 const rlog = log.child({ component: 'http' });
 const clog = log.child({ component: 'client', source: 'browser' });
 /**
- * Call codes are join tokens, and a Google event's ID names its recurring series: keep both out of
- * logs. Every other path segment is a random ID.
+ * Call codes are join tokens, a Google event's ID names its recurring series, and a file's token reads it: keep all three
+ * out of logs. Every other path segment is a random ID.
  */
-const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code').replace(/^\/v1\/calendar\/events\/(?!$)[^/]+/, '/v1/calendar/events/:id');
+const safePath = (p: string) => p.replace(/^\/v1\/calls\/(?!$)[^/]+/, '/v1/calls/:code').replace(/^\/v1\/calendar\/events\/(?!$)[^/]+/, '/v1/calendar/events/:id').replace(/^\/v1\/media\/(?!$)[^/]+/, '/v1/media/:token');
 const QUIET = new Set(['/health', '/healthz', '/v1/rings']);
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 /**
@@ -84,8 +86,31 @@ const MOST_AUDIO_PER_REPLY = 24 * 1024 * 1024;
 const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
 /** What holds a document's content, as it is: a paste can be megabytes, and it has a limit of its own. */
 const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/(?:updates|adopt)$/;
+/** The one route that takes bytes as they are: a piece of a file going into a workspace. */
+const MEDIA_PIECES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/media\/[^/]+\/pieces\/[^/]+$/;
 /** IDs in paths are 22 characters of base64url; anything else names nothing. */
 const ID128 = /^[A-Za-z0-9_-]{22}$/;
+
+/**
+ * Reads what's left of a request that was answered before all of it arrived, as a refused piece is, once the answer has
+ * gone, and drops it, so the connection is ready for the next request. The Node adapter means to do this itself, but the
+ * request's body stream keeps the request paused. So on its own the adapter reads one chunk and closes the connection
+ * half a second later, and a client may already have sent its next request down it. The adapter's limits still hold: a
+ * body that's still arriving after 500 ms, or past 64 MiB, goes with its connection.
+ */
+function dropTheRest({ incoming, outgoing }: HttpBindings, body: ReadableStream<Uint8Array> | null, requestId: string): void {
+  if (!body || body.locked) return;
+  outgoing.once('finish', () => {
+    const reader = body.getReader();
+    const socket = incoming.socket;
+    const failed = (e: unknown) => rlog.debug('the rest of a request couldn’t be read', { requestId, err: e });
+    // The connection can go first, when the client gives up or the adapter's limits end it. Then there's nothing to drop.
+    const gone = () => { void reader.cancel().catch(failed); };
+    socket.once('close', gone);
+    const drop = async (): Promise<void> => { for (;;) if ((await reader.read()).done) return; };
+    void drop().catch(failed).finally(() => socket.off('close', gone));
+  });
+}
 
 /**
  * A small fixed-window limiter: at most `max` hits per key in each window. Unauthenticated requests
@@ -226,6 +251,10 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
   const searchLimiter = rateLimit(12, 60_000);
   /** Saving someone's own notes on a document, per person: they save as they're typed. */
   const presenterLimiter = rateLimit(120, 60_000);
+  /** Pieces of a file, per person: 4 MiB each, so about 40 MiB a second, more than any browser's upload. */
+  const pieceLimiter = rateLimit(600, 60_000);
+  /** Reading files, per person, by what it costs: each URL asked for and each piece opened. */
+  const mediaLimiter = rateLimit(media.MEDIA_LIMITS.readsAMinute, 60_000);
 
   /* Request context and access log. Runs first, so every later log line carries the request ID. */
   app.use('*', async (c, next) => {
@@ -238,11 +267,13 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
       rlog.debug('request started', { bytes: Number(c.req.header('content-length') ?? 0) || undefined });
       await next();
       c.res.headers.set(REQUEST_ID_HEADER, requestId);
+      if (!c.env.incoming.complete) dropTheRest(c.env, c.req.raw.body, requestId);
       const ms = Math.round(performance.now() - t0);
       const status = c.res.status;
       const line = { status, ms };
       if (QUIET.has(c.req.path) && status < 400) rlog.debug('request', line);
-      else if (status >= 500) rlog.error('request failed', line);
+      // A 5xx is us failing, unless what answered it says it's an ordinary refusal: a browser that went mid-piece, say.
+      else if (status >= 500 && c.get('refusedAt') !== 'info') rlog.error('request failed', line);
       else if (status >= 400) rlog.info('request refused', line);
       else rlog.info('request', line);
     });
@@ -254,8 +285,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
-  // Audio pieces (2 MiB) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
-  const anyBody = capped(4 * 1024 * 1024);
+  // Pieces of a file (4 MiB) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
+  const anyBody = capped(MEDIA_PIECE_BYTES);
   app.use('/v1/*', (c, next) => (DOC_UPDATES.test(c.req.path) ? next() : anyBody(c, next)));
   app.use('/v1/*', async (c, next) => {
     if (!MUTATING.has(c.req.method)) return next();
@@ -265,7 +296,8 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
     const image = type.startsWith('image/jpeg') && FRAMES.test(c.req.path);
     const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    const fileBytes = type.startsWith('application/octet-stream') && MEDIA_PIECES.test(c.req.path);
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update && !fileBytes) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 
@@ -278,6 +310,7 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     // Stacks and cause chains for anything unexpected; a one-liner for ordinary refusals.
     const withStack = err.level !== 'info' && !(e instanceof ZodError);
     rlog.at(err.level, err.message, { errorClass: err.name, code: err.code, status: err.status, ...err.context, ...(withStack ? { err } : {}) });
+    c.set('refusedAt', err.level);
     return c.json({ code: err.code, message: err.message, requestId, ...(issues ? { issues } : {}) }, err.status);
   });
 
@@ -800,6 +833,63 @@ export function createApp(d: Deps, stopping?: AbortSignal | undefined) {
     treeLimiter(access.limitKey(r), 'workspace change');
     await workspaces.restoreItem(d, r, c.req.param('id'), c.req.param('item'));
     return c.json({ restored: true });
+  });
+  /*
+   * Files in a workspace's documents, by session or call pass like the rest of it: a guest can read what's in a document
+   * given to their seat, and add to one they can edit. Each route asks who can before it looks at what it was sent.
+   * modules/media.ts does the rest.
+   */
+  app.use('/v1/workspaces/:id/documents/:doc/media', capped(32 * 1024));
+  app.use('/v1/workspaces/:id/documents/:doc/media/:media/finish', capped(32 * 1024));
+  app.use('/v1/workspaces/:id/documents/:doc/media/:media/attach', capped(32 * 1024));
+  app.get('/v1/workspaces/:id/media', async (c) => c.json(await media.list(d, await readerOf(c), c.req.param('id'))));
+  app.post('/v1/workspaces/:id/documents/:doc/media', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await media.mayAdd(d, r, c.req.param('id'), c.req.param('doc'));
+    return c.json(await media.begin(d, r, c.req.param('id'), c.req.param('doc'), await body(c, MediaInputSchema)));
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/media/:media/pieces/:seq', async (c) => {
+    const r = await readerOf(c);
+    pieceLimiter(access.limitKey(r), 'media piece');
+    const sent = { declared: Number(c.req.header('content-length') ?? 0), body: () => c.req.raw.body };
+    await media.storePiece(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'), c.req.param('seq'), sent);
+    return c.json({ stored: true });
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/media/:media/finish', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    return c.json(await media.finish(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media')));
+  });
+  app.post('/v1/workspaces/:id/documents/:doc/media/:media/attach', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await media.attach(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'));
+    return c.json({ attached: true });
+  });
+  app.delete('/v1/workspaces/:id/documents/:doc/media/:media', async (c) => {
+    const r = await readerOf(c);
+    treeLimiter(access.limitKey(r), 'workspace change');
+    await media.remove(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media'));
+    return c.json({ removed: true });
+  });
+  app.get('/v1/workspaces/:id/documents/:doc/media/:media/token', async (c) => {
+    const r = await readerOf(c);
+    mediaLimiter(media.askerOf(r), 'media');
+    return c.json({ token: await media.tokenFor(d, r, c.req.param('id'), c.req.param('doc'), c.req.param('media')) });
+  });
+  /* A file's bytes, for an `<img>` or a player: its token says who's asking, its cookie is all a browser sends, and modules/workspaceAccess.ts decides, every time. */
+  app.get('/v1/media/:token', async (c) => {
+    const { outgoing } = c.env;
+    const closed = new AbortController();
+    if (outgoing.destroyed) closed.abort();
+    else outgoing.once('close', () => { closed.abort(); });
+    return media.serve(d, media.tokenIn(d, c.req.param('token')), {
+      session: getCookie(c, COOKIE), range: c.req.header('range'), head: c.req.method === 'HEAD',
+      count: (who) => mediaLimiter(who, 'media'),
+      closed: closed.signal,
+      cut: () => { outgoing.destroy(); }
+    });
   });
 
   /* ---------- everything below needs a signed-in owner ---------- */

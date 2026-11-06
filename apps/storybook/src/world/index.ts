@@ -4,7 +4,7 @@
  * every page reads it from here again.
  */
 import type {
-  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree
+  Calendar, CreditBalance, DocRefusal, DocumentLibrary, IncomingRing, Meeting, MoveIn, MoveMedia, Note, PersonalEntry, Preferences, Session, ShareEntry, Team, WorkspaceTree, WorkspaceMedia
 } from '@alcove/api';
 import type { BlockJSON } from '~/features/workspace/editor/types';
 import type { Troubles } from '../api/trouble';
@@ -30,6 +30,9 @@ export interface MoveSpec {
   seconds?: number | undefined;
 }
 
+/** A file in a workspace: what the API says of it, and its bytes, made when they're first read (a picture is drawn). */
+export interface Kept { workspace: string; media: WorkspaceMedia; body: () => Promise<Blob> }
+
 export interface World {
   /** Who's signed in, or nobody. */
   session: Session | null;
@@ -51,6 +54,8 @@ export interface World {
   pages: Record<string, Page>;
   /** Who each document is shared with besides its workspace's own people, by its ID. */
   shares: Record<string, ShareEntry[]>;
+  /** The files in your workspaces' documents. */
+  media: Kept[];
   /** Who's ringing you as the story opens. */
   rings: IncomingRing[];
   /** A note being written: how long until it's done, and what it says then. */

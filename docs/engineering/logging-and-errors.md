@@ -84,13 +84,37 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   `request-notes` (10 a minute), `others-point` (20 a minute), `frames` (24 a minute) and `share-ended` (30 a minute)
   per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
   account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all
-  the streams of rings it takes. Google sign-in
+  the streams of rings it takes, and `media piece` (600 a minute) and `media` (240 a minute, each file's URL asked for and each piece opened) per person.
+  Past what a process takes on at once, a file's upload or read logs `pieces arriving` or `files being read`. Google sign-in
   goes back to the welcome screen with `signin=busy` instead.
 - Every tab holds a stream of rings and opens a new one every few minutes, so `GET /v1/rings` is logged at debug, like
   a health check, unless it's refused. Rings say who rang how many and that a ring was answered, by IDs and counts:
   never an address, and never the answer, which is sealed so that nothing shows who's coming.
-- An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES` or a shared-screen frame over
-  `MAX_FRAME_BYTES` is refused as `400 invalid` from its `content-length`, before the body is read.
+- An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES`, a shared-screen frame over
+  `MAX_FRAME_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
+  before the body is read. Whatever's left of a request answered before all of it arrived is read and dropped once the
+  answer has gone, so its connection can take the next request. A body still arriving half a second later, or past 64 MiB,
+  goes with its connection, as the Node adapter has it.
+- A file's upload logs `upload started` and `upload finished` with its IDs, and its pieces at debug; deleting one logs `file
+  deleted`. Deleting one refused because someone can edit its document only through a seat in a call is an ordinary
+  refusal: `forbidden` at info, with `why: 'only a seat'`. A piece that's refused after reaching the store logs `piece not
+  recorded; deleting its object`, at info for a refusal and warn for a failure. A file that can't be read to the end has
+  already sent its first bytes, so nothing reaches the client
+  but a broken connection: it's `a file couldn’t be read to the end`, with the request's ID and the file's and piece's, at the
+  level of what stopped it (info for someone who lost the document, warn for a limit, error for a failure). The Node adapter
+  also prints one generic line of its own to standard error. A read logs `a read has its place` at debug once it has one,
+  with its IDs and whether it waited. A read this side ends logs `a read was cut`, with its IDs and why: it stopped and
+  someone's waiting, or its time ran out. A piece that stopped arriving, or a read whose browser went while it
+  waited, is an ordinary `503` at info, and so is its request's own line, `request refused`: a 5xx is `request failed` at error
+  unless what answered it says it's an ordinary refusal.
+- An upload refused by a storage limit is an ordinary refusal at info: `409 conflict` for a full workspace or a day used up,
+  `400 invalid` for a file too big, with the limit's name, the sizes and the limit in its context. A piece that takes a workspace past 80% of its
+  limit logs `a workspace is past 80% of its storage` at warn, and one that takes someone's day past 80% logs `someone is past
+  80% of what they can upload today`, once each time it's crossed, with IDs and sizes. Every instance logs `service limit
+  changed` at info when it reads a new value, with `limit`, `old` and `new`, and `service limit ignored` or `service limit
+  clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in
+  force` at warn when it can't read them. `limits set` logs `service limit set`, with the old value and the new, and `limit not
+  set` at warn with why: a typo is an ordinary refusal.
 - A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the
   notes have kept as many as they can`, with the limit), with one more info line when screen notes turn off for
   it (`screen notes turned off: the notes are full`). A frame whose image still can't be fetched on a second try
@@ -132,8 +156,8 @@ about what anyone said, wrote or who they are.
   search terms, questions, notes, transcripts, prompts or model replies, audio, request bodies or key
   material.
 - Session IDs are bearer secrets and are never logged; `ownerId` identifies a session. Call codes are join
-  tokens: paths show `/v1/calls/:code`. Paths never include the query, so the Google callback's code and
-  state stay out too.
+  tokens: paths show `/v1/calls/:code`, and a file's token `/v1/media/:token`. Paths never include the query, so the
+  Google callback's code and state stay out too.
 - Google's tokens are never logged, nor its error descriptions: only its error code (such as
   `invalid_grant`). `inference.ts` logs only models, sizes, durations, counts, statuses, timings, finish
   reasons and token counts; `evidence.ts` only models, result codes, durations, TCB statuses, advisory IDs,
@@ -144,7 +168,8 @@ about what anyone said, wrote or who they are.
   content-like fields and cuts strings to 300 characters.
 - A second backstop scrubs every string on its way out, wherever it came from (messages, fields,
   browser reports, errors and their causes): email addresses become `[email]`, bearer and basic
-  credentials `Bearer [redacted]`, and signed tokens (JWTs) `[token]`. Errors are serialized with their
+  credentials `Bearer [redacted]`, signed tokens (JWTs) `[token]`, and a file's URL, whole or cut short,
+  `/v1/media/[token]`. Errors are serialized with their
   whole cause chain before scrubbing, so nothing is lost for debugging. Postgres's own explanations that
   echo a row (`Failing row contains (…)`, `Key (…)=(…)`) are replaced by `[row hidden]`; the code
   (`pgCode`) and the statement's static text stay.
