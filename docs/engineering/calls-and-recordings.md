@@ -1979,7 +1979,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   then, once no menu or sheet is open, it leaves focus, then unpins everyone, then puts your side away. The call's own keys
   are M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board), ⇧P (hide the people or
   bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus); captions have none, the letters sleep while you type, and
-  Keyboard shortcuts in More lists the ones you have there. On a board you present, ← and → move its frames. On someone
+  Keyboard shortcuts in More (`KeysSheet.tsx`) lists the ones you have there, then what works on a tile, on a shared screen
+  and on a board you present (`TILE_KEYS`, `SHARE_KEYS` and `PRESENTING_KEYS` in `useCallShortcuts.ts`). On a board you
+  present, ← and → move its frames. On someone
   else's share on your stage, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your pointer,
   while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
   ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.

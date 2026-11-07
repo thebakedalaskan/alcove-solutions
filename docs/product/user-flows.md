@@ -323,9 +323,10 @@ time, slides in on the right.
   while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
   on every screen: **Turn on captions** (or **Turn off captions**), **Mark this moment** (Only you, **B**), **Catch up on
   what you missed**, **Breakout rooms** (the organizer's, once someone else is in the call), then **Audio and video
-  settings**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys and
-  what works on a tile. On a phone the dock is microphone, camera, **Share**, **More** and **Leave**, and **More** starts
-  with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with its count) and **People**, then **Raise your hand**
+  settings**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
+  what works on a tile, on a shared screen and on a board you present. On a phone the dock is microphone, camera,
+  **Share**, **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with
+  its count) and **People**, then **Raise your hand**
   and **Your view**; the devices are under Audio and video settings. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
