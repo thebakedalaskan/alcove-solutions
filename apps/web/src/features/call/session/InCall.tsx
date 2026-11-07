@@ -482,14 +482,15 @@ export function InCall({ session }: { session: CallSession }) {
    * With none open, nothing here is drawn or loaded, and the call is as it always is.
    */
   const { resolved: theme } = useTheme();
-  const [boardMenu, setBoardMenu] = useState(false);
+  /** The board picker is open under Board, at the top right. */
+  const [picking, setPicking] = useState(false);
   /** A saved board you opened just for you, while it's on your stage. */
   const [saved, setSaved] = useState<SavedBoard | null>(null);
   const savedOn = stage.on.includes('saved');
   useEffect(() => { if (!savedOn && saved) setSaved(null); }, [savedOn, saved]);
   // Your workspaces, to name a board's and know whether you're in it: read only once a board is open or the board picker opens,
   // so a call that never has one never lists them.
-  const drive = useQuery({ ...q.workspaces(), enabled: state.role !== 'guest' && (state.board.open !== null || saved !== null || boardMenu || pop === 'board' || pop === 'shareBoard') }).data;
+  const drive = useQuery({ ...q.workspaces(), enabled: state.role !== 'guest' && (state.board.open !== null || saved !== null || picking || pop === 'board' || pop === 'shareBoard') }).data;
   const spaceName = (id: string): string | null => drive?.find((w) => w.id === id)?.name ?? (space.id === id ? space.name : null);
   const board = useCallBoard({
     stage: savedOn && saved ? 'saved' : stage.on.includes('board') ? 'call' : null, saved: savedOn ? saved : null,
@@ -620,7 +621,7 @@ export function InCall({ session }: { session: CallSession }) {
     toast(where === 'hidden' ? 'You’re hidden from your own view. Everyone else still sees you.' : where === 'corner' ? 'You see yourself in a corner' : 'You see yourself in the grid',
       { icon: where === 'hidden' ? 'eyeOff' : 'eye' });
   };
-  // A share brought in beside the workspace is what the workspace is for: that's not you arranging anything.
+  // You've changed your view from the call's own: View offers Reset my view.
   const custom = isCustom(layout.prefs, layout.layout, panels);
   /** While rooms are open the organizer's stage shows every room; their own view comes back after. */
   const roomsHold = () => { if (open && organizer) { toast('Your view comes back when the rooms close', { icon: 'door' }); return true; } return false; };
@@ -654,7 +655,7 @@ export function InCall({ session }: { session: CallSession }) {
   });
   useCaptureAlerts(state, controls);
   useNotesAskedNotifications(state);
-  // Whatever brings your side up gives everything back: nothing else has a place while it's just the document.
+  // Whatever brings your side up gives everything back: nothing else has a place while what's open fills your window.
   const openSide = (p: SidePlace) => { setPop(null); setFocus(false); goTo(p); };
   const flipSide = (v: SideView) => { setPop(null); setFocus(false); side.toggle(v); };
   /** Puts your side away. Focus that was in it goes back to the button that brings it up again, or More on a phone. */
@@ -784,10 +785,10 @@ export function InCall({ session }: { session: CallSession }) {
   const boardOnStage: ThingId | null = stage.on.includes('board') ? 'board' : stage.on.includes('saved') ? 'saved' : null;
   /** Board, at the top right (in More on a phone), and O: the picker, or, with a board on your stage, Close. */
   const pressBoard = () => {
-    if (boardOnStage) { setPop(null); setBoardMenu(false); closeThing(boardOnStage); return; }
+    if (boardOnStage) { setPop(null); setPicking(false); closeThing(boardOnStage); return; }
     loadBoard();
     if (phone) setPop((p) => (p === 'board' ? null : 'board'));
-    else setBoardMenu((o) => !o);
+    else setPicking((o) => !o);
   };
   /** Workspace, at the top right (in More on a phone), and W: opens it on your stage where you left it, or Close. */
   const pressWorkspace = () => {
@@ -803,11 +804,11 @@ export function InCall({ session }: { session: CallSession }) {
     by: presentNow?.kind === 'board' && presentNow.id === callBoardOpen.documentId ? (presentNow.mine ? 'You’re presenting it' : `${firstName(presentNow.by.name)} is presenting it`)
       : board.opener ? `${callName(board.opener)} · brought it` : 'In this call'
   } : null;
-  const boardMenuOpen = boardMenu && !phone;
+  const pickerOpen = picking && !phone;
   const picked = { onOpenCall: () => stageOpen('board'), onOpenSaved: (b: SavedBoard) => { setSaved(b); stageOpen('saved'); }, onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
   const openPicker = useBoardPicker({
-    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: boardMenuOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
-    onDone: () => { setBoardMenu(false); setPop(null); }, ...picked
+    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pickerOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
+    onDone: () => { setPicking(false); setPop(null); }, ...picked
   });
   const sharePicker = useBoardPicker({
     session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: boardBlocked, inCall: callBoardRow,
@@ -1021,8 +1022,8 @@ export function InCall({ session }: { session: CallSession }) {
   /*
    * The rooms' time on the board, in its one pill: the room you're in, or how many rooms share the main board, and how long is
    * left. While that's the pill the board on the stage shows, it's said there, and the rooms line above says nothing more. While
-   * the board's pill says something more pressing (how it stands, someone presenting, a vote, following, the timer), the line
-   * says it: the board hands up which kind it shows (`BoardPills`).
+   * the board's pill says something more pressing (how it stands, a vote, following, the timer), the line says it: the board
+   * hands up which kind it shows (`BoardPills`).
    */
   const roomsPill = roomPills(open ? { name: roomName, rooms: open.rooms.length, shared: open.board === 'shared', left } : null);
   const [boardPill, setBoardPill] = useState<PillKind | null>(null);
@@ -1182,18 +1183,20 @@ export function InCall({ session }: { session: CallSession }) {
   const looks = useShareLooks({ shares, part: crypto.place, paused: mode === 'paused', kept: screensShown });
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
-  /* Put on the board: a picture of a share as this browser shows it, into the board's own files, and whoever shares it is told. */
+  /*
+   * Put on the board: a picture of someone else's share as this browser shows it, into the board's own files, and whoever shares
+   * it is told. It's on their share's name menu only: your own screen has none.
+   */
   const putShot = (s: StageShare) => {
     const open = board.open;
     if (!open?.workspaceId || !open.documentId || open.role !== 'edit') return;
     const { workspaceId, documentId } = open;
-    const whose = s.mine ? callName(me?.person ?? SOMEONE) : callName(s.presenter);
+    const whose = callName(s.presenter);
     const caption = `${whose}’s screen, ${hm(new Date())}`;
-    const look = s.mine ? null : looks.looks.look(s.id);
-    keepShot({ workspaceId, documentId, pass: session.ticket.pass }, s.id, look?.getSnapshot().held?.ready ? look.heldBitmap() : null, caption).then((media) => {
-      if (!media) { toast(`There’s no picture of ${s.mine ? 'your screen' : `${whose}’s screen`} yet. Try again in a moment.`, { icon: 'image' }); return; }
+    const look = looks.looks.look(s.id);
+    keepShot({ workspaceId, documentId, pass: session.ticket.pass }, s.id, look.getSnapshot().held?.ready ? look.heldBitmap() : null, caption).then((media) => {
+      if (!media) { toast(`There’s no picture of ${whose}’s screen yet. Try again in a moment.`, { icon: 'image' }); return; }
       if (!board.handle.current?.addShot({ media, caption })) { toast('Open the board in the call to put a picture on it.', { icon: 'image' }); return; }
-      if (s.mine) { toast('A picture of your screen is on the board.', { icon: 'image' }); return; }
       if (s.point) room.send(BOARD_SHOT_TOPIC, shotNotice(s.point.sid), { reliable: true });
       toast(`A picture of ${whose}’s screen is on the board. ${whose} can see that.`, { icon: 'image' });
     }).catch(failed);
@@ -1594,8 +1597,8 @@ export function InCall({ session }: { session: CallSession }) {
           swap={!phone && swap}
           view={<ViewMenu {...viewChoices} />}
           board={{
-            on: boardOnStage !== null || boardMenuOpen, onPress: pressBoard,
-            menu: { open: boardMenuOpen, onClose: () => { openPicker.reset(); setBoardMenu(false); }, content: openPicker.picker, reach: () => { if (!boardInRoom && state.role !== 'guest') void qc.prefetchQuery(q.workspaces()); } }
+            on: boardOnStage !== null || pickerOpen, onPress: pressBoard,
+            menu: { open: pickerOpen, onClose: () => { openPicker.reset(); setPicking(false); }, content: openPicker.picker, reach: () => { if (!boardInRoom && state.role !== 'guest') void qc.prefetchQuery(q.workspaces()); } }
           }}
           workspace={{ on: stage.on.includes('ws'), count: broughtHere, onPress: pressWorkspace }}
           side={{ view: side.view, toggle: flipSide, unread }} />

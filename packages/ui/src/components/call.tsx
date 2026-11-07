@@ -424,7 +424,7 @@ export interface PresentAskProps {
   phone?: boolean | undefined;
 }
 
-/** Names as a sentence says them, as the Board menu does: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
+/** Names as a sentence says them, as the board picker does: "Theo", "Theo and Sam", "Theo, Sam and Kofi". */
 const andList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
 /** Present's question, under `anchor` (Present on the frame's bar). */

@@ -8,7 +8,7 @@
  * and places everything in parts of it, so it stays on the same spot at any size and however you frame the share: one you
  * look at closer (ShareSurface.tsx) carries it on the picture it zooms and moves, and hides it while a picture is held
  * still, as pointers and marks are about the live one. Where you press goes the other way, through your framing
- * (`toShare`). You point at a share shown big and live: a click leaves a ring, a drag a line, both fading after a few
+ * (`toShare`). You point at a share on your stage, live: a click leaves a ring, a drag a line, both fading after a few
  * seconds; from the keyboard, the arrow keys move your pointer, Enter leaves a ring, Backspace takes back your last mark,
  * and Escape stops. While you point, a drag draws rather than moving the picture; the wheel, a pinch, the share's bar and
  * its keys still zoom and move it.
@@ -21,7 +21,7 @@ import { NO_MARKS, type Mark, type ShareMarks, type ShareMarksView } from './mar
 import { WHOLE, place, toShare, type Framing, type SharePoint, type Size } from './shareFrame';
 import type { ShareLook, ShareLookState } from './shareLook';
 
-/** A focused share's keys while you point on it: Stage hands them here first. True when a key was used. */
+/** A focused share's keys while you point on it: its frame (ShareInFrame.tsx) hands them here first. True when a key was used. */
 export type PointingKeys = (e: ReactKeyboardEvent<HTMLElement>) => boolean;
 
 const quiet = () => () => undefined;

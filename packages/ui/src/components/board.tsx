@@ -267,16 +267,15 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
 }
 
 /**
- * Anything the whole board shares, in one place: a timer, a vote, following, a room's time, someone presenting. `soon` turns it
- * amber. `second` is a second thing to do after `action`, for someone who has more to do there: the organizer stopping someone
- * else's presentation. It says what it says as it arrives and as its words change; a time ticking isn't read out every second,
- * and is there to read.
+ * Anything the whole board shares, in one place: how it stands, a timer, a vote, following, a room's time. Someone presenting
+ * is the call's frame's bar's to say. `soon` turns it amber. It says what it says as it arrives and as its words change; a time
+ * ticking isn't read out every second, and is there to read.
  */
-export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, second, said, className }: {
+export function BoardPill({ icon = 'clock', title, text, time, soon = false, action, onAction, said, className }: {
   /** `null` for no icon. */
   icon?: IconName | null | undefined;
   title?: string | undefined; text?: string | undefined; time?: string | undefined; soon?: boolean | undefined;
-  action?: string | undefined; onAction?: (() => void) | undefined; second?: { label: string; onClick: () => void } | undefined;
+  action?: string | undefined; onAction?: (() => void) | undefined;
   /**
    * For words that change too often to read out each time, as a countdown's do: what a screen reader is told instead, each time
    * this changes ('' for nothing yet). Given, the pill's own words change on screen only, and are there to read.
@@ -293,7 +292,6 @@ export function BoardPill({ icon = 'clock', title, text, time, soon = false, act
       {time && <span className="t" aria-live="off">{time}</span>}
       {said !== undefined && <p className="sr-only" role="status">{said}</p>}
       {action && <button type="button" onClick={onAction}>{action}</button>}
-      {second && <button type="button" onClick={second.onClick}>{second.label}</button>}
     </div>
   );
 }
@@ -870,7 +868,7 @@ export function BoardNoAccess({ who, onAsk, className }: { who: string | null; o
   );
 }
 
-/* ---------- The Board menu ---------- */
+/* ---------- What the board picker offers ---------- */
 
 export type BoardTemplate = 'blank' | 'retro' | 'ideas' | 'flow';
 
@@ -883,7 +881,7 @@ const TEMPLATES: { id: BoardTemplate; label: string; art: ReactNode }[] = [
   { id: 'flow', label: 'Flow', art: <g fill="none" stroke="var(--ink-2)" strokeWidth="1.6" strokeLinejoin="round"><rect x="6" y="23" width="18" height="14" rx="7" /><path d="M41 19 53 30 41 41 29 30Z" /><rect x="60" y="11" width="15" height="12" rx="2" /><rect x="60" y="37" width="15" height="12" rx="2" /><path d="M24 30h5M53 30h3v-13h4M56 30v13h4" /></g> }
 ];
 
-/** A small picture for a saved board in the Board menu. */
+/** A small picture for a saved board in the board picker. */
 export function BoardPickerThumb({ kind }: { kind: 'flow' | 'columns' }) {
   return (
     <svg viewBox="0 0 38 38" aria-hidden="true">

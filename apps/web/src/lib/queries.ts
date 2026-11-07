@@ -60,7 +60,7 @@ export const qk = {
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
 export interface BoardToBring { workspaceId: string; workspace: string | null; id: string; name: string; by: string | null; editedAt: ISODate }
-/** How many of the newest workspaces the Board menu looks in: a call's home is new, so what a team has is across the Drive. */
+/** How many of the newest workspaces the board picker looks in: a call's home is new, so what a team has is across the Drive. */
 const BOARD_SPACES = 12;
 /**
  * Every board you could bring from the newest of `spaces` (your Drive, as `q.workspaces` lists it), the most recently changed
@@ -68,7 +68,7 @@ const BOARD_SPACES = 12;
  */
 async function boardsToBring(spaces: readonly WorkspaceSummary[]): Promise<BoardToBring[]> {
   const trees = await Promise.all(spaces.slice(0, BOARD_SPACES).map((w) => api.workspaces.get(w.id).catch((e: unknown) => {
-    log.child({ component: 'boards' }).info('a workspace’s boards couldn’t be read for the Board menu', { workspaceId: w.id, code: errorCode(e) });
+    log.child({ component: 'boards' }).info('a workspace’s boards couldn’t be read for the board picker', { workspaceId: w.id, code: errorCode(e) });
     return null;
   })));
   return trees.flatMap((t) => (t ? t.items.flatMap((i): BoardToBring[] => (i.kind === 'board' && i.trashedAt === null && i.role === 'edit'
@@ -185,8 +185,10 @@ export const q = {
    * offers to reuse, and how a file block knows its file was deleted for good. A guest reads it with their pass.
    */
   workspaceMedia: (id: string, pass?: string | undefined) => queryOptions({ queryKey: qk.workspaceMedia(id), queryFn: () => api.workspaces.media.list(id, { pass }), staleTime: 30_000 }),
-  /** The boards the Board menu offers to bring, from across your Drive: read as it opens, and good for half a minute. */
-  /** What the Board menu offers from `spaces`, your Drive's workspaces as `workspaces` reads them: the boards in the newest. */
+  /**
+   * The boards the board picker offers to bring from `spaces`, your Drive's workspaces as `workspaces` reads them: the boards in
+   * the newest, read as it opens, and good for half a minute.
+   */
   boardsToBring: (spaces: readonly WorkspaceSummary[]) => queryOptions({
     queryKey: [...qk.boardsToBring, spaces.slice(0, BOARD_SPACES).map((w) => w.id).join(' ')], queryFn: () => boardsToBring(spaces), staleTime: 30_000
   })

@@ -76,8 +76,7 @@ export const wsToast = {
   /** What you followed, closed for everyone by whoever presented it, or by the organizer. */
   closedEverywhere: (what: string) => say('x', `${what.charAt(0).toUpperCase()}${what.slice(1)} closed for everyone.`),
   stoppedSharing: (first: string) => say('stopShare', `${first} stopped sharing.`),
-  stoppedTheirShare: (first: string) => say('screen', `You stopped ${first}’s share for everyone. ${first} is told it was you.`),
-  boardBlocked: (first: string) => say('presentation', `${first} is presenting a board. You can start one once they stop.`)
+  stoppedTheirShare: (first: string) => say('screen', `You stopped ${first}’s share for everyone. ${first} is told it was you.`)
 };
 
 /** One toast, in a call's corner. */

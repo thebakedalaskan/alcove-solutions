@@ -61,8 +61,7 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   stoppedPresentingIt: wsToast.stoppedPresentingIt('folderOpen', first(PRIYA), 'the workspace'),
   closedEverywhere: wsToast.closedEverywhere('Launch retro'),
   stoppedSharing: wsToast.stoppedSharing(first(KOFI)),
-  stoppedTheirShare: wsToast.stoppedTheirShare(first(PRIYA)),
-  boardBlocked: wsToast.boardBlocked(first(PRIYA))
+  stoppedTheirShare: wsToast.stoppedTheirShare(first(PRIYA))
 };
 const ALL = Object.entries(EVERY);
 

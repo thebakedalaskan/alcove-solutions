@@ -835,8 +835,9 @@
 .ic-dockbar .ac-dock-leave { margin-left: 2px; }
 
 /*
- * Just the document: the bars slide off and the page takes the room they leave (panels.ts places it past the call's area, so
- * it glides there like any other panel). Your microphone, camera and everyone's arches stay, in a shorter strip at the foot.
+ * Focus: the bars slide off and what's in the frame takes the room they leave (panels.ts's `focusRoom` places it past the
+ * call's area, so it glides there as frames do). Your microphone, camera and everyone's arches stay, in a shorter strip at the
+ * foot.
  */
 .ic-call.is-focus .ic-top { transform: translateY(-100%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out), visibility 0s linear var(--duration-3); }
 .ic-call.is-focus .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }

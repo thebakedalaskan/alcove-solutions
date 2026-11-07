@@ -1,9 +1,9 @@
 /*
- * A document's photos, videos and files. `useMediaView` is what their blocks draw from wherever the document's shown: its page,
- * a version of it in History, and a presentation of it in a call. The page also adds files by dropping, pasting or choosing
- * them, reuses what's already in the workspace, and deletes one for good (`useDocumentMedia`). Pictures are read through the
- * workspace's `Pictures`, uploads go through `uploads.ts`, the list of what's in the workspace comes from `media.list`, and
- * Play for everyone from the call (`playing.ts`).
+ * A document's photos, videos and files. `useMediaView` is what their blocks draw from wherever the document's shown: its
+ * page, in the Drive or in a call's workspace, and a version of it in History. The page also adds files by dropping, pasting
+ * or choosing them, reuses what's already in the workspace, and deletes one for good (`useDocumentMedia`). Pictures are read
+ * through the workspace's `Pictures`, uploads go through `uploads.ts`, the list of what's in the workspace comes from
+ * `media.list`, and Play for everyone from the call (`playing.ts`).
  */
 import { DocUploadsStateSchema, FILE_TYPE, errorCode, errorMessage, type DocSession, type WorkspaceMedia } from '@alcove/api';
 import { WsDeleteFileAsk, WsPopover, WsUploadPicker, wsToast, type WsPhoto, type WsStoredFile } from '@alcove/ui';

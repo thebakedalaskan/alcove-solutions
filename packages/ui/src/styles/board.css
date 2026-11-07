@@ -422,8 +422,8 @@
 .ac-stage .bd .ac-avatar { background: var(--sunk); }
 .ac-stage .bd .ac-avatar .initial { color: var(--ink-2); }
 
-/* ---------------------------------------------------------------- the Board menu */
-/* It rises from the dock's Board button, in a Popover. */
+/* ---------------------------------------------------------------- the board picker */
+/* It opens under Board at the top right, in a Popover, and in place of Share's first step (`ic-sharepop`). */
 .bl { width: 372px; max-width: calc(100vw - 24px); margin-bottom: 8px; padding: 12px; border-radius: 18px; color: var(--ink); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); animation: ac-rise var(--duration-2) var(--ease-out) both; }
 .bl-tpl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .bl-c { display: grid; gap: 7px; padding: 6px 6px 8px; border-radius: 12px; text-align: left; font: 600 12.5px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1), transform var(--duration-1) var(--ease-out), background-color var(--duration-1); }
