@@ -356,7 +356,9 @@ time, slides in on the right.
   they say goes into the notes any differently. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar
   with **Stop spotlight**. From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter**
   for the menu, **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; on a presented thing's tile,
-  **Enter** or **P** puts it on your stage. On a share on your stage, **L** points at it, and **Escape** stops pointing;
+  **Enter** or **P** puts it on your stage, with the keys on its frame. Closing what's on your stage leaves the keys on its
+  tile while someone still presents it, or else on what opens it again (**Board**, **Workspace**, or **Share** for your
+  own screen), never nowhere. On a share on your stage, **L** points at it, and **Escape** stops pointing;
   then **Escape** unpins everyone. Someone pinned who leaves is pinned again if they come back, and nothing you arranged
   moves when people talk, join, leave or turn their camera off. Alcove remembers how you like calls (how you see the people,
   and where you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
@@ -789,7 +791,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). Their pointer shows to
      everyone. Opening something else on their stage puts the board away as a tile with **Open**, and they go on presenting.
    - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, move the frames while the presentation
-     has the keys: the frame itself, or the pager's arrows, where the keys go as it starts. Anywhere else they move
+     has the keys: the frame itself, or the pager's arrows, where the keys go as it starts (**Next frame**, as soon as the
+     pager shows, so **→** moves on straight after **Present**). Anywhere else they move
      nothing: in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
    - **Everyone else** follows: their tools fade, and they see the presenter's frame alone as it changes, with "Art is
      presenting" and "Following Art" on the bar. **Unfollow** gives you your own view back, as you left it, tools and all,

@@ -9,7 +9,7 @@
 import type { BreakoutBoard, CallSession } from '@alcove/api';
 import { addObject, readBoard, type StickyColour } from '@alcove/board';
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
 import type * as Y from 'yjs';
 import { at } from '../../src/api/script';
 import { boardDoc, keepFrameNotes } from '../../src/api/workspaces';
@@ -174,8 +174,8 @@ export const JourneyOrganizerCloses: PageStory = {
   )
 };
 /**
- * The journey from the keyboard: Enter on Present presents, → moves everyone on while the pager has the keys, and Close's question
- * is a Tab and an Enter away.
+ * The journey from the keyboard: Enter on Present presents, and the keys go to Next frame on the pager as it comes, so → moves
+ * everyone on; Close's question is a Tab and an Enter away.
  */
 export const JourneyFromTheKeyboard = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, then: retroOpen }, {
   name: '5. From the keyboard',
@@ -186,8 +186,8 @@ export const JourneyFromTheKeyboard = inCall({ scenario: 'call-soon', call: REVI
       await c.userEvent.keyboard('{Enter}');
       await screen.findByText('1 of 3', {}, SOON);
     }),
-    step('Press →: everyone moves on with you', async (c) => {
-      (await screen.findByRole('button', { name: 'Next frame' }, SOON)).focus();
+    step('The keys are on Next frame. Press →: everyone moves on with you', async (c) => {
+      await waitFor(() => { if (document.activeElement?.getAttribute('aria-label') !== 'Next frame') throw new Error('The keys aren’t on Next frame.'); }, SOON);
       await c.userEvent.keyboard('{ArrowRight}');
       await screen.findByText('2 of 3', {}, SOON);
     }),

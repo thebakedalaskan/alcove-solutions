@@ -2002,7 +2002,11 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   Keyboard shortcuts in More (`KeysSheet.tsx`) lists the ones you have there, then what works on a tile, on a shared screen
   and on a board you present (`TILE_KEYS`, `SHARE_KEYS` and `PRESENTING_KEYS` in `useCallShortcuts.ts`). A share you
   bring back from its own window takes the keys back, on its frame or its tile (`useFocusBack`), so focus never drops to the
-  page. On a board you present, ← and → move its frames. On someone
+  page. Nor does it as your stage changes under the keys (`layout/landKeys.ts`): closing what's on it hands them to its
+  tile while someone else still presents it, else to what opens it again (Board or Workspace at the top right, More on a
+  phone, Share for your own screen); a tile pressed hands them to its frame, which says what it is, and Tab goes on to its
+  bar; and Present, on a board, hands them to Next frame on the pager as soon as it's drawn, the workspace's to its frame.
+  Keys that have moved on meanwhile stay where they are. On a board you present, ← and → move its frames. On someone
   else's share on your stage, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your pointer,
   while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
   ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.

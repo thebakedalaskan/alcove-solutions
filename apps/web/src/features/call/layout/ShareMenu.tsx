@@ -80,7 +80,7 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
     <Popover open={step !== null} onOpenChange={(o) => onStep(o ? 'share' : null)} side="top" align="center" label="Share with everyone"
       tip={phone ? undefined : on ? 'Presenting. Share something else, or stop' : 'Share with everyone: a screen, a board or the workspace'}
       className={cn(step === 'shareBoard' ? 'bl ic-sharepop' : 'ic-sharepop', phone && 'is-sheet')}
-      anchor={<DockButton icon="screen" label={on ? 'Presenting' : 'Share'} word={on ? 'Presenting' : 'Share'} title={undefined} on={on || step !== null} />}>
+      anchor={<DockButton icon="screen" label={on ? 'Presenting' : 'Share'} word={on ? 'Presenting' : 'Share'} title={undefined} on={on || step !== null} data-share="" />}>
       {body}
     </Popover>
   );

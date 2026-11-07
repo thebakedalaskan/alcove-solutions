@@ -238,7 +238,8 @@ export interface CallFramePresent {
  * The frame anything open on your stage wears: a board, the workspace or a screen. Its bar says whose it is (their arch, or
  * the kind's icon while nobody presents it), what it is and how it stands, then what's yours to press: following its
  * presenter, Present, focus, Stop sharing and Close. The body fills the rest; `foot` floats at its foot, centred. It fills
- * the box it's given: the app places that box.
+ * the box it's given: the app places that box. The frame itself takes the keys from code (not from Tab), as it opens from its
+ * tile: what it is is said, and Tab goes on to its bar.
  */
 export function CallFrame({ who, icon, name, meta, menu, following, present, focus, onStop, close, lit = false, focused = false, phone = false, foot, label, className, style, children }: {
   /** Whoever presents it, in the arch; null while nobody does: the kind's icon in a small square instead. */
@@ -287,7 +288,7 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
   );
   const focusSays = focus?.on ? 'Leave focus' : 'Fill your window with it';
   return (
-    <section className={cn('ic-frame-box', lit && 'is-lit', focused && 'is-focused', phone && 'is-phone', className)} style={style} aria-label={label} data-frame="">
+    <section className={cn('ic-frame-box', lit && 'is-lit', focused && 'is-focused', phone && 'is-phone', className)} style={style} aria-label={label} data-frame="" tabIndex={-1}>
       <div className="ic-fbar">
         <div className="ic-fwho">
           {who ? <Avatar person={who} size={24} /> : <span className="ic-fic"><Icon name={icon} size={15} /></span>}

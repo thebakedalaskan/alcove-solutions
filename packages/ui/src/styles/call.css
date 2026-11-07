@@ -1035,6 +1035,9 @@
 /* Following whoever presents it: its edge in horizon, the colour of what you're being shown. */
 .ic-frame-box.is-lit::after { box-shadow: inset 0 0 0 2px var(--horizon), inset 0 0 0 5px color-mix(in srgb, var(--horizon) 14%, transparent); }
 .ic-frame-box.is-focused, .ic-frame-box.is-phone { border-radius: var(--radius-md); }
+/* The keys land on the frame itself as it opens from its tile: its ring keeps the frame's own corners. */
+.ic-frame-box:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-lg); }
+.ic-frame-box:is(.is-focused, .is-phone):focus-visible { border-radius: var(--radius-md); }
 .ic-fbar { position: relative; z-index: 4; flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 10px 0 12px; background: color-mix(in srgb, var(--stage-tile) 66%, var(--stage-raised)); box-shadow: inset 0 -1px 0 rgb(255 255 255 / .07); }
 .ic-fwho { flex: 1; display: flex; align-items: center; gap: 4px; min-width: 0; }
 .ic-fwho > .ac-avatar, .ic-fol .ac-avatar, .ic-follow .ac-avatar, .ic-tback .ac-avatar { --ring: transparent; }

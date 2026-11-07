@@ -80,7 +80,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
     );
   }
   const boardButton = (more: { onClick?: () => void; onPointerEnter?: (() => void) | undefined }) => (
-    <CallTopButton icon="presentation" word="Board" label="Board" on={board?.on} aria-keyshortcuts="O" {...more} />
+    <CallTopButton icon="presentation" word="Board" label="Board" on={board?.on} aria-keyshortcuts="O" data-open="board" {...more} />
   );
   return (
     <header className="ic-top">
@@ -100,7 +100,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
           </Popover>
           <Tooltip label={WORKSPACE_TIP} side="bottom">
             <CallTopButton icon="folderOpen" word="Workspace" label={!workspace.on && workspace.count > 0 ? `Workspace, ${workspace.count} in this call` : 'Workspace'}
-              on={workspace.on} badge={workspace.count} aria-keyshortcuts="W" onClick={workspace.onPress} />
+              on={workspace.on} badge={workspace.count} aria-keyshortcuts="W" data-open="ws" onClick={workspace.onPress} />
           </Tooltip>
           <CallTopRule />
           <Tooltip label={notesOpen ? 'Notes' : 'Notes · only you'} side="bottom">

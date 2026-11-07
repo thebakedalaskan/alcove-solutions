@@ -264,10 +264,9 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   const theirs = present && !present.mine ? present : null;
 
   /*
-   * Where the keys go as a presentation begins and ends, for whoever had them on the board or lost them as it changed under them;
-   * anyone with the keys anywhere else keeps them there. Presenting, they go to Next frame in the pager at the frame's foot.
-   * As it lets them go, they go to the sheet. Someone who was typing a moment ago is mid-sentence, and the rest of it must never
-   * press a button, so their keys stay where they are.
+   * Keys lost as a presentation lets the board go (its pager gone from under them, say) go to the sheet; anyone with the keys
+   * anywhere else keeps them there, and so does someone typing a moment ago, who is mid-sentence: the rest of it must never press
+   * a button. Where they go as presenting begins is the stage's (layout/landKeys.ts): Next frame, once the pager is drawn.
    */
   const seat = presenting ? 'presenting' : theirs ? (watching && !fading ? 'watching' : 'around') : null;
   const wasSeat = useRef(seat);
@@ -276,12 +275,8 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
     wasSeat.current = seat;
     const el = wrap.current;
     const now = document.activeElement;
-    if (was === seat || !el || typing(now)) return;
-    const lost = now === null || now === document.body;
-    const here = lost || el.contains(now);
-    const to = seat === 'presenting' ? (here ? el.closest('[data-frame]')?.querySelector<HTMLElement>('[data-pager] [aria-label="Next frame"]:not([aria-disabled="true"])') ?? null : null)
-      : seat === null && lost ? el.querySelector<HTMLElement>('[role="application"]') : null;
-    to?.focus({ preventScroll: true });
+    if (was === seat || seat !== null || !el || typing(now) || (now !== null && now !== document.body)) return;
+    el.querySelector<HTMLElement>('[role="application"]')?.focus({ preventScroll: true });
   }, [seat]);
   /* Back on your stage (it rises as it comes back): the keys go to the sheet, if what they were on has gone with them. */
   const wasBack = useRef(fresh);

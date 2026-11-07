@@ -44,6 +44,7 @@ import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
 import { ChatView, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
+import { holding, useLandKeys } from '~/features/call/layout/landKeys';
 import { isScreen, screenOf, sharerOf, useOnStage, type Presented, type ThingId } from '~/features/call/layout/onStage';
 import { KeysSheet } from '~/features/call/layout/KeysSheet';
 import { STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
@@ -767,14 +768,20 @@ export function InCall({ session }: { session: CallSession }) {
   useEffect(() => { if (!presentingBoard && side.view === 'mine') side.close(); }, [presentingBoard, side.view]);
 
   /* ---------- closing: for you, or (your presentation) for you or for everyone ---------- */
+  /**
+   * Where the keys go as what's on your stage changes under them (landKeys.ts): to the tile of what you closed while someone
+   * still presents it, else to what opens it again; into a frame opened from its tile; to the pager as you present a board.
+   */
+  const land = useLandKeys(phone);
   /** Close's question, while you present a board or the workspace: which frame it's open on. */
   const [asking, setAsking] = useState<ThingId | null>(null);
   /** Close, on a frame's bar, or the lit Board or Workspace: on your own presentation it asks, on its frame, in front. */
   const closeThing = (id: ThingId) => {
     const p = stage.presentedOf(id);
-    if (p?.mine && isScreen(id)) { stopShare(); return; }
+    if (p?.mine && isScreen(id)) { land({ to: 'opener', id }, holding()); stopShare(); return; }
     if (p?.mine) { setFront(id); setAsking(id); return; }
     if (stage.on.length <= 1) setFocus(false);
+    land(p ? { to: 'tile', id } : { to: 'opener', id }, holding());
     stageClose(id);
     if (p) sayIt(wsToast.closedWhile(p.first));
   };
@@ -786,6 +793,7 @@ export function InCall({ session }: { session: CallSession }) {
     stoppedByMe.current = stage.presentedOf(id)?.key ?? null;
     stop(everyone).then(() => {
       if (was.includes(id) && was.length <= 1) setFocus(false);
+      land({ to: 'opener', id }, holding());
       stageClose(id);
       if (side.view === 'mine') side.close();
       sayIt(everyone ? wsToast.closedForAll() : wsToast.closedForYou());
@@ -844,7 +852,7 @@ export function InCall({ session }: { session: CallSession }) {
       setPresentAsk(null);
       setPresentBusy(true);
       bringAndPresent(session, board, { workspaceId: b.workspaceId, documentId: b.documentId, letIn }, says)
-        .then(() => { stageOpen('board'); sayIt(wsToast.boardOn(b.name)); }, failed).finally(() => setPresentBusy(false));
+        .then(() => { land({ to: 'pager' }, holding()); stageOpen('board'); sayIt(wsToast.boardOn(b.name)); }, failed).finally(() => setPresentBusy(false));
     };
     session.boardCheck(b.workspaceId, b.documentId).then((check) => {
       setPresentBusy(false);
@@ -857,7 +865,7 @@ export function InCall({ session }: { session: CallSession }) {
     if (board.savedDrawn && saved) { presentSaved(saved); return; }
     const name = state.board.open?.name ?? 'the board';
     setPresentBusy(true);
-    boardPresenting.start().then(() => sayIt(wsToast.boardOn(name)), () => undefined).finally(() => setPresentBusy(false));
+    boardPresenting.start().then(() => { land({ to: 'pager' }, holding()); sayIt(wsToast.boardOn(name)); }, () => undefined).finally(() => setPresentBusy(false));
   };
   /** Share › The workspace: presented straight away, once the call has said which workspace it uses. */
   const presentWorkspace = () => {
@@ -1479,7 +1487,7 @@ export function InCall({ session }: { session: CallSession }) {
           };
           return (
             <FrameBox key={id} id={id} box={box} shown focused={focusOn}>
-              <Frame bar={bar} meta={s.mine ? myShareMeta : undefined} onStop={s.mine ? stopShare : undefined}>
+              <Frame bar={bar} meta={s.mine ? myShareMeta : undefined} onStop={s.mine ? () => closeThing(id) : undefined}>
                 <ShareInFrame share={s} look={look} looks={looks.looks} popped={isPopped} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} pointing={pointing} onPopOut={pop} />
               </Frame>
             </FrameBox>
@@ -1528,7 +1536,7 @@ export function InCall({ session }: { session: CallSession }) {
         const bar: FrameBar = {
           icon: 'folderOpen', name: space.name ?? 'Workspace', by: byOf(p), followers, phone, focus: focusFor,
           follow: p && !p.mine ? { on: stage.following('ws'), where: wsPresenting.where ?? 'the workspace', onToggle: () => stage.setFollow('ws', !stage.following('ws')) } : null,
-          present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().catch(() => undefined); }, busy: false } : null,
+          present: p === null && canPresentWs && !someoneElse ? { onPress: () => { void wsPresenting.start().then(() => land({ to: 'frame', id: 'ws' }, holding()), () => undefined); }, busy: false } : null,
           onClose: () => closeThing('ws'), ask: p?.mine ? askFor('ws') : null,
           rows: (close) => <WorkspaceMenuRows workspace={space} organizer={organizer} act={work.act} onFind={() => work.act.find()} onCopy={copyLinkOf(wsLink)} onDone={close} />,
           stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
@@ -1552,7 +1560,7 @@ export function InCall({ session }: { session: CallSession }) {
       id: t.id, name: t.name, icon: isScreen(t.id) ? 'screen' : t.id === 'ws' ? 'folderOpen' : 'presentation', sub: t.mine ? 'You’re presenting' : `${t.first} is presenting`,
       by: t.by, go: t.mine ? 'Open' : 'Join', label: `${t.mine ? 'Go back to' : 'Join'} ${t.name}`, where: t.id === 'ws' ? wsPresenting.where ?? undefined : undefined,
       mini: s ? () => <FeedVideo feed={s.feed} className="screen" /> : t.id === 'board' && !board.savedDrawn ? (w, h) => <BoardMini board={board} width={w} height={h} theme={theme} /> : null,
-      onJoin: () => { setFocus(false); stageOpen(t.id); },
+      onJoin: () => { setFocus(false); land(t.mine && t.id === 'board' ? { to: 'pager' } : { to: 'frame', id: t.id }, holding()); stageOpen(t.id); },
       beside: !phone && stage.on.length === 1 ? () => stage.beside(t.id) : null,
       sound: s?.sound ?? null
     };
