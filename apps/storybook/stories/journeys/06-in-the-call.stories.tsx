@@ -17,7 +17,7 @@ import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
   AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, CHECKLIST, DIEGO, KOFI, LAUNCH_REVIEW, MAYA, PLAN, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK
 } from '../calls/talk';
-import { LAPTOP, LATER, SOON, away, pause } from './play';
+import { LAPTOP, LATER, SOON, away, still } from './play';
 
 const meta = { title: 'Journeys/6 In the call', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
@@ -126,10 +126,11 @@ export const OpenABoard: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
     await step('Pick Launch retro, one of your team’s boards. Only you see it until you present it', async () => {
-      const retro = await screen.findByRole('button', { name: /^Launch retro/ }, LATER);
-      // Your team's boards come in a moment after the picker opens, and it takes no press until they're still: a person's comes later anyway.
-      await pause(500);
-      await userEvent.click(retro);
+      // Your team's boards come in a moment after the picker opens, and like every menu it takes no press just after its rows move.
+      const picker = await screen.findByRole('dialog', { name: 'Open a board' }, LATER);
+      await within(picker).findByRole('button', { name: /^Launch retro/ }, LATER);
+      await still(picker);
+      await userEvent.click(within(picker).getByRole('button', { name: /^Launch retro/ }));
     });
     await step('It opens just for you. Look around and add to it on your own. Present, on its bar, brings everyone', async () => {
       await frame('Launch retro, only you see it', LATER);
@@ -189,7 +190,6 @@ export const WhenSomeoneElsePresents: PageStory = {
     await step('If Priya stops while it’s closed for you, its tile goes too. Workspace, at the top right, still opens it just for you', async () => {
       await userEvent.click(await onBar(await frame(everyones), /^Close /));
       await screen.findByRole('button', { name: /^Join / }, SOON);
-      await pause(1200);
       await theCall?.stopPresenting(false);
       await told('Priya stopped presenting the workspace.');
       await away('button', /^Join /);

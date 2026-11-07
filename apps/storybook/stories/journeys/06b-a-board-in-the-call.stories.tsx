@@ -17,7 +17,7 @@ import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { drawIdeas } from '../../src/world/boards';
 import { HEARD, RETRO, filledAfter, retroWith } from '../calls/boards';
 import { AIKO, CHECKLIST, KOFI, PRIYA, REVIEW, REVIEW_TALK, SAM } from '../calls/talk';
-import { LAPTOP, LATER, SOON, pause } from './play';
+import { LAPTOP, LATER, SOON, pressable, still } from './play';
 
 const meta = { title: 'Journeys/6 A board in the call', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
@@ -33,26 +33,37 @@ const review = (o: { cues?: Cue[]; here?: Present[]; board?: CallScript['board']
 /** A board on your stage, in its frame, by its name: a new board is named after the call. */
 const board = (name = 'Design review', who: 'only you' | 'everyone' = 'only you') => screen.findByRole('region', { name: `${name}, ${who} see${who === 'everyone' ? 's' : ''} it` }, LATER);
 /**
- * The picker under Board, once your team's boards have come in: like every menu, it takes no press until its rows have been
- * still for a moment, so what's under the pointer is what someone aimed at. A person's press comes later anyway.
+ * Presses `row` in the picker under Board, once it's there and the picker's rows are still. Your team's boards come in under the
+ * templates a moment after it opens, and the board in this call at its top once someone has made it; like every menu, it takes
+ * no press for a moment after its rows move, so what's under the pointer is what someone aimed at.
  */
-async function pickerSettled(): Promise<void> {
-  await screen.findByRole('button', { name: /^Launch retro/ }, LATER);
-  await pause(500);
+async function pick(row: string | RegExp, { userEvent }: Pick<Step, 'userEvent'>): Promise<void> {
+  const picker = await screen.findByRole('dialog', { name: 'Open a board' }, LATER);
+  await within(picker).findByText('Your team’s boards', {}, LATER);
+  await within(picker).findByRole('button', { name: row }, LATER);
+  await still(picker);
+  await userEvent.click(within(picker).getByRole('button', { name: row }));
 }
 /** Opens the board picker from Board at the top right and starts a new board from `template`, on your stage just for you. */
-async function startFrom(template: 'Blank' | 'Retro' | 'Ideas' | 'Flow', { userEvent }: Step): Promise<void> {
-  await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
-  await pickerSettled();
-  await userEvent.click(await screen.findByRole('button', { name: template }, SOON));
+async function startFrom(template: 'Blank' | 'Retro' | 'Ideas' | 'Flow', c: Step): Promise<void> {
+  await c.userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
+  await pick(template, c);
 }
 /** The board Priya made, the board in this call, first in the picker under Board (in More on a phone): it opens on your stage, just for you. */
-async function openTheCallsBoard({ userEvent }: Step, phone = false): Promise<void> {
-  if (phone) await userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
-  await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
-  const row = await screen.findByRole('button', { name: /^Design review/ }, LATER);
-  await pickerSettled();
-  await userEvent.click(row);
+async function openTheCallsBoard(c: Step, phone = false): Promise<void> {
+  if (phone) await c.userEvent.click(await screen.findByRole('button', { name: MORE }, LATER));
+  await c.userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
+  await pick(/^Design review/, c);
+}
+/**
+ * `row` in a menu, by the menu's name, once it's there and the menu's rows are still: the menus of someone's tile and of what's
+ * presented, whose rows follow the call (who's on the board with you, whether there's room for two).
+ */
+async function settledRow(menu: string | RegExp, row: string): Promise<HTMLElement> {
+  const it = await screen.findByRole('dialog', { name: menu }, SOON);
+  await within(it).findByRole('button', { name: row }, SOON);
+  await still(it);
+  return within(it).getByRole('button', { name: row });
 }
 /** Where in a frame to look for a clear spot, across and down it: its middle first, where its hint is while it's empty. */
 const SPOTS = [[0.5, 0.5], [0.5, 0.68], [0.5, 0.84], [0.28, 0.6], [0.72, 0.6], [0.28, 0.84], [0.72, 0.84]] as const;
@@ -96,8 +107,7 @@ export const StartABoard: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
     await step('The picker rises from it. Blank is one click; boards your team already has are underneath. Press Retro', async () => {
-      await pickerSettled();
-      await userEvent.click(await screen.findByRole('button', { name: 'Retro' }, SOON));
+      await pick('Retro', c);
     });
     await step('It opens on your stage, just for you, and the call carries on beside it. It’s the board in the call: Present, on its bar, brings everyone', async () => {
       await board();
@@ -126,19 +136,15 @@ export const OpenASavedBoard: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Board' }, LATER));
     });
     await step('Press Onboarding flow. It opens on your stage, just for you: nothing in the call changes', async () => {
-      const row = await screen.findByRole('button', { name: /^Onboarding flow/ }, LATER);
-      // The saved boards come in a moment after the picker opens, and it takes no press until they're still: a person's comes later anyway.
-      await pause(500);
-      await userEvent.click(row);
+      await pick(/^Onboarding flow/, { userEvent });
       await board('Onboarding flow');
     });
     await step('Present, on its bar. Sam came in with the link and can’t open it: you decide before anyone sees it', async () => {
       await userEvent.click(await within(await board('Onboarding flow')).findByRole('button', { name: 'Present' }, SOON));
     });
     await step('Let them in for this call: everyone can work on it until the call ends, and after that, Sam can’t again. Everyone follows you on it', async () => {
-      const letIn = await screen.findByRole('button', { name: 'Let them in for this call' }, SOON);
-      await pause(500);
-      await userEvent.click(letIn);
+      // Present's question isn't a menu whose rows move: it takes a press once its button can be pressed.
+      await userEvent.click(await pressable('button', 'Let them in for this call'));
       await screen.findByText('Everyone follows you on Onboarding flow. They can unfollow to add to it.', {}, LATER);
     });
   }
@@ -162,9 +168,7 @@ export const WorkOnItTogether: PageStory = {
       await userEvent.keyboard('{Enter}');
     });
     await step('Follow Priya: a ring in her colour says this view isn’t yours, and a pill at the top of the board says whose it is', async () => {
-      const follow = await screen.findByRole('button', { name: 'Follow Priya' }, SOON);
-      await pause(500);
-      await userEvent.click(follow);
+      await userEvent.click(await settledRow(/^Options for Priya/, 'Follow Priya'));
       await screen.findByText('Following Priya', {}, SOON);
     });
     await step('Stop: you’re back where you were', async () => {
@@ -187,18 +191,15 @@ export const BesideASharedScreen: PageStory = {
     });
     await step('Press ⋯ on Priya’s screen, then Show beside: the board and her screen side by side', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Options for Priya’s screen' }, SOON));
-      const beside = await screen.findByRole('button', { name: 'Show beside' }, SOON);
-      await pause(500);
-      await userEvent.click(beside);
+      await userEvent.click(await settledRow('Options for Priya’s screen', 'Show beside'));
       await board();
     });
     await step('Press the name of Priya’s screen: with the board open, its menu has Put on the board', async () => {
       await userEvent.click(nameOf(await screen.findByRole('region', { name: 'Priya’s screen, everyone sees it' }, SOON)));
     });
     await step('Put on the board: a picture of this moment lands on the board with its time, and Priya is told', async () => {
-      const put = await screen.findByRole('menuitem', { name: 'Put on the board' }, SOON);
-      await pause(500);
-      await userEvent.click(put);
+      // A shared screen's menu moves its rows only as something else starts or stops being presented, which nothing does here.
+      await userEvent.click(await screen.findByRole('menuitem', { name: 'Put on the board' }, SOON));
       await screen.findByText(/A picture of Priya’s screen is on the board/, {}, SOON);
     });
   }
@@ -331,14 +332,13 @@ export const OnAPhone: PageStory = {
       await screen.findByText('Added 2 stickies from the call.', {}, SOON);
     });
     await step('Timer and Vote are on the board’s bar on a phone too. Tap Timer, then Start: everyone sees it count down', async () => {
+      // Timer's and Vote's menus keep the same rows while they're open, so they take a press as soon as it's there.
       await userEvent.click(await screen.findByRole('button', { name: 'Timer' }, SOON));
-      await pause(400);
       await userEvent.click(await screen.findByRole('button', { name: 'Start' }, SOON));
       await screen.findByText('Add your stickies', {}, SOON);
     });
     await step('Tap Vote, then Start the vote. A tap on a sticky votes for it, and another takes it back', async () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Vote' }, SOON));
-      await pause(400);
       await userEvent.click(await screen.findByRole('button', { name: 'Start the vote' }, SOON));
       await screen.findByText(/3 of 3 votes left/, {}, SOON);
       await userEvent.click(await screen.findByText('Tag plans before launch', {}, SOON));
