@@ -141,7 +141,7 @@ function StartFlow({ open, onClose, people, name, later, documents, board }: {
 
 /**
  * Now or later. Enter starts now and S schedules, unless focus has gone to something else that takes them. What the call brings
- * comes either way; `board`, one of them, opens for everyone when a call started now is under way.
+ * comes either way; `board`, one of them, opens for you when a call started now is under way, for you to present.
  */
 function Choice({ people, name, team, documents, board, onClose, onLater, toast }: {
   people: Person[]; name: string | undefined; team: boolean; documents: readonly Document[]; board: BoardToOpen | null; onClose: () => void; onLater: () => void; toast: (e: unknown) => void;
@@ -178,7 +178,7 @@ function Choice({ people, name, team, documents, board, onClose, onLater, toast 
         <WayCard ref={now} art="now" title="Start now" kbd="↵" autoFocus aria-keyshortcuts="Enter" onClick={(e) => start(e.currentTarget)}>{team ? 'Ring your team in, or share a link.' : 'Get a link to send to anyone.'}</WayCard>
         <WayCard art="later" title="Schedule for later" kbd="S" aria-keyshortcuts="S" onClick={onLater}>{team ? 'Find a time that works for everyone.' : 'Pick a time and invite people.'}</WayCard>
       </div>
-      {board && <FlowNote tone="info" icon="stickyNote">{board.name || 'Untitled board'} comes with this call. Start now and it opens for everyone.</FlowNote>}
+      {board && <FlowNote tone="info" icon="stickyNote">{board.name || 'Untitled board'} comes with this call. Start now and it opens for you, ready to present.</FlowNote>}
       {flood}
     </>
   );

@@ -13,7 +13,7 @@ import {
 } from '@alcove/api';
 import {
   Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, Kbd, KnockCard, LinkRow, Popover, RingAgain, RingReply, Scope,
-  ShareKinds, ShareScreenStep, ShareStepHead, Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
+  ShareKinds, ShareScreenStep, Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -641,8 +641,12 @@ export function InCall({ session }: { session: CallSession }) {
   }, [seatKey, pinKey, toast]);
 
   const failed = (e: unknown) => toast(errorMessage(e), { icon: 'x' });
-  // A board asked for as the call started (Start a call here) opens for everyone once the call's under way here.
-  useOpenWhenStarted(state.code, session, state.phase === 'in-call', board.open !== null, board.expect, failed);
+  // A board asked for as the call started (Start a call here) opens on your stage, just for you, once the call's under way here.
+  const openAsked = useCallback((b: { workspaceId: string; documentId: string; name: string }) => {
+    setSaved({ workspaceId: b.workspaceId, documentId: b.documentId, name: b.name || 'Untitled board' });
+    stageOpen('saved');
+  }, [stageOpen]);
+  useOpenWhenStarted(state.code, state.phase === 'in-call', openAsked);
   const controls = capture.controls({
     failed,
     notesEnabled: () => { if (!side.view && innerWidth >= 1100) side.open('notes'); },
@@ -1515,12 +1519,9 @@ export function InCall({ session }: { session: CallSession }) {
   /** The sound a screen can share, where this browser can share it: a tab's, or the computer's. */
   const soundLabel = !canShareTabSound() ? null : shareKind === 'browser' ? 'Also share the tab’s sound' : shareKind === 'monitor' ? 'Also share your computer’s sound' : null;
   const shareBody = pop === 'shareScreen' ? (
-    <>
-      <ShareStepHead title="Your screen" onBack={() => { setShareTrouble(null); setPop('share'); }} />
-      <ShareScreenStep surface={shareKind} onSurface={setShareKind} sound={soundLabel ? { label: soundLabel, on: shareSound, onChange: setShareSound } : null}
-        read={sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null} trouble={shareTrouble ? SHARE_PROBLEMS[shareTrouble] : null} changing={!!m.screen}
-        onBack={() => { setShareTrouble(null); setPop('share'); }} onShare={() => share({ surface: shareKind, audio: soundLabel !== null && shareSound })} />
-    </>
+    <ShareScreenStep surface={shareKind} onSurface={setShareKind} sound={soundLabel ? { label: soundLabel, on: shareSound, onChange: setShareSound } : null}
+      read={sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null} trouble={shareTrouble ? SHARE_PROBLEMS[shareTrouble] : null} changing={!!m.screen}
+      onBack={() => { setShareTrouble(null); setPop('share'); }} onShare={() => share({ surface: shareKind, audio: soundLabel !== null && shareSound })} />
   ) : pop === 'shareBoard' ? (
     <BoardPicker step={{ onBack: () => setPop('share') }} {...sharePicker.picker} />
   ) : (

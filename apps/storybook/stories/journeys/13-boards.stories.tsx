@@ -315,7 +315,7 @@ export const AfterTheCall: PageStory = {
       await userEvent.click(await screen.findByRole('button', { name: 'Open the board Launch retro' }, SOON));
       await sheet('Launch retro');
     });
-    await step('Start a call here: the board comes with the call, and opens for everyone when it starts', async () => {
+    await step('Start a call here: the board comes with the call, and opens for you when it starts, ready to present', async () => {
       await userEvent.click(await screen.findByRole('button', { name: /Start a call here/ }, SOON));
       await screen.findByText(/Launch retro comes with this call/, {}, SOON);
     });
