@@ -258,7 +258,8 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   as View says: a column of tiles on the right, a row of arches over it (which any stage under 760px gets), or on the
   horizon.
 - **Share**, in the dock, opens one menu over it, a step at a time: Your screen, A board or The workspace, then the kind of
-  screen or the board picker in the same menu, so no window opens over another.
+  screen or the board picker in the same menu, so no window opens over another. While someone else presents a board or the
+  workspace, A board and The workspace say who instead.
 - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people (a
   screen live, a board drawn small, the workspace with where its presenter is), with who's presenting it and Join.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock

@@ -20,7 +20,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/media/access';
-import { accessAsk, bringAndPresent, useBoardPicker } from '~/features/call/boards/BoardPicker';
+import { accessAsk, bringAndPresent, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
 import type { BoardPager } from '~/features/board/CallBoard';
 import { StandingPill, roomPills, type PillKind } from '~/features/board/pills';
 import { UNREAD, standingOf, useChangesSinceSaved } from '~/features/board/standing';
@@ -796,6 +796,13 @@ export function InCall({ session }: { session: CallSession }) {
     if (stage.on.includes('ws')) closeThing('ws');
     else stageOpen('ws');
   };
+  /**
+   * Someone else presents a board or the workspace where you are. There's one at a time, so neither is presented by anyone
+   * else until they stop: Present isn't offered, and Share's A board and The workspace say who's presenting.
+   */
+  const othersWhy = presentNow && !presentNow.mine ? presentingWhy(presentNow) : null;
+  const someoneElse = othersWhy !== null;
+  /* Nobody makes or brings in a board while someone else presents one here (the server's rule), and a guest starts none. */
   const boardBy = presentNow?.kind === 'board' && !presentNow.mine ? firstName(presentNow.by.name) : null;
   const boardBlocked = state.role === 'guest' ? 'Guests can’t start a board here.' : boardBy ? `${boardBy} is presenting a board. You can start one once they stop.` : undefined;
   const callBoardOpen = state.board.open;
@@ -811,8 +818,8 @@ export function InCall({ session }: { session: CallSession }) {
     onDone: () => { setPicking(false); setPop(null); }, ...picked
   });
   const sharePicker = useBoardPicker({
-    session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: boardBlocked, inCall: callBoardRow,
-    onDone: () => setPop(null), ...picked
+    session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: othersWhy ?? boardBlocked,
+    inCall: callBoardRow, onDone: () => setPop(null), ...picked
   });
   /** Present, on a saved board just for you: brought into the call first, asking first if some people here can't open it. */
   const [presentAsk, setPresentAsk] = useState<PresentAskProps | null>(null);
@@ -1422,7 +1429,6 @@ export function InCall({ session }: { session: CallSession }) {
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
   // Anyone who can open the workspace presents it: before anyone's opened it, the call hasn't said which it is yet.
   const canPresentWs = state.role !== 'guest' && (space.id === null || space.role !== null) && live;
-  const someoneElse = presentNow !== null && !presentNow.mine;
   /* Where the workspace was last, so it stays there, out of sight, while it isn't on your stage. */
   const lastWsBox = useRef<Box | null>(null);
   const wsAt = boxOf('ws');
@@ -1458,7 +1464,7 @@ export function InCall({ session }: { session: CallSession }) {
         }
         if (id === 'board' || id === 'saved') {
           const p = id === 'board' ? stage.presentedOf('board') : null;
-          const canPresent = p === null && !phone && canStartBoard && boardOpen?.role === 'edit' && !boardBlocked && !board.sinking;
+          const canPresent = p === null && !phone && canStartBoard && boardOpen?.role === 'edit' && !someoneElse && !board.sinking;
           const where = boardOpen?.workspaceId && boardWhere ? { name: boardWhere, onOpen: () => openSaved(boardOpen.workspaceId ?? '') } : null;
           const bar: FrameBar = {
             icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor,
@@ -1648,8 +1654,8 @@ export function InCall({ session }: { session: CallSession }) {
                 full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null, trouble: shareTrouble,
                 changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
               }}
-              board={canStartBoard ? { picker: sharePicker.picker, onPick: loadBoard } : { why: 'Guests can’t start a board here.' }}
-              workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : someoneElse ? { why: `${firstName(presentNow.by.name)} is presenting. You can present once they stop.` } : { onPress: presentWorkspace }} />
+              board={!canStartBoard ? { why: 'Guests can’t start a board here.' } : othersWhy ? { why: othersWhy } : { picker: sharePicker.picker, onPick: loadBoard }}
+              workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} onClick={() => setHand(!me?.hand)} />

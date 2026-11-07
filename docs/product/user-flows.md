@@ -373,8 +373,10 @@ time, slides in on the right.
     ("Priya is presenting the workspace, and you’re following.", or "Priya is presenting their screen."). Someone watching
     another presentation gets it as a tile, with a toast ("Kofi is presenting their screen. It’s with the people.") and
     **Show it**. Each part of the call (the main room, or a breakout room) has one presented board or workspace at a time,
-    and up to four screens. Someone who can't open what's presented is told who's presenting, never what ("Priya is
-    presenting something you can’t open"), and gets no frame and no tile.
+    and up to four screens: while someone else presents a board or the workspace there, neither has **Present**, and
+    Share's **A board** and **The workspace** say "Priya is presenting. You can present once they stop." instead. Someone
+    who can't open what's presented is told who's presenting, never what ("Priya is presenting something you can’t
+    open"), and gets no frame and no tile.
   - **Follow, or work alongside.** On a board you see the presenter's frame; in the workspace, their page and line. The
     bar says "Following Priya", with **Unfollow**, which gives you your own view back, to work alongside them: in the
     workspace, where you were before you followed; on a board, as you left it. A click, scroll or keystroke in the
@@ -683,7 +685,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
    start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
    board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
-   Share's next step, presenting what you pick straight away (step 11). On a phone, Board is in **More** (step 14).
+   Share's next step, presenting what you pick straight away (step 11); while someone else presents a board or the
+   workspace here it says "Priya is presenting. You can present once they stop." instead, and nothing is made or brought
+   in. On a phone, Board is in **More** (step 14).
 2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
    beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
    board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one the
@@ -767,6 +771,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    stickies at a time."
 11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
    board** in the dock, brings everyone with you, and the board's frames become slides, in order, with nothing to prepare.
+   Neither is offered while someone else presents a board or the workspace here.
    The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
    first (step 3).
    - **Whoever presents** is told "Everyone follows you on Launch retro. They can unfollow to add to it.", and the bar says

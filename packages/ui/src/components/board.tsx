@@ -947,7 +947,8 @@ export interface BoardPickerProps {
   inCall?: BoardPickerInCall | undefined;
   /**
    * Why a new board and the team's boards can't be picked now, said quietly over them: "Priya is presenting a board. You can
-   * start one once they stop.", "Guests can’t start a board here."
+   * start one once they stop.", "Guests can’t start a board here." In Share's step, where picking presents, the board in this
+   * call can't be picked either: "Priya is presenting. You can present once they stop."
    */
   blocked?: string | undefined;
   /** A breakout room: a new board is only this room's, and the saved boards are left out. */
@@ -972,6 +973,8 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
   const saved = !access && !inRoom && recents ? recents.boards : [];
   const now = access ? undefined : inCall;
   const off = busy || !!blocked;
+  // Opening the board in this call just for you is always yours to do; presenting it, from Share, waits like the rest.
+  const nowOff = busy || (!!step && !!blocked);
   const press = useSettledPress([
     ...(now ? ['in-call'] : []), ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`),
     ...(access ? [...(access.onLetIn ? ['access:let-in'] : []), 'access:without'] : [])
@@ -982,7 +985,7 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
       {now && (
         <>
           <div className="bl-sub">In this call</div>
-          <button type="button" className="bl-r bl-now" disabled={busy} onClick={press(now.onOpen)}>
+          <button type="button" className={cn('bl-r bl-now', nowOff && blocked && 'is-off')} disabled={nowOff} onClick={press(now.onOpen)}>
             <span className="bl-th is-icon"><Icon name="presentation" size={18} /></span>
             <span><b>{now.name}</b><small>{now.by}</small></span>
           </button>

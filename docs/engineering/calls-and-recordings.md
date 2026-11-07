@@ -1809,10 +1809,13 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   you, You're presenting · 3 following (everyone else in your part of the call), You're presenting · a tab with sound
   (Starting to share… until LiveKit has it), or Priya is presenting. On the right, only what applies: Following Priya with
   Unfollow, or Follow Priya with where she is; Present; focus; Stop sharing, on your own screen; and Close everywhere else.
-  Present is on a board you can add to, open just for you on a wider screen, for anyone but a guest, while nobody else
-  presents a board there (on a saved board, `PresentAsk` comes first when someone here can't open it), and on the workspace
-  for anyone in it, on a phone too, while nobody else presents a board or the workspace. While you present a board or the
-  workspace, Close asks For you or For everyone (`CloseAsk`: a popover on a wide screen, a sheet on a phone). The name
+  Present is on a board you can add to, open just for you on a wider screen, for anyone but a guest (on a saved board,
+  `PresentAsk` comes first when someone here can't open it), and on the workspace for anyone in it, on a phone too, each only
+  while nobody else presents a board or the workspace there: there's one at a time, and the server refuses another (409).
+  Share's A board and The workspace then say who's presenting instead ("Priya is presenting. You can present once they
+  stop.", `presentingWhy`), the board picker in Share takes no pick, and nothing is made or brought in that couldn't be
+  presented (`bringAndPresent` checks first). While you present a board or the workspace, Close asks For you or For everyone
+  (`CloseAsk`: a popover on a wide screen, a sheet on a phone). The name
   menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board
   (`BoardMenuRows` in `boards/BoardStage.tsx`); the workspace's Switch workspace (the organizer's), Find in the workspace,
   Who's in it and Copy link (`WorkspaceMenuRows`); someone else's screen's pointing, looking closer, its sound, its own

@@ -97,6 +97,11 @@ type Story = StoryObj<typeof meta>;
 export const Kinds: Story = {};
 /** While you share your screen it says so first, with Stop sharing; Share again changes what you share. */
 export const KindsWhileSharing: Story = { name: 'Kinds, while sharing', args: { sharing: { what: 'your screen', onStop: did('Stop sharing') } } };
+/** Priya presents the workspace: one board or workspace is presented at a time, so A board and The workspace say who's presenting. */
+export const KindsWhileSomeonePresents: Story = {
+  name: 'Kinds, while someone else presents',
+  args: { board: { why: 'Priya is presenting. You can present once they stop.' }, workspace: { why: 'Priya is presenting. You can present once they stop.' } }
+};
 /** On a phone, as a sheet: a phone can't share its screen, so it says why and the row can't be pressed. */
 export const KindsOnAPhone: Story = {
   name: 'Kinds, on a phone',
@@ -112,11 +117,14 @@ export const ScreenStepTrouble: Story = { name: 'Screen step, with trouble', ren
 export const ScreenStepChanging: Story = { name: 'Screen step, sharing already', render: (args) => <ShareFlow kinds={args} start="screen" read="paused" changing /> };
 /** A board: a new one from a template, or one the team has, presented to everyone as it opens. */
 export const BoardStep: Story = { name: 'Board step', render: (args) => <ShareFlow kinds={args} start="board" /> };
-/** Priya presents the launch retro: it's first, to join, and a new board waits until she stops. */
+/**
+ * Priya starts presenting the launch retro while the picker's open: nothing here can be presented until she stops, the board in
+ * this call included, so nothing is made or brought in that couldn't be.
+ */
 export const BoardStepSomeonePresenting: Story = {
   name: 'Board step, someone presenting',
   render: (args) => (
-    <ShareFlow kinds={args} start="board" blocked="Priya is presenting a board. You can start one once they stop."
+    <ShareFlow kinds={args} start="board" blocked="Priya is presenting. You can present once they stop."
       inCall={{ name: 'Launch retro', by: 'Priya is presenting it', onOpen: did('Launch retro') }} />
   )
 };

@@ -8,9 +8,10 @@
  * - Your team's boards: what's been brought to this call first, then the newest from your Drive. Opening one just for you
  *   touches nothing in the call; presenting one brings it in first, and if some people here can't open it, asks first.
  *
- * Nobody can make or bring in a board while someone else presents one here, and a guest can't start one.
+ * Nobody can make or bring in a board while someone else presents one here, and a guest can't start one. In Share, where
+ * what's picked is presented, nothing is picked while someone else presents a board or the workspace here.
  */
-import { errorCode, type BoardCheck, type BoardOpen, type CallBrought, type CallSession } from '@alcove/api';
+import { AlcoveApiError, errorCode, firstName, type BoardCheck, type BoardOpen, type CallBrought, type CallPresent, type CallSession } from '@alcove/api';
 import { Icon, type BoardPickerAccess, type BoardPickerRecent, type BoardPickerInCall, type BoardPickerProps, type BoardTemplate } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -45,10 +46,19 @@ function offered(brought: readonly CallBrought[], drive: readonly BoardToBring[]
 const whenOf = (iso: string) => { const d = pastDay(iso); return d.charAt(0).toUpperCase() + d.slice(1); };
 
 /**
+ * Why nothing else can be presented where you are: someone else presents a board or the workspace there, one at a time. Share's
+ * A board and The workspace say it, and so does the board picker in Share.
+ */
+export const presentingWhy = (theirs: Pick<CallPresent, 'by'>): string => `${firstName(theirs.by.name)} is presenting. You can present once they stop.`;
+
+/**
  * Brings a board into the call if it isn't the board in it (`from`), and presents it from its first frame. What the call
- * says when it opens (`says`, such as who it let in) is told to whoever brought it.
+ * says when it opens (`says`, such as who it let in) is told to whoever brought it. While someone else presents a board or
+ * the workspace here, nothing is made or brought in: it couldn't be presented until they stop.
  */
 export async function bringAndPresent(session: CallSession, board: CallBoard, from: BoardOpen | null, says: string | null): Promise<void> {
+  const theirs = session.getSnapshot().workspace.present;
+  if (theirs && !theirs.mine) throw new AlcoveApiError('conflict', presentingWhy(theirs));
   if (from) {
     if (says) board.expect(says);
     try { await session.openBoard(from); } catch (e) { board.expect(''); throw e; }
@@ -83,7 +93,7 @@ interface PickerFrom {
   spaceName: (workspaceId: string) => string | null;
   /** The picker is showing, so the boards to offer are fetched. */
   showing: boolean;
-  /** Why nothing can be made or brought in now: someone else presents a board here, or you're a guest. */
+  /** Why nothing can be made or brought in now: someone else presents a board here (in Share, or the workspace), or you're a guest. */
   blocked: string | undefined;
   /** The board in the call, as the picker's first row says it, or nothing. */
   inCall: { name: string; by: string } | null;

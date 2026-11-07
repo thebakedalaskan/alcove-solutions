@@ -256,6 +256,14 @@ export const PriyaStopped: PageStory = {
     followingPriya, closeTheirs, step('Priya stops: its tile goes', () => toldThat('Priya stopped presenting the workspace.'))),
   name: 'Priya stopped presenting'
 };
+/** One board or workspace is presented at a time: while Priya presents the workspace, a board you open just for you has no Present. */
+export const ABoardOfYoursWhilePriyaPresents: PageStory = {
+  ...moment(priyaWs, followingPriya,
+    step('Press Board, then Launch retro: it opens just for you, and has no Present while Priya presents', async (c) => { await pickBoard(c, 'Launch retro'); await frameOf('Launch retro'); })),
+  name: 'A board of yours, while Priya presents'
+};
+/** Share, while Priya presents the workspace: A board and The workspace say who's presenting, so nothing's made that couldn't be. */
+export const ShareWhilePriyaPresents: PageStory = { ...moment(priyaWs, followingPriya, openShare), name: 'Share, while Priya presents' };
 /** Focus: what Priya presents fills your window. Show everything, or Esc, brings it all back. */
 export const FollowingInFocus: PageStory = {
   ...moment(priyaWs, followingPriya,
