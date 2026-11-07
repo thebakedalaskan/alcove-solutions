@@ -5,7 +5,7 @@
  * step (BoardPicker with `step`). Each later step has Share's step head (ShareStepHead) to go back. On a phone it's a sheet.
  * Press through it: each story starts on a step and goes on from there.
  */
-import { BoardMenuThumb, BoardPicker, CallDock, cn, DockButton, DockLeave, DockSeparator, Popover, ShareKinds, ShareScreenStep, ShareStepHead, type BoardMenuAccess, type BoardPickerInCall, type ShareSurfaceKind } from '@alcove/ui';
+import { BoardPickerThumb, BoardPicker, CallDock, cn, DockButton, DockLeave, DockSeparator, Popover, ShareKinds, ShareScreenStep, ShareStepHead, type BoardPickerAccess, type BoardPickerInCall, type ShareSurfaceKind } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { did, onStage } from '../../../src/component';
@@ -14,8 +14,8 @@ import { did, onStage } from '../../../src/component';
 const TEAM = {
   workspace: '',
   boards: [
-    { id: 'retro', name: 'Launch retro', by: 'Priya · Product', when: 'Today', thumb: <BoardMenuThumb kind="columns" /> },
-    { id: 'onboarding', name: 'Onboarding flow', by: 'Aiko · Design', when: 'Mon', thumb: <BoardMenuThumb kind="flow" /> }
+    { id: 'retro', name: 'Launch retro', by: 'Priya · Product', when: 'Today', thumb: <BoardPickerThumb kind="columns" /> },
+    { id: 'onboarding', name: 'Onboarding flow', by: 'Aiko · Design', when: 'Mon', thumb: <BoardPickerThumb kind="flow" /> }
   ]
 };
 const SYSTEM = 'Your computer isn’t letting the browser share its screen. On a Mac, turn your browser on in System Settings › Privacy & Security › Screen & System Audio Recording, then reopen it. A tab can be shared without that.';
@@ -55,7 +55,7 @@ type Step = 'kinds' | 'screen' | 'board';
 function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble = null, changing = false, blocked, inCall, access }: {
   kinds: ComponentProps<typeof ShareKinds>; start?: Step | undefined; phone?: boolean | undefined;
   read?: 'on' | 'paused' | null | undefined; trouble?: string | null | undefined; changing?: boolean | undefined;
-  blocked?: string | undefined; inCall?: BoardPickerInCall | undefined; access?: BoardMenuAccess | undefined;
+  blocked?: string | undefined; inCall?: BoardPickerInCall | undefined; access?: BoardPickerAccess | undefined;
 }) {
   const [step, setStep] = useState<Step>(start);
   const [surface, setSurface] = useState<ShareSurfaceKind>('browser');
