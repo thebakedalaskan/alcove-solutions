@@ -75,8 +75,23 @@ export function createItem(id: string, input: ItemInput): { id: string } {
 }
 export const renameItem = (id: string, itemId: string, name: string) => edit(id, (items) => items.map((i) => (i.id === itemId ? { ...i, name, editedAt: new Date().toISOString() } : i)));
 export const moveItem = (id: string, itemId: string, to: ItemPlace) => edit(id, (items) => { const it = items.find((i) => i.id === itemId); return it ? place(items, it, to) : items; });
-export const trashItem = (id: string, itemId: string) => edit(id, (items) => items.map((i) => (i.id === itemId || i.parent === itemId ? { ...i, trashedAt: new Date().toISOString(), trashedBy: me().name } : i)));
-export const restoreItem = (id: string, itemId: string) => edit(id, (items) => items.map((i) => (i.id === itemId ? { ...i, trashedAt: null, trashedBy: null } : i)));
+/** To Trash, with what's in it: whoever has one of them open is told it's in Trash, as the server's stream tells them. */
+export function trashItem(id: string, itemId: string): void {
+  const gone = treeOf(id).items.filter((i) => i.id === itemId || i.parent === itemId).map((i) => i.id);
+  edit(id, (items) => items.map((i) => (gone.includes(i.id) ? { ...i, trashedAt: new Date().toISOString(), trashedBy: me().name } : i)));
+  sessionsHear(gone, (s) => ({ ...s, trashed: true }));
+}
+/** Back from Trash: whoever has it open is told. */
+export function restoreItem(id: string, itemId: string): void {
+  edit(id, (items) => items.map((i) => (i.id === itemId ? { ...i, trashedAt: null, trashedBy: null } : i)));
+  sessionsHear([itemId], (s) => ({ ...s, trashed: false }));
+}
+/** A workspace deleted, and everything in it: whoever has something of it open is told it's gone for everyone. */
+export function removeWorkspace(id: string): void {
+  const ids = treeOf(id).items.map((i) => i.id);
+  current().workspaces = current().workspaces.filter((x) => x.id !== id);
+  sessionsHear(ids, (s) => ({ ...s, closed: 'deleted' }));
+}
 export const deleteItem = (id: string, itemId: string) => edit(id, (items) => items.filter((i) => i.id !== itemId && i.parent !== itemId));
 export function duplicateItem(id: string, itemId: string): { id: string } {
   const it = treeOf(id).items.find((i) => i.id === itemId);
@@ -461,6 +476,13 @@ function othersOn(item: WorkspaceItem, awareness: Awareness): () => void {
   };
 }
 
+/** Each open session of a document, by the document's ID: what happens to it in its workspace reaches them, as the server's stream says it. */
+const sessions = new Map<string, Set<Document>>();
+/** Every open session of these documents hears what changed: in Trash, back, or gone with their workspace. */
+function sessionsHear(ids: readonly string[], change: (s: DocStatus) => DocStatus): void {
+  for (const id of ids) for (const d of sessions.get(id) ?? []) d.update(change);
+}
+
 class Document extends Pushed<DocStatus> implements DocSession {
   readonly doc: Y.Doc;
   readonly awareness: Awareness;
@@ -470,6 +492,9 @@ class Document extends Pushed<DocStatus> implements DocSession {
   constructor(item: WorkspaceItem, workspace: string) {
     super(statusOf(item));
     this.id = item.id;
+    const open = sessions.get(item.id) ?? new Set<Document>();
+    open.add(this);
+    sessions.set(item.id, open);
     const known = docs.get(item.id);
     this.doc = known ?? documentOf(item, workspace);
     if (!known) docs.set(item.id, this.doc);
@@ -496,7 +521,7 @@ class Document extends Pushed<DocStatus> implements DocSession {
     this.close();
     return Promise.resolve();
   }
-  override close(): void { this.leave(); this.awareness.destroy(); super.close(); }
+  override close(): void { sessions.get(this.id)?.delete(this); this.leave(); this.awareness.destroy(); super.close(); }
 }
 /**
  * A board as the world holds it, made the way a browser opening it first would find it: what the call writes on it, as the
@@ -535,6 +560,7 @@ export function forgetDocuments(): void {
   docs.clear();
   onBoards.clear();
   boardSessions.clear();
+  sessions.clear();
   watching.clear();
   presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);

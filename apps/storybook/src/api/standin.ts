@@ -634,7 +634,7 @@ export const standIn: AlcoveApi = {
       return { themes: [...themes].map(([name, ids]) => ({ name, ids })) };
     }),
     rename: (id: ID, name: string) => answer(() => { spaces.treeOf(id).name = name; }),
-    remove: (id: ID) => answer((w) => { spaces.treeOf(id); w.workspaces = w.workspaces.filter((x) => x.id !== id); }),
+    remove: (id: ID) => answer(() => spaces.removeWorkspace(id)),
     people: (id: ID) => answer(() => spaces.peopleIn(id)),
     addPerson: (id: ID, email: string, role) => answer(() => spaces.addPerson(id, email, role)),
     setRole: (id: ID) => answer(() => { spaces.treeOf(id); }),

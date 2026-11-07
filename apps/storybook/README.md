@@ -271,7 +271,10 @@ from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a boar
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
 the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
 it), which opens on their stage alone until they present it (`{ do: 'present' }`), move everyone on (`{ do: 'move-presenting' }`)
-and stop (`{ do: 'stop-presenting' }`); you present the board open where you
+and stop (`{ do: 'stop-presenting' }`); the organizer can close it for everyone (`closesPresenting()`), and whoever opened it
+can close it (`closesBoard()`) unless someone else presents it. It leaves the call, as the server takes it out, when someone
+moves it to Trash in the Drive, alone or in its folder (`trashesBoard()`, `trashesBoard({ folder: true })`), or deletes the
+workspace it's kept in (`deletesBoardWorkspace()`): its own connection says which. You present the board open where you
 are, as the server lets you, and your presenter notes last as long as the story. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
 stories are always night, come on a phone too (`phone()`), and in a light theme (`light()`), where only your side and a board
 are light.
@@ -281,9 +284,12 @@ The call's workspace is played too. The first time Workspace opens, the call set
 named "<call title> · <day>" with the folder in it, which holds the live Notes, Follow-ups and Transcript. Someone who came
 in with the link gets nothing, so it's private to them. The script's `workspace` says what's brought to the call and who's
 in which document; beats move people (`goesTo`), present the workspace or the board open where you are
-(`presentsWorkspace`, `presentsBoard`, `movesPresenting`, `stopsPresenting`), share and stop a screen (`shares`,
-`stopsSharing`, and the organizer's `stopsShare`), play a video for everyone (`plays`), ask to see it (`asksToSee`) and tag
-you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
+(`presentsWorkspace`, `presentsBoard`, `movesPresenting`, `stopsPresenting`, and the organizer's `closesPresenting`), share and
+stop a screen (`shares`, `stopsSharing`, and the organizer's `stopsShare`), play a video for everyone (`plays`), ask to see it
+(`asksToSee`) and tag you (`tagsYou`). Every end of a presentation is said at once, as the server says it (`ended`): someone
+leaving (`leaves`), being moved to a room, or you (`movesToRoom(who, room)`), the workspace switching, or its board going. A
+reload isn't an end: `reloads(who, seconds)` takes them out of the call for that long, what they present hidden meanwhile,
+and brings them back to it with the same key. Whatever you do in it (switch, present, play, answer an
 ask, add a follow-up) changes the call as the server would. `addWalkthrough()` in `talk.ts` puts a document with a film
 in Product, drawn and recorded in the browser (`src/media/film.ts`) the first time it's played.
 
