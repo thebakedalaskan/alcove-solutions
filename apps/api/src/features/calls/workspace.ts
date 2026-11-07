@@ -290,6 +290,12 @@ async function seenAt(d: Deps, workspaceId: string, version: number, ids: string
   }
   return now;
 }
+/**
+ * Whether a workspace itself opens for someone: a role in it, or a document given to them that's still there, with `seen` holding
+ * what's given. A board in a call gives every guest a seat on it, and boards aren't in the workspace's list, so a board alone
+ * opens it to nothing: they're told it's private, who's presenting it and never what, and can ask.
+ */
+const opensItself = (as: Standing, seen: Seen): boolean => as.role !== null || [...as.grants.keys()].some((id) => { const f = seen.items.get(id); return f ? !f.trashed && f.item.kind !== 'board' : false; });
 
 /**
  * The call's workspace as this person may know it, and what's been lost. One that can't be read says it's private: a call
@@ -348,13 +354,16 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
         if (space) presents.push({ since: space.since, is: spaceAs(v, space, false) });
         continue;
       }
-      const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : [])];
+      // Someone with no role in the workspace the call views has it open only through what's given to them, so that's looked at.
+      const given = inCall && standing.role === null ? [...standing.grants.keys()] : [];
+      const ids = [...brought.filter((b) => b.workspaceId === workspaceId).map((b) => b.documentId), ...(present ? [present.id] : []), ...(play ? [play.documentId] : []), ...given];
       // The home, when it isn't what's viewed and nothing's brought from it, only says whether it opens for them.
       if (!ids.length && !inCall) continue;
       const seen = await seenAt(d, workspaceId, at.version, ids);
       if (!seen) continue;
       /** What `who`, standing as they do, can do with something that's still in the tree. */
       const roleIn = (who: Who, as: Standing, id: string) => { const f = seen.items.get(id); return f && !f.trashed ? roleOf(who, as, id, f.item) : undefined; };
+      const opensSpace = inCall && opensItself(standing, seen);
       if (opensSomething) {
         for (const b of brought.filter((y) => y.workspaceId === workspaceId)) {
           const f = seen.items.get(b.documentId);
@@ -362,7 +371,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
           if (f && role) documents.set(broughtId(workspaceId, b.documentId), { workspaceId, id: b.documentId, kind: f.item.kind, name: f.item.name, role });
         }
       }
-      if (inCall && opensSomething) {
+      if (inCall && opensSpace) {
         out.id = workspaceId;
         out.name = standing.role === null ? null : seen.name;
         out.canOpen = true;
@@ -380,7 +389,7 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
       }
       if (space) {
         if (!opensIt(space.by)) lost.space.push(space);
-        else presents.push({ since: space.since, is: spaceAs(v, space, opensSomething) });
+        else presents.push({ since: space.since, is: spaceAs(v, space, opensSpace) });
       }
       if (play) {
         if (!stands(play.by, play.documentId)) lost.play.push(play);
@@ -622,10 +631,18 @@ async function opens(d: Deps, reader: Who, workspaceId: string, documentId: stri
     throw e;
   }
 }
-/** Whether anything in a workspace opens for someone, which is what presenting it takes: read with nothing held, and no keys opened. */
+/**
+ * Whether the workspace itself opens for someone (`opensItself`), which is what presenting it takes: read with nothing held, and
+ * its tree read (`seenAt`) only for someone with no role in it, to see what's been given to them.
+ */
 async function opensWorkspace(d: Deps, who: Who, workspaceId: string): Promise<boolean> {
   const at = await workspaceAt(d.pool, workspaceId);
-  return at !== undefined && canOpen(standingIn(await holdersOf(d.pool, at.ownerId, who.principals), who));
+  if (!at) return false;
+  const standing = standingIn(await holdersOf(d.pool, at.ownerId, who.principals), who);
+  if (standing.role !== null) return true;
+  if (!standing.grants.size) return false;
+  const seen = await seenAt(d, workspaceId, at.version, [...standing.grants.keys()]);
+  return seen !== undefined && opensItself(standing, seen);
 }
 /**
  * Someone else presenting in a part of the call, a board or the workspace `viewed`, while it shows and they can still open it: a
