@@ -13,7 +13,7 @@ import {
 } from '@alcove/api';
 import {
   Avatar, BoardPicker, CallDock, CallMoreGrid, CallMoreTile, DockButton, DockLeave, DockSeparator, DockSplit, DockWords, Dots, Icon, IconButton, Kbd, KnockCard, LinkRow, Popover, RingAgain, RingReply, Scope,
-  ShareKinds, ShareScreenStep, Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
+  Tooltip, WaitTile, buttonClass, cn, useRaisedToasts, useTheme, useToast, volumeTag, wsToast, type IconName, type PresentAskProps, type WsToastData
 } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -40,7 +40,7 @@ import { FromLastTime } from '~/features/call/notes/FromLastTime';
 import { Yours, useOwnInCall } from '~/features/call/notes/Yours';
 import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing';
 import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
-import { LocalMedia, type ShareChoice, type ShareSurface as ShareSurfaceKind } from '~/features/call/media/media';
+import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
 import { ChatView, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
@@ -55,7 +55,8 @@ import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } f
 import { useNotesAskedNotifications } from '~/features/shell/notify';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
-import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/screen-sharing/share';
+import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen } from '~/features/call/screen-sharing/share';
+import { ShareMenu, type ShareTrouble } from '~/features/call/layout/ShareMenu';
 import { keepSeen, seenNotices } from '~/features/call/session/seen';
 import { VideoQuality } from '~/features/call/media/VideoQuality';
 import { GLIDE, Stage, useStagePlan, type StageParticipant, type StagePresented, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/layout/Stage';
@@ -134,10 +135,8 @@ export function InCall({ session }: { session: CallSession }) {
   /** Focus: what's in the frame fills your window, and everything else tucks away (⌘⇧F, Show everything, Esc). */
   const [focus, setFocus] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
-  /** Share › Your screen: the kind of thing to share, its sound, and why the last try didn't start, if it didn't. */
-  const [shareKind, setShareKind] = useState<ShareSurfaceKind>('browser');
-  const [shareSound, setShareSound] = useState(true);
-  const [shareTrouble, setShareTrouble] = useState<Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null>(null);
+  /** Share › Your screen: why the last try didn't start, if it didn't. */
+  const [shareTrouble, setShareTrouble] = useState<ShareTrouble | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [ended, setEnded] = useState<Ended | null>(null);
@@ -562,11 +561,10 @@ export function InCall({ session }: { session: CallSession }) {
     });
   };
   /** Opens Share › Your screen (saying why the last try didn't start, if it didn't), unless this browser can't share or four already are. */
-  const pickShare = (trouble: Exclude<ShareProblem, 'cancelled' | 'unsupported'> | null = null) => {
+  const pickShare = (trouble: ShareTrouble | null = null) => {
     if (!canShareScreen()) { toast(SHARE_PROBLEMS.unsupported, { icon: 'screen', ms: 8000 }); return; }
     if (full) { toast(fullText, { icon: 'screen' }); return; }
     setShareTrouble(trouble);
-    if (trouble === 'system') setShareKind('browser');
     setPop('shareScreen');
   };
   // Toasts and refusals open the picker later, through what pickShare is then (who's sharing by then).
@@ -1514,26 +1512,9 @@ export function InCall({ session }: { session: CallSession }) {
 
   /* ---------- the dock, Share and More: what you do in the call, and everything else ---------- */
   const moreOpen = pop === 'more' || pop === 'devices' || pop === 'quality' || pop === 'board' || pop === 'view';
-  const shareOpen = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard';
   /** What you present, if anything: Share says so, and its first step offers Stop sharing. */
   const myThing = stage.presented.find((p) => p.mine) ?? null;
-  const presentingNow = myThing !== null;
-  const shareTip = presentingNow ? 'Presenting. Share something else, or stop' : 'Share with everyone: a screen, a board or the workspace';
-  /** The sound a screen can share, where this browser can share it: a tab's, or the computer's. */
-  const soundLabel = !canShareTabSound() ? null : shareKind === 'browser' ? 'Also share the tab’s sound' : shareKind === 'monitor' ? 'Also share your computer’s sound' : null;
-  const shareBody = pop === 'shareScreen' ? (
-    <ShareScreenStep surface={shareKind} onSurface={setShareKind} sound={soundLabel ? { label: soundLabel, on: shareSound, onChange: setShareSound } : null}
-      read={sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null} trouble={shareTrouble ? SHARE_PROBLEMS[shareTrouble] : null} changing={!!m.screen}
-      onBack={() => { setShareTrouble(null); setPop('share'); }} onShare={() => share({ surface: shareKind, audio: soundLabel !== null && shareSound })} />
-  ) : pop === 'shareBoard' ? (
-    <BoardPicker step={{ onBack: () => setPop('share') }} {...sharePicker.picker} />
-  ) : (
-    <ShareKinds sharing={myThing ? { what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, onStop: () => { setPop(null); closeThing(myThing.id); } } : null}
-      screenWhy={phone ? 'Sharing a screen needs a computer' : !canShareScreen() ? SHARE_PROBLEMS.unsupported : full ? fullText : null}
-      onScreen={() => pickShare()}
-      board={canStartBoard ? { onPress: () => { loadBoard(); setPop('shareBoard'); } } : { why: 'Guests can’t start a board here.' }}
-      workspace={canPresentWs && !someoneElse ? { onPress: presentWorkspace } : { why: someoneElse ? `${firstName(presentNow.by.name)} is presenting. You can present once they stop.` : 'You can’t open this call’s workspace.' }} />
-  );
+  const shareStep = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' ? pop : null;
   const moreRow = (icon: IconName, label: string, act: () => void, o: { scope?: string | undefined; kb?: string | undefined; pressed?: boolean | undefined } = {}) => (
     <button type="button" className="mi" aria-pressed={o.pressed} onClick={act}>
       <Icon name={icon} size={17} /><span className="t">{label}</span>{o.scope && <Scope>{o.scope}</Scope>}{o.kb && <Kbd>{o.kb}</Kbd>}
@@ -1642,11 +1623,14 @@ export function InCall({ session }: { session: CallSession }) {
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
             </DockSplit>
             {!phone && <DockSeparator />}
-            <Popover open={shareOpen} onOpenChange={(o) => setPop(o ? 'share' : null)} side="top" align="center" label="Share with everyone" tip={phone ? undefined : shareTip}
-              className={cn(pop === 'shareBoard' ? 'bl ic-sharepop' : 'ic-sharepop', phone && 'is-sheet')}
-              anchor={<DockButton icon="screen" label={presentingNow ? 'Presenting' : 'Share'} word={presentingNow ? 'Presenting' : 'Share'} title={undefined} on={presentingNow || shareOpen} />}>
-              {shareBody}
-            </Popover>
+            <ShareMenu step={shareStep} onStep={setPop} phone={phone}
+              presenting={myThing ? { what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, onStop: () => { setPop(null); closeThing(myThing.id); } } : null}
+              screen={{
+                full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null, trouble: shareTrouble,
+                changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
+              }}
+              board={canStartBoard ? { picker: sharePicker.picker, onPick: loadBoard } : { why: 'Guests can’t start a board here.' }}
+              workspace={canPresentWs && !someoneElse ? { onPress: presentWorkspace } : { why: someoneElse ? `${firstName(presentNow.by.name)} is presenting. You can present once they stop.` : 'You can’t open this call’s workspace.' }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
