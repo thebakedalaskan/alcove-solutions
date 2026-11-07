@@ -60,6 +60,7 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   presentingToo: wsToast.presentingToo(KOFI, first(KOFI), 'their screen', did('onShow')),
   stoppedPresentingIt: wsToast.stoppedPresentingIt('folderOpen', first(PRIYA), 'the workspace'),
   closedEverywhere: wsToast.closedEverywhere('Launch retro'),
+  closedByOrganizer: wsToast.closedByOrganizer(first(PRIYA), 'the workspace'),
   stoppedSharing: wsToast.stoppedSharing(first(KOFI)),
   stoppedTheirShare: wsToast.stoppedTheirShare(first(PRIYA))
 };

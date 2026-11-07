@@ -389,7 +389,7 @@ time, slides in on the right.
     **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
     you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
     board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
-    its name.
+    its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
     a screen shown live, a board drawn small, or the workspace with where its presenter is, and its name, "Priya is
     presenting" and **Join** (**Open**, on your own). Pressing it puts it on your stage, following. When the presentation
@@ -652,7 +652,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      tile among the people, saying where she is, and **Join** takes them back in, following.
    - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you**, and everyone
      following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
-     organizer can close anyone's for everyone from its name. It also ends when the presenter leaves the call for good
+     organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
+     workspace for everyone."). It also ends when the presenter leaves the call for good
      ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call, when their
      breakout room closes, when the workspace everyone views switches, or when the call ends. A reload doesn't end it:
      everyone's screen keeps it as it was for half a minute, and it carries on when they're back. When it ends, its tile
@@ -793,8 +794,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
      their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
-     organizer can close anyone's for everyone, from the board's name. **Stop sharing**, in Share, asks the same, wherever
-     the board is: on your stage, a tile, or out of sight. If the presenter leaves the call, it ends too, and
+     organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
+     closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
+     a tile, or out of sight. If the presenter leaves the call, it ends too, and
      its tile goes. Nobody's access changes: someone who can't open the board is told who's presenting, never what.
 12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
    where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,

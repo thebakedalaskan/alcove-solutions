@@ -450,7 +450,7 @@ export function InCall({ session }: { session: CallSession }) {
   ];
   /* What a toast offers (Show it) goes once it's been taken up some other way, or what it's about stops. */
   const offers = useRef(new Map<string, () => void>());
-  /** Someone else's presentation or share you ended for everyone, as the organizer: its end isn't said twice. */
+  /** A presentation or share you ended, yours or (as the organizer) someone else's: you've been told, so its end isn't said twice. */
   const stoppedByMe = useRef<string | null>(null);
   const stage = useOnStage({
     presented, ended: space.ended, settled, kept: layout.layout.workspace.open,
@@ -461,10 +461,11 @@ export function InCall({ session }: { session: CallSession }) {
         sayIt(isScreen(p.id) ? wsToast.presentingScreen(p.first) : p.id === 'ws' ? wsToast.followingWorkspace(p.first) : wsToast.followingBoard(p.first, p.name));
       },
       ended: (p, was) => {
-        // Stopped or closed by you, the organizer, which you've been told already.
         if (stoppedByMe.current === p.key) { stoppedByMe.current = null; return; }
-        if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first)); return; }
         const what = p.id === 'ws' ? 'the workspace' : p.name;
+        // Yours, closed for everyone, and not by you: only the organizer can, and you're told it was them, as a stopped share is.
+        if (p.mine) { if (was.closed && !isScreen(p.id)) sayIt(wsToast.closedByOrganizer(organizerFirst(state), what)); return; }
+        if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first)); return; }
         sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what));
       }
     }
@@ -773,12 +774,13 @@ export function InCall({ session }: { session: CallSession }) {
     setAsking(null);
     const stop = id === 'ws' ? wsPresenting.stop : boardPresenting.stop;
     const was = stage.on;
+    stoppedByMe.current = stage.presentedOf(id)?.key ?? null;
     stop(everyone).then(() => {
       if (was.includes(id) && was.length <= 1) setFocus(false);
       stageClose(id);
       if (side.view === 'mine') side.close();
       sayIt(everyone ? wsToast.closedForAll() : wsToast.closedForYou());
-    }, () => undefined);
+    }, () => { stoppedByMe.current = null; });
   };
 
   /* ---------- opening: Board's picker, Workspace, and Share's steps ---------- */

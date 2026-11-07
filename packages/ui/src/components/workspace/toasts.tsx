@@ -75,6 +75,8 @@ export const wsToast = {
   stoppedPresentingIt: (icon: IconName, first: string, what: string) => say(icon, `${first} stopped presenting ${what}.`),
   /** What you followed, closed for everyone by whoever presented it, or by the organizer. */
   closedEverywhere: (what: string) => say('x', `${what.charAt(0).toUpperCase()}${what.slice(1)} closed for everyone.`),
+  /** What you presented, closed for everyone by the organizer: you're told who, as a share they stop is. */
+  closedByOrganizer: (organizer: string, what: string) => say('x', `${organizer} closed ${what} for everyone.`),
   stoppedSharing: (first: string) => say('stopShare', `${first} stopped sharing.`),
   stoppedTheirShare: (first: string) => say('screen', `You stopped ${first}’s share for everyone. ${first} is told it was you.`)
 };

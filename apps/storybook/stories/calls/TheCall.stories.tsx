@@ -286,6 +286,12 @@ export const ABoardOfYoursWhilePriyaPresents: PageStory = {
 };
 /** Share, while Priya presents the workspace: A board and The workspace say who's presenting, so nothing's made that couldn't be. */
 export const ShareWhilePriyaPresents: PageStory = { ...moment(priyaWs, followingPriya, openShare), name: 'Share, while Priya presents' };
+/** Priya organizes this call: while you present the workspace, she closes it for everyone from its name, and you're told it was her. */
+export const PriyaClosesWhatYouPresent: PageStory = {
+  ...moment(hers({ cues: at(30, stopsPresenting(true)) }), openWorkspace, presentWorkspace, followsYou,
+    step('Priya closes it for everyone: you’re told it was her', () => toldThat('Priya closed the workspace for everyone.'))),
+  name: 'Priya closes what you present'
+};
 /** Focus: what Priya presents fills your window. Show everything, or Esc, brings it all back. */
 export const FollowingInFocus: PageStory = {
   ...moment(priyaWs, followingPriya,

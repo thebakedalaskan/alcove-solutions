@@ -1843,7 +1843,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   works on your own from where you are. Follow, with where the presenter is, brings you back; a screen can't be unfollowed.
   Close on someone else's makes it a tile for you while they present. When it ends, its tile goes, and followers stay in it
   on their own if the presenter ended it for themselves, and it closes if they closed it for everyone
-  ([Presenting](#the-calls-workspace)); a screen that stops leaves every stage. A board or the workspace that stops being
+  ([Presenting](#the-calls-workspace)); a screen that stops leaves every stage. Yours, closed for everyone and not by you, was
+  the organizer's doing, the only other who can: you're told who ("Art closed the workspace for everyone.",
+  `wsToast.closedByOrganizer`), as a stopped share's sharer is. A board or the workspace that stops being
   presented without the call saying how (its presenter may be reloading) is waited for, 30 seconds (`HOLD_MS`), its frame
   and tile as they were, and carries on with nothing said if it comes back. What's on your stage, and whether you follow, is
   this browser's alone.

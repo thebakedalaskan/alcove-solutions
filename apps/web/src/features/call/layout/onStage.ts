@@ -42,7 +42,10 @@ const HOLD_MS = 30_000;
 export interface StageTold {
   /** Someone else's presentation started: you're following it, or (watching another) it's a tile, with `show`. */
   started: (p: Presented, following: boolean, show: () => void) => void;
-  /** Someone else's presentation ended: whether it was on your stage, and whether it closed for everyone. */
+  /**
+   * A presentation ended, someone else's or yours (`p.mine`): whether it was on your stage, and whether it closed for everyone.
+   * Yours closed for everyone without you is the organizer's doing.
+   */
   ended: (p: Presented, was: { onStage: boolean; closed: boolean }) => void;
 }
 
@@ -145,7 +148,7 @@ export function useOnStage({ presented, ended, settled, told, kept }: {
     const onStage = onNow.current.includes(p.id);
     if (onStage && (isScreen(p.id) || (closed && came.current.get(p.id) === p.key))) remove(p.id);
     else if (onStage) came.current.delete(p.id);
-    if (!p.mine) toldNow.current.ended(p, { onStage, closed });
+    toldNow.current.ended(p, { onStage, closed });
   };
   const finishNow = useRef(finish);
   finishNow.current = finish;
