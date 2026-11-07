@@ -25,7 +25,7 @@ export interface CallPerson { id: string; seat: string; person: Person; isMe: bo
 /** What the tiles show of people working together, by connection. `followable`: they're in the workspace, so Follow is on offer. */
 export interface CallTogether {
   followable: readonly string[]; following: string | null; writing: readonly string[];
-  /** Where each is, in words: what's named is only ever what you can open. */
+  /** Where each is, in words, whether or not the workspace is on your stage: what's named is only ever what you can open. */
   where: Readonly<Record<string, string>>;
   /** Who's in a document you can open, so Go there is on offer. */
   reachable: readonly string[];

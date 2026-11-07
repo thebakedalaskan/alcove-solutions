@@ -98,6 +98,8 @@ let leftToast: (() => void) | null = null;
 const MORE_SAYS = 'More: captions, catch up, rooms, devices';
 /** Notes' tabs, as places your side can be. */
 const isNotesTab = (p: SidePlace): p is NotesTab => p === 'notes' || p === 'transcript' || p === 'ask';
+/** Nobody's anywhere in the workspace, as far as the people list says while it's put away. */
+const NOWHERE: Readonly<Record<string, string>> = {};
 
 export function InCall({ session }: { session: CallSession }) {
   useClosingWithPage(session);
@@ -723,7 +725,12 @@ export function InCall({ session }: { session: CallSession }) {
   const spacePeople = useMemo(() => told.participants.map((p) => ({ id: p.id, seat: p.seat, person: p.person, isMe: p.isMe })), [spacePeopleKey]);
   const spaceInvitedKey = JSON.stringify(invited);
   const spaceInvited = useMemo(() => invited, [spaceInvitedKey]);
-  const together: StageTogether = { ...work.together, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag };
+  // Where people are in the workspace is for the people list and their cards while it's on your stage; put away, only the
+  // presented workspace's tile says where its presenter is (presenting.ts).
+  const wsShown = stage.on.includes('ws');
+  const together: StageTogether = {
+    ...work.together, where: wsShown ? work.together.where : NOWHERE, lit: work.lit, onFollow: work.act.follow, onStop: work.act.stopFollowing, onGo: work.act.goTo, onTag: work.act.tagIn, canTag: work.act.canTag
+  };
   /* Focus fills your window with what's on your stage: not on a phone, where it fills the screen already, nor with nothing open. */
   const focusOffered = !phone && !stageRooms && stage.on.length > 0;
   const focusOn = focusOffered && focus;

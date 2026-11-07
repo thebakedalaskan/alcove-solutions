@@ -234,6 +234,13 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const [arrived, setArrived] = useState(0);
   /** The call's board was on your stage, as it was before this render: only then is its closing said. */
   const shownNow = useRef(false);
+  /**
+   * The last presentation of a board here. Closing that for everyone closes the board as it ends, in the same change, and the
+   * stage says so (layout/onStage.ts), so the board doesn't say it again.
+   */
+  const presentedBoard = useRef<{ key: string; documentId: string } | null>(null);
+  const presentNow = state.workspace.present;
+  if (presentNow?.kind === 'board' && presentNow.id) presentedBoard.current = { key: presentNow.key, documentId: presentNow.id };
 
   /* What's said as boards open and close, and what rises. Joining a call that has one open says nothing: it was already open. */
   const was = useRef<CallBoardOpen | null | undefined>(undefined);
@@ -265,6 +272,9 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
     if (open === null) {
       // Only someone who had it open hears it's gone: nobody else's screen had it.
       if (!before || !shownNow.current) return;
+      const end = state.workspace.ended;
+      const last = presentedBoard.current;
+      if (end?.close && last && end.key === last.key && last.documentId === before.documentId) return;
       const gone = latest.current?.documentId === before.documentId ? latest.current : before;
       const where = gone.workspaceId ? spaceName(gone.workspaceId) : null;
       say(gone.name ? (where ? `${gone.name} is closed. It’s saved in ${where}.` : `${gone.name} is closed.`) : 'The board is closed.', 'presentation');

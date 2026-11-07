@@ -267,12 +267,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     if (next) onGo({ kind: 'document', id: next.id }, { replace: true });
   }, [view.tree, at.kind, phone, given, owner, workspaceId, tree, onGo]);
 
-  /* The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. */
+  /*
+   * The tiles show who's here, who's writing and who you're following. The call asks to follow from a tile. Where each is is
+   * said while it's put away too: a presented workspace's tile says where its presenter is.
+   */
   const closed = call?.closed ?? false;
   const followable = closed ? '' : others.flatMap((o) => (o.callIdentity !== null && (o.document !== null || o.page !== null || o.elsewhere) ? [o.callIdentity] : [])).join(' ');
   const writing = others.flatMap((o) => (o.typing && o.callIdentity !== null ? [o.callIdentity] : [])).join(' ');
   const followingIn = following ? others.find((o) => o.person.id === following.person.id)?.callIdentity ?? null : null;
-  const placed = closed ? [] : others.flatMap((o): [string, string][] => {
+  const placed = others.flatMap((o): [string, string][] => {
     if (o.callIdentity === null) return [];
     const doc = o.document === null ? undefined : tree.all.get(o.document);
     return doc ? [[o.callIdentity, nameOf(doc)]] : o.page ? [[o.callIdentity, pageName(o.page)]] : o.elsewhere ? [[o.callIdentity, 'A document you can’t open']] : [];
