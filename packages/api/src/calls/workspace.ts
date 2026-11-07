@@ -42,9 +42,7 @@ export const CallPresentSchema = z.object({
   section: z.number().nullable(),
   by: CallSeatSchema,
   /** You started it. */
-  mine: z.boolean(),
-  /** You can move it on and stop it: you started it, or you're the organizer. */
-  canControl: z.boolean()
+  mine: z.boolean()
 });
 
 export type CallPresent = z.infer<typeof CallPresentSchema>;

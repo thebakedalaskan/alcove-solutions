@@ -27,8 +27,6 @@ export interface WorkspacePresentation {
   connection: string | null;
   /** You present it. */
   mine: boolean;
-  /** You're the organizer, or present it: you can close it for everyone. */
-  canControl: boolean;
   /** Where its presenter is, in words, for Follow on the frame's bar: what's named is only ever what you can open. Null while that isn't known here. */
   where: string | null;
   /** Presents the workspace to everyone in this part of the call. */
@@ -153,6 +151,6 @@ export function useWorkspacePresenting({ session, present, participants, onStage
     }
   }, [session, failed]);
   const where = connection ? together.where[connection] ?? null : null;
-  return useMemo(() => ({ present: ws, presenter, connection, mine, canControl: ws?.canControl === true, where, start, stop }),
+  return useMemo(() => ({ present: ws, presenter, connection, mine, where, start, stop }),
     [ws, presenter, connection, mine, where, start, stop]);
 }

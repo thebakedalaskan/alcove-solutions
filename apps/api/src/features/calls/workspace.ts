@@ -156,13 +156,13 @@ export interface Seeing {
 /** A board presented, as someone who can open it (`opens`) is told, or anyone else: that it's on, and whose it is. */
 const presentAs = (v: Viewer, key: string, p: Presenting, name: string, opens: boolean): CallPresent => {
   const mine = p.by.person === v.pass.person;
-  const seen = { key, by: asSeat(p.by), mine, canControl: mine || v.isOrganizer };
+  const seen = { key, by: asSeat(p.by), mine };
   return opens ? { kind: 'board', id: p.id, name, section: p.section, ...seen } : { kind: null, id: null, name: null, section: null, ...seen };
 };
 /** The workspace presented: which it is for someone who can open something in it, and only whose it is for anyone else. */
 const spaceAs = (v: Viewer, p: SpacePresenting, opens: boolean): CallPresent => {
   const mine = p.by.person === v.pass.person;
-  const seen = { key: p.key, name: null, section: null, by: asSeat(p.by), mine, canControl: mine || v.isOrganizer };
+  const seen = { key: p.key, name: null, section: null, by: asSeat(p.by), mine };
   return opens ? { kind: 'workspace', id: p.workspaceId, ...seen } : { kind: null, id: null, ...seen };
 };
 const playAs = (v: Viewer, p: Playing): CallPlay => {

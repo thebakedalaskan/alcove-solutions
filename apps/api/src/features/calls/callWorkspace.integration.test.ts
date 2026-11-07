@@ -554,7 +554,7 @@ describe('someone who can’t open it', () => {
     const seen = await read(jamie.call);
     expect(seen.workspace).toMatchObject({ id: null, name: null, canOpen: false, role: null, documents: [], agenda: null, play: null, asks: [], asked: 'no' });
     // They're told something's being presented, by whom, and nothing about what it is.
-    expect(seen.workspace.present).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false, canControl: false });
+    expect(seen.workspace.present).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false });
     const text = said(seen);
     for (const name of ['CANARY-SPACE', 'CANARY-FOLDER', 'CANARY-DOC', 'CANARY-FILM', id, plan, film, media, folder]) expect(text, name).not.toContain(name);
 
@@ -1211,21 +1211,21 @@ describe('presenting the workspace', () => {
     const jamie = await guest(host, c);
     await p.startPresenting({ kind: 'workspace' });
     const mine = p.getSnapshot().workspace.present;
-    expect(mine).toEqual({ key: expect.any(String), kind: 'workspace', id, name: null, section: null, by: by(priya), mine: true, canControl: true });
+    expect(mine).toEqual({ key: expect.any(String), kind: 'workspace', id, name: null, section: null, by: by(priya), mine: true });
     // A random key for this presentation, made of nothing anyone could read.
     const key = mine?.key ?? '';
     expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect((await space(k)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false, canControl: false });
-    expect((await space(host)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false, canControl: true });
+    expect((await space(k)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false });
+    expect((await space(host)).present).toEqual({ key, kind: 'workspace', id, name: null, section: null, by: by(priya), mine: false });
     // Someone who can open nothing in it is told who's presenting, and never which workspace.
-    expect((await space(jamie.call)).present).toEqual({ key, kind: null, id: null, name: null, section: null, by: by(priya), mine: false, canControl: false });
+    expect((await space(jamie.call)).present).toEqual({ key, kind: null, id: null, name: null, section: null, by: by(priya), mine: false });
     expect(said(await read(jamie.call))).not.toContain(id);
     // Nor can they present it: to them it's nothing there.
     expect(await code(jamie.call.startPresenting({ kind: 'workspace' }))).toBe('not-found');
     // Priya on another connection is still the one presenting it, and so is she after a reload: it's hers wherever she is.
     const again = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
     await inGroup(again);
-    expect((await space(again)).present).toMatchObject({ key, kind: 'workspace', id, mine: true, canControl: true });
+    expect((await space(again)).present).toMatchObject({ key, kind: 'workspace', id, mine: true });
     // Nothing is presented that the call doesn't view: a call with no workspace has nothing to present.
     const elsewhere = await callBy(await account());
     expect(await code(elsewhere.host.startPresenting({ kind: 'workspace' }))).toBe('not-found');
@@ -1301,7 +1301,7 @@ describe('presenting the workspace', () => {
     const back = await priya.api.calls.join(c, { mic: false, cam: false, previous: p.ticket.pass });
     await inGroup(back);
     expect(await space(k)).toMatchObject({ present: { key, kind: 'workspace', id, mine: false }, ended: null });
-    expect((await space(back)).present).toMatchObject({ key, mine: true, canControl: true });
+    expect((await space(back)).present).toMatchObject({ key, mine: true });
 
     // Leaving on purpose ends it for good: nobody stopped it, and coming back doesn't bring it back.
     await back.leave();

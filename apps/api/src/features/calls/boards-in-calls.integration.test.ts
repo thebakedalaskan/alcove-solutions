@@ -2068,10 +2068,10 @@ describe('presenting a board', () => {
     // One presentation, the same key for everyone, random and made of nothing anyone could read.
     const key = (await presented(r.p))?.key ?? '';
     expect(key).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await presented(r.p)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: true, canControl: true });
-    expect(await presented(r.t)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false, canControl: false });
-    expect(await presented(r.jamie.call)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false, canControl: false });
-    expect(await presented(r.host)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false, canControl: true });
+    expect(await presented(r.p)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: true });
+    expect(await presented(r.t)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false });
+    expect(await presented(r.jamie.call)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false });
+    expect(await presented(r.host)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 0, by, mine: false });
 
     // Whoever started it moves it on, and so can the organizer; nobody else, and nobody starts over it.
     await r.p.movePresenting(1);
@@ -2087,7 +2087,7 @@ describe('presenting a board', () => {
     // Kofi comes late: the board is open to him, and he lands on the frame everyone's on.
     const k = await invited(r.host, r.c, r.kofi);
     await until(async () => (await opened(k))?.role === 'edit', 'Kofi to have the board');
-    expect(await presented(k)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 2, by, mine: false, canControl: false });
+    expect(await presented(k)).toEqual({ key, kind: 'board', id: r.board, name: 'Launch retro', section: 2, by, mine: false });
     expect(await opens(r.kofi, r.id, r.board, k)).toBe('allowed');
   });
 
@@ -2133,7 +2133,7 @@ describe('presenting a board', () => {
     expect(before.roles).toEqual(['edit', 'read', null, null]);
 
     await p.startPresenting({ kind: 'board', id: board });
-    const told = { key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false, canControl: false };
+    const told = { key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: priya.name }, mine: false };
     for (const call of [t, jamie.call]) {
       expect(await presented(call)).toEqual(told);
       expect(said(await read(call))).not.toContain('Roadmap');
@@ -2172,7 +2172,7 @@ describe('presenting a board', () => {
     // Everyone else is told which frame, and who: nothing else, whatever their way in.
     for (const call of [r.p, r.t, r.jamie.call]) {
       const s = await read(call);
-      expect(s.workspace.present).toEqual({ key: expect.any(String), kind: 'board', id: r.board, name: 'Launch retro', section: 1, by: { seat: expect.any(String), name: r.art.name }, mine: false, canControl: false });
+      expect(s.workspace.present).toEqual({ key: expect.any(String), kind: 'board', id: r.board, name: 'Launch retro', section: 1, by: { seat: expect.any(String), name: r.art.name }, mine: false });
       expect(said(s)).not.toContain('CANARY-FRAME-NOTES');
     }
     // Their own notes beside it are their own: empty until they write some, and none at all for someone with the link.
@@ -2198,7 +2198,7 @@ describe('presenting a board', () => {
     await inGroup(back);
     await settle(r.host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
     expect(await presented(r.t)).toMatchObject({ kind: 'board', id: r.board, section: 1, mine: false });
-    expect(await presented(back)).toMatchObject({ kind: 'board', section: 1, mine: true, canControl: true });
+    expect(await presented(back)).toMatchObject({ kind: 'board', section: 1, mine: true });
 
     await back.leave();
     await settle(r.host, (s) => !s.participants.some((x) => x.id === back.ticket.identity));
@@ -2220,7 +2220,7 @@ describe('presenting a board', () => {
     expect(await opened(r.t)).toMatchObject({ documentId: r.board, workspaceId: r.id });
     await r.p.startPresenting({ kind: 'board', id: r.board, section: 2 });
     expect(await presented(r.t)).toMatchObject({ kind: 'board', id: r.board, name: 'Launch retro', section: 2, mine: false });
-    expect(await presented(r.host)).toMatchObject({ kind: 'board', id: r.board, mine: false, canControl: true });
+    expect(await presented(r.host)).toMatchObject({ kind: 'board', id: r.board, mine: false });
     // Everyone views the workspace together, so changing it stops what's presented, as it does for a document.
     await r.host.setWorkspace(r.id);
     expect(await presented(r.t)).toBeNull();
@@ -2231,7 +2231,7 @@ describe('presenting a board', () => {
     await r.host.openBoard({ workspaceId: design, documentId: board, letIn: false });
     await r.p.startPresenting({ kind: 'board', id: board });
     expect(await presented(r.host)).toMatchObject({ kind: 'board', id: board, name: 'Onboarding flow', section: 0, mine: false });
-    expect(await presented(r.t)).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: r.priya.name }, mine: false, canControl: false });
+    expect(await presented(r.t)).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: r.priya.name }, mine: false });
   });
 
   it('closing for the presenter keeps the board in the call; closing for everyone closes it, by the presenter or the organizer', async () => {

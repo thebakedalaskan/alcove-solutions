@@ -479,7 +479,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const by = p ? s.participants.find((x) => x.id === p.by) : undefined;
     if (!p || !by) return null;
     const mine = by.id === this.me.id;
-    const seen = { key: p.key, by: this.seatOf(by), mine, canControl: mine || this.me.isOrganizer };
+    const seen = { key: p.key, by: this.seatOf(by), mine };
     if (p.kind === 'workspace') {
       const w = s.workspace;
       return w.canOpen && w.id !== null ? { kind: 'workspace', id: w.id, name: null, section: null, ...seen } : { kind: null, id: null, name: null, section: null, ...seen };
