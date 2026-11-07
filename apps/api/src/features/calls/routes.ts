@@ -1,10 +1,12 @@
-import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_FRAME_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareEndedBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
+import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, ListenerJoinBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_FRAME_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareEndedBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { AuthError, ConflictError, ForbiddenError, ValidationError } from '../../errors';
 import { addLogContext } from '../../log';
+import { openOwner } from '../../owners';
 import { CALL_PASS_HEADER, readPass } from '../../callPass';
+import { equalBytes, utf8 } from '../../crypto';
 import * as callsParticipants from './participants';
 import * as callsLifecycle from './lifecycle';
 import * as callsJoining from './joining';
@@ -15,6 +17,7 @@ import * as callsInsights from './insights';
 import * as callsPermissions from './permissions';
 import * as callsMls from './mls';
 import * as callsRecording from './recording';
+import * as listening from './listening';
 import * as moves from './moves';
 import * as personal from '../notes/personal';
 import * as series from '../notes/series';
@@ -23,6 +26,9 @@ import { AUDIO_TYPES, agoOf, body, capped, clip, frame, piece, speakerOf } from 
 import type { HttpRuntime } from '../../http/runtime';
 
 
+
+/** What a listener's pass may ask of the call it hears, by method and path under /v1/live/calls/:id. */
+const LISTENER_ROUTES = new Set(['GET /', 'GET /mls', 'POST /mls/keypackages', 'GET /room', 'POST /transcribe', 'POST /leave']);
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
@@ -49,6 +55,32 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     carryLimiter(o.ownerId, 'carry-over');
     const seriesId = await callsJoining.seriesOf(d, c.req.param('code'));
     return c.json(seriesId ? await series.read(o, seriesId) : null);
+  });
+
+  /*
+   * The listener service (apps/listener): a listener LiveKit sent to a call joins it with the invite its dispatch
+   * carried (listening.ts) and the service's key. LiveKit sees the invite, so it never lets anyone in alone.
+   */
+  const listenerOnly = (c: Context<Env>) => {
+    const key = d.cfg.LISTENER_KEY;
+    const given = (c.req.header('authorization') ?? '').replace(/^Bearer /, '');
+    if (!key || !equalBytes(utf8(given), utf8(key))) throw new AuthError('Only Alcove’s listener service can do that.', { context: { configured: Boolean(key) } });
+  };
+  app.post('/v1/listeners/join', async (c) => {
+    listenerOnly(c);
+    const b = await body(c, ListenerJoinBodySchema);
+    // An invite is taken once, within a minute of its dispatch: used, replaced, too old or unknown are all the same no.
+    const task = await listening.take(d, b.invite, b.identity);
+    if (!task) throw new AuthError('That invite isn’t good any more.', { context: { hasInvite: true } });
+    addLogContext({ callId: task.call_id, role: 'listener' });
+    try {
+      return c.json({ place: task.place, ...(await callsJoining.listenerJoin(d, { ownerId: task.owner_id, callId: task.call_id }, b)) });
+    } catch (e) {
+      // It took the task but couldn't come in (or failed part way, after the call let it in): it's taken out of the call,
+      // and another is sent once the backoff allows, not straight away.
+      await callsLifecycle.departed(await openOwner(d, task.owner_id, undefined), task.call_id, b.identity);
+      throw e;
+    }
   });
 
   app.post('/v1/calls/:code/join', async (c) => {
@@ -104,6 +136,13 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const viewerFor = async (c: Context<Env>, next: () => Promise<void>) => {
     const pass = readPass(d.cfg, c.req.header(CALL_PASS_HEADER));
     if (!pass || pass.callId !== c.req.param('id')) throw new AuthError('Join the call again to carry on.', { context: { hasPass: Boolean(pass) } });
+    if (pass.role === 'listener') {
+      // A listener only hears the call: it reads it and its keys, connects to the room, sends what's said and leaves.
+      const what = `${c.req.method} ${c.req.path.slice(`/v1/live/calls/${pass.callId}`.length) || '/'}`;
+      if (!LISTENER_ROUTES.has(what)) throw new ForbiddenError('A listener only hears the call.', { context: { callId: pass.callId, role: pass.role } });
+      // Asking anything says it's still there.
+      await listening.seen(d, pass.ownerId, pass.callId, pass.identity);
+    }
     // The organizer's pass, and the pass of whoever hosts, count as theirs only together with the same account's session,
     // opened only for them.
     addLogContext({ callId: pass.callId, role: pass.role });

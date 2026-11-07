@@ -13,6 +13,7 @@ import { standIns } from './hosting';
 import { groupOf, placeOf, type Room } from './places';
 import * as rings from './rings';
 import { scribeOf } from './scribes';
+import * as listening from './listening';
 import * as transcripts from '../recordings/transcripts';
 import { hostAway, load, secondsIn, settle, type Row, type Stored } from './state';
 import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, speakersIn, type Viewer } from './participants';
@@ -59,7 +60,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {
     return {
-      ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      ...base, participants: [], waiting: [], ringing: [], leaving: [], listeners: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
       host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, notices: []
     };
   }
@@ -73,7 +74,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const open = rooms.breakouts.open;
   const roomHere = open?.rooms.find((r) => r.id === where);
   // Who's in: whoever the host's browser let into the group and hasn't left. Never asked of LiveKit, so reads cost nothing there.
-  const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in') : [];
+  // A listener hears the call for its notes and is never shown as someone in it.
+  const here = row.state === 'live' ? s.people.filter((j) => j.status === 'in' && j.role !== 'listener') : [];
   const seats = seatKey(o, callId);
   const mine = s.notes.asks.find((a) => a.person === v.pass.person);
   const who = hostOf(rooms, v, organizer, row.state === 'live');
@@ -95,14 +97,18 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
     waiting: v.isHost ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     ringing: v.isOrganizer ? await rings.rungIn(o, db, row.meeting_item_id, here.flatMap((j) => (j.email ? [j.email.toLowerCase()] : []))) : [],
     // Connections on their way out of their group (the host's browser takes them out), shown as who they are.
-    leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host').map((j) => ({
+    leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host' && j.role !== 'listener').map((j) => ({
       id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity),
       now: s.people.find((x) => x.person === j.person && x.status === 'in')?.identity ?? null
     })) : [],
+    // The listener in the call's group (on its way in, in, or on its way out), which is never anyone in the call.
+    listeners: row.state === 'live' ? s.people.filter((j) => j.role === 'listener' && (j.status === 'in' || j.status === 'waiting' || groupOf(s, j) !== null)).map((j) => j.identity) : [],
     host: who,
     capture: {
       ...capture.stateFor({
-        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, away: hostAway(row), screens: s.notes.screens,
+        // While the listener hears the main room, the host's browser being out of the call stops only the recording, which is still its own.
+        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, away: hostAway(row),
+        heard: hostAway(row) && await listening.heard(o, db, callId, MAIN_PLACE, { generation: row.mls_generation, segment: s.notes.segment }), screens: s.notes.screens,
         gaps: capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
         // Open asks, from whoever is in the call now: everyone sees them, like raised hands.
         requests: s.notes.asks.flatMap((a) => {

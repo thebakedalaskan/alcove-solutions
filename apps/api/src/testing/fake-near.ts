@@ -91,6 +91,11 @@ export interface FakeNear {
    * prompt fail, and count: one part of a note goes wrong while the rest is written.
    */
   failNext(n: number, how: Failure, only?: string | undefined): void;
+  /**
+   * From now on a clip that's a steady tone of about `hz` (within 10%) is heard as `words`: real audio through a call
+   * loses the words a test writes into its samples, so a test participant speaks in tones.
+   */
+  sayTone(hz: number, words: string): void;
   /** The next chat reply takes this long, as a busy model does. */
   slowNext(ms: number, only?: string | undefined): void;
   /** The next request to the notes model waits for this before it's answered, as if something happened while the model wrote. */
@@ -196,8 +201,34 @@ function speechIn(wav: Buffer): { words: string; language: string; sure: boolean
   return m ? { words: m[1] ?? '', language: m[2] ?? 'en', sure: !m[3] } : null;
 }
 
+/**
+ * The pitch of a clip's loud parts (Hz), by how often the samples cross zero in each 20 ms frame loud enough to be
+ * speech, or null for a clip with none: a test participant's tone, after the call's codec.
+ */
+function pitchOf(wav: Buffer): number | null {
+  const n = Math.floor((wav.length - 44) / 2);
+  const frame = 320;
+  let crossings = 0;
+  let loud = 0;
+  for (let f = 0; f + frame <= n; f += frame) {
+    let sum = 0;
+    let crossed = 0;
+    let prev = wav.readInt16LE(44 + f * 2);
+    for (let i = 0; i < frame; i++) {
+      const v = wav.readInt16LE(44 + (f + i) * 2);
+      sum += v * v;
+      if ((prev < 0) !== (v < 0)) crossed++;
+      prev = v;
+    }
+    if (Math.sqrt(sum / frame) < 1000) continue;
+    crossings += crossed;
+    loud++;
+  }
+  return loud ? (crossings / 2) / ((loud * frame) / 16_000) : null;
+}
+
 /** Whisper's answer to a multipart transcription request. */
-async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null): Promise<{ status: number; body: unknown }> {
+async function transcription(contentType: string, body: Uint8Array, calls: FakeNear['calls'], heard: FakeNear['transcriptions'], path: string, encryption: 'ohttp' | 'none', key: string | null, tones: Map<number, string>): Promise<{ status: number; body: unknown }> {
   const form = await new Request('http://fake', { method: 'POST', headers: { 'content-type': contentType }, body: new Uint8Array(body) }).formData();
   const file = form.get('file');
   const model = str(form.get('model'));
@@ -210,7 +241,9 @@ async function transcription(contentType: string, body: Uint8Array, calls: FakeN
   // Like NEAR AI's Whisper, only Whisper's language codes name a language ("english" doesn't).
   if (asked.language && !/^[a-z]{2,3}$/.test(asked.language)) return { status: 400, body: { error: { message: `Unsupported language: ${asked.language}` } } };
   const seconds = Math.max(0, wav.length - 44) / 32_000;
-  const speech = speechIn(wav);
+  const pitch = pitchOf(wav);
+  const toned = pitch === null ? undefined : [...tones].find(([hz]) => Math.abs(pitch - hz) <= hz * 0.1)?.[1];
+  const speech = speechIn(wav) ?? (toned === undefined ? null : { words: toned, language: 'en', sure: true });
   // Silence: Whisper's favourite hallucination, with high confidence, as the real one does.
   const said = speech === null ? [{ text: ' Thank you.', unclear: false }] : speech.words.split(' // ').map((w) => ({ text: ` ${w.replace(/^~/, '')}`, unclear: w.startsWith('~') }));
   const segments = said.map((x, i) => ({
@@ -558,6 +591,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let failure: Failure = 'down';
   let failingOnly: string | undefined;
   let slow = 0;
+  const tones = new Map<number, string>();
   let slowOnly: string | undefined;
   let holding: (() => Promise<void>) | null = null;
   const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map() };
@@ -697,7 +731,7 @@ export async function startFakeNear(): Promise<FakeNear> {
       // model's attested key signed opens a request, so what opens was sealed to that attested key.
       if (req.method === 'POST' && url.pathname === '/direct/whisper/ohttp') {
         return direct(res, req, body, 'transcript', async (inner) => (inner.method === 'POST' && inner.path === '/v1/audio/transcriptions'
-          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key)) : { status: 404, body: { error: { message: 'Not found' } } }));
+          ? transcription(inner.headers.get('content-type') ?? '', inner.body, calls, transcriptions, inner.path, 'ohttp', hex(models.transcript.key), tones) : { status: 404, body: { error: { message: 'Not found' } } }));
       }
       if (req.method === 'POST' && url.pathname === '/direct/glm/ohttp') {
         return direct(res, req, body, 'notes', async (inner) => (inner.method === 'POST' && inner.path === '/v1/chat/completions'
@@ -726,7 +760,7 @@ export async function startFakeNear(): Promise<FakeNear> {
 
       // What real NEAR AI's gateway also takes, in plaintext. Alcove must never send these.
       if (req.method === 'POST' && url.pathname === '/v1/audio/transcriptions') {
-        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null);
+        const t = await transcription(req.headers['content-type'] ?? '', body, calls, transcriptions, url.pathname, 'none', null, tones);
         return send(res, t.status, t.body);
       }
       if (req.method === 'POST' && url.pathname === '/v1/chat/completions') {
@@ -768,6 +802,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     },
     verdictLifetime(seconds) { n.lifetime = seconds; },
     failNext(count, how, only) { failing = count; failure = how; failingOnly = only; },
+    sayTone(hz, words) { tones.set(hz, words); },
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },
     reword(line, text) { if (text === null) memory.reworded.delete(line); else memory.reworded.set(line, text); },

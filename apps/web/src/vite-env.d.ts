@@ -2,6 +2,12 @@
 interface ImportMetaEnv {
   /** Base URL of the Alcove API. Defaults to /api, which Vite proxies to the local server in development. */
   readonly VITE_ALCOVE_API_URL?: string;
+  /**
+   * `on` where the listener service runs (development only, for now): only then is the listener the server names left
+   * off the screen. Elsewhere, anyone holding the call's keys whom the server doesn't name as a person shows as
+   * "Someone", whatever the server says, until browsers check a listener's attestation themselves.
+   */
+  readonly VITE_ALCOVE_LISTENERS?: string;
 }
 
 /*

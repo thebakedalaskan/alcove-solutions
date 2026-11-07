@@ -1,0 +1,30 @@
+{
+  "name": "@alcove/listener",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/cli.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@alcove/api": "workspace:*",
+    "@alcove/api-http": "workspace:*",
+    "@alcove/speech": "workspace:*",
+    "@livekit/protocol": "1.51.0",
+    "@livekit/rtc-ffi-bindings": "0.13.1",
+    "@livekit/rtc-node": "1.2.1",
+    "livekit-server-sdk": "^2.19.2",
+    "ws": "^8.18.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

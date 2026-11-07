@@ -110,7 +110,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     super({
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [],
+      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], listeners: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,

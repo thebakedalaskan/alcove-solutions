@@ -78,6 +78,9 @@ importers:
       '@alcove/api-http':
         specifier: workspace:*
         version: link:../../packages/api-http
+      '@alcove/listener':
+        specifier: workspace:*
+        version: link:../listener
       '@livekit/rtc-ffi-bindings':
         specifier: 0.13.1
         version: 0.13.1
@@ -117,6 +120,49 @@ importers:
       y-protocols:
         specifier: ^1.0.7
         version: 1.0.7(yjs@13.6.33)
+
+  apps/listener:
+    dependencies:
+      '@alcove/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@alcove/api-http':
+        specifier: workspace:*
+        version: link:../../packages/api-http
+      '@alcove/speech':
+        specifier: workspace:*
+        version: link:../../packages/speech
+      '@livekit/protocol':
+        specifier: 1.51.0
+        version: 1.51.0
+      '@livekit/rtc-ffi-bindings':
+        specifier: 0.13.1
+        version: 0.13.1
+      '@livekit/rtc-node':
+        specifier: 1.2.1
+        version: 1.2.1
+      livekit-server-sdk:
+        specifier: ^2.19.2
+        version: 2.19.2
+      ws:
+        specifier: ^8.18.3
+        version: 8.22.1
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.2
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
   apps/storybook:
     dependencies:
@@ -190,6 +236,9 @@ importers:
       '@alcove/board':
         specifier: workspace:*
         version: link:../../packages/board
+      '@alcove/speech':
+        specifier: workspace:*
+        version: link:../../packages/speech
       '@alcove/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -337,6 +386,16 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
+
+  packages/speech:
+    dependencies:
+      '@alcove/api':
+        specifier: workspace:*
+        version: link:../api
     devDependencies:
       typescript:
         specifier: ^7.0.2
@@ -2348,6 +2407,9 @@ packages:
 
   '@types/resolve@1.20.6':
     resolution: {integrity: sha512-A4STmOXPhMUtHH+S6ymgE2GiBSMqf4oTvcQZMcHzokuTLVYzXTB8ttjcgxOVaAp2lGwEdzZ0J+cRbbeevQj1UQ==}
+
+  '@types/ws@8.18.2':
+    resolution: {integrity: sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w==}
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     resolution: {integrity: sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==}
@@ -5921,6 +5983,10 @@ snapshots:
       csstype: 3.2.3
 
   '@types/resolve@1.20.6': {}
+
+  '@types/ws@8.18.2':
+    dependencies:
+      '@types/node': 26.6.6
 
   '@typescript/typescript-aix-ppc64@7.0.2':
     optional: true

@@ -391,7 +391,7 @@ export async function preview(v: Viewer, reader: Reader, people: Joined[], works
   const o = v.organizer;
   const w = await workspaceFor(o, reader, workspaceId);
   requireRole(w, 'edit');
-  const inCall = people.filter((j) => j.status === 'in' && j.role !== 'host');
+  const inCall = people.filter((j) => j.status === 'in' && j.role !== 'host' && j.role !== 'listener');
   const who = inCall.map((j) => ({ j, who: j.email ? accountWho(o, j.email) : { email: undefined, principals: [] } }));
   const holders = await holdersOf(o.pool, w.owner.ownerId, who.flatMap((x) => x.who.principals));
   return { name: w.state.name, cantOpen: who.filter((x) => standingIn({ ...holders, shares: [] }, x.who).role === null).map((x) => firstName(x.j.name)) };

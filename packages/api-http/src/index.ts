@@ -11,6 +11,7 @@ import { createWorkspacesApi } from './workspaces/api';
 import { type AlcoveApi } from '@alcove/api';
 
 export type { HttpOptions, ClientEvent } from './transport/options';
+export { createListenerApi } from './calls/api';
 export { keyIndex } from './calls/session';
 
 /** Constructs one HTTP client from its feature implementations. */

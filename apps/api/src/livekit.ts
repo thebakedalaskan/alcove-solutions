@@ -3,7 +3,7 @@
  * NEAR AI. LiveKit carries media, presence, the server's nudges and what browsers send each other (pointers and marks on
  * shared screens, encrypted end to end like media); the API decides who may join and keeps the call.
  */
-import { AccessToken, DataPacket_Kind, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
+import { AccessToken, AgentDispatchClient, DataPacket_Kind, JobRestartPolicy, RoomServiceClient, TrackSource, WebhookReceiver } from 'livekit-server-sdk';
 import { AuthError } from './errors';
 import type { Config } from './config';
 import { log } from './log';
@@ -25,9 +25,10 @@ export interface LiveKit {
   /**
    * A join token for one identity in one room. No admin rights: host powers stay in the API. It may send data: browsers
    * send each other pointers and marks on shared screens, encrypted end to end with their own media keys. The API is
-   * never in the room, so it never receives them, and browsers take the call's nudges only from the server.
+   * never in the room, so it never receives them, and browsers take the call's nudges only from the server. A listener
+   * (the listener service, hearing the call for its notes) is hidden from everyone in the room and only receives.
    */
-  token(t: { roomName: string; identity: string }): Promise<string>;
+  token(t: { roomName: string; identity: string; listener?: boolean | undefined }): Promise<string>;
   removeParticipant(roomName: string, identity: string): Promise<void>;
   /** Mutes one published track. Never unmutes: remote unmute stays off. */
   muteTrack(roomName: string, identity: string, trackSid: string): Promise<void>;
@@ -37,6 +38,12 @@ export interface LiveKit {
   deleteRoom(roomName: string): Promise<void>;
   /** Which of these rooms LiveKit still has. */
   existingRooms(names: string[]): Promise<Set<string>>;
+  /**
+   * Asks LiveKit to send a worker registered as `agentName` (the listener service) to the room, with `metadata` for it.
+   * Never restarted by LiveKit: the API sees to a replacement itself (features/calls/listening.ts), the same with LiveKit
+   * Cloud as with LiveKit's own server, which never restarts one.
+   */
+  dispatch(roomName: string, agentName: string, metadata: string): Promise<void>;
   /** Checks a webhook's signature (a JWT from our key over the body's SHA-256) and reads the event. */
   verifyWebhook(body: string, authorization: string | undefined): Promise<LiveKitEvent>;
 }
@@ -55,7 +62,11 @@ export const apiUrl = (cfg: Config): string => cfg.LIVEKIT_URL.replace(/^ws/, 'h
 export function createLiveKit(cfg: Config): LiveKit {
   const rooms = new RoomServiceClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
   const webhooks = new WebhookReceiver(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
+  const agents = new AgentDispatchClient(apiUrl(cfg), cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET);
   return {
+    async dispatch(roomName, agentName, metadata) {
+      await agents.createDispatch(roomName, agentName, { metadata, restartPolicy: JobRestartPolicy.JRP_NEVER });
+    },
     async reachable() {
       try {
         await rooms.listRooms([]);
@@ -76,9 +87,11 @@ export function createLiveKit(cfg: Config): LiveKit {
       if (!(await rooms.listRooms([roomName])).length) return [];
       return (await rooms.listParticipants(roomName)).flatMap((p) => p.tracks.filter((t) => t.source === TrackSource.SCREEN_SHARE).map((t) => ({ identity: p.identity, sid: t.sid })));
     },
-    async token({ roomName, identity }) {
+    async token({ roomName, identity, listener = false }) {
       const t = new AccessToken(cfg.LIVEKIT_API_KEY, cfg.LIVEKIT_API_SECRET, { identity, ttl: TOKEN_TTL_SECONDS });
-      t.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
+      t.addGrant(listener
+        ? { roomJoin: true, room: roomName, canSubscribe: true, canPublish: false, canPublishData: false, hidden: true }
+        : { roomJoin: true, room: roomName, canPublish: true, canSubscribe: true, canPublishData: true });
       return t.toJwt();
     },
     async removeParticipant(roomName, identity) {

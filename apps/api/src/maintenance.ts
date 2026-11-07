@@ -10,6 +10,7 @@
  *  - deletes for good what's been in a workspace's Trash for 30 days, ends seats whose call is over, and lets go of tags
  *    nobody came back for in 30 days;
  *  - deletes live notes a call left behind when a release from before them ended it;
+ *  - deletes listening tasks that ended more than a week ago;
  *  - takes away what an upload left when its browser went, a day on, and forgets uploads counted before yesterday.
  */
 import { z } from 'zod';
@@ -19,6 +20,7 @@ import { log } from './log';
 import { deleteQueued } from './features/recordings/audio';
 import { sweep as sweepAgents } from './features/agents/service';
 import { reconcile } from './features/calls/lifecycle';
+import { sweep as sweepListening } from './features/calls/listening';
 import { sweep as sweepLiveNotes } from './features/calls/live-notes';
 import { pruneUploadDays, sweepUploads } from './features/workspaces/media';
 import { sweep as sweepMoves } from './features/calls/moves';
@@ -57,6 +59,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const moves = await sweepMoves(d);
   const rings = await sweepRings(d);
   const liveNotes = await sweepLiveNotes(d);
+  const listening = await sweepListening(d);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
@@ -64,5 +67,5 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };
+  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, listening, trash, seats, uploads, uploadDays, mentions };
 }

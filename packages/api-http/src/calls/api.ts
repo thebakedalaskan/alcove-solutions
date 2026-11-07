@@ -1,14 +1,23 @@
 import { createPersonalApi } from '../notes/personal';
 import { createAudioTransport } from '../transport/audio';
-import { type HttpTransport } from '../transport/http';
+import { createHttpTransport, type HttpTransport } from '../transport/http';
 import { type HttpOptions } from '../transport/options';
 import { MlsKeys, newIdentity } from './mls';
 import { HttpMoveIn, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
 import { HttpCall } from './session';
-import { type AlcoveApi, AlcoveApiError, AUDIO_HEADERS, BoardCheckSchema, CALL_PASS_HEADER, CallAnswerSchema, CallCardSchema, CallEndResultSchema, CallFollowUpsSchema, CallMlsSchema, CallMomentSchema, CallRoomTokenSchema, type CallSession, type CallState, CallStateSchema, type CallTicket, CallTicketSchema, CallWorkspaceSwitchSchema, CaptionTranslationSchema, CatchUpSchema, CatchUpWindowSchema, FRAME_HEADERS, HEARD_HEADERS, IdeasWatchedSchema, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema, NotesWatchedSchema, RingsSnapshotSchema, ScreenFrameReceiptSchema, SeriesAnswerPartSchema, SeriesSchema, type TranscriptClip } from '@alcove/api';
+import { type AlcoveApi, type ListenerApi, ListenerJoinedSchema, AlcoveApiError, AUDIO_HEADERS, BoardCheckSchema, CALL_PASS_HEADER, CallAnswerSchema, CallCardSchema, CallEndResultSchema, CallFollowUpsSchema, CallMlsSchema, CallMomentSchema, CallRoomTokenSchema, type CallSession, type CallState, CallStateSchema, type CallTicket, CallTicketSchema, CallWorkspaceSwitchSchema, CaptionTranslationSchema, CatchUpSchema, CatchUpWindowSchema, FRAME_HEADERS, HEARD_HEADERS, IdeasWatchedSchema, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema, NotesWatchedSchema, RingsSnapshotSchema, ScreenFrameReceiptSchema, SeriesAnswerPartSchema, SeriesSchema, type TranscriptClip } from '@alcove/api';
 import { z } from 'zod';
 export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'calls' | 'rings'> {
+  return build(t, o).api;
+}
+
+/** The API as the listener service (apps/listener) reaches it, with its key (the API's LISTENER_KEY): never the app's. */
+export function createListenerApi(o: HttpOptions & { key: string }): ListenerApi {
+  return build(createHttpTransport(o), o).listener(o.key);
+}
+
+function build(t: HttpTransport, o: HttpOptions): { api: Pick<AlcoveApi, 'calls' | 'rings'>; listener: (key: string) => ListenerApi } {
   const { emit, ndjson, parse, req, send } = t;
   const { audio, clip } = createAudioTransport(t);
   const personal = createPersonalApi(t);
@@ -83,7 +92,21 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
     await call.start();
     return call;
   };
-  return {
+  /** The listener service's side: everything it sends carries its key. */
+  const listener = (key: string): ListenerApi => {
+    const asListener = { authorization: `Bearer ${key}` };
+    return {
+      join: async (invite) => {
+        // Like a browser joining: this connection's identity and MLS keys are made here, and only its key package goes.
+        const identity = newIdentity();
+        const mls = await MlsKeys.make(identity);
+        const joined = await req(ListenerJoinedSchema, 'POST', '/listeners/join', { invite, identity, keyPackage: mls.keyPackage() }, asListener);
+        return { place: joined.place, session: await connect(joined, mls) };
+      }
+    };
+  };
+
+  const api: Pick<AlcoveApi, 'calls' | 'rings'> = {
     calls: {
       startNow: (input) => req(z.object({ code: z.string() }), 'POST', '/calls', input ?? {}),
       card: (code) => req(CallCardSchema, 'GET', `/calls/${encodeURIComponent(code)}/card`),
@@ -115,4 +138,5 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
       }
     }
   };
+  return { api, listener };
 }

@@ -120,6 +120,23 @@ export async function join(d: Deps, code: string, who: { owner?: Owner | undefin
   return enter(d, o, meeting, joined, { mic: who.mic, cam: who.cam, keyPackage: who.keyPackage, earlier, owner: who.owner });
 }
 
+/**
+ * Lets a listener process into the call whose task it just claimed (listening.ts): a `listener`, let in without being
+ * asked about, so the host's browser adds it to the call's group as it adds anyone invited, and it holds everyone's
+ * keys as they do. It's never shown, never hosts, and the call's lock doesn't keep it out. Its identity is random and
+ * new for every claim, as every connection's is.
+ */
+export async function listenerJoin(d: Deps, task: { ownerId: string; callId: string }, who: { identity: string; keyPackage: string }): Promise<{ ticket: CallTicket; state: CallState }> {
+  const o = await openOwner(d, task.ownerId, undefined);
+  const { row } = await load(o, o.pool, task.callId);
+  const meeting = await getItem(o, o.pool, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  const joined: Joined = {
+    identity: who.identity, person: id128(), role: 'listener', name: 'Notes', status: 'waiting', admit: 'auto', keysFor: 0, group: null, from: 0,
+    placedAt: Date.now(), placedSeq: 0, wasIn: null, leftAt: {}, replaced: false, chatBefore: false, since: Date.now(), left: null, earlier: [], hand: false, hosting: []
+  };
+  return enter(d, o, meeting, joined, { mic: false, cam: false, keyPackage: who.keyPackage });
+}
+
 /** A connection that came before, of someone coming back: from a reload's pass, or a move from another device. */
 type Earlier = Pick<CallPass, 'callId' | 'identity' | 'person'>;
 
@@ -290,8 +307,8 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     // A move brings in only the person whose place it was, as they are now: removed or replaced since it was checked
     // (that read held no lock), it brings nobody in, rather than letting them in as someone new without asking.
     if (moving && !before) throw new ConflictError('Your place in this call can’t move here any more.', { context: { callId: live.call_id, reason: 'moved-from' } });
-    // A lock keeps new people out, not someone coming back to the place they had.
-    if (live.locked && !before) throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
+    // A lock keeps new people out, not someone coming back to the place they had, nor the listener that hears the call.
+    if (live.locked && !before && joined.role !== 'listener') throw new ForbiddenError('The host has locked this call.', { context: { callId: live.call_id, role: joined.role } });
     // Coming back keeps their raised hand, and the spotlight if it was theirs.
     const me: Joined = { ...joined, keysFor: live.mls_generation, group: null, ...(before ? { admit: 'auto' as const, person: before.person, hand: before.hand } : {}) };
     // Someone standing in for the organizer who reloads comes back hosting, as the organizer would: the new connection

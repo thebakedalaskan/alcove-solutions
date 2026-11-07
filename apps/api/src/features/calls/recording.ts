@@ -11,6 +11,7 @@ import { getItem } from '../../vault';
 import { blankNote, createNoteWithRecording } from '../notes/service';
 import { mainScribeOf, placeAt, readersAt } from './places';
 import { scribeAt } from './scribes';
+import * as listening from './listening';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { log } from '../../log';
@@ -152,31 +153,46 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   const t0 = Math.max(began, who.since);
   const place = placeAt(s, who, t0);
   if (place === undefined) throw new ConflictError('Where that speech was said can’t be told any more.', { context: { ...ctx, why: 'moved since' } });
+  // A listener sends what's said in the part of the call whose task it holds now (listening.ts), and nowhere else.
+  const listener = v.pass.role === 'listener';
+  // Refused for good: a listener that doesn't hold it never will again (another was sent), so it leaves on this.
+  if (listener && !(await listening.holds(o, o.pool, callId, place, v.pass.identity))) {
+    throw new ForbiddenError('This listener doesn’t hear that part of the call any more.', { context: { ...ctx, room: place !== MAIN_PLACE ? 1 : 0, why: 'not holding' }, level: 'info' });
+  }
   // One browser hears each part of the call, and only it sends what's said there: the main room whoever hosts now, a
   // breakout room its scribe when the speech began (scribes.ts), even if that's changed since. A connection that hosted
   // before is told it's out of date, so what it still sends stops there quietly.
   const term = place === MAIN_PLACE ? undefined : scribeAt(s, place, t0);
-  if ((place === MAIN_PLACE ? mainScribeOf(s) : term?.identity) !== v.pass.identity) {
+  if (!listener && (place === MAIN_PLACE ? mainScribeOf(s) : term?.identity) !== v.pass.identity) {
     const refused = { ...ctx, room: place !== MAIN_PLACE ? 1 : 0, term: term?.term ?? null };
     if (v.stale) throw new ConflictError('You’re not hosting this call from here any more.', { context: { ...refused, why: 'not host' }, level: 'info' });
     throw new ForbiddenError(place === MAIN_PLACE ? 'Only the host’s browser sends what’s said in the main room.' : 'Only the room’s scribe sends what’s said in a breakout room.', { context: refused });
+  }
+  // While a listener hears the main room, what the host's browser sends for it is taken as received and set aside: the
+  // listener's is what's transcribed, so nothing is transcribed twice. The browser goes on as before, none the wiser.
+  if (!listener && place === MAIN_PLACE && await listening.heard(o, o.pool, callId, MAIN_PLACE, { generation: row.mls_generation, segment: state.notes.segment })) {
+    clog.debug('host clip set aside: a listener hears the main room', ctx);
+    return view(v, o.pool, callId);
   }
   // Counted against the voice's and the account's allowances only now: speech refused above costs nobody's.
   count();
   // The gate again, for the part of the call it was said in: a room the organizer paused takes nothing.
   capture.mayCapture(capturing(row, s, place), 'speech', { ...ctx, why: 'room paused' });
-  // A breakout room's speech is taken only if the room was capturing when it began, and placed in the segment by this
-  // server's clock: its scribe's browser counts from when it loaded, not from when the segment began.
+  // A breakout room's speech is taken only if the room was capturing when it began. It, and everything a listener
+  // sends, is placed in the segment by this server's clock: a scribe's browser counts from when it loaded, and a
+  // listener from when it came in, not from when the segment began.
   let atMs: number | undefined;
-  if (place !== MAIN_PLACE) {
+  if (place !== MAIN_PLACE || listener) {
     const said = (t0 - row.started_at.getTime()) / 1000;
-    if (!capture.roomCapturingAt(s.notes.history, roomPausesOf(s, place), said)) {
+    if (place !== MAIN_PLACE && !capture.roomCapturingAt(s.notes.history, roomPausesOf(s, place), said)) {
       throw new ConflictError('Notes were paused in this room when that was said.', { context: { ...ctx, why: 'said while paused' } });
     }
     atMs = Math.max(0, Math.round((said - s.notes.segmentFrom) * 1000));
   }
   const readers = roomsOpenAt(s, row, t0) ? readersAt(s, place, t0) : undefined;
   await transcripts.hear(o, into, clip, { speaker, ...(place !== MAIN_PLACE ? { room: place } : {}), ...(readers ? { readers } : {}), began: t0, ...(atMs === undefined ? {} : { atMs }) });
+  // The listener's first clip taken: from now on the host's browser's speech for this part of the call is set aside.
+  if (listener) await listening.tookFrom(o, o.pool, callId, place, v.pass.identity, { generation: row.mls_generation, segment: state.notes.segment });
   await nudge(o, row.room_name, callId, { call: true, log: false });
   return view(v, o.pool, callId);
 }

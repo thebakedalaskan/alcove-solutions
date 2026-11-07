@@ -282,5 +282,5 @@ export async function roomToken(v: Viewer, callId: string): Promise<{ token: str
   requireIn(v, 'room');
   const { row } = await load(v.organizer, v.organizer.pool, callId);
   if (row.state !== 'live' || !row.room_name) throw new ConflictError('This call has ended.', { context: { callId } });
-  return { token: await v.organizer.livekit.token({ roomName: row.room_name, identity: v.pass.identity }) };
+  return { token: await v.organizer.livekit.token({ roomName: row.room_name, identity: v.pass.identity, listener: v.pass.role === 'listener' }) };
 }
