@@ -3,7 +3,7 @@
  * how loud someone is for you. What's open on your stage wears a frame, what someone presents waits as a tile with the
  * people, and Share, in the dock, presents your screen, a board or the workspace in a step or two.
  */
-import { forwardRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
+import { forwardRef, useLayoutEffect, useRef, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
@@ -275,6 +275,16 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
   children: ReactNode;
 }) {
   const title = <span className="nm ac-clamp-1">{name}</span>;
+  /* Unfollow and Follow are two buttons: pressing one hands the keys to the other as it takes its place. */
+  const followButton = useRef<HTMLButtonElement>(null);
+  const followPressed = useRef(false);
+  const followOn = following?.on;
+  useLayoutEffect(() => {
+    const pressed = followPressed.current;
+    followPressed.current = false;
+    if (pressed && (document.activeElement === null || document.activeElement === document.body)) followButton.current?.focus({ preventScroll: true });
+  }, [followOn]);
+  const toggleFollow = () => { followPressed.current = true; following?.onToggle(); };
   const closeButton = close && (
     <button type="button" className="ic-close" aria-label={`Close ${name}`} onClick={close.ask ? undefined : close.onClose}>
       <Icon name="x" size={15} />Close{close.ask && <Icon name="down" size={13} className="chev" />}
@@ -307,10 +317,10 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
             <div className="ic-fol">
               <Avatar person={following.person} size={20} />
               <span className="t">Following {following.name}</span>
-              <button type="button" className="ic-unf" aria-label={`Unfollow ${following.name}`} onClick={following.onToggle}>Unfollow</button>
+              <button ref={followButton} type="button" className="ic-unf" aria-label={`Unfollow ${following.name}`} onClick={toggleFollow}>Unfollow</button>
             </div>
           ) : (
-            <button type="button" className="ic-follow" onClick={following.onToggle}>
+            <button ref={followButton} type="button" className="ic-follow" onClick={toggleFollow}>
               <Avatar person={following.person} size={20} />
               <span className="ft"><b>Follow {following.name}</b><small>{following.where}</small></span>
             </button>
@@ -339,7 +349,7 @@ export function CallFrame({ who, icon, name, meta, menu, following, present, foc
  * shows the kind and where its presenter is, calmly. `small` is an arch among arches, or on the horizon: the kind's icon and
  * the presenter's face, and nothing else. It fills the box it's given.
  */
-export function PresentedTile({ name, icon, sub, by, go, onPress, label, where, small = false, children, className }: {
+export function PresentedTile({ name, icon, sub, by, go, onPress, label, where, small = false, tabIndex, children, className }: {
   /** "Launch review · 4 Nov", "Priya’s screen". */
   name: string;
   icon: IconName;
@@ -354,13 +364,15 @@ export function PresentedTile({ name, icon, sub, by, go, onPress, label, where, 
   /** Where the presenter is, while there's no miniature: "Launch plan". */
   where?: string | undefined;
   small?: boolean | undefined;
+  /** -1 where the tile around it is what Tab reaches, as on the stage, so it isn't a second stop. */
+  tabIndex?: number | undefined;
   children?: ReactNode;
   className?: string | undefined;
 }) {
   /* `{live && <video />}` hands over `false` while there's nothing live: the calm placeholder then, too. */
   const mini = children !== undefined && children !== null && typeof children !== 'boolean';
   return (
-    <button type="button" className={cn('ic-ptile', small && 'is-small', className)} aria-label={label} onClick={onPress}>
+    <button type="button" className={cn('ic-ptile', small && 'is-small', className)} aria-label={label} tabIndex={tabIndex} onClick={onPress}>
       {small ? (
         <span className="ic-tsm"><Icon name={icon} size={18} /><Avatar person={by} size={16} /></span>
       ) : (

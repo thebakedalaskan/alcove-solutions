@@ -11,6 +11,8 @@ export interface ToastOptions {
   person?: AvatarPerson | undefined;
   action?: { label: string; onClick: () => void } | undefined;
   ms?: number | undefined;
+  /** What it's about: a toast about the same thing takes the place of the one before, which it may contradict. */
+  topic?: string | undefined;
 }
 /** Shows a toast. Returns what takes it away early, for a toast about something that can be over before it times out. */
 type Push = (text: ReactNode, o?: ToastOptions) => () => void;
@@ -27,7 +29,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const close = useCallback((id: number) => setItems((s) => s.filter((t) => t.id !== id)), []);
   const push = useCallback<Push>((text, o = {}) => {
     const id = ++n.current;
-    setItems((s) => [...s.slice(-2), { id, text, o }]);
+    setItems((s) => [...s.filter((t) => o.topic === undefined || t.o.topic !== o.topic).slice(-2), { id, text, o }]);
     setTimeout(() => close(id), o.ms ?? 3600);
     return () => close(id);
   }, [close]);

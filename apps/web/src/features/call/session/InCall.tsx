@@ -433,7 +433,10 @@ export function InCall({ session }: { session: CallSession }) {
   // reconnect does: `live` and `connected` cover those.
   useEffect(() => { settledAt.current = connected ? Date.now() : null; }, [connected, unitKey]);
   const settled = () => live && connected && settledAt.current !== null && Date.now() - settledAt.current > 4000;
-  const sayIt = useCallback((t: WsToastData) => toast(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms }), [toast]);
+  /** A toast in the workspace's words. `topic`: what it's about, so a newer one about the same thing takes its place. */
+  const sayIt = useCallback((t: WsToastData, topic?: string) => toast(t.text, { icon: t.icon, person: t.person, action: t.action, ms: t.ms, topic }), [toast]);
+  /** What's said about something on your stage, or presented here, is about it: each says the latest of it. */
+  const about = (id: ThingId) => `stage:${id}`;
 
   /*
    * ---------- what's presented here, and what's on your stage (onStage.ts) ----------
@@ -458,20 +461,20 @@ export function InCall({ session }: { session: CallSession }) {
     told: {
       started: (p, following, show) => {
         const what = isScreen(p.id) ? 'their screen' : p.id === 'ws' ? 'the workspace' : p.name;
-        if (!following) { offers.current.get(p.key)?.(); offers.current.set(p.key, sayIt(wsToast.presentingToo(p.by, p.first, what, show))); return; }
-        sayIt(isScreen(p.id) ? wsToast.presentingScreen(p.first) : p.id === 'ws' ? wsToast.followingWorkspace(p.first) : wsToast.followingBoard(p.first, p.name));
+        if (!following) { offers.current.get(p.key)?.(); offers.current.set(p.key, sayIt(wsToast.presentingToo(p.by, p.first, what, show), about(p.id))); return; }
+        sayIt(isScreen(p.id) ? wsToast.presentingScreen(p.first) : p.id === 'ws' ? wsToast.followingWorkspace(p.first) : wsToast.followingBoard(p.first, p.name), about(p.id));
       },
       ended: (p, was) => {
         if (stoppedByMe.current === p.key) { stoppedByMe.current = null; return; }
         const what = p.id === 'ws' ? 'the workspace' : p.name;
         // Yours, closed for everyone, and not by you: only the organizer can, and you're told it was them, as a stopped share is.
-        if (p.mine) { if (was.closed && !isScreen(p.id)) sayIt(wsToast.closedByOrganizer(organizerFirst(state), what)); return; }
-        if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first)); return; }
+        if (p.mine) { if (was.closed && !isScreen(p.id)) sayIt(wsToast.closedByOrganizer(organizerFirst(state), what), about(p.id)); return; }
+        if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first), about(p.id)); return; }
         // The call said it ended, and its presenter is gone from it: they left, which is why.
-        if (was.said && !was.closed && p.seat !== null && !state.participants.some((x) => x.seat === p.seat)) { sayIt(wsToast.presenterLeft(p.first)); return; }
+        if (was.said && !was.closed && p.seat !== null && !state.participants.some((x) => x.seat === p.seat)) { sayIt(wsToast.presenterLeft(p.first), about(p.id)); return; }
         // In a room, the board every room shares closes for that room alone, and stays the call's.
         const roomOnly = myRoomId !== null && (p.id === 'ws' || state.board.open !== null);
-        sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what, roomOnly) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what));
+        sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what, roomOnly) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what), about(p.id));
       }
     }
   });
@@ -758,9 +761,12 @@ export function InCall({ session }: { session: CallSession }) {
    * ---------- presenting: the workspace (presenting.ts) and the board (boardPresenting.ts) ----------
    * Following whoever presents is the stage's to keep (onStage.ts); these keep the workspace with them, and the board's pager.
    */
+  /** The call's board is one you can't open, brought by someone here: a presentation you can't open asks them for it (`askBoard`). */
+  const boardAccess = useRef<{ who: string; onAsk: () => void } | null>(null);
   const wsPresenting = useWorkspacePresenting({
     session, present: space.present, ended: space.ended, participants: state.participants, onStage: stage.on.includes('ws') && ended === null && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
-    act: { follow: work.act.follow, stopFollowing: work.act.stopFollowing, go: work.act.go }, say: work.act.say, failed: work.act.failed, onOwn: () => stage.setFollow('ws', false)
+    act: { follow: work.act.follow, stopFollowing: work.act.stopFollowing, go: work.act.go }, say: work.act.say, failed: work.act.failed, onOwn: () => stage.setFollow('ws', false),
+    access: () => boardAccess.current
   });
   const toggleMine = useCallback(() => side.toggle('mine'), [side]);
   const boardPresenting = useBoardPresenting({
@@ -796,7 +802,7 @@ export function InCall({ session }: { session: CallSession }) {
     if (stage.on.length <= 1) setFocus(false);
     land(p ? { to: 'tile', id } : { to: 'opener', id }, holding());
     stageClose(id);
-    if (p) sayIt(wsToast.closedWhile(p.first));
+    if (p) sayIt(wsToast.closedWhile(p.first), about(id));
   };
   /** The call's board leaves the call for everyone, as whoever opened it or the organizer: the board says so as it goes (callBoard.ts). */
   const closeBoardForAll = () => {
@@ -815,7 +821,7 @@ export function InCall({ session }: { session: CallSession }) {
       land({ to: 'opener', id }, holding());
       stageClose(id);
       if (side.view === 'mine') side.close();
-      sayIt(everyone ? wsToast.closedForAll(forRoomOnly(id)) : wsToast.closedForYou());
+      sayIt(everyone ? wsToast.closedForAll(forRoomOnly(id)) : wsToast.closedForYou(), about(id));
     }, () => { stoppedByMe.current = null; });
   };
 
@@ -1433,6 +1439,7 @@ export function InCall({ session }: { session: CallSession }) {
   const askBoard = openerName && boardOpen?.openedBy !== meId ? () => {
     session.sendChat(`${openerName}, could you let me into the board?`).then(() => toast(`Asked ${openerName} in the chat.`, { icon: 'chat' }), failed);
   } : undefined;
+  boardAccess.current = state.board.open?.role === null && askBoard && openerName ? { who: openerName, onAsk: askBoard } : null;
   /** What the board says to you, with its own icon: what you were typing in going, a trash can. Following says its own, with an eye. */
   const sayBoard = (text: string, icon: IconName) => { toast(text, { icon }); };
   /** Where whoever presents the board is, for the pager at its frame's foot. */
@@ -1491,7 +1498,9 @@ export function InCall({ session }: { session: CallSession }) {
   };
   /* Your own screen, as its bar says it goes out: what kind of thing, and its sound. */
   const surfaceWords = m.screenSurface === 'browser' ? 'a tab' : m.screenSurface === 'window' ? 'a window' : m.screenSurface === 'monitor' ? 'your whole screen' : 'your screen';
-  const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}` : 'Starting to share…';
+  /** What you share is read for the notes: your bar says so, as its menu does. */
+  const myShareRead = published && screensOn && !sharingInRoom;
+  const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}${myShareRead ? ' · Read for the notes' : ''}` : 'Starting to share…';
   const copyLinkOf = (link: string | undefined) => (link ? () => { void navigator.clipboard.writeText(link).then(() => sayIt(wsToast.linkCopied()), failed); } : undefined);
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
   // Anyone who can open the workspace presents it: before anyone's opened it, the call hasn't said which it is yet.
@@ -1515,7 +1524,7 @@ export function InCall({ session }: { session: CallSession }) {
             icon: 'screen', name: s.mine ? 'Your screen' : s.name, by: { person: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine },
             followers, follow: null, present: null, focus: focusFor, phone, onClose: () => closeThing(id), ask: null,
             rows: (close) => (s.mine
-              ? <MyShareMenuRows read={published && screensOn && !sharingInRoom} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
+              ? <MyShareMenuRows read={myShareRead} othersPoint={state.pointing ? othersPoint : null} marksOn={marksOnMine} onOthersPoint={flipOthersPoint}
                 onClear={() => { if (myShare) marks?.clear(myShare); }} onChange={() => pickShare()} onDone={close} />
               : <ShareMenuRows share={s} look={look} pointing={pointing} popped={isPopped} onPopOut={pop} onPut={board.handle.current && board.open?.role === 'edit' && !board.savedDrawn ? () => putShot(s) : undefined}
                 onBeside={besideFor(id)} onDone={close} />),
@@ -1544,7 +1553,7 @@ export function InCall({ session }: { session: CallSession }) {
               const h = board.handle.current;
               return (
                 <BoardMenuRows rename={boardRename ? () => setRenameAsk((n) => n + 1) : undefined} where={where} share={boardShare} link={copyLinkOf(boardLink)}
-                  image={h ? () => h.saveImage() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined} onDone={close} />
+                  image={h ? () => h.saveImage() : undefined} pdf={h ? () => h.savePdf() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined} onDone={close} />
               );
             },
             stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
@@ -1598,7 +1607,8 @@ export function InCall({ session }: { session: CallSession }) {
       mini: s ? () => <FeedVideo feed={s.feed} className="screen" /> : t.id === 'board' && !board.savedDrawn ? (w, h) => <BoardMini board={board} width={w} height={h} theme={theme} /> : null,
       onJoin: () => { setFocus(false); land(t.mine && t.id === 'board' ? { to: 'pager' } : { to: 'frame', id: t.id }, holding()); stageOpen(t.id); },
       beside: !phone && stage.on.length === 1 ? () => stage.beside(t.id) : null,
-      sound: s?.sound ?? null
+      sound: s?.sound ?? null,
+      fresh: stage.fresh(t.key)
     };
   });
 
@@ -1679,7 +1689,7 @@ export function InCall({ session }: { session: CallSession }) {
         <PanelHost area={callArea.ref} size={size} side={hostSide} swap={phone && swap} frames={frames}
           tiles={(
             <>
-              <Stage staged={staged} frame={frame} live={false} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
+              <Stage staged={staged} frame={frame} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
                 together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onPeopleMode={setPeopleMode} onMorePeople={() => openSide('people')} board={stageBoard} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
@@ -1747,7 +1757,7 @@ export function InCall({ session }: { session: CallSession }) {
         onChoose={() => { work.act.wantList(); setFront('ws'); if (sideCovers) side.close(); onShowList(); }} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
-      <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} without={keysWithout} />
+      <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} without={keysWithout} backTo={() => dockBar.current?.querySelector<HTMLElement>('[data-more]') ?? null} />
       <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
         hosting={hosting} organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
         notes={state.notes.everOn} locked={state.locked} others={others.length}

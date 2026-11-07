@@ -1517,7 +1517,7 @@ call, open on everyone's stage who followed, on their own; For everyone closes i
   shows the last, and a board with no frames is one slide of everything.
 - **Whoever's presenting** sees the frame alone, as everyone following does, with no bar, tools or dots (`mode="present"`,
   `slide`), held there as their sheet and the frame change. Their camera is the board's to put (`still`): nothing they do moves
-  it off the frame. Their pointer shows to everyone, on the frame. At the frame's foot, for them alone, the pager
+  it off the frame, which it frames clear of the pager at its foot (`PRESENTING_PAD`), so its last sticky shows. Their pointer shows to everyone, on the frame. At the frame's foot, for them alone, the pager
   (`FramePager`) has Back a frame and Next frame on either side of where they are ("1 of 3", with the frame's name), and, for
   an account, the button for Your notes, which opens `mine` on their side: where they are, their notes beside this frame,
   each frame its own, kept under their account ([Data and storage › Presenter notes](data-and-storage.md#presenter-notes)),
@@ -1850,17 +1850,20 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   (`CloseAsk`: a popover on a wide screen, a sheet on a phone), on its frame, brought to the front when two take turns; Stop
   sharing in Share asks the same in Share itself (`ShareStopStep`), wherever what you present is: on your stage, a tile, or
   out of sight. The name
-  menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board
-  (`BoardMenuRows` in `boards/BoardStage.tsx`); the workspace's Switch workspace (the organizer's), Find in the workspace,
+  menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or as a PDF
+  (`BoardHandle.saveImage`, `savePdf`) and Night board (`BoardMenuRows` in `boards/BoardStage.tsx`), the downloads there while
+  you present it, when the board has no bar; the workspace's Switch workspace (the organizer's), Find in the workspace,
   Who's in it and Copy link (`WorkspaceMenuRows`); someone else's screen's pointing, looking closer, its sound, its own
   window, Put on the board and Show beside (`ShareMenuRows`); and your own screen's Others can point at it, Clear marks and
-  Change what you share, saying Read for the notes while it is (`MyShareMenuRows`). The organizer's name menu on someone
+  Change what you share, saying Read for the notes while it is (`MyShareMenuRows`), as its bar's line does. The organizer's name menu on someone
   else's has, after a line, Close it for everyone, or, on a screen, Stop it for everyone. A board keeps its own controls
   inside the frame: the seal, Timer, Vote, More, the pill, the rail, zoom and the phone's +; a board you present puts its
   pager at its foot, with the button for Your notes (`mine`).
 - **Presented, and not on your stage** (`PresentedTile`, with `ThingMenu` in `TileMenu.tsx`): a tile first among the people,
   with its name, who's presenting it and Join (Open when it's yours), which puts it on your stage, following, as Enter, Space
-  or P on it do. A screen's tile shows it live, and a board's shows it drawn small (`BoardMini`); the workspace's has no
+  or P on it do. It's one tab stop among the tiles (the tile's group; its button isn't one of its own), and says what it is
+  and who presents it, with no "Enter for options". One that lands while you watch something else glows for 3 s where it
+  lands (`onStage.ts` `fresh`, `.ic-ptile.is-new`). A screen's tile shows it live, and a board's shows it drawn small (`BoardMini`); the workspace's has no
   picture, and says where its presenter is. Among arches or on the horizon it's small: the kind's icon and
   the presenter's face. Its ⋯ has Show it, Show beside (while your stage holds one thing, and not on a phone) and, for a share
   with sound, its sound for you. It's there only while it's presented: when the presentation ends, its tile goes.
@@ -1986,7 +1989,10 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   and its buttons: while it's open they keep to the middle of the stage left of it (with people on the horizon, from
   1328 px too), and on a phone, with your side a sheet, they go to the top. Nor do they cover the pager at the foot of a
   board you present: they stand above it (all in `call.css`). What presenting says (who you're following, closed for you or
-  for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's `nc.js` has.
+  for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's `nc.js` has. Each is about
+  one thing on your stage (`topic`, `ToastOptions` in the kit's `toast.tsx`), and a newer one about the same thing takes the
+  place of the one before, so "Closed for you. While Priya presents, its tile takes you back." never stays up once she's
+  stopped.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto, Speaker or
   Grid; how the people sit beside what's open (Tiles, Arches or Hidden); up to six pins, which share the main stage (in Grid
   they come first and bigger); the order you put people in; who you made bigger; and where you see yourself (in the grid, in

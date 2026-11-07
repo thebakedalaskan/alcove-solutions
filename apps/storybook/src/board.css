@@ -20,8 +20,5 @@
 /* A phone's screen: the board fills it, and what rises from the bottom rises over all of it. */
 .sbb-phone { position: relative; width: 100%; height: calc(100vh - 80px); }
 
-/* The tile above the faces beside a big share: as wide as their column. */
-.sbb-column { width: min(100%, 380px); }
-
 /* What's yours at the top right of the call, with a menu opening under it. */
 .sbb-top { display: flex; align-items: flex-start; justify-content: flex-end; width: 100%; min-height: calc(100vh - 80px); }

@@ -32,8 +32,6 @@ export function useBoardPresenting({ session, present, board, account, following
 }): {
   /** The board on your stage presented, as the board draws it; null when it isn't the one presented. */
   present: BoardPresentation | null;
-  /** The presentation, whichever board it's of. */
-  call: CallPresent | null;
   mine: boolean;
   /** Your notes beside each of its frames, while you present it; null without an account. */
   notes: Readonly<Record<string, string>> | null;
@@ -92,5 +90,5 @@ export function useBoardPresenting({ session, present, board, account, following
     by: firstName(ours.by.name), mine: ours.mine, section, watching: !ours.mine && following, onWatch: watch, onMove: move,
     notes: ours.mine && account ? { on: notesOpen, onToggle: onNotes } : null
   } : null), [ours?.by.name, ours?.mine, section, following, watch, move, account, notesOpen, onNotes]);
-  return { present: presentation, call: p, mine, notes, setNote, section, start, stop };
+  return { present: presentation, mine, notes, setNote, section, start, stop };
 }

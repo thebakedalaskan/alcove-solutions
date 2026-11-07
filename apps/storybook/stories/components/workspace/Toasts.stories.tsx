@@ -34,7 +34,7 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   restored: wsToast.restored(),
   deleted: wsToast.deleted('Old roadmap'),
   failed: wsToast.failed('That workspace isn’t there, or you can’t open it.'),
-  presentingPrivate: wsToast.presentingPrivate(first(KOFI)),
+  presentingPrivate: wsToast.presentingPrivate(first(KOFI), { who: first(KOFI), onAsk: did('onAsk') }),
   presenterLeft: wsToast.presenterLeft(first(PRIYA)),
   switched: wsToast.switched('Design', 'Product', did('onBack')),
   newSpace: wsToast.newSpace(NEW_SPACE.name, 'Product'),

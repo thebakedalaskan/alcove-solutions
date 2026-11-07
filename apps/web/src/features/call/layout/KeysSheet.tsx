@@ -20,9 +20,14 @@ function OnIt({ title, keys }: { title: string; keys: ThingKey[] }) {
   );
 }
 
-export function KeysSheet({ open, onOpenChange, without }: { open: boolean; onOpenChange: (open: boolean) => void; without: CallKey['id'][] }) {
+/**
+ * `backTo`: where the keys go as it closes. It opens from More's menu, which has gone by then, so they go to More itself, which
+ * opens it again, rather than to nothing.
+ */
+export function KeysSheet({ open, onOpenChange, without, backTo }: { open: boolean; onOpenChange: (open: boolean) => void; without: CallKey['id'][]; backTo: () => HTMLElement | null }) {
+  const onCloseFocus = () => { const to = backTo(); to?.focus({ preventScroll: true }); return to !== null; };
   return (
-    <Modal open={open} onOpenChange={onOpenChange} label="Keyboard shortcuts" className="ic-ks" focusSelf>
+    <Modal open={open} onOpenChange={onOpenChange} label="Keyboard shortcuts" className="ic-ks" focusSelf onCloseFocus={onCloseFocus}>
       <div className="ks-h">
         <div><h2>Keyboard shortcuts</h2><p>The letters sleep while you type.</p></div>
         <IconButton icon="x" label="Close" onClick={() => onOpenChange(false)} />

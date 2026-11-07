@@ -88,23 +88,25 @@ export function BoardMine({ board, section, notes, onNote, theme }: {
 
 /**
  * What the board's frame's name menu offers, each only where it's true: Rename, Open where it's saved, Who can add to it (the
- * board's own Share, in place of the rows), Copy link, Download as an image, and Night board for whoever can change the board.
- * The board's own More, on its bar, has the downloads and Night board too.
+ * board's own Share, in place of the rows), Copy link, Download as an image or as a PDF, and Night board for whoever can change
+ * the board. The board's own More, on its bar, has the downloads and Night board too; while you present it, it has no bar, and
+ * this menu is where they are.
  */
-export function BoardMenuRows({ rename, where, share, link, image, night, onDone }: {
+export function BoardMenuRows({ rename, where, share, link, image, pdf, night, onDone }: {
   rename: (() => void) | undefined;
   /** Where it's kept, and opening that. */
   where: { name: string; onOpen: () => void } | null;
   share: ReactNode;
   link: (() => void) | undefined;
-  /** Download as an image, of what your board shows you. */
+  /** Download as an image, of what your board shows you, or as a PDF, a page for each frame. */
   image: (() => void) | undefined;
+  pdf: (() => void) | undefined;
   /** Night board, for whoever can change the board: whether it's on, and turning it on or off for everyone. */
   night: { on: boolean; onToggle: () => void } | undefined;
   onDone: () => void;
 }) {
   const [sharing, setSharing] = useState(false);
-  const press = useSettledPress(['rename', 'saved', 'share', 'link', 'image', 'night'].join('\n'));
+  const press = useSettledPress(['rename', 'saved', 'share', 'link', 'image', 'pdf', 'night'].join('\n'));
   const pick = (f: () => void) => press(() => { onDone(); f(); });
   if (sharing && share) return <div className="ic-menu-sheet">{share}</div>;
   const row = (icon: IconName, label: string, onPick: () => void) => (
@@ -117,12 +119,13 @@ export function BoardMenuRows({ rename, where, share, link, image, night, onDone
       {share && row('people', 'Who can add to it', press(() => setSharing(true)))}
       {link && row('link', 'Copy link', pick(link))}
       {image && row('download', 'Download as an image', pick(image))}
+      {pdf && row('fileText', 'Download as a PDF', pick(pdf))}
       {night && (
         <button type="button" className="mi" role="menuitemcheckbox" aria-checked={night.on} onClick={pick(night.onToggle)}>
           <Icon name="moon" size={17} /><span className="t">Night board</span><Icon name="check" size={16} className="tick" />
         </button>
       )}
-      {!rename && !where && !share && !link && !image && !night && <p className="hint">There’s nothing to do with it until it opens for you.</p>}
+      {!rename && !where && !share && !link && !image && !pdf && !night && <p className="hint">There’s nothing to do with it until it opens for you.</p>}
     </>
   );
 }

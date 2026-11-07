@@ -358,7 +358,10 @@ time, slides in on the right.
   for the menu, **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; on a presented thing's tile,
   **Enter** or **P** puts it on your stage, with the keys on its frame. Closing what's on your stage leaves the keys on its
   tile while someone still presents it, or else on what opens it again (**Board**, **Workspace**, or **Share** for your
-  own screen), never nowhere. On a share on your stage, **L** points at it, and **Escape** stops pointing;
+  own screen), never nowhere. What's open on your stage comes before the people in Tab's order. The keys stay put as
+  **Unfollow** turns into **Follow Priya** and back, go to your side as what it shows changes from inside it, to the next
+  step's first choice inside Share, and back to **More** as **Keyboard shortcuts** closes; on a phone, your side's sheet
+  keeps them while it's up. On a share on your stage, **L** points at it, and **Escape** stops pointing;
   then **Escape** unpins everyone. Someone pinned who leaves is pinned again if they come back, and nothing you arranged
   moves when people talk, join, leave or turn their camera off. Alcove remembers how you like calls (how you see the people,
   and where you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
@@ -376,11 +379,13 @@ time, slides in on the right.
     presentation that starts takes the stage of everyone who isn't watching another: they follow it, and a toast says so
     ("Priya is presenting the workspace, and you’re following.", or "Priya is presenting their screen."). Someone watching
     another presentation gets it as a tile, with a toast ("Kofi is presenting their screen. It’s with the people.") and
-    **Show it**. Each part of the call (the main room, or a breakout room) has one presented board or workspace at a time,
+    **Show it**, and its tile glows for a moment where it lands. Toasts about the same thing take each other's place, so
+    one never stays up saying what's no longer so. Each part of the call (the main room, or a breakout room) has one presented board or workspace at a time,
     and up to four screens: while someone else presents a board or the workspace there, neither has **Present**, and
     Share's **A board** and **The workspace** say "Priya is presenting. You can present once they stop." instead. Someone
     who can't open what's presented is told who's presenting, never what ("Priya is presenting something you can’t
-    open"), and gets no frame and no tile.
+    open"), and gets no frame and no tile; when it's the call's board, brought by someone here, the toast has **Ask Priya for
+    access**, which asks in the call's chat, as the board's own frame does.
   - **Follow, or work alongside.** On a board you see the presenter's frame; in the workspace, their page and line. The
     bar says "Following Priya", with **Unfollow**, which gives you your own view back, to work alongside them: in the
     workspace, where you were before you followed; on a board, as you left it. A click, scroll or keystroke in the
@@ -401,7 +406,8 @@ time, slides in on the right.
     its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
     a screen shown live, a board drawn small, or the workspace with where its presenter is, and its name, "Priya is
-    presenting" and **Join** (**Open**, on your own). Pressing it puts it on your stage, following. When the presentation
+    presenting" and **Join** (**Open**, on your own). Pressing it puts it on your stage, following, with the keys on its frame;
+    from the keyboard it's one stop among the tiles, and **Enter** or **P** does the same. When the presentation
     ends, its tile goes, and something nobody presents has no tile. Its **⋯** has **Show it**; **Show beside**, which puts
     it beside the one thing on your stage, as two screens sit side by side (not on a phone); and, for a screen with sound,
     **Mute its sound for you**.
@@ -409,7 +415,8 @@ time, slides in on the right.
   computer's on a whole screen, where the browser can share it: the next step opens in the same menu, then the browser's own
   picker asks which one) presents your screen, and a toast says "Everyone sees your tab." Several people can share at once
   (up to four), and starting yours never stops anyone else's. Your share sits on your stage. Its bar says "You’re presenting
-  · a tab with sound" (with sound only when its sound goes too, and "Starting to share…" until it's out), and has **Stop
+  · a tab with sound" (with sound only when its sound goes too, and "Starting to share…" until it's out), and "· Read for the
+  notes" while the organizer has shared screens read for the notes, and has **Stop
   sharing**. Its name has **Others can point at it**, **Clear marks** and **Change what you share**, which swaps it in place
   for everyone, and says **Read for the notes** while the organizer has shared screens read for the notes. Each share names
   whoever shares it, with their face in the arch. Someone else's share is presented like anything else (above): it takes
@@ -741,7 +748,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
-   can add to it); **Copy link**, **Download as an image** and **Night board**, as the bar's **More** has (step 13); and, for
+   can add to it); **Copy link**, **Download as an image**, **Download as a PDF** and **Night board**, as the bar's **More**
+   has (step 13), there while you present it too, when the bar isn't; and, for
    the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
    from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
    what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says

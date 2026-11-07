@@ -42,6 +42,8 @@ export interface Presented {
 
 /** How long a presentation that went without saying how it ended is waited for: its presenter may be reloading. */
 const HOLD_MS = 30_000;
+/** How long something presented that lands as a tile while you watch something else glows where it lands. */
+const FRESH_MS = 3000;
 
 export interface StageTold {
   /** Someone else's presentation started: you're following it, or (watching another) it's a tile, with `show`. */
@@ -85,6 +87,15 @@ export function useOnStage({ presented, ended, place, settled, told, kept }: {
   settledNow.current = settled;
   /** The presentation each thing came onto your stage with, so an end for everyone closes only that one. */
   const came = useRef(new Map<ThingId, string>());
+  /** Presentations that just landed as tiles while you watch another, by key: they glow where they land. */
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(() => new Set());
+  const freshTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  useEffect(() => () => { for (const t of freshTimers.current) clearTimeout(t); }, []);
+  const landed = useCallback((key: string) => {
+    setFresh((was) => new Set(was).add(key));
+    const t = setTimeout(() => { freshTimers.current.delete(t); setFresh((was) => { const n = new Set(was); n.delete(key); return n; }); }, FRESH_MS);
+    freshTimers.current.add(t);
+  }, []);
 
   /* Everything presented, the ones being waited for too: their frames and tiles stay as they were meanwhile. */
   const live = useMemo(() => {
@@ -147,7 +158,7 @@ export function useOnStage({ presented, ended, place, settled, told, kept }: {
       // Watching another presentation: it's a tile with the people, told once you're settled in.
       const watching = onNow.current.some((id) => id !== p.id && liveNow.current.has(id));
       if (watching) {
-        if (settledNow.current()) toldNow.current.started(p, false, () => { put(p.id, key); follow(key, true); });
+        if (settledNow.current()) { toldNow.current.started(p, false, () => { put(p.id, key); follow(key, true); }); landed(key); }
         continue;
       }
       // Into everyone's stage that isn't watching another presentation: what was open just for them closes.
@@ -230,9 +241,11 @@ export function useOnStage({ presented, ended, place, settled, told, kept }: {
   const tiles = useMemo(() => live.filter((p) => !on.includes(p.id)), [live, onKey]);
   return useMemo(() => ({
     on, tiles, presented: live, presentedOf, open, close: remove, beside,
+    /** Just landed as a tile while you watched something else: it glows where it lands. */
+    fresh: (key: string) => fresh.has(key),
     /** You follow whoever presents it: always on a screen; on a board or in the workspace until you work on your own. */
     following: (id: ThingId) => { const p = byId.get(id); return p !== undefined && !p.mine && (isScreen(id) || !own.has(p.key)); },
     setFollow: (id: ThingId, to: boolean) => { const p = byId.get(id); if (p) follow(p.key, to); }
-  }), [on, tiles, live, presentedOf, open, remove, beside, byId, own, follow]);
+  }), [on, tiles, live, presentedOf, open, remove, beside, fresh, byId, own, follow]);
 }
-export type OnStage = ReturnType<typeof useOnStage>;
+

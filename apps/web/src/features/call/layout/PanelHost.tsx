@@ -3,11 +3,13 @@
  * panels.ts), and your side at its right. Your side shows one view at a time at a fixed width, sliding in as the main area
  * makes room for it. Where the stage would be too narrow beside it, it slides in over the stage instead, which dims behind it
  * as a phone's call does, and a press on the stage puts it away; the top bar and the dock stay as they are. On a phone it's a
- * sheet over the whole call.
+ * sheet over the whole call, which keeps the keys while it's up: Tab goes round what's in it.
+ *
+ * What's open on your stage comes before the people in the page, so Tab reaches it first; it's drawn over them either way.
  */
 import { ThemeScope, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { Horizon, Size } from './panels';
 import { GLIDE } from './Stage';
 import type { Box } from './stageLayout';
@@ -93,16 +95,38 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
 
   /* Your side: at the right of the area, the main area having made room, or on a phone a sheet risen over the call. */
   const sideBox: Box = { x: size.w - (side?.width ?? 0), y: 0, w: side?.width ?? 0, h: size.h };
-  // A sheet over the call takes the keys as it rises, and as it changes what it shows: what's under it can't be reached.
+  /*
+   * A sheet over the call takes the keys as it rises, and as it changes what it shows: what's under it can't be reached. Beside
+   * the stage, your side takes them when what it shows changes under them (from inside it, where what had them is going), or
+   * left them nowhere; keys anywhere else stay.
+   */
   const sheet = useRef<HTMLElement>(null);
-  const sheetView = side?.phone ? side.view : null;
-  useEffect(() => { if (sheetView) sheet.current?.focus({ preventScroll: true }); }, [sheetView]);
+  const view = side?.view ?? null;
+  const onPhone = side?.phone === true;
+  useEffect(() => {
+    if (!view) return;
+    const at = document.activeElement;
+    const lost = at === null || at === document.body;
+    if (onPhone || lost || (at !== sheet.current && sheet.current?.contains(at))) sheet.current?.focus({ preventScroll: true });
+  }, [view, onPhone]);
+  /** Tab and Shift+Tab go round what's in the phone's sheet, never out to the call behind it. */
+  const keepKeys = (e: ReactKeyboardEvent<HTMLElement>) => {
+    if (e.key !== 'Tab' || !onPhone) return;
+    const all = [...e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]')]
+      .filter((el) => el.getClientRects().length > 0 && el.closest('[inert]') === null);
+    const first = all[0];
+    const last = all.at(-1);
+    const at = document.activeElement;
+    if (!first || !last) { e.preventDefault(); return; }
+    if (e.shiftKey && (at === first || at === e.currentTarget)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+  };
   const away = reduce ? { opacity: 0 } : side?.phone ? { y: '100%' } : { x: sideBox.w + 40 };
   const here = side?.phone ? { opacity: 1, y: 0 } : { ...at(sideBox), opacity: 1, x: 0 };
   return (
     <div ref={area} className="ic-main">
-      {measured.current && tiles}
       {measured.current && frames}
+      {measured.current && tiles}
       {swap && <div className="ic-swapbar">{swap}</div>}
       <AnimatePresence>
         {measured.current && (side?.phone || side?.over) && (
@@ -110,7 +134,7 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : { duration: 0.24 }} />
         )}
         {measured.current && side && (
-          <motion.aside key={side.phone ? 'sheet' : 'side'} ref={side.phone ? sheet : undefined} tabIndex={side.phone ? -1 : undefined} className={cn('ic-side', side.theme, side.phone && 'is-sheet', side.over && !side.phone && 'is-over')} aria-label={side.label} data-view={side.view}
+          <motion.aside key={side.phone ? 'sheet' : 'side'} ref={sheet} tabIndex={-1} onKeyDown={keepKeys} className={cn('ic-side', side.theme, side.phone && 'is-sheet', side.over && !side.phone && 'is-over')} aria-label={side.label} data-view={side.view}
             initial={side.phone ? away : { ...at(sideBox), ...away }} animate={here} exit={away}
             transition={reduce ? { duration: 0 } : side.phone ? SLIDE : { ...slide, x: SLIDE }}>
             <ThemeScope theme={side.theme}>{side.children}</ThemeScope>

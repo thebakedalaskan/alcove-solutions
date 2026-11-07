@@ -107,7 +107,6 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       leave: () => { hide(); session.openWorkspace().catch(failed); },
       /** A toast of the call's own, beside whatever the workspace is saying. It returns what takes it away. */
       announce: show,
-      toggle: () => { if (openNow.current) hide(); else reveal(); },
       /** ⌘K: Find, with the workspace opened for it. */
       find: () => { reveal(); setFinding(true); },
       found: () => setFinding(false),
@@ -153,8 +152,6 @@ export function useWorkspacePanel(session: CallSession, workspace: CallWorkspace
       }
     };
   }, [push, session, spaceName, setOpen]);
-  const openNow = useRef(open);
-  openNow.current = open;
   useAskAnswered(workspace, act);
 
   /* Tagged here with the workspace not open: the call says so, and nothing moves until Go there. Someone with no account has only their stream. */

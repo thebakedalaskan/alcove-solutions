@@ -88,6 +88,8 @@ export interface StagePresented {
   /** Its ⋯ menu: show it beside what's on your stage, and its sound. */
   beside: (() => void) | null;
   sound: { muted: boolean; toggle: () => void } | null;
+  /** It just landed here while you watch something else: it glows where it lands. */
+  fresh: boolean;
 }
 /** About how wide "Aiko raised a hand" is. */
 const HZ_WORDS = 150;
@@ -172,15 +174,13 @@ export interface StageBoard {
   find: (p: StageParticipant) => PersonMenu['board'];
 }
 
-export function Stage({ staged, frame, live: sizing, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onPeopleMode, onMorePeople, board = null }: {
+export function Stage({ staged, frame, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onPeopleMode, onMorePeople, board = null }: {
   /** What it shows (`useStagePlan`). */
   staged: StagePlan;
   /** People working together in the workspace, by connection. */
   together: StageTogether;
   /** Where the main area puts it. */
   frame: StageFrame;
-  /** The window is being resized: everything follows at once. */
-  live: boolean;
   phone: boolean;
   people: StageParticipant[];
   /** People rung who aren't in the call yet, each in a tile of their own after everyone who's here. */
@@ -394,9 +394,11 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, pre
     else done = false;
     if (done) { e.preventDefault(); e.stopPropagation(); }
   };
-  const tileProps = (k: string, label: string) => ({
-    ref: setEl(k), tabIndex: k === tabKey ? 0 : -1, role: 'group', 'aria-roledescription': 'tile', 'aria-label': `${label}. Enter for options`,
-    'aria-keyshortcuts': 'Enter P Shift+ArrowLeft Shift+ArrowRight', onKeyDown: keysFor(k), onFocus: (e: ReactFocusEvent) => { if (e.target === e.currentTarget) setFocusKey(k); }
+  /** A tile's group, one tab stop among the tiles: what it says, and the keys it takes. A presented thing's Enter puts it on your stage. */
+  const tileProps = (k: string, label: string, thing?: { menu: boolean }) => ({
+    ref: setEl(k), tabIndex: k === tabKey ? 0 : -1, role: 'group', 'aria-roledescription': thing ? 'presented' : 'tile', 'aria-label': thing ? label : `${label}. Enter for options`,
+    'aria-keyshortcuts': thing ? `Enter P${thing.menu ? ' Shift+F10' : ''}` : 'Enter P Shift+ArrowLeft Shift+ArrowRight', onKeyDown: keysFor(k),
+    onFocus: (e: ReactFocusEvent) => { if (e.target === e.currentTarget) setFocusKey(k); }
   });
 
   // The rooms hold the whole stage, or stand beside what's open on it, and glide between the two.
@@ -425,7 +427,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, pre
     };
   };
   const nothing = !L.slots.size;
-  const instant = reduce || sizing;
+  const instant = reduce;
   const glide = instant ? { duration: 0 } : pace;
   // Who's said to be talking, on the horizon: someone who's been at it a moment, as Speaker view counts it, so a quick "yes" moves nothing.
   const talking = (p: StageParticipant) => p.speaking && p.id === speaker;
@@ -459,10 +461,10 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, pre
           if (!r) return null;
           const mode = L.modes.get(k);
           return (
-            <motion.div key={k} {...tileProps(k, `${t.label}. ${t.sub}`)} aria-roledescription="presented" data-tile={t.id} className={cn('ic-slot ic-pslot', mode && `is-${mode}`, L.off.has(k) && 'is-off')}
+            <motion.div key={k} {...tileProps(k, `${t.label}. ${t.sub}`, { menu: mode === undefined && (t.beside !== null || t.sound !== null) })} data-tile={t.id} className={cn('ic-slot ic-pslot', mode && `is-${mode}`, L.off.has(k) && 'is-off')}
               initial={{ ...box(r), opacity: 0, scale: 0.97 }} animate={{ ...box(r), opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }}
               transition={instant ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
-              <PresentedTile name={t.name} icon={t.icon} sub={t.sub} by={t.by} go={t.go} label={t.label} where={t.where} small={mode !== undefined} onPress={t.onJoin}>
+              <PresentedTile name={t.name} icon={t.icon} sub={t.sub} by={t.by} go={t.go} label={t.label} where={t.where} small={mode !== undefined} tabIndex={-1} className={t.fresh ? 'is-new' : undefined} onPress={t.onJoin}>
                 {mode === undefined && t.mini ? t.mini(r[2], r[3]) : undefined}
               </PresentedTile>
               {mode === undefined && (t.beside || t.sound) && (

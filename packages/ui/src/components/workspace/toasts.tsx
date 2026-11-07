@@ -41,7 +41,10 @@ export const wsToast = {
   restored: () => say('history', 'Restored. Everyone sees it again.'),
   deleted: (name: string) => say('trash', `${name} deleted for good`),
   failed: (text: string) => say('alert', text),
-  presentingPrivate: (first: string) => say('lock', `${first} is presenting something you can’t open`),
+  /** `ask`: it's the call's board, and whoever brought it is here to ask, as the board you can't open asks them, in the chat. */
+  presentingPrivate: (first: string, ask?: { who: string; onAsk: () => void } | undefined): WsToastData => (ask
+    ? { icon: 'lock', text: `${first} is presenting something you can’t open`, action: { label: `Ask ${ask.who} for access`, onClick: ask.onAsk }, ms: 12000 }
+    : say('lock', `${first} is presenting something you can’t open`)),
   presenterLeft: (first: string) => say('presentation', `${first} left the call, so the presentation ended`),
   /** Everyone views another workspace, or the call's home again (`home` null): the notes still go home. */
   switched: (name: string, home: string | null, onBack: () => void): WsToastData =>

@@ -212,7 +212,7 @@
 /* A small tile keeps its pin and spotlight as icons, so they never run into its menu. */
 @container (max-width: 260px) { .ic-tch { height: 26px; padding: 0 2px 0 7px; gap: 4px; } .ic-tch .tl { display: none; } }
 @container (max-width: 150px) { .ic-tch { padding: 0 6px; } .ic-tch .tx { display: none; } }
-.ic-slot:focus-visible, .ic-scr:focus-visible { outline: 2px solid var(--speak); outline-offset: 3px; }
+.ic-slot:focus-visible { outline: 2px solid var(--speak); outline-offset: 3px; }
 .ic-slot.is-corner { z-index: 6; }
 .ic-slot.is-corner > .ac-tile { box-shadow: 0 22px 44px -18px rgba(0, 0, 0, .9), inset 0 0 0 1px rgba(255, 255, 255, .16); }
 .ic-slot.is-corner > .ac-tile.is-speaking { box-shadow: 0 22px 44px -18px rgba(0, 0, 0, .9), inset 0 0 0 2px var(--speak); }
@@ -254,18 +254,13 @@
 .ic-tch.is-spot .tx:hover { background: color-mix(in srgb, var(--stage) 12%, transparent); }
 .ic-more { position: absolute; z-index: 4; right: 8px; top: 8px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transition: opacity var(--duration-1), background-color var(--duration-1); }
 .ic-more:hover { background: color-mix(in srgb, var(--stage) 85%, transparent); }
-.ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"], .ic-slot:focus-visible .ic-more, .ic-scr:hover .ic-more, .ic-scr:focus-visible .ic-more { opacity: 1; }
+.ac-tile:hover .ic-more, .ic-more:focus-visible, .ic-more.is-on, .ic-more[data-state="open"], .ic-slot:focus-visible .ic-more { opacity: 1; }
 .ac-tile.is-hand .ic-more, .ac-tile:has(.ac-tile-mic) .ic-more { top: 40px; }
 .ic-slot:focus-visible .ic-rs { opacity: 1; }
 .ic-rs { position: absolute; z-index: 3; right: 6px; bottom: 6px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 62%, transparent); color: var(--stage-ink); cursor: nwse-resize; touch-action: none; opacity: 0; transition: opacity var(--duration-1); }
 .ac-tile:hover .ic-rs, .is-sizing .ic-rs { opacity: 1; }
 .ic-scr { position: absolute; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06); }
 .ic-scr video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-/* A share's name: whoever shares it, in the arch, and a mark when it carries sound. */
-.ic-scr .ac-tile-name { z-index: 2; max-width: calc(100% - 20px); padding-left: 4px; }
-.ic-scr .ac-tile-name .ac-avatar { --ring: transparent; }
-.ic-scr .ac-tile-name .tl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ic-scr .ac-tile-name .snd { flex: none; color: var(--stage-ink-2); }
 /*
  * Looking closer at a share you see big (apps/web ShareSurface.tsx): the picture sits in a box the framing moves and
  * sizes, so the video itself grows with the zoom and LiveKit sends the sharpest layer. The bar shows on hover or focus,
@@ -281,7 +276,7 @@
 /* Held still: a ring that says it isn't live, over the picture. */
 .ic-sv.is-held::after { content: ""; position: absolute; z-index: 2; inset: 0; border-radius: var(--radius-md); box-shadow: inset 0 0 0 2px rgba(169, 159, 255, .9); pointer-events: none; }
 .ic-svbar { position: absolute; z-index: 3; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 11px; background: color-mix(in srgb, var(--stage) 74%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
-.ic-scr:hover .ic-svbar, .ic-scr:focus-visible .ic-svbar, .ic-sv.is-on .ic-svbar, .ic-svbar:focus-within { opacity: 1; pointer-events: auto; }
+.ic-scr:hover .ic-svbar, .ic-sv.is-on .ic-svbar, .ic-svbar:focus-within { opacity: 1; pointer-events: auto; }
 .ic-svbar button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--stage-ink); transition: background-color var(--duration-1); }
 .ic-svbar button:hover { background: rgb(255 255 255 / 0.12); }
 .ic-svbar button[disabled] { opacity: .36; pointer-events: none; }
@@ -299,9 +294,8 @@
 .ic-svheld button, .ic-svaway button, .ic-poph button { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-svheld button:hover, .ic-svaway button:hover, .ic-poph button:hover { background: #fff; }
 @keyframes ic-held { from { opacity: 0; translate: -50% -6px; } to { opacity: 1; translate: -50% 0; } }
-/* A narrow share keeps its sharer's face and drops the words while the bar is up, so the two never meet. */
+/* A narrow share keeps the held picture's line short. */
 @container (max-width: 560px) {
-  .ic-scr:hover:has(.ic-sv) .ac-tile-name .tl, .ic-scr:has(.ic-sv.is-on) .ac-tile-name .tl { display: none; }
   .ic-svheld .ct { display: none; }
 }
 @container (max-width: 340px) { .ic-svbar .lv { display: none; } }
@@ -437,14 +431,9 @@
 .ic-spill .ac-i { flex: none; color: var(--stage-ink); }
 .ic-spill b { color: var(--stage-ink); font-weight: 600; }
 .ic-spill .tx2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* Your share is read for the notes: said beside what you share, never cut off by a long name. */
-.ic-spill .sp-read { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--stage-ink); font-weight: 600; }
 .ic-spill .sp-btn { flex: none; height: 28px; padding: 0 10px; border-radius: 8px; background: rgb(255 255 255 / 0.07); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); transition: background-color var(--duration-1); }
 .ic-spill .sp-btn:hover { background: rgb(255 255 255 / 0.14); }
 .ic-spill .sp-btn.is-strong { background: var(--stage-ink); color: var(--stage); }
-/* Whether others may point at what you share: an icon that says it, crossed out when only you can. */
-.ic-spill .sp-btn.sp-ico { display: grid; place-items: center; width: 30px; padding: 0; }
-.ic-spill .sp-btn.sp-ico.is-off { color: var(--stage-ink-2); }
 /* Who hosts while the organizer is away: their arch at the start, and room at the end when there's no button. */
 .ic-hosting .ac-avatar { flex: none; }
 .ic-hosting:has(> .ac-avatar) { padding-left: 8px; }
@@ -508,6 +497,7 @@
 .ic-scr-body > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .ic-scr-body:focus-visible { box-shadow: inset 0 0 0 2px var(--speak); }
 .ic-scr-body:hover .ic-svbar, .ic-scr-body:focus-visible .ic-svbar { opacity: 1; pointer-events: auto; }
+.ic-scr-body:hover .ic-more, .ic-scr-body:focus-visible .ic-more { opacity: 1; }
 /* The workspace, and while the call moves to another one, what was there: over what's coming until that's drawn, then gone, 240 ms. */
 .ic-wsx { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
 .ic-wsx-slot { display: flex; flex: 1; min-width: 0; min-height: 0; }
@@ -848,21 +838,6 @@
 .ic-call.is-focus .ic-top { transform: translateY(-100%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out), visibility 0s linear var(--duration-3); }
 .ic-call.is-focus .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }
 
-/* choosing what to share */
-.ic-share { width: min(620px, calc(100vw - 32px)); }
-.ic-share .pk-h { display: flex; align-items: center; gap: 12px; padding: 20px 20px 4px 24px; }
-.ic-share .pk-h h2 { flex: 1; margin: 0; }
-.ic-share .pk-trouble { margin: 8px 20px 10px 24px; }
-.ic-share .ac-tabs { padding: 0 16px; }
-.ic-share .pk-body { padding: 26px 24px; min-height: 150px; }
-.ic-share .pk-kind { display: flex; gap: 18px; align-items: flex-start; }
-.ic-share .pk-ic { display: grid; place-items: center; flex: none; width: 64px; height: 64px; border-radius: var(--radius-md); background: var(--sun-soft); color: var(--sun-text); }
-.ic-share .pk-kind b { display: block; font: 600 16px/1.3 var(--font-sans); }
-.ic-share .pk-kind p { margin-top: 6px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
-.ic-share .pk-kind p.sub { font-size: 13px; color: var(--ink-3); }
-.ic-share .pk-f { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 14px 20px 18px 24px; border-top: 1px solid var(--line); }
-.ic-share .pk-f .ic-srow { padding: 0; flex-basis: 100%; }
-.ic-share .pk-note { flex: 1 1 220px; min-width: 0; margin-right: auto; font-size: 12.5px; line-height: 1.4; color: var(--ink-3); }
 
 /* leaving */
 .ic-leave .in { padding: 28px 28px 24px; }
@@ -887,7 +862,6 @@
 @media (max-width: 1100px) {
   .ic-top { gap: 10px; }
   .ic-top .end { gap: 10px; }
-  .ic-share .pk-note { display: none; }
 }
 @media (max-width: 1040px) {
   .ic-swap button { padding: 0 8px; font-size: 12.5px; }
@@ -1102,6 +1076,11 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-ptile { position: relative; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); color: var(--stage-ink); text-align: left; cursor: pointer; animation: ac-fade var(--duration-2) var(--ease-out) both; }
 .ic-ptile::after { content: ""; position: absolute; z-index: 1; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(180deg, transparent 50%, color-mix(in srgb, var(--stage) 62%, transparent)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--horizon) 55%, transparent); transition: box-shadow var(--duration-1); }
 .ic-ptile:hover::after { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--horizon) 85%, transparent); }
+/* Something presented that lands as a tile while you watch something else glows where it lands, for 3 s (onStage.ts `fresh`). */
+.ic-ptile.is-new { animation: ac-fade var(--duration-2) var(--ease-out) both, ic-lands 3s var(--ease-out) both; }
+.ic-ptile.is-new::after { animation: ic-lands-ring 3s var(--ease-out) both; }
+@keyframes ic-lands { 0%, 84% { box-shadow: 0 0 0 5px rgb(169 178 255 / 0.2); } 100% { box-shadow: 0 0 0 0 rgb(169 178 255 / 0); } }
+@keyframes ic-lands-ring { 0%, 84% { box-shadow: inset 0 0 0 2px var(--speak); } }
 .ic-ptile:focus-visible { outline-offset: 3px; }
 .ic-tmini { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .ic-tplace { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 16px 16px 44px; background: radial-gradient(70% 60% at 50% 42%, color-mix(in srgb, var(--horizon) 9%, transparent), transparent 72%); text-align: center; }

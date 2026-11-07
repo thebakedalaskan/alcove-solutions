@@ -8,7 +8,7 @@
  *
  * Someone who can't open the workspace is told who's presenting, and nothing else.
  */
-import { errorCode, firstName, type CallParticipant, type CallPresent, type CallPresentEnded, type CallSession, type Person } from '@alcove/api';
+import { errorCode, firstName, type CallParticipant, type CallPresent, type CallPresentEnded, type CallSession } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CallTogether, WorkspacePlace } from '~/features/workspace/context';
@@ -19,12 +19,8 @@ const plog = log.child({ component: 'presenting' });
 
 /** The workspace presented where you are, and what you're doing about it. */
 export interface WorkspacePresentation {
-  present: CallPresent | null;
-  /** Whoever presents it, as the call shows them, and their connection, which presence knows them by. */
-  presenter: Person | null;
+  /** Whoever presents it, by their connection, which presence knows them by. */
   connection: string | null;
-  /** You present it. */
-  mine: boolean;
   /** Where its presenter is, in words, for Follow on the frame's bar: what's named is only ever what you can open. Null while that isn't known here. */
   where: string | null;
   /** Presents the workspace to everyone in this part of the call. */
@@ -33,7 +29,7 @@ export interface WorkspacePresentation {
   stop: (close: boolean) => Promise<void>;
 }
 
-export function useWorkspacePresenting({ session, present, ended, participants, onStage, following, together, at, act, say, failed, onOwn }: {
+export function useWorkspacePresenting({ session, present, ended, participants, onStage, following, together, at, act, say, failed, onOwn, access }: {
   session: CallSession;
   present: CallPresent | null;
   /** How the last presentation here ended, as the call says. */
@@ -52,11 +48,12 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
   failed: (e: unknown) => void;
   /** You stopped following it from inside the workspace: a click, a scroll, a key or Escape. */
   onOwn: () => void;
+  /** The call's board is one you can't open, brought by someone here you can ask for it, as its frame asks: read as it's presented. */
+  access: () => { who: string; onAsk: () => void } | null;
 }): WorkspacePresentation {
   const ws = present?.kind === 'workspace' ? present : null;
   const by = ws?.by ?? present?.by ?? null;
   const presenterIn = by ? participants.find((p) => p.seat === by.seat) ?? null : null;
-  const presenter = presenterIn?.person ?? null;
   const connection = presenterIn && !presenterIn.isMe ? presenterIn.id : null;
   const mine = ws?.mine === true;
   const watching = ws !== null && !mine && onStage;
@@ -69,8 +66,8 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
   const engaged = useRef(false);
   const followable = connection !== null && together.followable.includes(connection);
   const followingThem = connection !== null && together.following === connection;
-  const latest = useRef({ act, onOwn });
-  latest.current = { act, onOwn };
+  const latest = useRef({ act, onOwn, access });
+  latest.current = { act, onOwn, access };
   useEffect(() => {
     if (!want || !connection) { engaged.current = false; return; }
     if (followingThem) { engaged.current = true; return; }
@@ -99,14 +96,15 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
 
   /*
    * Someone who can't open what's presented is told who's presenting, and nothing else, and that it ended only if the call says
-   * it did because its presenter left. Everyone else hears how it ended from their stage (layout/onStage.ts).
+   * it did because its presenter left. Everyone else hears how it ended from their stage (layout/onStage.ts). While the call's
+   * board is one they can't open, brought by someone here, the toast asks for it, as the board's own frame does.
    */
   const toldOf = useRef<string | null>(null);
   useEffect(() => {
     if (!present) return;
     if (present.kind !== null || present.key === toldOf.current) return;
     toldOf.current = present.key;
-    say(wsToast.presentingPrivate(firstName(present.by.name)));
+    say(wsToast.presentingPrivate(firstName(present.by.name), latest.current.access() ?? undefined));
   }, [present, say]);
   const endedKey = ended && ended.key === toldOf.current ? ended.key : null;
   useEffect(() => {
@@ -136,6 +134,5 @@ export function useWorkspacePresenting({ session, present, ended, participants, 
     }
   }, [session, failed]);
   const where = connection ? together.where[connection] ?? null : null;
-  return useMemo(() => ({ present: ws, presenter, connection, mine, where, start, stop }),
-    [ws, presenter, connection, mine, where, start, stop]);
+  return useMemo(() => ({ connection, where, start, stop }), [connection, where, start, stop]);
 }

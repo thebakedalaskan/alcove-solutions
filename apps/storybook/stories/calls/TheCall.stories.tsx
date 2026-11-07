@@ -216,7 +216,7 @@ export const BoardClosedForYou: PageStory = {
     step('The others keep it open', () => toldThat('Closed for you. The others keep it open, on their own.'))),
   name: 'Board closed for you'
 };
-/** Its name is a menu: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board. */
+/** Its name is a menu: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board, there while you present it. */
 export const TheBoardsNameMenu: PageStory = { ...moment(yours(), ...presented, step('Press its name, on its bar', (c) => frameMenu(c, retro))), name: 'The board’s name menu' };
 /** Chat in your side beside the board you present: the stage gives way. */
 export const ChatBesideTheBoard: PageStory = { ...moment(yours(), ...presented, reach('Chat')), name: 'Chat beside the board' };

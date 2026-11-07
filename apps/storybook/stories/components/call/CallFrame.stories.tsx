@@ -100,7 +100,7 @@ function Row({ icon, label, k }: { icon: IconName; label: string; k?: string | u
 const BOARD_MENU = (
   <>
     <Row icon="pen" label="Rename" /><Row icon="folder" label="Open where it’s saved" /><Row icon="people" label="Who can add to it" />
-    <Row icon="link" label="Copy link" /><Row icon="download" label="Download as an image" /><Row icon="moon" label="Night board" />
+    <Row icon="link" label="Copy link" /><Row icon="download" label="Download as an image" /><Row icon="fileText" label="Download as a PDF" /><Row icon="moon" label="Night board" />
   </>
 );
 const WORKSPACE_MENU = (

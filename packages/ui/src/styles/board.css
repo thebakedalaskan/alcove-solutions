@@ -361,8 +361,6 @@
 /* Small menus on the board */
 .bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(18 34 63 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bp .hd { padding: 10px 10px 8px; font: 600 14px/1.25 var(--font-sans); letter-spacing: -.005em; }
-/* Who can add to it: the workspace's Share sheet, which has its own width and room. */
-.bp.bp-share { width: auto; max-width: calc(100% - 24px); padding: 0; }
 .bp .sub { padding: 0 10px 10px; font-size: 13px; line-height: 1.42; color: var(--ink-3); }
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
 .bp .mi:hover { background: var(--sunk); }

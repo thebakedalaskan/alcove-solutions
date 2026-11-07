@@ -52,7 +52,7 @@ export const OpenPhone = phone(Open);
 /** In a light theme: the board follows yours, light on the stage, which is night as the call always is. */
 export const OpenLight = light(Open);
 
-/** Its name's menu, on its frame: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board. */
+/** Its name's menu, on its frame: Rename, Open where it's saved, Who can add to it, Copy link, Download as an image or a PDF, and Night board. */
 export const TheNameMenu = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press the board’s name, on its frame', (c) => frameMenu(c, BOARD))));
 /** Its seal says what's true of this board: everyone in the call can add to it, where it's saved, and that Alcove can't read it. */
 export const TheSeal = review(at(1, opensBoard(PRIYA, 'retro')), retroWith(4), onIt(step('Press Sealed, on the board’s bar', async (c) => {

@@ -8,7 +8,7 @@
  * screen can't be shared there.
  */
 import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, ShareStopStep, cn, type BoardPickerProps } from '@alcove/ui';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ShareChoice, ShareSurface } from '~/features/call/media/media';
 import { SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/screen-sharing/share';
 
@@ -60,6 +60,24 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
     if (screen.trouble === 'system') setKind('browser');
   }
   const soundLabel = soundOf(kind);
+  /*
+   * Going from one step to another inside Share swaps what's in it, so the keys go to the new step's first choice (past its
+   * way back), rather than to nothing. Opening it is the popover's, which puts them on its first row.
+   */
+  const wasStep = useRef(step);
+  useEffect(() => {
+    const was = wasStep.current;
+    wasStep.current = step;
+    if (was === null || step === null || was === step) return undefined;
+    const raf = requestAnimationFrame(() => {
+      const pop = document.querySelector('.ic-sharepop');
+      const at = document.activeElement;
+      if (!pop || (at !== null && at !== document.body && pop.contains(at))) return;
+      const all = [...pop.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')];
+      (all.find((el) => !el.classList.contains('ic-sp-back')) ?? all[0])?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [step]);
   const body = step === 'shareScreen' ? (
     <ShareScreenStep surface={kind} onSurface={setKind} sound={soundLabel ? { label: soundLabel, on: sound, onChange: setSound } : null}
       read={screen.read} trouble={screen.trouble ? SHARE_PROBLEMS[screen.trouble] : null} changing={screen.changing}

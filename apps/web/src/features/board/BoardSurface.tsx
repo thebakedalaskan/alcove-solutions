@@ -87,6 +87,8 @@ export interface BoardHandle {
   undoStep(step: BoardStep): void;
   /** Download as an image, as the bar's More does: what this person's board shows them, drawn and saved here. */
   saveImage(): void;
+  /** Download as a PDF, as the bar's More does. */
+  savePdf(): void;
   /** Whether it's a night board: dark in any theme, for everyone. */
   night(): boolean;
   /**
@@ -552,6 +554,7 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
     addStickies: (stickies) => addLanded(board, stickies),
     undoStep: (step) => board.undoStep(step),
     saveImage: () => barItems.image?.(),
+    savePdf: () => barItems.pdf?.(),
     night: () => board.getSnapshot().night,
     setNight: (on) => setNight(board.doc, on, board.origin)
   }), [board, presence, barItems]);
