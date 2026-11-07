@@ -22,9 +22,23 @@ import { LAPTOP, LATER, SOON, away, pause } from './play';
 const meta = { title: 'Journeys/6 In the call', ...pages, globals: LAPTOP } satisfies Meta<PageArgs>;
 export default meta;
 
+type Context = Parameters<NonNullable<PageStory['play']>>[0];
+
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
 const dock = () => screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
 const notesPanel = () => screen.findByRole('complementary', { name: 'Notes' }, LATER);
+/**
+ * Your side put away first, as the canvas has it, so what opens on your stage has the stage's width: in a window narrower than
+ * a laptop's, the workspace's list gives way beside Notes. A call you've just joined opens Notes beside the stage by itself
+ * while notes are on, as they are in the launch review, wherever the window is 1100 wide or more (the call's own rule).
+ */
+async function sideAway({ userEvent, step }: Context): Promise<void> {
+  if (window.innerWidth < 1100) return;
+  await step('Put your side away', async () => {
+    await userEvent.click(within(await notesPanel()).getByRole('button', { name: 'Close Notes' }));
+    await away('complementary', 'Notes');
+  });
+}
 
 /* ---------- the canvas's journeys ---------- */
 
@@ -74,7 +88,9 @@ const keepTheCall = (s: CallSession): void => { theCall = s; };
 export const OpenTheWorkspace: PageStory = {
   name: '6.1 Open the workspace, then present it',
   ...launchReview(),
-  play: async ({ userEvent, step }) => {
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await sideAway(c);
     await step('Click Workspace, at the top right. Board and Workspace sit beside Notes and Chat. Until someone presents, only the people are on the stage', async () => {
       await dock();
       await userEvent.click(await screen.findByRole('button', { name: /^Workspace/ }, LATER));
@@ -141,7 +157,9 @@ export const OpenABoard: PageStory = {
 export const WhenSomeoneElsePresents: PageStory = {
   name: '6.3 When someone else presents',
   ...launchReview({ cues: at(10, presentsWorkspace(PRIYA)) }, keepTheCall),
-  play: async ({ userEvent, step }) => {
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await sideAway(c);
     await step('Priya presents the workspace. You follow Priya into Launch plan. The blue edge says you’re seeing what Priya sees', async () => {
       await screen.findByText('Priya is presenting the workspace, and you’re following.', {}, LATER);
       await onBar(await frame(everyones), 'Unfollow Priya');
