@@ -277,16 +277,18 @@ The call's workspace is played too. The first time Workspace opens, the call set
 `StoryCall`'s `workspaceId` (chosen when it was scheduled) with the call's folder put at its top, else a new workspace
 named "<call title> · <day>" with the folder in it, which holds the live Notes, Follow-ups and Transcript. Someone who came
 in with the link gets nothing, so it's private to them. The script's `workspace` says what's brought to the call and who's
-in which document; beats move people (`goesTo`), present (`presents`, `movesPresenting`), play a video for everyone
-(`plays`), ask to see it (`asksToSee`) and tag you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
+in which document; beats move people (`goesTo`), present the workspace or the board open where you are
+(`presentsWorkspace`, `presentsBoard`, `movesPresenting`, `stopsPresenting`), share and stop a screen (`shares`,
+`stopsSharing`, and the organizer's `stopsShare`), play a video for everyone (`plays`), ask to see it (`asksToSee`) and tag
+you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
 ask, add a follow-up) changes the call as the server would. `addWalkthrough()` in `talk.ts` puts a document with a film
 in Product, drawn and recorded in the browser (`src/media/film.ts`) the first time it's played.
 
 ```tsx
-/** Priya presents the launch plan two seconds in, and leaves four seconds later. */
+/** Priya presents the workspace two seconds in, and leaves four seconds later. */
 export const PresenterLeft = inCall({
   scenario: 'busy', call: LAUNCH_REVIEW,
-  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, leaves(PRIYA))] }
+  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presentsWorkspace(PRIYA)), ...at(6, leaves(PRIYA))] }
 });
 ```
 
