@@ -380,8 +380,9 @@ time, slides in on the right.
     ("Priya is presenting the workspace, and you’re following.", or "Priya is presenting their screen."). Someone watching
     another presentation gets it as a tile, with a toast ("Kofi is presenting their screen. It’s with the people.") and
     **Show it**, and its tile glows for a moment where it lands. Toasts about the same thing take each other's place, so
-    one never stays up saying what's no longer so. Each part of the call (the main room, or a breakout room) has one presented board or workspace at a time,
-    and up to four screens: while someone else presents a board or the workspace there, neither has **Present**, and
+    one never stays up saying what's no longer so. Each part of the call (the main room, or a breakout room) has one
+    presented board or workspace at a time, and up to four screens: while someone else presents a board or the workspace
+    there, neither has **Present**, and
     Share's **A board** and **The workspace** say "Priya is presenting. You can present once they stop." instead. Someone
     who can't open what's presented is told who's presenting, never what ("Priya is presenting something you can’t
     open"), and gets no frame and no tile; when it's the call's board, brought by someone here, the toast has **Ask Priya for

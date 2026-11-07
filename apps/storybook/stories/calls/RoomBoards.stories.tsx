@@ -1,7 +1,8 @@
 /*
  * Boards in breakout rooms (docs: Calls and recordings › Boards in breakout rooms, user-flows 6): the rooms panel's Board row,
  * a board in each room sealed to it, one started in a room, the organizer seeing only that a room is on its board until they
- * join it, every room's board coming back to the main board as rooms close, and one board every room shares. Each journey
+ * join it, every room's board coming back to the main board as rooms close, and one board every room shares, closed in a room
+ * for that room alone. Each journey
  * plays the canvas's: Set up rooms, Inside a room, Start a board in a room, While rooms are open, When rooms close, and One
  * board for every room. The stand-in makes, fills and lands the boards as the server does, with @alcove/board's own writers.
  */
@@ -11,6 +12,7 @@ import { screen } from 'storybook/test';
 import { at } from '../../src/api/script';
 import { MORE, inCall, phone } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
+import { close, present } from './plays';
 import { AIKO, CHECK_IN, KOFI, MAYA, PRIYA, REVIEW } from './talk';
 
 const meta = { title: 'Calls/Boards in breakout rooms', ...pages } satisfies Meta<PageArgs>;
@@ -181,3 +183,23 @@ export const JourneyOneBoardForEveryRoom: PageStory = {
   }) satisfies Play
 };
 export const OneBoardForEveryRoomPhone = phone(OneBoardForEveryRoom);
+/** The board every room shares is made for the rooms, named after the call. */
+const BOARD_NAME = 'Launch check-in';
+/**
+ * You present the board every room shares from Rollout, and Close asks for whom: For everyone closes it for everyone in this
+ * room, and the board stays the call's, as only whoever opened it or the organizer takes it out of the call.
+ */
+export const ClosingItInARoom: PageStory = {
+  ...checkIn(SHARED), name: 'Closing it in a room',
+  play: (async (c) => {
+    await c.step('Arrive on Rollout’s frame, and press Present on the board’s bar', async () => {
+      await screen.findByText(/Everyone can see this board/, {}, LATER);
+      await present(c, BOARD_NAME);
+      await screen.findByText(/You’re presenting/, {}, LATER);
+    });
+    await c.step('Press Close: For everyone closes it for everyone in this room', async () => {
+      await close(c, BOARD_NAME);
+      await screen.findByText('It closes for everyone in this room.', {}, LATER);
+    });
+  }) satisfies Play
+};
