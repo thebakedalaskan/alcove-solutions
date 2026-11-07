@@ -56,7 +56,7 @@ import { useNotesAskedNotifications } from '~/features/shell/notify';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
 import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen } from '~/features/call/screen-sharing/share';
-import { ShareMenu, type ShareTrouble } from '~/features/call/layout/ShareMenu';
+import { ShareMenu, type ShareStep, type ShareTrouble } from '~/features/call/layout/ShareMenu';
 import { keepSeen, seenNotices } from '~/features/call/session/seen';
 import { VideoQuality } from '~/features/call/media/VideoQuality';
 import { GLIDE, Stage, useStagePlan, type StageParticipant, type StagePresented, type StageShare, type StageTogether, type StageWaiter } from '~/features/call/layout/Stage';
@@ -84,9 +84,9 @@ import { hm } from '~/lib/time';
 const clog = log.child({ component: 'call' });
 /**
  * What's open over the call: a device's menu, the captions' language, More and what it leads to (on a phone, the board picker and
- * View), and Share's three steps.
+ * View), and Share's steps.
  */
-type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'devices' | 'quality' | 'board' | 'view' | 'share' | 'shareScreen' | 'shareBoard' | null;
+type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'devices' | 'quality' | 'board' | 'view' | ShareStep | null;
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 /** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
@@ -759,19 +759,22 @@ export function InCall({ session }: { session: CallSession }) {
   /* ---------- closing: for you, or (your presentation) for you or for everyone ---------- */
   /** Close's question, while you present a board or the workspace: which frame it's open on. */
   const [asking, setAsking] = useState<ThingId | null>(null);
+  /** Close, on a frame's bar, or the lit Board or Workspace: on your own presentation it asks, on its frame, in front. */
   const closeThing = (id: ThingId) => {
     const p = stage.presentedOf(id);
     if (p?.mine && isScreen(id)) { stopShare(); return; }
-    if (p?.mine) { setAsking(id); return; }
+    if (p?.mine) { setFront(id); setAsking(id); return; }
     if (stage.on.length <= 1) setFocus(false);
     stageClose(id);
     if (p) sayIt(wsToast.closedWhile(p.first));
   };
+  /** Your presentation of a board or the workspace ends, for you or for everyone: from Close's question, or Share's. */
   const closeFor = (id: ThingId, everyone: boolean) => {
     setAsking(null);
     const stop = id === 'ws' ? wsPresenting.stop : boardPresenting.stop;
+    const was = stage.on;
     stop(everyone).then(() => {
-      if (stage.on.length <= 1) setFocus(false);
+      if (was.includes(id) && was.length <= 1) setFocus(false);
       stageClose(id);
       if (side.view === 'mine') side.close();
       sayIt(everyone ? wsToast.closedForAll() : wsToast.closedForYou());
@@ -1539,7 +1542,7 @@ export function InCall({ session }: { session: CallSession }) {
   const moreOpen = pop === 'more' || pop === 'devices' || pop === 'quality' || pop === 'board' || pop === 'view';
   /** What you present, if anything: Share says so, and its first step offers Stop sharing. */
   const myThing = stage.presented.find((p) => p.mine) ?? null;
-  const shareStep = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' ? pop : null;
+  const shareStep = pop === 'share' || pop === 'shareScreen' || pop === 'shareBoard' || pop === 'shareStop' ? pop : null;
   const moreRow = (icon: IconName, label: string, act: () => void, o: { scope?: string | undefined; kb?: string | undefined; pressed?: boolean | undefined } = {}) => (
     <button type="button" className="mi" aria-pressed={o.pressed} onClick={act}>
       <Icon name={icon} size={17} /><span className="t">{label}</span>{o.scope && <Scope>{o.scope}</Scope>}{o.kb && <Kbd>{o.kb}</Kbd>}
@@ -1649,7 +1652,10 @@ export function InCall({ session }: { session: CallSession }) {
             </DockSplit>
             {!phone && <DockSeparator />}
             <ShareMenu step={shareStep} onStep={setPop} phone={phone}
-              presenting={myThing ? { what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, onStop: () => { setPop(null); closeThing(myThing.id); } } : null}
+              presenting={myThing ? {
+                what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, asks: !isScreen(myThing.id),
+                onStop: (everyone) => { setPop(null); if (isScreen(myThing.id)) stopShare(); else closeFor(myThing.id, everyone); }
+              } : null}
               screen={{
                 full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null, trouble: shareTrouble,
                 changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }

@@ -200,8 +200,8 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
   `CloseAsk` (Close's question: for you or for everyone), `PresentAsk` (Present's question when some people here can't open
   the board), `FramePager` (a board's presenter steps through its frames at the frame's foot, with their notes), Share's
-  steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep` or the `BoardPicker` with `ShareStepHead`'s way
-  back), `VolumeControl` (how loud someone is for you, said
+  steps in one popover over the dock (`ShareKinds`, then `ShareScreenStep`, the `BoardPicker`, or `ShareStopStep` (Close's
+  question, in Share), with `ShareStepHead`'s way back), `VolumeControl` (how loud someone is for you, said
   beside their name by `volumeTag`),
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),

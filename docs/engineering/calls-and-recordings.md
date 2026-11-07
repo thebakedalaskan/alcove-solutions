@@ -1815,7 +1815,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   Share's A board and The workspace then say who's presenting instead ("Priya is presenting. You can present once they
   stop.", `presentingWhy`), the board picker in Share takes no pick, and nothing is made or brought in that couldn't be
   presented (`bringAndPresent` checks first). While you present a board or the workspace, Close asks For you or For everyone
-  (`CloseAsk`: a popover on a wide screen, a sheet on a phone). The name
+  (`CloseAsk`: a popover on a wide screen, a sheet on a phone), on its frame, brought to the front when two take turns; Stop
+  sharing in Share asks the same in Share itself (`ShareStopStep`), wherever what you present is: on your stage, a tile, or
+  out of sight. The name
   menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board
   (`BoardMenuRows` in `boards/BoardStage.tsx`); the workspace's Switch workspace (the organizer's), Find in the workspace,
   Who's in it and Copy link (`WorkspaceMenuRows`); someone else's screen's pointing, looking closer, its sound, its own

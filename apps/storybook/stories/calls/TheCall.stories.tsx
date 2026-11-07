@@ -218,6 +218,28 @@ export const TheBoardsNameMenu: PageStory = { ...moment(yours(), ...presented, s
 /** Chat in your side beside the board you present: the stage gives way. */
 export const ChatBesideTheBoard: PageStory = { ...moment(yours(), ...presented, reach('Chat')), name: 'Chat beside the board' };
 export const ChatBesideTheBoardLight: PageStory = { ...light(ChatBesideTheBoard), name: 'Chat beside the board, in a light theme' };
+const workspaceAway = step('Press Board, then Launch retro: the workspace you present waits as a tile', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
+/** Share's Stop sharing, on what you present: "For you" or "For everyone", asked in Share itself. */
+async function stopInShare(c: Context): Promise<HTMLElement> {
+  const menu = await shareMenu(c);
+  await c.userEvent.click(within(menu).getByRole('button', { name: 'Stop sharing' }));
+  return within(menu).findByRole('button', { name: startingWith('For everyone') }, SOON);
+}
+/** The workspace you present waits as a tile while a board of yours is open: Share's Stop sharing asks for you or for everyone in Share itself. */
+export const StopSharingFromShare: PageStory = {
+  ...moment(yours(), openWorkspace, toThePlan, presentWorkspace, followsYou, workspaceAway,
+    step('Press Presenting in the dock, then Stop sharing: Share asks, wherever what you present is', stopInShare)),
+  name: 'Stop sharing, from Share'
+};
+/** For everyone: the workspace closes for everyone, its tile goes, and the board open just for you stays. */
+export const StoppedFromShare: PageStory = {
+  ...moment(yours(), openWorkspace, toThePlan, presentWorkspace, followsYou, workspaceAway,
+    step('Press Presenting in the dock, Stop sharing, then For everyone', async (c) => {
+      await c.userEvent.click(await stopInShare(c));
+      await toldThat('Closed for everyone.', SOON);
+    })),
+  name: 'Stopped from Share, for everyone'
+};
 
 /* ---------- 3 When someone else presents ---------- */
 

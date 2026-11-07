@@ -389,11 +389,10 @@ export interface CloseAskProps {
   phone?: boolean | undefined;
 }
 
-/** Close's question, under `anchor` (Close ▾ on the frame's bar). `tip` names Close on hover, as it does without the question. */
-export function CloseAsk({ open, onOpenChange, title, onMe, onEveryone, phone = false, anchor, tip }: CloseAskProps & { anchor: ReactNode; tip?: ReactNode }) {
+/** What ending a board or the workspace you present can be: for you, or for everyone. Close's question and Share's last step both ask it. */
+function CloseChoices({ onMe, onEveryone }: Pick<CloseAskProps, 'onMe' | 'onEveryone'>) {
   return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="bottom" align="end" stage label={title} className={cn('ic-closeask', phone && 'is-sheet')}>
-      <p className="ic-askh ac-clamp-2">{title}</p>
+    <>
       <button type="button" className="ic-cm" onClick={onMe}>
         <span className="sq"><Icon name="user" size={18} /></span>
         <span><b>For you</b><small>Everyone else keeps it open, on their own.</small></span>
@@ -402,6 +401,16 @@ export function CloseAsk({ open, onOpenChange, title, onMe, onEveryone, phone = 
         <span className="sq"><Icon name="people" size={18} /></span>
         <span><b>For everyone</b><small>It closes for everyone in the call.</small></span>
       </button>
+    </>
+  );
+}
+
+/** Close's question, under `anchor` (Close ▾ on the frame's bar). `tip` names Close on hover, as it does without the question. */
+export function CloseAsk({ open, onOpenChange, title, onMe, onEveryone, phone = false, anchor, tip }: CloseAskProps & { anchor: ReactNode; tip?: ReactNode }) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="bottom" align="end" stage label={title} className={cn('ic-closeask', phone && 'is-sheet')}>
+      <p className="ic-askh ac-clamp-2">{title}</p>
+      <CloseChoices onMe={onMe} onEveryone={onEveryone} />
     </Popover>
   );
 }
@@ -489,7 +498,8 @@ export function FramePager({ at, total, part, onBack, onNext, notes }: {
 
 /*
  * Share opens one popover over the dock (`ic-sharepop`, a sheet on a phone), and each step takes the place of the one before:
- * what you can present (`ShareKinds`), then your screen (`ShareScreenStep`) or a board (`BoardPicker` with its `step`).
+ * what you can present (`ShareKinds`), then your screen (`ShareScreenStep`) or a board (`BoardPicker` with its `step`), or,
+ * stopping a board or the workspace you present, Close's question (`ShareStopStep`).
  */
 
 /** One thing you can present, or why you can't here. */
@@ -540,6 +550,23 @@ export function ShareStepHead({ title, onBack }: { title: string; onBack: () => 
       <button type="button" className="ic-sp-back" aria-label="Back to Share" onClick={onBack}><Icon name="left" size={16} />Share</button>
       <b className="ac-clamp-1">{title}</b>
     </div>
+  );
+}
+
+/**
+ * Share › Stop sharing, on a board or the workspace you present: Close's question, in Share's own menu, so it's asked wherever
+ * what you present is, on your stage, a tile, or out of sight.
+ */
+export function ShareStopStep({ what, onBack, onMe, onEveryone }: {
+  /** What you present, as Share's first step says it: "Launch retro", "the workspace". */
+  what: string;
+  onBack: () => void;
+} & Pick<CloseAskProps, 'onMe' | 'onEveryone'>) {
+  return (
+    <>
+      <ShareStepHead title={`Stop sharing ${what}`} onBack={onBack} />
+      <CloseChoices onMe={onMe} onEveryone={onEveryone} />
+    </>
   );
 }
 

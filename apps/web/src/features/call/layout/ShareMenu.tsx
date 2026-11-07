@@ -3,15 +3,17 @@
  * popover, so no window opens over another. First, what to share, with Stop sharing while you present something. Your screen
  * goes on to its own step (a tab, a window or your whole screen, and its sound where this browser can share it) before the
  * browser's own picker; A board goes on to the board picker, which presents what you pick straight away; the workspace is
- * presented at once. On a phone it's a sheet, and a screen can't be shared there.
+ * presented at once. Stop sharing stops your screen at once, and on a board or the workspace asks Close's question as its own
+ * step, so it's asked wherever what you present is: on your stage, a tile, or out of sight. On a phone it's a sheet, and a
+ * screen can't be shared there.
  */
-import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, cn, type BoardPickerProps } from '@alcove/ui';
+import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, ShareStopStep, cn, type BoardPickerProps } from '@alcove/ui';
 import { useState } from 'react';
 import type { ShareChoice, ShareSurface } from '~/features/call/media/media';
 import { SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/screen-sharing/share';
 
-/** Share's steps: what to share, then Your screen or A board. */
-export type ShareStep = 'share' | 'shareScreen' | 'shareBoard';
+/** Share's steps: what to share, then Your screen or A board, or stopping what you present. */
+export type ShareStep = 'share' | 'shareScreen' | 'shareBoard' | 'shareStop';
 /** Why the last try at sharing a screen didn't start, as its step says. */
 export type ShareTrouble = Exclude<ShareProblem, 'cancelled' | 'unsupported'>;
 
@@ -24,8 +26,11 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
   step: ShareStep | null;
   onStep: (step: ShareStep | null) => void;
   phone: boolean;
-  /** What you present now ("your screen", "the workspace", a board's name), with Stop sharing, or null. */
-  presenting: { what: string; onStop: () => void } | null;
+  /**
+   * What you present now ("your screen", "the workspace", a board's name), or null. Stopping your screen stops it for
+   * everyone (`asks` false); a board or the workspace asks first, for you or for everyone.
+   */
+  presenting: { what: string; asks: boolean; onStop: (everyone: boolean) => void } | null;
   screen: {
     /** Why no more screens can be shared ("4 people are sharing. …"), or null. */
     full: string | null;
@@ -61,8 +66,10 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
       onBack={screen.onBack} onShare={() => screen.onShare({ surface: kind, audio: soundLabel !== null && sound })} />
   ) : step === 'shareBoard' && 'picker' in board ? (
     <BoardPicker step={{ onBack: () => onStep('share') }} {...board.picker} />
+  ) : step === 'shareStop' && presenting?.asks ? (
+    <ShareStopStep what={presenting.what} onBack={() => onStep('share')} onMe={() => presenting.onStop(false)} onEveryone={() => presenting.onStop(true)} />
   ) : (
-    <ShareKinds sharing={presenting}
+    <ShareKinds sharing={presenting ? { what: presenting.what, onStop: () => { if (presenting.asks) onStep('shareStop'); else presenting.onStop(true); } } : null}
       screenWhy={phone ? 'Sharing a screen needs a computer' : !canShareScreen() ? SHARE_PROBLEMS.unsupported : screen.full}
       onScreen={screen.onPick}
       board={'picker' in board ? { onPress: () => { board.onPick(); onStep('shareBoard'); } } : board}

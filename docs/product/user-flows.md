@@ -385,10 +385,11 @@ time, slides in on the right.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
     workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
-    closes for everyone in the call."), as a sheet on a phone, and so do the lit **Board** and **Workspace** (**O**, **W**),
-    and **Stop sharing** in Share's first step, which says what you're presenting. Your own screen has **Stop sharing**
-    instead of Close. The organizer can close anyone's presented board or workspace for everyone (**Close it for
-    everyone**), and stop anyone's screen (**Stop it for everyone**), from its name.
+    closes for everyone in the call."), as a sheet on a phone, and so do the lit **Board** and **Workspace** (**O**, **W**);
+    **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
+    you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
+    board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
+    its name.
   - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
     a screen shown live, a board drawn small, or the workspace with where its presenter is, and its name, "Priya is
     presenting" and **Join** (**Open**, on your own). Pressing it puts it on your stage, following. When the presentation
@@ -792,7 +793,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
      their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
      everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
-     organizer can close anyone's for everyone, from the board's name. If the presenter leaves the call, it ends too, and
+     organizer can close anyone's for everyone, from the board's name. **Stop sharing**, in Share, asks the same, wherever
+     the board is: on your stage, a tile, or out of sight. If the presenter leaves the call, it ends too, and
      its tile goes. Nobody's access changes: someone who can't open the board is told who's presenting, never what.
 12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
    where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,

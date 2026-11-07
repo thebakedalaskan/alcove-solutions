@@ -2,10 +2,14 @@
  * Share, from the dock: one popover over Share, always at night, whose steps take each other's place. First what you can
  * present straight away (ShareKinds): your screen, a board or the workspace, with Stop sharing while you share something.
  * Your screen asks a tab, a window or your whole screen, and its sound (ShareScreenStep); a board is the board picker as a
- * step (BoardPicker with `step`). Each later step has Share's step head (ShareStepHead) to go back. On a phone it's a sheet.
+ * step (BoardPicker with `step`); and Stop sharing, on a board or the workspace you present, asks Close's question, for you
+ * or for everyone (ShareStopStep). Each later step has Share's step head (ShareStepHead) to go back. On a phone it's a sheet.
  * Press through it: each story starts on a step and goes on from there.
  */
-import { BoardPickerThumb, BoardPicker, CallDock, cn, DockButton, DockLeave, DockSeparator, Popover, ShareKinds, ShareScreenStep, ShareStepHead, type BoardPickerAccess, type BoardPickerInCall, type ShareSurfaceKind } from '@alcove/ui';
+import {
+  BoardPickerThumb, BoardPicker, CallDock, cn, DockButton, DockLeave, DockSeparator, Popover, ShareKinds, ShareScreenStep, ShareStepHead, ShareStopStep, type BoardPickerAccess, type BoardPickerInCall,
+  type ShareSurfaceKind
+} from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { did, onStage } from '../../../src/component';
@@ -49,7 +53,7 @@ function OverDock({ phone: asked, children }: { phone: boolean; children: ReactN
   );
 }
 
-type Step = 'kinds' | 'screen' | 'board';
+type Step = 'kinds' | 'screen' | 'board' | 'stop';
 
 /** Share's steps as the call keeps them: what you press moves you on, and back returns to the first. */
 function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble = null, changing = false, blocked, inCall, access }: {
@@ -64,6 +68,7 @@ function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble
   const b = kinds.board;
   const toBoard = 'onPress' in b ? b.onPress : null;
   const soundSays = SOUND[surface];
+  const sharing = kinds.sharing;
   return (
     <OverDock phone={phone}>
       {step === 'screen' ? (
@@ -73,9 +78,12 @@ function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble
       ) : step === 'board' ? (
         <BoardPicker step={{ onBack: back }} recents={TEAM} inCall={inCall} blocked={blocked} access={access}
           onTemplate={did('onTemplate')} onRecent={did('onRecent')} />
+      ) : step === 'stop' && sharing ? (
+        <ShareStopStep what={sharing.what} onBack={back} onMe={did('For you')} onEveryone={did('For everyone')} />
       ) : (
         <ShareKinds {...kinds} onScreen={() => { kinds.onScreen(); setStep('screen'); }}
-          board={toBoard ? { onPress: () => { toBoard(); setStep('board'); } } : b} />
+          board={toBoard ? { onPress: () => { toBoard(); setStep('board'); } } : b}
+          sharing={sharing && (sharing.what === 'your screen' ? sharing : { ...sharing, onStop: () => { sharing.onStop(); setStep('stop'); } })} />
       )}
     </OverDock>
   );
@@ -84,7 +92,7 @@ function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble
 const meta = {
   title: 'Components/In a call/ShareMenu',
   component: ShareKinds,
-  subcomponents: { ShareStepHead, ShareScreenStep, BoardPicker },
+  subcomponents: { ShareStepHead, ShareScreenStep, BoardPicker, ShareStopStep },
   ...onStage,
   args: { sharing: null, screenWhy: null, onScreen: did('Your screen'), board: { onPress: did('A board') }, workspace: { onPress: did('The workspace') } },
   argTypes: { sharing: { control: false }, board: { control: false }, workspace: { control: false }, screenWhy: { control: 'text' } },
@@ -97,6 +105,15 @@ type Story = StoryObj<typeof meta>;
 export const Kinds: Story = {};
 /** While you share your screen it says so first, with Stop sharing; Share again changes what you share. */
 export const KindsWhileSharing: Story = { name: 'Kinds, while sharing', args: { sharing: { what: 'your screen', onStop: did('Stop sharing') } } };
+/** While you present a board it says so first: Stop sharing asks, in the same menu, for you or for everyone. */
+export const KindsWhilePresentingABoard: Story = { name: 'Kinds, while presenting a board', args: { sharing: { what: 'Launch retro', onStop: did('Stop sharing') } } };
+/**
+ * Stop sharing, on a board or the workspace you present: Close's question as Share's next step, so it's asked wherever what you
+ * present is: on your stage, a tile, or out of sight.
+ */
+export const StopStep: Story = {
+  name: 'Stop step', args: { sharing: { what: 'the workspace', onStop: did('Stop sharing') } }, render: (args) => <ShareFlow kinds={args} start="stop" />
+};
 /** Priya presents the workspace: one board or workspace is presented at a time, so A board and The workspace say who's presenting. */
 export const KindsWhileSomeonePresents: Story = {
   name: 'Kinds, while someone else presents',
