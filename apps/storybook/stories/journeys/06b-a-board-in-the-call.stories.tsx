@@ -8,7 +8,7 @@
  */
 import { fillTemplate } from '@alcove/board';
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
+import { screen, waitFor, within } from 'storybook/test';
 import { itemId } from '../../src/api/scenarios';
 import { at, opensBoard, presentsBoard, shares, type CallScript, type Cue, type Present } from '../../src/api/script';
 import { boardDoc } from '../../src/api/workspaces';
@@ -54,6 +54,32 @@ async function openTheCallsBoard({ userEvent }: Step, phone = false): Promise<vo
   await pickerSettled();
   await userEvent.click(row);
 }
+/** Where in a frame to look for a clear spot, across and down it: its middle first, where its hint is while it's empty. */
+const SPOTS = [[0.5, 0.5], [0.5, 0.68], [0.5, 0.84], [0.28, 0.6], [0.72, 0.6], [0.28, 0.84], [0.72, 0.84]] as const;
+/**
+ * A clear spot in a board's frame, by the frame's title. A frame takes no presses itself, so with nothing of the board's there
+ * a double-click lands on the sheet, which puts a sticky there in the frame's colour. The others fill a frame from its top as
+ * they talk, so its middle is clear for a while, and lower down for longer.
+ */
+function clearSpotIn(title: string): Promise<{ sheet: HTMLElement; x: number; y: number }> {
+  return waitFor(() => {
+    const frame = screen.queryAllByText(title).map((t) => t.closest('.bf')).find((f) => f instanceof HTMLElement);
+    const sheet = frame?.closest('.bd');
+    if (!(frame instanceof HTMLElement) || !(sheet instanceof HTMLElement)) throw new Error(`There’s no ${title} on the board yet.`);
+    const box = frame.getBoundingClientRect();
+    for (const [across, down] of SPOTS) {
+      const x = box.left + box.width * across;
+      const y = box.top + box.height * down;
+      if (document.elementFromPoint(x, y) === sheet) return { sheet, x, y };
+    }
+    throw new Error(`Nowhere in ${title} is clear.`);
+  }, SOON);
+}
+/** The sticky just made, open for typing: its field on the sheet has the keys. */
+const typingIn = (sheet: HTMLElement) => waitFor(() => {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLTextAreaElement) || !sheet.contains(field)) throw new Error('No sticky is open for typing yet.');
+}, SOON);
 /** The frame's name, which opens its menu: the first thing on its bar that opens something. */
 function nameOf(f: HTMLElement): HTMLElement {
   const [menu] = within(f).getAllByRole('button').filter((b) => b.hasAttribute('aria-haspopup'));
@@ -77,11 +103,10 @@ export const StartABoard: PageStory = {
       await board();
     });
     await step('Double-click in Went well: a sticky in that frame’s colour, ready to type', async () => {
-      // A frame takes no presses itself: a double-click there lands on the sheet under it, where Went well's hint is.
-      const hint = await screen.findByText('What should we keep doing?', {}, SOON);
-      const sheet = hint.closest('.bd');
-      const spot = hint.getBoundingClientRect();
-      if (sheet) await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: sheet, coords: { clientX: spot.x + spot.width / 2, clientY: spot.y + spot.height / 2 } });
+      // The others fill the board as they talk, and Went well's hint goes with its first sticky: anywhere clear in it will do.
+      const { sheet, x, y } = await clearSpotIn('Went well');
+      await userEvent.pointer({ keys: '[MouseLeft][MouseLeft]', target: sheet, coords: { clientX: x, clientY: y } });
+      await typingIn(sheet);
       await userEvent.keyboard('Pricing page shipped a week early');
     });
     await step('Esc when you’re done. Whoever opens it writes at once, each pointer with a face and a name', async () => {
