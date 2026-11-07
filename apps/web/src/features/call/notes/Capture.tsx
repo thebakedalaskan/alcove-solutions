@@ -8,9 +8,11 @@
  * screen's.
  */
 import { errorMessage, notesAreOn, type CallRole, type CallState, type NotesRequest, type Person } from '@alcove/api';
-import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, Switch, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, CaptureParts, CaptureSign, Faces, Icon, IconButton, Popover, Select, cn, useToast } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import { captureHere, changedLine } from '~/lib/capture';
+import { useAiModels } from '~/lib/queries';
+import { modelOf, modelOptions, modelValue } from '~/lib/aiModels';
 import { callName, listNames } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { capital } from '~/lib/words';
@@ -22,8 +24,8 @@ export interface CaptureControls {
   /** The organizer: hold all capture, or carry on. */
   pause: () => void;
   resume: () => void;
-  /** The organizer: have shared screens read for the notes, or stop it. */
-  screens: (on: boolean) => void;
+  /** The organizer: the AI model for this call's notes, or the default (null). */
+  model: (model: string | null) => void;
   /** Anyone else: ask for notes, or take the ask back. */
   ask: (up: boolean) => void;
   /** The organizer, in a breakout room: pause notes there, or carry on. The call's notes don't change. */
@@ -71,20 +73,25 @@ function CaptureDetails({ state, role, getting, controls, done, onOpenNotes }: {
   const askers = call.requests.map((r) => askerOf(state, r));
   const mine = !host ? call.asked : null;
   const run = (f: () => void) => () => { done(); f(); };
+  // Only the organizer chooses, so only their browser asks which models there are.
+  const models = useAiModels(host);
   return (
     <>
       <div className="cap-h"><CaptureSign mode={c.mode} requested={!notesAreOn(c.mode) && c.requests.length > 0} />{when && <span className="when">{when}</span>}</div>
       <p className="cap-said">{saidFor(state, c, name)}</p>
       <CaptureParts capture={c} taker={state.isHost ? 'you' : takerName(state)} />
-      {/* The call's shared screens, so it's the call's state, and not shown in a breakout room, where nothing shared is read. */}
-      {host && !call.room && call.mode !== 'off' && (
+      {/* The call's choice, so not shown in a breakout room, where nothing shared is kept. Everything after transcription uses it. */}
+      {host && !call.room && (
         <div className="cap-screens">
-          <span><b>Read shared screens</b><small>What anyone shares is read for the notes, from their own browser. Cameras never are.</small></span>
-          <Switch checked={call.screen.mode !== 'off'} label="Read shared screens for the notes" onChange={(on) => controls.screens(on)} />
+          <span><b>Notes written by</b><small>This AI model writes the notes, reads shared screens that their presenter puts in the notes, and answers questions in this call. Cameras are never read.</small></span>
+          <Select<string> label="Notes written by" value={modelValue(call.model)} options={modelOptions(models.data, call.model)}
+            align="end" onChange={(v) => controls.model(modelOf(v))} />
         </div>
       )}
       <div className="cap-facts">
-        <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
+        {call.modelPrivate
+          ? <div className="sealed"><Icon name="sealed" size={15} /><span>Written in confidential compute. Alcove can’t read the notes.</span></div>
+          : <div className="caution"><Icon name="shieldOff" size={15} /><span>The AI model isn’t in a secure enclave, so Alcove can’t guarantee it keeps what’s said private.</span></div>}
         <div>
           <Icon name="people" size={15} />
           {roomName ? <span>What’s said in {roomName} goes into the call’s notes as its own section, for everyone who gets them.</span> : <>

@@ -26,7 +26,7 @@ import { audioUrlFor, quietAudio, screenImage } from './media';
 import { ScriptedMove } from './move';
 import { personalFor } from './personal';
 import { ScriptedRecording } from './recording';
-import { atTheDoor } from './script';
+import { AI_MODELS, atTheDoor } from './script';
 import { current, me, nextId, openedAs } from './state';
 import { agentsFor, EXPIRED_AGENT_REQUEST, forgetAgents, PREVIEW_AGENT_TOKEN, PREVIEW_MCP_ENDPOINT } from './agents';
 import * as spaces from './workspaces';
@@ -307,7 +307,7 @@ export const standIn: AlcoveApi = {
       w.prefs = {
         notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage, summaryLength: patch.summaryLength ?? p.summaryLength,
         addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings, recordOffline: patch.recordOffline ?? p.recordOffline,
-        notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups
+        notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups, model: patch.model === undefined ? p.model : patch.model
       };
       return w.prefs;
     }),
@@ -485,6 +485,8 @@ export const standIn: AlcoveApi = {
       return audioUrlFor(`${id}:${segment}`, seconds);
     },
     audio: (id: ID, segment: number) => answer((w) => noteIn(w, id).audio.find((a) => a.index === segment)?.seconds ?? 60).then(quietAudio),
+    // The stand-in keeps no video of a share: this address answers 404, so the replay's stage stays dark and the page logs a warning.
+    screenVideoUrl: (id: ID, share: ID, segment: number) => `/storybook-no-screen-video/${id}/${share}/${segment}`,
     screenUrl: (id: ID, frameId: ID) => screenImage(current().notes.find((n) => n.id === id)?.screens.find((s) => s.id === frameId)),
     proposeDecision: (noteId: ID, p: DecisionProposal) => changeNote(noteId, (n) => ({
       ...n, decisions: [...n.decisions, { id: nextId('d'), text: p.text, state: 'proposed', lines: p.lines ?? [], against: [], disputes: [], changes: [changeBy(n, 'proposed')], evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] } }]
@@ -544,9 +546,20 @@ export const standIn: AlcoveApi = {
         };
       }) ?? null
     })),
-    rewrite: (noteId: ID) => changeNote(noteId, (n, w) => {
-      w.writing = { id: noteId, seconds: 5, written: () => ({ ...noteIn(current(), noteId), writingAgain: false, writtenAt: new Date().toISOString() }) };
+    rewrite: (noteId: ID, o?: { model?: string | null | undefined }) => changeNote(noteId, (n, w) => {
+      w.writing = {
+        id: noteId, seconds: 5,
+        written: () => {
+          const was = noteIn(current(), noteId);
+          return { ...was, writingAgain: false, writtenAt: new Date().toISOString(), model: o?.model === undefined ? was.model : o.model };
+        }
+      };
       return { ...n, writingAgain: true };
+    }),
+    cancelRewrite: (noteId: ID) => changeNote(noteId, (n, w) => {
+      if (n.status !== 'ready') throw refused('conflict', 'The first notes are still being written.');
+      if (w.writing?.id === noteId) w.writing = null;
+      return { ...n, writingAgain: false };
     }),
     ask: (noteId: ID, question: string) => stream((w) => asWritten(answerAbout(noteIn(w, noteId), question))),
     askAll: (question: string) => stream((w) => asWritten(answerAcross(w, question))),
@@ -672,6 +685,9 @@ export const standIn: AlcoveApi = {
     searchText: (id: ID) => spaces.searchText(id)
   },
   credits: { balance: () => answer((w) => w.credits) },
+  models: {
+    list: () => answer(() => AI_MODELS)
+  },
   trust: { attestation: attest },
   diagnostics: { report: () => Promise.resolve() }
 };
@@ -693,7 +709,11 @@ async function* progressOf(id: string): AsyncIterable<NoteProgress> {
   });
   if (!writing) { yield steps(4, first.status === 'ready'); return; }
   const each = (writing.seconds * 1000) / 4;
-  for (let done = 1; done <= 3; done++) { yield steps(done, false); await pause(each); }
+  for (let done = 1; done <= 3; done++) {
+    yield steps(done, false);
+    await pause(each);
+    if (w.writing !== writing) { yield steps(4, true); return; }
+  }
   const written = writing.written();
   w.notes = w.notes.map((n) => (n.id === id ? written : n));
   w.writing = null;

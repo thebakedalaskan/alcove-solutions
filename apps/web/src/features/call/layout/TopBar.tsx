@@ -31,7 +31,7 @@ export interface TopSide { view: SideView | null; toggle: (v: SideView) => void;
 const BOARD_TIP = 'Open a board, just for you · O';
 const WORKSPACE_TIP = 'Open the workspace, just for you · W';
 
-export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, phone, board, workspace, side }: {
+export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, modelPrivate, phone, board, workspace, side }: {
   title: string; elapsed: number;
   /** The notes sign: what the call captures, the same for everyone. */
   sign: ReactNode;
@@ -46,6 +46,8 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
   reconnecting: boolean;
   /** Shared screens are read for the notes (or will be once they resume), so frames of them are sealed too. */
   screens: boolean;
+  /** The call's AI model runs in a secure enclave. When it doesn't, the shield says the notes and AI answers aren't covered. */
+  modelPrivate: boolean;
   phone: boolean;
   board: TopBoard;
   workspace: TopWorkspace;
@@ -88,7 +90,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
       <span className="ac-time clock">{clock(elapsed)}</span>
       <span className="vr v1" />
       <div className="nz">{sign}</div>
-      <Shield screens={screens} />
+      <Shield screens={screens} modelPrivate={modelPrivate} />
       {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
       {swap}
       <div className="end">
@@ -116,7 +118,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
 }
 
 /** The shield: hover or focus says what confidential compute covers here; a click keeps it open. */
-function Shield({ screens }: { screens: boolean }) {
+function Shield({ screens, modelPrivate }: { screens: boolean; modelPrivate: boolean }) {
   const checked = useQuery(q.trust());
   const trust = checked.data;
   const [open, setOpen] = useState(false);
@@ -137,8 +139,9 @@ function Shield({ screens }: { screens: boolean }) {
         <div className="hd"><Icon name="sealed" size={17} />{trustLine(trust)}</div>
         <div className="rows">
           <div><span>Hardware checked</span>{verified && trust ? <b className="ac-time">{hm(new Date(trust.at))}</b> : <b>{trust ? 'Not on this server' : checked.isError ? 'Couldn’t check' : 'Checking…'}</b>}</div>
-          <div><span>Sealed</span>{screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes'}</div>
+          <div><span>Sealed</span>{modelPrivate ? (screens ? 'Audio, transcript, shared screens, notes' : 'Audio, transcript, notes') : (screens ? 'Audio, transcript, shared screens' : 'Audio, transcript')}</div>
         </div>
+        {!modelPrivate && <div className="last"><Icon name="shieldOff" size={14} /> The notes and AI answers in this call use an unencrypted AI model, outside a secure enclave. Audio and transcript stay sealed.</div>}
         <div className="last">{verified ? 'Alcove can’t read this call.' : 'Everything stays sealed. This server isn’t running in confidential compute, so its hardware can’t be checked.'}</div>
       </div>
     </Popover>

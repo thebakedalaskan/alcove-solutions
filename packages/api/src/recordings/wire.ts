@@ -27,11 +27,13 @@ export const MAX_TRANSCRIPT_CLIP_MS = 30_000;
 export const MAX_TRANSCRIPT_CLIP_BYTES = 44 + MAX_TRANSCRIPT_CLIP_MS * 32;
 
 /*
- * Shared screens (docs: Calls and recordings › Shared screens). The presenter's own browser sends a frame of its own
- * share, as JPEG bytes, when the screen has changed: which share it is (`share`, the share's LiveKit track ID) and how
- * long ago it was taken (`age`, in ms), so it's placed where it was on screen even if sending it took a moment.
+ * Shared screens (docs: Calls and recordings › Shared screens). A presenter's browser says each share is starting, and
+ * whether it goes in the notes; the server gives it an ID. While it's kept, the browser records it and sends the video
+ * in pieces, raw bytes with the piece's MIME type and, in these headers, where it goes: the recording's segment, the
+ * piece's sequence number in that segment for this share, where it starts in the segment (`at`, in milliseconds with
+ * pauses not counted) and its length. The share is in the path.
  */
-export const FRAME_HEADERS = { share: 'x-alcove-share', age: 'x-alcove-age-ms' } as const;
+export const VIDEO_HEADERS = { segment: 'x-alcove-segment', seq: 'x-alcove-seq', at: 'x-alcove-at-ms', duration: 'x-alcove-duration-ms' } as const;
 
 /**
  * What comes with a line of a call's recording, beside its audio (`CallSession.hear`): where in the audio the line starts
@@ -39,8 +41,14 @@ export const FRAME_HEADERS = { share: 'x-alcove-share', age: 'x-alcove-age-ms' }
  */
 export const HEARD_HEADERS = { from: 'x-alcove-heard-from', seconds: 'x-alcove-heard-seconds' } as const;
 
-/** A frame's JPEG, at most this big. Browsers send them at most 1600 pixels across, which is far smaller. */
-export const MAX_FRAME_BYTES = 1024 * 1024;
+/** A piece of a shared screen's video, at most this big. Five seconds at the rate browsers record is far smaller. */
+export const MAX_VIDEO_PIECE_BYTES = 4 * 1024 * 1024;
 
-/** How old a frame can say it is when it arrives: older ones are placed as if taken this long ago. */
-export const MAX_FRAME_AGE_MS = 30_000;
+/**
+ * The most frames of shared screens one call's notes read, however long it shared: picked from what was said (with the
+ * frame a few seconds before a change), and each share's start. Fewer for less sharing (SECONDS_PER_SCREEN_FRAME).
+ */
+export const MAX_SCREEN_FRAMES = 100;
+
+/** On average, at most one frame for this many seconds of sharing. */
+export const SECONDS_PER_SCREEN_FRAME = 15;

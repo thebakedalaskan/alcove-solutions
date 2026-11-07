@@ -3,7 +3,7 @@
  * data-note.js): what each call was, who has it, what was said and what the notes wrote down. All made up. Times are on
  * the demo clock: day 0 is Wednesday 4 November 2026, -1 the Tuesday before, and so on.
  */
-import type { Note, NoteAddition, PersonalEntry, ScreenMoment } from '@alcove/api';
+import type { Note, NoteAddition, PersonalEntry, ScreenMoment, ScreenShare } from '@alcove/api';
 import { iso } from './clock';
 import { mmss, writeNote, type NoteSpec } from './build';
 import { AIKO, ART, DIEGO, INES, KOFI, LENA, MAYA, PRIYA } from './people';
@@ -13,6 +13,11 @@ const artsCall: NoteSpec = {
   id: 'n1', title: 'Art’s call', startedAt: iso(0, 11, 58), minutes: 14, organizer: ART, invited: [INES],
   excerpt: 'Orders before the move ship from the old warehouse, and the movers come first.',
   summary: 'Art walks Ines through moving the warehouse to the new site, from booking the movers to which suppliers come too. They agree that orders placed before the move ship from the old warehouse, and that the order page shows the new delivery times once the date is set.',
+  details: [
+    'Art opened with the plan: the warehouse moves to the new site by the end of the month, and nothing else can be scheduled until the movers have a date. Ines asked for the movers to be booked first and said the order page could wait a week.',
+    'Art will list which suppliers move with them so nobody is caught out. Ines raised what happens to orders placed before the move, and they agreed those ship from the old warehouse, because otherwise customers wait twice. That is still proposed, and waits on Art to confirm it.',
+    'Last, the order page. Once the date is set, it shows the new delivery times. Art will book the movers for the 14th by Friday and send the supplier list on Monday.'
+  ].join('\n\n'),
   chapters: [['00:00', 'The plan', 'Moving the warehouse by the end of the month.'], ['04:10', 'Movers and dates', 'Book the movers before anything else.'], ['09:32', 'The order page', 'New delivery times once the date is set.']],
   said: [
     { at: '00:40', who: ART, text: 'The plan is to move the warehouse to the new site by the end of the month.' },
@@ -35,12 +40,33 @@ export const LAUNCH_CHECKLIST: ScreenMoment = {
   legible: 'clear', title: 'Launch checklist',
   text: 'Launch checklist\nHelp article for support\nFlag in the rollout plan\nEmpty state on the team page',
   description: 'Kofi’s launch checklist, with two of its items still open: the empty state on the team page and the flag’s name in the rollout plan.',
-  regions: [{ label: 'The open items', x: 0.05, y: 0.3, w: 0.6, h: 0.4 }]
+  shows: 'A checklist on a white slide with seven rows, five ticked in blue and two left empty.', changed: '',
+  regions: [{ label: 'The open items', x: 0.05, y: 0.3, w: 0.6, h: 0.4 }],
+  relevance: 'key', cue: 'I can look after this.', line: 'l16'
+};
+/* The same share a little later, when Kofi moves to the rollout plan. */
+export const ROLLOUT_PLAN: ScreenMoment = {
+  id: 'n2-s2', at: mmss('10:05'), until: mmss('10:40'), presenter: { name: KOFI.name, person: KOFI }, share: 'TR_kofi1', width: 1920, height: 1080,
+  legible: 'clear', title: 'Rollout plan', text: 'Rollout plan\nOnboarding flag: new-first-run\nStart at one per cent',
+  description: 'The rollout plan, where Kofi adds the flag for the new onboarding as he says it.',
+  shows: 'A plan document with a table of stages, and a new row for the onboarding flag highlighted in yellow.', changed: 'A new row for the onboarding flag was added to the plan.',
+  regions: [{ label: 'The flag', x: 0.05, y: 0.3, w: 0.6, h: 0.1 }],
+  relevance: 'supporting', cue: 'I’ll put the flag in the rollout plan now, that one’s quick.', line: 'l18'
+};
+/* Kofi's share, kept for the notes: it ran from 08:52 to 10:40, in the recording's one segment. */
+export const KOFI_SHARE: ScreenShare = {
+  id: 'TR_kofi1', presenter: { name: KOFI.name, person: KOFI }, label: 'Kofi’s screen', at: mmss('08:52'), until: mmss('10:40'),
+  segments: [{ segment: 0, at: mmss('08:52'), until: mmss('10:40') }]
 };
 const standup: NoteSpec = {
   id: 'n2', title: 'Team standup', startedAt: iso(0, 9, 0), minutes: 20, organizer: ART, invited: [PRIYA, KOFI, MAYA],
   excerpt: 'The new onboarding ships behind a flag on 12 November, and support gets the help article first.',
   summary: 'The new onboarding ships behind a flag on 12 November, and support gets the help article first. Kofi flagged two items still open on the launch checklist, to look at before the design review.',
+  details: [
+    'The call started with onboarding. Priya said the new first run is done: design signed off the night before and the last copy changes went in that morning. She would still rather not turn it on for everyone at once, since a broken first run is the first thing anyone would see. Kofi agreed to put it behind a flag and watch the first few hundred people go through. Maya asked whether the flag changes the trial numbers, and Priya said it does not. Art set the date: the flag goes on on 12 November.',
+    'Next was support, who haven’t seen any of the changes yet. The group agreed they should get the help article before the flag goes on, not on the same day, and Priya took on writing it by Friday. Maya asked who tells existing customers, by email or a note in the app, and Kofi said it hasn’t been decided, so it stays open.',
+    'Kofi then shared his screen. The launch checklist has two items still open, the empty state on the team page and the flag’s name in the rollout plan, and Art will look at the checklist before the design review. Kofi added the flag to the rollout plan on the spot. After a short break into two rooms, Priya said support is happy as long as the article comes first, and Kofi said the rollout starts at one per cent.'
+  ].join('\n\n'),
   chapters: [
     ['00:00', 'Onboarding', 'Ready, and it goes out behind a flag.'],
     ['05:12', 'Support', 'The help article comes before the flag.'],
@@ -81,13 +107,18 @@ const standup: NoteSpec = {
     { id: 'n2-a2', text: 'Write the help article for support', at: '06:20', owner: PRIYA, takenOn: true, due: 'Friday' },
     { id: 'n2-a3', text: 'Add the flag to the rollout plan', at: '10:05', owner: KOFI, takenOn: true, done: true }
   ],
-  screens: [LAUNCH_CHECKLIST]
+  screens: [LAUNCH_CHECKLIST, ROLLOUT_PLAN],
+  shares: [KOFI_SHARE]
 };
 
 const pricing: NoteSpec = {
   id: 'n3', title: 'Pricing sync', startedAt: iso(-1, 15, 0), minutes: 32, organizer: MAYA, invited: [ART, LENA],
   excerpt: 'The team plan gets a monthly option. Free minutes stay as they are.',
   summary: 'Maya compares seat pricing with usage pricing, and everyone leans towards minutes of notes as the thing people pay for. The team plan gets a monthly option, and free minutes stay as they are.',
+  details: [
+    'Maya laid out the two options, seats or usage, and everyone leaned towards minutes of notes as the thing people pay for, since that is what grows with how much a team uses Alcove.',
+    'The team plan gets a monthly option because nobody wants to commit for a year. Lena argued the free minutes should stay as they are, as cutting them would hurt sign-ups, and the group agreed. Maya wants the monthly option kept behind a flag until the launch, and Art will send Kofi the pricing draft before Friday.'
+  ].join('\n\n'),
   chapters: [['00:00', 'Seats or usage', 'Minutes of notes are what people pay for.'], ['12:48', 'A monthly option', 'Nobody wants to commit for a year.'], ['17:05', 'Free minutes', 'They stay as they are.']],
   said: [
     { at: '04:20', who: MAYA, text: 'Seats or usage: everyone leans towards minutes of notes as the thing people pay for.' },
@@ -107,6 +138,10 @@ const designReview: NoteSpec = {
   id: 'n4', title: 'Design review', startedAt: iso(-1, 11, 0), minutes: 45, organizer: ART, invited: [PRIYA, KOFI, AIKO],
   excerpt: 'The sidebar reads better dark. One filled button per view from now on.',
   summary: 'Kofi walks through the sidebar in both themes, and it reads better dark. The team agrees on one filled button per view, and Aiko finds three on the pricing page.',
+  details: [
+    'Kofi went through the sidebar in light and dark. It reads better dark, and the team decided it stays dark in both themes.',
+    'The conversation moved to buttons. Priya proposed one filled button per view from now on, and Art confirmed it. Aiko checked the pricing page against that rule and found three filled buttons, so she took on cutting it to one. Kofi added that the new empty states can ride the same flag.'
+  ].join('\n\n'),
   chapters: [['00:00', 'The sidebar', 'It reads better dark, in both themes.'], ['18:22', 'Filled buttons', 'One per view from now on.'], ['31:02', 'The pricing page', 'Three filled buttons, cut to one.']],
   said: [
     { at: '07:10', who: KOFI, text: 'The sidebar reads better dark, in both themes.' },

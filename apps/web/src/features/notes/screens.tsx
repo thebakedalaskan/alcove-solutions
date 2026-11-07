@@ -52,11 +52,13 @@ export function ScreenRefChip({ screen, screens, onOpen }: { screen: ScreenRef; 
 
 /**
  * One moment of a note's shared screens, opened: the frame, the part meant outlined, what it is and whose, what the
- * notes say it shows, how legible it was, the text read on it, and the call from there. Arrows move through them.
+ * notes say it shows, how legible it was, the text read on it, and playing the call from there. Arrows move through them.
  */
-export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSeek, marks }: {
+export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onPlay, marks, onCloseFocus }: {
   noteId: string; screens: ScreenMoment[]; open: OpenScreen | null; me: string | undefined;
-  onOpen: ScreenOpener; onClose: () => void; onSeek?: ((s: number) => void) | undefined; marks?: ScreenMarks | undefined;
+  onOpen: ScreenOpener; onClose: () => void; onPlay?: ((s: number) => void) | undefined; marks?: ScreenMarks | undefined;
+  /** Where focus goes once it closes, instead of back to what opened it: true once it has gone there. */
+  onCloseFocus?: (() => boolean) | undefined;
 }) {
   const i = open ? screens.findIndex((m) => m.id === open.id) : -1;
   const m = screens[i];
@@ -74,7 +76,7 @@ export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSee
     return () => removeEventListener('keydown', on);
   }, [m, prev, next, onOpen]);
   return (
-    <Modal open={!!m} onOpenChange={(o) => { if (!o) onClose(); }} label={m ? `Shared screen: ${m.title || 'untitled'}` : 'Shared screen'} className="scr-view">
+    <Modal open={!!m} onOpenChange={(o) => { if (!o) onClose(); }} label={m ? `Shared screen: ${m.title || 'untitled'}` : 'Shared screen'} className="scr-view" onCloseFocus={onCloseFocus}>
       {m && (
         <>
           <div className="scr-h">
@@ -104,7 +106,7 @@ export function ScreenViewer({ noteId, screens, open, me, onOpen, onClose, onSee
           <div className="scr-f">
             <span className="ac-mono">{i + 1} of {screens.length}</span>
             {marks && <IconButton icon={marks.has(m.id) ? 'bookmarked' : 'bookmark'} label={marks.has(m.id) ? 'Remove your bookmark' : 'Bookmark this screen, for you alone'} on={marks.has(m.id)} onClick={() => marks.toggle(m.id)} />}
-            <Moment at={m.at} onSeek={onSeek && ((s) => { onSeek(s); onClose(); })} />
+            <Moment at={m.at} plays onSeek={onPlay && ((s) => { onPlay(s); onClose(); })} />
           </div>
         </>
       )}

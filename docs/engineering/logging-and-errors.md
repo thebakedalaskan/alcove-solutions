@@ -88,8 +88,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Rate limits answer `503 unavailable` ("Too many attempts. Wait a minute and try again.") and log the
   limit's name: `sign-in` (30 a minute) and `telemetry` (60 a minute) per client address, `transcribe`
   (240 a minute, calls and room recordings together; 40 for each voice in a call), `ask` (20 a minute, writing a note's notes again included) and `carry-over` (60 a minute) per account, and
-  `request-notes` (10 a minute), `others-point` (20 a minute), `frames` (24 a minute) and `share-ended` (30 a minute)
-  per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
+  `request-notes` (10 a minute), `others-point` (20 a minute), `screen-video` (60 a minute), and `share` and `share-ended`
+  (30 a minute together) per person in a call, and `ring` (20 a minute) per organizer, `ring answer` and `rings` (30 a minute each) per
   account, `calls` (30 a minute) per account on everything that makes one, and `open rings` when a process holds all
   the streams of rings it takes, and `media piece` (600 a minute) and `media` (240 a minute, each file's URL asked for and each piece opened) per person.
   Past what a process takes on at once, a file's upload or read logs `pieces arriving` or `files being read`. Google sign-in
@@ -97,8 +97,8 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
 - Every tab holds a stream of rings and opens a new one every few minutes, so `GET /v1/rings` is logged at debug, like
   a health check, unless it's refused. Rings say who rang how many and that a ring was answered, by IDs and counts:
   never an address, and never the answer, which is sealed so that nothing shows who's coming.
-- An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES`, a shared-screen frame over
-  `MAX_FRAME_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
+- An audio piece over 2 MiB, a transcript clip over `MAX_TRANSCRIPT_CLIP_BYTES`, a piece of a shared screen's video over
+  `MAX_VIDEO_PIECE_BYTES` or a piece of a file over `MEDIA_PIECE_BYTES` is refused as `400 invalid` from its `content-length`,
   before the body is read. Whatever's left of a request answered before all of it arrived is read and dropped once the
   answer has gone, so its connection can take the next request. A body still arriving half a second later, or past 64 MiB,
   goes with its connection, as the Node adapter has it.
@@ -122,11 +122,13 @@ throw new KeyError('This key can’t open that data.', { cause: err, context: { 
   clamped` at warn, once, for a row it can't use or had to hold to its bounds, and `service limits not read; keeping what was in
   force` at warn when it can't read them. `limits set` logs `service limit set`, with the old value and the new, and `limit not
   set` at warn with why: a typo is an ordinary refusal.
-- A frame past a call's `SCREEN_FRAMES_MAX` is refused as `409 conflict` and logged at info (`frame refused: the
-  notes have kept as many as they can`, with the limit), with one more info line when screen notes turn off for
-  it (`screen notes turned off: the notes are full`). A frame whose image still can't be fetched on a second try
-  while the notes are written is a warn (`a frame’s image couldn’t be fetched; kept as unread`), with the note's
-  and the frame's IDs only.
+- A piece of a shared screen's video is refused as `403 forbidden` when it isn't the sender's share or the share
+  doesn't go in the notes, `404 not-found` when the share is unknown or has ended, and `409 conflict` while notes are
+  paused or off, or when a different piece is already stored in its place. ffmpeg failing to join or decode a share's
+  video is a `MediaError` (500) with its exit code and sizes only; while the notes are written a share whose video won't
+  join is a warn (`a shared screen’s video couldn’t be joined; left out of replay`). A frame whose image still can't be
+  fetched on a second try while the notes are written is a warn (`a frame’s image couldn’t be fetched; kept as
+  unread`), with the note's and the frame's IDs only.
 - NEAR AI's failures become `ValidationError` (`400`, `413`, `422`), `InternalError` (`401`, `403`) or
   `UnavailableError` (unreachable, timed out, an unreadable reply, or any other status such as `429` or
   `5xx`), with the operation, status and timing as context. Evidence that doesn't check out is an

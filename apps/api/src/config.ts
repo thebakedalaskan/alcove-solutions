@@ -55,16 +55,26 @@ const EnvSchema = z.object({
   LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET must be at least 32 characters'),
   /** NEAR AI Cloud: the live transcript and written notes. Without a key, recordings are kept but not transcribed. */
   NEAR_AI_API_KEY: optional,
-  /** NEAR AI's gateway, which serves the attestation reports models are verified with. */
+  /**
+   * NEAR AI's gateway: the attestation reports models are verified with, its catalog of models, and the plain chat
+   * route a model marked unencrypted is asked through, when an organizer chose one (features/notes/models.ts).
+   */
   NEAR_AI_BASE_URL: z.string().url().default('https://cloud-api.near.ai/v1'),
   /** Speech to text for the live transcript. */
   NEAR_AI_STT_MODEL: z.string().min(1).default('openai/whisper-large-v3'),
   /** The speech model's own endpoint: clips go to its /ohttp, sealed to the key its attestation vouches for. */
   NEAR_AI_STT_URL: z.string().url().default('https://whisper-large-v3.completions.near.ai'),
-  /** Writes the notes from a transcript and answers questions about them. */
-  NEAR_AI_NOTES_MODEL: z.string().min(1).default('z-ai/glm-5.3-flash'),
-  /** The notes model's own endpoint: requests go to its /ohttp, sealed to the key its attestation vouches for. */
-  NEAR_AI_NOTES_URL: z.string().url().default('https://glm-5-3-flash.completions.near.ai'),
+  /** The default model for everything after transcription: writing notes, reading screens, answering questions. */
+  NEAR_AI_NOTES_MODEL: z.string().min(1).default('deepseek-ai/DeepSeek-V4.1-Flash-1017'),
+  /** The default model's own endpoint: requests go to its /ohttp, sealed to the key its attestation vouches for. */
+  NEAR_AI_NOTES_URL: z.string().url().default('https://deepseek-v4-1-flash.completions.near.ai'),
+  /** The most a model offered as a choice may cost, in US dollars per million input tokens (NEAR AI's catalog price). */
+  NEAR_AI_MAX_INPUT_PRICE: z.coerce.number().nonnegative().default(1),
+  /**
+   * NEAR AI's registry of the hosts that serve the models it runs itself, in its TEEs: a model listed there is private
+   * and is sent requests sealed to its attested key; any other is unencrypted (features/notes/models.ts).
+   */
+  NEAR_AI_ENDPOINTS_URL: z.string().url().default('https://completions.near.ai/endpoints'),
   /** Intel's Provisioning Certification Service: the TCB info, QE identity and revocation lists a TDX quote is checked against. */
   INTEL_PCS_URL: z.string().url().default(INTEL_PCS),
   /** The root every TDX quote and Intel collateral must chain to: Intel's SGX Root CA. Tests set their own. */
@@ -73,8 +83,6 @@ const EnvSchema = z.object({
   NVIDIA_NRAS_URL: z.string().url().default(NVIDIA_NRAS),
   /** The root NRAS's signing keys must chain to: NVIDIA Attestation Service CA 001. Tests set their own. */
   NVIDIA_ROOT_CA: RootCa('NVIDIA_ROOT_CA', NVIDIA_NRAS_ROOT_CA),
-  /** At most this many shared-screen frames in one call's notes: about one a minute for four hours. Then screen notes turn off for everyone, saying why. */
-  SCREEN_FRAMES_MAX: z.coerce.number().int().min(1).max(10_000).default(240),
   /** How long a browser's stream of rings lasts, at most, before it opens a new one: under Cloud Run's 300-second request timeout. */
   RING_STREAM_SECONDS: z.coerce.number().int().min(1).max(280).default(240),
   /** How often a live stream says it's still there, and checks who's reading it, in ms. */

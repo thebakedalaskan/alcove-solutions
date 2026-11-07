@@ -27,6 +27,7 @@ import { portraitFor } from './portraits';
 import { collect } from '../workspaces/media';
 import { eventsToWithdraw } from '../meetings/repeats';
 import { forget as forgetRings } from '../calls/rings';
+import { carryModel } from '../notes/carryModel';
 import { forgetAccount, moveAddress } from '../workspaces/service';
 
 const alog = log.child({ component: 'account' });
@@ -37,7 +38,7 @@ export const Profile = z.object({
   photoUrl: z.string().optional(),
   /** A demo account, with a sample calendar and company directory. */
   sample: z.boolean(),
-  preferences: PreferencesSchema,
+  preferences: z.preprocess(carryModel, PreferencesSchema),
   /** Colleagues this person has invited to Alcove. */
   invited: z.array(z.string())
 });
@@ -46,7 +47,7 @@ export type Profile = z.infer<typeof Profile>;
 const DEFAULT_PREFERENCES: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
-  pinned: [], groups: []
+  pinned: [], groups: [], model: null
 };
 
 async function profileItem(o: Owner, db: Db) {
@@ -303,6 +304,7 @@ export async function updatePreferences(o: Owner, patch: Patch<Preferences>): Pr
     recordOffline: patch.recordOffline ?? p.preferences.recordOffline,
     notifications: patch.notifications ?? p.preferences.notifications,
     pinned: patch.pinned ?? p.preferences.pinned,
-    groups: patch.groups ?? p.preferences.groups
+    groups: patch.groups ?? p.preferences.groups,
+    model: patch.model === undefined ? p.preferences.model : patch.model
   } }))).preferences;
 }

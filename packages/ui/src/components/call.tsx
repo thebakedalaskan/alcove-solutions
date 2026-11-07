@@ -9,7 +9,7 @@ import { Icon, type IconName } from './icon';
 import { Dots } from './motion';
 import { Popover, Tooltip } from './overlay';
 import { Avatar, PortraitArt, type AvatarPerson } from './people';
-import { Button, IconButton, Notice, RecDot, Scope, Slider, Spinner, Switch } from './primitives';
+import { Button, IconButton, Notice, RecDot, Scope, Segmented, Slider, Spinner, Switch } from './primitives';
 
 /** "#RRGGBB" at an alpha, for the person's colour as room light. */
 function withAlpha(hex: string, a: number): string {
@@ -596,14 +596,31 @@ const SURFACES: { kind: ShareSurfaceKind; label: string; icon: IconName }[] = [
   { kind: 'monitor', label: 'Your whole screen', icon: 'monitor' }
 ];
 
-/** Share › Your screen: a tab, a window or your whole screen, its sound where the browser can share it, then Share. The browser asks which one next. */
-export function ShareScreenStep({ surface, onSurface, sound, read, trouble, changing = false, onBack, onShare }: {
+/** The answer to "Include this share in the notes?": none until the presenter picks one. */
+export type ShareKeep = 'yes' | 'no' | 'unanswered';
+const KEEP = [{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }] satisfies { value: ShareKeep; label: string }[];
+/** What the answer means, under the question. */
+function keepLine(read: 'on' | 'paused', keep: ShareKeep): string {
+  if (keep === 'no') return 'Only the people here see it. Nothing of it is kept.';
+  if (keep === 'yes') return read === 'paused' ? 'Notes are paused. Once they resume, it’s recorded and read for the notes.' : 'It’s recorded with the call and read for the notes.';
+  return read === 'paused' ? 'Notes are paused. A yes is recorded and read once they resume.' : 'A yes is recorded with the call and read for the notes.';
+}
+
+/**
+ * Share › Your screen: a tab, a window or your whole screen, its sound where the browser can share it, whether it goes in
+ * the notes (asked while they're on or paused, and answered before Share does anything), then Share. The browser asks
+ * which one next.
+ */
+export function ShareScreenStep({ surface, onSurface, sound, read, keep, onKeep, trouble, changing = false, onBack, onShare }: {
   surface: ShareSurfaceKind;
   onSurface: (surface: ShareSurfaceKind) => void;
   /** The sound switch, where this browser can share sound for that kind ("Also share the tab’s sound"); null hides it. */
   sound: { label: string; on: boolean; onChange: (on: boolean) => void } | null;
-  /** Whether what you share is read for the notes: they're on, or paused. Null says nothing. */
+  /** Notes are on, or paused, so the presenter is asked whether this share goes in them. Null asks nothing. */
   read: 'on' | 'paused' | null;
+  /** The answer so far. */
+  keep: ShareKeep;
+  onKeep: (keep: ShareKeep) => void;
   /** Why the last try didn't start, or null. */
   trouble: string | null;
   /** Sharing already: Share says "Share this instead". */
@@ -623,11 +640,15 @@ export function ShareScreenStep({ surface, onSurface, sound, read, trouble, chan
         ))}
       </div>
       {sound && <div className="ic-sp-sw"><span>{sound.label}</span><Switch checked={sound.on} label={sound.label} onChange={sound.onChange} /></div>}
-      {read === 'on' && <p className="ic-sp-read"><RecDot />Notes are on: what you share is read for the notes.</p>}
-      {read === 'paused' && <p className="ic-sp-read is-paused"><Icon name="pause" size={13} />Notes are paused. Once they resume, what you share is read for them.</p>}
+      {read && (
+        <div className="ic-sp-keep">
+          <span><span className="q">{read === 'on' ? <RecDot /> : <Icon name="pause" size={13} />}Include this share in the notes?</span><small>{keepLine(read, keep)}</small></span>
+          <Segmented value={keep} onChange={onKeep} options={KEEP} label="Include this share in the notes?" />
+        </div>
+      )}
       <div className="ic-sp-acts">
         <Button variant="quiet" onClick={onBack}>Back</Button>
-        <Button variant="primary" icon="screen" onClick={onShare}>{changing ? 'Share this instead' : 'Share'}</Button>
+        <Button variant="primary" icon="screen" disabled={read !== null && keep === 'unanswered'} onClick={onShare}>{changing ? 'Share this instead' : 'Share'}</Button>
       </div>
     </>
   );

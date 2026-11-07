@@ -1,73 +1,94 @@
 /*
- * Which verified private models transcribed a note and wrote it, and what Alcove checked about each
- * before sending it anything (docs: notes-and-inference › Verified private inference). The note keeps
- * this evidence sealed with it; the page says where it was written, and when the hardware was checked,
- * under the title, with the evidence one click away. Only checks that ran are listed.
+ * Which models transcribed a note, wrote it and read its shared screens (docs: notes-and-inference › Verified private
+ * inference). The page says in a few words, under the title, whether the notes were written in confidential compute,
+ * and when the hardware was checked; one click shows the model for each task: verified, with a way to check it, or
+ * marked unencrypted. Only the notes as they are now: any other unencrypted model the call was sent to (for earlier
+ * versions, or notes that were stopped or failed) is said once, at the foot.
  */
-import type { InferenceEvidence, NoteKind } from '@alcove/api';
-import { Checklist, Dots, Icon, Popover, SealedButton, type Checked } from '@alcove/ui';
+import type { InferenceEvidence, Note, NoteKind } from '@alcove/api';
+import { Dots, Icon, Popover, SealedButton, Unencrypted } from '@alcove/ui';
 import { useState } from 'react';
+import { isUnencrypted } from '~/lib/aiModels';
+import { useAiModels } from '~/lib/queries';
 import { daysFromToday, hm, shortDay } from '~/lib/time';
 
-/** The start and end of a hash or key: enough to compare, the whole value on hover. */
-const short = (hex: string) => (hex.length > 12 ? `${hex.slice(0, 4)}…${hex.slice(-4)}` : hex);
-/** Intel's TCB status, as a person reads it. */
-const firmware = (status: string) => (status === 'UpToDate' ? 'firmware up to date' : status === 'SWHardeningNeeded' ? 'firmware up to date, software hardening expected' : `TCB ${status}`);
-const word = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
-const when = (iso: string) => { const d = new Date(iso); return `${shortDay(d)}, ${hm(d)}`; };
+/** The tasks in the order they happen, and what each one did. */
+const TASKS = [
+  { task: 'transcript', label: 'Transcribed the speech' },
+  { task: 'notes', label: 'Wrote the notes' },
+  { task: 'screens', label: 'Read the shared screens' }
+] as const satisfies readonly { task: InferenceEvidence['task']; label: string }[];
 
-/** What was checked about one model, in the order it was checked. */
-function checks(e: InferenceEvidence): Checked[] {
-  return [
-    { label: 'Intel TDX confidential VM', detail: `Signed by Intel, ${firmware(e.tdx.status)}`, value: short(e.tdx.quote), title: `TDX quote, SHA-256 ${e.tdx.quote}` },
-    { label: `Booted ${e.os}`, detail: 'Measured as the published dstack image builds' },
-    { label: 'The configuration it started with', detail: 'As its quote measures it', value: short(e.compose), title: `App compose, SHA-256 ${e.compose}` },
-    { label: `${e.gpu.count} NVIDIA ${word(e.gpu.arch)} GPU${e.gpu.count === 1 ? '' : 's'} in confidential mode`, detail: 'Confirmed by NVIDIA’s attestation service, for the same challenge' },
-    { label: 'Its key', detail: 'Bound in the quote to a fresh challenge from Alcove', value: short(e.key), title: `Ed25519 key ${e.key}` },
-    { label: 'Sealed to that key with Oblivious HTTP', detail: 'At the model’s own endpoint. Its reply came back sealed the same way' }
-  ];
-}
+/** One task's model: verified when it was checked, or unencrypted. */
+interface Row { task: InferenceEvidence['task']; label: string; model: string; verifiedAt: string | null }
+
+const listed = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1) ?? ''}`);
 
 /**
- * "Written in confidential compute", when the hardware was checked, and behind it what was checked about each model the
- * note used. `writing`: they're being written, the first time or again, and it says so. Nothing when no model was used.
+ * Where a note was written, under its title, and behind it each task's model. `model` is the organizer's choice for the
+ * notes (the default when null): unencrypted, the notes and screens rows are that model's, marked so. `writing`: they're
+ * being written, the first time or again, and it says so. Nothing when no model was used.
  */
-export function Provenance({ evidence, kind, writing }: { evidence: InferenceEvidence[]; kind: NoteKind; writing?: 'first' | 'again' | undefined }) {
+export function Provenance({ evidence, kind, unencrypted, model, writing }: { evidence: InferenceEvidence[]; kind: NoteKind; unencrypted: Note['unencrypted']; model: string | null; writing?: 'first' | 'again' | undefined }) {
   const [open, setOpen] = useState(false);
-  const busy = writing === 'again' ? 'Being written again in confidential compute' : writing ? 'Being written in confidential compute' : undefined;
-  if (!evidence.length) return busy ? <span className="nd-seal is-plain"><Icon name="sealed" size={15} />{busy}<Dots /></span> : null;
-  const ordered = [...evidence.filter((e) => e.task === 'notes'), ...evidence.filter((e) => e.task === 'transcript')];
-  const wrote = ordered.some((e) => e.task === 'notes');
-  const gateways = [...new Map(evidence.map((e) => [e.gateway.compose, e.gateway])).values()];
-  const checked = new Date(ordered[0]?.verifiedAt ?? '');
-  const at = daysFromToday(checked) === 0 ? hm(checked) : `${shortDay(checked)}, ${hm(checked)}`;
+  const models = useAiModels();
+  const nameOf = (id: string) => models.data?.models.find((m) => m.id === id)?.name ?? id;
+  const plain = isUnencrypted(models.data, model);
+  // One model per task: an older note holds several checks of the same one, so the latest is the one that counts.
+  const latest = (task: InferenceEvidence['task']) => evidence.filter((e) => e.task === task).reduce<InferenceEvidence | undefined>((best, e) => (best && best.verifiedAt >= e.verifiedAt ? best : e), undefined);
+  const rows = TASKS.flatMap(({ task, label }): Row[] => {
+    if (task !== 'transcript' && plain) return unencrypted.some((u) => u.task === task && u.model === model) && model ? [{ task, label, model, verifiedAt: null }] : [];
+    const e = latest(task);
+    return e ? [{ task, label, model: e.model, verifiedAt: e.verifiedAt }] : [];
+  });
+  // Other unencrypted models the call was sent to, for notes kept or not: what they were sent stays sent.
+  const earlier = [...new Set(unencrypted.filter((u) => !(plain && u.model === model)).map((u) => nameOf(u.model)))];
+  const wrote = rows.some((r) => r.task === 'notes');
+  const verified = rows.flatMap((r) => (r.verifiedAt ? [r.verifiedAt] : []));
+  const checked = verified.length ? new Date(verified.reduce((last, at) => (at > last ? at : last), '')) : null;
+  const at = checked ? (daysFromToday(checked) === 0 ? hm(checked) : `${shortDay(checked)}, ${hm(checked)}`) : null;
+  const busy = !writing ? undefined : plain ? 'Being written by an unencrypted model' : writing === 'again' ? 'Being written again in confidential compute' : 'Being written in confidential compute';
+  if (!rows.length) {
+    return busy ? <span className={plain ? 'nd-seal is-plain text-caution' : 'nd-seal is-plain'} role="status"><Icon name={plain ? 'shieldOff' : 'sealed'} size={15} />{busy}<Dots /></span> : null;
+  }
+  const anchor = plain ? (
+    <button type="button" className="ac-sealed is-button nd-seal is-caution">
+      <span className="ic"><Icon name="shieldOff" size={18} /></span>
+      <span className="min-w-0"><b>{busy ?? 'Written by an unencrypted model'}</b>{busy && <small><Dots /></small>}</span>
+      <Icon name="down" size={16} className="chev" />
+    </button>
+  ) : <SealedButton className="nd-seal" title={busy ?? (wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute')} detail={busy ? <Dots /> : at ? `hardware verified ${at}` : undefined} />;
   return (
-    <Popover open={open} onOpenChange={setOpen} align="start" label="What Alcove checked" className="proof-pop"
-      anchor={<SealedButton className="nd-seal" title={busy ?? (wrote ? 'Written in confidential compute' : 'Transcribed in confidential compute')} detail={busy ? <Dots /> : `hardware verified ${at}`} />}>
+    <Popover open={open} onOpenChange={setOpen} align="start" label="Which models worked on these notes" className="proof-pop" anchor={anchor}>
       <div className="proof">
         <div className="proof-h">
-          <b>Checked before anything was sent</b>
-          <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
+          {plain ? (
+            <>
+              <b>Not written in confidential compute</b>
+              <p>The notes were written by a model NEAR AI doesn’t run in a secure enclave, so the transcript went to it unencrypted. The speech was transcribed in confidential compute, checked before anything was sent.</p>
+            </>
+          ) : (
+            <>
+              <b>Checked before anything was sent</b>
+              <p>Before sending this {kind === 'room' ? 'recording’s' : 'call’s'} speech{wrote ? ' and transcript' : ''} to a model on NEAR AI, Alcove checked its hardware evidence, then sealed everything to the key that evidence vouches for. Alcove can’t read it.</p>
+            </>
+          )}
         </div>
-        {ordered.map((e) => (
-          <section key={`${e.task}-${e.key}-${e.verifiedAt}`} className="proof-m" aria-label={e.task === 'notes' ? 'The notes model' : 'The speech model'}>
+        {rows.map((r) => (
+          <section key={r.task} className="proof-m" aria-label={r.label}>
             <div className="proof-mh">
-              <span className="ac-eyebrow">{e.task === 'notes' ? 'Wrote the notes' : 'Transcribed the speech'}</span>
-              <span className="proof-model">{e.model}</span>
-              <span className="proof-when" title={e.verifiedAt}>Verified {when(e.verifiedAt)}</span>
+              <span className="ac-eyebrow">{r.label}</span>
+              <span className="proof-model">{nameOf(r.model)}{!r.verifiedAt && <> <Unencrypted compact /></>}</span>
             </div>
-            <Checklist items={checks(e)} label={`What was checked about ${e.model}`} />
-            <a className="lk proof-link" href={`https://cloud.near.ai/verify?model=${encodeURIComponent(e.model)}`} target="_blank" rel="noreferrer noopener">
-              Check this model at NEAR AI<Icon name="external" size={14} />
-            </a>
+            {r.verifiedAt && (
+              <a className="lk proof-link" href={`https://cloud.near.ai/verify?model=${encodeURIComponent(r.model)}`} target="_blank" rel="noreferrer noopener">
+                Check this model at NEAR AI<Icon name="external" size={14} />
+              </a>
+            )}
           </section>
         ))}
-        {gateways.map((g) => (
-          <div key={g.compose} className="proof-gw" title={`Gateway app compose, SHA-256 ${g.compose}`}>
-            <span>NEAR AI’s gateway, which sent this evidence, was checked the same way: Intel TDX, {firmware(g.status)}, {g.os}.</span><code>{short(g.compose)}</code>
-          </div>
-        ))}
-        <p className="proof-near">“Check this model” opens NEAR AI’s site, which sees your visit and checks fresh evidence for the model, not this note.</p>
+        {earlier.length > 0 && <p className="proof-near">This call was also sent unencrypted to {listed(earlier)}.</p>}
+        {verified.length > 0 && <p className="proof-near">“Check this model” opens NEAR AI’s site, which sees your visit and checks fresh evidence for the model, not this note.</p>}
       </div>
     </Popover>
   );

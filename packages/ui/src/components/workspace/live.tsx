@@ -6,7 +6,7 @@ import { EmptyState } from '../empty';
 import { Icon } from '../icon';
 import { Dots } from '../motion';
 import { Avatar, type AvatarPerson } from '../people';
-import { Button } from '../primitives';
+import { Button, Unencrypted } from '../primitives';
 import { WsArch } from './document';
 import { useMove } from './shared';
 
@@ -67,14 +67,16 @@ function FollowUpRow({ row, onTick, sourced = false }: { row: WsFollowUp; onTick
  * line into a document), and the first follow-ups with a way to all of them. `allFollowUps` is how many there are.
  * `notice` says what's holding the notes back, when something is.
  */
-export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, notice, onTime, onTick, onAll }: {
+export function WsNotesPage({ summary, decided, followUps, allFollowUps, put, notice, modelPrivate = true, onTime, onTick, onAll }: {
+  /** The AI model writing them runs in a secure enclave. When it doesn't, the page says so. */
+  modelPrivate?: boolean | undefined;
   summary: string; decided: WsDecision[]; followUps: WsFollowUp[]; allFollowUps: number; put?: WsPut | undefined; notice?: ReactNode;
   onTime: (id: string) => void; onTick: (id: string) => void; onAll: () => void;
 }) {
   const move = useMove();
   return (
     <LivePage title="Notes">
-      <p className="wl-s">Written as people talk, in confidential compute.</p>
+      <p className="wl-s">{modelPrivate ? 'Written as people talk, in confidential compute.' : <>Written as people talk, by an AI model outside a secure enclave. <Unencrypted compact /></>}</p>
       {notice}
       {summary && <p className="wl-sum">{summary}</p>}
       <div className="wl-h"><span className="ac-eyebrow">Decided</span></div>

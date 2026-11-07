@@ -6,7 +6,7 @@
  * pin. It's the only thing open while it's open. Escape closes it, and focus goes back where it was.
  */
 import { MAX_PINS, errorMessage, firstName, searchOf, type AnswerPart, type NoteSummary } from '@alcove/api';
-import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, cn, coverFor, useToast } from '@alcove/ui';
+import { ArchThumb, Button, ComposerLine, Dots, Icon, Kbd, Scope, Sheet, Unencrypted, cn, coverFor, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -15,7 +15,8 @@ import { marked } from '~/features/notes/highlight';
 import { noteMeta } from '~/features/notes/meta';
 import { api } from '~/lib/api';
 import { useSettled } from '~/lib/live';
-import { q, usePins } from '~/lib/queries';
+import { isUnencrypted } from '~/lib/aiModels';
+import { q, useAiModels, usePins } from '~/lib/queries';
 import { noteDay, position } from '~/lib/time';
 import type { PaletteStart } from './context';
 
@@ -59,6 +60,8 @@ function Find({ onClose }: { onClose: () => void }) {
   const { answer, ask: run, reset } = useAnswer(askAll);
   const term = useSettled(text.trim(), 160);
   const all = useQuery(q.notes()).data;
+  const models = useAiModels();
+  const outside = isUnencrypted(models.data, useQuery(q.prefs()).data?.model ?? null);
   const found = useQuery(q.notes(undefined, answer ? undefined : term || undefined));
   const rows = (found.data ?? []).slice(0, term ? FOUND : RECENT);
   const at = Math.min(active, rows.length - 1);
@@ -112,7 +115,9 @@ function Find({ onClose }: { onClose: () => void }) {
         ) : null}
       </div>
       <div className="pal-foot">
-        <span className="hint is-sealed"><Icon name="sealed" size={15} /><span>Answers come from your notes only, in confidential compute.</span></span>
+        {outside
+          ? <span className="hint text-caution"><Icon name="shieldOff" size={15} /><span>Answers come from your notes only, written by an AI model outside a secure enclave. <Unencrypted compact /></span></span>
+          : <span className="hint is-sealed"><Icon name="sealed" size={15} /><span>Answers come from your notes only, in confidential compute.</span></span>}
         <Button variant="primary" icon="ask" kb="↵" disabled={!ready} loading={asking} onClick={submit}>Ask</Button>
       </div>
     </>

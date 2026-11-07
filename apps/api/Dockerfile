@@ -7,13 +7,18 @@ WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile --filter @alcove/server... && pnpm --filter @alcove/server build
+# ffmpeg for shared screens' video (apps/api/src/ffmpeg.ts): ffmpeg-static's binary, pinned in apps/api/package.json and
+# fetched by its install script (allowed in pnpm-workspace.yaml). The bundle can't find it in node_modules, so it's
+# copied next to it and named in FFMPEG_PATH. Checked here so a build without it fails.
+RUN cp "$(cd apps/api && node -p "require('ffmpeg-static')")" /repo/ffmpeg && /repo/ffmpeg -hide_banner -version > /dev/null
 
 FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
 ARG ALCOVE_COMMIT=dev
-ENV NODE_ENV=production API_HOST=0.0.0.0 ALCOVE_COMMIT=$ALCOVE_COMMIT
+ENV NODE_ENV=production API_HOST=0.0.0.0 ALCOVE_COMMIT=$ALCOVE_COMMIT FFMPEG_PATH=/app/bin/ffmpeg
 WORKDIR /app
 COPY --from=build /repo/apps/api/dist ./dist
 COPY --from=build /repo/apps/api/migrations ./migrations
+COPY --from=build /repo/ffmpeg ./bin/ffmpeg
 USER node
 EXPOSE 8080
 # Cloud Run sets PORT; the API listens on API_PORT.

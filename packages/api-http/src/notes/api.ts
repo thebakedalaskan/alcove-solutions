@@ -1,10 +1,10 @@
 import { type HttpTransport } from '../transport/http';
 import { createPersonalApi } from './personal';
-import { type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NoteFoundSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema } from '@alcove/api';
+import { AiModelsSchema, type AlcoveApi, AlcoveApiError, AnswerPartSchema, InboxSchema, NoteFoundSchema, NoteProgressSchema, NoteSchema, PromotionPreviewSchema, SeriesAnswerPartSchema, SeriesSchema } from '@alcove/api';
 import { z } from 'zod';
 
 const audioPath = (id: string, segment: number, pieces: number) => `/notes/${encodeURIComponent(id)}/audio/${segment}?pieces=${pieces}`;
-export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'series'> {
+export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'series' | 'models'> {
   const { base, ndjson, req, send } = t;
   const personal = createPersonalApi(t);
   return {
@@ -24,6 +24,7 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
         }
       },
       screenUrl: (id, frameId) => `${base}/notes/${encodeURIComponent(id)}/screens/${encodeURIComponent(frameId)}`,
+      screenVideoUrl: (id, share, segment) => `${base}/notes/${encodeURIComponent(id)}/screen/${encodeURIComponent(share)}/${segment}`,
       proposeDecision: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/decisions`, proposal),
       proposeAction: (noteId, proposal) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/actions`, proposal),
       updateDecision: (noteId, decisionId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/decisions/${encodeURIComponent(decisionId)}`, patch),
@@ -32,7 +33,8 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
       updateRevisit: (noteId, revisitId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/revisits/${encodeURIComponent(revisitId)}`, patch),
       inbox: () => req(InboxSchema, 'GET', '/notes/inbox'),
       correctLine: (noteId, lineId, patch) => req(NoteSchema, 'PATCH', `/notes/${encodeURIComponent(noteId)}/lines/${encodeURIComponent(lineId)}`, patch),
-      rewrite: (noteId) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, {}),
+      rewrite: (noteId, o) => req(NoteSchema, 'POST', `/notes/${encodeURIComponent(noteId)}/rewrite`, o?.model !== undefined ? { model: o.model } : {}),
+      cancelRewrite: (noteId) => req(NoteSchema, 'DELETE', `/notes/${encodeURIComponent(noteId)}/rewrite`),
       ask: async function*(noteId, question) {
         const parts = await req(z.array(AnswerPartSchema), 'POST', `/notes/${encodeURIComponent(noteId)}/ask`, { question });
         yield* parts;
@@ -55,6 +57,9 @@ export function createNotesApi(t: HttpTransport): Pick<AlcoveApi, 'notes' | 'ser
         const parts = await req(z.array(SeriesAnswerPartSchema), 'POST', `/series/${encodeURIComponent(id)}/ask`, { question, timeZone });
         yield* parts;
       }
+    },
+    models: {
+      list: () => req(AiModelsSchema, 'GET', '/models')
     }
   };
 }

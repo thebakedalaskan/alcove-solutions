@@ -4,7 +4,7 @@ import {
   type ActionItem, type AnswerPart, type CaptureGap, type Chapter, type Decision, type DecisionPatch, type NoteReader, type RoomRef,
   type Question, type Recipient, type ScreenMoment, type ScreenRef, type SeriesAnswerPart, type Speaker, type TranscriptLine
 } from '@alcove/api';
-import { Avatar, CaptureGapMark, Icon, IconButton, UnsureKey, cn } from '@alcove/ui';
+import { Avatar, CaptureGapMark, Icon, IconButton, ReadMore, UnsureKey, cn } from '@alcove/ui';
 import { Link } from '@tanstack/react-router';
 import { useReducedMotion } from 'motion/react';
 import { Fragment, createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -32,9 +32,13 @@ export function Section({ title, count, kind, id, className, children }: { title
 }
 
 /** A moment as a chip that goes there, from anywhere on the page. With nothing to go to, it isn't drawn. */
-export function Moment({ at, onSeek }: { at: number | undefined; onSeek: ((s: number) => void) | undefined }) {
+export function Moment({ at, onSeek, plays = false }: { at: number | undefined; onSeek: ((s: number) => void) | undefined; plays?: boolean | undefined }) {
   if (at === undefined || !onSeek) return null;
-  return <button type="button" className="hm-moment" aria-label={`Go to the moment at ${position(at)}`} title="Go to this moment" onClick={() => onSeek(at)}><Icon name="moment" size={13} />{position(at)}</button>;
+  return (
+    <button type="button" className="hm-moment" aria-label={plays ? `Play the call from ${position(at)}` : `Go to the moment at ${position(at)}`} title={plays ? 'Play from this moment' : 'Go to this moment'} onClick={() => onSeek(at)}>
+      <Icon name={plays ? 'play' : 'moment'} size={13} />{position(at)}
+    </button>
+  );
 }
 
 /* ---------- decisions, open questions and follow-ups: what the notes heard, until people say so ---------- */
@@ -133,13 +137,17 @@ export function Transcript({ lines, gaps, seconds, me, onSeek, focus, player, li
   const shown = all ? lines : lines.slice(0, FIRST_LINES);
   const last = shown.at(-1)?.at ?? 0;
   const upTo = <T extends { at: number }>(xs: T[]) => (all ? xs : xs.filter((x) => x.at <= last));
-  const hidden = (screens?.moments ?? []).filter((m) => !all && m.at > last);
+  // A screen attached to a line waits with that line; one whose line isn't in the transcript waits by time.
+  const ids = new Set(lines.map((l) => l.id));
+  const showing = new Set(shown.map((l) => l.id));
+  const waiting = (m: ScreenMoment) => (m.line !== null && ids.has(m.line) ? showing.has(m.line) : m.at <= last);
+  const hidden = (screens?.moments ?? []).filter((m) => !all && !waiting(m));
   const [nextHidden] = hidden;
   return (
     <section className="nd-s nd-tr">
       <div className="nd-sh"><h2>Transcript</h2><UnsureKey words={lines.some((l) => l.unsure?.words)} speaker={lines.some((l) => l.unsure?.speaker)} className="nd-key" /></div>
       {top}
-      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: upTo(screens.moments) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
+      <TranscriptLines lines={shown} gaps={upTo(gaps)} me={me} onSeek={onSeek} focus={focus?.at} lit={lit} screens={screens && { ...screens, moments: all ? screens.moments : screens.moments.filter(waiting) }} correct={correct} fromLine={fromLine} marks={marks} kinds={kinds} />
       {(lines.length > FIRST_LINES || nextHidden) && (
         <div className="nd-allrow">
           {lines.length > FIRST_LINES && (
@@ -186,8 +194,9 @@ export interface ScreensShown { moments: ScreenMoment[]; row: (m: ScreenMoment) 
 
 /**
  * What was said, line by line, with the stretches nothing was captured in marked where they fall, and what was on a
- * shared screen just before the lines said while it was up. A speaker's lines in a row share one name; a room recording
- * names nobody. With `focus`, the line said at that moment is where a moment's link lands, and `lit` is the line to mark.
+ * shared screen right after the line it's attached to (or, for one attached to no line shown, just before the lines
+ * said while it was up). A speaker's lines in a row share one name; a room recording names nobody. With `focus`, the line
+ * said at that moment is where a moment's link lands, and `lit` is the line to mark.
  * With `correct`, whoever may corrects lines in place (lines.tsx). With `marks`, they bookmark lines for themselves.
  */
 export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, screens, correct, fromLine, marks, kinds, className }: {
@@ -199,17 +208,24 @@ export function TranscriptLines({ lines, gaps = [], me, onSeek, focus, lit, scre
   const gap = (g: CaptureGap) => <CaptureGapMark key={`${g.kind}-${g.from}`} label={gapLabel(g)} className="nd-gapline" />;
   const moments = screens?.moments ?? [];
   const shown = (m: ScreenMoment) => <Fragment key={m.id}>{screens?.row(m)}</Fragment>;
+  // A moment attached to a line shown comes right after it; any other is placed by when it appeared.
+  const ids = new Set(lines.map((l) => l.id));
+  const attached = new Map<string, ScreenMoment[]>();
+  for (const m of moments) if (m.line !== null && ids.has(m.line)) attached.set(m.line, [...(attached.get(m.line) ?? []), m]);
+  const byTime = moments.filter((m) => m.line === null || !ids.has(m.line));
   return (
     <div className={cn('nd-lines', !lines.some((l) => l.speaker) && 'is-nameless', className)}>
       {lines.map((l, i) => {
         const before = gapsBefore(gaps, lines, i);
-        const up = gapsBefore(moments, lines, i);
+        const up = gapsBefore(byTime, lines, i);
+        const prev = lines[i - 1];
+        const after = attached.get(l.id) ?? [];
         // After a gap, or a screen, the speaker is named again: it's a new part of the call.
-        const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && !before.length && !up.length;
-        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} me={me} correct={correct} fromLine={fromLine} marks={marks} /></Fragment>;
+        const more = !!l.speaker && voiceOf(lines[i - 1]?.speaker) === voiceOf(l.speaker) && !before.length && !up.length && !(prev && attached.has(prev.id));
+        return <Fragment key={l.id}>{before.map(gap)}{up.map(shown)}<LineRow line={l} more={more} id={i === here ? MOMENT : undefined} on={i === on} kind={kinds?.get(l.id)} onSeek={onSeek} me={me} correct={correct} fromLine={fromLine} marks={marks} />{after.map(shown)}</Fragment>;
       })}
       {gapsAfter(gaps, lines).map(gap)}
-      {gapsAfter(moments, lines).map(shown)}
+      {gapsAfter(byTime, lines).map(shown)}
     </div>
   );
 }
@@ -268,6 +284,24 @@ export function Recipients({ recipients, me, fresh }: { recipients: Recipient[];
   );
 }
 
+/**
+ * The note's short summary, and under it, when the notes wrote one, the full summary behind a "Full summary" button:
+ * paragraphs, closed until pressed. Older notes have no full summary, and show no button.
+ */
+export function Summary({ summary, details }: { summary: string; details: string }) {
+  const paragraphs = details.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  return (
+    <>
+      <p className="nd-sum">{summary}</p>
+      {paragraphs.length > 0 && (
+        <ReadMore label="Full summary" className="nd-more-sum">
+          <div className="nd-full">{paragraphs.map((p, i) => <p key={i}>{p}</p>)}</div>
+        </ReadMore>
+      )}
+    </>
+  );
+}
+
 /** A cite's key among an answer's: a moment, a shared screen, or one of a series' calls (at a moment when it can tell). */
 const citeKey = (c: Cite) => (c.type === 'cite' ? `${c.noteId}@${c.at}` : c.type === 'screen' ? `screen:${c.id}` : `${c.noteId}/${c.room?.id ?? ''}@${c.at ?? ''}`);
 
@@ -286,7 +320,7 @@ export function SourceLink({ c }: { c: Extract<Cite, { type: 'source' }> }) {
  * moments in this call to play, the shared screens they were read on, or the calls (and moments) to open.
  * Only the person asking sees a question or its answer, and neither is kept unless they keep it (`onKeep`).
  */
-export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', waiting = 'Reading the call in confidential compute', onKeep }: {
+export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about this call', waiting = 'Reading the call', onKeep }: {
   suggestions: string[]; ask: (question: string) => AsyncIterable<AnswerPart | SeriesAnswerPart>; onSeek?: ((s: number) => void) | undefined;
   /** Shows a shared screen an answer comes from. */
   shown?: ScreenRefShown | undefined; label?: string | undefined;
@@ -297,6 +331,7 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
 }) {
   const input = useRef<HTMLInputElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const suggs = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(false);
   const [atEnd, setAtEnd] = useState(false);
   const [text, setText] = useState('');
@@ -313,6 +348,25 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
     seen.observe(el);
     return () => seen.disconnect();
   }, []);
+  /*
+   * The suggestions sit above the bar, over the end of the note, and can wrap to several rows. Their height (and the gap
+   * above the bar) is handed to the page as --nd-chips, which the end of the note pads by, so the last lines can always
+   * scroll clear. They're laid out even when out of sight, so the room doesn't change as they appear. The answer isn't
+   * counted: it's dismissed, and it's tall.
+   */
+  const room = suggestions.length > 0;
+  useEffect(() => {
+    const el = suggs.current;
+    const page = el?.closest('.nd');
+    if (!el || !(page instanceof HTMLElement)) return;
+    const measure = (target: Element) => {
+      if (target instanceof HTMLElement && target.offsetHeight > 0) page.style.setProperty('--nd-chips', `${target.offsetHeight + 8}px`);
+    };
+    measure(el);
+    const watch = new ResizeObserver((entries) => { for (const entry of entries) measure(entry.target); });
+    watch.observe(el);
+    return () => { watch.disconnect(); page.style.removeProperty('--nd-chips'); };
+  }, [room]);
   useEffect(() => {
     const on = (e: KeyboardEvent) => { if (withMod(e) && e.key.toLowerCase() === 'j') { e.preventDefault(); input.current?.focus(); } };
     addEventListener('keydown', on);
@@ -341,8 +395,10 @@ export function AskBar({ suggestions, ask, onSeek, shown, label = 'Ask about thi
               )}
             </AnswerView>
           )}
-          {!answer && (atEnd || focus) && suggestions.length > 0 && (
-            <div className="nd-suggs">{suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}</div>
+          {room && (
+            <div ref={suggs} className={cn('nd-suggs', !answer && (atEnd || focus) && 'is-on')} hidden={!!answer}>
+              {suggestions.slice(0, 3).map((s) => <button key={s} type="button" className="nd-sugg" onMouseDown={(e) => e.preventDefault()} onClick={() => run(s)}>{s}</button>)}
+            </div>
           )}
         </div>
         <div className="nd-ask">

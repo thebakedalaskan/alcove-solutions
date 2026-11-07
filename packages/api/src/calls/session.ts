@@ -1,6 +1,6 @@
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
-import { type AudioPiece, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip } from '../recordings/capture';
+import { type AudioPiece, type ScreenPiece, type TranscriptClip } from '../recordings/capture';
 import { IDSchema } from '../shared/ids';
 import { type LiveStore } from '../shared/live';
 import { z } from '../shared/zod';
@@ -158,16 +158,19 @@ export interface CallSession extends LiveStore<CallState> {
   /** Whoever hosts, whose browser takes the notes: what it can't capture now (no microphone, or no way to record or listen), or none. */
   setUnavailable(parts: CaptureDevicePart[]): Promise<void>;
   /**
-   * Organizer only: has shared screens read for the notes, or stops it. Only while notes are on or paused; everyone
-   * sees it in `capture.screen`. Resolves once the server has done it.
+   * Organizer only: the model for this call's notes (an ID from `models.list()`), or the default model (null).
+   * Everyone sees it in `capture.model`. Resolves once the server has it.
    */
-  setScreens(on: boolean): Promise<void>;
+  setModel(model: string | null): Promise<void>;
   /**
-   * The presenter's own browser: one frame of its own share, while screen notes are on and not paused. Refused for
-   * anyone else's share, for a camera, and from a breakout room. The same frame sent again is kept once.
+   * The presenter's own browser, once they've picked what to share: starts a share, and says whether it goes in the
+   * notes. `keep` says whether it does: never from a breakout room, and `notes` is refused while notes are off. Everyone
+   * sees it in `shares`.
    */
-  shareFrame(frame: ScreenFrame): Promise<ScreenFrameReceipt>;
-  /** The presenter's own browser: one of its shares ended, so what it showed last stops there in the notes. */
+  startShare(o: { notes: boolean }): Promise<{ share: string; keep: boolean }>;
+  /** The presenter's own browser: one piece of a kept share's video, encrypted and kept with the call's audio. */
+  appendScreen(piece: ScreenPiece): Promise<void>;
+  /** The presenter's own browser: one of its shares ended, so its video and what it showed stop there in the notes. */
   shareEnded(share: string): Promise<void>;
   /** Raises or lowers your hand; everyone in the call sees it. */
   setHand(up: boolean): void;

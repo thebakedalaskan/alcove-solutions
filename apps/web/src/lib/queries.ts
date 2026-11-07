@@ -55,7 +55,8 @@ export const qk = {
   presenterFrameNotes: (id: string, boardId: string) => ['workspaces', id, 'presenter-notes', boardId, 'frames'] as const,
   workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
   workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
-  boardsToBring: ['workspaces', 'boards'] as const
+  boardsToBring: ['workspaces', 'boards'] as const,
+  visionModels: ['models', 'vision'] as const
 };
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
@@ -330,10 +331,15 @@ export function useDeleteAccount(onDeleted: () => void) {
 const PREFS_WRITE = { mutationKey: ['prefs', 'write'], scope: { id: 'prefs' } };
 /** `p`, with the fields `take` names copied from `from` (where `from` has them). */
 function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Preferences) => boolean): Preferences {
-  const f = <K extends keyof Preferences>(k: K): Preferences[K] => (take(k) ? from[k] ?? p[k] : p[k]);
+  // A field set to null (model back to the notes model) is a change too: only undefined means not given.
+  const f = <K extends keyof Preferences>(k: K): Preferences[K] => {
+    const v = from[k];
+    return take(k) && v !== undefined ? v : p[k];
+  };
   return {
     notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
-    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups')
+    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups'),
+    model: f('model')
   };
 }
 const prefsWrite = (qc: QueryClient) => {
@@ -586,7 +592,24 @@ export function useTakeBack(noteId: string) {
 /** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */
 export function useRewriteNotes() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (noteId: string) => api.notes.rewrite(noteId), onSuccess: (n) => changed(qc, n) });
+  return useMutation({
+    mutationFn: (v: { noteId: string; model?: string | null | undefined }) => api.notes.rewrite(v.noteId, { model: v.model }),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Stops writing the notes again: they stay as they were. */
+export function useCancelRewrite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => api.notes.cancelRewrite(noteId),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/**
+ * The models to choose from for a call's notes or as your default, and the default one. They change rarely.
+ */
+export function useAiModels(enabled = true) {
+  return useQuery({ queryKey: qk.visionModels, queryFn: () => api.models.list(), staleTime: 10 * 60_000, enabled });
 }
 /**
  * Shares a note with people, by address, and with one of your groups, under its name (everyone it reaches sees that

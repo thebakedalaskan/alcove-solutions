@@ -1,4 +1,5 @@
 import { NotesSettingSchema } from '../calls/settings';
+import { ModelIdSchema } from '../notes/models';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 /** Languages notes can be written in. `call` writes them in the language the call was spoken in. */
@@ -68,10 +69,15 @@ export const PreferencesSchema = z.object({
   notifications: NotificationPrefsSchema,
   /** Pinned note IDs, in the order they were pinned. */
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
-  groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')
+  groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique'),
+  /** The model that does the AI work for calls you organize, by its ID in `models.list()`. Null means the default model. */
+  model: ModelIdSchema.nullable().default(null)
 });
 
 export type Preferences = z.infer<typeof PreferencesSchema>;
+
+/** A change to some preferences. Fields left out keep their value: unlike `PreferencesSchema.partial()`, a missing `model` stays missing rather than taking its default. */
+export const PreferencesPatchSchema = PreferencesSchema.extend({ model: ModelIdSchema.nullable() }).partial();
 
 
 /** What the Team page's `group` opens: one of your groups by its ID, or NEW_GROUP to make one. From the address bar too. */

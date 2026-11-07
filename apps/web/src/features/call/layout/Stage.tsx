@@ -59,6 +59,8 @@ export interface StageShare {
   name: string;
   /** The sound it carries, if any: muted for you or not, and the switch. Never for your own, which doesn't play here. */
   sound: { muted: boolean; toggle: () => void } | null;
+  /** Its presenter said it goes in the notes, and the call keeps it: it's recorded and read for them. */
+  kept: boolean;
   /**
    * Pointing at it: its picture's track sid, which pointers and marks name it by, and what keeps you from pointing at it
    * now, if anything (the organizer turned pointing off, or its presenter doesn't let others point). Null until the call's

@@ -9,7 +9,7 @@
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
+  RING_SECONDS, type AiModels, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
   type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -170,6 +170,8 @@ export interface CallScript {
   earlier?: readonly Line[] | undefined;
   /** Notes as you find them: as the call was set up, unless this says otherwise. */
   notes?: 'on' | 'off' | 'paused' | undefined;
+  /** The AI model the call's notes use: the default unless this says otherwise. */
+  model?: string | null | undefined;
   /** The conversation: a line every `every` seconds (4.5 unless it says), from `from` seconds in (2 unless it says). */
   talk?: { lines: readonly Line[]; from?: number | undefined; every?: number | undefined } | undefined;
   /** What happens, when. */
@@ -295,12 +297,28 @@ export function linkState(code: string, change: (now: LinkState | null) => LinkS
   all.set(code, change(all.get(code) ?? null));
 }
 
+/** The models to choose from: two in a secure enclave, two that are not. The first is the default. */
+const DEFAULT_AI_MODEL = { id: 'deepseek-ai/DeepSeek-V4.1-Flash-1017', name: 'DeepSeek V4.1 Flash 1017', private: true };
+export const AI_MODELS: AiModels = {
+  default: DEFAULT_AI_MODEL,
+  models: [
+    DEFAULT_AI_MODEL,
+    { id: 'z-ai/glm-5.3-flash', name: 'GLM 5.3 Flash', private: true },
+    { id: 'anthropic/claude-haiku-5-5', name: 'Claude Haiku 5.5', private: false },
+    { id: 'openai/gpt-6-luna', name: 'GPT-6 Luna', private: false }
+  ]
+};
+/** The model a story picks for a call or an account that isn't in a secure enclave. */
+export const UNENCRYPTED_MODEL = 'anthropic/claude-haiku-5-5';
+/** Whether a model (null: the default) runs in a secure enclave. */
+export const modelIsPrivate = (model: string | null): boolean => (model === null ? AI_MODELS.default : AI_MODELS.models.find((m) => m.id === model))?.private ?? true;
+
 export const part = (mode: CaptureMode, since: string | null, by: CapturePart['by']): CapturePart => ({ mode, since, by });
 /** What a call captures from the start, as it was set up: notes on (or paused, or off), and shared screens not read. */
-export function captureOf(mode: 'on' | 'off' | 'paused', since: string | null, organizer: string): CaptureState {
+export function captureOf(mode: 'on' | 'off' | 'paused', since: string | null, organizer: string, model: string | null = null): CaptureState {
   const by = since ? { kind: 'schedule' as const, name: organizer } : null;
   const p = part(mode, mode === 'off' ? null : since, mode === 'off' ? null : by);
-  return { mode, recording: p, transcript: p, ai: p, screen: part('off', null, null), gaps: [], requests: [], asked: null, room: null, away: false };
+  return { mode, recording: p, transcript: p, ai: p, screen: part('off', null, null), gaps: [], requests: [], asked: null, room: null, away: false, model, modelPrivate: modelIsPrivate(model), allowScreens: true };
 }
 
 /** Without names: someone asking to join isn't told who changed what. */
@@ -327,7 +345,7 @@ export function atTheDoor(card: CallCard, m: Meeting): CallCard {
     standIn: standIn ? { ...(m.isOrganizer ? { name: standIn.name } : {}) } : null,
     locked: live?.locked ?? door?.locked ?? card.locked,
     // A call going on before you're in it (someone hosts it): what it captures, as the script has it.
-    capture: live?.capture ? nameless(live.capture) : scripted && (m.status === 'live' || standIn) ? nameless(captureOf(scripted.script.notes ?? m.notes, m.startsAt, m.organizer.name)) : card.capture,
+    capture: live?.capture ? nameless(live.capture) : scripted && (m.status === 'live' || standIn) ? nameless(captureOf(scripted.script.notes ?? m.notes, m.startsAt, m.organizer.name, scripted.script.model ?? null)) : card.capture,
     ended: card.ended || (live?.ended ?? false),
     you: invited && w.session ? 'invited' : w.session ? 'asks' : 'guest'
   };

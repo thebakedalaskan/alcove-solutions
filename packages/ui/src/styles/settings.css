@@ -130,7 +130,7 @@
 .dark .set-c .ac-seg .pill { background: color-mix(in oklch, var(--ink) 14%, transparent); box-shadow: none; }
 
 /* A list. */
-.set-c .ac-select { display: grid; grid-template-columns: minmax(0, 1fr) 16px; column-gap: 8px; width: 100%; height: 36px; padding: 0 12px 0 15px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); box-shadow: none; font: 500 14px/1 var(--font-sans); }
+.set-c .ac-select { display: grid; grid-template-columns: minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: auto; column-gap: 8px; width: 100%; height: 36px; padding: 0 12px 0 15px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--ink) 8%, transparent); box-shadow: none; font: 500 14px/1 var(--font-sans); }
 .set-c .ac-select:hover, .set-c .ac-select[data-state="open"] { background: color-mix(in oklch, var(--ink) 13%, transparent); }
 .set-c .ac-select .v { line-height: 20px; word-break: normal; }
 .set-c .ac-select > .ac-i { transition: transform var(--duration-1) var(--ease-out); }

@@ -1,4 +1,4 @@
-import { MAIN_PLACE, firstName } from '@alcove/api';
+import { MAIN_PLACE, ModelIdSchema, firstName } from '@alcove/api';
 import { z } from 'zod';
 import type { Owner } from '../../context';
 import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
@@ -12,6 +12,7 @@ import { noticesFor, type HostChange } from './hosting';
 import { BreakoutState, Joined, placesOf, relocate } from './places';
 import { keepRooms } from './scribes';
 import * as screens from '../recordings/screens';
+import { carryModel } from '../notes/carryModel';
 import { log } from '../../log';
 
 const clog = log.child({ component: 'calls' });
@@ -33,6 +34,10 @@ const withHost = (v: unknown): unknown => {
   const s = BeforeHandOff.safeParse(v);
   return s.success ? { ...v, host: s.data.people.find((j) => j.role === 'host' && j.status === 'in')?.identity ?? null } : v;
 };
+const LiveShare = z.object({ id: z.string(), identity: z.string(), keep: z.boolean(), recorded: z.boolean(), from: z.number(), until: z.number().nullable() });
+
+type LiveShare = z.infer<typeof LiveShare>;
+
 
 export const Stored = z.preprocess(withHost, z.object({
   /**
@@ -46,7 +51,7 @@ export const Stored = z.preprocess(withHost, z.object({
    * nobody takes over, and the call doesn't end for want of a host, while it can still arrive. Null otherwise.
    */
   moving: z.object({ until: z.number() }).nullable().default(null),
-  notes: z.object({
+  notes: z.preprocess(carryModel, z.object({
     /** What the call captures now (features/calls/capture.ts): notes off, on, or on and paused by the organizer. */
     status: capture.CaptureStatus, everOn: z.boolean(), noteId: z.string().nullable(), recordingId: z.string().nullable(), segment: z.number(),
     /**
@@ -62,14 +67,15 @@ export const Stored = z.preprocess(withHost, z.object({
     /** What the organizer's current connection says it can't capture now (no microphone, or a browser that can't record or listen). */
     unavailable: z.array(capture.CapturePartName),
     /**
-     * Shared screens read for the notes (features/recordings/screens.ts): whether they're read now, every time that changed, and
-     * the shares that ended (their presenter's browser said so, or the presenter left), so what a share showed last
-     * stops there.
+     * Shared screens kept for the notes (features/recordings/screens.ts): every time a kept share started going with none
+     * before, or the last one stopped. A call stored before shares were asked about has none.
      */
-    screens: z.object({ on: z.boolean(), history: z.array(capture.ScreenChange), ended: z.array(screens.ShareEnd) }),
+    screenHistory: z.array(capture.ScreenChange).default([]),
+    /** The model the organizer chose for the notes (null: the default model). Goes into the note. */
+    model: ModelIdSchema.nullable().default(null),
     /** The stretches with notes on but the host's browser out of the call, until another connection hosted. */
     offline: z.array(capture.OfflineStretch).default([])
-  }),
+  })),
   people: z.array(Joined),
   /** Who the organizer put on everyone's main stage, by identity. */
   spotlight: z.string().nullable(),
@@ -84,6 +90,12 @@ export const Stored = z.preprocess(withHost, z.object({
    */
   pointing: z.boolean(),
   othersPointOff: z.array(z.string()),
+  /**
+   * Shares started in the call (features/recordings/screens.ts), the latest MAX_SHARES: whose (`identity`), whether the
+   * presenter said it goes in the notes and it still does (`keep`), whether it has a row with the recording
+   * (`recorded`), and when it started and ended (seconds since the call started; `until` null while it's going).
+   */
+  shares: z.array(LiveShare).default([]),
   /** Where in this generation's log each part of the call last had chat, so people who come in later know there was chat they can't read. */
   chatAt: z.record(z.string(), z.number()),
   notices: z.array(Notice),
@@ -246,19 +258,39 @@ export const roomPausesOf = (s: Stored, room: string): capture.RoomPause[] =>
 export const capturing = (row: Pick<Row, 'state'>, s: Stored, place: string = MAIN_PLACE): capture.Capturing => {
   const room = s.breakouts.open?.rooms.find((r) => r.id === place);
   const status = room ? capture.roomStatus(s.notes.status, room.pauses) : s.notes.status;
-  return { live: row.state === 'live', status, noteId: s.notes.noteId, recordingId: s.notes.recordingId, screens: s.notes.screens.on, room: status !== s.notes.status };
+  return { live: row.state === 'live', status, noteId: s.notes.noteId, recordingId: s.notes.recordingId, room: status !== s.notes.status };
 };
 
-/** At most this many ended shares are remembered in a call (its sealed state stays small). */
-const MAX_ENDED = 500;
+/* ---------- shared screens: each share, and the video of those kept for the notes (features/recordings/screens.ts) ---------- */
+
+/** At most this many shares are remembered in a call (its sealed state stays small): the oldest ended ones go first. */
+const MAX_SHARES = 200;
+
+/** Shared screens as capture shows them: whether a kept share is going now, and every time that changed. */
+export const screensOf = (s: Stored) => ({ live: s.shares.some((x) => x.until === null && x.keep), history: s.notes.screenHistory });
+
+/** `after`, with the change to whether a kept share is going (from `before`) in its history, `at` seconds into the call. */
+export function screenChanged(before: Stored, after: Stored, at: number): Stored {
+  const on = screensOf(after).live;
+  if (screensOf(before).live === on) return after;
+  return { ...after, notes: { ...after.notes, screenHistory: [...after.notes.screenHistory, { at, on, segment: after.notes.segment }] } };
+}
 
 /**
- * Shares that ended, `at` seconds into the call: what each showed last stops there in the notes. Only while screens
- * have ever been read in the call (otherwise there's nothing to stop).
+ * Shares that ended, `at` seconds into the call: every share of a presenter who went (by participant ID), or one share
+ * (by its ID). Their video stops there, in the notes too.
  */
-export function sharesEnd(s: Stored, ends: (string | { share: string | null; presenter: string })[], at: number): Stored {
-  const sc = s.notes.screens;
-  if (!sc.history.length || !ends.length) return s;
-  const more = ends.map((e) => (typeof e === 'string' ? { share: null, presenter: e } : e)).map((e) => ({ ...e, at, segment: s.notes.segment }));
-  return { ...s, notes: { ...s.notes, screens: { ...sc, ended: [...sc.ended, ...more].slice(0, MAX_ENDED) } } };
+export async function sharesEnd(o: Owner, db: Db, s: Stored, ends: (string | { share: string })[], at: number): Promise<Stored> {
+  const ending = s.shares.filter((x) => x.until === null && ends.some((e) => (typeof e === 'string' ? e === x.identity : e.share === x.id)));
+  if (!ending.length) return s;
+  if (s.notes.recordingId) await screens.endShares(o, db, s.notes.recordingId, ending.filter((x) => x.recorded).map((x) => x.id), at * 1000, s.notes.segment);
+  return screenChanged(s, { ...s, shares: s.shares.map((x) => (ending.includes(x) ? { ...x, until: at } : x)) }, at);
+}
+
+/** The latest shares, with the oldest ended ones dropped past MAX_SHARES. */
+export function trimShares(shares: LiveShare[]): LiveShare[] {
+  const over = shares.length - MAX_SHARES;
+  if (over <= 0) return shares;
+  const drop = new Set(shares.filter((x) => x.until !== null).slice(0, over).map((x) => x.id));
+  return shares.filter((x) => !drop.has(x.id));
 }

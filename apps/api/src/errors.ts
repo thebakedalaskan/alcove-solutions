@@ -18,7 +18,8 @@
  *   │   └─ UnverifiedError                          warn   a model's attestation didn't check out (or couldn't be checked), so it was sent nothing
  *   └─ InternalError        unknown          500    error  our bug or a dependency failure
  *       ├─ DatabaseError                                   a Postgres query failed
- *       └─ ObjectStoreError                                an object store call failed
+ *       ├─ ObjectStoreError                                an object store call failed
+ *       └─ MediaError                                      ffmpeg couldn't remux or decode a shared screen's video
  *
  * The client gets { code, message, requestId }. The log gets the class, context, stack and causes.
  */
@@ -86,6 +87,7 @@ export class DatabaseBusyError extends UnavailableError { constructor(m = 'Alcov
 export class InternalError extends AppError { constructor(m = 'Something went wrong on our side.', o?: ErrorOptions) { super('unknown', m, o); } }
 export class DatabaseError extends InternalError {}
 export class ObjectStoreError extends InternalError {}
+export class MediaError extends InternalError {}
 /** Stored data failed verification (tampering, corruption, or a bug). Logged as an error, reported as key-unavailable. */
 export class IntegrityError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, { level: 'error', ...o }); } }
 

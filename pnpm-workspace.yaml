@@ -19,4 +19,5 @@ minimumReleaseAgeExclude:
   - cbor-x@1.6.9
 allowBuilds:
   esbuild: true
+  ffmpeg-static: true
   cbor-extract: false

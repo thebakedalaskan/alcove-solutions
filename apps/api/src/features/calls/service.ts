@@ -17,7 +17,7 @@ import { log } from '../../log';
 import { hereIn, knownIn, seatKey, seatOf, seatsOf, type Viewer, whereIs } from './participants';
 import { actOnWorkspace, openWorkspace } from './workspace-actions';
 import { actOnBoard, runOnBoard } from './board-actions';
-import { closeRooms, load, notice, saveSettled, secondsIn, settle, sharesEnd, tenthsIn, type Stored, withPerson } from './state';
+import { closeRooms, load, notice, saveSettled, screensOf, secondsIn, settle, sharesEnd, tenthsIn, type Stored, withPerson } from './state';
 import { anyone, stillHosting } from './permissions';
 import { view } from './read-model';
 import { addFollowUp, tickFollowUp } from './insights';
@@ -150,7 +150,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (!target) throw new ValidationError('That person isn’t in this call.', { context: { callId } });
       gone = s.people.filter((j) => j.person === target.person && j.status === 'in').map((j) => j.identity);
       removed = seatOf(seatKey(o, callId), target);
-      s = sharesEnd({
+      s = await sharesEnd(o, c, {
         ...s, removed: [...s.removed, target.person],
         people: s.people.map((j) => (j.person === target.person ? { ...j, status: j.status === 'in' ? 'left' : j.status === 'waiting' ? 'denied' : j.status, left: j.status === 'in' ? Date.now() : j.left } : j))
       }, gone, tenthsIn(row.started_at));
@@ -179,12 +179,12 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     }
     const moved = s.people.filter((j) => j.status === 'in' && j.role !== 'host' && placeOf(settled, j) !== placeOf(s, j)).length;
     // Whoever left the main room (sent to a room, or the organizer visiting one) takes their share with them: it stops
-    // there in the notes. Each share is ended by presenter, not by share, so it's read again once they're back.
-    s = sharesEnd(s, s.people.filter((j) => j.status === 'in' && placeOf(settled, j) === MAIN_PLACE && placeOf(s, j) !== MAIN_PLACE).map((j) => j.identity), exact);
+    // there, and in the notes. Sharing again once they're back is a new share.
+    s = await sharesEnd(o, c, s, s.people.filter((j) => j.status === 'in' && placeOf(settled, j) === MAIN_PLACE && placeOf(s, j) !== MAIN_PLACE).map((j) => j.identity), exact);
     s = (await saveSettled(o, c, callId, state, relocate(settled, s, Date.now(), row.mls_seq))).s;
     // Anyone sent to another part of the call (or back) moves group: their browser and the organizer's read the log again.
     clog.info('call action', {
-      callId, action: a.type, notes: s.notes.status, screens: s.notes.screens.on, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
+      callId, action: a.type, notes: s.notes.status, screens: screensOf(s).live, segment: s.notes.segment, asks: s.notes.asks.filter((x) => x.state === 'asking').length, unavailable: s.notes.unavailable.length,
       connections: gone.length, spotlight: Boolean(s.spotlight), rooms: s.breakouts.open?.rooms.length ?? 0, visiting: Boolean(s.breakouts.open?.visiting), roomsHeld: s.breakouts.held.length, moved,
       pointing: s.pointing, othersPointOff: s.othersPointOff.length
     });

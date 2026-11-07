@@ -13,7 +13,7 @@ import {
   AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
-  type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
+  type RingReply, type RoomCapture, type ScreenPiece, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
 } from '@alcove/api';
 import type {
   BoardCheck, BoardOpen, BoardTemplate, BoardTimerMinutes, BoardVotesEach, BreakoutBoard, BreakoutBoardMode, CallBoard, CallBoardIdea, CallFollowUp, CallFollowUps, CallPresent, CallSeat, CallWorkspace,
@@ -29,7 +29,7 @@ import { personAt } from '../world/people';
 import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
-import { captureOf, defaultScript, linkState, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
+import { captureOf, defaultScript, linkState, modelIsPrivate, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
 import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, shareWith, tagYou, trashItem, treeOf } from './workspaces';
 
@@ -120,13 +120,13 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const mode = script.notes ?? meeting.notes;
     super({
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
-      spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name),
+      spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name, script.model ?? null),
       notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
       workspace: { id: null, home: null, name: null, chosenBy: meeting.organizer, canOpen: false, role: null, documents: [], agenda: null, present: null, ended: null, play: null, asks: [], asked: 'no' },
-      board: { open: null, timer: null, vote: null, ideas: [] }
+      board: { open: null, timer: null, vote: null, ideas: [] }, shares: []
     });
     this.script = script;
     this.me = me;
@@ -1404,12 +1404,23 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   setUnavailable(_parts: CaptureDevicePart[]): Promise<void> { return Promise.resolve(); }
-  setScreens(on: boolean): Promise<void> {
-    this.change((s) => ({ ...s, capture: { ...s.capture, screen: part(on ? (s.capture.mode === 'paused' ? 'paused' : 'on') : 'off', new Date().toISOString(), { kind: 'organizer', name: s.host.organizer.name }) } }));
+  setModel(model: string | null): Promise<void> {
+    this.change((s) => ({ ...s, capture: { ...s.capture, model, modelPrivate: modelIsPrivate(model) } }));
     return Promise.resolve();
   }
-  shareFrame(_frame: ScreenFrame): Promise<ScreenFrameReceipt> { return Promise.resolve({ id: nextId('frame'), duplicate: false }); }
-  shareEnded(_share: string): Promise<void> { return Promise.resolve(); }
+  /** A share starts: it's kept for the notes when you asked for that, and notes aren't off. */
+  startShare(o: { notes: boolean }): Promise<{ share: string; keep: boolean }> {
+    const share = nextId('share');
+    const keep = o.notes && this.getSnapshot().capture.mode !== 'off';
+    this.change((s) => ({ ...s, shares: [...s.shares, { id: share, participant: this.me.id, keep }] }));
+    return Promise.resolve({ share, keep });
+  }
+  /** Pieces of a kept share's video go nowhere: the stand-in keeps no recordings. */
+  appendScreen(_piece: ScreenPiece): Promise<void> { return Promise.resolve(); }
+  shareEnded(share: string): Promise<void> {
+    this.change((s) => ({ ...s, shares: s.shares.filter((x) => x.id !== share) }));
+    return Promise.resolve();
+  }
   setHand(up: boolean): void { this.change((s) => ({ ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, hand: up } : p)) })); }
   letOthersPoint(on: boolean): Promise<void> { this.change((s) => ({ ...s, participants: s.participants.map((p) => (p.isMe ? { ...p, othersPoint: on } : p)) })); return Promise.resolve(); }
   setPointing(on: boolean): Promise<void> { this.change((s) => ({ ...s, pointing: on })); return Promise.resolve(); }

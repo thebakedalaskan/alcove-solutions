@@ -328,7 +328,7 @@ describe('people invited to a call', () => {
     await h.pool.query('DELETE FROM meeting_access WHERE meeting_item_id = $1', [m.id]);
     expect(await refusal(lena.api.meetings.get(m.id))).toBe('not-found');
 
-    expect(listed(await org.api.meetings.upcoming(), m.id)).toMatchObject({ instant: false, joinMuted: false, documents: [], choices: { keepTranscript: true, keepRecording: true, readScreens: false } });
+    expect(listed(await org.api.meetings.upcoming(), m.id)).toMatchObject({ instant: false, joinMuted: false, documents: [], choices: { keepTranscript: true, keepRecording: true, allowScreens: true } });
     expect(await invites(m.id)).toBe(2);
     expect(listed(await lena.api.meetings.upcoming(), m.id)?.isOrganizer).toBe(false);
     await lena.api.meetings.answer(m.id, 'no');
@@ -495,8 +495,8 @@ describe('calls started now', () => {
     const m = await org.api.meetings.byCode(c);
     if (!m) throw new Error('the call isn’t there');
     expect(m.instant).toBe(true);
-    const changed = await org.api.meetings.update(m.id, { title: 'Quick one', notes: 'off', guests: [guest, unique('other')], joinMuted: true, documents: [], choices: { keepTranscript: false, keepRecording: false, readScreens: true } });
-    expect(changed).toMatchObject({ title: 'Quick one', notes: 'off', guestCount: 2, joinMuted: true, choices: { keepTranscript: false, keepRecording: false, readScreens: true } });
+    const changed = await org.api.meetings.update(m.id, { title: 'Quick one', notes: 'off', guests: [guest, unique('other')], joinMuted: true, documents: [], choices: { keepTranscript: false, keepRecording: false, allowScreens: false } });
+    expect(changed).toMatchObject({ title: 'Quick one', notes: 'off', guestCount: 2, joinMuted: true, choices: { keepTranscript: false, keepRecording: false, allowScreens: false } });
     expect(h.google.calendar(org.sub)).toEqual([]);
     expect(writes()).toBe(before);
     expect(await h.browser().api.calls.card(c)).toMatchObject({ title: 'Quick one', joinMuted: true, choices: { keepTranscript: false } });
@@ -577,7 +577,7 @@ describe('changing a scheduled call', () => {
     const m = await org.api.meetings.create(call('Review', [unique('guest')]));
     const writes = () => h.google.calls.filter((x) => x.method === 'PATCH').length;
     const before = writes();
-    const changed = await org.api.meetings.update(m.id, { joinMuted: true, documents: [], choices: { keepTranscript: false, keepRecording: true, readScreens: false } });
+    const changed = await org.api.meetings.update(m.id, { joinMuted: true, documents: [], choices: { keepTranscript: false, keepRecording: true, allowScreens: false } });
     expect(changed).toMatchObject({ joinMuted: true, choices: { keepTranscript: false } });
     expect(writes()).toBe(before);
     await org.api.meetings.update(m.id, { title: 'Review, moved' });

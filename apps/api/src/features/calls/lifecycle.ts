@@ -76,7 +76,7 @@ export async function newGeneration(o: Owner, c: Db, live: Row, state: Stored, c
     spotlight: state.people.find((j) => j.identity === state.spotlight)?.person === host.person ? host.identity : state.spotlight
   };
   // Whoever left takes their shares with them.
-  s = sharesEnd(s, state.people.filter((j) => gone.has(j.identity) && j.status === 'in').map((j) => j.identity), tenthsIn(live.started_at));
+  s = await sharesEnd(o, c, s, state.people.filter((j) => gone.has(j.identity) && j.status === 'in').map((j) => j.identity), tenthsIn(live.started_at));
   // What the old host's browser couldn't capture was its own: the new host's says for itself. While notes are on, the
   // old browser's part of the recording ends, and a new segment starts in the new one's.
   s = { ...s, notes: { ...s.notes, unavailable: [] } };
@@ -144,7 +144,11 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       await rings.clear(o, c, row.meeting_item_id);
       // Who's invited lasts as long as the call does. Its note has its own list.
       await dropInvites(o, c, [row.meeting_item_id]);
-      if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
+      if (s.notes.recordingId) {
+        await setRecordingState(o, c, s.notes.recordingId, 'stopped');
+        // Shares still going end with the call.
+        await screens.endShares(o, c, s.notes.recordingId, s.shares.filter((x) => x.until === null && x.recorded).map((x) => x.id), duration * 1000, s.notes.segment);
+      }
       // The live notes end with the call: what was ticked and what people added go into the note, and the notes at the end take over.
       const { ticked, added } = await liveNotes.finish(o, c, callId);
       if (s.notes.noteId) {
@@ -156,12 +160,8 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
         const segs = s.notes.recordingId ? await segments(o, s.notes.recordingId, c) : [];
         // The stretches nothing was captured in go into the note, so it says so where they fall.
         const gaps = capture.gapsOf(s.notes.history, offline, row.started_at, segs, duration);
-        // And what was on shared screens, each frame where it was shown and for how long, its presenter named as the call names speakers.
         const organizer = await me(o, c);
         const speakerOf = speakersIn(s, organizer);
-        const shown = screens.moments(await screens.framesOf(o, c, s.notes.noteId), {
-          history: s.notes.history, offline, screens: s.notes.screens.history, ended: s.notes.screens.ended, gaps, segments: segs, duration, presenterOf: speakerOf
-        });
         // Each breakout room's section: everyone who was in it (the organizer if it came in), when, and its own gaps.
         const peopleOf = (seen: string[]): Speaker[] => seen.flatMap((key) => {
           const j = key === 'organizer' ? undefined : s.people.findLast((x) => x.person === key);
@@ -172,7 +172,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
           gaps: capture.roomGaps(s.notes.history, offline, r.pauses, h.from, row.started_at, h.to, h.to)
         })));
-        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked, worked, added.map((a) => ({ room: a.room, action: liveNotes.toNote(a, recorded(a.said)) })));
+        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, rooms, ticked, worked, added.map((a) => ({ room: a.room, action: liveNotes.toNote(a, recorded(a.said)) })), s.notes.model);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }
@@ -275,7 +275,7 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     // Someone who was in is kept, as having left (a reload's pass brings them back, hand and all), and their shares
     // end. Someone who only asked is kept as turned away: nothing of theirs, a pass included, brings them in without
     // asking again, and their identity can't come back as someone else (to be let in by a toast still showing the first ask).
-    await save(o, c, callId, sharesEnd(withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
+    await save(o, c, callId, await sharesEnd(o, c, withPerson(state, identity, (x) => (j.status === 'waiting' ? { ...x, status: 'denied' } : { ...x, status: 'left', left: noticed ? knownUntil(callId, x, at) : at })),
       j.status === 'in' ? [identity] : [], tenthsIn(row.started_at)));
     return { room: row.room_name, was: j.status, rooms: held.state.board.rooms.some((x) => !x.kept) };
   });

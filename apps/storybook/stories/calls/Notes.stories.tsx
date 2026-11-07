@@ -5,7 +5,7 @@
  * live notes are written again a few seconds after.
  */
 import type { Meta } from '@storybook/react-vite';
-import { at, asksForNotes, type Present } from '../../src/api/script';
+import { at, asksForNotes, UNENCRYPTED_MODEL, type Present } from '../../src/api/script';
 import { MORE, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { AIKO, CHECK_IN, CHECK_IN_SUMMARY, CHECK_IN_TALK, KOFI, MAYA, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
@@ -41,6 +41,9 @@ export const AskPhone = phone(Ask);
 /** Captions, turned on from More: the newest line, under the stage, with its language on the caption itself. */
 export const Captions = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { play: press(MORE, { then: ['Turn on captions'] }) });
 export const CaptionsPhone = phone(Captions);
+
+/** The call's AI model isn't in a secure enclave: what's captured says so in caution, with Unencrypted, instead of claiming confidential compute. */
+export const UnencryptedModel = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, model: UNENCRYPTED_MODEL, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } }, { play: press('Notes on. What’s captured') });
 
 /** Notes off: nothing is written down until the organizer, you, turns them on. */
 export const NotesOff = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off', talk: { lines: REVIEW_TALK } } }, { play: reach('Notes') });

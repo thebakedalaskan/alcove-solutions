@@ -20,7 +20,7 @@ import { LIMITS } from '../../limits';
 import { maintain } from '../../maintenance';
 import { MEDIA_LIMITS } from './media';
 import { masterKey } from '../../owners';
-import { screenJpeg } from '../../testing/fake-near';
+import { pictureJpeg } from '../../testing/video';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../../testing/harness';
 
 // Guests need real calls; every wait below is bounded and says what it was waiting for.
@@ -900,7 +900,7 @@ describe('who can read a file', () => {
 
 describe('a picture’s preview', () => {
   /** A small JPEG, as the uploading browser makes one, with words in it that must never be readable anywhere but here. */
-  const previewOf = (words: string, width = 320, height = 213) => screenJpeg(null, width, height, words);
+  const previewOf = (words: string, width = 320, height = 213) => pictureJpeg(width, height, words);
   /** What `preview` hands back, read as bytes: null when there's none. */
   async function previewBytes(who: Account, id: string, doc: string, mediaId: string): Promise<Buffer | null> {
     const url = await who.api.workspaces.media.preview(id, doc, mediaId);

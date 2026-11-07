@@ -213,6 +213,17 @@
 .ac-fold-i { flex: none; margin-left: auto; color: var(--ink-3); transition: transform var(--duration-2) var(--ease-out); }
 .ac-fold[open] > .ac-fold-h .ac-fold-i { transform: rotate(180deg); }
 .ac-fold-b { padding: 4px 18px 18px; }
+
+/* ReadMore: a quiet text button, and more prose that opens under it */
+.ac-readmore-b { display: inline-flex; align-items: center; gap: 4px; height: 32px; margin-left: -8px; padding: 0 8px; border-radius: var(--radius-sm); font: 500 13.5px/1 var(--font-sans); color: var(--ink-2); transition: color var(--duration-1); }
+.ac-readmore-b:hover { color: var(--ink); }
+.ac-readmore-b:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ac-readmore-i { flex: none; transition: transform var(--duration-2) var(--ease-out); }
+.ac-readmore.is-open .ac-readmore-i { transform: rotate(180deg); }
+.ac-readmore-r { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-2) var(--ease-out); }
+.ac-readmore.is-open .ac-readmore-r { grid-template-rows: 1fr; }
+.ac-readmore-in { min-height: 0; overflow: hidden; visibility: hidden; opacity: 0; transition: opacity var(--duration-2) var(--ease-out), visibility 0s linear var(--duration-2); }
+.ac-readmore.is-open .ac-readmore-in { visibility: visible; opacity: 1; transition-delay: 0s; }
 .ac-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
 .ac-card-head h3 { margin: 0; font: 600 18px/24px var(--font-sans); letter-spacing: -.01em; }
 .ac-card-head > span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-3); }
@@ -344,7 +355,9 @@
 .ac-select:hover, .ac-select[data-state="open"] { background: var(--sunk); }
 .ac-select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ac-select > .ac-i { color: var(--ink-3); }
-.ac-select .v { line-height: 1.3; text-align: left; }
+/* A long value is cut short on one line; the arrow stays at the far right however wide the select is. */
+.ac-select .v { flex: 0 1 auto; min-width: 0; line-height: 1.3; text-align: left; }
+.ac-select > .caret { flex: none; margin-left: auto; }
 .ac-select[disabled] { opacity: .45; cursor: default; pointer-events: none; }
 .ac-select.is-stage { height: 36px; border-radius: 11px; background: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); color: var(--stage-ink); }
 .ac-select.is-stage:hover, .ac-select.is-stage[data-state="open"] { background: rgb(255 255 255 / .12); }
@@ -353,6 +366,14 @@
 .ac-select-list { position: relative; min-width: max(var(--radix-popover-trigger-width, 0px), 160px); max-width: min(360px, var(--radix-popover-content-available-width, 360px)); max-height: min(320px, var(--radix-popover-content-available-height, 320px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .ac-option { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 8px 10px; border-radius: var(--radius-sm); color: var(--ink); font: 500 13.5px/1.3 var(--font-sans); cursor: pointer; outline: none; scroll-margin: 6px; }
 .ac-option > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ac-option > .ac-note, .ac-select > .ac-note { flex: none; color: var(--ink-2); font-weight: 400; white-space: nowrap; }
+.ac-select > .ac-note { font-size: 12.5px; }
+.ac-select > .ac-unencrypted, .ac-option > .ac-unencrypted { flex: none; }
+.ac-unencrypted { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--caution); font: 600 12px/1.2 var(--font-sans); white-space: nowrap; border-radius: 4px; cursor: default; }
+.ac-unencrypted.is-compact { gap: 3px; font-size: 11px; }
+.ac-unencrypted:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ac-pop.is-stage .ac-note, .ac-select.is-stage > .ac-note { color: var(--stage-ink-2); }
+.ac-pop.is-stage .ac-unencrypted, .ac-select.is-stage > .ac-unencrypted { color: #F3B85A; }
 .ac-option:focus { background: var(--sunk); }
 .ac-option:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .ac-option[aria-selected="true"] { font-weight: 600; }

@@ -6,7 +6,7 @@ import type { LiveCaption } from './captions';
 
 export const captionLanguageName = (l: CaptionLanguage | null) => (l ? CAPTION_LANGUAGES.find((x) => x.code === l)?.name ?? l : 'As spoken');
 
-export function CaptionLanguageMenu({ language: lang, onPick }: { language: CaptionLanguage | null; onPick: (language: CaptionLanguage | null) => void }) {
+export function CaptionLanguageMenu({ language: lang, modelPrivate, onPick }: { language: CaptionLanguage | null; modelPrivate: boolean; onPick: (language: CaptionLanguage | null) => void }) {
   return (
     <>
       <div className="ac-eyebrow">Captions in</div>
@@ -19,7 +19,7 @@ export function CaptionLanguageMenu({ language: lang, onPick }: { language: Capt
           </button>
         );
       })}
-      <p className="hint">Translated in confidential compute. Everyone picks their own language. The call is still transcribed for notes when captions are off.</p>
+      <p className="hint">{modelPrivate ? 'Translated in confidential compute.' : 'Translated by an AI model outside a secure enclave.'} Everyone picks their own language. The call is still transcribed for notes when captions are off.</p>
     </>
   );
 }

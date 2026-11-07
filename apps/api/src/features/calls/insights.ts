@@ -1,5 +1,6 @@
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
+import type { ChatModel } from '../../inference';
 import { id128 } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
 import { AuthError, ConflictError, ForbiddenError, notFound } from '../../errors';
@@ -9,6 +10,7 @@ import * as space from './workspace';
 import * as boards from './boards';
 import * as catchup from './catchup';
 import * as drafting from '../notes/drafting';
+import * as models from '../notes/models';
 import * as liveNotes from './live-notes';
 import * as personal from '../notes/personal';
 import { personOf, portraitFor } from '../account/portraits';
@@ -54,9 +56,10 @@ export async function tickDocumentFollowUp(v: Viewer, callId: string, t: DocFoll
 
 /**
  * Asking about a selection needs in a call what catching up does: everything that reaches the AI from a call waits while
- * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing.
+ * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing. Says which
+ * model the call's AI goes to.
  */
-export async function mayAskInCall(v: Viewer): Promise<void> {
+export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
   const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
   const s = settle(state, row);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
@@ -64,6 +67,8 @@ export async function mayAskInCall(v: Viewer): Promise<void> {
   const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
+  // What's asked in a call goes to the model chosen for it.
+  return models.resolveModel(v.organizer.cfg, s.notes.model);
 }
 
 /**
@@ -98,7 +103,7 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
   const missing = wanted.filter((l) => !have.has(l.id));
   if (missing.length) {
     const t0 = performance.now();
-    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language);
+    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, await models.resolveModel(o.cfg, s.notes.model));
     await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
@@ -157,9 +162,11 @@ async function soFarIn(o: Owner, row: Row, s: Stored, into: { noteId: string; re
   // Lines stay inside their segment once it's over, so what was said before a pause is read before it.
   const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId, keep), segs, s.notes.status === 'on' ? s.notes.segment : undefined)
     .map((l) => ({ ...l, said: said(l) }));
+  // The model the organizer chose for this call reads it, for catching up, questions and the live notes alike.
+  const via = await models.resolveModel(o.cfg, s.notes.model);
   const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
-    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
+    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true, via
   });
   return { all, window, missed: missedIn(row, s, window, place), person, brief };
 }

@@ -19,7 +19,7 @@ export interface LiveKit {
   participants(roomName: string): Promise<{ identity: string; name: string }[]>;
   /**
    * The screens being shared in the room now: who shares each (identity) and its track ID. LiveKit sees which tracks
-   * are screens, never what's on them (frames are end-to-end encrypted). Cameras aren't listed.
+   * are screens, never what's on them (their media is end-to-end encrypted). Cameras aren't listed.
    */
   screenShares(roomName: string): Promise<{ identity: string; sid: string }[]>;
   /**

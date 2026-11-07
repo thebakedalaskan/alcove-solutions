@@ -3,6 +3,7 @@ import { forwardRef, useId, useState, type ButtonHTMLAttributes, type HTMLAttrib
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
+import { Tooltip } from './overlay';
 import { CheckDraw, EASE } from './motion';
 
 /* ---------- Button ---------- */
@@ -63,6 +64,22 @@ export type ChipTone = 'neutral' | 'sun' | 'horizon' | 'caution' | 'outline';
 /** A fact about something: sun for chosen or ready, horizon for information, caution for a problem, outline for switched off. Never clickable. */
 export function Chip({ tone = 'neutral', icon, children, className, ...rest }: { tone?: ChipTone; icon?: IconName | undefined; children: ReactNode; className?: string | undefined } & Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'className'>) {
   return <span className={cn('ac-chip', tone !== 'neutral' && `is-${tone}`, className)} {...rest}>{icon && <Icon name={icon} size={14} />}{children}</span>;
+}
+
+const UNENCRYPTED_TIP = "Not in a secure enclave, so Alcove can't guarantee this model keeps your call private.";
+
+/**
+ * A small badge for a model that doesn't run in a secure enclave. Focusable, so its tip is reachable without a mouse;
+ * inside a Select option a press on it still picks the option.
+ */
+export function Unencrypted({ className, compact = false }: { className?: string | undefined; compact?: boolean | undefined }) {
+  return (
+    <Tooltip label={UNENCRYPTED_TIP}>
+      <span tabIndex={0} aria-label={`Unencrypted. ${UNENCRYPTED_TIP}`} className={cn('ac-unencrypted', compact && 'is-compact', className)}>
+        <Icon name="shieldOff" size={compact ? 12 : 14} />Unencrypted
+      </span>
+    </Tooltip>
+  );
 }
 
 /** The pulsing dot of the notes sign. Only ever means notes or recording. */

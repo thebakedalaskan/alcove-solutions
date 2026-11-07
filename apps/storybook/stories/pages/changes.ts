@@ -3,6 +3,7 @@
  * that fails or keeps the page waiting, recordings kept on this device, the calendar, the shared demo account, a call on
  * its way here, the calls other people asked Art to, and notes in every state. All made up, in the demo world.
  */
+import { UNENCRYPTED_MODEL } from '../../src/api/script';
 import type { Troubles } from '../../src/api/trouble';
 import { keepHere, type KeptSpec } from '../../src/api/kept';
 import type { World } from '../../src/world';
@@ -39,6 +40,23 @@ export const invited = (w: World): void => { w.meetings = [...w.meetings, ...INV
 export const sharedDemo = (w: World): void => {
   if (w.session) w.session = { ...w.session, sample: true, sharedDemo: true, provider: 'microsoft' };
   w.calendar = { ...connected(w.calendar.events), source: 'sample' };
+};
+
+/** Your default AI model is one that isn't in a secure enclave. */
+export const unencryptedDefault = (w: World): void => { w.prefs = { ...w.prefs, model: UNENCRYPTED_MODEL }; };
+
+/** The team standup was written by a model that isn't in a secure enclave, and its shared screens were read by one too. */
+export const writtenUnencrypted = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n2'
+    ? { ...n, model: UNENCRYPTED_MODEL, unencrypted: [{ model: UNENCRYPTED_MODEL, task: 'notes' as const, at: iso(0, 10, 5) }, { model: UNENCRYPTED_MODEL, task: 'screens' as const, at: iso(0, 10, 4) }] }
+    : n));
+};
+
+/** The standup's suggested questions are long ones, which wrap to more than one row of chips above the ask bar. */
+export const longSuggestions = (w: World): void => {
+  w.notes = w.notes.map((n) => (n.id === 'n2'
+    ? { ...n, suggestedQuestions: ['What did Priya say about turning the new onboarding on for everyone at once?', 'Which items on the launch checklist are still open, and who is looking at them?', 'Draft a follow-up for support about the help article and the date of the flag'] }
+    : n));
 };
 
 /** Nothing recorded in the room yet: only calls have notes. */

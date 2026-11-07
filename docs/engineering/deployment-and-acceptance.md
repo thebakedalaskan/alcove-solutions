@@ -46,7 +46,8 @@ Application Load Balancer for production custom domains. See
    that the selected commit still matches `main` before proceeding. Manual dispatch is restricted to
    `main`. Runs are serialized.
 4. **API release.** Build and push the commit-SHA image, which records its commit (`ALCOVE_COMMIT`, reported
-   by `/health` and `/v1/attestation`); execute the migration job, which gets only `DATABASE_URL`, and wait;
+   by `/health` and `/v1/attestation`) and carries ffmpeg for shared screens' video: ffmpeg-static's binary, pinned
+   in `apps/api/package.json`, copied to `/app/bin/ffmpeg` (`FFMPEG_PATH`), so the image changes when that pin does; execute the migration job, which gets only `DATABASE_URL`, and wait;
    deploy Cloud Run; check `/health` through its service URL. The migration job applies only the migrations
    the database hasn't had, and refuses one whose applied migrations were since edited or removed, so such a
    deploy stops before the new API starts and the previous release keeps serving (migrations only move
@@ -156,7 +157,7 @@ or unset there is no binding and no placeholder secret version is needed: the AP
 doesn't transcribe them, notes wait, and `/health` reports `inference: missing`.
 
 With NEAR AI enabled the API also reaches, over HTTPS, the models' own endpoints
-(`whisper-large-v3.completions.near.ai` and `glm-5-3-flash.completions.near.ai`), where everything with
+(`whisper-large-v3.completions.near.ai` and `deepseek-v4-1-flash.completions.near.ai`, and the host of any other private model chosen), where everything with
 content goes sealed, and the services that verify them before anything is sent: Intel's
 `api.trustedservices.intel.com` and `certificates.trustedservices.intel.com`, and NVIDIA's
 `nras.attestation.nvidia.com` ([Notes and inference › Services verification depends on](notes-and-inference.md#services-verification-depends-on)).

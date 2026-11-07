@@ -7,6 +7,7 @@ import { Button, Faces, FlowBody, FlowFoot, FlowRow, NotesSwitches, Select, Swit
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { namesIn } from '~/features/workspace/List';
+import { useMyModelUnencrypted } from '~/lib/aiModels';
 import { callName } from '~/lib/people';
 import { q } from '~/lib/queries';
 import { timeZone } from '~/lib/time';
@@ -36,6 +37,7 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
   /** Sends the call, once. It rejects when the call can't be saved. */
   onSchedule: (input: MeetingInput) => Promise<void>;
 }) {
+  const unencrypted = useMyModelUnencrypted();
   const [failed, setFailed] = useState<unknown>(null);
   const [open, setOpen] = useState<'notes' | 'big' | 'home' | null>(null);
   /* A call's home can be one of your workspaces you can make things in: the menu reads them again as it opens. */
@@ -90,7 +92,7 @@ export function Details({ draft, change, guests, at, invites, back, returning, s
             </>
           )}
           <FlowRow icon="notes" on={draft.notes === 'on'} title={notesWord(draft)} sub={draft.notes === 'on' ? 'Everyone invited gets them' : 'Nothing is recorded'} expanded={open === 'notes'} onClick={() => setOpen((o) => (o === 'notes' ? null : 'notes'))} />
-          {open === 'notes' && <div className="cf-more"><NotesSwitches notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
+          {open === 'notes' && <div className="cf-more"><NotesSwitches modelPrivate={!unencrypted} notes={draft.notes} choices={draft.choices} onNotes={(notes) => change({ notes })} onChoices={(choices) => change({ choices })} /></div>}
           <FlowRow icon="folders" title={draft.home ? draft.home.name : 'New workspace for this call'} sub={draft.home ? 'Its notes and transcript go here, in a folder of their own' : 'Its notes and transcript go there. Everyone invited is in it'}
             expanded={open === 'home'} onClick={() => setOpen((o) => (o === 'home' ? null : 'home'))} disabled={saving} />
           {open === 'home' && (

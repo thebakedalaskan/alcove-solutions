@@ -4,6 +4,7 @@ import { type CreditsApi } from './credits/api';
 import { type AccountApi, type AuthApi, type PeopleApi } from './identity/api';
 import { type CalendarApi, type MeetingsApi } from './meetings/api';
 import { type NotesApi, type SeriesApi } from './notes/api';
+import { type ModelsApi } from './notes/models';
 import { type RecordingsApi } from './recordings/api';
 import { type DiagnosticsApi } from './telemetry/api';
 import { type TrustApi } from './trust/api';
@@ -26,6 +27,7 @@ export interface AlcoveApi {
   series: SeriesApi;
   workspaces: WorkspacesApi;
   credits: CreditsApi;
+  models: ModelsApi;
   trust: TrustApi;
   diagnostics: DiagnosticsApi;
 }

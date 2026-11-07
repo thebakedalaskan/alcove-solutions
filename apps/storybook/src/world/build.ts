@@ -6,7 +6,7 @@
 import {
   DEFAULT_NOTES_CHOICES, type ActionItem, type Calendar, type CalendarEvent, type Change, type Changer, type Chapter, type InferenceEvidence, type Meeting,
   type Note, type NoteAction, type NoteDecision, type NoteEvidence, type NoteFound, type NoteKind, type NoteQuestion, type NoteStatus, type NoteSummary,
-  type NotesSetting, type Person, type Received, type Recipient, type RecipientRole, type Repeat, type RsvpCounts, type ScreenMoment, type TranscriptLine
+  type NotesSetting, type Person, type Received, type Recipient, type RecipientRole, type Repeat, type RsvpCounts, type ScreenMoment, type ScreenShare, type TranscriptLine
 } from '@alcove/api';
 import { ART } from './people';
 
@@ -43,12 +43,16 @@ export interface NoteSpec {
   /** The row's one line, and the whole summary. */
   excerpt: string;
   summary?: string | undefined;
+  /** The full summary: paragraphs apart by a blank line. Left out, the note is one of the older ones that has none. */
+  details?: string | undefined;
   chapters?: readonly (readonly [string, string, string])[] | undefined;
   said?: readonly Said[] | undefined;
   decisions?: readonly DecisionSpec[] | undefined;
   questions?: readonly QuestionSpec[] | undefined;
   actions?: readonly ActionSpec[] | undefined;
   screens?: readonly ScreenMoment[] | undefined;
+  /** Shares kept for the notes, which the note's replay plays in step with the audio. */
+  shares?: readonly ScreenShare[] | undefined;
   meetingId?: string | undefined;
   seriesId?: string | undefined;
   /** What the call kept: the transcript and the recording, unless it says otherwise. */
@@ -57,15 +61,15 @@ export interface NoteSpec {
 
 export const changer = (p: Person, as: RecipientRole | null): Changer => ({ id: p.id, name: p.name, email: p.email, as });
 
-/** What two private models did for a note, checked a few minutes after the call: what "Confidential compute · verified" reads. */
-export function inferenceAt(verifiedAt: string): InferenceEvidence[] {
+/** What the private models did for a note, checked a few minutes after the call: what "Confidential compute · verified" reads. A third read the shared screens, when there are any. */
+export function inferenceAt(verifiedAt: string, screens: boolean): InferenceEvidence[] {
   const hex = (seed: string) => Array.from({ length: 64 }, (_, i) => '0123456789abcdef'.charAt((seed.charCodeAt(i % seed.length) * (i + 7)) % 16)).join('');
   const gateway = { status: 'UpToDate', os: 'dstack-0.5.12', compose: hex('gateway') };
   const one = (model: string, task: InferenceEvidence['task']): InferenceEvidence => ({
     model, task, verifiedAt, key: hex(`${model}key`), tdx: { status: 'UpToDate', quote: hex(`${model}quote`) }, os: 'dstack-nvidia-0.5.12',
     gpu: { count: 1, arch: 'HOPPER' }, compose: hex(`${model}compose`), gateway
   });
-  return [one('openai/whisper-large-v3', 'transcript'), one('z-ai/glm-5.3-flash', 'notes')];
+  return [one('openai/whisper-large-v3', 'transcript'), one('z-ai/glm-5.3-flash', 'notes'), ...(screens ? [one('z-ai/glm-5.3-flash', 'screens')] : [])];
 }
 
 /** A note as `me` reads it (you, unless a scenario says otherwise). */
@@ -143,12 +147,16 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     recipients,
     workedOn: [],
     summary: status === 'ready' ? s.summary ?? s.excerpt : '',
+    details: status === 'ready' && s.summary ? s.details ?? '' : '',
     decisions: status === 'ready' ? decisions : [],
     questions: status === 'ready' ? questions : [],
     actions: status === 'ready' ? actions : [],
     chapters: status === 'ready' ? (s.chapters ?? []).map(([at, title, summary]): Chapter => ({ at: mmss(at), title, summary })) : [],
     gaps: [],
     screens: status === 'ready' ? [...(s.screens ?? [])] : [],
+    shares: status === 'ready' ? [...(s.shares ?? [])] : [],
+    model: null,
+    unencrypted: [],
     transcript: status === 'recording' ? null : kept.transcript || status !== 'ready' ? transcript : [],
     rooms: [],
     additions: [],
@@ -157,7 +165,7 @@ export function writeNote(s: NoteSpec, me: Person = ART): Note {
     suggestedQuestions: status === 'ready' ? ['What did we decide?', 'What do I need to do?', 'Draft a follow-up'] : [],
     audio: kept.recording && status !== 'recording' ? [{ index: 0, seconds, pieces: Math.ceil(seconds / 5), mimeType: 'audio/webm;codecs=opus' }] : [],
     kept,
-    inference: written ? inferenceAt(addMinutes(ended, 1)) : [],
+    inference: written ? inferenceAt(addMinutes(ended, 1), (s.screens?.length ?? 0) > 0 || (s.shares?.length ?? 0) > 0) : [],
     ...(s.seriesId ? { seriesId: s.seriesId } : {})
   };
 }

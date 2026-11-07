@@ -192,7 +192,7 @@ export function useNotesCapture({ session, state, crypto, media, room, departing
         }).finally(() => setPausing(false));
       },
       resume: () => { session.resume().catch(feedback.failed); },
-      screens: (v) => { session.setScreens(v).catch(feedback.failed); },
+      model: (model) => { session.setModel(model).catch(feedback.failed); },
       // One breakout room: the voices there hold still while the pause is on its way, and what they held is dropped
       // once the server has paused the room. The recording and the call's notes carry on.
       room: (paused) => {

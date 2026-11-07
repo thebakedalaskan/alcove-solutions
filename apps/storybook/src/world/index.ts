@@ -129,7 +129,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 export const PREFS: Preferences = {
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
-  pinned: [], groups: []
+  pinned: [], groups: [], model: null
 };
 
 /** Ten hours of notes this month: 3 h 34 min used, 6 h 26 min left, as the side panel and Settings say on the canvas. */

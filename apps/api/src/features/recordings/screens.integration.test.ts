@@ -1,26 +1,37 @@
 /**
- * Shared screens in a call's notes (docs: Calls and recordings › Shared screens), end to end: the real API over HTTP
- * via @alcove/api-http, real Postgres, the object store, a real LiveKit server (presenters publish their screen with
- * @livekit/rtc-node, joined with the tokens the API hands out, as a browser does) and main's fake NEAR AI, which reads
- * what a test wrote into a frame. The organizer turns screen notes on; each presenter's own browser sends frames of
- * its own share; the notes model reads them after the call, sealed to its verified key; the notes point at them.
+ * Shared screens kept for the notes (docs: Calls and recordings › Shared screens), end to end: the real API over HTTP
+ * via @alcove/api-http, real Postgres and the object store. A presenter says whether each share goes in the notes; their
+ * browser sends a kept share's video in pieces (here a real WebM that ffmpeg makes from its test pattern, cut into
+ * pieces the way MediaRecorder cuts one stream); after the call the pieces are joined into one video that replay can
+ * seek, by range, for anyone who has the note. Deleting the note deletes all of it.
  */
-import { AlcoveApiError, MAX_FRAME_BYTES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type ScreenFrame, type TranscriptClip } from '@alcove/api';
-import { createHttpApi } from '@alcove/api-http';
-import { randomBytes } from 'node:crypto';
-import { request } from 'node:http';
+import { AlcoveApiError, MAX_SCREEN_FRAMES, NoteSchema, SECONDS_PER_SCREEN_FRAME, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type NoteProgress, type ScreenPiece, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { frames, webmDuration } from './ffmpeg';
 import { maintain } from '../../maintenance';
-import { screenJpeg, speechWav, type ScreenShown } from '../../testing/fake-near';
-import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
-import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
+import { joinDue } from './screens';
+import { work } from '../notes/writer';
+import { NOTES_MODEL, PRICEY_MODEL, UNVERIFIED_VISION_MODEL, VISION_MODEL, speechWav } from '../../testing/fake-near';
+import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { disposeLiveKit, presentScreen, stopPresenting } from '../../testing/livekit';
+import { cut, recordedWebm, type Scene } from '../../testing/video';
 
-// Presenters share through a real LiveKit server, which a busy CI runner can be slow to set up; every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
 
 let h: Harness;
-beforeAll(async () => { h = await startHarness(); });
+/** Twenty seconds of ffmpeg's test pattern as one WebM stream, as a browser records a share, and the same cut into four pieces. */
+let video: Uint8Array<ArrayBuffer>;
+let pieces: Uint8Array<ArrayBuffer>[];
+const MIME = 'video/webm;codecs=vp8';
+
+beforeAll(async () => {
+  h = await startHarness();
+  video = await recordedWebm(20);
+  pieces = cut(video, 4);
+});
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
+afterEach(async () => { await stopPresenting(); h.closeCalls(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const message = (e: unknown) => (e instanceof AlcoveApiError ? e.message : '');
@@ -51,539 +62,739 @@ async function letIn(host: CallSession, who: CallSession) {
   await host.admit(who.ticket.identity);
   await inGroup(who);
 }
-const open: TestParticipant[] = [];
-/** Connects to the call's room the way a browser does, once let in, encrypting what it sends with its own key. */
-async function joinRoom(call: CallSession): Promise<TestParticipant> {
-  await inGroup(call);
-  const p = await connect(await call.room(), { sending: call.crypto });
-  open.push(p);
-  return p;
-}
-afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
-/**
- * Shares a screen, without its sound, the way a browser does, and waits until LiveKit's server lists it, which is what
- * the API checks a frame against. Returns the share's track sid.
- */
-async function screenOf(p: TestParticipant): Promise<string> {
-  const { screen } = await p.publishScreen(false);
-  const room = p.room.name ?? '';
-  for (let i = 0; i < 300; i++) {
-    if ((await h.deps.livekit.screenShares(room)).some((x) => x.sid === screen)) return screen;
-    await sleep(50);
-  }
-  throw new Error('timed out waiting for LiveKit to list the share');
-}
-
-const audio = (segment: number, s: number): AudioPiece => {
-  const src = Buffer.concat([Buffer.from('audio'), randomBytes(1024)]);
-  const bytes = new Uint8Array(new ArrayBuffer(src.length));
-  bytes.set(src);
-  return { data: new Blob([bytes]), segment, seq: s, at: s * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' };
-};
-/** A clip of speech, starting `atMs` milliseconds into its segment. */
-const speech = (words: string, segment: number, atMs: number, ms = 4000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment, at: atMs / 1000, durationMs: ms });
-let salt = 0;
-/** A frame of a share showing `shown` (nothing legible without it), taken now unless said otherwise. Each is a different image. */
-const frameOf = (share: string, shown: ScreenShown | null, o: { takenAt?: number; jpeg?: Uint8Array<ArrayBuffer> } = {}): ScreenFrame =>
-  ({ data: new Blob([o.jpeg ?? screenJpeg(shown, 1280, 720, `${salt++}`)], { type: 'image/jpeg' }), share, takenAt: o.takenAt ?? Date.now() });
-const CHART: ScreenShown = { title: 'Q3 sign-ups by week', lines: ['Q3 sign-ups by week', 'Launch moves to Nov 18, target 12,000', 'W3 dip: the form was broken'], regions: [{ label: 'Bar chart', box: [0.05, 0.22, 0.67, 0.78] }] };
-const CODE: ScreenShown = { title: 'billing/charge.ts', lines: ['export async function charge(account, minutes) {', '  // TODO: refuse or go negative'] };
-/** A frame straight to the API with someone's pass, as their browser would send it, with whatever headers and body a test wants. */
-const sendFrame = (call: CallSession, body: Uint8Array<ArrayBuffer>, headers: Record<string, string>, callId = call.ticket.callId) => fetch(`${h.baseUrl}/v1/live/calls/${callId}/frames`, {
-  method: 'POST', headers: { origin: ORIGIN, 'x-alcove-call': call.ticket.pass, 'content-type': 'image/jpeg', ...headers }, body
-});
-/**
- * A frame over the size limit, on a connection of its own: the API refuses it from its declared length without
- * reading it, and the connection isn't one a later request shares.
- */
-const oversized = (call: CallSession, share: string, bytes: number) => new Promise<number>((resolve, reject) => {
-  const body = Buffer.alloc(bytes);
-  Buffer.from(screenJpeg(CHART)).copy(body);
-  const req = request(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/frames`, {
-    method: 'POST', agent: false,
-    headers: { origin: ORIGIN, 'x-alcove-call': call.ticket.pass, 'content-type': 'image/jpeg', 'content-length': String(bytes), 'x-alcove-share': share }
-  }, (res) => { res.resume(); resolve(res.statusCode ?? 0); });
-  req.on('error', reject);
-  req.end(body);
-});
-const act = async (call: CallSession, action: unknown) => (await fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, {
-  method: 'POST', headers: { 'content-type': 'application/json', origin: ORIGIN, 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(action)
-})).status;
 async function written(api: AlcoveApi, noteId: string): Promise<NoteProgress[]> {
   const steps: NoteProgress[] = [];
   for await (const p of api.notes.progress(noteId)) steps.push(p);
   return steps;
 }
-const frames = async (ownerId: string) => (await h.pool.query<{ object_id: string; cipher_bytes: string }>('SELECT object_id, cipher_bytes FROM screen_frames WHERE owner_id = $1', [ownerId])).rows;
-const PAUSED = 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.';
-const OFF = 'Shared screens aren’t read for the notes right now.';
-const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
-const FULL = 'The notes have kept as many shared screens as they can for this call.';
+/** Piece `i` of the share's video in `segment`, as the presenter's browser sends it: five seconds each, or `every`, from `offset` seconds into the recording. */
+const piece = (share: string, i: number, o: { segment?: number; data?: Uint8Array<ArrayBuffer>; durationMs?: number; every?: number | undefined; offset?: number | undefined } = {}): ScreenPiece =>
+  ({ data: new Blob([o.data ?? pieces[i] ?? new Uint8Array(1)]), share, segment: o.segment ?? 0, seq: i, at: (o.offset ?? 0) + i * (o.every ?? 5), durationMs: o.durationMs ?? (o.every ?? 5) * 1000, mimeType: MIME });
+const ownerRows = async (table: 'screen_pieces' | 'screen_videos' | 'screen_shares', ownerId: string) =>
+  (await h.pool.query<Record<string, unknown>>(`SELECT * FROM ${table} WHERE owner_id = $1`, [ownerId])).rows;
+const objectsOf = async (ownerId: string) => (await h.pool.query<{ object_id: string }>(
+  'SELECT object_id FROM screen_pieces WHERE owner_id = $1 UNION ALL SELECT object_id FROM screen_videos WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id);
+const exists = (objectId: string) => h.objects.get(objectId).then(() => 'kept', () => 'gone');
+async function* chunked(b: Uint8Array): AsyncGenerator<Uint8Array> { for (let i = 0; i < b.length; i += 65_536) yield b.subarray(i, i + 65_536); }
+const NOTES_FIRST = 'Turn on notes first: only then can a share go in them.';
+const onStage = new WeakSet<CallSession>();
+/**
+ * Starts a share the way a browser does: its screen up in the call's room first (LiveKit listing it is what the API
+ * checks a share's video against), then said to the call.
+ */
+async function sharing(call: CallSession, notes: boolean) {
+  if (!onStage.has(call)) { onStage.add(call); await presentScreen(call, h.deps.livekit); }
+  return call.startShare({ notes });
+}
 
-describe('shared screens in the notes', () => {
-  it('lets only the organizer have shared screens read, only with notes on, and shows everyone, and anyone asking to join, what’s read', async () => {
+describe('shared screens kept for the notes', () => {
+  it('keeps a share its presenter says goes in the notes, refuses pieces of one that doesn’t, and everyone sees which is which', async () => {
     const org = await account(unique('organizer'));
-    const invitedEmail = unique('invited');
-    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [invitedEmail] });
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
-    // Off until the organizer says so, whatever notes are doing.
-    expect(host.getSnapshot().capture).toMatchObject({ mode: 'on', screen: { mode: 'off', since: null, by: null } });
-    const invited = await (await account(invitedEmail)).api.calls.join(c, { mic: true, cam: false });
-    await inGroup(invited);
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Priya Canary-7f3e' });
+    await letIn(host, guest);
+    expect(host.getSnapshot().capture.screen.mode).toBe('off');
+
+    const yes = await sharing(guest, true);
+    expect(yes).toEqual({ share: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), keep: true });
+    // Everyone sees the share, and that it's read for the notes; the capture panel says shared screens are on.
+    let s = await settle(host, (x) => x.shares.length === 1);
+    expect(s.shares).toEqual([{ id: yes.share, participant: guest.ticket.identity, keep: true }]);
+    expect(s.capture.screen.mode).toBe('on');
+
+    for (let i = 0; i < 4; i++) await guest.appendScreen(piece(yes.share, i));
+    // A piece sent again (its answer was lost) is stored once; a different piece in its place is refused.
+    await guest.appendScreen(piece(yes.share, 0));
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(4);
+    expect(await fails(guest.appendScreen(piece(yes.share, 0, { durationMs: 4000 })))).toEqual(['conflict', 'A different piece of this shared screen is already stored at that place.']);
+    // Only the presenter's own share, and only one that exists.
+    expect(await fails(host.appendScreen(piece(yes.share, 4)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    expect(await fails(guest.appendScreen(piece('AAAAAAAAAAAAAAAAAAAAAA', 0)))).toEqual(['not-found', 'That share doesn’t exist, or you don’t have access to it.']);
+    // Pieces from an earlier part of the recording aren't taken.
+    expect(await fails(guest.appendScreen(piece(yes.share, 5, { segment: 1 })))).toEqual(['conflict', 'That video belongs to an earlier part of the recording.']);
+
+    // Sealed: rows hold sizes and places, objects hold ciphertext; who shared is sealed too.
+    const shareRows = await ownerRows('screen_shares', org.session.ownerId);
+    expect(shareRows).toHaveLength(1);
+    expect(Buffer.from(z.instanceof(Buffer).parse(shareRows[0]?.['meta_ciphertext'])).toString('latin1')).not.toContain('Canary-7f3e');
+    for (const id of await objectsOf(org.session.ownerId)) {
+      const stored = Buffer.from(await h.objects.get(id)).toString('latin1');
+      expect(stored).not.toContain('webm');
+      expect(stored).not.toContain('libvpx');
+    }
+
+    // Sharing again ends the share before it: the new one, said no to, isn't recorded.
+    const no = await sharing(guest, false);
+    expect(no.keep).toBe(false);
+    s = await settle(host, (x) => x.shares.length === 1 && x.shares[0]?.id === no.share);
+    expect(s.shares).toEqual([{ id: no.share, participant: guest.ticket.identity, keep: false }]);
+    expect(s.capture.screen.mode).toBe('off');
+    expect(await fails(guest.appendScreen(piece(no.share, 0)))).toEqual(['forbidden', 'That share doesn’t go in the notes.']);
+    // The ended share: a retry of what it stored is fine, and its last piece, arriving just after it ended, is taken.
+    await guest.appendScreen(piece(yes.share, 3));
+    await guest.appendScreen(piece(yes.share, 4));
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(5);
+    await guest.shareEnded(no.share);
+    expect((await settle(host, (x) => x.shares.length === 0)).shares).toEqual([]);
+    await host.leave();
+  });
+
+  it('takes video only while LiveKit lists the presenter’s screen, and their last piece after they leave', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Tomas' });
+    await letIn(host, guest);
+
+    // Said to the call, but never shared in its room: nothing of it goes in the notes, from a guest or the organizer.
+    const unseen = await guest.startShare({ notes: true });
+    expect(unseen.keep).toBe(true);
+    expect(await fails(guest.appendScreen(piece(unseen.share, 0)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    const hostUnseen = await host.startShare({ notes: true });
+    expect(await fails(host.appendScreen(piece(hostUnseen.share, 0)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(0);
+
+    // Shared in the room: taken. Leaving ends the share, and the piece their browser hands over as they go is taken too.
+    const shown = await sharing(guest, true);
+    for (let i = 0; i < 2; i++) await guest.appendScreen(piece(shown.share, i));
+    await guest.leave();
+    await settle(host, (x) => x.shares.every((sh) => sh.id !== shown.share));
+    await guest.appendScreen(piece(shown.share, 2));
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(3);
+    // Only the tail of that share: someone who left can't send a share that isn't theirs.
+    expect(await fails(guest.appendScreen(piece(hostUnseen.share, 1)))).toEqual(['forbidden', 'That isn’t a screen you’re sharing in this call.']);
+    await host.leave();
+  });
+
+  it('refuses video past what a share could have recorded in the time it has been up', async () => {
+    const org = await account(unique('organizer'));
+    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    const { share } = await sharing(host, true);
+    // Just started, a share may hold 30 seconds' worth (7.5 MB): one big piece fits, a second doesn't.
+    const big = () => new Uint8Array(new ArrayBuffer(3_900_000)).fill(7);
+    await host.appendScreen(piece(share, 0, { data: big() }));
+    expect(await fails(host.appendScreen(piece(share, 1, { data: big() })))).toEqual(['conflict', 'This shared screen has sent more video than it could have recorded.']);
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(1);
+    await host.leave();
+  });
+
+  it('holds pieces while notes are paused, carries a share into the next segment, and asks for notes before a share can go in them', async () => {
+    const org = await account(unique('organizer'));
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await host.pause();
+    // Paused: a share can still go in the notes, but nothing is taken until notes resume.
+    const share = await sharing(host, true);
+    expect(share.keep).toBe(true);
+    expect(host.getSnapshot().capture.screen.mode).toBe('paused');
+    expect(await fails(host.appendScreen(piece(share.share, 0)))).toEqual(['conflict', 'Notes are paused. Nothing is recorded, transcribed or sent to the AI until the organizer resumes.']);
+    await host.resume();
+    const segment = host.getSnapshot().notes.recording.segment;
+    expect(segment).toBe(1);
+    expect(host.getSnapshot().capture.screen.mode).toBe('on');
+    await host.appendScreen(piece(share.share, 0, { segment }));
+    // Notes off: the share stops going in them, and nothing new can.
+    await host.setNotes(false);
+    expect(host.getSnapshot().shares).toEqual([{ id: share.share, participant: host.ticket.identity, keep: false }]);
+    expect(host.getSnapshot().capture.screen.mode).toBe('off');
+    expect(await fails(host.appendScreen(piece(share.share, 1, { segment })))).toEqual(['forbidden', 'That share doesn’t go in the notes.']);
+    expect(await fails(host.startShare({ notes: true }))).toEqual(['conflict', NOTES_FIRST]);
+    expect((await sharing(host, false)).keep).toBe(false);
+    await host.leave();
+  });
+
+  it('lets only the organizer choose the model that reads shared screens, starting from their default, and puts it on the note', async () => {
+    const org = await account(unique('organizer'));
+    await org.api.account.updatePreferences({ model: 'vision/default-model' });
+    // Saving another preference leaves the choice as it was.
+    await org.api.account.updatePreferences({ summaryLength: 'detailed' });
+    expect(await org.api.account.preferences()).toMatchObject({ model: 'vision/default-model', summaryLength: 'detailed' });
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    expect(host.getSnapshot().capture.model).toBe('vision/default-model');
     const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, guest);
-
-    // Nobody but the organizer, and nobody without the call's pass.
-    for (const call of [invited, guest]) expect(await act(call, { type: 'screens', on: true })).toBe(403);
-    expect(host.getSnapshot().capture.screen.mode).toBe('off');
-
-    // Frames go into the notes, so there have to be notes.
-    await host.setNotes(false);
-    expect(await fails(host.setScreens(true))).toEqual(['conflict', 'Turn on notes first: shared screens are read for the notes.']);
-    await host.setNotes(true);
-
-    await host.setScreens(true);
-    let s = host.getSnapshot();
-    expect(s.capture.screen).toEqual({ mode: 'on', since: expect.any(String), by: { kind: 'organizer', name: org.session.user.name } });
-    expect(s.notices.at(-1)?.text).toBe('The organizer turned on shared screens in the notes. What anyone shares is read for them.');
-    // Everyone in the call sees it, with who did it; the card and anyone asking to join see it without a name.
-    for (const call of [invited, guest]) expect((await settle(call, (x) => x.capture.screen.mode === 'on')).capture.screen.by).toEqual({ kind: 'organizer', name: org.session.user.name });
-    const card = await h.browser().api.calls.card(c);
-    expect(card.capture?.screen).toEqual({ mode: 'on', since: expect.any(String), by: { kind: 'organizer' } });
-    const waiting = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
-    expect(waiting.getSnapshot().capture.screen).toEqual(card.capture?.screen);
-    expect(JSON.stringify(waiting.getSnapshot().capture)).not.toContain(org.session.user.name);
-
-    // Turning it on again changes nothing. A pause holds it with everything else; resuming brings it back.
-    await host.setScreens(true);
-    await host.pause();
-    expect(host.getSnapshot().capture.screen).toEqual({ mode: 'paused', since: expect.any(String), by: { kind: 'organizer', name: org.session.user.name } });
-    await host.resume();
-    expect(host.getSnapshot().capture.screen.mode).toBe('on');
-    // Turning notes off stops it; turning them on again doesn't bring it back: that's the organizer's choice each time.
-    await host.setNotes(false);
-    expect(host.getSnapshot().capture.screen).toMatchObject({ mode: 'off', by: { kind: 'organizer' } });
-    await host.setNotes(true);
-    expect(host.getSnapshot().capture.screen.mode).toBe('off');
-    await host.setScreens(true);
-    await host.setScreens(false);
-    s = host.getSnapshot();
-    expect(s.capture.screen).toMatchObject({ mode: 'off', since: expect.any(String), by: { kind: 'organizer' } });
-    expect(s.notices.at(-1)?.text).toBe('The organizer turned off shared screens in the notes. What was shared before is kept.');
-    await host.leave();
+    expect(await fails(guest.setModel('vision/other'))).toEqual(['forbidden', 'Only the organizer can do that.']);
+    await host.setModel('vision/other');
+    expect((await settle(guest, (x) => x.capture.model === 'vision/other')).capture.model).toBe('vision/other');
+    const noteId = (await host.leave())?.pendingNoteId ?? '';
+    expect((await org.api.notes.get(noteId)).model).toBe('vision/other');
   });
 
-  it('takes frames only of the presenter’s own share, only while screen notes are on, and keeps the same frame once', async () => {
-    const org = await account(unique('organizer'));
-    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
-    const host = await org.api.calls.join(c, { mic: true, cam: true });
-    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Priya' });
-    await letIn(host, guest);
-    const hostRoom = await joinRoom(host);
-    const guestRoom = await joinRoom(guest);
-    const share = await screenOf(guestRoom);
-    const camera = await hostRoom.publishCamera();
-    expect(share).toMatch(/^TR_/);
-
-    // Before the organizer turns it on, nothing is taken.
-    expect(await fails(guest.shareFrame(frameOf(share, CHART)))).toEqual(['conflict', OFF]);
-    await host.setScreens(true);
-    const first = await guest.shareFrame(frameOf(share, CHART, { jpeg: screenJpeg(CHART, 1280, 720, 'first') }));
-    expect(first).toEqual({ id: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), duplicate: false });
-    // Sent again (its answer was lost): kept once, with the ID it has.
-    expect(await guest.shareFrame(frameOf(share, CHART, { jpeg: screenJpeg(CHART, 1280, 720, 'first') }))).toEqual({ id: first.id, duplicate: true });
-    expect((await frames(org.session.ownerId)).length).toBe(1);
-
-    // Only the presenter's own share: not someone else's, not a camera, not one that doesn't exist.
-    expect(await fails(host.shareFrame(frameOf(share, CHART)))).toEqual(['forbidden', NOT_YOURS]);
-    expect(await fails(host.shareFrame(frameOf(camera, CHART)))).toEqual(['forbidden', NOT_YOURS]);
-    expect(await fails(guest.shareFrame(frameOf('TR_notarealshare1', CHART)))).toEqual(['forbidden', NOT_YOURS]);
-    // Nor from someone still asking to join, who isn't in the call.
-    const asking = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });
-    expect(await fails(asking.shareFrame(frameOf(share, CHART)))).toEqual(['forbidden', 'Wait until the host lets you in.']);
-    // Only JPEGs of a sensible size, with the share named, refused before anything is kept.
-    const jpeg = screenJpeg(CHART);
-    expect((await sendFrame(guest, jpeg, { 'x-alcove-share': 'not-a-share' })).status).toBe(400);
-    expect((await sendFrame(guest, jpeg, {})).status).toBe(400);
-    expect((await sendFrame(guest, new Uint8Array(randomBytes(4096)), { 'x-alcove-share': share })).status).toBe(400);
-    expect((await sendFrame(guest, screenJpeg(CHART, 32, 32), { 'x-alcove-share': share })).status).toBe(400);
-    expect((await sendFrame(guest, screenJpeg(CHART, 5000, 3000), { 'x-alcove-share': share })).status).toBe(400);
-    expect((await sendFrame(guest, jpeg, { 'x-alcove-share': share, 'content-type': 'image/png' })).status).toBe(400);
-    // A pass for one call can't send frames into another.
-    const other = await account();
-    const elsewhere = await other.api.calls.join((await other.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    expect((await sendFrame(guest, jpeg, { 'x-alcove-share': share }, elsewhere.ticket.callId)).status).toBe(401);
-    await elsewhere.leave();
-    expect((await frames(org.session.ownerId)).length).toBe(1);
-
-    // Paused: nothing is taken, whoever sends it, and nothing goes to the AI.
-    await host.pause();
-    const sent = h.near.calls.length;
-    expect(await fails(guest.shareFrame(frameOf(share, CODE)))).toEqual(['conflict', PAUSED]);
-    expect(h.near.calls.length).toBe(sent);
-    await host.resume();
-    // A frame taken while paused (sent late) stays out too; one taken now is kept.
-    expect(await fails(guest.shareFrame(frameOf(share, CODE, { takenAt: Date.now() - 4000 })))).toEqual(['conflict', 'That frame was taken before screen notes were on, so it isn’t kept.']);
-    expect((await guest.shareFrame(frameOf(share, CODE))).duplicate).toBe(false);
-    // Screen notes off, or notes off: nothing more.
-    await host.setScreens(false);
-    expect(await fails(guest.shareFrame(frameOf(share, CODE)))).toEqual(['conflict', OFF]);
-    await host.setNotes(false);
-    expect(await fails(guest.shareFrame(frameOf(share, CODE)))).toEqual(['conflict', 'Notes aren’t on right now.']);
-    expect((await frames(org.session.ownerId)).length).toBe(2);
-    await host.leave();
-  });
-
-  it('takes 24 frames a minute from a presenter and none over 1 MiB, keeping nothing it refuses', async () => {
+  it('joins a kept share into one video after the call, and replays it whole and by range only to people with the note', async () => {
     const org = await account(unique('organizer'));
     const { code: c } = await org.api.calls.startNow({ notes: 'on' });
     const host = await org.api.calls.join(c, { mic: true, cam: false });
-    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ade' });
-    await letIn(host, guest);
-    const share = await screenOf(await joinRoom(guest));
-    await host.setScreens(true);
-    // Over 1 MiB: refused before it's read, and nothing is kept.
-    expect(await oversized(guest, share, MAX_FRAME_BYTES + 1)).toBe(400);
-    expect(await frames(org.session.ownerId)).toEqual([]);
-    // 24 a minute from one presenter, each kept; the 25th is refused before anything is read or kept.
-    for (let i = 0; i < 24; i++) expect((await guest.shareFrame(frameOf(share, CHART))).duplicate).toBe(false);
-    expect((await sendFrame(guest, screenJpeg(CHART, 1280, 720, 'one-too-many'), { 'x-alcove-share': share })).status).toBe(503);
-    expect((await frames(org.session.ownerId)).length).toBe(24);
-    // Someone else's allowance is their own.
-    const hostShare = await screenOf(await joinRoom(host));
-    expect((await host.shareFrame(frameOf(hostShare, CODE))).duplicate).toBe(false);
-    await host.leave();
-  });
-
-  it('turns screen notes off for everyone once the notes have kept as many frames as they can', async () => {
-    const server = await h.secondServer({ SCREEN_FRAMES_MAX: 2 });
-    const api = createHttpApi({ baseUrl: server.baseUrl, fetch: cookieFetch(ORIGIN), callPollMs: 50 });
-    const { session } = await api.auth.signIn('sso', { email: unique('organizer') });
-    const host = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    try {
-      const share = await screenOf(await joinRoom(host));
-      await host.setScreens(true);
-      await host.shareFrame(frameOf(share, CHART));
-      await host.shareFrame(frameOf(share, CODE));
-      // One too many: refused, and screen notes turn off for everyone, saying why.
-      expect(await fails(host.shareFrame(frameOf(share, CHART)))).toEqual(['conflict', FULL]);
-      const s = await settle(host, (x) => x.capture.screen.mode === 'off');
-      expect(s.capture.screen.by).toEqual({ kind: 'organizer', name: session.user.name });
-      expect(s.notices.at(-1)?.text).toBe('Shared screens are off: the notes have kept as many as they can for this call. What was shared is kept.');
-      // They stay off for this call: the organizer can't turn them on again, and what was kept stays.
-      expect(await fails(host.setScreens(true))).toEqual(['conflict', FULL]);
-      expect((await frames(session.ownerId)).length).toBe(2);
-      await host.leave();
-    } finally {
-      host.close();
-      await server.close();
-    }
-  });
-
-  it('stops a share where its presenter’s browser says it ended, or where they leave, and refuses frames of a share that’s over', async () => {
-    const org = await account(unique('organizer'));
-    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
-    // No microphone, so no audio: frames are placed by the call's clock.
-    const host = await org.api.calls.join(c, { mic: false, cam: false });
-    const guest = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Ines' });
-    await letIn(host, guest);
-    const room = await joinRoom(guest);
-    const first = await screenOf(room);
-    await host.setScreens(true);
-    const a = await guest.shareFrame(frameOf(first, CHART));
-    // Taken down without the browser saying so: once what LiveKit said runs out (10 s), its frames are refused.
-    await room.unpublish(first);
-    await sleep(10_500);
-    expect(await fails(guest.shareFrame(frameOf(first, CODE)))).toEqual(['forbidden', NOT_YOURS]);
-    // The browser says a share ended: its frames are refused at once, though LiveKit still lists it.
-    const second = await screenOf(room);
-    const b = await guest.shareFrame(frameOf(second, CODE));
-    await sleep(1000);
-    await guest.shareEnded(second);
-    expect(await fails(guest.shareFrame(frameOf(second, CHART)))).toEqual(['forbidden', NOT_YOURS]);
-    await room.unpublish(second);
-    // A pause, then a share after it; the presenter leaves while sharing, and the call goes on without them.
-    await sleep(1000);
-    await host.pause();
-    await host.resume();
-    const third = await screenOf(room);
-    const d = await guest.shareFrame(frameOf(third, CHART));
-    await sleep(1500);
-    await guest.leave();
-    await settle(host, (x) => !x.participants.some((p) => p.id === guest.ticket.identity));
-    await sleep(2500);
+    const share = await sharing(host, true);
+    for (let i = 0; i < 4; i++) await host.appendScreen(piece(share.share, i));
+    await host.shareEnded(share.share);
+    const pieceObjects = await objectsOf(org.session.ownerId);
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
+
     const note = await org.api.notes.get(noteId);
-    const [ma, mb, md] = note.screens;
-    if (!ma || !mb || !md) throw new Error('expected three screen moments');
-    expect([ma.id, mb.id, md.id]).toEqual([a.id, b.id, d.id]);
-    // The second stops where its browser said it ended, a second after it was shown; the first, with nothing said, at the pause.
-    expect(mb.until - mb.at).toBeGreaterThanOrEqual(0.9);
-    expect(mb.until).toBeLessThan(ma.until);
-    // After the pause, in order: not placed from the start again.
-    expect(md.at).toBeGreaterThanOrEqual(ma.until);
-    // The third stops where its presenter left, not at the end of the recording.
-    expect(md.until - md.at).toBeGreaterThanOrEqual(1.4);
-    expect(md.until).toBeLessThan(note.duration - 2);
-  });
+    expect(note.shares).toEqual([{
+      id: share.share, presenter: { name: org.session.user.name, person: expect.objectContaining({ name: org.session.user.name }) }, label: `${org.session.user.name}’s screen`,
+      at: 0, until: 20, segments: [{ segment: 0, at: 0, until: 20 }]
+    }]);
+    // The pieces are gone, rows and objects; the video is in sealed chunks.
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toEqual([]);
+    for (const id of pieceObjects) expect(await exists(id)).toBe('gone');
+    const chunks = await ownerRows('screen_videos', org.session.ownerId);
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const r of chunks) expect(Buffer.from(await h.objects.get(z.string().parse(r['object_id']))).toString('latin1')).not.toContain('webm');
 
-  it('keeps what’s shared in a breakout room out of the notes, and takes the main room’s', async () => {
-    const org = await account(unique('organizer'));
-    const kofiEmail = unique('kofi');
-    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
-    const host = await org.api.calls.join(c, { mic: true, cam: false });
-    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
-    await inGroup(kofi);
-    const kofiShare = await screenOf(await joinRoom(kofi));
-    const hostShare = await screenOf(await joinRoom(host));
-    await host.setScreens(true);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
-    const s = await settle(host, (x) => x.breakouts.open !== null);
-    const ROOM = 'What’s shared in a breakout room stays in the room. It isn’t read for the notes.';
-    expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART)))).toEqual(['conflict', ROOM]);
-    // The organizer, in the main room, is still in the notes; visiting a room, not.
-    expect((await host.shareFrame(frameOf(hostShare, CODE))).duplicate).toBe(false);
-    host.visitRoom(s.breakouts.open?.rooms[0]?.id ?? '');
-    await settle(host, (x) => x.breakouts.open?.rooms[0]?.members.includes(host.ticket.identity) ?? false);
-    expect(await fails(host.shareFrame(frameOf(hostShare, CODE)))).toEqual(['conflict', ROOM]);
-    host.closeRooms();
-    await settle(host, (x) => x.breakouts.open === null);
-    expect((await kofi.shareFrame(frameOf(kofiShare, CHART))).duplicate).toBe(false);
-    expect((await frames(org.session.ownerId)).length).toBe(2);
-    // Nothing was said, so there are no notes to write; what was on screen is still read and kept.
-    const noteId = (await host.leave())?.pendingNoteId ?? '';
-    await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
-    expect([note.summary, note.transcript]).toEqual(['', []]);
-    expect(note.screens.map((m) => [m.title, m.legible, m.presenter?.name])).toEqual([['billing/charge.ts', 'clear', org.session.user.name], ['Q3 sign-ups by week', 'clear', expect.any(String)]]);
-  });
+    const url = org.api.notes.screenVideoUrl(noteId, share.share, 0);
+    const whole = await org.fetch(url);
+    expect(whole.status).toBe(200);
+    expect(Object.fromEntries(['content-type', 'accept-ranges', 'cache-control', 'x-content-type-options'].map((k) => [k, whole.headers.get(k)])))
+      .toEqual({ 'content-type': 'video/webm', 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+    const full = new Uint8Array(await whole.arrayBuffer());
+    // Seekable: it says how long it runs, and every moment decodes.
+    expect(webmDuration(full)).toBeCloseTo(20, 0);
+    expect((await frames(chunked(full), 'video/webm', [0, 7.5, 19])).map((f) => f.at)).toEqual([0, 7.5, 19]);
 
-  it('places each frame where its presenter was when it was taken: one from the main room just before they left is kept, one from a room stays out', async () => {
-    const org = await account(unique('organizer'));
-    const kofiEmail = unique('kofi');
-    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
-    const host = await org.api.calls.join(c, { mic: true, cam: false });
-    const kofi = await (await account(kofiEmail)).api.calls.join(c, { mic: true, cam: false });
-    await inGroup(kofi);
-    const kofiShare = await screenOf(await joinRoom(kofi));
-    await host.setScreens(true);
-    const ROOM = 'What’s shared in a breakout room stays in the room. It isn’t read for the notes.';
-    // Kofi takes a frame in the main room, and a second later the rooms open, sending him to Design, before it
-    // arrives: it's kept.
-    const inMain = Date.now();
-    await sleep(1000);
-    host.openRooms({ rooms: [{ name: 'Design', emails: [kofiEmail] }, { name: 'Support', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
-    await settle(host, (x) => x.breakouts.open !== null);
-    expect((await kofi.shareFrame(frameOf(kofiShare, CODE, { takenAt: inMain }))).duplicate).toBe(false);
-    // One he takes in Design stays out, while he's there and once the rooms have closed.
-    const inDesign = Date.now();
-    expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART, { takenAt: inDesign })))).toEqual(['conflict', ROOM]);
-    // He stays a while in Design.
-    await sleep(1500);
-    host.closeRooms();
-    await settle(host, (x) => x.breakouts.open === null);
-    expect(await fails(kofi.shareFrame(frameOf(kofiShare, CHART, { takenAt: inDesign })))).toEqual(['conflict', ROOM]);
-    // Back in the main room, his share is read again: leaving it ended his share there by presenter, not by share.
-    expect((await kofi.shareFrame(frameOf(kofiShare, CHART))).duplicate).toBe(false);
-    expect((await frames(org.session.ownerId)).length).toBe(2);
-    // In the notes, the frame he took before he went stops where he left the main room, not where he came back: what
-    // the main room had on screen while he was in Design was nothing of his.
-    const noteId = (await host.leave())?.pendingNoteId ?? '';
-    await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
-    expect(note.screens.map((m) => m.title)).toEqual(['billing/charge.ts', 'Q3 sign-ups by week']);
-    const [before, after] = note.screens;
-    expect((after?.at ?? 0) - (before?.until ?? 0)).toBeGreaterThanOrEqual(1.4);
-  });
+    // Ranges, each opening only what it needs, put together give the same video.
+    const part = async (range: string) => {
+      const r = await org.fetch(url, { headers: { range } });
+      return { status: r.status, contentRange: r.headers.get('content-range'), bytes: new Uint8Array(await r.arrayBuffer()) };
+    };
+    const head = await part('bytes=0-99');
+    expect([head.status, head.contentRange, head.bytes.length]).toEqual([206, `bytes 0-99/${full.length}`, 100]);
+    const rest = await part('bytes=100-');
+    expect([rest.status, rest.contentRange]).toEqual([206, `bytes 100-${full.length - 1}/${full.length}`]);
+    expect(Buffer.concat([head.bytes, rest.bytes]).equals(Buffer.from(full))).toBe(true);
+    const tail = await part('bytes=-500');
+    expect(Buffer.from(tail.bytes).equals(Buffer.from(full.subarray(full.length - 500)))).toBe(true);
+    const beyond = await part(`bytes=${full.length}-`);
+    expect([beyond.status, beyond.contentRange]).toEqual([416, `bytes */${full.length}`]);
+    expect((await part('bytes=0-1,5-9')).status).toBe(416);
 
-  it('reads what was shared with the private notes model, ties each frame to what was said then, and answers from it', async () => {
-    const org = await account(unique('organizer'));
-    const kofiEmail = unique('kofi');
-    const { code: c } = await org.api.calls.startNow({ notes: 'on', guests: [kofiEmail] });
-    const host = await org.api.calls.join(c, { mic: true, cam: false });
-    const priya = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Priya Shah' });
-    await letIn(host, priya);
-    const priyaShare = await screenOf(await joinRoom(priya));
-    const hostShare = await screenOf(await joinRoom(host));
-    // A minute of audio, so every line and frame below sits inside the recording.
-    for (let i = 0; i < 12; i++) await host.appendAudio(audio(0, i));
-    await host.setScreens(true);
-    const start = Date.parse(host.getSnapshot().startedAt);
-    const now = () => (Date.now() - start) / 1000;
-
-    // Priya shows a chart; what's said about it comes after it, then her next slide, then her share ends.
-    const chart = await priya.shareFrame(frameOf(priyaShare, CHART, { jpeg: screenJpeg(CHART, 1280, 720, 'flow-chart') }));
-    const l1 = Math.ceil(now()) + 1;
-    await host.transcribe(speech('We agreed this chart is right about the W3 dip. // Is the target still 12,000?', 0, l1 * 1000), host.ticket.identity);
-    // Her next slide comes once what was said about the chart is behind it.
-    await waitFor(() => now() > l1 + 2.5, 'the chart’s stretch of the call');
-    const slide = await priya.shareFrame(frameOf(priyaShare, CODE));
-    const l3 = Math.ceil(now()) + 1;
-    await host.transcribe(speech('Kofi will fix that bug by Friday.', 0, l3 * 1000), host.ticket.identity);
-    await waitFor(() => now() > l3 + 0.5, 'the code’s stretch of the call');
-    await priya.shareEnded(priyaShare);
-    // The organizer's own screen, which nobody can read.
-    const blur = await host.shareFrame(frameOf(hostShare, null, { jpeg: screenJpeg(null, 1280, 720, 'flow-blur') }));
-    await host.transcribe(speech('That is everything for today.', 0, (Math.ceil(now()) + 2) * 1000), host.ticket.identity);
-
-    const noteId = (await host.leave())?.pendingNoteId ?? '';
-    // While the notes are written, the note already shows what was on screen, where it was, not read yet.
-    const pending = await org.api.notes.get(noteId);
-    expect(pending.screens.map((m) => [m.id, m.legible])).toEqual([[chart.id, 'unread'], [slide.id, 'unread'], [blur.id, 'unread']]);
-    await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
-    const [a, b, u] = note.screens;
-    if (!a || !b || !u) throw new Error('expected three screen moments');
-
-    // Read, sealed to the verified notes model: it got each image, and nothing went any other way.
-    expect(h.near.images.filter((i) => i.salt === 'flow-chart').map((i) => i.marker)).toEqual([JSON.stringify(CHART)]);
-    expect(h.near.images.filter((i) => i.salt === 'flow-blur').map((i) => i.marker)).toEqual([null]);
-    expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
-    expect(a).toMatchObject({
-      share: priyaShare, presenter: { name: 'Priya Shah' }, width: 1280, height: 720, legible: 'clear', title: 'Q3 sign-ups by week',
-      text: 'Q3 sign-ups by week\nLaunch moves to Nov 18, target 12,000\nW3 dip: the form was broken', regions: [{ label: 'Bar chart', x: 0.05, y: 0.22, w: 0.62, h: 0.56 }],
-      description: 'Q3 sign-ups by week, shown while: We agreed this chart is right about the W3 dip.'
-    });
-    expect(b).toMatchObject({ share: priyaShare, title: 'billing/charge.ts', legible: 'clear', regions: [] });
-    expect(u).toMatchObject({ share: hostShare, presenter: { name: org.session.user.name }, legible: 'unreadable', title: '', text: '' });
-    // Each on screen from when it was shown until its share's next frame, or its share ended.
-    expect(a.at).toBeLessThan(l1);
-    expect(a.until).toBe(b.at);
-    expect(b.at).toBeGreaterThan(l1 + 2);
-    expect(b.at).toBeLessThan(l3);
-    expect(b.until).toBeGreaterThan(l3);
-    expect(b.until).toBeLessThanOrEqual(u.at + 0.1);
-    // What was said about a screen points at it: plainly ("this chart", and the part meant) or only maybe ("that").
-    expect(note.decisions.map((d) => [d.text, d.screen])).toEqual([['We agreed this chart is right about the W3 dip.', { id: a.id, region: 0, sure: true }]]);
-    // What backs it is the line it was said in and the moment of the screen it was about, with the part meant.
-    expect(note.decisions[0]?.evidence).toMatchObject({ flags: [], moments: [{ kind: 'line', text: 'We agreed this chart is right about the W3 dip.' }, { kind: 'screen', id: a.id, at: a.at, title: a.title, region: 0, part: a.regions[0]?.label, sure: true }] });
-    expect(note.actions.map((x) => [x.text, x.screen])).toEqual([['Fix that bug by Friday', { id: b.id, sure: false }]]);
-    expect(note.questions.map((x) => [x.text, x.screen])).toEqual([['Is the target still 12,000?', undefined]]);
-    // The notes model read the screens among the lines, where they were shown.
-    const prompt = h.near.prompts.at(-1) ?? '';
-    expect(prompt).toContain(`[screen 1 from Priya Shah (guest), clear] Q3 sign-ups by week. Reads: Q3 sign-ups by week / Launch moves to Nov 18, target 12,000 / W3 dip: the form was broken Parts: (1) Bar chart`);
-    expect(prompt).toContain(`[screen 3 from ${org.session.user.name}, unreadable] Untitled.`);
-
-    // Answers say which screen they come from.
-    const parts: unknown[] = [];
-    for await (const p of org.api.notes.ask(noteId, 'What did the chart show?')) parts.push(p);
-    expect(parts).toEqual([{ type: 'text', text: 'From the call: We agreed this chart is right about the W3 dip.' }, { type: 'cite', noteId, at: l1 }, { type: 'screen', id: a.id, at: a.at }]);
-
-    // The image is the frame Priya's browser sent, for anyone who has the notes, and nobody else.
-    const image = await org.fetch(org.api.notes.screenUrl(noteId, a.id));
-    expect([image.status, image.headers.get('content-type'), image.headers.get('cache-control')]).toEqual([200, 'image/jpeg', 'no-store']);
-    expect(String(Buffer.from(await image.arrayBuffer()))).toContain('Q3 sign-ups by week');
-    const kofi = await account(kofiEmail);
-    expect((await kofi.api.notes.get(noteId)).screens.map((m) => m.id)).toEqual([a.id, b.id, u.id]);
-    expect((await kofi.fetch(kofi.api.notes.screenUrl(noteId, b.id))).status).toBe(200);
+    // Nobody else, and nothing that isn't there.
     const stranger = await account();
-    expect((await stranger.fetch(stranger.api.notes.screenUrl(noteId, a.id))).status).toBe(404);
-    // A frame of another note, or an ID that isn't one, isn't found under this one.
-    const theirs = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const theirNote = (await theirs.leave())?.pendingNoteId ?? '';
-    expect((await org.fetch(org.api.notes.screenUrl(theirNote, a.id))).status).toBe(404);
-    expect((await org.fetch(org.api.notes.screenUrl(noteId, 'not-an-id'))).status).toBe(404);
-  });
+    expect((await stranger.fetch(url)).status).toBe(404);
+    expect((await h.browser().fetch(url)).status).toBe(401);
+    expect((await org.fetch(org.api.notes.screenVideoUrl(noteId, share.share, 1))).status).toBe(404);
+    expect((await org.fetch(org.api.notes.screenVideoUrl(noteId, 'not-an-id', 0))).status).toBe(404);
 
-  it('deletes every frame with its note: rows, objects and what was read on them', async () => {
-    const org = await account(unique('organizer'));
-    const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const share = await screenOf(await joinRoom(host));
-    await host.appendAudio(audio(0, 0));
-    await host.setScreens(true);
-    await host.shareFrame(frameOf(share, CHART));
-    await host.shareFrame(frameOf(share, CODE));
-    await host.transcribe(speech('We agreed this chart is right.', 0, 1000), host.ticket.identity);
-    const noteId = (await host.leave())?.pendingNoteId ?? '';
-    await written(org.api, noteId);
-    const ids = (await org.api.notes.get(noteId)).screens.map((m) => m.id);
-    expect(ids).toHaveLength(2);
-    const kept = await frames(org.session.ownerId);
-    expect(kept).toHaveLength(2);
-    // Maintenance knows a note's frames are in use, however old.
+    // Maintenance knows the video's objects are in use, however old.
     await sleep(1100);
     await maintain(h.deps, { orphanAgeMs: 0 });
-    for (const f of kept) expect(await h.objects.get(f.object_id).then(() => 'kept', () => 'gone')).toBe('kept');
+    const videoObjects = await objectsOf(org.session.ownerId);
+    for (const id of videoObjects) expect(await exists(id)).toBe('kept');
+
+    // Deleting the note deletes all of it: rows and objects, and the bytes they counted.
     const stored = async () => Number((await h.pool.query('SELECT stored_bytes FROM owners WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.stored_bytes ?? -1);
-    const audioBytes = Number((await h.pool.query('SELECT coalesce(sum(cipher_bytes), 0)::bigint AS n FROM recording_pieces WHERE owner_id = $1', [org.session.ownerId])).rows[0]?.n ?? 0);
-    const before = await stored();
-
+    expect(await stored()).toBeGreaterThan(0);
     await org.api.notes.delete(noteId);
-    expect(await frames(org.session.ownerId)).toEqual([]);
-    for (const f of kept) expect(await h.objects.get(f.object_id).then(() => 'kept', () => 'gone')).toBe('gone');
-    // Stored bytes go down by the audio and the frames, together.
-    expect(await stored()).toBe(before - audioBytes - kept.reduce((n, f) => n + Number(f.cipher_bytes), 0));
-    expect((await org.fetch(org.api.notes.screenUrl(noteId, ids[0] ?? ''))).status).toBe(404);
+    for (const t of ['screen_pieces', 'screen_videos', 'screen_shares'] as const) expect(await ownerRows(t, org.session.ownerId)).toEqual([]);
+    for (const id of videoObjects) expect(await exists(id)).toBe('gone');
+    expect(await stored()).toBe(0);
+    expect((await org.fetch(url)).status).toBe(404);
   });
 
-  it('deletes every frame of an account’s calls when the account is deleted, written up or still going, and closes the room of the one going', async () => {
-    const org = await account(unique('organizer'));
-    // A call whose notes are written, with what was on its shared screen...
-    const ended = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const endedShare = await screenOf(await joinRoom(ended));
-    await ended.appendAudio(audio(0, 0));
-    await ended.setScreens(true);
-    await ended.shareFrame(frameOf(endedShare, CHART));
-    await ended.transcribe(speech('We agreed this chart is right.', 0, 1000), ended.ticket.identity);
-    await written(org.api, (await ended.leave())?.pendingNoteId ?? '');
-    // ...and a call still going, with a frame of its own, in its LiveKit room.
-    const live = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const liveShare = await screenOf(await joinRoom(live));
-    await live.setScreens(true);
-    await live.shareFrame(frameOf(liveShare, CODE));
-    const kept = await frames(org.session.ownerId);
-    expect(kept).toHaveLength(2);
-    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
-
-    await org.api.account.delete();
-    // Not a row of a frame is left, nor an image, and the call that was going is over: its room is closed, which takes everyone out.
-    expect(await frames(org.session.ownerId)).toEqual([]);
-    for (const f of kept) expect(await h.objects.get(f.object_id).then(() => 'kept', () => 'gone')).toBe('gone');
-    expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(0);
-    expect(h.logs.some((l) => l.includes('"msg":"account deleted"') && l.includes(org.session.ownerId) && l.includes('"frames":2') && l.includes('"rooms":1'))).toBe(true);
-  });
-
-  it('keeps frames, and what was read on them, sealed: nothing readable in rows, objects, logs or on the wire', async () => {
+  it('sends pieces only as raw video from the app, each no bigger than a piece can be', async () => {
     const org = await account(unique('organizer'));
     const host = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
-    const share = await screenOf(await joinRoom(host));
-    await host.appendAudio(audio(0, 0));
-    await host.setScreens(true);
-    const secret: ScreenShown = { title: 'CANARY-SCREEN-TITLE board deck', lines: ['CANARY-SCREEN-TEXT acquisition price 41M'], regions: [{ label: 'CANARY-SCREEN-PART', box: [0.1, 0.1, 0.5, 0.5] }] };
-    const jpeg = screenJpeg(secret, 1280, 720, 'canary');
-    await host.shareFrame(frameOf(share, secret, { jpeg }));
-    await host.transcribe(speech('We agreed this slide is final.', 0, 1000), host.ticket.identity);
+    const share = await sharing(host, true);
+    const send = (headers: Record<string, string>, body: Uint8Array<ArrayBuffer>) => fetch(`${h.baseUrl}/v1/live/calls/${host.ticket.callId}/shares/${share.share}/video`, {
+      method: 'POST', headers: { origin: ORIGIN, 'x-alcove-call': host.ticket.pass, 'x-alcove-segment': '0', 'x-alcove-seq': '0', 'x-alcove-at-ms': '0', 'x-alcove-duration-ms': '5000', ...headers }, body
+    });
+    expect((await send({ 'content-type': 'image/jpeg' }, pieces[0] ?? new Uint8Array(1))).status).toBe(400);
+    expect((await send({ 'content-type': 'video/ogg' }, pieces[0] ?? new Uint8Array(1))).status).toBe(400);
+    expect((await send({ 'content-type': MIME }, new Uint8Array(4 * 1024 * 1024 + 2048))).status).toBe(400);
+    expect((await send({ 'content-type': MIME, origin: 'https://elsewhere.example' }, pieces[0] ?? new Uint8Array(1))).status).toBe(403);
+    expect((await send({ 'content-type': MIME }, pieces[0] ?? new Uint8Array(1))).status).toBe(200);
+    expect(await ownerRows('screen_pieces', org.session.ownerId)).toHaveLength(1);
+    await host.leave();
+  });
+});
+
+/** Something said `at` seconds into the recording, for the live transcript. */
+const speech = (words: string, at: number, ms: number | undefined = 3000): TranscriptClip => ({ data: new Blob([speechWav(words, ms)], { type: 'audio/wav' }), segment: 0, at, durationMs: ms });
+/** Five seconds of the call's audio, number `seq`. */
+const audio = (seq: number): AudioPiece => ({ data: new Blob([new Uint8Array(2048)]), segment: 0, seq, at: seq * 5, durationMs: 5000, mimeType: 'audio/webm;codecs=opus' });
+const isRead = (c: { system: string }) => c.system.startsWith('You read a frame');
+const isPick = (c: { system: string }) => c.system.startsWith('You read the transcript of a meeting in which people shared their screens');
+const frameRows = async (ownerId: string) => (await h.pool.query<{ frame_id: string; object_id: string }>('SELECT frame_id, object_id FROM screen_frames WHERE owner_id = $1', [ownerId])).rows;
+/** The first log line since `from` with this message, as JSON. */
+const logLine = (from: number, msg: string): unknown => {
+  const line = h.logs.slice(from).find((l) => l.includes(`"msg":"${msg}"`));
+  return line === undefined ? null : JSON.parse(line);
+};
+const bucket = async () => { const ids = new Set<string>(); for await (const x of h.objects.list()) ids.add(x.id); return ids; };
+/**
+ * The objects in the bucket since `was` that nothing of this account's stored in its rows refers to: after the notes are
+ * saved, the frames not shown are deleted, rows at once and objects just after. Notes of earlier tests can still be
+ * finishing (they wait for their shares' last pieces), so whatever another account stores is theirs.
+ */
+async function leftOver(was: Set<string>, ownerId: string): Promise<string[]> {
+  const kept = new Set((await h.pool.query<{ object_id: string }>(
+    `SELECT object_id FROM screen_frames WHERE owner_id = $1 UNION ALL SELECT object_id FROM screen_videos WHERE owner_id = $1
+     UNION ALL SELECT object_id FROM screen_pieces WHERE owner_id = $1 UNION ALL SELECT object_id FROM recording_pieces WHERE owner_id = $1`, [ownerId])).rows.map((x) => x.object_id));
+  const others = async () => new Set((await h.pool.query<{ object_id: string }>(
+    `SELECT object_id FROM screen_frames WHERE owner_id <> $1 UNION ALL SELECT object_id FROM screen_videos WHERE owner_id <> $1
+     UNION ALL SELECT object_id FROM screen_pieces WHERE owner_id <> $1 UNION ALL SELECT object_id FROM recording_pieces WHERE owner_id <> $1`, [ownerId])).rows.map((x) => x.object_id));
+  const stray = async () => { const theirs = await others(); return [...await bucket()].filter((id) => !was.has(id) && !kept.has(id) && !theirs.has(id)); };
+  for (let i = 0; i < 40 && (await stray()).length; i++) await sleep(50);
+  return stray();
+}
+
+/**
+ * A call where the organizer shares their screen for the notes (its video in pieces of five seconds, or `every`, from
+ * `offset` seconds in), for `seconds` of audio, says `said` ([second, words], each clip `ms` long), maybe chooses the model that reads screens, and leaves; once the notes are written: the note,
+ * and what NEAR AI was asked.
+ */
+async function presented(o: { seconds: number; share: Uint8Array<ArrayBuffer>[]; every?: number | undefined; offset?: number | undefined; said: [number, string][]; ms?: number | undefined; model?: string | undefined; keep?: boolean | undefined }) {
+  const org = await account(unique('organizer'));
+  const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+  const host = await org.api.calls.join(c, { mic: true, cam: false });
+  for (let i = 0; i < o.seconds / 5; i++) await host.appendAudio(audio(i));
+  const share = await sharing(host, o.keep ?? true);
+  if (share.keep) for (const [i, data] of o.share.entries()) await host.appendScreen(piece(share.share, i, { data, every: o.every, offset: o.offset }));
+  for (const [at, words] of o.said) await host.transcribe(speech(words, at, o.ms), host.ticket.identity);
+  if (o.model !== undefined) await host.setModel(o.model);
+  await host.shareEnded(share.share);
+  const asked = h.near.chats.length;
+  const noteId = (await host.leave())?.pendingNoteId ?? '';
+  await written(org.api, noteId);
+  return { org, noteId, note: await org.api.notes.get(noteId), chats: h.near.chats.slice(asked), prompts: h.near.prompts.slice(asked) };
+}
+/** The last notes prompt NEAR AI was sent. */
+const lastNotesPrompt = () => h.near.prompts[h.near.instructions.findLastIndex((x) => x.startsWith('You write the notes'))] ?? '';
+/** A share's video `seconds` long of still screens (`scenes`), cut into five-second pieces. */
+const stills = async (seconds: number, scenes: Scene[]) => cut(await recordedWebm(seconds, { size: '320x180', scenes }), seconds / 5);
+
+/**
+ * Notes written again that can't be written, every time (the notes model answers in prose, or everything it's asked
+ * does): the job tries three times, and then finishes the note without new notes.
+ */
+async function rewriteFailing(api: AlcoveApi, ownerId: string, noteId: string, only?: 'notes' | undefined, between?: (() => Promise<void>) | undefined) {
+  const job = async () => (await h.pool.query<{ state: string; attempt: number }>('SELECT state, attempt FROM content_jobs WHERE owner_id = $1', [ownerId])).rows[0];
+  const dueNow = () => h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [ownerId]);
+  h.near.failNext(10_000, 'prose', only);
+  try {
+    await api.notes.rewrite(noteId);
+    for (let tried = 1; tried <= 2; tried++) {
+      for (let i = 0; i < 400; i++) { const j = await job(); if (j && j.state === 'queued' && j.attempt === tried) break; await sleep(50); }
+      expect(await job()).toMatchObject({ state: 'queued', attempt: tried });
+      await between?.();
+      await dueNow();
+      await work(h.deps, { ownerId });
+    }
+    for (let i = 0; i < 400 && (await job()); i++) await sleep(50);
+    expect(await job()).toBeUndefined();
+  } finally {
+    h.near.failNext(0, 'prose');
+  }
+}
+
+describe('shared screens in the notes', () => {
+  let minute: Uint8Array<ArrayBuffer>[];
+  beforeAll(async () => { minute = cut(await recordedWebm(60, { size: '320x180' }), 12); });
+
+  it('looks at a shared screen where what was said points at it, with the model chosen, and attaches what matters to its line', async () => {
+    const was = await bucket();
+    const logsFrom = h.logs.length;
+    const r = await presented({
+      seconds: 60, share: minute, model: VISION_MODEL,
+      said: [[2, 'As you can see the chart is up.'], [9, 'What do you think of these changes?'], [12, 'UNRELATED that was my private inbox, sorry.'], [25, 'As you can see the chart once more.']]
+    });
+    const [share] = r.note.shares;
+    expect(r.note.shares).toHaveLength(1);
+    expect(share).toMatchObject({ at: 0, until: 60 });
+    const lines = r.note.transcript ?? [];
+    // A minute of sharing has room for four frames (one for every fifteen seconds), and four things were said about it:
+    // a frame at each, none at the share's start (no room left). The unrelated one never reaches the notes; the others
+    // are attached, each on the line said at or before it and lasting until the next.
+    expect(r.note.screens.map((m) => [m.at, m.until, m.line])).toEqual([[2, 9, lines[0]?.id], [9, 25, lines[1]?.id], [25, 60, lines[3]?.id]]);
+    for (const m of r.note.screens) expect(m.share).toBe(share?.id);
+    const at = (s: number) => r.note.screens.find((m) => m.at === s);
+    // What the model said each shows, and that nothing was compared with an earlier frame.
+    expect(at(2)).toMatchObject({
+      cue: 'As you can see the chart is up.', relevance: 'key', title: 'Frame at 00:02', legible: 'clear', shows: 'A test pattern at 00:02', changed: '', presenter: { name: r.org.session.user.name }
+    });
+    expect(at(9)).toMatchObject({ cue: 'What do you think of these changes?', relevance: 'key', description: 'Frame at 00:09, shown while: What do you think of these changes?', shows: 'A test pattern at 00:09', changed: '' });
+    expect(r.note.screens.length).toBeLessThanOrEqual(MAX_SCREEN_FRAMES);
+    // The model chosen picked the moments and read every frame, sealed to its own attested key, and the note lists it.
+    expect(r.chats.filter(isPick).map((c) => c.model)).toEqual([VISION_MODEL]);
+    const reads = r.chats.filter(isRead);
+    expect(reads).toHaveLength(4);
+    expect(new Set(reads.map((c) => `${c.model} ${c.key ?? ''} ${c.images}`))).toEqual(new Set([`${VISION_MODEL} ${h.near.keys().vision} 1`]));
+    expect(r.note.inference.map((e) => e.model)).toContain(VISION_MODEL);
+    expect(r.note.inference.map((e) => e.model)).not.toContain(NOTES_MODEL);
+    expect(r.note.unencrypted).toEqual([]);
+    expect(r.note.model).toBe(VISION_MODEL);
+    // The notes were told which screens matter, how each compares with the share's screen before, and each line's number.
+    const notesPrompt = lastNotesPrompt();
+    expect(notesPrompt).toContain(`[00:02] [screen 1 from ${r.org.session.user.name}, clear, key, first of this share] Frame at 00:02.`);
+    expect(notesPrompt).toContain('Shows: A test pattern at 00:02');
+    expect(notesPrompt).toContain(`[00:09] [screen 2 from ${r.org.session.user.name}, clear, key, changed a`);
+    expect(notesPrompt).toContain(`L1 [00:02] ${r.org.session.user.name}: As you can see the chart is up.`);
+    expect(notesPrompt).not.toContain('Frame at 00:12');
+
+    // The frames not attached are gone, rows and objects: what's stored now is the frames shown and the video.
+    const rows = await frameRows(r.org.session.ownerId);
+    expect(rows.map((x) => x.frame_id).sort()).toEqual(r.note.screens.map((m) => m.id).sort());
+    expect(await leftOver(was, r.org.session.ownerId)).toEqual([]);
+    const img = await r.org.fetch(r.org.api.notes.screenUrl(r.noteId, at(9)?.id ?? ''));
+    expect([img.status, img.headers.get('content-type')]).toEqual([200, 'image/jpeg']);
+
+    expect((await h.browser().fetch(`${h.baseUrl}/v1/models`)).status).toBe(401);
+
+    // The logs say how many, never what was said.
+    const logged = h.logs.slice(logsFrom).join('');
+    expect(logLine(logsFrom, 'screen moments picked')).toMatchObject({ shares: 1, picked: 4, cued: 4, starts: 0, befores: 0, kept: 4, noteId: r.noteId });
+    expect(logLine(logsFrom, 'shared screens read')).toMatchObject({ frames: 4, compared: 0, keyFrames: 3, supporting: 0, unrelated: 1, model: VISION_MODEL });
+    expect(logLine(logsFrom, 'notes written')).toMatchObject({ screens: 3, attached: 3 });
+    expect(logged).not.toContain('private inbox');
+    expect(logged).not.toContain('Frame at');
+    expect(logged).not.toContain('A test pattern');
+
+    // Written again with the notes model: every frame is read again, by it, and the notes attach the same ones.
+    const asked = h.near.chats.length;
+    await r.org.api.notes.rewrite(r.noteId, { model: null });
+    await written(r.org.api, r.noteId);
+    const again = await r.org.api.notes.get(r.noteId);
+    expect(again.model).toBeNull();
+    expect(new Set(h.near.chats.slice(asked).filter(isRead).map((c) => `${c.model} ${c.key ?? ''}`))).toEqual(new Set([`${NOTES_MODEL} ${h.near.keys().notes}`]));
+    expect(h.near.chats.slice(asked).filter(isRead)).toHaveLength(4);
+    expect(again.screens.map((m) => m.at)).toEqual([2, 9, 25]);
+    expect(again.screens.every((m) => m.text.includes(`Read by ${NOTES_MODEL}`))).toBe(true);
+    expect((await frameRows(r.org.session.ownerId)).map((x) => x.frame_id).sort()).toEqual(again.screens.map((m) => m.id).sort());
+    // A model that isn't on offer (it costs more than a model may): the default reads them, and the log says so.
+    await r.org.api.notes.rewrite(r.noteId, { model: PRICEY_MODEL });
+    await written(r.org.api, r.noteId);
+    expect(logLine(logsFrom, 'model unavailable')).toMatchObject({ model: PRICEY_MODEL, instead: NOTES_MODEL });
+  });
+
+  it('takes no more frames than one for every fifteen seconds of sharing, the ones pointed at most plainly spread over the call, and one a second at most', async () => {
+    const logsFrom = h.logs.length;
+    const r = await presented({
+      seconds: 60, share: minute, ms: 900,
+      said: [
+        [0, 'Let me start with the plan.'], [1, 'As you can see the plan is here.'], [10, 'As you can see the budget follows.'], [17, 'The budget is split in two.'],
+        [25, 'What do you think of these changes?'], [33, 'Hiring comes after that.'], [41, 'Then the launch dates.'], [50, 'As you can see, step by step.'], [50.3, 'As you can see, the second step.'], [50.6, 'As you can see, the third step.'], [58, 'As you can see the whole plan.']
+      ]
+    });
+    // Cues at 1, 10, 25, 50 (three lines in that second, kept once) and 58: five moments for room for four frames
+    // (a minute of sharing), so they're spread over the call, and the one at 25 goes. No frame at the share's start or
+    // end, and none to fill a stretch.
+    const lines = r.note.transcript ?? [];
+    const budget = Math.ceil(59.5 / SECONDS_PER_SCREEN_FRAME);
+    expect(budget).toBe(4);
+    expect(r.note.screens.map((m) => m.at)).toEqual([1, 10, 50, 58]);
+    expect(r.note.screens.map((m) => m.line)).toEqual([1, 2, 7, 10].map((i) => lines[i]?.id));
+    expect(r.note.screens.at(-1)?.until).toBe(60);
+    const picked = logLine(logsFrom, 'screen moments picked');
+    expect(picked).toMatchObject({ picked: 7, cued: 4, starts: 0, befores: 0, kept: 4 });
+    expect(picked).not.toHaveProperty('filled');
+    expect(r.chats.filter(isRead)).toHaveLength(budget);
+    expect(r.prompts.filter((p) => p.includes('taken at [00:50]') && p.includes('Cue: As you can see, step by step.'))).toHaveLength(1);
+    // Read by the notes model, nothing chosen.
+    expect(new Set(r.chats.filter(isRead).map((c) => c.model))).toEqual(new Set([NOTES_MODEL]));
+    // Written again: the same frames, and nothing taken or read again.
+    const asked = h.near.chats.length;
+    await r.org.api.notes.rewrite(r.noteId);
+    await written(r.org.api, r.noteId);
+    expect((await r.org.api.notes.get(r.noteId)).screens.map((m) => [m.id, m.at])).toEqual(r.note.screens.map((m) => [m.id, m.at]));
+    expect(h.near.chats.slice(asked).filter(isRead)).toEqual([]);
+  });
+
+  it('reads at most one frame for every fifteen seconds of sharing, keeping what was pointed at plainly', async () => {
+    const logsFrom = h.logs.length;
+    // In twenty-second pieces, so the presenter's browser stays within how many it may send a minute.
+    const long = cut(await recordedWebm(520, { size: '320x180' }), 26);
+    // A line said every fourteen seconds while scrolling, each a moment: more than can be read (and as many lines as a
+    // speaker may have transcribed in a minute).
+    const said = Array.from({ length: 37 }, (_, i): [number, string] => [i * 14, `Now scroll through part ${i + 1}.`]);
+    const r = await presented({ seconds: 520, share: long, every: 20, said: [...said, [255, 'As you can see this chart is the key one.'], [385, 'What do you think of these changes?']] });
+    // Every frame is one what was said picked, spread over the call: no room for the share's start. Room for one for
+    // every fifteen seconds of the 519.5 the share's video lasts, never more than the most.
+    const budget = Math.min(MAX_SCREEN_FRAMES, Math.ceil(519.5 / SECONDS_PER_SCREEN_FRAME));
+    expect(budget).toBe(35);
+    const picked = logLine(logsFrom, 'screen moments picked');
+    expect(picked).toMatchObject({ picked: 39, cued: budget, starts: 0, befores: 0, kept: budget });
+    expect(picked).not.toHaveProperty('filled');
+    expect(r.chats.filter(isRead)).toHaveLength(budget);
+    // What was pointed at plainly is among the frames read, with its cue.
+    expect(r.prompts.filter((p) => p.includes('taken at [04:15]') && p.includes('Cue: As you can see this chart is the key one.'))).toHaveLength(1);
+    expect(r.prompts.filter((p) => p.includes('taken at [06:25]') && p.includes('Cue: What do you think of these changes?'))).toHaveLength(1);
+    // At most one a line, and only frames shown are kept.
+    expect(new Set(r.note.screens.map((m) => m.line)).size).toBe(r.note.screens.length);
+    expect((await frameRows(r.org.session.ownerId)).map((x) => x.frame_id).sort()).toEqual(r.note.screens.map((m) => m.id).sort());
+  }, 240_000);
+
+  it('attaches a screen that doesn’t change once, on the line said when it was first pointed at, however often it is pointed at after', async () => {
+    const logsFrom = h.logs.length;
+    const still = await stills(40, [{ color: 'red', from: 0 }]);
+    const r = await presented({
+      seconds: 40, share: still,
+      said: [[1, 'Let me share the plan.'], [29, 'As you can see the plan is up.'], [33, 'As you can see it has three parts.'], [36, 'As you can see the dates are set.']]
+    });
+    const lines = r.note.transcript ?? [];
+    expect(r.note.screens.map((m) => [m.at, m.until, m.line])).toEqual([[29, 40, lines[1]?.id]]);
+    // Three frames, one at each cue: that's all the room a share of forty seconds has (and none for its start).
+    expect(logLine(logsFrom, 'screen moments picked')).toMatchObject({ cued: 3, starts: 0, befores: 0, kept: 3 });
+    expect(r.chats.filter(isRead)).toHaveLength(3);
+    // The notes read the frames that look the same as the first on one line, without what was read on them.
+    const notesPrompt = lastNotesPrompt();
+    expect(notesPrompt).toContain(`[00:29] [screen 1 from ${r.org.session.user.name}, clear, key, first of this share] Frame at 00:29.`);
+    expect(notesPrompt).toContain('\n[00:33–00:36] [screens 2–3 same as screen 1]\n');
+    expect(notesPrompt).not.toContain('Frame at 00:33');
+    // Only the frame shown is kept.
+    expect((await frameRows(r.org.session.ownerId)).map((x) => x.frame_id)).toEqual(r.note.screens.map((m) => m.id));
+  });
+
+  it('attaches a screen again where it changed, but never one that only gives context, by the same rules when the notes can’t be written, and reads notes from before frames were attached to lines', async () => {
+    const slides = await stills(40, [{ color: 'red', from: 0 }, { color: 'blue', from: 20 }]);
+    const r = await presented({ seconds: 40, share: slides, said: [[1, 'Here is where we start.'], [3, 'As you can see the first slide is up.'], [21, 'As you can see the next slide is up.'], [30, 'That covers the plan.']] });
+    const lines = r.note.transcript ?? [];
+    // Two cues and the share's start fill the three frames a share of forty seconds has room for. The start, which
+    // nothing said points at, only gives context: it isn't attached, and what was read on it never reaches the notes.
+    expect(r.chats.filter(isRead)).toHaveLength(3);
+    expect(r.note.screens.map((m) => [m.at, m.until, m.line, m.relevance])).toEqual([[3, 21, lines[1]?.id, 'key'], [21, 40, lines[2]?.id, 'key']]);
+    const notesPrompt = lastNotesPrompt();
+    expect(notesPrompt).toContain(`[00:03] [screen 1 from ${r.org.session.user.name}, clear, key, first of this share] Frame at 00:03.`);
+    expect(notesPrompt).toContain(`[00:21] [screen 2 from ${r.org.session.user.name}, clear, key, changed a lot since screen 1] Frame at 00:21.`);
+    expect(notesPrompt).not.toContain('Frame at 00:00');
+    expect(notesPrompt).not.toContain('Shown at 00:00');
+
+    // A note saved before frames were attached to lines has no line on its screens: it reads as it did, placed by time.
+    const res = await r.org.fetch(`${h.baseUrl}/v1/notes/${r.noteId}`);
+    const raw = z.record(z.string(), z.unknown()).parse(await res.json());
+    const before = z.array(z.record(z.string(), z.unknown())).parse(raw['screens']).map(({ line: _, ...m }) => m);
+    expect(NoteSchema.parse({ ...raw, screens: before }).screens.map((m) => [m.at, m.line])).toEqual([[3, null], [21, null]]);
+
+    // Written again, the notes can't be written, every time: the screens are attached by the same rules without the
+    // notes model (only the key ones, one a line), and no frame they don't show is kept.
+    const ownerId = r.org.session.ownerId;
+    await rewriteFailing(r.org.api, ownerId, r.noteId, 'notes');
+    const after = await r.org.api.notes.get(r.noteId);
+    expect(after.summary).toBe(r.note.summary);
+    expect(after.screens.map((m) => [m.id, m.at, m.until, m.line])).toEqual(r.note.screens.map((m) => [m.id, m.at, m.until, m.line]));
+    expect((await frameRows(ownerId)).map((x) => x.frame_id).sort()).toEqual(after.screens.map((m) => m.id).sort());
+  });
+
+  it('reads a frame together with the screen five seconds before it when what was said is that it changed, and shows only the frame', async () => {
+    const was = await bucket();
+    const logsFrom = h.logs.length;
+    const slides = await stills(40, [{ color: 'red', from: 0 }, { color: 'blue', from: 20 }]);
+    const r = await presented({ seconds: 40, share: slides, said: [[1, 'Here is where we start.'], [22, 'It changed now, the new slide is up.']] });
+    const lines = r.note.transcript ?? [];
+    // The frame at 22, the one at 17 to compare it with, and the share's start in the room left.
+    expect(logLine(logsFrom, 'screen moments picked')).toMatchObject({ picked: 1, cued: 1, starts: 1, befores: 1, kept: 3 });
+    // Two requests read frames: the start alone, and the change with both images in one request, the earlier one first.
+    // The frame before the change is never read on its own.
+    const reads = r.chats.filter(isRead);
+    expect(reads.map((c) => c.images).sort()).toEqual([1, 2]);
+    expect(r.prompts.filter((p) => p.includes('taken at [00:17]'))).toEqual([]);
+    const compared = r.prompts.filter((p) => p.includes('Two frames: the screen 5 seconds before, then the frame itself.'));
+    expect(compared).toHaveLength(1);
+    expect(compared[0]).toContain('taken at [00:22]');
+    expect(compared[0]).toContain('Cue: It changed now, the new slide is up.');
+    expect(logLine(logsFrom, 'shared screens read')).toMatchObject({ frames: 2, compared: 1 });
+    // The note shows the frame, with what changed on it; the frame before and the start aren't among its screens.
+    expect(r.note.screens.map((m) => [m.at, m.until, m.line])).toEqual([[22, 40, lines[1]?.id]]);
+    expect(r.note.screens[0]).toMatchObject({ relevance: 'key', shows: 'A test pattern at 00:22', changed: 'Changed between the two frames.' });
+    expect(lastNotesPrompt()).toContain('Changed: Changed between the two frames.');
+    // Their rows and objects are gone once the notes are saved.
+    expect((await frameRows(r.org.session.ownerId)).map((x) => x.frame_id)).toEqual(r.note.screens.map((m) => m.id));
+    expect(await leftOver(was, r.org.session.ownerId)).toEqual([]);
+  });
+
+  it('takes the frame of a change on a share with room for one, not the share’s start nor the screen before it', async () => {
+    const logsFrom = h.logs.length;
+    const slides = await stills(15, [{ color: 'red', from: 0 }, { color: 'blue', from: 8 }]);
+    const r = await presented({ seconds: 15, share: slides, said: [[1, 'Here is where we start.'], [10, 'It changed now, the new slide is up.']] });
+    const lines = r.note.transcript ?? [];
+    // Fifteen seconds of sharing has room for one frame: the moment's, read alone.
+    expect(logLine(logsFrom, 'screen moments picked')).toMatchObject({ picked: 1, cued: 1, starts: 0, befores: 0, kept: 1 });
+    expect(r.chats.filter(isRead).map((c) => c.images)).toEqual([1]);
+    expect(r.note.screens.map((m) => [m.at, m.line])).toEqual([[10, lines[1]?.id]]);
+  });
+
+  it('takes a frame at the start of a share’s video for what was said about it just before the video began', async () => {
+    const logsFrom = h.logs.length;
+    const r = await presented({ seconds: 60, share: cut(await recordedWebm(15, { size: '320x180' }), 3), offset: 43, said: [[41.5, 'As you can see the chart is up.']] });
+    const lines = r.note.transcript ?? [];
+    expect(r.note.shares[0]?.at).toBe(43);
+    expect(logLine(logsFrom, 'screen moments picked')).toMatchObject({ picked: 1, cued: 1, kept: 1 });
+    expect(r.note.screens.map((m) => [m.at, m.cue, m.line])).toEqual([[43, 'As you can see the chart is up.', lines[0]?.id]]);
+  });
+
+  it('reads shared screens with the notes model when the model chosen can’t be verified, and writes the notes all the same', async () => {
+    const logsFrom = h.logs.length;
+    const r = await presented({ seconds: 20, share: pieces, model: UNVERIFIED_VISION_MODEL, said: [[2, 'As you can see the chart is up.']] });
+    expect(r.note.summary).not.toBe('');
+    expect(r.note.screens).toEqual([expect.objectContaining({ at: 2, legible: 'clear', line: r.note.transcript?.[0]?.id })]);
+    // Nothing went to the model that didn't check out: the notes model read every frame, and the log says why.
+    expect(r.chats.filter(isRead).length).toBeGreaterThan(0);
+    expect(new Set(r.chats.filter(isRead).map((c) => c.model))).toEqual(new Set([NOTES_MODEL]));
+    expect(r.chats.some((c) => c.model === UNVERIFIED_VISION_MODEL)).toBe(false);
+    expect(logLine(logsFrom, 'model unverified')).toMatchObject({ model: UNVERIFIED_VISION_MODEL, instead: NOTES_MODEL });
+  });
+
+  it('keeps the note’s screens until new notes are saved, so notes that can’t be written again lose none of them', async () => {
+    const r = await presented({ seconds: 20, share: pieces, said: [[2, 'As you can see the chart is up.'], [12, 'UNRELATED that was my private inbox, sorry.']] });
+    const ownerId = r.org.session.ownerId;
+    const shown = async (screens: { id: string }[]) => Promise.all(screens.map(async (m) => (await r.org.fetch(r.org.api.notes.screenUrl(r.noteId, m.id))).status));
+    expect(new Set(await shown(r.note.screens))).toEqual(new Set([200]));
+
+    // Written again, the notes model answers nothing usable, every time. Between attempts the note shows what it did,
+    // every image there.
+    await rewriteFailing(r.org.api, ownerId, r.noteId, undefined, async () => {
+      expect((await r.org.api.notes.get(r.noteId)).screens).toEqual(r.note.screens);
+      expect(new Set(await shown(r.note.screens))).toEqual(new Set([200]));
+    });
+    // Finished without new notes: every screen it shows still opens, and its frames are all still there.
+    const after = await r.org.api.notes.get(r.noteId);
+    expect(after.summary).toBe(r.note.summary);
+    expect(after.screens.length).toBeGreaterThan(0);
+    expect(new Set(await shown(after.screens))).toEqual(new Set([200]));
+    const rows = new Set((await frameRows(ownerId)).map((x) => x.frame_id));
+    expect(after.screens.every((m) => rows.has(m.id))).toBe(true);
+  });
+
+  it('takes a presenter’s last piece for a little while after the call ends, and joins it into the video', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    for (let i = 0; i < 4; i++) await host.appendAudio(audio(i));
+    const share = await sharing(host, true);
+    for (let i = 0; i < 3; i++) await host.appendScreen(piece(share.share, i));
     const noteId = (await host.leave())?.pendingNoteId ?? '';
+    // The call is over, and the last piece of the share arrives just after.
+    await host.appendScreen(piece(share.share, 3));
+    expect(await ownerRows('screen_pieces', ownerId)).toHaveLength(4);
+    // Once the tail is over, nothing more is taken.
+    await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+    expect(await fails(host.appendScreen(piece(share.share, 4)))).toEqual(['not-found', 'That share doesn’t exist, or you don’t have access to it.']);
+    expect(await ownerRows('screen_pieces', ownerId)).toHaveLength(4);
+
     await written(org.api, noteId);
     const note = await org.api.notes.get(noteId);
-    // The notes model read it, and the notes describe it: the canaries are in the note, for whoever has it.
-    expect(note.screens[0]).toMatchObject({ title: 'CANARY-SCREEN-TITLE board deck', regions: [{ label: 'CANARY-SCREEN-PART' }] });
-    expect(note.screens[0]?.description).toContain('CANARY-SCREEN-TITLE');
+    expect(note.shares).toMatchObject([{ id: share.share, at: 0, until: 20 }]);
+    const full = new Uint8Array(await (await org.fetch(org.api.notes.screenVideoUrl(noteId, share.share, 0))).arrayBuffer());
+    expect(webmDuration(full)).toBeCloseTo(20, 0);
+    expect(await ownerRows('screen_pieces', ownerId)).toEqual([]);
+  });
 
-    const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
-    const canaries = ['CANARY-SCREEN-TITLE', 'CANARY-SCREEN-TEXT', 'CANARY-SCREEN-PART', 'acquisition price', Buffer.from(jpeg.slice(0, 24)).toString('base64')];
-    const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
-      SELECT row_to_json(x)::text AS t FROM screen_frames x UNION ALL SELECT row_to_json(x)::text FROM revisions x UNION ALL
-      SELECT row_to_json(x)::text FROM calls x UNION ALL SELECT row_to_json(x)::text FROM items x UNION ALL
-      SELECT row_to_json(x)::text FROM recording_pieces x UNION ALL SELECT row_to_json(x)::text FROM content_jobs x UNION ALL
-      SELECT row_to_json(x)::text FROM operations x UNION ALL SELECT row_to_json(x)::text FROM object_gc x) q`);
-    const rowsText = String(dump.rows[0]?.all ?? '');
-    expect(rowsText).not.toBe('');
-    for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc} in rows`).toBe(false);
-    for await (const obj of h.objects.list()) {
-      const bytes = Buffer.from(await h.objects.get(obj.id));
-      for (const canary of canaries) for (const enc of encodings(canary)) expect(bytes.includes(Buffer.from(enc)), `${canary} in ${obj.id}`).toBe(false);
-      expect(bytes.includes(Buffer.from(jpeg.slice(0, 40))), `the raw frame in ${obj.id}`).toBe(false);
+  it('replays a kept share once the tail is over, before the notes are written, and says so in the note’s progress', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    for (let i = 0; i < 4; i++) await host.appendAudio(audio(i));
+    const share = await sharing(host, true);
+    for (let i = 0; i < 4; i++) await host.appendScreen(piece(share.share, i));
+    await host.transcribe(speech('As you can see the chart is up.', 2), host.ticket.identity);
+    await host.shareEnded(share.share);
+    // The notes model is down for the whole of this, so the notes can't be written.
+    h.near.failNext(10_000, 'down', 'notes');
+    try {
+      const noteId = (await host.leave())?.pendingNoteId ?? '';
+      const snapshot = async () => { for await (const p of org.api.notes.progress(noteId)) return p; return undefined; };
+      // Within the share's tail, the video isn't joined: it says it's getting ready.
+      expect(await snapshot()).toMatchObject({ ready: false, steps: expect.arrayContaining([{ label: 'Getting shared screens ready to replay', done: false }]) });
+      expect((await org.api.notes.get(noteId)).shares).toEqual([]);
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+      await h.pool.query(`UPDATE content_jobs SET lease_until = now() - interval '1 second' WHERE owner_id = $1`, [ownerId]);
+      await work(h.deps, { ownerId });
+      for (let i = 0; i < 400 && (await ownerRows('screen_pieces', ownerId)).length; i++) await sleep(50);
+
+      // Joined while the notes still wait for their model.
+      const p = await snapshot();
+      expect(p?.ready).toBe(false);
+      expect(p?.steps).toContainEqual({ label: 'Shared screens ready to replay', done: true });
+      expect(p?.steps.at(-1)?.done).toBe(false);
+      const note = await org.api.notes.get(noteId);
+      expect(note.status).not.toBe('ready');
+      expect(note.shares).toMatchObject([{ id: share.share, at: 0, until: 20 }]);
+      const video = await org.fetch(org.api.notes.screenVideoUrl(noteId, share.share, 0));
+      expect(video.status).toBe(200);
+      expect(webmDuration(new Uint8Array(await video.arrayBuffer()))).toBeCloseTo(20, 0);
+    } finally {
+      h.near.failNext(0, 'down');
     }
-    // NEAR AI's model saw it; nothing on the wire to NEAR AI could read it.
-    expect(h.near.images.some((i) => i.marker?.includes('CANARY-SCREEN-TEXT'))).toBe(true);
-    const wire = Buffer.concat(h.near.received.map((r) => r.body));
-    for (const canary of canaries) for (const enc of encodings(canary)) expect(wire.includes(Buffer.from(enc)), `${canary} as ${enc} on the wire to NEAR AI`).toBe(false);
-    expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
-    // Nor in the logs, at debug level for the whole run.
-    const logs = h.logs.join('');
-    for (const canary of canaries) for (const enc of encodings(canary)) expect(logs.includes(enc), `${canary} as ${enc} in logs`).toBe(false);
-    expect(logs).toContain('shared screens read');
+  });
+
+  it('joins a kept share into video on its own once the tail is over, with no notes service to write notes', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    for (let i = 0; i < 4; i++) await host.appendAudio(audio(i));
+    const share = await sharing(host, true);
+    for (let i = 0; i < 4; i++) await host.appendScreen(piece(share.share, i));
+    await host.shareEnded(share.share);
+    // The notes service isn't configured for the rest of this: no notes can be written, and replay doesn't wait for them.
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    try {
+      const noteId = (await host.leave())?.pendingNoteId ?? '';
+      const snapshot = async () => { for await (const p of org.api.notes.progress(noteId)) return p; return undefined; };
+      expect(await snapshot()).toMatchObject({ ready: false, steps: expect.arrayContaining([{ label: 'Getting shared screens ready to replay', done: false }]) });
+      expect(await ownerRows('screen_pieces', ownerId)).toHaveLength(4);
+      // Nothing is told to join: the call ending set a timer for the end of the share's tail, which joins it (no worker, no maintenance run).
+      for (let i = 0; i < 1200 && (await ownerRows('screen_pieces', ownerId)).length; i++) await sleep(50);
+
+      expect(await ownerRows('screen_pieces', ownerId)).toEqual([]);
+      const p = await snapshot();
+      expect(p?.ready).toBe(false);
+      expect(p?.steps).toContainEqual({ label: 'Shared screens ready to replay', done: true });
+      const note = await org.api.notes.get(noteId);
+      expect(note.status).not.toBe('ready');
+      expect(note.shares).toMatchObject([{ id: share.share, at: 0, until: 20 }]);
+      const video = await org.fetch(org.api.notes.screenVideoUrl(noteId, share.share, 0));
+      expect([200, 206]).toContain(video.status);
+      expect(webmDuration(new Uint8Array(await video.arrayBuffer()))).toBeCloseTo(20, 0);
+    } finally {
+      h.deps.cfg = configured;
+    }
+  });
+
+  it('joins a share that is left in pieces when maintenance runs, and never twice when joins overlap', async () => {
+    const org = await account(unique('organizer'));
+    const ownerId = org.session.ownerId;
+    const { code: c } = await org.api.calls.startNow({ notes: 'on' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    for (let i = 0; i < 4; i++) await host.appendAudio(audio(i));
+    const share = await sharing(host, true);
+    for (let i = 0; i < 4; i++) await host.appendScreen(piece(share.share, i));
+    await host.shareEnded(share.share);
+    const configured = h.deps.cfg;
+    h.deps.cfg = { ...configured, NEAR_AI_API_KEY: '' };
+    try {
+      const noteId = (await host.leave())?.pendingNoteId ?? '';
+      // Within the tail nothing is joined and the soonest end is reported; another account's pieces aren't looked at.
+      const early = await joinDue(h.deps, ownerId);
+      expect(early.joined).toBe(0);
+      expect(early.waitMs).toBeGreaterThan(0);
+      expect(await joinDue(h.deps, (await account()).session.ownerId)).toEqual({ joined: 0, waitMs: null });
+      expect(await ownerRows('screen_pieces', ownerId)).toHaveLength(4);
+
+      await h.pool.query(`UPDATE recordings SET ended_at = ended_at - interval '30 seconds' WHERE owner_id = $1`, [ownerId]);
+      // Maintenance and two more joins start together: the video is joined once.
+      const runs = await Promise.all([maintain(h.deps), joinDue(h.deps, ownerId), joinDue(h.deps)]);
+      expect(runs.map((r) => ('videos' in r ? r.videos : r.joined)).reduce((a, b) => a + b, 0)).toBe(1);
+      expect(await ownerRows('screen_pieces', ownerId)).toEqual([]);
+      expect(new Set((await ownerRows('screen_videos', ownerId)).map((r) => `${String(r['share_id'])}/${String(r['segment'])}`)).size).toBe(1);
+      // Nothing left to do afterwards.
+      expect(await joinDue(h.deps)).toEqual({ joined: 0, waitMs: null });
+      expect((await org.fetch(org.api.notes.screenVideoUrl(noteId, share.share, 0))).status).toBe(200);
+    } finally {
+      h.deps.cfg = configured;
+    }
+  });
+
+  it('reads nothing of a share its presenter kept out of the notes', async () => {
+    const r = await presented({ seconds: 20, share: pieces, keep: false, said: [[2, 'As you can see the chart is up.']] });
+    expect(r.note.shares).toEqual([]);
+    expect(r.note.screens).toEqual([]);
+    expect(r.chats.filter((c) => isRead(c) || isPick(c))).toEqual([]);
+    expect(await frameRows(r.org.session.ownerId)).toEqual([]);
   });
 });

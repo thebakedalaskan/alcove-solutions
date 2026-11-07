@@ -59,9 +59,12 @@ export interface MediaSnapshot {
   receiveVideo: VideoReceive;
 }
 
-/** What someone chooses to share. The browser's own picker then asks which one. */
+/**
+ * What someone chooses to share, and whether it goes in the notes (asked only while notes are on or paused). The
+ * browser's own picker then asks which one.
+ */
 export type ShareSurface = 'browser' | 'window' | 'monitor';
-export interface ShareChoice { surface: ShareSurface; audio: boolean }
+export interface ShareChoice { surface: ShareSurface; audio: boolean; notes: boolean }
 /**
  * How sharing went: what kind of thing is shared and whether the sound asked for came with it (`left-out`: the browser
  * or the person in its picker left it out), or why it didn't start.

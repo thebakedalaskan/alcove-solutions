@@ -5,7 +5,7 @@ import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { STATES, inEveryState } from '../../src/world/states';
-import { troubled } from './changes';
+import { longSuggestions, troubled, writtenUnencrypted } from './changes';
 
 const meta = { title: 'Pages/A note', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -13,9 +13,36 @@ export default meta;
 /** The busy afternoon, with a note in every state a note can be in (src/world/states.ts). */
 const everyState = { beforeEach: changing(inEveryState) };
 
-/** The team standup, written out in full: decisions, a question, follow-ups, a shared screen and your own notes. */
+/** The team standup, written out in full: decisions, a question, follow-ups, a shared screen (its replay above the player, and its frames beside the lines they belong to) and your own notes. */
 export const Standup = page('/notes/n2', 'busy');
 export const StandupPhone = phone(Standup);
+/** The standup's full summary sits under the short one behind a Full summary button, closed until it's pressed. */
+export const FullSummary = page('/notes/n2', 'busy');
+/** Full summary pressed: several paragraphs open under the short one, in the same type. */
+export const FullSummaryOpen = page('/notes/n2', 'busy', {
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press Full summary', async () => {
+      await userEvent.click(await canvas.findByRole('button', { name: 'Full summary' }));
+    });
+  }
+});
+/** The full summary opened on a phone. */
+export const FullSummaryOpenPhone = phone(FullSummaryOpen);
+/** One of the older notes has no full summary: the short one stands alone, with no button under it. */
+export const NoFullSummary = page('/notes/n8', 'busy');
+/** Long suggested questions on a phone wrap to three rows above the ask bar; the end of the transcript scrolls clear of all of them. */
+export const LongSuggestions = phone(page('/notes/n2', 'busy', {
+  beforeEach: changing(longSuggestions),
+  play: async ({ canvas, userEvent, step }) => {
+    await step('Press in the ask bar. The suggested questions show above it', async () => {
+      await userEvent.click(await canvas.findByRole('textbox', { name: /Ask about this call/ }));
+    });
+  }
+}));
+/** Opened while Kofi's screen is up (9:20): the replay shows his share, and the lines said then carry their frames. */
+export const WhileAScreenIsShared = page('/notes/n2?at=560', 'busy');
+/** The standup was written by a model that isn't in a secure enclave: the note says so in caution, with Unencrypted, where it would say Written in confidential compute. */
+export const WrittenUnencrypted = page('/notes/n2', 'busy', { beforeEach: changing(writtenUnencrypted) });
 /** Art's call this morning: everything in it still waits on Art. */
 export const WaitingOnYou = page('/notes/n1', 'busy');
 /** Someone else's call you were invited to. */

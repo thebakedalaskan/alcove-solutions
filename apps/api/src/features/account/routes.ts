@@ -1,4 +1,4 @@
-import { PeopleSearchBodySchema, PreferencesSchema, TeamInviteBodySchema } from '@alcove/api';
+import { PeopleSearchBodySchema, PreferencesPatchSchema, TeamInviteBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
 import { deleteCookie } from 'hono/cookie';
 import * as account from './account';
@@ -20,7 +20,7 @@ export function registerAccountRoutes(app: Hono<Env>, runtime: HttpRuntime): voi
   /* account */
   app.get('/v1/account/preferences', async (c) => c.json(await account.preferences(c.get('owner'))));
 
-  app.patch('/v1/account/preferences', async (c) => c.json(await account.updatePreferences(c.get('owner'), await body(c, PreferencesSchema.partial()))));
+  app.patch('/v1/account/preferences', async (c) => c.json(await account.updatePreferences(c.get('owner'), await body(c, PreferencesPatchSchema))));
 
   /* Every session goes with the account; this browser's cookie goes too. */
   app.delete('/v1/account', async (c) => {

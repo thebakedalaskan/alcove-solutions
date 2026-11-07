@@ -66,7 +66,13 @@ export function Popover({ open, onOpenChange, anchor, children, align = 'start',
 }
 export const PopoverClose = RPopover.Close;
 
-export interface SelectOption<T extends string> { value: T; label: string; icon?: IconName | undefined }
+export interface SelectOption<T extends string> {
+  value: T; label: string; icon?: IconName | undefined;
+  /** Muted text after the label, e.g. "(default)". Type-ahead still matches the label alone. */
+  note?: string | undefined;
+  /** Shown at the end of the row, before the tick, e.g. an `Unencrypted` badge. */
+  tag?: ReactNode;
+}
 
 /**
  * Picks one of a list: a button showing the current choice opens a listbox, placed like a Popover (it
@@ -93,7 +99,8 @@ export function Select<T extends string>({ value, onChange, options, label, icon
   useEffect(() => { const t = typed.current; return () => window.clearTimeout(t.timer); }, []);
 
   const chosen = options.findIndex((o) => o.value === value);
-  const shown = options[chosen]?.label ?? placeholder ?? '';
+  const picked = options[chosen];
+  const shown = picked?.label ?? placeholder ?? '';
   const items = () => Array.from(list.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
   const focused = () => items().findIndex((el) => el === document.activeElement);
 
@@ -175,7 +182,9 @@ export function Select<T extends string>({ value, onChange, options, label, icon
         className={cn('ac-select', stage && 'is-stage', className)}>
         {icon && <Icon name={icon} size={15} />}
         <span className="v ac-clamp-1">{shown}</span>
-        <Icon name="down" size={15} />
+        {picked?.note && <span className="ac-note">{picked.note}</span>}
+        {picked?.tag}
+        <Icon name="down" size={15} className="caret" />
       </RPopover.Trigger>
       <RPopover.Portal>
         <RPopover.Content ref={list} role="listbox" aria-label={label} side="bottom" align={align} sideOffset={OFFSET} collisionPadding={EDGE} hideWhenDetached
@@ -194,6 +203,8 @@ export function Select<T extends string>({ value, onChange, options, label, icon
               onPointerMove={(e) => { if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}>
               {o.icon && <Icon name={o.icon} size={16} className="lead" />}
               <span>{o.label}</span>
+              {o.note && <span className="ac-note">{o.note}</span>}
+              {o.tag}
               {i === chosen && <Icon name="check" size={15} />}
             </div>
           ))}

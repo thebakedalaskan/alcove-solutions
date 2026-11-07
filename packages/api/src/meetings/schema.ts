@@ -137,7 +137,7 @@ export const MeetingInputSchema = z.object({
   /** Email addresses. */
   guests: z.array(z.string()),
   notes: NotesSettingSchema,
-  /** What the notes keep. Everything, and screens only when turned on, unless it's set. */
+  /** What the notes keep. Everything, shared screens included, unless it's set. */
   choices: NotesChoicesSchema.optional(),
   /** Everyone joins with their microphone and camera off. */
   joinMuted: z.boolean().optional(),

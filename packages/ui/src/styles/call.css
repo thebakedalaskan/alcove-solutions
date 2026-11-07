@@ -1149,9 +1149,13 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-sp-sw { display: flex; align-items: center; gap: 10px; padding: 12px 12px 4px; font: 500 13.5px/1.3 var(--font-sans); }
 .ic-sp-sw > span { flex: 1; min-width: 0; }
 /* Read for the notes: the notes' own crimson, and only ever that. */
-.ic-sp-read { display: flex; align-items: center; gap: 8px; padding: 8px 12px 2px; color: color-mix(in srgb, var(--rec) 72%, var(--stage-ink)); font: 500 12.5px/1.3 var(--font-sans); }
-.ic-sp-read.is-paused { color: var(--stage-ink-2); }
-.ic-sp-read .ac-i { flex: none; }
+/* Whether this share goes in the notes: asked while notes are on or paused, answered before Share does anything. */
+.ic-sp-keep { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 12px 4px; }
+.ic-sp-keep > span { display: flex; flex: 1 1 200px; flex-direction: column; gap: 3px; min-width: 0; }
+.ic-sp-keep .q { display: flex; align-items: center; gap: 8px; color: var(--stage-ink); font: 600 13px/1.3 var(--font-sans); }
+.ic-sp-keep .q .ac-i { flex: none; color: var(--stage-ink-2); }
+.ic-sp-keep small { color: var(--stage-ink-2); font: 400 12.5px/1.4 var(--font-sans); }
+.ic-sp-keep .ac-seg { flex: none; }
 .ic-sp-acts { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 6px 4px; }
 /* Quiet and second buttons on the night popovers, as the stage draws them. */
 .ic-sharepop .ac-btn.is-quiet { color: var(--stage-ink); }

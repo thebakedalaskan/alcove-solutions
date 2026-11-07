@@ -5,7 +5,7 @@
  * has ended, who gets the notes and how they're coming along, until they can be read.
  */
 import { errorMessage, firstName, minutesLabel, type NoteProgress, type Person } from '@alcove/api';
-import { Avatar, Button, Dots, Faces, Icon, Modal } from '@alcove/ui';
+import { Avatar, Button, Dots, Faces, Icon, Modal, Unencrypted } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { api } from '~/lib/api';
@@ -19,7 +19,7 @@ export type Ended = { noteId: string | null; duration: number };
 /** Someone who could host after you, by participant ID. */
 export interface NextHost { id: string; person: Person }
 
-export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome }: {
+export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, modelPrivate, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; elapsed: number;
   /** You host the call now: leaving ends it for everyone, or hands it to someone. Anyone else just leaves. */
   hosting: boolean;
@@ -31,6 +31,8 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
   next: NextHost[];
   /** Notes have been on at some point, so the call has notes. */
   notes: boolean;
+  /** The call's AI model runs in a secure enclave; when it doesn't, the notes aren't written in confidential compute. */
+  modelPrivate: boolean;
   /** Nobody new can join, so someone who leaves can't come back. */
   locked: boolean;
   /** Anyone else in the call. */
@@ -126,8 +128,8 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
                   <div className="who">{getting.length > 0 && <Faces people={getting} size={26} max={6} />}<span>{organizer ? (getting.length ? `${listNames(getting)} and you get the notes.` : 'You get the notes.') : 'Everyone invited gets the notes, you included.'}</span></div>
                   <div className="state" role="status">
                     {failed ? <><Icon name="clock" size={16} /><span>Still writing. They’ll be in Notes when they’re ready.</span></>
-                      : progress?.ready ? <motion.span className="ok" initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name="sealed" size={16} />Notes are ready. Written in confidential compute.</motion.span>
-                        : <><Dots />{progress?.steps.find((s) => !s.done)?.label ?? 'Writing in confidential compute'}</>}
+                      : progress?.ready ? <motion.span className="ok" initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={UI}><Icon name={modelPrivate ? 'sealed' : 'shieldOff'} size={16} />{modelPrivate ? 'Notes are ready. Written in confidential compute.' : <>Notes are ready. Written by an unencrypted AI model. <Unencrypted compact /></>}</motion.span>
+                        : <><Dots />{progress?.steps.find((s) => !s.done)?.label ?? (modelPrivate ? 'Writing in confidential compute' : 'Writing with an unencrypted AI model')}</>}
                   </div>
                 </>
               ) : <p>No notes were taken, so there’s nothing to send.</p>}

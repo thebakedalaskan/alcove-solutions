@@ -8,7 +8,7 @@ import type { CaptureMode, CaptureState, NotesChoices, NotesSetting } from '@alc
 import type { ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
-import { NotesSign, RecDot } from './primitives';
+import { NotesSign, RecDot, Unencrypted } from './primitives';
 
 /**
  * The notes sign, in the same place for everyone: on is the crimson sign with its pulsing dot, paused shows the
@@ -148,7 +148,9 @@ export function CaptureSummary({ notes, choices, capture, who, taker = 'the orga
       <p>{said}</p>
       {capture && mode !== 'off' && <CaptureParts capture={capture} taker={taker} stage compact />}
       {mode !== 'off' && keptLines(choices).length > 0 && <p>{keptLines(choices).join(' ')}</p>}
-      {mode !== 'off' && <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>}
+      {mode !== 'off' && (capture && !capture.modelPrivate
+        ? <p className="fine"><Icon name="shieldOff" size={15} />Written by an AI model outside a secure enclave, so Alcove can’t guarantee the notes stay private. <Unencrypted compact /> {who ?? 'The people invited get them.'}</p>
+        : <p className="fine"><Icon name="sealed" size={15} />Written in confidential compute, so Alcove can’t read the notes. {who ?? 'The people invited get them.'}</p>)}
     </div>
   );
 }

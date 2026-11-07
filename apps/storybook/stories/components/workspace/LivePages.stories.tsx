@@ -71,6 +71,9 @@ export const NotesNothingYet: Story = {
 /** No document open yet, so there's nowhere to add a line: no arrows. */
 export const NotesNoArrows: Story = { name: 'Notes: nowhere to add to', args: { ...NOTES, put: undefined }, argTypes: notesTypes, render: (args) => <Notes key={args.summary} {...args} /> };
 
+/** The call's AI model runs outside a secure enclave: the line under the title says so. */
+export const NotesUnencrypted: Story = { name: 'Notes: unencrypted AI model', args: { ...NOTES, modelPrivate: false }, argTypes: notesTypes, render: (args) => <Notes key={args.summary} {...args} /> };
+
 /* ---------- follow-ups ---------- */
 
 /** Follow-ups that answer: Everyone and Mine switch, ticking works, and Enter on the last line adds one with your name. */

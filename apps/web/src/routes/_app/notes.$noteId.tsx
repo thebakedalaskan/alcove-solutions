@@ -2,21 +2,22 @@ import {
   NoteMomentSchema, NoteRoomParamSchema, errorCode, errorMessage, firstName, minutesLabel, type ActionItem, type ActionPatch, type Chapter, type Decision, type DecisionPatch, type Note, type NoteProgress, type Person,
   type PersonalPoint, type Question, type QuestionPatch, type TranscriptLine
 } from '@alcove/api';
-import { Button, Dots, Evening, Faces, Icon, Notice, RecDot, cn, useToast } from '@alcove/ui';
+import { Button, Dots, Evening, Faces, Icon, Modal, Notice, RecDot, Select, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-router';
+import { useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { NoteBoardCards, NoteRoomBoardCards, type RoomBoard } from '~/features/notes/Boards';
 import { CallLine, marksOf } from '~/features/notes/CallLine';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
 import { Propose, useNoteReader, type Seed } from '~/features/notes/entries';
-import { usePlayer, type PlayerState } from '~/features/notes/Player';
+import { Replay, usePlayer, type PlayerState } from '~/features/notes/Player';
 import type { Answer } from '~/features/notes/answer';
 import { askExample, exampleNote } from '~/features/notes/example';
 import { correctedSince, speakersOf, type Correcting } from '~/features/notes/lines';
 import { noteAsText, peopleLine, receivedLine } from '~/features/notes/meta';
-import { AskBar, ChapterList, Recipients, Section, Transcript, roomAnchor, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
+import { AskBar, ChapterList, Recipients, Section, Summary, Transcript, roomAnchor, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { RoomSections } from '~/features/notes/rooms';
 import { Decisions, FollowUps, Questions } from '~/features/notes/rows';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~/features/notes/screens';
@@ -29,8 +30,9 @@ import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { sameEmail } from '~/lib/people';
-import { q, qk, useCorrectLine, useDeleteNote, useProposeAction, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { q, qk, useCancelRewrite, useCorrectLine, useDeleteNote, useProposeAction, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion, useAiModels } from '~/lib/queries';
 import { noteAt } from '~/lib/time';
+import { isUnencrypted, modelOf, modelOptions, modelValue } from '~/lib/aiModels';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
   /**
@@ -167,7 +169,9 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const proposeAction = useProposeAction();
   const correctLine = useCorrectLine();
   const rewrite = useRewriteNotes();
+  const cancel = useCancelRewrite();
   const yours = useOwn(note.id);
+  const writtenPrivately = !isUnencrypted(useAiModels().data, note.model);
   // A call that doesn't keep its recording has none to play, whatever is still on its way out.
   const audio = note.kept.recording ? note.audio : NO_AUDIO;
   const player = usePlayer(note.id, audio, note.status === 'recording');
@@ -177,6 +181,9 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const [sharedTo, setSharedTo] = useState<ReadonlySet<string>>(new Set());
   /* The transcript line someone is proposing something from, if they are. */
   const [seed, setSeed] = useState<Seed | null>(null);
+  // Writing the notes again: which AI model does it, and whether that's being chosen.
+  const [model, setModel] = useState<string | null>(note.model);
+  const [choosing, setChoosing] = useState(false);
   const received = note.received;
   const mine = !received;
   const reader = useNoteReader()(received?.role ?? 'organizer');
@@ -195,22 +202,50 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const { seek: moveTo } = player;
   const hasAudio = audio.length > 0;
   const canGo = hasAudio || lines.length > 0;
-  /** Goes to a moment: the sun moves there, playing on if it was, and the transcript goes to that line. */
-  const go = useCallback((s: number) => { moveTo(s); setFocus({ at: s }); }, [moveTo]);
+  /** Goes to a moment: the sun moves there, playing on if it was (or from there, with `play`), and the transcript goes to that line. */
+  const go = useCallback((s: number, play?: boolean) => { moveTo(s, play); setFocus({ at: s }); }, [moveTo]);
   const seek = canGo ? go : undefined;
-  const toChapter = (c: Chapter) => {
+  /* The shared screens playing above the notes, when there are any. Playing the call from a frame goes up to them. */
+  const reduce = useReducedMotion();
+  const replay = useRef<HTMLDivElement>(null);
+  const toReplay = useRef(false);
+  const playFrom = (s: number) => {
+    if (!replay.current) { go(s, true); return; }
+    moveTo(s, true);
+    toReplay.current = true;
+  };
+  /** Once the viewer has closed after that: focus and the page go to the video, not back to the frame in the transcript. */
+  const upToReplay = () => {
+    const el = replay.current;
+    if (!toReplay.current || !el) return false;
+    toReplay.current = false;
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    return true;
+  };
+  /** A chapter in the side list goes to its line in the transcript, or to its breakout rooms. */
+  const goChapter = (c: Chapter) => {
     const r = note.rooms.find((x) => Math.abs(x.from - c.at) < 2);
     if (!r) { go(c.at); return; }
     moveTo(c.at);
     void navigate({ search: { room: r.id }, hash: roomAnchor(r.id), hashScrollIntoView: { block: 'start' }, replace: true });
   };
+  /** With a recording, a chapter on the line moves the sun and leaves the page, except a breakout rooms' chapter, which opens them. Without one, it goes to its line, as in the side list. */
+  const toChapter = (c: Chapter) => {
+    const r = note.rooms.find((x) => Math.abs(x.from - c.at) < 2);
+    moveTo(c.at);
+    if (!r) return;
+    void navigate({ search: { room: r.id }, hash: roomAnchor(r.id), hashScrollIntoView: { block: 'start' }, replace: true });
+  };
 
   // What was on shared screens: among the transcript lines, wherever the notes point at it, and in the viewer.
+  // Frames judged to have nothing to do with what was said stay out of sight; they're still deleted with the note.
   const viewer = useScreenViewer();
-  const screens: ScreensShown | undefined = note.screens.length
-    ? { moments: note.screens, row: (m) => <ScreenMomentRow noteId={note.id} m={m} me={me} written={ready} onOpen={viewer.show} /> } : undefined;
-  const onScreen: ScreenRefShown = (ref) => <ScreenRefChip screen={ref} screens={note.screens} onOpen={viewer.show} />;
-  const firstScreen = note.screens[0];
+  const moments = note.screens.filter((m) => m.relevance !== 'unrelated');
+  const screens: ScreensShown | undefined = moments.length
+    ? { moments, row: (m) => <ScreenMomentRow noteId={note.id} m={m} me={me} written={ready} onOpen={viewer.show} /> } : undefined;
+  const onScreen: ScreenRefShown = (ref) => <ScreenRefChip screen={ref} screens={moments} onOpen={viewer.show} />;
+  const firstScreen = moments[0];
 
   const roomsSaid = note.rooms.some((r) => r.transcript.length > 0);
   const roomNotes = note.rooms.some((r) => r.summary.trim() !== '');
@@ -249,20 +284,24 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const corrected = correctedSince([...lines, ...note.rooms.flatMap((r) => r.transcript)], note.writtenAt);
   // Where writing them again has got to, once the notes service says.
   const step = note.writingAgain && progress && !progress.ready ? progress.steps.at(-1)?.label : undefined;
-  const writeAgain = () => rewrite.mutate(note.id, { onError: failed });
+  const writeAgain = () => rewrite.mutate({ noteId: note.id, model }, { onSuccess: () => setChoosing(false), onError: failed });
+  const pickModel = mine ? <ModelPick value={model} onChange={setModel} /> : null;
   // Offered to the organizer once a line, the call's or a breakout room's, was corrected since the notes were written.
   const again = mine && corrected > 0 && !note.writingAgain ? (
     <div className="nd-offer">
       <Icon name="history" size={16} />
       <span>{corrected === 1 ? 'A line was corrected' : `${corrected} lines were corrected`} since these notes were written.</span>
+      {pickModel}
       <Button size="sm" loading={rewrite.isPending} onClick={writeAgain}>Write the notes again</Button>
     </div>
   ) : null;
-  const writingAgain = note.writingAgain && <p className="nd-again"><Dots /><span><b>Writing the notes again</b> from the transcript as it is now. What people confirmed or took on stays.{step ? ` ${step}.` : ''}</span></p>;
+  // The organizer can stop a rewrite: the notes stay as they were.
+  const stop = mine ? <Button variant="quiet" size="sm" loading={cancel.isPending} onClick={() => cancel.mutate(note.id, { onSuccess: () => toast('Stopped. The notes are as they were.'), onError: failed })}>Cancel</Button> : null;
+  const writingAgain = note.writingAgain && <p className="nd-again"><Dots /><span><b>Writing the notes again</b> from the transcript as it is now. What people confirmed or took on stays.{step ? ` ${step}.` : ''}</span>{stop}</p>;
   // Each breakout room's own section, under the call's notes; whether any room has what was said in it to show, and
   // whether any has notes, which stay when a call isn't set to keep what they were written from.
   const settle = ready ? { reader, onDecision: changeDecision, onQuestion: changeQuestion, onToggle: toggle, onAction: changeAction, people: note.recipients.map((r) => r.person), decisionForm, actionForm } : undefined;
-  const tryAgain = mine ? <Button size="sm" className="nd-retry" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button> : null;
+  const tryAgain = mine ? <>{pickModel}<Button size="sm" className="nd-retry" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button></> : null;
   // The boards open in the call: the main room's with the call's notes, each room's in its section.
   const boards = note.workedOn.filter((w) => w.kind === 'board');
   const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} boards={boards} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={ready ? proposing : undefined} settle={settle} tryAgain={tryAgain} marks={yours.lines} open={room} at={at} /> : null;
@@ -311,7 +350,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
     ? `Removes ${asList(['the summary', ...(lines.length ? ['the transcript'] : []), ...(note.rooms.length ? [note.rooms.length === 1 ? 'the breakout room’s section' : `${note.rooms.length} breakout rooms’ sections`] : []), ...(hasAudio ? [`${minutesLabel(note.duration)} of audio`] : []), ...(note.screens.length ? [`${note.screens.length} shared ${note.screens.length === 1 ? 'screen' : 'screens'}`] : []), 'anyone’s own notes on them'])}. Nobody can get them back.`
     : `${organizer ? firstName(organizer.name) : 'The organizer'} and everyone else who has them keep them. Your own notes on them go for good. Anything you added to the shared notes stays there, and you can’t take it back after this.`;
   const transcript = (top?: ReactNode) => <Transcript lines={lines} gaps={note.gaps} seconds={span} me={me} onSeek={seek} focus={focus} player={player} live={live} screens={screens} onScreens={viewer.show} correct={correct} fromLine={fromLine} marks={yours.lines} kinds={kinds} top={top} />;
-  const noScreens = !lines.length && firstScreen && <button type="button" className="nd-act nd-scrlink" onClick={() => viewer.show(firstScreen)}><Icon name="monitor" size={15} />{note.screens.length} shared {note.screens.length === 1 ? 'screen' : 'screens'}</button>;
+  const noScreens = !lines.length && firstScreen && <button type="button" className="nd-act nd-scrlink" onClick={() => viewer.show(firstScreen)}><Icon name="monitor" size={15} />{moments.length} shared {moments.length === 1 ? 'screen' : 'screens'}</button>;
   const view = live ? 'recording' : note.status === 'pending' ? 'writing' : ready && !written && !lines.length ? 'quiet' : 'ready';
   // The call is still writing to these notes, so they stay until it ends.
   const inCall = note.kind === 'call' && note.status === 'recording';
@@ -322,7 +361,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
         <>
           <PinNote noteId={note.id} />
           <ShareNote note={note} onShared={(emails) => setSharedTo(new Set(emails))} />
-          <NoteMenu ready={ready} mine={mine} inCall={inCall} ask={delAsk} busy={del.isPending} gone={going} onDelete={() => void remove()}
+          <NoteMenu ready={ready} mine={mine} inCall={inCall} ask={delAsk} onWriteAgain={mine && ready && !note.writingAgain ? () => setChoosing(true) : undefined} busy={del.isPending} gone={going} onDelete={() => void remove()}
             onCopy={() => void navigator.clipboard?.writeText(noteAsText(note)).then(() => toast('Copied as text'))} />
         </>
       )}>
@@ -330,19 +369,20 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
         <span className="nd-faces" title={peopleLine(note.people, me)}><Faces people={note.people} size={24} max={5} /><span>Everyone with the notes</span></span>
         {received && <span className="nd-how">{receivedLine(received)}</span>}
         {live && <span className="nd-rec"><RecDot />Still recording</span>}
-        <Provenance evidence={note.inference} kind={note.kind} writing={note.status === 'pending' ? 'first' : note.writingAgain ? 'again' : undefined} />
+        <Provenance evidence={note.inference} kind={note.kind} unencrypted={note.unencrypted} model={note.model} writing={note.status === 'pending' ? 'first' : note.writingAgain ? 'again' : undefined} />
       </PageHead>
       <CallLine player={player} span={span} chapters={showMarks ? note.chapters : []} marks={showMarks ? marks : []} gaps={note.gaps} glints={glints}
-        here={focus?.at} edge={live ? heard : undefined} still={ready && !lines.length && !written} fresh={fresh} onGo={seek} onChapter={canGo ? toChapter : undefined}>
+        here={focus?.at} edge={live ? heard : undefined} still={ready && !lines.length && !written} fresh={fresh} onScrub={hasAudio ? moveTo : seek} onChapter={hasAudio ? toChapter : canGo || note.rooms.length > 0 ? goChapter : undefined}>
         {!note.kept.recording && !live && <p className="nd-kept"><Icon name="mic" size={15} />The recording was deleted when the call ended.</p>}
       </CallLine>
       <div className="nd-cols" style={{ '--d': 2 }}>
         <div className="nd-main">
+          {player.total > 0 && note.shares.length > 0 && <div ref={replay} tabIndex={-1} className="nd-replay"><Replay noteId={note.id} shares={note.shares} player={player} /></div>}
           <div className="nd-read">
             {ready && written ? (
               <>
                 {writingAgain}
-                <p className="nd-sum">{note.summary}</p>
+                <Summary summary={note.summary} details={note.details} />
                 {boardSection}
                 {boardFollowUps}
                 <Section title="Decided" kind="decide" id="decided" count={toConfirm ? `${toConfirm} to confirm` : undefined}>
@@ -358,7 +398,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 </Section>
               </>
             ) : ready && lines.length ? (
-              note.writingAgain ? <p className="nd-again"><Dots /><span><b>Writing the notes</b> from the transcript as it is now.{step ? ` ${step}.` : ''}</span></p> : (
+              note.writingAgain ? <p className="nd-again"><Dots /><span><b>Writing the notes</b> from the transcript as it is now.{step ? ` ${step}.` : ''}</span>{stop}</p> : (
                 <section className="nd-unwritten">
                   <Notice tone="caution" icon="pen">
                     <b>The summary couldn’t be written.</b> {!note.kept.transcript ? 'The transcript stays until they’re written, then it’s deleted' : hasAudio ? 'The transcript and the audio are kept' : 'The transcript is kept'}, and you can still ask about the {note.kind === 'room' ? 'recording' : 'call'}.
@@ -375,7 +415,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
               </section>
             ) : (
               <section className="nd-writing" aria-label="How the notes are coming along">
-                <p className="nd-writing-t">{live ? 'The recording is still going.' : note.kept.recording ? 'The audio is saved and encrypted.' : 'The call has ended.'} Summary, decisions and follow-ups are {live ? 'written in confidential compute once it stops' : 'being written in confidential compute'}.</p>
+                <p className="nd-writing-t">{live ? 'The recording is still going.' : note.kept.recording ? 'The audio is saved and encrypted.' : 'The call has ended.'} Summary, decisions and follow-ups are {live ? (writtenPrivately ? 'written in confidential compute once it stops' : 'written by an unencrypted AI model once it stops') : (writtenPrivately ? 'being written in confidential compute' : 'being written by an unencrypted AI model')}.</p>
                 {!live && progress && <Steps steps={progress.steps} />}
               </section>
             )}
@@ -393,14 +433,15 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
           {ready && (lines.length > 0 || roomsSaid || roomNotes || (written && deleted)) && !going && <AskBar suggestions={note.suggestedQuestions} ask={(question) => api.notes.ask(note.id, question)} onSeek={seek} shown={onScreen} onKeep={keep} />}
         </div>
         <aside ref={side} className="nd-side" aria-label="About these notes">
-          {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? toChapter : undefined} />}
+          {showMarks && <ChapterList chapters={note.chapters} onGo={canGo ? goChapter : undefined} />}
           <OwnNotesCard note={note} me={me} entries={yours.entries} own={yours.own} shown={onScreen} onSeek={seek} />
           <Additions note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
           <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
           {!going && <SeriesCard note={note} />}
         </aside>
       </div>
-      <ScreenViewer noteId={note.id} screens={note.screens} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onSeek={seek} marks={yours.screens} />
+      <ScreenViewer noteId={note.id} screens={moments} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onPlay={canGo ? playFrom : undefined} onCloseFocus={upToReplay} marks={yours.screens} />
+      <WriteAgain open={mine && choosing && !note.writingAgain} model={model} busy={rewrite.isPending} onModel={setModel} onCancel={() => setChoosing(false)} onWrite={writeAgain} />
     </Evening>
   );
 }
@@ -416,6 +457,30 @@ function Steps({ steps }: { steps: NoteProgress['steps'] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Which AI model writes the notes again: the default, or any the API lists. */
+function ModelPick({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
+  const models = useAiModels();
+  // An unencrypted choice carries its badge in the picker itself.
+  return <Select<string> label="AI model" icon="notesPen" value={modelValue(value)} options={modelOptions(models.data, value)} onChange={(v) => onChange(modelOf(v))} className="max-w-full" />;
+}
+
+/** Asked for from the menu: which AI model writes the notes again, then writing them, or not. */
+function WriteAgain({ open, model, busy, onModel, onCancel, onWrite }: {
+  open: boolean; model: string | null; busy: boolean; onModel: (id: string | null) => void; onCancel: () => void; onWrite: () => void;
+}) {
+  return (
+    <Modal open={open} onOpenChange={(o) => { if (!o) onCancel(); }} label="Write the notes again" className="nd-redo">
+      <h2 className="nd-redo-h"><Icon name="notesPen" size={18} />Write the notes again?</h2>
+      <p className="nd-redo-p">They’re written again from the transcript as it is now, by the AI model you choose. What people confirmed or took on stays.</p>
+      <ModelPick value={model} onChange={onModel} />
+      <div className="nd-redo-f">
+        <Button variant="quiet" onClick={onCancel}>Cancel</Button>
+        <Button variant="primary" loading={busy} onClick={onWrite}>Write the notes again</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -455,7 +520,7 @@ function Example({ me }: { me: Person }) {
       <div className="nd-cols" style={{ '--d': 2 }}>
         <div className="nd-main">
           <div className="nd-read">
-            <p className="nd-sum">{note.summary}</p>
+            <Summary summary={note.summary} details={note.details} />
             <Section title="Decided" kind="decide"><Decisions items={note.decisions} me={me.email} /></Section>
             <Section title="Still open"><Questions items={note.questions} me={me.email} /></Section>
             <Section title="Follow-ups" kind="follow">

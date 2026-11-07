@@ -158,7 +158,7 @@ function SeriesView({ s, me }: { s: Series; me: string | undefined }) {
               </>
             )}
           </div>
-          {s.notes.some((n) => n.status === 'ready') && <AskBar label="Ask about these calls" waiting="Reading the calls in confidential compute" suggestions={SUGGESTIONS} ask={(text) => api.series.ask(s.id, text, timeZone())} />}
+          {s.notes.some((n) => n.status === 'ready') && <AskBar label="Ask about these calls" waiting="Reading the calls" suggestions={SUGGESTIONS} ask={(text) => api.series.ask(s.id, text, timeZone())} />}
         </div>
         <aside className="nd-side" aria-label="About this series">
           {s.isOrganizer && <NextCall s={s} />}

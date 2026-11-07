@@ -1,21 +1,22 @@
-import { MAIN_PLACE, type CallAction, type CallState, type ScreenFrameReceipt } from '@alcove/api';
+import { MAIN_PLACE, type CallAction, type CallState, type ShareStarted } from '@alcove/api';
 import type { Owner } from '../../context';
 import { id128 } from '../../crypto';
 import { tx, type Db } from '../../db';
-import { ConflictError, ForbiddenError, UnavailableError, ValidationError } from '../../errors';
+import { ConflictError, ForbiddenError, UnavailableError, ValidationError, notFound } from '../../errors';
+import { me } from '../account/account';
 import { appendPiece, createRecording, setRecordingState, type Piece } from '../recordings/audio';
 import * as capture from './capture';
 import { MeetingManifest } from '../meetings/service';
 import type { Loaded } from '../../vault';
 import { getItem } from '../../vault';
 import { blankNote, createNoteWithRecording } from '../notes/service';
-import { mainScribeOf, placeAt, readersAt } from './places';
+import { mainScribeOf, placeAt, placeOf, readersAt } from './places';
 import { scribeAt } from './scribes';
 import * as screens from '../recordings/screens';
 import * as transcripts from '../recordings/transcripts';
 import { log } from '../../log';
-import { capturing, load, notice, roomPausesOf, roomsOpenAt, save, settle, sharesEnd, tenthsIn, type Row, type Stored } from './state';
-import { requireIn, type Viewer } from './participants';
+import { capturing, load, notice, roomPausesOf, roomsOpenAt, save, screenChanged, settle, sharesEnd, tenthsIn, trimShares, type Row, type Stored } from './state';
+import { requireIn, speakersIn, type Viewer } from './participants';
 import { stillHosting } from './permissions';
 import { view } from './read-model';
 import { nudge } from './notifications';
@@ -24,7 +25,7 @@ const clog = log.child({ component: 'calls' });
 
 /**
  * Notes on, or resumed, `at` seconds into the call: the first time a note and its recording are created, keeping what
- * the call was set to keep, with shared screens read from then on if it was set to; after that a new segment starts.
+ * the call was set to keep; after that a new segment starts.
  * Anyone who asked for notes has their answer: yes.
  */
 export async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<MeetingManifest>, at: number, by: capture.CaptureChange['by']): Promise<Stored> {
@@ -35,33 +36,32 @@ export async function startNotes(o: Owner, db: Db, s: Stored, meeting: Loaded<Me
     return { ...s, notes: { ...s.notes, status: 'on', everOn: true, segment, segmentFrom: at, history: [...s.notes.history, { at, status: 'on', by, segment }], asks, unavailable: [] } };
   }
   const startedAt = new Date();
-  const { keepTranscript, keepRecording, readScreens } = meeting.manifest.choices;
+  const { keepTranscript, keepRecording } = meeting.manifest.choices;
   const { noteId, recordingId } = await createNoteWithRecording(o, db,
     (rid) => blankNote({ kind: 'call', title: meeting.manifest.title, startedAt, recordingId: rid, meetingId: meeting.itemId, invited: meeting.manifest.guests, keep: { transcript: keepTranscript, recording: keepRecording } }),
     (nid) => createRecording(o, db, nid, startedAt));
-  const sc = s.notes.screens;
-  const screensNow = readScreens && !sc.on ? { ...sc, on: true, history: [...sc.history, { at, on: true, segment: 0, by }] } : sc;
-  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, segmentFrom: at, screens: screensNow, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
+  return { ...s, notes: { ...s.notes, status: 'on', everOn: true, noteId, recordingId, segment: 0, segmentFrom: at, history: [...s.notes.history, { at, status: 'on', by, segment: 0 }], asks, unavailable: [] } };
 }
 
 /**
  * Notes paused or off, `at` seconds into the call: the recording stops taking audio until notes are on again. What
  * the host's browser couldn't capture is forgotten with every change: it says again once notes are back on, so
- * nobody is told something isn't captured when it is. Turning notes off stops shared screens being read too; pausing
- * holds them with everything else.
+ * nobody is told something isn't captured when it is. Turning notes off keeps no share any more: what was kept so far
+ * stays, and sharing on keeps nothing more. Pausing holds them with everything else.
  */
 async function stopNotes(o: Owner, db: Db, s: Stored, at: number, status: 'paused' | 'off'): Promise<Stored> {
   if (s.notes.recordingId && s.notes.status === 'on') await setRecordingState(o, db, s.notes.recordingId, 'paused');
-  const sc = s.notes.screens;
-  const screensNow = status === 'off' && sc.on ? { ...sc, on: false, history: [...sc.history, { at, on: false, segment: s.notes.segment, by: 'organizer' as const }] } : sc;
-  return { ...s, notes: { ...s.notes, status, screens: screensNow, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
+  const kept = status === 'off' ? s.shares.filter((x) => x.until === null && x.keep) : [];
+  if (kept.length && s.notes.recordingId) await screens.endShares(o, db, s.notes.recordingId, kept.filter((x) => x.recorded).map((x) => x.id), at * 1000, s.notes.segment);
+  const unkept = kept.length ? screenChanged(s, { ...s, shares: s.shares.map((x) => (kept.includes(x) ? { ...x, keep: false } : x)) }, at) : s;
+  return { ...unkept, notes: { ...unkept.notes, status, history: [...s.notes.history, { at, status, by: 'organizer', segment: s.notes.segment }], unavailable: [] } };
 }
 
-type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'screens' }>;
+type CaptureAction = Extract<CallAction, { type: 'notes' | 'pause' | 'resume' | 'request-notes' | 'decline-notes' | 'unavailable' | 'model' }>;
 
 /**
  * What the call captures, changed (features/calls/capture.ts). Only the organizer turns notes on or off, pauses and resumes
- * them, has shared screens read or stops it, says not now to an ask, and says what their browser can't capture (features/calls/routes.ts
+ * them, chooses the model for the notes, says not now to an ask, and says what their browser can't capture (features/calls/routes.ts
  * lets nobody else through). Anyone else in the call asks for notes while they're off or paused, or takes the ask
  * back. Turning notes on, or resuming, says yes to every ask.
  */
@@ -72,7 +72,7 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
   if (a.type === 'notes') {
     if (a.on && s.notes.status !== 'on') {
       const on = await startNotes(o, c, s, await meeting(), at, 'organizer');
-      return notice(on, on.notes.screens.on ? 'The organizer turned on notes, and what anyone shares is read for them. Everyone here can see that.' : 'The organizer turned on notes. Everyone here can see that.');
+      return notice(on, 'The organizer turned on notes. Everyone here can see that.');
     }
     if (!a.on && s.notes.status !== 'off') {
       const { keepTranscript, keepRecording } = (await meeting()).manifest.choices;
@@ -96,15 +96,7 @@ export async function changeCapture(v: Viewer, c: Db, row: Row, s: Stored, a: Ca
     if (s.notes.status !== 'on') return s;
     return { ...s, notes: { ...s.notes, unavailable: [...new Set(a.parts)] } };
   }
-  if (a.type === 'screens') {
-    const sc = s.notes.screens;
-    if (a.on === sc.on) return s;
-    // Frames go into the notes, beside what was said, so they're read only while there are notes to read them into.
-    if (a.on && s.notes.status === 'off') throw new ConflictError('Turn on notes first: shared screens are read for the notes.', { context: ctx });
-    if (a.on && s.notes.noteId && await screens.full(o, c, s.notes.noteId)) throw new ConflictError(FULL, { context: { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX } });
-    const next: Stored = { ...s, notes: { ...s.notes, screens: { ...sc, on: a.on, history: [...sc.history, { at, on: a.on, segment: s.notes.segment, by: 'organizer' }] } } };
-    return notice(next, a.on ? 'The organizer turned on shared screens in the notes. What anyone shares is read for them.' : 'The organizer turned off shared screens in the notes. What was shared before is kept.');
-  }
+  if (a.type === 'model') return { ...s, notes: { ...s.notes, model: a.model } };
   if (a.type === 'request-notes') {
     if (v.isOrganizer) throw new ValidationError('You can turn notes on yourself.', { context: ctx });
     // One ask each: asking again while asking changes nothing, and taking it back forgets it.
@@ -181,24 +173,62 @@ export async function transcribe(v: Viewer, callId: string, clip: transcripts.Cl
   return view(v, o.pool, callId);
 }
 
-/* ---------- shared screens: frames from each presenter's own browser, while screen notes are on ---------- */
+/* ---------- shared screens: each share, and the video of those kept for the notes (features/recordings/screens.ts) ---------- */
 
-/** A frame as its presenter's browser sent it: which share, when it was taken (ms, on this server's clock), the JPEG and its size. */
-export interface FrameUpload { share: string; takenAt: number; jpeg: Uint8Array; width: number; height: number }
+/**
+ * Someone starting to share their screen, from their own browser once they've picked what to share: whether it goes in
+ * the notes (`notes`). Refused with the notes while they're off. It's kept only from the main room, with notes on or
+ * paused (its video waits until they're resumed). A share of theirs still going ends: each person shares one screen at
+ * a time. Everyone sees it in the call's `shares`.
+ */
+export async function startShare(v: Viewer, callId: string, notes: boolean): Promise<ShareStarted> {
+  requireIn(v, 'share');
+  const o = v.organizer;
+  const r = await tx(o.pool, async (c) => {
+    const { row, state } = await load(o, c, callId, true);
+    if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
+    const exact = tenthsIn(row.started_at);
+    const ctx = { callId, notes: state.notes.status, asked: notes };
+    if (notes && state.notes.status === 'off') throw new ConflictError('Turn on notes first: only then can a share go in them.', { context: ctx });
+    // The organizer decides whether shares may go in the notes at all (the call's choices); each presenter, for theirs.
+    const { allowScreens } = (await getItem(o, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting')).manifest.choices;
+    if (notes && !allowScreens) throw new ConflictError('The organizer keeps shared screens out of these notes.', { context: ctx });
+    // Where they are now, with rooms whose time is up closed.
+    const settled = settle(state, row);
+    const mine = settled.people.find((j) => j.identity === v.pass.identity && j.status === 'in');
+    if (!mine) throw new ForbiddenError('Join the call to share your screen.', { context: ctx });
+    let s = await sharesEnd(o, c, state, [v.pass.identity], exact);
+    const keep = notes && s.notes.status !== 'off' && placeOf(settled, mine) === MAIN_PLACE;
+    const id = id128();
+    const recordingId = s.notes.recordingId;
+    if (recordingId) {
+      const presenter = speakersIn(s, await me(o))(v.pass.identity);
+      await screens.startShare(o, c, recordingId, id, { keep, meta: { identity: v.pass.identity, ...(presenter ? { presenter } : {}) }, atMs: exact * 1000, segment: s.notes.segment });
+    }
+    s = screenChanged(s, { ...s, shares: trimShares([...s.shares, { id, identity: v.pass.identity, keep, recorded: recordingId !== null, from: exact, until: null }]) }, exact);
+    await save(o, c, callId, s);
+    clog.info('share started', { ...ctx, keep, segment: s.notes.segment, role: v.pass.role });
+    return { id, keep, room: row.room_name };
+  });
+  await nudge(o, r.room, callId, { call: true, log: false });
+  return { share: r.id, keep: r.keep, state: await view(v, o.pool, callId) };
+}
 
-/** Shares LiveKit said someone has up, by room, identity and track, for a few seconds: frames come every few seconds. */
+/** Who LiveKit said is sharing a screen, by room and identity, for a few seconds: pieces come every five. */
 const sharing = new Map<string, number>();
 
 const SHARE_SEEN_MS = 10_000;
 
-/** Whether `identity` is sharing the screen `share` in the call's room now, as LiveKit sees its tracks. Never a camera. */
-async function ownShare(o: Owner, roomName: string, identity: string, share: string): Promise<boolean> {
-  const id = `${roomName}|${identity}|${share}`;
+const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
+
+/** Whether `identity` has a screen up in the call's room now, as LiveKit sees its tracks. Never a camera. */
+async function sharingNow(o: Owner, roomName: string, identity: string): Promise<boolean> {
+  const id = `${roomName}|${identity}`;
   if ((sharing.get(id) ?? 0) > Date.now()) return true;
   const shares = await o.livekit.screenShares(roomName).catch((e: unknown) => {
     throw new UnavailableError('We couldn’t check the shared screen with the call’s media server. Try again in a moment.', { cause: e });
   });
-  const yes = shares.some((x) => x.identity === identity && x.sid === share);
+  const yes = shares.some((x) => x.identity === identity);
   if (yes) {
     if (sharing.size > 10_000) sharing.clear();
     sharing.set(id, Date.now() + SHARE_SEEN_MS);
@@ -207,67 +237,68 @@ async function ownShare(o: Owner, roomName: string, identity: string, share: str
 }
 
 /**
- * A frame of someone's own shared screen, into the call's notes, while screen notes are on (the capture gate decides,
- * as for audio and speech). Only the presenter's own share: LiveKit must list it as a screen this person is sharing in
- * this call, so another person's share, a camera or a share that's over is refused, as is one their browser said
- * ended. Nothing is taken from a breakout room, or that was taken before screen notes came on or were resumed. It's
- * placed where it was on screen: when it was taken, by the server's clock. Once the notes have kept as many frames
- * as they may, screen notes turn off for everyone, saying why.
+ * A piece of a kept share's video, from its presenter's own browser. Only the presenter's own share that they said goes
+ * in the notes, while LiveKit lists a screen they're sharing in the call's room (403 otherwise); one that's unknown isn't
+ * found (404). One that has ended (they stopped it, left, or the call ended) still takes pieces of the segment it ended
+ * in for screens.SHARE_TAIL_MS after it ended, since the browser hands its last piece over as it stops, even from
+ * someone who has just left; after that it isn't found (404), unless it's a piece already stored (a retry), which
+ * changes nothing. While notes are paused or off it's refused (409), as is a piece from an earlier segment of the
+ * recording, or a different piece at a place already stored. Once the presenter is out of the call, or the call has
+ * ended, the answer shows only that.
  */
-export async function shareFrame(v: Viewer, callId: string, f: FrameUpload): Promise<ScreenFrameReceipt> {
-  requireIn(v, 'screen');
+export async function appendScreen(v: Viewer, callId: string, shareId: string, piece: screens.Piece): Promise<CallState> {
   const o = v.organizer;
   const { row, state } = await load(o, o.pool, callId);
-  const s = settle(state, row);
-  const at = tenthsIn(row.started_at, f.takenAt);
-  const ctx = { callId, segment: s.notes.segment, bytes: f.jpeg.length, ageMs: Date.now() - f.takenAt, role: v.pass.role };
-  // Where its presenter was when it was taken (never before they came into the call), as for speech: a frame from a
-  // breakout room, the organizer's own share while it's visiting one included, stays out of the notes. So does one
-  // whose place can't be told any more (two moves since).
-  const presenter = s.people.find((j) => j.identity === v.pass.identity);
-  const where = presenter ? placeAt(s, presenter, Math.max(f.takenAt, presenter.since)) : undefined;
-  const into = capture.mayCapture({ ...capturing(row, s), inRoom: where !== MAIN_PLACE }, 'screen', ctx);
-  // Taken before notes came on, were resumed, or screens were turned on: from a stretch that wasn't captured.
-  const since = Math.max(s.notes.history.filter((h) => h.status === 'on').at(-1)?.at ?? 0, s.notes.screens.history.filter((h) => h.on).at(-1)?.at ?? 0);
-  if (at < since) throw new ConflictError('That frame was taken before screen notes were on, so it isn’t kept.', { context: { ...ctx, early: Math.round((since - at) * 10) / 10 } });
-  const over = s.notes.screens.ended.some((e) => e.presenter === v.pass.identity && e.share === f.share && e.at <= at);
-  if (over || !row.room_name || !(await ownShare(o, row.room_name, v.pass.identity, f.share))) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, ended: over } });
-  const kept = await screens.keep(o, into, { presenter: v.pass.identity, share: f.share, at, segment: s.notes.segment, jpeg: f.jpeg, width: f.width, height: f.height });
-  if (kept !== 'full') return kept;
-  await screensFull(o, callId);
-  throw new ConflictError(FULL, { context: { ...ctx, max: o.cfg.SCREEN_FRAMES_MAX } });
+  const ctx = { callId, segment: piece.segment, seq: piece.seq, currentSegment: state.notes.segment, role: v.pass.role };
+  // Someone let in, who may have left since: the tail of a share is theirs to send.
+  const mine = state.people.find((j) => j.identity === v.pass.identity);
+  if (!v.inCall && mine?.status !== 'left') throw new ForbiddenError('Wait until the host lets you in.', { context: { ...ctx, what: 'screen' } });
+  const share = state.shares.find((x) => x.id === shareId);
+  if (!share) throw notFound('That share', ctx);
+  if (share.identity !== v.pass.identity) throw new ForbiddenError(NOT_YOURS, { context: ctx });
+  const recordingId = state.notes.recordingId;
+  if (!share.recorded || !recordingId) throw new ForbiddenError('That share doesn’t go in the notes.', { context: ctx });
+  const answer = () => view(row.state === 'live' && v.inCall ? v : { ...v, inCall: false }, o.pool, callId);
+  // How much it may hold: by how long it has been up, to now or to its end.
+  const budget = () => screens.shareBudget((share.until ?? (Date.now() - row.started_at.getTime()) / 1000) - share.from);
+  // A retry of a piece already stored is fine whatever has happened since.
+  if (await screens.pieceStored(o, recordingId, shareId, piece)) return answer();
+  if (!share.keep) throw new ForbiddenError('That share doesn’t go in the notes.', { context: ctx });
+  if (share.until !== null || row.state !== 'live' || !v.inCall) {
+    // Its tail: the presenter's last piece, arriving just after the share (or the call) ended, or they left.
+    const end = await screens.shareEnd(o, recordingId, shareId, row.started_at);
+    const late = end ? Date.now() - end.at : null;
+    if (!end || !end.keep || late === null || late > screens.SHARE_TAIL_MS) throw notFound('That share', { ...ctx, ended: 1, lateMs: late });
+    if (piece.segment !== end.segment) throw new ConflictError('That video belongs to an earlier part of the recording.', { context: ctx });
+    await screens.appendPiece(o, recordingId, shareId, piece, budget(), true);
+    clog.debug('share piece taken after it ended', { ...ctx, lateMs: late });
+    return answer();
+  }
+  const into = capture.mayCapture(capturing(row, state), 'screen', ctx);
+  if (piece.segment !== state.notes.segment) throw new ConflictError('That video belongs to an earlier part of the recording.', { context: ctx });
+  // Going: only while LiveKit lists a screen of theirs, so nobody puts video in the notes without sharing it in the call.
+  if (!row.room_name || !(await sharingNow(o, row.room_name, v.pass.identity))) throw new ForbiddenError(NOT_YOURS, { context: { ...ctx, why: 'not sharing' } });
+  await screens.appendPiece(o, into.recordingId, shareId, piece, budget());
+  return answer();
 }
 
-const NOT_YOURS = 'That isn’t a screen you’re sharing in this call.';
-
-const FULL = 'The notes have kept as many shared screens as they can for this call.';
-
-/** The notes are full of frames: screen notes turn off for everyone, with a notice saying why, as if the organizer had. */
-async function screensFull(o: Owner, callId: string): Promise<void> {
-  const turned = await tx(o.pool, async (c) => {
-    const { row, state } = await load(o, c, callId, true);
-    const sc = state.notes.screens;
-    if (row.state !== 'live' || !sc.on) return null;
-    const off: Stored = { ...state, notes: { ...state.notes, screens: { ...sc, on: false, history: [...sc.history, { at: tenthsIn(row.started_at), on: false, segment: state.notes.segment, by: 'organizer' }] } } };
-    await save(o, c, callId, notice(off, 'Shared screens are off: the notes have kept as many as they can for this call. What was shared is kept.'));
-    return { room: row.room_name };
-  });
-  if (!turned) return;
-  clog.info('screen notes turned off: the notes are full', { callId, max: o.cfg.SCREEN_FRAMES_MAX });
-  await nudge(o, turned.room, callId, { call: true, log: false });
-}
-
-/** The presenter's browser says one of its shares ended: what it showed last stops there in the notes. Only their own shares. */
-export async function shareEnded(v: Viewer, callId: string, share: string): Promise<void> {
+/** The presenter's browser says one of its shares ended: its video stops there in the notes. Only their own; ending one again changes nothing. */
+export async function shareEnded(v: Viewer, callId: string, shareId: string): Promise<CallState> {
   requireIn(v, 'share-ended');
   const o = v.organizer;
-  await tx(o.pool, async (c) => {
+  const room = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: { callId } });
-    if (state.notes.screens.ended.some((e) => e.share === share && e.presenter === v.pass.identity)) return;
-    await save(o, c, callId, sharesEnd(state, [{ share, presenter: v.pass.identity }], tenthsIn(row.started_at)));
+    const share = state.shares.find((x) => x.id === shareId);
+    if (!share) throw notFound('That share', { callId });
+    if (share.identity !== v.pass.identity) throw new ForbiddenError(NOT_YOURS, { context: { callId } });
+    if (share.until !== null) return null;
+    await save(o, c, callId, await sharesEnd(o, c, state, [{ share: shareId }], tenthsIn(row.started_at)));
+    return { name: row.room_name };
   });
-  // Frames of it already checked with LiveKit stop being taken at once, not when that check runs out.
-  for (const id of sharing.keys()) if (id.endsWith(`|${v.pass.identity}|${share}`)) sharing.delete(id);
-  clog.debug('share ended', { callId, role: v.pass.role });
+  if (room) {
+    clog.debug('share ended', { callId, role: v.pass.role });
+    await nudge(o, room.name, callId, { call: true, log: false });
+  }
+  return view(v, o.pool, callId);
 }

@@ -1,19 +1,23 @@
-import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema } from '@alcove/api';
+import { ActionPatchSchema, ActionProposalSchema, AskBodySchema, DecisionPatchSchema, DecisionProposalSchema, LinePatchSchema, NoteKindSchema, QuestionPatchSchema, RevisitPatchSchema, RewriteBodySchema, SeriesAskBodySchema, ShareInputSchema, PersonalEditSchema, PersonalInputSchema, PromoteBodySchema } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { z } from 'zod';
 import { NotFoundError } from '../../errors';
+import { log } from '../../log';
+import * as screens from '../recordings/screens';
+import * as models from './models';
 import * as additions from './additions';
 import * as audioMod from '../recordings/audio';
 import * as notes from './service';
 import * as personal from './personal';
 import * as series from './series';
 import * as writer from './writer';
-import { AUDIO_TYPES, ID128, MOST_AUDIO_PER_REPLY, body, byteRange, capped } from '../../http/body';
+import { AUDIO_TYPES, ID128, MOST_AUDIO_PER_REPLY, body, byteRange, capped, videoByteRange } from '../../http/body';
 import { type Env } from '../../http/context';
 import type { HttpRuntime } from '../../http/runtime';
 
 
+const rlog = log.child({ component: 'notes' });
 
 export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { noteChangeLimiter, askLimiter, personalLimiter } = runtime.limits;
@@ -67,6 +71,43 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     return c.body(await audioMod.body(file.read(from, to), gone), 206, { ...headers, 'content-length': String(to - from + 1), 'content-range': `bytes ${from}-${to}/${file.bytes}` });
   });
 
+  /*
+   * A kept share's video in one segment, for anyone who has the note, with ranges so replay can seek: decrypted here
+   * a chunk at a time (only the chunks a range needs), never cached by the browser.
+   */
+  app.get('/v1/notes/:id/screen/:share/:segment', async (c) => {
+    const o = c.get('owner');
+    const share = c.req.param('share');
+    const segment = z.coerce.number().int().min(0).max(2_147_483_647).safeParse(c.req.param('segment'));
+    if (!ID128.test(share) || !segment.success) throw new NotFoundError('That shared screen’s video doesn’t exist.');
+    const source = await notes.videoAccess(o, c.req.param('id'), share, segment.data);
+    const range = videoByteRange(c.req.header('range'));
+    const headers = { 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': 'no-store', 'content-security-policy': "default-src 'none'" };
+    let v: Awaited<ReturnType<typeof screens.videoRange>>;
+    try {
+      if (range === 'bad') throw new screens.UnsatisfiableRange('That range isn’t one this video can serve.');
+      v = await screens.videoRange(source.owner, source.recordingId, share, segment.data, range);
+    } catch (e) {
+      if (!(e instanceof screens.UnsatisfiableRange)) throw e;
+      const total = range === 'bad' ? null : await screens.videoInput(source.owner, source.recordingId, share, segment.data).then((x) => x.bytes);
+      rlog.info('range refused', { segment: segment.data, total });
+      return new Response(null, { status: 416, headers: { ...headers, ...(total === null ? {} : { 'content-range': `bytes */${total}` }) } });
+    }
+    const partial = range !== null;
+    const data = v.data;
+    const out = new ReadableStream<Uint8Array>({
+      async pull(ctl) {
+        const next = await data.next();
+        if (next.done) ctl.close(); else ctl.enqueue(next.value.slice());
+      },
+      async cancel() { await data.return(undefined); }
+    });
+    return new Response(out, {
+      status: partial ? 206 : 200,
+      headers: { ...headers, 'content-type': v.mimeType, 'content-length': String(v.end - v.start + 1), ...(partial ? { 'content-range': `bytes ${v.start}-${v.end}/${v.total}` } : {}) }
+    });
+  });
+
   /* A note's shared-screen frame, for anyone who has the note: decrypted here, never cached by the browser. */
   app.get('/v1/notes/:id/screens/:frameId', async (c) => {
     const frameId = c.req.param('frameId');
@@ -96,10 +137,16 @@ export function registerNoteRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     const o = c.get('owner');
     // Writing the notes again costs inference and isn't charged, so it shares the questions' allowance.
     askLimiter(o.ownerId, 'rewrite');
-    const note = await notes.rewrite(o, c.req.param('id'));
+    const { model } = await body(c, RewriteBodySchema);
+    const note = await notes.rewrite(o, c.req.param('id'), model === undefined ? {} : { model });
     writer.kick(o, o.ownerId);
     return c.json(note);
   });
+
+  app.delete('/v1/notes/:id/rewrite', async (c) => c.json(await notes.cancelRewrite(c.get('owner'), c.req.param('id'))));
+
+  /* The models to choose from for the AI work, and the default one. */
+  app.get('/v1/models', async (c) => c.json(await models.list(runtime.d.cfg)));
 
   app.post('/v1/notes/:id/ask', async (c) => {
     askLimiter(c.get('owner').ownerId, 'ask');
