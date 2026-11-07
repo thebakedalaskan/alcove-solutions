@@ -4,14 +4,16 @@
  * offers each with who said it and when, written in confidential compute: Add puts one on the board, in the frame it fits and
  * that frame's colour, and Add all puts the rest, with a toast whose Undo takes back what it added, whatever you've done
  * since. On a phone the tray adds just as + does, Undo and all. You're Art in the design review: Priya opens the launch retro
- * a second in, the review fills it, and then the call hears three ideas (stories/calls/boards.ts).
+ * a second in, you open it from Board's In this call, the review fills it, and then the call hears three ideas
+ * (stories/calls/boards.ts).
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { at, opensBoard, type Present } from '../../src/api/script';
-import { inCall, phone } from '../../src/call';
+import { inCall, phone, plays } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { HEARD, RETRO, filledAfter } from './boards';
+import { openCallBoard } from './plays';
 import { AIKO, KOFI, PRIYA, REVIEW, REVIEW_TALK } from './talk';
 
 const meta = { title: 'Calls/Ideas from the call', ...pages } satisfies Meta<PageArgs>;
@@ -23,11 +25,15 @@ const SOON = { timeout: 10000 };
 /** Long enough for the script to get there: the board opening and filling, and the call hearing what's worth a sticky. */
 const LATER = { timeout: 40000 };
 const REVIEWERS: Present[] = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
-/** The design review with notes on: Priya opens the launch retro, the review fills it, and the call hears three ideas. */
+/** Board, then the board in this call: on your stage, just for you. */
+const onTheBoard: Play = async (c) => {
+  await c.step('Press Board, then the retro in this call: it opens just for you', async () => { await openCallBoard(c, 'Design review'); });
+};
+/** The design review with notes on: Priya opens the launch retro, you open it, the review fills it, and the call hears three ideas. */
 const heard = (play?: Play): PageStory => inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, notes: 'on', talk: { lines: REVIEW_TALK, every: 6 }, board: RETRO, cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(1 + filledAfter() + 1, HEARD)] }
-}, play ? { play } : {});
+}, { play: play ? plays(onTheBoard, play) : onTheBoard });
 
 /** Press the pill at the foot of the board: the tray rises over it. */
 async function openTray({ userEvent }: Context): Promise<void> {
@@ -77,12 +83,12 @@ export const AddAllThenUndo = heard(async (c) => {
 /** On a phone too: Add on one, Add both for the rest, and the toast's Undo takes those two back. */
 export const AddAllThenUndoPhone: PageStory = {
   ...phone(AddAllThenUndo),
-  play: (async (c) => {
+  play: plays(onTheBoard, async (c) => {
     await c.step('Tap 3 ideas from the call', async () => { await openTray(c); });
     await c.step('Tap Add on Priya’s, then Add both', async () => {
       await addFirst(c);
       await c.userEvent.click(await screen.findByRole('button', { name: 'Add both' }, SOON));
     });
     await c.step('Tap Undo on the toast: those two go, and Priya’s stays', async () => { await undoAdded(c, 'Added 2 stickies from the call.'); });
-  }) satisfies Play
+  })
 };

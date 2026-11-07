@@ -2,7 +2,7 @@ import { type HttpTransport } from '../transport/http';
 import { type HttpOptions } from '../transport/options';
 import { HttpWorkspaceLive, PRESENCE_BEAT_MS, QUIET_MS } from './live';
 import { pictureReader, sendFile } from './media';
-import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentShareSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, PresenterNotesSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
+import { type AlcoveApi, AlcoveApiError, BoardThemesSchema, CALL_PASS_HEADER, CreatedSchema, DOC_UPDATE_TYPE, DocAppendedSchema, DocAskPartSchema, DocLiveEventSchema, DocumentLibrarySchema, DocumentShareSchema, DocVersionLineSchema, type DocVersionSummary, DocVersionSummarySchema, fromBase64Url, MediaTokenAnswerSchema, MentionNoticeSchema, PersonIdsSchema, PresenterFrameNotesSchema, SearchDocSchema, WorkspaceItemSchema, WorkspaceLiveEventSchema, WorkspaceMediaSchema, WorkspacePersonSchema, type WorkspaceReadOptions, WorkspaceSummarySchema, WorkspaceTreeSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'documents' | 'workspaces'> {
@@ -102,8 +102,6 @@ export function createWorkspacesApi(t: HttpTransport, o: HttpOptions): Pick<Alco
       restoreVersion: async (id, documentId, versionId, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/restore`, {}, withPass(w)); },
       searchText: (id, w) => ndjson(SearchDocSchema, `${space(id)}/search`, undefined, withPass(w)),
       presenterNotes: {
-        get: (id, documentId, w) => req(PresenterNotesSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, undefined, withPass(w)),
-        set: async (id, documentId, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(documentId)}/presenter-notes`, { text }, withPass(w)); },
         frames: (id, boardId, w) => req(PresenterFrameNotesSchema, 'GET', `${space(id)}/documents/${encodeURIComponent(boardId)}/presenter-notes/frames`, undefined, withPass(w)),
         setFrame: async (id, boardId, frame, text, w) => { await req(z.unknown(), 'POST', `${space(id)}/documents/${encodeURIComponent(boardId)}/presenter-notes/frames`, { frame, text }, withPass(w)); }
       },

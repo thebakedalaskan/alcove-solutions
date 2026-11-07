@@ -44,7 +44,7 @@ result, and [Changing what's stored](#changing-whats-stored) how it changes with
 | `document_versions` | owner (the workspace), document, `version_id`, `bytes`, how many `parts`, created | `info_ciphertext` (who changed it, the call it was kept in, why it was kept) |
 | `document_version_parts` | owner (the workspace), document, version, `part` | `state_ciphertext` (256 KiB of its whole Yjs state) |
 | `document_access` | owner (the workspace), document, `access_id` (what the API calls the entry), `kind` (`email`/`seat`), role (`edit`/`read`), `call_id` (a seat's call), created | `principal_index` (an email index, or the `call-seat` index), `person_ciphertext` (the address, or the name in the seat) |
-| `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
+| `presenter_notes` | owner (the account), the document's workspace (`workspace_owner_id`) and `document_id`: one row for each person and document or board they kept notes beside with an earlier release. Nothing reads or writes it now | `body_ciphertext` ([Presenter notes](#presenter-notes)) |
 | `presenter_frame_notes` | owner (the account), the board's workspace (`workspace_owner_id`), `document_id` (the board) and `frame_index` (a keyed hash of the frame under the account's key): one row for each person and frame they keep notes beside | `body_ciphertext` (the frame and what's kept beside it, [Presenter notes](#presenter-notes)) |
 | `workspace_authors` | owner (the workspace), whether this address made the workspace (`made_workspace`) | `email_index`: every address whose name is on something in the workspace, so deleting that account can reach it after it has left |
 | `workspace_media` | owner (the workspace), `media_id`, `state` (`uploading`/`ready`), what its pieces take up so far (`bytes`), how many pieces the whole file comes to (`pieces`), created | `info_ciphertext` (its name, type, size and dimensions: [Media](#media)) |
@@ -392,23 +392,21 @@ what's small enough to be typing.
 
 ### Presenter notes
 
-What someone keeps beside a document for presenting it: one `presenter_notes` row for each account and document, sealed
-under the account's own keys (state key `presenter-notes:<documentId>`, record kind `presenter-notes`, whose header binds
-the account, the workspace and the document), so nobody else who can open the document can read them, and a record copied to
-another row doesn't open. `GET` and `POST /v1/workspaces/:id/documents/:doc/presenter-notes`, for anyone who can open the
-document and has an account: someone in a call by its link has nowhere to keep them (`403`). Empty text deletes the row. At
-most 20,000 characters.
+What someone keeps beside each frame of a board for presenting it, a slide's own notes: one `presenter_frame_notes` row for
+each account, board and frame, sealed under the account's own keys (state key `presenter-frame-notes:<boardId>`, record kind
+`presenter-frame-notes`, whose header binds the account, the workspace, the board and the frame), so nobody else who can open
+the board can read them. Which frame a row is for is a keyed hash of the frame's ID under that key (`frame_index`), and the
+frame's ID is inside the record, so nothing a browser named is kept in the clear, and a frame's record put in another frame's
+row doesn't open. `GET /v1/workspaces/:id/documents/:board/presenter-notes/frames` answers them all, by frame, for anyone who
+can open the board and has an account: someone in a call by its link has nowhere to keep them (`403`). `POST` there with
+`{ frame, text }` keeps one frame's, and empty text deletes its row. Only a board has frames: the same for a document is `404`.
+At most 4,000 characters beside a frame, and notes beside 500 frames of a board: past that a new frame is refused (`409`), and
+two at once can take it one past. Notes beside a frame that's been taken off the board stay with the board, and go with it.
 
-Beside a board they're kept frame by frame, a slide's own notes: one `presenter_frame_notes` row for each account, board and
-frame, sealed under the account's own keys (state key `presenter-frame-notes:<boardId>`, record kind `presenter-frame-notes`,
-whose header binds the account, the workspace, the board and the frame). Which frame a row is for is a keyed hash of the frame's
-ID under that key (`frame_index`), and the frame's ID is inside the record, so nothing a browser named is kept in the clear, and
-a frame's record put in another frame's row doesn't open. `GET /v1/workspaces/:id/documents/:board/presenter-notes/frames`
-answers them all, by frame; `POST` there with `{ frame, text }` keeps one frame's, and empty text deletes its row. Only a board
-has frames: the same for a document is `404`. At most 4,000 characters beside a frame, and notes beside 500 frames of a board:
-past that a new frame is refused (`409`), and two at once can take it one past. Notes beside a frame that's been taken off the
-board stay with the board, and go with it. Whatever was kept beside a whole board before frames had their own still opens
-where it was.
+Earlier releases also kept notes beside a whole document or board: one `presenter_notes` row for each account and document,
+sealed the same way (state key `presenter-notes:<documentId>`, record kind `presenter-notes`, whose header binds the account,
+the workspace and the document). Nothing reads or writes them now. The rows already there go with their account or their
+document, by the table's foreign keys, as they always did; a later release can drop the table.
 
 ### In a browser
 
@@ -565,7 +563,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
   or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
   document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
-  block's menu, is `remove`. A version in History and a presentation in a call draw from the same (`useMediaView` in
+  block's menu, is `remove`. A version in History draws from the same (`useMediaView` in
   `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
   (`MEDIA_LIMITS` in `features/workspaces/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before
@@ -812,7 +810,8 @@ and for how long](notes-and-inference.md#whats-kept-and-for-how-long)):
 - **What a call keeps of its workspace** (who's asking, what's presented and playing, what's been worked on) lasts while the
   call does. What was worked on goes into its note, and a call with notes off keeps only the versions. Asking Alcove about a
   selection keeps nothing.
-- **Presenter notes** last until their author empties them, or the document, the workspace or the account goes.
+- **Presenter notes** beside a board's frames last until their author empties them, or the board, the workspace or the account
+  goes. The `presenter_notes` rows earlier releases kept last until the document, the workspace or the account goes.
 
 ## Operations
 

@@ -20,10 +20,10 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
     {
       name: inCall ? 'In the call' : 'In the workspace',
       keys: [
-        ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }, { label: 'Open or hide the board', key: 'O' }] : []),
+        ...(inCall ? [{ label: 'Open or close the workspace', key: 'W' }, { label: 'Open a board', key: 'O' }] : []),
         { label: 'Find anything', key: shortcut('K') },
         { label: 'Show or hide the list', key: shortcut('\\') },
-        ...(inCall ? [{ label: 'Hide or show people', key: '⇧P' }, { label: 'Just the document', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),
+        ...(inCall ? [{ label: 'Hide or show people', key: '⇧P' }, { label: 'Fill your window with it, and back', key: shortcut('⇧F') }, { label: 'Stop following', key: 'Esc' }] : []),
         { label: 'New document', key: 'N' },
         { label: 'New folder', key: '⇧N' }
       ]
@@ -33,8 +33,7 @@ export function Keys({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
       name: 'Editing',
       keys: [
         { label: 'Bold', key: shortcut('B') }, { label: 'Italic', key: shortcut('I') }, { label: 'Comment', key: shortcut('⇧M') }, { label: 'Indent', key: 'Tab' },
-        { label: 'Undo your own changes', key: shortcut('Z') }, { label: 'New line in the same block', key: '⇧↵' },
-        ...(inCall ? [{ label: 'Next section when presenting', key: '→' }] : [])
+        { label: 'Undo your own changes', key: shortcut('Z') }, { label: 'New line in the same block', key: '⇧↵' }
       ]
     }
   ];

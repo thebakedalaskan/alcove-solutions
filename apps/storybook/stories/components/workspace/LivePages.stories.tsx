@@ -24,7 +24,7 @@ function LiveFrame({ name, save = 'live', end = false, children }: { name: strin
     <Box width="100%" height={600}>
       <WsPane>
         <WsDoc>
-          <WsDocHead crumbs={[CALL.title, name]} save={save} onToggleList={did('onToggleList')} zen={false} onZen={did('onZen')} />
+          <WsDocHead crumbs={[CALL.title, name]} save={save} onToggleList={did('onToggleList')} />
           <WsScroll ref={scroller}>{children}</WsScroll>
         </WsDoc>
       </WsPane>

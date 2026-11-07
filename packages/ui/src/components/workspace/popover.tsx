@@ -182,16 +182,15 @@ export function WsRowMenu({ folder = false, brought, onRename, onDuplicate, onMo
 }
 
 /**
- * ⋯ at the top of a document. `onShare` and `onPresent` show on a phone, where the head has no room for those buttons.
+ * ⋯ at the top of a document. `onShare` shows on a phone, where the head has no room for its button.
  * What someone can't do isn't offered: leave its handler out.
  */
-export function WsDocMenu({ onShare, onPresent, onHistory, onDuplicate, onMove, onCopyLink, onExport, onTrash }: {
-  onShare?: (() => void) | undefined; onPresent?: (() => void) | undefined;
+export function WsDocMenu({ onShare, onHistory, onDuplicate, onMove, onCopyLink, onExport, onTrash }: {
+  onShare?: (() => void) | undefined;
   onHistory?: (() => void) | undefined; onDuplicate?: (() => void) | undefined; onMove?: (() => void) | undefined; onCopyLink: () => void; onExport?: (() => void) | undefined; onTrash?: (() => void) | undefined;
 }) {
   const rows: WsMenuRow[] = [];
   if (onShare) rows.push({ id: 'share', icon: 'addUser', label: 'Share', phoneOnly: true, onSelect: onShare });
-  if (onPresent) rows.push({ id: 'present', icon: 'presentation', label: 'Present', phoneOnly: true, onSelect: onPresent });
   if (onHistory) rows.push({ id: 'history', icon: 'history', label: 'History', onSelect: onHistory });
   if (onDuplicate) rows.push({ id: 'duplicate', icon: 'copy', label: 'Duplicate', onSelect: onDuplicate });
   if (onMove) rows.push({ id: 'move', icon: 'folderInput', label: 'Move to…', onSelect: onMove });

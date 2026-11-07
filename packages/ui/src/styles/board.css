@@ -361,8 +361,6 @@
 /* Small menus on the board */
 .bp { position: absolute; z-index: 16; width: 264px; padding: 6px; border-radius: 14px; color: var(--ink); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--bd-ring), 0 22px 44px -18px rgb(18 34 63 / .5); animation: bd-pop var(--duration-1) var(--ease-out) both; }
 .bp .hd { padding: 10px 10px 8px; font: 600 14px/1.25 var(--font-sans); letter-spacing: -.005em; }
-/* Who can add to it: the workspace's Share sheet, which has its own width and room. */
-.bp.bp-share { width: auto; max-width: calc(100% - 24px); padding: 0; }
 .bp .sub { padding: 0 10px 10px; font-size: 13px; line-height: 1.42; color: var(--ink-3); }
 .bp .mi { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 0 10px; border-radius: 9px; font: 500 13.5px/1.2 var(--font-sans); color: var(--ink); text-align: left; }
 .bp .mi:hover { background: var(--sunk); }
@@ -422,11 +420,9 @@
 .ac-stage .bd .ac-avatar { background: var(--sunk); }
 .ac-stage .bd .ac-avatar .initial { color: var(--ink-2); }
 
-/* ---------------------------------------------------------------- the Board menu */
-/* It rises from the dock's Board button, in a Popover. */
+/* ---------------------------------------------------------------- the board picker */
+/* It opens under Board at the top right, in a Popover, and in place of Share's first step (`ic-sharepop`). */
 .bl { width: 372px; max-width: calc(100vw - 24px); margin-bottom: 8px; padding: 12px; border-radius: 18px; color: var(--ink); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); animation: ac-rise var(--duration-2) var(--ease-out) both; }
-.bl-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 4px 6px 9px; font: 600 14.5px/1.2 var(--font-sans); letter-spacing: -.005em; }
-.bl-h small { font: 500 12px/1 var(--font-sans); color: var(--ink-3); letter-spacing: 0; }
 .bl-tpl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
 .bl-c { display: grid; gap: 7px; padding: 6px 6px 8px; border-radius: 12px; text-align: left; font: 600 12.5px/1 var(--font-sans); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--duration-1), transform var(--duration-1) var(--ease-out), background-color var(--duration-1); }
 .bl-c:hover { box-shadow: inset 0 0 0 1px var(--line-control), var(--shadow-1); transform: translateY(-1px); }
@@ -446,15 +442,19 @@
 .bl-q .acts { display: flex; gap: 8px; margin-top: 10px; }
 .bl-q .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
 .bl.is-busy { cursor: progress; }
-
-/* ---------------------------------------------------------------- a live tile */
-/* The board as a tile on the stage, when someone keeps faces big. `is-col` is the smaller one above the tiles beside a big share. */
-.bd-tile { position: relative; min-width: 0; min-height: 0; padding: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--bd-ground); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .06); text-align: left; cursor: pointer; }
-.bd-tile.is-col { flex: none; width: 100%; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); }
-.bd-tile .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
-.bd-tile .ac-tile-name { position: absolute; left: 10px; bottom: 10px; z-index: 3; display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 6px; border-radius: 8px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); font: 500 12.5px/1 var(--font-sans); }
-.bd-tile.is-col .ac-tile-name { left: 8px; bottom: 8px; gap: 6px; height: 24px; padding: 0 8px 0 5px; border-radius: 7px; font-size: 12px; }
-.bd-tile .open { position: absolute; right: 10px; top: 10px; z-index: 3; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: rgba(6, 13, 26, .78); color: var(--stage-ink); }
+/* The board picker (`BoardPicker`): its own head, the board the call has, and why what's new can't be picked just now. */
+.bl-hd { display: grid; gap: 4px; padding: 4px 6px 2px; }
+.bl-hd b { font: 600 15px/1.2 var(--font-sans); letter-spacing: -.005em; }
+.bl-hd span { font: 500 12.5px/1.35 var(--font-sans); color: var(--ink-3); }
+.bl-hd + .bl-sub { margin-top: 10px; }
+.bl-th.is-icon { display: grid; place-items: center; color: var(--ink-2); }
+.bl-th.is-icon svg { width: 18px; height: 18px; }
+.bl-now b { color: var(--ink); }
+.bl-why { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--sunk); font: 500 13px/1.4 var(--font-sans); color: var(--ink-2); }
+.bl-why .ac-i { flex: none; margin-top: 1px; color: var(--ink-3); }
+.bl-c.is-off, .bl-r.is-off { opacity: .45; cursor: default; }
+.bl-c.is-off:hover { box-shadow: inset 0 0 0 1px var(--line); transform: none; }
+.bl-r.is-off:hover { background: none; }
 
 /* ---------------------------------------------------------------- More's objects */
 /* What Templates and From your workspace offer, beside the rail where More was. */
@@ -513,42 +513,6 @@
 
 /* ---------------------------------------------------------------- motion */
 @keyframes bd-open { from { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); } to { clip-path: inset(0 0 0 0 round 18px); } }
-/* Presenting: whoever's presenting has, round the board as everyone sees it, where they are and the way on, and beside it the next frame and their notes */
-.bd-pres { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; container: bd-pres / inline-size; }
-.bd-pres-in { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; height: 100%; }
-.bd-pres .pm { position: relative; display: grid; grid-template-rows: minmax(0, 1fr); min-width: 0; min-height: 0; }
-.bd-pres .shown { position: relative; min-width: 0; min-height: 0; }
-.bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr) 248px; gap: 10px; }
-.bd-pres.is-on .pm { grid-template-rows: minmax(0, 1fr) auto; gap: 10px; }
-.bd-pres.is-on .shown { border-radius: 18px; overflow: hidden; box-shadow: 0 0 0 2px var(--speak); }
-.bd-pres .tag { position: absolute; z-index: 13; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px 0 9px; border-radius: 9px; background: var(--stage-raised); color: var(--stage-ink); font: 600 12.5px/1 var(--font-sans); pointer-events: none; }
-.bd-pres .tag .ac-i { color: var(--speak); }
-.bd-pres .ctl { display: flex; align-items: center; justify-content: center; gap: 8px; height: 44px; color: var(--stage-ink); font: 500 13px/1 var(--font-mono); }
-.bd-pres .ctl .at { min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
-.bd-pres .ctl button { display: grid; place-items: center; height: 44px; border-radius: 12px; background: rgb(255 255 255 / .08); color: var(--stage-ink); transition: background var(--duration-1) var(--ease-out), opacity var(--duration-1) var(--ease-out); }
-.bd-pres .ctl button:hover:not([aria-disabled="true"]) { background: rgb(255 255 255 / .14); }
-.bd-pres .ctl button:focus-visible { outline: 2px solid var(--horizon); outline-offset: 2px; }
-.bd-pres .ctl .go { width: 44px; }
-.bd-pres .ctl .go[aria-disabled="true"] { opacity: .38; cursor: default; }
-.bd-pres .ctl .stop { padding: 0 14px; margin-left: 14px; font: 600 13.5px/1 var(--font-sans); }
-.bd-pres .side { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 10px; min-height: 0; color: var(--stage-ink); }
-.bd-pres .lab { font: 500 11.5px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--stage-ink-2); }
-.bd-pres .nx { position: relative; height: 150px; border-radius: 12px; overflow: hidden; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); background: var(--bd-ground); }
-.bd-pres .nx .bd-mini { position: absolute; left: 0; top: 0; display: block; transform-origin: 0 0; pointer-events: none; }
-.bd-pres .nx .end { position: absolute; inset: 0; display: grid; place-items: center; background: var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1 var(--font-sans); }
-.bd-pres .pn { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding: 12px; border-radius: 12px; background: rgb(255 255 255 / .05); cursor: text; }
-.bd-pres .pn:focus-within { box-shadow: inset 0 0 0 1px var(--horizon); }
-.bd-pres .pn textarea { flex: 1; min-height: 0; width: 100%; padding: 0; border: 0; resize: none; background: none; color: var(--stage-ink); font: 400 13.5px/1.45 var(--font-sans); outline: none; }
-.bd-pres .pn textarea::placeholder { color: var(--stage-ink-2); }
-/* A narrow stage: the frame, the way on under it, and the notes under that. The next frame waits for a wider one. */
-@container bd-pres (max-width: 640px) {
-  .bd-pres.is-on .bd-pres-in { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
-  .bd-pres .side { grid-template-rows: auto; }
-  .bd-pres .side > .lab, .bd-pres .nx { display: none; }
-  .bd-pres .pn { max-height: 104px; }
-  .bd-pres .ctl { gap: 6px; }
-  .bd-pres .ctl .stop { margin-left: 6px; }
-}
 
 /* The rise played backwards, as a board closed for everyone goes. */
 @keyframes bd-sink { from { clip-path: inset(0 0 0 0 round 18px); } to { clip-path: inset(62% 34% 0 34% round 400px 400px 18px 18px); opacity: 0; } }

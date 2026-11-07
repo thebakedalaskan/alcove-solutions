@@ -203,10 +203,10 @@ export const RowMenuOutside: RowMenuStory = { name: 'Row menu: outside a call', 
 export const RowMenuOpen: Story = { name: 'Row menu: from a row’s ⋯', args: { label: 'Options', rows: [] }, ...WIDE, render: () => <ListWith opened={{ key: 'menu:tree:plan' }} /> };
 
 type DocMenuStory = StoryObj<typeof WsDocMenu>;
-const DOC_MENU = { onShare: did('onShare'), onPresent: did('onPresent'), onHistory: did('onHistory'), onDuplicate: did('onDuplicate'), onMove: did('onMove'), onCopyLink: did('onCopyLink'), onExport: did('onExport'), onTrash: did('onTrash') };
-/** ⋯ at the top of a document. Share and Present are in it too, but show only on a phone, where the head has no room for them. */
+const DOC_MENU = { onShare: did('onShare'), onHistory: did('onHistory'), onDuplicate: did('onDuplicate'), onMove: did('onMove'), onCopyLink: did('onCopyLink'), onExport: did('onExport'), onTrash: did('onTrash') };
+/** ⋯ at the top of a document. Share is in it too, but shows only on a phone, where the head has no room for its button. */
 export const DocMenu: DocMenuStory = { name: 'Doc menu', args: DOC_MENU, render: (args) => <PopSurface ws><WsDocMenu {...args} /></PopSurface> };
-/** On a phone: the head's ⋯ opens a sheet at the bottom, with Share and Present at the top. */
+/** On a phone: the head's ⋯ opens a sheet at the bottom, with Share at the top. */
 export const DocMenuPhone: Story = { name: 'Doc menu: on a phone', args: { label: 'More for this document', rows: [] }, ...PHONE, render: () => <DocWith opened={{ key: 'more' }} height="100vh" /> };
 
 type MoveStory = StoryObj<typeof WsMovePicker>;

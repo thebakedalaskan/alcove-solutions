@@ -11,7 +11,7 @@ import { type CaptureDevicePart } from './capture';
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type CatchUpWindow } from './catchup';
 import { type CallMoveOut, type MoveMedia } from './moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
-import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentKind } from './workspace';
+import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
@@ -257,12 +257,19 @@ export interface CallSession extends LiveStore<CallState> {
   grantWorkspaceAsk(askId: string, documentId: string, role: DocumentRole): Promise<void>;
   /** Organizer only: says not now to an ask. Whoever asked is told. */
   declineWorkspaceAsk(askId: string): Promise<void>;
-  /** Anyone who can open it: presents a document or board in the call's workspace to the part of the call they're in. */
-  startPresenting(kind: PresentKind, id: string, section?: number | undefined): Promise<void>;
-  /** Whoever started it, or the organizer. */
+  /**
+   * Anyone who can open it: presents the workspace everyone views, or the board open where you are, to the part of the call
+   * you're in, as a new presentation (`CallPresent.key`). One at a time there: refused while someone else presents either, and
+   * starting while you present one presents this in its place.
+   */
+  startPresenting(what: PresentStart): Promise<void>;
+  /** Whoever started it, or the organizer: everyone goes to another of the board's frames. */
   movePresenting(section: number): Promise<void>;
-  /** Whoever started it, or the organizer. */
-  stopPresenting(): Promise<void>;
+  /**
+   * Whoever started it, or the organizer: it ends for whoever presented it, and everyone following keeps it open on their own;
+   * or for everyone (`close`), which closes a board in the call too. Everyone there is told which (`CallWorkspace.ended`).
+   */
+  stopPresenting(close: boolean): Promise<void>;
   /** Anyone who can open the document: plays a video in it for the part of the call they're in, from `positionMs`. */
   startPlaying(documentId: string, mediaId: string, positionMs?: number | undefined): Promise<void>;
   /** Whoever started it, or the organizer: it holds at `positionMs`. */
@@ -276,7 +283,8 @@ export interface CallSession extends LiveStore<CallState> {
   /**
    * Anyone invited, not a guest: opens a board for everyone in the part of the call they're in, in place of whatever's open
    * there. A new one is saved in the call's home, named after the call; a saved one, from whichever workspace it's in, needs
-   * `edit` on it. Resolves once it's open, with `board` up to date.
+   * `edit` on it. Refused while someone else presents a board there, as nothing takes theirs off everyone's stage. Resolves
+   * once it's open, with `board` up to date.
    */
   openBoard(from: BoardOpen): Promise<void>;
   /** Whoever opened it, or the organizer: closes it for everyone. Nothing is deleted, and nobody loses what the call gave them. */
@@ -334,6 +342,11 @@ export interface CallSession extends LiveStore<CallState> {
   /* Host controls, for whoever hosts (refused for anyone else). */
   /** Mutes one of someone's tracks; they unmute themselves. */
   mute(identity: string, trackSid: string): Promise<void>;
+  /**
+   * Organizer only: stops what someone shares (their screen and its sound), for everyone, by their seat. Everyone else is told
+   * who stopped it. Refused when they share nothing.
+   */
+  stopShare(seat: string): Promise<void>;
   /** Disconnects someone. They can come back with the link unless the call is locked. Nobody removes the organizer. */
   remove(identity: string): Promise<void>;
   /** While locked, nobody new can join except the organizer. */

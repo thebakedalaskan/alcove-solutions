@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One stage, one way to share</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="call.css">
+<script src="icons.js"></script>
+<script src="nc.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,300..600;1,6..72,300..600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="cv id light">
+<div class="id-head">
+<h1>Open it for you, present it to everyone</h1>
+<p>Board and Workspace sit at the top right and open just for you. Present brings everyone with you, and only what’s being presented gets a tile with the people.</p>
+</div>
+<div class="id-main">
+<div class="id-left">
+<div class="id-shot">
+<div class="id-z"><dc-import name="Call" step="boardChat" hint-size="1440px,900px"></dc-import></div>
+<span class="id-ring" style="left: 8px; top: 37px; width: 619px; height: 455px"><b>1</b></span>
+<span class="id-ring" style="left: 292px; top: 497px; width: 280px; height: 36px"><b>2</b></span>
+<span class="id-ring" style="left: 476px; top: 5px; width: 380px; height: 28px"><b>3</b></span>
+<span class="id-ring" style="left: 632px; top: 37px; width: 224px; height: 455px"><b>3</b></span>
+</div>
+<div class="id-key">
+<div><b>1</b><span><strong>The stage.</strong> The people, and whatever you have open: a board, the workspace or a screen.</span></div>
+<div><b>2</b><span><strong>The dock.</strong> What you do in the call: talk, share, raise a hand, leave.</span></div>
+<div><b>3</b><span><strong>The top right.</strong> What it opens is just for you: Board and Workspace on your stage; Notes, Chat and People on your side.</span></div>
+</div>
+<div class="id-stats">
+<div class="id-s"><b class="n">16 <i>→</i> 8</b><span class="d">Controls in the dock</span></div>
+<div class="id-s"><b class="n">5 <i>→</i> 1</b><span class="d">Ways what’s open looks: one frame for a screen, a board and the workspace</span></div>
+<div class="id-s"><b class="n">12 <i>→</i> 1</b><span class="d">Words for putting something away: Close. Your own screen has Stop sharing</span></div>
+<div class="id-s"><b class="n">6 <i>→</i> 3</b><span class="d">Tabs in the side panel, and Chat isn’t one of them</span></div>
+</div>
+</div>
+<div class="id-rules">
+<section class="id-r">
+<h2><i>1</i>Open it just for you, from the top right</h2>
+<p>Board and Workspace open on your stage; Notes, Chat and People on your side. Nobody else’s screen changes. Notes is this call’s pages of the workspace, and Chat is only chat.</p>
+<div class="stage id-art id-row">
+<div class="nc-yours"><span class="nc-yb has-l is-on"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg><span class="yl">Board</span></span><span class="nc-yb has-l"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folderOpen}}"></path></svg><span class="yl">Workspace</span></span><span class="nc-ysep"></span><span class="nc-yb has-l"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.notebook}}"></path></svg><span class="yl">Notes</span></span><span class="nc-yb has-l"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.chat}}"></path></svg><span class="yl">Chat</span></span><span class="nc-ysep"></span><span class="nc-yb is-faces"><dc-import name="Faces" who="art,priya,kofi,aiko" size="22" max="4" ring="#10192B" hint-size="72px,24px"></dc-import>4</span></div>
+</div>
+</section>
+<section class="id-r">
+<h2><i>2</i>Present when you want everyone with you</h2>
+<p>Present, on what you have open, or Share in the dock. Everyone follows you; on a board or in the workspace they can unfollow to work alongside, and Follow brings them back.</p>
+<div class="stage id-art id-bars">
+<div class="nc-fbar id-bar"><div class="nc-fwho"><span class="nc-fic"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.folderOpen}}"></path></svg></span><span class="nc-fname"><span class="nm">Launch review · 4 Nov</span></span><span class="nc-fmeta">Open just for you</span></div><div class="nc-fend"><span class="nc-present"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg>Present</span><span class="nc-close"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg>Close</span></div></div>
+<div class="nc-fbar id-bar"><div class="nc-fwho"><dc-import name="Faces" who="priya" size="22" ring="transparent" hint-size="22px,24px"></dc-import><span class="nc-fname"><span class="nm">Launch review · 4 Nov</span></span><span class="nc-fmeta">Priya is presenting</span></div><div class="nc-fend"><span class="nc-fol"><span class="t">Following Priya</span><span class="nc-unf">Unfollow</span></span><span class="nc-close"><svg class="i" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.x}}"></path></svg>Close</span></div></div>
+</div>
+</section>
+<section class="id-r">
+<h2><i>3</i>Close is for you. While you present, it asks.</h2>
+<p>Close puts it away for you. If you’re presenting a board or the workspace, Close asks: for you, or for everyone. A screen you share has Stop sharing.</p>
+<div class="stage id-art id-row">
+<div class="id-cm">
+<span class="nc-cm"><span class="sq"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.user}}"></path></svg></span><span><b>For you</b><small>Everyone else keeps it open, on their own.</small></span></span>
+<span class="nc-cm"><span class="sq"><svg class="i" width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.people}}"></path></svg></span><span><b>For everyone</b><small>It closes for everyone in the call.</small></span></span>
+</div>
+</div>
+</section>
+<section class="id-r">
+<h2><i>4</i>A tile only while it’s presented</h2>
+<p>Close something someone else is presenting and it waits as a tile with the people; Join takes you back in, following them. When they stop presenting, the tile goes.</p>
+<div class="stage id-art id-row">
+<span class="id-tile is-live"><span class="id-tpic"><svg class="i" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg></span><span class="id-tgo"><dc-import name="Faces" who="priya" size="14" ring="transparent" hint-size="14px,16px"></dc-import>Join</span><span class="id-tname"><svg class="i" width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="{{I.presentation}}"></path></svg>Launch retro<em>Priya is presenting</em></span></span>
+</div>
+</section>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1680,"height":1340}}'>
+/* The idea on one board: three places, and the few rules that make them. */
+class Component extends DCLogic {
+  renderVals() { return { I: window.NC.I }; }
+}
+</script>
+</body>
+</html>

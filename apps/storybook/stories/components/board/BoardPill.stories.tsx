@@ -1,8 +1,9 @@
 /*
  * BoardPill: anything the whole board shares, in one place under the bar, one thing at a time: a timer, a vote and its results,
- * who you're following, who's presenting, a room's time and the connection. At night on any sheet, with its one action at the
- * end, for whoever can use it: Stop and End the vote for whoever started them or the organizer, Done for them too. `soon`
- * turns it amber in a timer's last minute and as a room's time runs out. Every word here is the design canvas's.
+ * who you're following, a room's time and the connection. Who's presenting is the frame's bar's to say, not the pill's. At night
+ * on any sheet, with its one action at the end, for whoever can use it: Stop and End the vote for whoever started them or the
+ * organizer, Done for them too. `soon` turns it amber in a timer's last minute and as a room's time runs out. Every word here is
+ * the design canvas's.
  */
 import { BoardBar, BoardPill, ICON_NAMES } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -46,10 +47,6 @@ export const Results: Story = { args: { icon: 'vote', title: 'Results', text: '7
 export const ResultsForEveryoneElse: Story = { name: 'Results, for everyone else', args: { icon: 'vote', title: 'Results', text: '7 people voted', time: undefined, action: undefined } };
 /** Following someone: the sheet shows what they see, and Stop takes you back to your own view. */
 export const Following: Story = { args: { icon: 'eye', title: 'Following Priya', text: undefined, time: undefined, action: 'Stop' } };
-/** Someone is presenting: you see their frame, and can look round on your own. */
-export const Presenting: Story = { args: { icon: 'play', title: 'Art is presenting', text: undefined, time: undefined, action: 'Look around' } };
-/** Looking round while Art presents: one press takes you back to Art's frame. */
-export const LookingAround: Story = { name: 'Looking around', args: { icon: 'play', title: 'Art is presenting', text: undefined, time: undefined, action: 'Back to Art' } };
 /** In a breakout room: its name and the time it has left. */
 export const InARoom: Story = { name: 'In a room', args: { icon: 'door', title: 'Comms', text: undefined, time: '9:12', action: undefined, said: '' } };
 /** A minute left: amber, and it says the board comes back to the main room with you. */

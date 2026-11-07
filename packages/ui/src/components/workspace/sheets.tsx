@@ -307,17 +307,6 @@ export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, on
   );
 }
 
-/** What people will see, and one button to start. `sections`: how many the document splits into. */
-export function WsPresentPreview({ name, sections, onStart }: { name: string; sections: number; onStart: () => void }) {
-  return (
-    <div className="wv-pres">
-      <div className="wv-pv"><b className="ac-clamp-2">{name}</b><span className="l a" /><span className="l b" /><span className="l c" /></div>
-      <b className="t">Present to everyone in this call</b>
-      <p>They see this document without menus or anyone’s cursor, one section at a time. Your notes stay with you, and anyone can keep working.</p>
-      <Button variant="primary" size="sm" onClick={onStart}><Icon name="presentation" size={16} />Present {sections} {sections === 1 ? 'section' : 'sections'}</Button>
-    </div>
-  );
-}
 
 /** A document or a line that find turned up. `sub`: where it is. */
 export interface WsFindHit { id: string; name: string; sub: string; icon: IconName }
@@ -417,8 +406,8 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
 }
 
 /**
- * Someone in the call asked to see the workspace, on the organizer's screen: at the top, or above the dock on a phone, where
- * it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
+ * Someone in the call asked to see the workspace, on the organizer's screen: below the frame's bar and a document's head, so
+ * Present, Close and Share stay free, or above the dock on a phone, where it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
  * you pass null. `document`: what they can be let into, read only (`onLet`) or to edit (`onEdit`), the one open in front of
  * you. With none open, `onChoose` opens the workspace on something to share, or its list to pick one.
  */

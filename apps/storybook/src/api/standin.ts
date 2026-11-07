@@ -604,8 +604,6 @@ export const standIn: AlcoveApi = {
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),
     presenterNotes: {
-      get: (_id: ID, documentId: ID) => answer(() => ({ text: spaces.presenterNotes(documentId) })),
-      set: (_id: ID, documentId: ID, text: string) => answer(() => { spaces.keepPresenterNotes(documentId, text); }),
       frames: (_id: ID, boardId: ID) => answer(() => ({ frames: spaces.presenterFrameNotes(boardId) })),
       setFrame: (_id: ID, boardId: ID, frame: string, text: string) => answer(() => { spaces.keepFrameNotes(boardId, frame, text); })
     },
@@ -636,7 +634,7 @@ export const standIn: AlcoveApi = {
       return { themes: [...themes].map(([name, ids]) => ({ name, ids })) };
     }),
     rename: (id: ID, name: string) => answer(() => { spaces.treeOf(id).name = name; }),
-    remove: (id: ID) => answer((w) => { spaces.treeOf(id); w.workspaces = w.workspaces.filter((x) => x.id !== id); }),
+    remove: (id: ID) => answer(() => spaces.removeWorkspace(id)),
     people: (id: ID) => answer(() => spaces.peopleIn(id)),
     addPerson: (id: ID, email: string, role) => answer(() => spaces.addPerson(id, email, role)),
     setRole: (id: ID) => answer(() => { spaces.treeOf(id); }),

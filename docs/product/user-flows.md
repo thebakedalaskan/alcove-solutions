@@ -293,19 +293,24 @@ the call that rang.
 
 ## 6. In the call
 
-The call opens full screen: the stage with everyone's tiles, side panels that slide in beside it and go wherever you
-put them, and one dock at the bottom.
+The call opens full screen, in three places, each with one job: the stage holds the people and whatever you have open,
+the dock at the bottom holds what you do in the call, and the top right holds what's only yours. Your side, one panel at a
+time, slides in on the right.
 
-- **Top bar.** The title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
-  unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested** while
-  someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
-  opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and
-  the organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared
-  screens**, or anyone else's **Ask for notes**; **Reset my view** once you've arranged anything; **View**, which
-  changes only your screen: four layouts (**Side by side**, **Stacked**, **Screen first**, **Document first**), how
-  you see people (**Tiles**, **Arches**, **Hidden**), **Auto**, **Speaker** or **Grid**, where you see yourself, and
-  two ready-made layouts (**Everyone equal**, **Presenter and me**); **Catch up**; the shield, whose hover says what confidential compute covers (verified only
-  when the server's hardware check is bound to this browser's request); and who is here, which opens People.
+- **Top bar.** On the left, the title and clock; the notes sign (**Notes on** in crimson, **Notes paused**, **Notes
+  unavailable** when the host's browser can't record or listen or is out of the call, **Notes off**, or **Notes requested**
+  while someone has asked; the organizer's own says **Pausing…** until their pause lands), the same for everyone, which
+  opens what's captured: each kind of capture and its state, who changed it and when, who gets the notes, and the
+  organizer's **Pause notes**, **Resume notes** and **Turn off** (or **Turn on notes**) and **Read shared screens**, or
+  anyone else's **Ask for notes**; and the shield, whose hover says what confidential compute covers (verified only when the
+  server's hardware check is bound to this browser's request). On the right, what's only yours: **View** (Your view, below);
+  **Board** (**O**), which opens the board picker under it, and **Workspace** (**W**, with a count of what's been brought to
+  this call), which opens the workspace, each on your stage just for you (Presenting, below); **Notes** and **Chat** (**C**,
+  with a count of what's new), which open your side; and who is here, the faces and the count (and, for whoever hosts, how
+  many are asking to join), which open People. Each is lit while what it opens is open, and pressing it again puts it away:
+  on Board and Workspace that's **Close**, which asks first while you present it. When two things are on your stage and
+  there isn't room for both, they take turns, with a switcher in the top bar. On a phone (narrower than 600 px) the top bar
+  is the title, the notes sign, Chat (with its count) and the faces.
 - **Dock.** Microphone (**M**) and camera (**V**), each with an arrow for its menu: which microphone, which
   speaker, **Play test sound** and **Noise reduction**; your camera's preview, which camera and, where the
   browser can do it, **Background**: **None**, **Blur**, Alcove's pictures (**Balloons**, **Beach**, **Office**)
@@ -314,93 +319,164 @@ put them, and one dock at the bottom.
   instead. A microphone or camera that can't work has a caution mark, and
   pressing it opens its menu, which says why and how to fix it. Unplugging a device moves to another one,
   muted or not as before, and says which; a device that comes back is used again. Nothing turns your
-  microphone or camera on by itself during a call. Then **Share** (a tab, a window or a screen; the browser's own
-  picker asks which one), **Raise hand**, **Captions** (with an arrow to pick the caption language), breakout
-  rooms (once someone else is in the call), **Notes**, **Chat** (**C**), **More** (Catch up, Audio and video
-  settings, Video quality) and **Leave**. On a phone (640 px wide or narrower) the dock is shorter: microphone, camera,
-  the workspace, **More** and **Leave**. Chat (its count on **More**), Notes, the hand, captions, sharing, breakout
-  rooms and marking a moment are at the top of **More**, and the devices are under Audio and video settings. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
+  microphone or camera on by itself during a call. Then **Share** (Presenting and Sharing, below; it says **Presenting**
+  while you present), **Raise your hand**, **More** and **Leave**, and, in focus, **Show everything**. **More** is the same
+  on every screen: **Turn on captions** (or **Turn off captions**), **Mark this moment** (Only you, **B**), **Catch up on
+  what you missed**, **Breakout rooms** (the organizer's, once someone else is in the call), then **Audio and video
+  settings**, **Video quality**, **Move to another device** and **Keyboard shortcuts**, which lists the call's keys, then
+  what works on a tile, on a shared screen and on a board you present. On a phone the dock is microphone, camera,
+  **Share**, **More** and **Leave**, and **More** starts with a grid of **Board**, **Workspace**, **Notes**, **Chat** (with
+  its count) and **People**, then **Raise your hand**
+  and **Your view**; the devices are under Audio and video settings. **Video quality** sets the most video you send (360p, 720p or HD 1080p,
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
   are remembered in this browser, and shared screens are never made smaller.
-- **Panels.** Everything can be moved and resized, for you alone. Drag the line between two panels: it follows your
-  pointer, snaps at half, and a double-click evens it. Hover a panel for its handle and drag it: a sunrise glow shows
-  where it will land, on any edge of another panel, an edge of the window, or the middle of a panel to swap them.
-  Drag a tab out of a side panel to keep it open beside the others; drop it back on a panel to merge them. Hover the
-  people to move them, fold them to arches, or hide them (**⇧P**): hidden, they stand small on the horizon beside the
-  dock, and whoever's talking or has a hand up rises, with a line saying so. As the window narrows, tiles fold to arches,
-  side panels float, and what's big takes turns, with a switcher in the top bar. A panel there's no room for waits out
-  of sight: its button in the dock shows it closed, with anything new on it, and one press brings it up. All of it works from the keyboard,
-  and Alcove remembers how you like calls in this browser, so tomorrow's starts the way you left it.
-- **Your view.** Drag a tile to reorder, drag its corner to make it bigger, drag the line beside a shared
-  screen. A tile's **⋯** menu says what each choice changes and the key for it: **Pin for me** (up to six people,
-  who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you), and **Spotlight for
-  everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the grid**,
-  **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
-  brings you back; everyone else still sees you). On anyone else's it has **Volume for you** (Only you): a slider
-  from muted to 100% and a quick mute, for that person's voice in your speakers only; the same control is in their
-  row in People, and someone you've turned down shows "40% for you" on their tile and in People. Nobody else hears
-  a difference, and nothing they say goes into the notes any differently. A shared screen's **⋯** shows it big or
-  as a tile, and mutes its sound for you. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar with **Stop spotlight**.
-  From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter** for the menu,
-  **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize, **L** to point at a share shown big;
-  **Escape** stops pointing, then unpins everyone. Someone
-  pinned who leaves is pinned again if they come back, and nothing you arranged moves when people talk, join,
-  leave, turn their camera off or share. Alcove remembers how you like calls (the layout, room for shares, where
-  you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
-- **Sharing.** Several people can share at once (up to four), and starting yours never stops anyone else's. A bar
-  says what you're sharing (and "with sound" when its sound goes too), with **Change**, which swaps it in place for
-  everyone, and **Stop sharing**. Each share names whoever shares it, with their face in the arch. Two sit side by
-  side, or one above the other where that shows both bigger, with a line between them to drag (or move with the arrow
-  keys); one on a phone, where a share that starts goes in a switcher under the arches at once, behind the document
-  if the workspace is open, so **Document** and their screen take turns. The rest wait as tiles: click or tap one, or press **P** on it, to see it big, beside the one
-  that's big or, when two already are, in place of the one that's been big longest. Your own share starts as a tile
-  on your screen. Until you've chosen how to see any share, a second one goes big beside the first; once you have, a
-  new share comes in as a tile and nothing you see moves. A share that starts later glows for a moment where it lands,
-  and when it comes in as a tile a toast says who started sharing, with **Show it**. When the browser or the computer
-  won't share (on a Mac, the screen-recording permission), the picker comes back and says what to do, and offers a
-  tab, which needs no permission; when the sound you asked for didn't come, a toast says so. Phones and tablets can
-  see shares but can't share. Nothing shared is recorded or transcribed. While the organizer has shared screens read
-  for the notes, your bar also says **Read for the notes**, and your browser sends what changes on your share to the
-  notes: nothing for the first ten seconds of a share, and at most one frame every few seconds. Cameras never. Once
-  the notes have kept as many shared screens as they can for a call (about four hours of slides), screen notes turn
-  off for everyone, with a message saying why, and what was shared stays in the notes.
-- **Looking closer at a share.** On someone else's share you see big, pinch or Ctrl/⌘ and the wheel to zoom where you
+- **Your side.** One panel at a time, on the right, at a fixed width: it slides in and the stage makes room. In a window
+  too narrow for both (under 864 px), it slides in over the stage instead, which keeps its width and dims behind it, and a
+  press on the stage puts it away; the top bar and the dock work as ever. **Notes**,
+  **Chat** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
+  **Breakout rooms** (in People or **More**) opens the rooms there. A panel's button is lit while it's open, and pressing it
+  again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a
+  phone a panel is a sheet over the call. A reload finds your side as it was, and a call you've just joined opens Notes
+  beside the stage on a wide screen while notes are on. Nothing on your side changes anyone else's screen.
+- **Your view.** **View**, at the top right, says "Only your screen changes.": **The people** (**Auto**, **Speaker** or
+  **Grid**); **Beside what's shared**, where the people sit while something is open: **Tiles**, a column on the right that
+  narrows with the stage, **Arches**, a row over what's open, which a narrow stage gets anyway, or **Hidden** (**⇧P**),
+  standing small on the horizon beside the dock, where whoever's talking or has a hand up rises, with a line saying so;
+  **See yourself** (**In the grid**, **In a corner** or **Hidden**); and **Reset my view**, which puts it all back. A small
+  toolbar over the people beside what's open folds them to arches and back, or hides them. On a phone, **Your view** is in
+  **More**, without Beside what's shared, as what's open fills the screen under a row of arches there. Drag a tile to
+  reorder, drag its corner to make it bigger. A tile's **⋯** menu says what each choice changes and the key for it: **Pin
+  for me** (up to six people, who share the main stage), **Move earlier** and **Move later**, **Make bigger** (Only you),
+  and **Spotlight for everyone** (Everyone; organizer only). On your own tile it also has where you see yourself: **In the
+  grid**, **In a corner** (drag it, or Shift and an arrow, to another corner) or **Hidden** (a small chip in the corner
+  brings you back; everyone else still sees you). On anyone else's it has **Volume for you** (Only you): a slider from muted
+  to 100% and a quick mute, for that person's voice in your speakers only; the same control is in their row in People, and
+  someone you've turned down shows "40% for you" on their tile and in People. Nobody else hears a difference, and nothing
+  they say goes into the notes any differently. A pin or a spotlight shows on the tile with an ×, a spotlight also as a bar
+  with **Stop spotlight**. From the keyboard, Tab to the stage, move between tiles with the arrow keys, and use **Enter**
+  for the menu, **P** to pin, **Shift** with an arrow to move and **+** or **−** to resize; on a presented thing's tile,
+  **Enter** or **P** puts it on your stage, with the keys on its frame. Closing what's on your stage leaves the keys on its
+  tile while someone still presents it, or else on what opens it again (**Board**, **Workspace**, or **Share** for your
+  own screen), never nowhere. What's open on your stage comes before the people in Tab's order. The keys stay put as
+  **Unfollow** turns into **Follow Priya** and back, go to your side as what it shows changes from inside it, to the next
+  step's first choice inside Share, and back to **More** as **Keyboard shortcuts** closes; on a phone, your side's sheet
+  keeps them while it's up. On a share on your stage, **L** points at it, and **Escape** stops pointing;
+  then **Escape** unpins everyone. Someone pinned who leaves is pinned again if they come back, and nothing you arranged
+  moves when people talk, join, leave or turn their camera off. Alcove remembers how you like calls (how you see the people,
+  and where you see yourself) for your account in this browser; how you arranged this call lasts until you leave it.
+- **Presenting.** What you have open, or what someone presents, sits on your stage in one frame, with the people beside
+  it. Its bar has whoever presents it (their face, or what kind of thing it is while nobody does), its name, which opens a
+  menu of what you can do with it, and a line: "Open just for you", "You’re presenting · 3 following" or "Priya is
+  presenting". On the right it has only what applies: following, **Present**, focus (**⌘⇧F**, "Fill your window with
+  it"), **Stop sharing** or **Close**.
+  - **Open it just for you.** **Board** (from its picker) and **Workspace**, at the top right, open on your stage, and nobody
+    else's screen changes. Your stage holds one thing: opening something puts away what was there. Something presented
+    becomes its tile; something open just for you closes, and the workspace keeps your place, caret and undo.
+  - **Present it.** **Present**, on the bar of a board you can add to or of the workspace, while it's open just for you,
+    brings everyone with you. **Share**, in the dock, presents **Your screen**, **A board** or **The workspace** straight
+    away: your screen after a step that asks which kind, and a board picked from the board picker, Share's next step. A
+    presentation that starts takes the stage of everyone who isn't watching another: they follow it, and a toast says so
+    ("Priya is presenting the workspace, and you’re following.", or "Priya is presenting their screen."). Someone watching
+    another presentation gets it as a tile, with a toast ("Kofi is presenting their screen. It’s with the people.") and
+    **Show it**, and its tile glows for a moment where it lands. Toasts about the same thing take each other's place, so
+    one never stays up saying what's no longer so. Each part of the call (the main room, or a breakout room) has one
+    presented board or workspace at a time, and up to four screens: while someone else presents a board or the workspace
+    there, neither has **Present**, and
+    Share's **A board** and **The workspace** say "Priya is presenting. You can present once they stop." instead. Someone
+    who can't open what's presented is told who's presenting, never what ("Priya is presenting something you can’t
+    open"), and gets no frame and no tile; when it's the call's board, brought by someone here, the toast has **Ask Priya for
+    access**, which asks in the call's chat, as the board's own frame does.
+  - **Follow, or work alongside.** On a board you see the presenter's frame; in the workspace, their page and line. The
+    bar says "Following Priya", with **Unfollow**, which gives you your own view back, to work alongside them: in the
+    workspace, where you were before you followed; on a board, as you left it. A click, scroll or keystroke in the
+    workspace, or a scroll, drag or pinch on a board, works on your own too, from where you are. The bar then says where
+    they are ("Priya is in Launch plan") with **Follow Priya**, which takes you back. A screen can't be unfollowed.
+  - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
+    it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
+    workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
+    closes for everyone in the call.", or in a breakout room "It closes for everyone in this room.", where it does, unless
+    it's the board every room shares and you opened it or you're the organizer), as a sheet on a phone, and so do the lit
+    **Board** and **Workspace** (**O**, **W**). On the call's board while nobody presents it, whoever opened it and the
+    organizer are asked too: **For you** ("It stays in the call, and Board opens it again.") or **For everyone** ("It
+    leaves the call for everyone, and stays saved in Product."), which takes it out of the call for everyone, who are
+    told "Launch retro was closed for everyone. It's saved in Product."; while rooms share it, only the organizer is;
+    **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
+    you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
+    board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
+    its name; whoever presented it is told who did ("Art closed Launch retro for everyone.").
+  - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people:
+    a screen shown live, a board drawn small, or the workspace with where its presenter is, and its name, "Priya is
+    presenting" and **Join** (**Open**, on your own). Pressing it puts it on your stage, following, with the keys on its frame;
+    from the keyboard it's one stop among the tiles, and **Enter** or **P** does the same. When the presentation
+    ends, its tile goes, and something nobody presents has no tile. Its **⋯** has **Show it**; **Show beside**, which puts
+    it beside the one thing on your stage, as two screens sit side by side (not on a phone); and, for a screen with sound,
+    **Mute its sound for you**.
+- **Sharing.** **Share › Your screen** (a tab, a window or your whole screen, with **Also share the tab’s sound**, or your
+  computer's on a whole screen, where the browser can share it: the next step opens in the same menu, then the browser's own
+  picker asks which one) presents your screen, and a toast says "Everyone sees your tab." Several people can share at once
+  (up to four), and starting yours never stops anyone else's. Your share sits on your stage. Its bar says "You’re presenting
+  · a tab with sound" (with sound only when its sound goes too, and "Starting to share…" until it's out), and "· Read for the
+  notes" while the organizer has shared screens read for the notes, and has **Stop
+  sharing**. Its name has **Others can point at it**, **Clear marks** and **Change what you share**, which swaps it in place
+  for everyone, and says **Read for the notes** while the organizer has shared screens read for the notes. Each share names
+  whoever shares it, with their face in the arch. Someone else's share is presented like anything else (above): it takes
+  your stage, with a toast ("Priya is presenting their screen."), unless you're watching another presentation, when it comes
+  in as a tile, with a toast and **Show it**; **Close** makes it a tile again, for you, while they share. Its name has
+  **Point at it** (**L**), **Freeze the picture** (**F**), **Earlier picture** (**,**), zoom, **Mute its sound for you**,
+  **Open in its own window**, **Put on the board** (while the board in the call is beside it on your stage, for whoever can
+  add to the board) and a **Show beside** for anything else presented ("Show Kofi’s screen beside"), which puts the two side
+  by side, or one above the other where there isn't room across; with room for neither, they take turns, with a switcher in
+  the top bar. When the browser or the computer won't share (on a Mac, the screen-recording permission), **Your screen**
+  comes back and says what to do, with **A tab** picked, which needs no permission; when the sound you asked for didn't
+  come, a toast says so. Phones and tablets can see shares but can't share: there, **Your screen** says "Sharing a screen
+  needs a computer". Nothing shared is recorded or transcribed. While the organizer has shared screens read for the notes,
+  your browser sends what changes on your share to the notes: nothing for the first ten seconds of a share, and at most one
+  frame every few seconds. Cameras never. Once the notes have kept as many shared screens as they can for a call (about four
+  hours of slides), screen notes turn off for everyone, with a message saying why, and what was shared stays in the notes.
+  **Stop it for everyone**, the organizer's, stops someone's share for everyone: "You stopped Priya’s share for everyone.
+  Priya is told it was you.", and a notice says who stopped it.
+- **Looking closer at a share.** On someone else's share on your stage, pinch or Ctrl/⌘ and the wheel to zoom where you
   point (or **+**, **−**, and **0** for the whole picture), drag to move around, and double-click for 200% and back; a
-  label says how far in and a minimap where. **Freeze** (**F**) holds the picture still while the share goes on, and
+  label says how far in and a minimap where. **Freeze the picture** (**F**) holds the picture still while the share goes on, and
   **Earlier picture** (**,**) steps back through the last 30 times it changed; a bar says how far behind live you are,
   with **Back to live**. They're kept in your browser's memory only, never saved or sent, and go when the share stops,
-  you show it as a tile, you move to or from a breakout room, or you leave; none are kept while notes are paused (zoom and freeze still work).
+  you close it, you move to or from a breakout room, or you leave; none are kept while notes are paused (zoom and freeze still work).
   **Open in its own window** puts a share in a window of its own (Picture-in-Picture in Chrome, Edge and Firefox, a
-  popup in Safari) to keep in view or put on another screen; its tile says **In its own window**, with **Bring it
+  popup in Safari) to keep in view or put on another screen; the call says **In its own window** where it was, with **Bring it
   back**. Two shares side by side are each zoomed and frozen on their own, to compare. Only your screen changes.
-- **Pointing at a share.** On a share shown big and live, the pointer button (or **L**, or **Point and mark** in its
-  **⋯**) starts pointing: everyone sees your pointer there with your face and name, a click leaves a ring and a drag a
+- **Pointing at a share.** On a share on your stage, live, **Point at it** in its name (or **L**) starts pointing:
+  everyone sees your pointer there with your face and name, a click leaves a ring and a drag a
   line, and each fades after a few seconds. A small bar says you're pointing, with **Undo** (or Backspace) for your
   last mark and **Stop pointing**, the × (or Escape). From the keyboard, the arrow keys move your pointer and Enter
   leaves a ring; on a phone, tap and drag. Pointers and marks stay on the same spot of the picture however each person
   has zoomed into it or moved around, and while you point the wheel, a pinch and the keys still zoom. A frozen or earlier
   picture shows none, as they're about the live one, and freezing stops your pointing; a share in its own window shows
-  them, and you point in the call. Your own share shows what others point at too. Its bar has a switch for whether others can point at it
+  them, and you point in the call. Your own share shows what others point at too. Its name has **Others can point at it**
   (on unless you turn it off; you always can) and **Clear marks** while there are any; changing what you share clears
   them too. The organizer can turn pointing off for everyone in People. Pointers and marks go from browser to browser,
   encrypted end to end, and stay in your room; they're never recorded or read for the notes, and nobody's computer is
   ever controlled from the call.
-- **Captions** are off until you turn them on, and turning them off only hides them: while notes are on the
-  call is still transcribed. Captions show the newest line, in the language you pick (translated in
-  confidential compute, for you alone), with the original underneath. Captions need notes on.
-- **Notes** (side panel). While notes are on: what's been decided, the follow-ups (who and when, as said),
-  and a summary, read from the transcript as the call goes, the same for everyone in that part of the call; each time
-  opens the transcript at that moment. Anyone who gets the notes can tick a follow-up, and it's done for everyone and in
-  the notes at the end. A guest with the link gets notes written only from what was said while they were here, and can't tick them. The
-  organizer's **⋯** turns notes on or off. The notes everyone gets are written when the call ends.
-- **Yours** (side panel), beside **Notes**: your own notes on the call, which say **Only you** before you type. Write
-  something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark in the dock, or **More**
-  on a phone; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
+- **Captions** are off until you turn them on (**More › Turn on captions**; they have no key, as **C** is Chat), and
+  turning them off only hides them: while notes are on the call is still transcribed. Captions show the newest line, in
+  the language you pick on the captions themselves (translated in confidential compute, for you alone), with the
+  original underneath. Captions need notes on.
+- **Notes**, at the top right, opens on your side: "This call, in the workspace", with **Open** (the workspace on these
+  notes, just for you), the bookmark (**Mark this moment**, **B**) and **×**, over the tabs **Notes**, **Transcript** and
+  **Ask**. While notes are on, the Notes tab has what's been decided, the follow-ups (who and when, as said), **From the
+  rooms** once breakout rooms have been held, and a summary, read from the transcript as the call goes, the same for
+  everyone in that part of the call; each time opens the transcript at that moment. Anyone who gets the notes can tick a
+  follow-up, and it's done for everyone and in the notes at the end. A guest with the link gets notes written only from what
+  was said while they were here, and can't tick them. The **⋯** beside the notes sign, at the top of the Notes tab, has the
+  organizer's **Pause notes**, **Resume notes** and **Turn notes off** (or **Turn notes on**), or anyone else's **Ask for
+  notes**. The notes everyone gets are written when the call ends.
+- **Yours**, at the foot of the Notes tab: your own notes on the call, which say **Only you** before you type. Write
+  something for yourself, or **Mark this** to bookmark what was just said (**B**, the bookmark at the top of Notes, or
+  **Mark this moment** in **More**; the bookmark on a transcript line marks that line). Under an answer in **Ask**, **Keep in your notes**
   keeps it here; nothing else keeps one. A bookmark of something said where you aren't now (the main room, from a
   breakout room) says so, and opens once you're back there or in the notes after the call. Someone with only the link
   doesn't have this: there's no account to keep it under. It goes with the call's notes, so it starts when notes do.
-- **From last time**, at the top of Notes when the call is in a series and you have earlier notes from it: for you
+- **From last time**, at the top of the Notes tab when the call is in a series and you have earlier notes from it: for you
   alone, from those notes. What's decided, what's still open and for how long, and the follow-ups (who took them on,
   who they're only suggested for), three of each, then what was settled since the last call. Each has its call and
   moment, a breakout room's with its room, and opens in a new tab, so the call carries on. It's open until the call has
@@ -409,8 +485,11 @@ put them, and one dock at the bottom.
 - **Earlier calls**, in **Ask**, beside **This call**: ask across the calls you have notes from, such as why something was
   chosen. Each answer says which calls it comes from, and opens them in a new tab. Only you see it, and nothing of it
   is kept. It waits while notes are paused, and a guest, or someone with no notes from the series, doesn't have it.
-- **Transcript**, **Ask**, **Chat** and **People** (who is here, with raised hands, pins and spotlight, who is
-  ringing and how they answered, and who is invited and not here; the organizer can ring anyone in the last two).
+- **Transcript** (the whole call so far, with who's talking at the end) and **Ask** are the Notes panel's other tabs.
+  **Chat** (**C**) has a panel to itself, encrypted end to end. **People**, from the faces: who is here, with raised
+  hands, pins and spotlight, who is asking to join, who is ringing and how they answered, and who is invited and not
+  here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**, which opens the rooms on
+  their side.
 - **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
@@ -423,7 +502,8 @@ put them, and one dock at the bottom.
 - **Someone asking to join.** A card drops in for the organizer with **Not now** and **Let in**, and stays until it's
   answered. On your own, while nobody else is here, **Just you so far** keeps the link to hand: at the bottom left of the
   stage, or, while the workspace is open, at the foot of its list, under Trash, where it covers none of it.
-- **Catching up**, for you alone, and not saved unless you keep an answer. **Catch up** (top bar or **More**) reads what you most likely
+- **Catching up**, for you alone, and not saved unless you keep an answer. **Catch up on what you missed**, in **More**,
+  opens **Ask** in Notes on what you most likely
   missed: your time away if you just came back, what was said before you came if you joined late, or the last
   five minutes. In **Ask**, a chip says what's read (**Whole call** at first) and changes it: the last 5 or 15
   minutes, before you joined, since you joined, while you were away, the whole call, or a stretch picked on the
@@ -435,7 +515,8 @@ put them, and one dock at the bottom.
   arranged it. Coming back after time away, or joining well after the start, offers a catch-up once, if notes have
   been on. A guest with
   the link can catch up on what was said while they were in the call; the notes go to the people invited.
-- **Breakout rooms.** Pick two or three rooms and how long, drag people between rooms and rename them, then
+- **Breakout rooms.** The organizer opens them on their side, from **Breakout rooms** in People or **More**. Pick two
+  or three rooms and how long, drag people between rooms and rename them, then
   **Open rooms**. While they're open: a shared timer, each room and who is in it (rename a room in place, or
   move someone to another room or back to the main room from their name), **Join room** and **Back to main
   room**, **Message every room**, and **Bring everyone back now**. Each room has its own encryption keys and
@@ -492,57 +573,61 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### The call's workspace
 
-1. **Workspace** in the dock, or **W**, opens the workspace beside the call: the stage makes room, the people glide to a
-   column, and the workspace rises in. The count on the button is what's been brought to this call. Every call has a home,
-   where its notes and transcript go: the workspace it was scheduled with, as a continuation, or the one its series has;
-   else, the first time anyone opens it, a new one made for the call, named after it and the day (**Launch check-in ·
-   5 Nov**), with the organizer and everyone invited in it. At the top of the home is the call's own folder, named the
-   same, open, with **Notes**, **Follow-ups** and **Transcript** in it; a home for several calls has a folder for each,
-   the newest first. Everyone sees the same workspace, late or back from a reload. It opens on this call's agenda, or the
-   first thing brought to it, and **This call** at the top of the list holds what's been brought. Anyone who
-   can open a document can bring it from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping
-   its row on This call. Pressing Workspace or **W** again gives the stage back and keeps your place: the document, where
-   you'd scrolled to, your caret and your undo, for the rest of the call and across a reload. The call's letters (**M**,
-   **V**, **C**, **B**, **W**) and the workspace's **N** sleep while the caret is in a document, for a moment and a half after
-   a key goes into one, and, when what held the caret goes from under it (a presentation coming over the page, or the
-   workspace switching), until you click, tap, Tab or Esc: the rest of a sentence never mutes you or makes a document
-   somewhere else. Focus lands on the document taking the page's place, where a key does nothing.
-   - **Someone shares while you're writing:** nothing you're looking at moves. It lands as a tile among the people and glows
-     for 3 seconds, and a toast offers **Show it**, as does the tile. It takes its place beside the document, the
-     people fold to arches and the list tucks away, so both stay readable, and they're back once it's a tile again. Drag the line between them (it snaps at half, and a double-click evens it);
-     **×** on the screen sends it back to a tile for you only. On a window with no room for both, they take turns, and
-     the one you just showed is in front.
-   - **Arranging it:** the workspace is a panel like any other: its handle moves it, View has the four layouts, and **Document
-     list** hides the list. A list that gave way for want of room comes over the page from the button at the top left of the page,
-     until you open something or press **Esc**. **Reset my view** puts everything back and leaves the workspace open.
-   - **Just the document** (**⌘⇧F**, the arrows at the top right of the page, or View): the bars slide off, everyone drops to
+1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,
+   and the people sit beside it as View says. **Open**, at the top of Notes, opens it on the call's notes. The count on the
+   button is what's been brought to this call. Every call has a home, where its notes and transcript go: the workspace it
+   was scheduled with, as a continuation, or the one its series has; else, the first time anyone opens it, a new one made
+   for the call, named after it and the day (**Launch check-in · 5 Nov**), with the organizer and everyone invited in it. At
+   the top of the home is the call's own folder, named the same, open, with **Notes**, **Follow-ups** and **Transcript** in
+   it; a home for several calls has a folder for each, the newest first. Everyone sees the same workspace, late or back from
+   a reload. It opens on this call's agenda, or the first thing brought to it, or with neither on what you had open there
+   last, and **This call** at the top of the list holds what's been brought. Anyone who can open a document can bring it
+   from its row's menu (**Bring to this call**, **Take out of this call**), or by dropping its row on This call. Pressing
+   Workspace or **W** again, or **Close** on its bar (which asks first while you present it: step 5), puts it away and keeps
+   your place: the document, where you'd scrolled to, your caret and your undo, for the rest of the call and across a
+   reload, so opening it again takes you back there. A list that gives way for want of room comes over the page from the
+   button at the top left of the page, until you open something or press **Esc**. The call's letters (**M**, **V**, **C**,
+   **B**, **W**, **O**) and the workspace's **N** sleep while the caret is in a document, for a moment and a half after a
+   key goes into one, and, when what held the caret goes from under it (a presentation taking your stage, or the workspace
+   switching), until you click, tap, Tab or Esc: the rest of a sentence never mutes you or makes a document somewhere else.
+   Focus lands on the document taking the page's place, where a key does nothing.
+   - **Someone presents while you're writing:** what they present takes your stage, with a toast, and you follow it. If
+     it's the workspace, you follow them in it: what you wrote stays where you wrote it, and **Unfollow** takes you back
+     there. If it's something else, the workspace keeps your place, caret and undo, and **Workspace** takes you back to
+     exactly where you were. If you're watching someone else's presentation, it comes in as a tile among the people
+     instead, with **Join**, and a toast offers **Show it**; **Show beside** puts it beside the one you're watching, and
+     closing either leaves the other.
+   - **Focus** (**⌘⇧F**, or "Fill your window with it" on the frame's bar): the bars slide off, everyone drops to
      arches on the horizon, and your microphone, camera, **Show everything** and Leave stay. You still see who's talking and
-     who has a hand up. **Show everything** or **Esc** brings it all back as it was, with the caret where you left it.
+     who has a hand up. **Show everything**, **⌘⇧F** or **Esc** brings it all back as it was, with the caret where you left it.
    - **Working together:** with the workspace open, hovering someone's tile offers **Follow** if they're in it (an arch has it in
      its menu, and People has it beside where each person is); the tile says **Following**, and shows a pen while they write.
      On a phone, tapping someone's arch opens their card as a sheet: **Follow** (or **Stop following**), **Go to where
      they are**, **Tag them in this document**, and **Pin, volume and more** for the rest of their tile's options.
      **@** lists who's in the call first, then who's invited, then the workspace and the company, and tagging someone in
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
-     **Go there** opens it on the line. Putting the workspace away, or bringing in something it takes turns with, stops
+     **Go there** opens it on the line. Putting the workspace away, or opening something else on your stage, stops
      following, and for everyone else you've left it.
-   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them. Just the
-     document isn't on offer until the rooms close, and on a phone the workspace goes over the rooms until it's closed.
+   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them, as
+     anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the notes' **Open**
+     all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On a phone, or a
+     window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer until the rooms
+     close.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
      of their own. Everyone else carries on.
-2. **Only the organizer switches what everyone views**, from the name at the top of the list: their workspaces they can edit
-   in, with who's in each, the call's home marked **This call's home**, and **New workspace**. Picking one asks once, in
-   place, says who in the call can't open it, and that the notes and transcript still go to the home; **Switch to …**
-   changes the list for everyone at once, a toast says where the notes still go (in two lines at most), and **Back** on it
-   changes it back; it goes when the call ends, or when Leave asks its question. The question takes focus as it opens, and
-   **Tab** reaches its answers. Someone following someone stops, and is told the call's workspace changed. The
-   call's Notes, Follow-ups and Transcript stay at the top of the list while another workspace is viewed. Nobody is
-   interrupted and nothing is moved or copied: sound and video carry on, and whoever can't open it stays in the call and
-   sees that it's private, not what's in it. What was brought to the call from the workspace before stays with that one.
-   **New workspace** makes one for the call, with everyone invited in it to edit, as its home has (a guest without an account
-   isn't), named after the call, and opens a blank document in it; it's
-   still there after the call. The home doesn't change: the next call in the series still has it. Everyone else sees the
-   name, and that the organizer chooses.
+2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the
+   workspace's name on its bar: their workspaces they can edit in, with who's in each, the call's home marked **This call's
+   home**, and **New workspace**. Picking one asks once, in place, says who in the call can't open it, and that the notes
+   and transcript still go to the home; **Switch to …** changes the list for everyone at once, a toast says where the notes
+   still go (in two lines at most), and **Back** on it changes it back; it goes when the call ends, or when Leave asks its
+   question. The question takes focus as it opens, and **Tab** reaches its answers. Someone following someone stops, and is
+   told the call's workspace changed. The call's Notes, Follow-ups and Transcript stay at the top of the list while another
+   workspace is viewed. Nobody is interrupted and nothing is moved or copied: sound and video carry on, and whoever can't
+   open it stays in the call and sees that it's private, not what's in it. What was brought to the call from the workspace
+   before stays with that one. **New workspace** makes one for the call, with everyone invited in it to edit, as its home
+   has (a guest without an account isn't), named after the call, and opens a blank document in it; it's still there after
+   the call. The home doesn't change: the next call in the series still has it. Everyone else sees the name, and that the
+   organizer chooses.
 3. **Someone who can't open it**, a guest or anyone outside the workspace, is told it's private, and nothing else: no
    names, no folders, nobody's whereabouts. **Ask** (the organizer by name) changes the words in place, and they carry on
    with the call. The organizer sees who's asking at the top of the call (above the dock on a phone, clear of the list's button), and
@@ -556,8 +641,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    empty, and the organizer can turn notes on from there while anyone else asks; if something's written already it stays, and a line
    says what's holding the notes back. **Notes** is the summary and what's been decided so far, and a time opens the transcript at
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
-   open beside the document from the button on their row, as side panels you can pull out to sit anywhere, and **Open in the
-   workspace** in the Notes panel goes the other way.
+   open on your side, beside the document, from the button on their row, and **Open**, at the top of the Notes panel, goes the
+   other way.
    - **Follow-ups** are what the notes heard, what people added, and the to-dos with a person and a date in the documents worked on
      in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone and ticks the line in
      its document, and where it came from opens that line. **Add a follow-up** adds one of your own, which anyone can tick and which
@@ -573,18 +658,30 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    - **Hear it** on a quote plays that moment, when the call keeps its recording: during the call for anyone in it who was
      there for that moment, guests included (a guest never hears what was said while they were away), and after it for
      everyone with the notes.
-5. **Present** is at the top of every document in a call (in **⋯** on a phone). Its preview shows what people will see and
-   how many sections the document splits into, at each first- or second-level heading, and **Present N sections** starts it.
-   - **Everyone who can open it** sees it in place of their own page: one section at a time, with no list, menus or
-     anyone's caret, and the strip at the top saying who's presenting what. The workspace opens for it if it wasn't open.
-   - **Whoever presents** also gets, beside it and for them alone, where they are and what's next, **Back** and **Next**
-     (or **←** and **→**), their own notes for that document, kept for next time, and **Stop presenting**, always at the foot.
-   - **Work on my own** goes back to your own page, or to the document itself, while the presentation carries on; the strip
-     says **Back to the presentation**. The organizer can also stop someone else's from the strip.
-   - **Stop presenting** puts everyone back exactly where they were: your own page as you left it, and the workspace put
-     away again if it opened for the presentation. If the presenter leaves the call, the same happens, and a toast says
-     they left, so the presentation ended. Nobody's access changes: someone who can't open it is told who's
-     presenting, never what.
+5. **Present the workspace**, from **Present** on its bar while it's open just for you (on a phone too), or with **Share ›
+   The workspace** in the dock, for anyone in the workspace, while nobody else presents a board or the workspace (Share
+   says "Priya is presenting. You can present once they stop."). Everyone in your part of the call who isn't watching
+   another presentation follows you, live, to the page and the line you're on, through the same Follow as working
+   together, and you're told "Everyone follows you in the workspace. They can unfollow to work alongside you." The bar says
+   how many follow ("You’re presenting · 3 following").
+   - **Everyone else** finds it on their stage, unless they're watching another presentation, when it comes in as a tile
+     with **Show it**. The bar says "Priya is presenting" and "Following Priya". **Unfollow** gives them their own place
+     back, where they were before they followed, and a click, scroll or keystroke in it leaves them where they are, on their
+     own: to open another document and write alongside Priya, with her face showing where she is. **Follow Priya** ("Priya
+     is in Launch plan") takes them back to her page and line. **Close** closes it for them: while Priya presents it's a
+     tile among the people, saying where she is, and **Join** takes them back in, following.
+   - **Ending it.** While you present, **Close** (or the lit **Workspace**, or **W**) asks: **For you**, and everyone
+     following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
+     organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
+     workspace for everyone."). It also ends when the presenter leaves the call for good
+     ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call ("Priya stopped
+     presenting the workspace."), when they present something else in its place, when their breakout room closes, when the
+     workspace everyone views switches, or when the call ends; each ends it at once, as the call says it. Going to another
+     part of the call yourself leaves what was presented where you were, without a word. A reload doesn't end it: nothing
+     is said, everyone's screen keeps it as it was, and it carries on when they're back; only if they aren't back within
+     half a minute is it said to have ended. When it ends, its tile goes, and whoever was following keeps it open on their
+     own unless it closed for everyone. Nobody's access changes: someone who can't open it is told who's presenting, never
+     what.
 6. **Play for everyone**, on a video in a document, plays it at the same moment on the screen of everyone who can open it,
    from the workspace: no screen share, and nobody hears it twice. Late joiners land at the same moment.
    - **The bar** above the dock says what's playing and who started it, and has your own volume. Whoever started it, or the
@@ -596,8 +693,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    ("Priya and you edited this"), for each person only what they can open. Each opens in the app, in your theme: the same
    document, nothing copied. Each document keeps a version of how the call left it. **The next call in a series** finds a
    new agenda beside the last one, at the top of This call, holding only what was left open.
-8. **⌘K** finds anything in the workspace from anywhere in the call. It opens the workspace first if it's closed, and brings it
-   to the front if it's taking turns with a share, so the line it lands on is one you can see.
+8. **⌘K** finds anything in the workspace from anywhere in the call. It opens the workspace on your stage first if it isn't
+   there, so the line it lands on is one you can see.
 9. **Ask** on what's selected (flow 12) answers **What was said about this?** from this call: everything said in it that you
    may read.
 10. **History** files what was worked on under the call: **During this call** while it's on, and after it under the call's name
@@ -605,45 +702,58 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 
 ### A board in the call
 
-1. **Board** in the dock, beside Share, or **O**, opens the Board menu. **Blank**, **Retro**, **Ideas** and **Flow** start a new
-   board, which opens for everyone here at once. Under them are boards your team already has: whatever's been brought to this
-   call first, then the newest from the workspaces in your Drive, three at most, with where they're from. Anyone invited can
-   start one, in the main room or a breakout room; a guest can't. On a phone, Board is in **⋯** beside Share, and **Open a
-   board** shows the same menu there.
-2. **It opens for everyone.** The board rises through an arch onto the stage, people glide to a strip beside it, and one
-   line says what happened: "Everyone here can add to this board." for whoever opened it, "Art opened Launch retro. Everyone
-   here can add to it." for everyone else. A new board is saved in the call's workspace, named after the call. Opening
-   another replaces it for everyone.
-3. **A saved board some people here can't open** asks first, in the same menu, before anything opens: "Priya and Theo can't
-   open Onboarding flow. It's in Product." **Let them in for this call**, there only for someone who may share it, opens it to
-   them until the call ends. **Open without them** opens it to everyone else. Someone it isn't open to sees **A board you
-   can't open** and who brought it, and nothing of its name; **Ask Art for access** asks in the call's chat.
+1. **Board**, at the top right, or **O**, opens the board picker under it: "Open a board" and "Only you see it until you
+   present it." **In this call**, if the call has a board, has its name and who brought it ("Priya · brought it"), or "Priya
+   is presenting it". **New** has **Blank**, **Retro**, **Ideas** and **Flow**. **Your team’s boards** has whatever's been
+   brought to this call first, then the newest from the workspaces in your Drive, three at most, with whose each is and
+   where it's from. At its foot: "Sealed. Alcove can’t read boards." Anyone invited can start one, in the main room or a
+   breakout room; a guest can't ("Guests can’t start a board here."). While someone else presents a board here, nobody can
+   start or bring in another, and the picker says "Priya is presenting a board. You can start one once they stop." With a
+   board on your stage, Board and **O** close it instead (step 5). **Share › A board** in the dock is the same picker, as
+   Share's next step, presenting what you pick straight away (step 11); while someone else presents a board or the
+   workspace here it says "Priya is presenting. You can present once they stop." instead, and nothing is made or brought
+   in. On a phone, Board is in **More** (step 14).
+2. **It opens just for you.** The board you pick opens on your stage, in the frame ("Open just for you"), with the people
+   beside it, and nobody else's screen changes. Opening a saved board this way doesn't touch the call. **New** makes a
+   board, saved in the call's workspace and named after the call, that's the board in this part of the call: the one the
+   timer, votes, ideas from the call, breakout rooms and the note's **Worked on in this call** hang on. It still opens only
+   for you, and everyone else finds it under **In this call**. Timer, Vote and ideas from the call show on the board in the
+   call, not on a saved board you opened yourself. Someone else starting a new board while you have the call's open leaves
+   yours on your stage, just for you. **Present**, on its bar, brings everyone (step 11).
+3. **Presenting a saved board brings it into the call first.** If some people here can't open it, a question comes first,
+   before anything is presented: "Kofi and Maya can't open Onboarding flow. It's in Design." **Let them in for this call**,
+   there only for someone who may share it, opens it to them until the call ends. **Present without them** presents it to
+   everyone else. Someone it isn't open to sees **A board you can't open** and who brought it, and nothing of its name;
+   **Ask Art for access** asks in the call's chat.
 4. **Working on it together.** Everyone's pointer carries their face and name, with dots while they type, and whoever's
-   talking glows on their tile and their pointer. A person's tile has **Go to Priya**, which takes you to where Priya is,
-   and **Follow Priya**, which keeps your view with Priya's, with a ring in her colour and a pill at the top of the board,
-   until **Stop**, Escape, a scroll or a zoom. The pill shows one thing at a time.
-5. **Hide it, for you alone.** With a board open, the Board button (or **O**) puts it away for you: it's a live tile among
-   the faces, and pressing the tile brings it back where you were, with the keys on it. Nobody else's view changes. While
-   you're presenting it, it stays in front of you, since everyone's watching what you see: the Board button and **O** say
-   "Stop presenting first. Everyone sees this board while you present it." and leave it where it is.
-6. **Beside a shared screen.** If someone's sharing, the board takes the main space and the share moves to the top of the
-   column, live, with everyone under it. A share that starts while you're on the board comes in the same way, and one line
-   says so: "Priya started sharing. It's beside the board." Nothing you're doing on the board stops. Dragging the line
-   between them gives one more room, for you only. Pressing the share makes it big and the board a live tile above the faces;
-   pressing the board swaps them back. From the keyboard, **P** on the share (or **Make it big**, first in its **⋯**) swaps
-   them as a press does, and Enter on the board's tile brings it back with the keys on the board. While you present the board
-   it stays where it is, and the share says to stop presenting first. **Put on the board**, in a share's **⋯**, puts a picture
-   of the share as your browser shows it on the board, captioned "Priya's screen, 14:05", and Priya is told. It's kept in the
-   board's files, whether or not screen notes are on.
-7. **The board's name** has **Rename**, for anyone who can change it, and everyone sees the new name at once; **Saved in
-   Product**, which brings up that workspace if it's the one the call is viewing and opens any other in a tab of its own;
+   talking glows on their tile and their pointer. While Priya's on the board, unless it's being presented to you, her
+   tile's menu has **Go to Priya**, which takes you to where Priya is, and **Follow Priya**, which keeps your view with
+   Priya's, with a ring in her colour and a pill at the top of the board, until **Stop**, Escape, a scroll or a zoom. The
+   pill shows one thing at a time.
+5. **Close is for you.** **Close**, on the frame's bar, or pressing the lit **Board** (or **O**), closes a board open just
+   for you, and nothing changes for anyone else. On a board someone else presents, it closes it for you: while they present
+   it, it's a tile among the people, and **Join** on the tile takes you back in, following. A board nobody presents has no
+   tile. While you present it, Close asks first (step 11). Someone moving the board in the call to Trash, or deleting it,
+   takes it out of the call for everyone, and whoever had it open is told which ("Launch retro was moved to Trash, so it
+   closed for everyone."); restored, it's the board in the call again.
+6. **Beside a shared screen.** While you're on a presented board, a share that starts comes in as a tile among the people,
+   with a toast and **Show it**; opening a board just for you puts a share that's on your stage away as a tile, still live.
+   **Show beside**, in the **⋯** on the share's tile, puts it beside the board, as two screens sit side by side, and closing
+   either leaves the other. Nothing you're doing on the board stops. With the board in the call beside it, **Put on the
+   board**, in the share's name, puts a picture of the share as your browser shows it on the board, captioned "Priya's
+   screen, 14:05", and Priya is told. It's kept in the board's files, whether or not screen notes are on. It's for whoever
+   can add to the board, and isn't offered for your own screen.
+7. **The board's name**, on the frame's bar, is a menu. It has **Rename**, for anyone who can change it, and everyone sees
+   the new name at once; **Open where it’s saved**, which brings up that workspace if it's the one the call is viewing and
+   opens any other in a tab of its own;
    **Who can add to it**, for someone in that workspace who can edit the board, which opens the workspace's own **Share** for
    it under the name (add people by name or address, change what each can do, or keep it to the people added; someone it
    becomes read-only to sees it as **View only** at once, and once it's kept to the people added, nobody's told everyone here
-   can add to it); and **Close for everyone**, for whoever opened
-   it or the organizer. Closing deletes nothing: the sheet sinks back through the arch, the faces come back and one
-   line says "Launch retro is closed. It's saved in Product." Whoever closed it has the keys on Board in the dock (on a phone, on More, where Board is). The seal
-   beside the name says what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says
+   can add to it); **Copy link**, **Download as an image**, **Download as a PDF** and **Night board**, as the bar's **More**
+   has (step 13), there while you present it too, when the bar isn't; and, for
+   the organizer, on a board someone else presents, **Close it for everyone**. Whoever presents it closes it for everyone
+   from Close's question (step 11). Closing deletes nothing: the board stays saved where it is. The board's seal says
+   what's true of this board: who can add to it, where it's saved, and that Alcove can't read it. It says
    how the board stands too, as on its own page:
    - **Reconnecting**, when the board's connection drops while the call carries on. The pill at the top of the board says
      "Keep going. Your changes are safe here." What you add goes up once the connection's back, with nothing lost or doubled.
@@ -665,43 +775,54 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    go back to the board. Nobody sees a count until
    whoever started it, or the organizer, presses **End the vote**: every count appears at once, for everyone, the top three
    stay bright and the rest step back, until **Done**. The pill shows one thing at a time: how the board stands (Reconnecting
-   or Couldn't save), someone presenting, then a vote, its results, following someone, and the timer.
+   or Couldn't save), then a vote, its results, following someone, and the timer. Someone presenting is the frame's bar's
+   to say.
 9. **Ideas from the call.** While notes are on where you are, the call picks out things people said that are worth a sticky,
    and a pill rises at the foot of the board: **3 ideas from the call**. Nobody has to stop talking to write them down.
    Pressing it opens the tray, **From the call**, written in confidential compute like the notes: each line is what someone
    said, with who and when ("Priya, 2 min ago"), and **Add**. Adding one puts it on the board as a sticky, in a free spot in
-   the frame it fits and that frame's colour, and it goes from everyone's tray; it says **Added** in yours. **Add all three**
-   (or **Add both**) adds the rest at once, popping in one after another, and says "Added 3 stickies from the call." with
-   **Undo**, which takes back those three and nothing you've done since. Two people adding at the same moment get their
-   stickies side by side, never one on another, and the same idea added by both is one sticky. Closing the tray (× or Escape)
-   puts what's left aside for you alone; the pill comes back when there's something new. While the tray is open the call's
-   keys work as ever: O, W, and Escape for the side panel. Ideas are only for people who can add to the board, only from
-   what everyone there may read, and never while notes are off or paused; a room's ideas stay in the room.
+   the frame it fits and that frame's colour, and it goes from everyone's tray; it says **Added** in yours. **Add all
+   three** (or **Add both**) adds the rest at once, popping in one after another, and says "Added 3 stickies from the call."
+   with **Undo**, which takes back those three and nothing you've done since. Two people adding at the same moment get their
+   stickies side by side, never one on another, and the same idea added by both is one sticky. Closing the tray (× or
+   Escape) puts what's left aside for you alone; the pill comes back when there's something new. While the tray is open the
+   call's keys work as ever: O, W, and Escape for your side. Ideas are only for people who can add to the board, only from
+   what everyone there may read, and never while notes are off or paused; a room's ideas stay in the room. They wait while
+   the board is presented to you, or by you.
 10. **Sort into themes.** Drag round several stickies (or Shift-click them) and the bar offers **Sort into themes** beside
    **Tidy**. It sends what they say to confidential compute, says **Sorting…** meanwhile, and moves them into named columns,
    each in its own colour, inside their frame: "Sorted into 3 themes." with **Undo**, and one Undo puts it all back. It
    works with notes off, and on a board's own page. While notes are paused nothing goes to the AI, so it isn't offered.
    Fewer than two stickies with words says "Pick at least two stickies with words to sort.", and more than 80 "Sort up to 80
    stickies at a time."
-11. **Present.** **Present** on the board's bar makes its frames slides, in order, with nothing to prepare (on a wider screen:
-   a phone's bar has no Present).
-   - **Whoever presents** sees exactly what everyone sees, ringed and marked **Everyone sees this**, with **1 of 3**, **Back a
-     frame** and **Next frame** (or **←** and **→**) and **Stop presenting** under it, and beside it, for them alone, the next
-     frame and their own notes beside this frame, marked **Only you see this**: each frame its own, kept for next time. Their
-     pointer shows to everyone. The board stays in front of them until they stop (step 5).
-   - **From the keyboard**, Enter on **Present** puts the keys on **Next frame** (on **Stop presenting**, with only one
-     frame). **←** and **→**, and a clicker's Page Up and Page Down, move the frames while the presentation has the keys: the
-     frame itself, or Back a frame, Next frame and Stop presenting under it. Anywhere else they move nothing: in the notes
-     beside the frame, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen. **Stop presenting**
-     puts the keys back on **Present**. Someone watching who had the keys on the board finds them on **Look around** as the
-     frame takes the sheet, and back on the board once the presentation ends.
-   - **Everyone else** sees the frame alone, with no tools and no handles, as it changes, and the pill says "Art is presenting"
-     with **Look around**. Look around, or a scroll, gives you your own view back, tools and all, and the pill says **Back to Art**;
-     Art moving on never pulls you back. Someone who comes in late lands on the frame everyone's on. The organizer's pill has
-     **Stop presenting** too, which stops anyone's for everyone.
-   - **Stop presenting** puts everyone back where they were. If the presenter leaves the call, the same happens, and a toast says
-     they left, so the presentation ended. Closing the board ends it too. Nobody's access changes: someone who can't open the
-     board is told who's presenting, never what.
+11. **Present.** **Present**, on the frame's bar of a board you can add to while it's open just for you, or **Share › A
+   board** in the dock, brings everyone with you, and the board's frames become slides, in order, with nothing to prepare.
+   Neither is offered while someone else presents a board or the workspace here.
+   The frame's bar has no Present on a phone, where **Share › A board** presents one. A saved board comes into the call
+   first (step 3).
+   - **Whoever presents** is told "Everyone follows you on Launch retro. They can unfollow to add to it.", and the bar says
+     "You’re presenting · 3 following". They see the frame alone, as everyone following does, and it stays on the frame. At
+     its foot, for them alone, the pager has the arrows on either side of "1 of 3" and the frame's name, and, with an
+     account, the notes button, which opens **Your notes** on their side: where they are ("1 of 3 · you’re sharing it"),
+     their own notes beside this frame, each frame its own and kept for next time ("Kept for next time. Only you see
+     them."), and the next frame, drawn small ("Next: Could improve", or "That’s the last one"). Their pointer shows to
+     everyone. Opening something else on their stage puts the board away as a tile with **Open**, and they go on presenting.
+   - **From the keyboard**, **→** and **←**, and a clicker's Page Down and Page Up, move the frames while the presentation
+     has the keys: the frame itself, or the pager's arrows, where the keys go as it starts (**Next frame**, as soon as the
+     pager shows, so **→** moves on straight after **Present**). Anywhere else they move
+     nothing: in Your notes, on a tile on the stage, in the rooms' setup, or on the page with nothing chosen.
+   - **Everyone else** follows: their tools fade, and they see the presenter's frame alone as it changes, with "Art is
+     presenting" and "Following Art" on the bar. **Unfollow** gives you your own view back, as you left it, tools and all,
+     and a scroll, drag or pinch on the board starts working on your own from where it takes you; **Follow Art** ("Art is in
+     Could improve") takes you back. Art moving on never pulls you back. Someone who comes in late lands on the frame
+     everyone's on.
+   - **Close**, while you present it (or the lit **Board**, or **O**), asks: **For you** ("Everyone else keeps it open, on
+     their own."), and everyone following stays on it, working on their own, and it's still the board in the call; or **For
+     everyone** ("It closes for everyone in the call."), which closes the board in the call too: "Closed for everyone." The
+     organizer can close anyone's for everyone, from the board's name, and whoever presented it is told who did ("Art
+     closed Launch retro for everyone."). **Stop sharing**, in Share, asks the same, wherever the board is: on your stage,
+     a tile, or out of sight. If the presenter leaves the call, it ends too, and
+     its tile goes. Nobody's access changes: someone who can't open the board is told who's presenting, never what.
 12. **More**, at the foot of the tools, for anyone who can add to the board. **Image** puts a picture from this computer
    where you're looking, kept in the board's own files and sealed as the board is; everyone who can open the board sees it,
    and nobody else. **From your workspace** lists what you can open in the board's own workspace, the board aside, and puts one
@@ -722,14 +843,15 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    change nothing, so someone who can only look has them too. **Night board**, for whoever can change the board, makes it a
    dark board in any theme, a dark board by day, for everyone and everywhere it shows: on the stage, as a tile, on the note,
    presenting and on its page. It says **On** while it is, and pressing it again lets the board follow each person's theme.
-14. **On a phone**, faces stay on top, under the line over the call when it says anything, and the board fills the rest,
-   opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps the name, the
-   seal, **Timer**, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is **+**, at the
-   bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says where
-   it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first free
-   place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add** or
-   **Add all three**, and the toast's **Undo** takes them back. In a vote, a tap on a sticky votes for it and another takes it
-   back. Drawing and moving things stay on bigger screens.
+14. **On a phone**, **Board** is first in **More**'s grid and opens the same picker, and a board's frame has no Present:
+   **Share › A board** presents one. Faces stay on top, under the line over the call when it says anything, and the board
+   fills the rest, opening on its first frame at a size it can be read. Drag to look round and pinch to zoom; the bar keeps
+   the name, the seal, **Timer**, **Vote** and **More**, and what the pill says wraps rather than being cut. The one tool is
+   **+**, at the bottom right: a sheet rises, night as the call is, with one sticky, its colours and a button that says
+   where it's going, "Add to Went well" for the frame in the middle of the view, and the sticky goes into that frame's first
+   free place, wherever someone has moved the frame meanwhile. Ideas from the call are there too: tap the pill, then **Add**
+   or **Add all three**, and the toast's **Undo** takes them back. In a vote, a tap on a sticky votes for it and another
+   takes it back. Drawing and moving things stay on bigger screens.
 
 ### Boards in breakout rooms
 
@@ -748,9 +870,10 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    as a timer, the line over the call says where you are and how long is left. Art's message to every room comes as a toast,
    "Art, to every room: Two minutes left", so nobody has to leave the board to read it. **Raise your hand** asks Art for help,
    and Art coming in is told as "Art joined this room."
-3. **Start a board in a room.** With none set up, **Board** is where it always is, and the same menu says "Only this room sees
-   it" and "Comes back with you when rooms close. Alcove can't read it." It opens for everyone in the room, and nobody outside it
-   can see it, the organizer included, until they join.
+3. **Start a board in a room.** With none set up, **Board** is where it always is, and the same picker, with no boards your
+   team has, says at its foot "Comes back with you when rooms close. Alcove can't read it." A new board is the room's: it
+   opens on your stage, just for you, until you present it, and everyone in the room finds it under **In this call**. Nobody
+   outside the room can see it, the organizer included, until they join.
 4. **While rooms are open** the organizer sees who is where: each room on its board says "On their board. Join to see it." in
    the panel and on the stage, with no preview. **Join room** puts them in the room and on its board; **Back to main room** takes
    the board away with the room's keys.
@@ -763,7 +886,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
    Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
    **Present** then makes each room's frame a slide: the room reports back, and the organizer moves on.
-6. **One board for every room.** With Shared, the organizer stays on the board and can watch every frame fill up; when the one
+6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
+   every frame fill up (closed just for them, the rooms take its place until they open it again); when the one
    open can't take the rooms' frames (whoever brought it can't edit it now), the rooms share a new one in its place: "The rooms
    share a new board. The one that was open can't take their frames." In a room you land on your room's frame, hear your room
    only, and the pill says **Everyone can see this board** with the room's time; in the main room it says how many rooms are
@@ -1257,9 +1381,9 @@ face and first name while they move, which fade after three seconds of quiet. Op
 **Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
 say so, and the page scrolls to them. In a call that's the call's own **Notes**, **Follow-ups** and **Transcript** too, and the
 bar names the page. Nobody else moves, and they do nothing. If they open something you can't, you stay put
-and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following** or **Esc** ends
-it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are, and a toast offers
-**Follow again**.
+and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following**, or **Esc** in
+the workspace, ends it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are,
+and a toast offers **Follow again**. In a call, **Esc** anywhere else is the call's (a field, focus, your side).
 
 **Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
 first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
@@ -1330,22 +1454,24 @@ here it's on its own page, the same board, with no call around it.
 **Board** makes one beside the document and puts it in the page: a small picture of a board with its name on it, which
 opens it. Someone who can't open that board sees **A board you can’t open** there, and nothing of what's on it.
 
-**The page.** The board fills the page under the workspace's head, with its tools down the side and its bar along the
-top: its name, its seal, Undo and Redo, how near you are, the map, **More**, the faces of whoever else is on it, and **Start
-a call here**, which opens Start a call with the board coming too: one line says **Launch retro comes with this call. Start now
-and it opens for everyone.** Start now, and once the call's under way the board opens on the stage for everyone, and the call
-says so. Schedule for later, and the board is brought to that call, first in its Board menu, and opens only when someone opens
-it. The bar's **More** has **Download as an image**, **Download as a PDF** and, for whoever can add to the board, **Night
-board**, as in a call; a night board is dark on its page by day too. Everyone else on it has a pointer with their face and
-name, in a colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add
-a sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
+**The page.** The board fills the page under the workspace's head, with its tools down the side and its bar along the top:
+its name, its seal, Undo and Redo, how near you are, the map, **More**, the faces of whoever else is on it, and **Start a
+call here**, which opens Start a call with the board coming too: one line says **Launch retro comes with this call. Start
+now and it opens for you, ready to present.** Start now, and once the call's under way the board opens on your stage, just
+for you, as a board picked from the call's board picker does: **Present** brings everyone, asking first about anyone who
+can't open it. A board you can only look at comes with the call too, with no such line, and doesn't open. Schedule for
+later, and the board is brought to that call, first in its board picker's boards, and opens only when someone opens it. The
+bar's **More** has **Download as an image**, **Download as a PDF** and, for whoever can add to the board, **Night board**,
+as in a call; a night board is dark on its page by day too. Everyone else on it has a pointer with their face and name, in a
+colour of their own; you in another window aren't someone else. A blank board says **Double-click anywhere to add a
+sticky**, or press **N**, and that everyone who can open it can add to it too, when that's so. To someone who can only look,
 it says **Nothing on this board yet**. What's added reaches everyone on it as it happens.
 
 **Adding to it.** Double-click anywhere for a sticky, ready to type; in a frame it takes the frame's colour. **Tab** starts
 the next one beside it, and **Esc** finishes. The tools are down the side: **Select** (Esc), **Sticky** (N) in six colours,
 **Text** (T) in three sizes, **Shape** (S; drag to size it, or click once, then type on it), **Line** (L), **Pen** (P; press
 it again for the highlighter) and **Frame** (F). **More**, the **+** under them, holds what it holds in a call ([A board in the
-call](#a-board-in-the-call), step 9): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
+call](#a-board-in-the-call), step 12): **Image**, **From your workspace**, **Table**, **Mind map**, **Comment** and **Templates**, and
 a link on the board opens its document here.
 Two people typing in one sticky both keep what they typed. The board's keys work as soon as the typing stops:
 straight after **Esc** finishes a sticky, **N** picks the next. The call's letters still sleep for a moment after typing, as

@@ -8,7 +8,7 @@
  * and what the bars offer is in `tools/`, and what More adds in `more/`.
  */
 import { errorCode } from '@alcove/api';
-import { addObject, addStickies, bounds, hasBox, roomFrameId, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
+import { addObject, addStickies, bounds, hasBox, roomFrameId, setNight, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
 import {
   BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
   BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
@@ -85,6 +85,17 @@ export interface BoardHandle {
   addStickies(stickies: readonly Landing[]): { added: readonly Added[]; step: BoardStep | null } | null;
   /** Takes back one change of this person's by itself, wherever it is in their undo, as a toast's Undo does: on a phone too. */
   undoStep(step: BoardStep): void;
+  /** Download as an image, as the bar's More does: what this person's board shows them, drawn and saved here. */
+  saveImage(): void;
+  /** Download as a PDF, as the bar's More does. */
+  savePdf(): void;
+  /** Whether it's a night board: dark in any theme, for everyone. */
+  night(): boolean;
+  /**
+   * Night board on or off, for everyone, as the bar's More has it. It's for whoever can change the board, which whoever offers it
+   * makes sure of: someone presenting a board they can change draws nothing on it, but can still make it a night board.
+   */
+  setNight(on: boolean): void;
 }
 
 /** Rooms' boards coming back to this one: which rooms, by id, and until when (ms) they're on their way. */
@@ -100,7 +111,6 @@ export interface BoardHandlers {
   /** What the bar's Timer and Vote do where there's no `run` to open their menus, as in a story of the kit. */
   onTimer?: (() => void) | undefined;
   onVote?: (() => void) | undefined;
-  onPresent?: (() => void) | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
   /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
@@ -379,15 +389,15 @@ function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProp
   const mapOn = useBoardState(board, (s) => s.map);
   const moreOn = useBoardState(board, (s) => s.barMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name = '', nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', faded = false, people = NO_PEOPLE, run, onName, onSeal, onPresent, onCall } = surface;
+  const { name, nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', faded = false, people = NO_PEOPLE, run, onName, onSeal, onCall } = surface;
   const look = BOARD_LOOKS[mode];
   const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
     <BoardBar name={name} nameTitle={nameTitle} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit}
       acts={acts && !following} canAct={look.edit || look.phone} moreOn={moreOn} mapOn={mapOn} faded={faded}
-      onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
+      onName={onName} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))} onPresent={onPresent}
+      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))}
       onMore={more ? () => board.toggleBarMenu() : undefined}
       tail={look.page && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );
@@ -542,8 +552,12 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
       return id;
     },
     addStickies: (stickies) => addLanded(board, stickies),
-    undoStep: (step) => board.undoStep(step)
-  }), [board, presence]);
+    undoStep: (step) => board.undoStep(step),
+    saveImage: () => barItems.image?.(),
+    savePdf: () => barItems.pdf?.(),
+    night: () => board.getSnapshot().night,
+    setNight: (on) => setNight(board.doc, on, board.origin)
+  }), [board, presence, barItems]);
 
   return (
     <Pictures.Provider value={pictures}>

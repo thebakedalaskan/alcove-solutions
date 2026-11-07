@@ -245,7 +245,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
         { context: { ...ctx, why: 'not eligible', chosen: to !== null } });
     }
     const organizer = (await me(o, c)).name;
-    const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
+    const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity, space.ending(o, callId)) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
     return { room: row.room_name, closed: roomsClosedBetween(state, s) };
   });
@@ -265,7 +265,7 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     const held = await load(o, c, callId, true);
     const { row } = held;
     const j = held.state.people.find((x) => x.identity === identity && x.role !== 'host' && x.identity !== held.state.host);
-    const state = j && onPurpose ? space.leftForGood(held.state, j.person, identity) : held.state;
+    const state = j && onPurpose ? space.leftForGood(held.state, j.person, identity, space.ending(o, callId)) : held.state;
     if (row.state !== 'live' || !j) return null;
     if (j.status !== 'in' && j.status !== 'waiting') {
       // LiveKit's word that they'd gone got here first.

@@ -21,7 +21,7 @@ const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 const RING = 169.6;
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 
-/** What a board for rooms can start from, as the Board menu names them. */
+/** What a board for rooms can start from, as the board picker names them. */
 const TEMPLATES: { id: BoardTemplate; label: string }[] = [
   { id: 'what-why-next', label: 'What, why, next' }, { id: 'retro', label: 'Retro' }, { id: 'ideas', label: 'Ideas' }, { id: 'flow', label: 'Flow' }, { id: 'blank', label: 'Blank' }
 ];

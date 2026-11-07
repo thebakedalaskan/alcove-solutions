@@ -16,29 +16,45 @@ export const CallBroughtSchema = z.object({ workspaceId: IDSchema, id: IDSchema,
 export type CallBrought = z.infer<typeof CallBroughtSchema>;
 
 
-/** What can be presented. */
-export const PresentKindSchema = z.enum(['document', 'board']);
+/** What can be presented: the workspace everyone in the call views, or the board open where you are. */
+export const PresentKindSchema = z.enum(['workspace', 'board']);
 
 export type PresentKind = z.infer<typeof PresentKindSchema>;
+
+/**
+ * One presentation, from its start to its end: starting again is a new one. Random, so it says nothing about what's presented,
+ * or by whom, to anyone who isn't told.
+ */
+export const PresentKeySchema = z.string().min(1).max(64);
 
 /**
  * What's being presented in the part of the call you're in. Presenting changes nobody's access: someone who can't open it
  * is told that something is being presented, and by whom, and `kind`, `id`, `name` and `section` are null for them.
  */
 export const CallPresentSchema = z.object({
+  key: PresentKeySchema,
   kind: PresentKindSchema.nullable(),
+  /** A board: its document. The workspace: the workspace everyone views. */
   id: IDSchema.nullable(),
+  /** A board: what it's called now. The workspace: null, as where the presenter is in it comes from presence. */
   name: z.string().nullable(),
-  /** Which section everyone is on, from 0. */
+  /** A board: the frame everyone is on, from 0. The workspace: null. */
   section: z.number().nullable(),
   by: CallSeatSchema,
   /** You started it. */
-  mine: z.boolean(),
-  /** You can move it on and stop it: you started it, or you're the organizer. */
-  canControl: z.boolean()
+  mine: z.boolean()
 });
 
 export type CallPresent = z.infer<typeof CallPresentSchema>;
+
+/**
+ * How the last presentation in the part of the call you're in ended, until another starts there: which one it was, by whoever
+ * presented it (not whoever stopped it), and whether it closed for everyone (`close`) or only for them, so whoever was following
+ * it knows whether to keep it open.
+ */
+export const CallPresentEndedSchema = z.object({ key: PresentKeySchema, close: z.boolean(), by: CallSeatSchema });
+
+export type CallPresentEnded = z.infer<typeof CallPresentEndedSchema>;
 
 
 /**
@@ -99,6 +115,8 @@ export const CallWorkspaceSchema = z.object({
   /** The agenda this call has, by the ID it has in `documents`, if you can open it. */
   agenda: IDSchema.nullable(),
   present: CallPresentSchema.nullable(),
+  /** The last presentation that ended in your part of the call, until another starts there. */
+  ended: CallPresentEndedSchema.nullable(),
   play: CallPlaySchema.nullable(),
   /** For the organizer: who's asking now, oldest first. Empty for everyone else. */
   asks: z.array(CallWorkspaceAskSchema),
@@ -168,8 +186,17 @@ export type DocFollowUpTick = z.infer<typeof DocFollowUpTickSchema>;
 
 /* ---------- what can be sent ---------- */
 
-/** A section of something presented, from 0. */
+/** A section of something presented, from 0: a board's frame. */
 export const PresentSectionSchema = z.number().int().min(0).max(9999);
+
+/** What to present: the workspace everyone views, or the board open where you are, from a frame. */
+export const PresentStartSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('workspace') }),
+  z.object({ kind: z.literal('board'), id: ItemIdSchema, section: PresentSectionSchema.default(0) })
+]);
+
+/** As it's asked for: a board from its first frame unless it says otherwise. */
+export type PresentStart = z.input<typeof PresentStartSchema>;
 
 /** How far into a video, in ms: at most a day. */
 export const PlayPositionSchema = z.number().int().min(0).max(86_400_000);

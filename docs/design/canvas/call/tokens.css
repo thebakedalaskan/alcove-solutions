@@ -1,0 +1,207 @@
+/* Blue Hour, copied from packages/ui/src/styles.css (the app's own values). */
+:root, .light {
+  /* Grounds */
+  --ground: #F3F7FC;
+  --surface: #FCFDFE;
+  --surface-raised: #FFFFFF;
+  --sunk: #E7EEF5;
+  /* The frame around every screen: dusk, in both themes. */
+  --frame: #09172C;
+  /* Edges */
+  --line: #D9E1E9;
+  --line-control: #78889B;
+  /* Text */
+  --ink: #12223F;
+  --ink-2: #394967;
+  --ink-3: #55667F;
+  /* Action: the sun is the only colour you can press. */
+  --sun: #153166;
+  --on-sun: #FEFAF1;
+  /* The sun's warmth, for small things that are chosen or happening now. Never a fill you press. */
+  --sun-soft: #FDEBDA;
+  --sun-text: #A63D02;
+  --sun-glow: #EB7C33;
+  /* The low sun and the haze along the horizon, for what stands in the scene. */
+  --dusk-sun: #FFDD97;
+  --dusk-haze: #FBCFD5;
+  /* Information and focus */
+  --horizon: #215DB3;
+  --horizon-soft: #DBE9FC;
+  /* What the notes wrote and want an answer to */
+  --rose: #B1366B;
+  --rose-soft: #FEE5EE;
+  /* Notes and recording, nothing else */
+  --rec: #C8213F;
+  --rec-soft: #FCE4E9;
+  /* Problems, explained calmly */
+  --caution: #8A5300;
+  --caution-soft: #FFF0D6;
+  --gold: #FFB547;
+  /* What's highlighted or commented on in a document */
+  --hl: rgb(255 181 71 / .28);
+  /* The call stage: night in both themes */
+  --stage: #060D1A;
+  --stage-tile: #141E31;
+  --stage-raised: #1F2B42;
+  --stage-ink: #F2EEE6;
+  --stage-ink-2: #A9B9CA;
+  --speak: #9FC7FB;
+  /* What's chosen on the stage and on night controls, whatever theme is round them: the dark theme's sun. */
+  --stage-sun: #F6E8CC;
+  /* Pointers and marks on a shared screen: horizon, deep enough to read on a white page, outlined in white for a dark one. */
+  --stage-point: #215DB3;
+  /* Each person's colour on a board, the same in both themes: their pointer, the ring on what they're writing in, and the ring
+     round a view that's theirs. Deep enough for white words, outlined in white on any sheet, and never the only way to tell
+     who: a pointer carries a face and a name. No green. */
+  --who-1: #5B4BE0;
+  --who-2: #C2406E;
+  --who-3: #2F6FD6;
+  --who-4: #96600F;
+  --who-5: #8A4FD0;
+  --who-6: #9C4A86;
+  /* The sky: illustration, tour art and covers only */
+  --dawn-1: #17294A;
+  --dawn-2: #483963;
+  --dawn-3: #AF5E7F;
+  --dawn-4: #F18E6B;
+  --focus: var(--horizon);
+  --sun-on-ink: #EB7C33;
+
+  --shadow-1: 0 1px 2px rgba(18, 34, 63, 0.06), 0 1px 1px rgba(18, 34, 63, 0.04);
+  --shadow-2: 0 2px 6px rgba(18, 34, 63, 0.05), 0 18px 40px -18px rgba(18, 34, 63, 0.28);
+  --shadow-3: 0 40px 90px -30px rgba(18, 34, 63, 0.45), 0 0 0 1px rgba(18, 34, 63, 0.06);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  --radius-xs: 5px;
+  --radius-sm: 9px;
+  --radius-md: 13px;
+  --radius-lg: 22px;
+  --radius-xl: 32px;
+  --radius-arch: 999px;
+  --radius-pill: 999px;
+
+  --duration-1: 140ms;
+  --duration-2: 240ms;
+  --duration-3: 420ms;
+  --duration-4: 900ms;
+  --duration-5: 2400ms;
+  --ease-out: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans: "Hanken Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /*
+   * Illustration: note covers, each a different moment of the one sky (dawn-1 to dawn-4). Used by
+   * ArchThumb only; never behind text.
+   */
+  --cover-night: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 100%);
+  --cover-dawn: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 45%, var(--dawn-3) 80%, var(--dawn-4) 100%);
+  --cover-first: linear-gradient(170deg, var(--dawn-2) 0%, var(--dawn-3) 62%, var(--dawn-4) 100%);
+  --cover-morning: linear-gradient(170deg, var(--dawn-2) 0%, var(--dawn-3) 100%);
+  --cover-dusk: linear-gradient(170deg, var(--dawn-1) 0%, var(--dawn-2) 55%, var(--dawn-3) 100%);
+  --cover-haze: linear-gradient(170deg, var(--dawn-3) 0%, var(--dawn-4) 100%);
+
+  color-scheme: light;
+}
+
+.dark, .stage, .ac-stage, .ac-pop.is-stage {
+  --ground: #0F1F38;
+  --surface: #172944;
+  --surface-raised: #203350;
+  --sunk: #09172C;
+  --line: #283A54;
+  --line-control: #627692;
+  --ink: #F7F3EB;
+  --ink-2: #BFCAD7;
+  --ink-3: #94A5B7;
+  --sun: #F6E8CC;
+  --on-sun: #0E1E35;
+  --sun-soft: #483124;
+  --sun-text: #FAAD77;
+  --sun-glow: #FFAE5D;
+  --dusk-sun: #F3C992;
+  --dusk-haze: #844161;
+  --horizon: #8EBCEC;
+  --horizon-soft: #1F3856;
+  --rose: #ECA1BE;
+  --rose-soft: #4C2A3B;
+  --rec: #FF6B83;
+  --rec-soft: #3D1621;
+  --caution: #F3B85A;
+  --caution-soft: #3A2A0E;
+  --gold: #FFC774;
+  --hl: rgb(255 199 116 / .2);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7);
+  --shadow-3: 0 40px 90px -30px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.07);
+
+  --focus: var(--horizon);
+  --sun-on-ink: #A63D02;
+  color-scheme: dark;
+}
+
+:root, .light {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 88%, var(--sun-soft)) 55%, color-mix(in srgb, var(--ground) 40%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink) 22%, transparent);
+  --bd-ring: color-mix(in srgb, var(--ink) 7%, transparent);
+  --bf-fill: rgb(255 255 255 / .68);
+  --bf-ring: color-mix(in srgb, var(--ink) 11%, transparent);
+  --bf-lift: 0 18px 34px -30px rgb(18 34 63 / .5);
+  --note-top: #FFFFFF;
+  --note-butter: #FFE0A0;
+  --note-peach: #FFCCAC;
+  --note-rose: #FCC3CF;
+  --note-lilac: #DBCBFA;
+  --note-sky: #C6D1FF;
+  --note-mist: #E7E3F0;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(18 34 63 / .05), 0 8px 16px -10px rgb(18 34 63 / .3);
+  --line-ink: color-mix(in srgb, var(--sun) 82%, var(--ground));
+  --line-rose: var(--rose);
+  --bd-marker: var(--sun-glow);
+  --bd-marker-alpha: .28;
+  /* How long the board's own moves take: a sheet rising, things gliding to a new place, a pointer between updates. */
+  --bd-rise: 560ms;
+  --bd-glide: 700ms;
+  --bd-point: 120ms;
+}
+
+.dark, .stage, .ac-stage, .ac-pop.is-stage {
+  --bd-ground: var(--ground);
+  --bd-wash: linear-gradient(180deg, var(--ground) 0%, color-mix(in srgb, var(--ground) 80%, var(--surface)) 55%, color-mix(in srgb, var(--surface) 88%, var(--sun-soft)) 100%);
+  --bd-bar: color-mix(in srgb, var(--surface) 74%, transparent);
+  --bd-dot: color-mix(in srgb, var(--ink-2) 16%, transparent);
+  --bd-ring: rgb(255 255 255 / .09);
+  --bf-fill: rgb(255 255 255 / .05);
+  --bf-ring: rgb(255 255 255 / .1);
+  --bf-lift: 0 18px 34px -30px rgb(0 0 0 / .7);
+  --note-top: var(--surface);
+  --note-butter: #704A12;
+  --note-peach: #5E3524;
+  --note-rose: #5C2A3C;
+  --note-lilac: #40337A;
+  --note-sky: #2E3A78;
+  --note-mist: #2C2850;
+  --note-ink: var(--ink);
+  --note-shadow: 0 1px 1px rgb(0 0 0 / .3), 0 10px 18px -10px rgb(0 0 0 / .7);
+  --line-ink: var(--horizon);
+  --line-rose: var(--rose);
+  --bd-marker: var(--gold);
+  --bd-marker-alpha: .5;
+}

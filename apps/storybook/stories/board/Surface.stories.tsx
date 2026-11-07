@@ -1,7 +1,7 @@
 /*
  * The board itself: the real `BoardSurface` on an in-memory board, in each place the app shows it. In a call it's the main
  * thing on the stage, with the tools beside it and the bar along its top; on its own page it has day round it and Start a call
- * here; in a live tile it's a picture that can't be pressed; on a phone it's for looking round and adding a sticky. Every board
+ * here; in a presented tile it's a picture that can't be pressed; on a phone it's for looking round and adding a sticky. Every board
  * here is the design canvas's, written through the board package's own writes: a new board from each template, the launch retro
  * a few minutes in, the ideas before and after sorting, the onboarding flow and what three breakout rooms brought back.
  *
@@ -9,13 +9,13 @@
  * template, Copy link, the downloads, Night board). The name and the seal's menus, Image, From your workspace and Start a call
  * here belong to what's round the board, so here they say they were pressed in the Actions panel.
  */
-import { BoardPhoneAdd, BoardPill, BoardTile } from '@alcove/ui';
+import { BoardPhoneAdd, BoardPill, PresentedTile } from '@alcove/ui';
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { BoardScene, whereItShows, type BoardStory } from '../../src/board';
 import { did } from '../../src/component';
 import { AROUND, launchIdeas, launchRetro, onboardingFlow, retroWithComments, roomsBack, templateBoard } from '../../src/world/boards';
-import { ART } from '../../src/world/people';
+import { PRIYA } from '../../src/world/people';
 
 const MODES = ['call', 'page', 'read', 'tile', 'present', 'phone'] as const;
 const PHONE = { viewport: { value: 'phone', isRotated: false } };
@@ -145,15 +145,18 @@ export const ViewOnlyThread: BoardStory = {
 /** Presenting: no tools, no dots and no handles, just the frame on screen, as everyone sees it, fitted and in the middle with nothing of the next one at its edge. */
 export const Presenting: BoardStory = { args: { mode: 'present', focus: 'Went well', others: [], talking: ['art'] } };
 
-/** Anyone can drop the board to a live tile and keep faces big. It's a picture that keeps up, and pressing it opens the board. */
+/**
+ * While someone presents the board and it isn't on your stage, it's a tile with the people: a picture that keeps up, its name,
+ * who's presenting it, and Join, which puts it on your stage, following them. The picture is drawn at 1120 by 700 and shrunk.
+ */
 export const LiveTile: BoardStory = {
   name: 'Live tile',
   args: { mode: 'tile', others: [] },
   render: (args) => (
     <div className="sbb-tile">
-      <BoardTile person={ART} name="Art’s board" label="Open the board" w={1120} h={700} scale={0.5} onOpen={did('open the board')}>
-        <BoardScene {...args} />
-      </BoardTile>
+      <PresentedTile name="Launch retro" icon="presentation" sub="Priya is presenting" by={PRIYA} go="Join" label="Join Launch retro" onPress={did('join')}>
+        <span className="ic-ptile-board" style={{ width: 1120, height: 700, transform: 'scale(0.5)' }}><BoardScene {...args} /></span>
+      </PresentedTile>
     </div>
   )
 };

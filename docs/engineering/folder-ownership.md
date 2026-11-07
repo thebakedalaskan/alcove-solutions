@@ -24,14 +24,15 @@ This is the target map for [#144](https://github.com/thebakedalaskan/the-privacy
 ```text
 apps/web/src/features/
   call/
-    session/         connection ownership and participant/lifecycle helpers
+    session/         connection ownership, the call screen's composition (InCall.tsx), its keys, lifecycle helpers
     media/           local devices, LiveKit, tracks, speaking and video
-    screen-sharing/  capture selection, share surfaces, marks and pop-out
-    layout/          stage, menus, panels and layout state
+    screen-sharing/  what can be shared, a share in its frame (ShareInFrame.tsx), looking closer, marks and pop-out
+    layout/          the shell: top bar and View, your side (side.ts), what's on your stage (onStage.ts) in its frame
+                     (frame.tsx), the people, Share's steps (ShareMenu.tsx), the keys sheet and layout state
     notes/           recorder, live transcript, captions and catch-up
     rooms/           breakout-room controls and hosting
     workspace/       choosing/accessing/presenting the call workspace
-    boards/          call-owned board integration
+    boards/          the board in the call: its session, picker (BoardPicker.tsx), presenting, timer and vote
     playback/        synchronized media
   calls/
     flow/            making a call and its details

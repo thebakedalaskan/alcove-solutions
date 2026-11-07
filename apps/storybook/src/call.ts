@@ -121,14 +121,13 @@ export function rung(o: { scenario: ScenarioName; path: string; call: StoryCall;
   });
 }
 
-/**
- * A play that does what a person would: presses a button on the page (in the dock, say), then any buttons that come up
- * after it (in a sheet or a menu, which open over the page), and opens a tab of a panel.
- */
-export const press = (label: string, o: { then?: readonly string[] | undefined; tab?: string | undefined } = {}): NonNullable<PageStory['play']> => async ({ canvas, userEvent, step }) => {
-  await step(`Press ${label}`, async () => {
-    await userEvent.click(await canvas.findByRole('button', { name: label }, { timeout: 10000 }));
-  });
+type Play = NonNullable<PageStory['play']>;
+type Then = { then?: readonly string[] | undefined; tab?: string | undefined };
+/** The dock's More, by what its label starts with on any screen. */
+export const MORE = /^More:/;
+
+/** Then any buttons that come up (in a sheet or a menu, which open over the page), and a tab of your side. */
+const andThen = (o: Then): Play => async ({ canvas, userEvent, step }) => {
   for (const next of o.then ?? []) {
     await step(`Press ${next}`, async () => {
       await userEvent.click(await screen.findByRole('button', { name: next }, { timeout: 8000 }));
@@ -142,11 +141,59 @@ export const press = (label: string, o: { then?: readonly string[] | undefined; 
   }
 };
 
+/** A play that does what a person would: presses a button on the page (in the dock, say), then any that come up after it. */
+export const press = (label: string | RegExp, o: Then = {}): Play => async (c) => {
+  await c.step(`Press ${String(label)}`, async () => {
+    await c.userEvent.click(await c.canvas.findByRole('button', { name: label }, { timeout: 10000 }));
+  });
+  await andThen(o)(c);
+};
+
+/** What's yours, by its label: at the top right on a wider screen, and in the grid at the top of More on a phone. */
+const YOURS = { Board: 'Board', Workspace: /^Workspace/, Notes: 'Notes', Chat: /^Chat/, People: /^People in this call/ } as const;
+/**
+ * A play that opens what's yours as a person would: at the top right, or on a phone from the grid at the top of More. What's
+ * open already (Notes, which a call opens by itself on a wide screen while notes are on) isn't pressed again. Then any buttons
+ * that come up after it, and a tab of your side.
+ */
+export const reach = (what: keyof typeof YOURS, o: Then = {}): Play => async (c) => {
+  const { canvas, userEvent, step } = c;
+  await step(`Open ${what}`, async () => {
+    await canvas.findByRole('toolbar', { name: 'Call controls' }, { timeout: 10000 });
+    const [top] = canvas.queryAllByRole('button', { name: YOURS[what] });
+    if (top) {
+      if (top.getAttribute('aria-pressed') !== 'true') await userEvent.click(top);
+      return;
+    }
+    await userEvent.click(await canvas.findByRole('button', { name: MORE }, { timeout: 8000 }));
+    await userEvent.click(await screen.findByRole('button', { name: YOURS[what] }, { timeout: 8000 }));
+  });
+  await andThen(o)(c);
+};
+
+/** Puts your side away, if it's showing anything (Notes opens by itself as a call starts on a wide screen). */
+export const clearSide: Play = async ({ canvas, userEvent, step }) => {
+  await step('Put your side away', async () => {
+    await canvas.findByRole('toolbar', { name: 'Call controls' }, { timeout: 10000 });
+    const [close] = canvas.queryAllByRole('button', { name: /^Close (Notes|Chat|People)$/ });
+    if (close) await userEvent.click(close);
+  });
+};
+/** Plays one after another. */
+export const plays = (...all: Play[]): Play => async (c) => { for (const p of all) await p(c); };
+
 /** The same story on a phone. */
 export const phone = (story: PageStory, name?: string): PageStory => ({
   ...story,
   ...(name ? { name } : story.name ? { name: `${story.name}, on a phone` } : {}),
   globals: { ...story.globals, viewport: { value: 'phone', isRotated: false } }
+});
+
+/** The same story in a narrow window, wider than a phone: your side sits over the stage there, rather than squeezing it. */
+export const narrow = (story: PageStory, name?: string): PageStory => ({
+  ...story,
+  ...(name ? { name } : story.name ? { name: `${story.name}, in a narrow window` } : {}),
+  globals: { ...story.globals, viewport: { value: 'narrow', isRotated: false } }
 });
 
 /**

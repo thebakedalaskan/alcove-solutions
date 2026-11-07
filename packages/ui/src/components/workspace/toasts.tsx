@@ -41,9 +41,10 @@ export const wsToast = {
   restored: () => say('history', 'Restored. Everyone sees it again.'),
   deleted: (name: string) => say('trash', `${name} deleted for good`),
   failed: (text: string) => say('alert', text),
-  stoppedPresenting: () => say('presentation', 'You stopped presenting. Everyone’s back where they were.'),
-  stoppedTheirPresenting: (first: string) => say('presentation', `You stopped ${first}’s presentation. Everyone’s back where they were.`),
-  presentingPrivate: (first: string) => say('lock', `${first} is presenting something you can’t open`),
+  /** `ask`: it's the call's board, and whoever brought it is here to ask, as the board you can't open asks them, in the chat. */
+  presentingPrivate: (first: string, ask?: { who: string; onAsk: () => void } | undefined): WsToastData => (ask
+    ? { icon: 'lock', text: `${first} is presenting something you can’t open`, action: { label: `Ask ${ask.who} for access`, onClick: ask.onAsk }, ms: 12000 }
+    : say('lock', `${first} is presenting something you can’t open`)),
   presenterLeft: (first: string) => say('presentation', `${first} left the call, so the presentation ended`),
   /** Everyone views another workspace, or the call's home again (`home` null): the notes still go home. */
   switched: (name: string, home: string | null, onBack: () => void): WsToastData =>
@@ -61,7 +62,27 @@ export const wsToast = {
   copiedText: () => say('copy', 'Copied. Paste it wherever you like.'),
   savedAsNew: (onOpen: () => void) => say('filePlus', 'Saved as a new document', { label: 'Open', onClick: onOpen }),
   discarded: () => say('trash', 'Discarded. This document is as Alcove has it.'),
-  sharing: (person: AvatarPerson, first: string, onShow: () => void): WsToastData => ({ person, text: `${first} started sharing`, action: { label: 'Show it', onClick: onShow }, ms: 12000 })
+  /* Presenting in a call, as the canvas says it (docs/design/canvas/call/nc.js, TOAST). */
+  screenOn: (what: 'tab' | 'window' | 'screen') => say('screen', `Everyone sees your ${what}.`),
+  screenOff: () => say('screen', 'You stopped sharing.'),
+  boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can unfollow to add to it.`),
+  workspaceOn: () => say('folderOpen', 'Everyone follows you in the workspace. They can unfollow to work alongside you.'),
+  closedForYou: () => say('x', 'Closed for you. The others keep it open, on their own.'),
+  /** `here`: in a room, where it closed for the room alone. */
+  closedForAll: (here = false) => say('x', here ? 'Closed for everyone in this room.' : 'Closed for everyone.'),
+  closedWhile: (first: string) => say('x', `Closed for you. While ${first} presents, its tile takes you back.`),
+  followingWorkspace: (first: string) => say('folderOpen', `${first} is presenting the workspace, and you’re following.`),
+  followingBoard: (first: string, board: string) => say('presentation', `${first} is presenting ${board}, and you’re following.`),
+  presentingScreen: (first: string) => say('screen', `${first} is presenting their screen.`),
+  /** Someone presents something while you watch something else: it's a tile with the people, and Show it puts it on your stage. */
+  presentingToo: (person: AvatarPerson, first: string, what: string, onShow: () => void): WsToastData => ({ person, text: `${first} is presenting ${what}. It’s with the people.`, action: { label: 'Show it', onClick: onShow }, ms: 12000 }),
+  stoppedPresentingIt: (icon: IconName, first: string, what: string) => say(icon, `${first} stopped presenting ${what}.`),
+  /** What you followed, closed for everyone by whoever presented it, or by the organizer; `here`, for everyone in your room alone. */
+  closedEverywhere: (what: string, here = false) => say('x', `${what.charAt(0).toUpperCase()}${what.slice(1)} closed for everyone${here ? ' in this room' : ''}.`),
+  /** What you presented, closed for everyone by the organizer: you're told who, as a share they stop is. */
+  closedByOrganizer: (organizer: string, what: string) => say('x', `${organizer} closed ${what} for everyone.`),
+  stoppedSharing: (first: string) => say('stopShare', `${first} stopped sharing.`),
+  stoppedTheirShare: (first: string) => say('screen', `You stopped ${first}’s share for everyone. ${first} is told it was you.`)
 };
 
 /** One toast, in a call's corner. */

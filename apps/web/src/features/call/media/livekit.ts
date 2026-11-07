@@ -75,6 +75,8 @@ export interface RoomView {
   people: Record<string, RoomPerson>;
   /** How many times the organizer has muted this browser's microphone, so the screen can say so. */
   hostMuted: number;
+  /** How many times the organizer has stopped what this browser shares, for everyone: it's let go here too. */
+  shareStopped: number;
   /** The browser is holding back everyone's sound until the page is clicked (startAudio). */
   audioBlocked: boolean;
   /**
@@ -183,7 +185,7 @@ class LiveKitRoom implements CallRoom {
   private only: ((identity: string) => boolean) | null = null;
   private stopKeys: () => void = () => undefined;
   private listeners = new Set<() => void>();
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
   private audio = new Map<string, HTMLMediaElement>();
   /** Publishing follows LocalMedia one change at a time. */
   private syncing: Promise<void> = Promise.resolve();
@@ -239,6 +241,13 @@ class LiveKitRoom implements CallRoom {
         void this.media.setMic(false);
         this.view = { ...this.view, hostMuted: this.view.hostMuted + 1 };
         rlog.info('microphone muted by the organizer');
+      }
+      // The organizer stopped what this browser shares (LiveKit mutes its picture and its sound): it's let go here, once.
+      const screen = pub.source === Track.Source.ScreenShare || pub.source === Track.Source.ScreenShareAudio;
+      if (who === r.localParticipant && screen && this.media.getSnapshot().screen) {
+        this.media.stopScreen();
+        this.view = { ...this.view, shareStopped: this.view.shareStopped + 1 };
+        rlog.info('share stopped by the organizer');
       }
       this.emit();
     });

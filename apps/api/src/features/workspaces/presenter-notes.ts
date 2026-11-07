@@ -1,14 +1,14 @@
 /*
- * What someone keeps beside a document for presenting it, and beside each frame of a board (docs: Data and storage ›
- * Presenter notes). They're theirs alone: sealed under their own account's keys, whoever else can open the document, and
- * bound to the workspace and the document, and a frame's to its frame, so a record can't be moved to another. Reaching them
- * needs the document, by the same rule as everything else in a workspace, and an account to keep them under, which someone in
- * a call by its link doesn't have.
+ * What someone keeps beside each frame of a board for presenting it (docs: Data and storage › Presenter notes). They're theirs
+ * alone: sealed under their own account's keys, whoever else can open the board, and bound to the workspace, the board and the
+ * frame, so a record can't be moved to another. Reaching them needs the board, by the same rule as everything else in a
+ * workspace, and an account to keep them under, which someone in a call by its link doesn't have. What earlier releases kept
+ * beside a whole document or board (`presenter_notes`) is read by nothing now, and goes with its account or its document.
  */
-import { MAX_FRAMES_NOTED, type PresenterFrameNotes, type PresenterNotes } from '@alcove/api';
+import { MAX_FRAMES_NOTED, type PresenterFrameNotes } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
-import { b64u, equalBytes, fromUtf8, mac, openJson, openRecord, sealJson, sealRecord, stateKey, utf8, type RecordHeader } from '../../crypto';
+import { b64u, equalBytes, mac, openJson, sealJson, stateKey, utf8, type RecordHeader } from '../../crypto';
 import { bytea, exec, maybeOne, rows } from '../../db';
 import { ConflictError, ForbiddenError, IntegrityError, notFound } from '../../errors';
 import { log } from '../../log';
@@ -16,38 +16,14 @@ import { requireDocument, workspaceFor, type Reader, type Workspace } from './ac
 
 const plog = log.child({ component: 'presenter-notes' });
 
-const key = (o: Owner, documentId: string): Uint8Array => stateKey(o.root, o.ownerId, `presenter-notes:${documentId}`);
-const header = (o: Owner, workspaceId: string, documentId: string): RecordHeader => ({ v: 1, kind: 'presenter-notes', ownerId: o.ownerId, workspaceId, documentId });
-const Row = z.object({ body_ciphertext: bytea });
-
-/** A document someone can open, and the account to keep their notes on it under. With `board`, it has to be a board. */
-async function reach(d: Deps, reader: Reader, workspaceId: string, documentId: string, board = false): Promise<{ o: Owner; w: Workspace }> {
+/** A board someone can open, and the account to keep their notes beside it under. */
+async function reach(d: Deps, reader: Reader, workspaceId: string, boardId: string): Promise<{ o: Owner; w: Workspace }> {
   const w = await workspaceFor(d, reader, workspaceId);
-  const { item } = requireDocument(reader, w, documentId, 'read');
-  if (board && item.kind !== 'board') throw notFound('That board', { workspaceId, documentId });
-  if (!reader.account) throw new ForbiddenError('You joined with the link, so there’s no account to keep notes under.', { context: { workspaceId, documentId } });
+  const { item } = requireDocument(reader, w, boardId, 'read');
+  if (item.kind !== 'board') throw notFound('That board', { workspaceId, documentId: boardId });
+  if (!reader.account) throw new ForbiddenError('You joined with the link, so there’s no account to keep notes under.', { context: { workspaceId, documentId: boardId } });
   return { o: reader.account.owner, w };
 }
-
-export async function read(d: Deps, reader: Reader, workspaceId: string, documentId: string): Promise<PresenterNotes> {
-  const { o, w } = await reach(d, reader, workspaceId, documentId);
-  const row = await maybeOne(d.pool, Row, 'SELECT body_ciphertext FROM presenter_notes WHERE owner_id = $1 AND workspace_owner_id = $2 AND document_id = $3', [o.ownerId, w.owner.ownerId, documentId]);
-  return { text: row ? fromUtf8(openRecord(key(o, documentId), header(o, workspaceId, documentId), row.body_ciphertext)) : '' };
-}
-
-/** Keeps them, or with nothing in them, keeps nothing. */
-export async function write(d: Deps, reader: Reader, workspaceId: string, documentId: string, text: string): Promise<void> {
-  const { o, w } = await reach(d, reader, workspaceId, documentId);
-  const where = [o.ownerId, w.owner.ownerId, documentId];
-  if (!text) await exec(d.pool, 'DELETE FROM presenter_notes WHERE owner_id = $1 AND workspace_owner_id = $2 AND document_id = $3', where);
-  else {
-    await exec(d.pool, `INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) VALUES ($1,$2,$3,$4)
-                        ON CONFLICT (owner_id, workspace_owner_id, document_id) DO UPDATE SET body_ciphertext = EXCLUDED.body_ciphertext`, [...where, sealRecord(key(o, documentId), header(o, workspaceId, documentId), utf8(text))]);
-  }
-  plog.debug('presenter notes kept', { workspaceId, documentId, bytes: text.length });
-}
-
-/* ---------- a board's, frame by frame ---------- */
 
 const frameKey = (o: Owner, boardId: string): Uint8Array => stateKey(o.root, o.ownerId, `presenter-frame-notes:${boardId}`);
 /** Which frame a row is: a keyed hash under the account's own key, so nothing a browser named is kept in the clear. */
@@ -60,7 +36,7 @@ const FrameRow = z.object({ frame_index: bytea, body_ciphertext: bytea });
 
 /** Someone's notes beside each frame of a board, by frame. A record that isn't for the frame its row is for doesn't open. */
 export async function readFrames(d: Deps, reader: Reader, workspaceId: string, boardId: string): Promise<PresenterFrameNotes> {
-  const { o, w } = await reach(d, reader, workspaceId, boardId, true);
+  const { o, w } = await reach(d, reader, workspaceId, boardId);
   const k = frameKey(o, boardId);
   const kept = await rows(d.pool, FrameRow, 'SELECT frame_index, body_ciphertext FROM presenter_frame_notes WHERE owner_id = $1 AND workspace_owner_id = $2 AND document_id = $3', [o.ownerId, w.owner.ownerId, boardId]);
   const frames: Record<string, string> = {};
@@ -77,7 +53,7 @@ export async function readFrames(d: Deps, reader: Reader, workspaceId: string, b
  * frame past that is refused, and the ones kept can still change. Two new ones at once can take it one past.
  */
 export async function writeFrame(d: Deps, reader: Reader, workspaceId: string, boardId: string, frame: string, text: string): Promise<void> {
-  const { o, w } = await reach(d, reader, workspaceId, boardId, true);
+  const { o, w } = await reach(d, reader, workspaceId, boardId);
   const k = frameKey(o, boardId);
   const index = frameIndex(k, frame);
   const where = [o.ownerId, w.owner.ownerId, boardId, index];

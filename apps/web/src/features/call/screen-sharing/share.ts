@@ -5,11 +5,11 @@
  */
 
 /**
- * At most this many screens shared at once in your part of the call, yours included. Two sit side by side and the
- * rest wait as tiles to switch to; past four the stage gives screens more room than people, and every browser in the
- * call decrypts and decodes one more stream for each. A browser starts a share only under it, checked when its picker
- * opens and again at the click that starts sharing. People who are still choosing in their browser's own picker at
- * the same moment can take it over; the stage takes any number.
+ * At most this many screens shared at once in your part of the call, yours included. Your stage holds one, or two with
+ * Show beside, and the rest are tiles with the people; past four, presented things crowd the people out of their own
+ * stage, and every browser in the call decrypts and decodes one more stream for each. A browser starts a share only under
+ * it, checked as Share › Your screen opens and again at the click that starts sharing. People who are still choosing in
+ * their browser's own picker at the same moment can take it over; the stage takes any number.
  */
 export const MAX_SHARES = 4;
 

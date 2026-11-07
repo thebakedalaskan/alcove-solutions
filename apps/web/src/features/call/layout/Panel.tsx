@@ -1,16 +1,16 @@
 /*
- * The side panels: notes as the call goes, the transcript, asking about the call (CatchUp.tsx), chat and
- * people, one tab at a time in each panel. A panel slides in and the stage makes room; any tab can be pulled out to
- * be a panel of its own, and panels sit wherever you put them (panels.ts, PanelHost.tsx). Notes, the transcript
- * and answers come from what was really said while notes were on; nothing here is invented. The notes are the
- * call's shared live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone
- * there. Chat is end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
+ * Your side of the call, one view at a time (side.ts): Notes, with the notes as the call goes, the transcript and asking
+ * about the call (CatchUp.tsx) as its tabs, and your own notes at the foot of the notes; Chat; and People. It slides in at
+ * the right and the stage makes room (PanelHost.tsx); on a phone it's a sheet over the call. Notes, the transcript and
+ * answers come from what was really said while notes were on; nothing here is invented. The notes are the call's shared
+ * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
+ * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallReaction, type CallPanelTab, type CallPanelView, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
+import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallReaction, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/ringing/RingWords';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
@@ -20,10 +20,9 @@ import { hm } from '~/lib/time';
 import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '../notes/Capture';
 import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
-import { tabName, useDraft, type Draft } from './PanelHost';
+import { useDraft, type Draft, type NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
 
-export type PanelView = CallPanelView;
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
 /** Someone shown in the panel: in the call (and how), or invited and not here. `volume`: how loud they are for you, null for yourself. */
@@ -45,65 +44,37 @@ export interface HostControls {
 }
 
 /**
- * A panel's tabs. In a panel too narrow for all of them they scroll, the one you're on stays in view, and whichever edge has
- * more behind it fades out, so a tab out of sight doesn't read as no tab at all.
+ * The head of your side: what it shows (and, for Notes, where it's kept), what's yours to press there, and × to put it away.
  */
-function PanelTabs({ tabs, view, onView }: { tabs: CallPanelTab[]; view: PanelView; onView: (v: PanelView) => void }) {
-  const strip = useRef<HTMLDivElement>(null);
-  const [more, setMore] = useState({ before: false, after: false });
-  useLayoutEffect(() => {
-    const el = strip.current;
-    if (!el) return;
-    const read = () => {
-      const before = el.scrollLeft > 1;
-      const after = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
-      setMore((was) => (was.before === before && was.after === after ? was : { before, after }));
-    };
-    read();
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    el.addEventListener('scroll', read, { passive: true });
-    return () => { ro.disconnect(); el.removeEventListener('scroll', read); };
-  }, [tabs.length]);
-  useEffect(() => { strip.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [view]);
-  /* A mouse's wheel only turns one way. */
-  const wheel = (e: ReactWheelEvent<HTMLDivElement>) => { if (e.deltaY !== 0 && e.deltaX === 0) e.currentTarget.scrollLeft += e.deltaY; };
+export function SideHead({ title, sub, onClose, children }: { title: string; sub?: string | undefined; onClose: () => void; children?: ReactNode }) {
   return (
-    <div ref={strip} className={cn('ac-tabs', more.before && 'more-before', more.after && 'more-after')} role="tablist" aria-label="Call panel" onWheel={wheel}>
-      {tabs.map((t) => <button key={t} type="button" role="tab" className="ac-tab" aria-selected={view === t} data-tab={t} aria-keyshortcuts="Shift+Enter" title="Click to open, drag out to keep it open" onClick={() => onView(t)}>{tabName(t)}</button>)}
+    <div className="ic-side-head">
+      <div className="ttl"><h2>{title}</h2>{sub && <span className="sub">{sub}</span>}</div>
+      {children}
+      <IconButton icon="x" label={`Close ${title}`} onClick={onClose} />
     </div>
   );
 }
 
-export function SidePanel({ view, tabs, onView, onClose, children, roomsTitle }: {
-  view: PanelView;
-  /** The tabs in this panel: dragging one out makes it a panel of its own, and one on its own has its name instead. */
-  tabs: CallPanelTab[];
-  onView: (v: PanelView) => void; onClose: () => void; children: ReactNode; roomsTitle: string;
-}) {
+/** What the side shows under its head: a change of view, or of tab, comes in as the last one goes. */
+export function SideBody({ view, children }: { view: string; children: ReactNode }) {
   const reduce = useReducedMotion();
-  const [only] = tabs;
-  const name = view === 'rooms' ? roomsTitle : tabName(only ?? 'notes');
   return (
-    <>
-      {view === 'rooms' || tabs.length < 2 ? (
-        <div className="ic-side-head"><span className="ttl" data-tab={view === 'rooms' ? undefined : only}>{name}</span><IconButton icon="x" label={view === 'rooms' ? 'Close the panel' : `Close ${name}`} onClick={onClose} /></div>
-      ) : (
-        <div className="ic-side-head">
-          <PanelTabs tabs={tabs} view={view} onView={onView} />
-          <IconButton icon="x" label={`Close ${tabName(view)}`} onClick={onClose} />
-        </div>
-      )}
-      <div className="ic-views">
-        <AnimatePresence initial={false} mode="popLayout">
-          <motion.section key={view} className="ic-view" initial={reduce ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : UI}>
-            {children}
-          </motion.section>
-        </AnimatePresence>
-      </div>
-    </>
+    <div className="ic-views">
+      <AnimatePresence initial={false} mode="popLayout">
+        <motion.section key={view} className="ic-view" initial={reduce ? false : { opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : UI}>
+          {children}
+        </motion.section>
+      </AnimatePresence>
+    </div>
   );
 }
+
+const NOTES_TABS: { value: NotesTab; label: string }[] = [{ value: 'notes', label: 'Notes' }, { value: 'transcript', label: 'Transcript' }, { value: 'ask', label: 'Ask' }];
+/** The Notes view's tabs: the notes, the transcript and Ask, three views of what was said. */
+export const NotesTabs = ({ tab, onTab }: { tab: NotesTab; onTab: (t: NotesTab) => void }) => (
+  <Tabs className="ic-ntabs" label="Notes, the transcript or Ask" value={tab} onChange={onTab} options={NOTES_TABS} />
+);
 
 const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed' | 'lock'; children: ReactNode; end?: ReactNode; wrap?: boolean }) => (
   <div className={cn('ic-nf', wrap && 'is-wrap')}><Icon name={icon} size={15} /><span className="lbl">{children}</span>{end && <span className="end">{end}</span>}</div>
@@ -166,7 +137,33 @@ function Summary({ text }: { text: string }) {
 const ROOM_UNHEARD = 'Nobody’s browser in this room can transcribe it right now, so nothing new is transcribed.';
 const ROOM_PAUSED = 'Notes are paused in this room. Nothing said here is transcribed until the organizer resumes.';
 
-export function NotesView({ state, getting, problems, controls, carried, put, onPage, onSeek, onTick, onTranscript }: {
+/**
+ * Notes' ⋯, beside the sign it changes: the organizer's Pause, Resume and Turn off (or Turn on), or anyone else's Ask for notes.
+ */
+function NotesMenu({ state, controls }: { state: CallState; controls: CaptureControls }) {
+  const c = state.capture;
+  const on = notesAreOn(c.mode);
+  const paused = c.mode === 'paused';
+  const host = state.isOrganizer;
+  const asking = !host && c.asked?.state === 'asking';
+  const [menu, setMenu] = useState(false);
+  const item = (icon: IconName, label: string, f: () => void) => (
+    <button type="button" className="mi" onClick={() => { setMenu(false); f(); }}><Icon name={icon} size={16} /><span className="t">{label}</span></button>
+  );
+  return (
+    <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
+      anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options" title="Notes options"><Icon name="more" size={18} /></button>}>
+      {host && on && item('pause', 'Pause notes', controls.pause)}
+      {host && paused && item('play', 'Resume notes', controls.resume)}
+      {host && (on || paused) && item('notesPen', 'Turn notes off', () => controls.notes(false))}
+      {host && c.mode === 'off' && item('play', 'Turn notes on', () => controls.notes(true))}
+      {!host && !on && (asking ? item('x', 'Take back your ask', () => controls.ask(false)) : item('hand', 'Ask for notes', () => controls.ask(true)))}
+      {!host && <p className="hint">Only {organizerName(state)} can turn notes on, off or pause them. You can ask for them.</p>}
+    </Popover>
+  );
+}
+
+export function NotesView({ state, getting, problems, controls, carried, yours, put, onSeek, onTick }: {
   state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
@@ -175,11 +172,11 @@ export function NotesView({ state, getting, problems, controls, carried, put, on
   controls: CaptureControls;
   /** What carries over from earlier calls, for you alone, when there's anything of yours. */
   carried?: ReactNode;
+  /** Your own notes, at the foot: only for someone with an account in the call. */
+  yours?: ReactNode;
   /** Sends a line into the document you were last in, while the workspace has one you can edit. */
   put?: LivePut | null | undefined;
-  /** Opens the notes as a page in the workspace. */
-  onPage?: (() => void) | undefined;
-  onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void; onTranscript: () => void;
+  onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
   // sign says: in a breakout room, the room can be heard while the main room can't, and the other way round.
@@ -193,37 +190,23 @@ export function NotesView({ state, getting, problems, controls, carried, put, on
   const host = state.isOrganizer;
   const asking = !host && c.asked?.state === 'asking';
   const organizer = organizerName(state);
-  const [menu, setMenu] = useState(false);
   const live = state.liveNotes;
   const n = live.notes;
   /* What people added comes first in nothing: it's listed among what was said, and there may be no notes for it to go with yet. */
   const followUps: LiveFollowUp[] = [...(n?.next ?? []), ...live.added];
   const any = n !== null || live.added.length > 0;
   const held = state.breakouts.held;
-  const item = (icon: IconName, label: string, f: () => void) => (
-    <button type="button" className="mi" onClick={() => { setMenu(false); f(); }}><Icon name={icon} size={16} /><span className="t">{label}</span></button>
-  );
   const ask = asking
     ? <Button size="sm" variant="quiet" onClick={() => controls.ask(false)}>Take it back</Button>
     : <Button variant="primary" size="sm" icon="hand" onClick={() => controls.ask(true)}>Ask for notes</Button>;
   return (
     <>
-      <div className="ic-nh">
-        <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
-        <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
-        {onPage && <IconButton icon="grow" size={16} className="ic-page" label="Open in the workspace" title="Open in the workspace" onClick={onPage} />}
-        <Popover open={menu} onOpenChange={setMenu} side="bottom" align="end" label="Notes options" className="ic-menu narrow"
-          anchor={<button type="button" className="ac-icon-btn" aria-label="Notes options"><Icon name="more" size={18} /></button>}>
-          {host && on && item('pause', 'Pause notes', controls.pause)}
-          {host && paused && item('play', 'Resume notes', controls.resume)}
-          {host && (on || paused) && item('notesPen', 'Turn notes off', () => controls.notes(false))}
-          {host && c.mode === 'off' && item('play', 'Turn notes on', () => controls.notes(true))}
-          {!host && !on && (asking ? item('x', 'Take back your ask', () => controls.ask(false)) : item('hand', 'Ask for notes', () => controls.ask(true)))}
-          {item('transcript', 'Open the transcript', onTranscript)}
-          {!host && <p className="hint">Only {organizer} can turn notes on, off or pause them. You can ask for them.</p>}
-        </Popover>
-      </div>
       <div className="ic-scroll">
+        <div className="ic-nh">
+          <CaptureSign mode={here.mode} requested={!on && c.requests.length > 0} />
+          <span className="m">{unavailable ? 'Nothing is being captured' : notesAreOn(here.mode) ? 'Written as people talk' : pausedHere ? 'Nothing is written down' : state.notes.everOn ? 'What was written is kept' : 'Nothing is being written down'}</span>
+          <NotesMenu state={state} controls={controls} />
+        </div>
         {carried}
         {on && state.isHost && !host && c.room && (
           <div className="ic-problems is-top"><Notice tone="caution" icon="alert">You’re hosting from a breakout room, so nobody’s browser hears the main room for the notes until everyone is back.</Notice></div>
@@ -285,8 +268,9 @@ export function NotesView({ state, getting, problems, controls, carried, put, on
             )}
           </div>
         )}
+        {yours}
       </div>
-      <Foot end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone with the notes</Foot>
+      <Foot wrap end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone invited gets the notes</Foot>
     </>
   );
 }
@@ -317,7 +301,7 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
           </EmptyState>
         )}
       </div>
-      <Foot>{state.capture.room ? 'Confidential compute · this room’s section of the notes' : 'Confidential compute · everyone invited gets it'}</Foot>
+      <Foot wrap>{state.capture.room ? 'Confidential compute · this room’s section of the notes' : 'Confidential compute · everyone invited gets the notes'}</Foot>
     </>
   );
 }
@@ -443,7 +427,7 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, host, foot, volumes, together }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, rooms, host, foot, volumes, together }: {
   here: PanelPerson[]; invited: Person[];
   /** With the workspace open: where each is, and following them. */
   together?: StageTogether | undefined;
@@ -460,6 +444,8 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
   onStopRing?: ((id: string) => void) | undefined;
   /** People asking for notes, for the organizer to answer; shown under those asking to join. */
   notesAsks?: ReactNode;
+  /** Breakout rooms, for the organizer once there's someone to send: they open in your side, in place of People. */
+  rooms?: { open: boolean; onOpen: () => void } | undefined;
   /** The organizer's controls; absent for everyone else. */
   host?: HostControls | undefined;
   /** What the footer says: how the call is kept private. */
@@ -469,6 +455,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)) && !ringing.some((r) => sameEmail(r.person, g)));
   const now = Date.now();
+  const roomsSaid = useId();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const decide = (id: string, f: (id: string) => Promise<void>) => {
@@ -495,7 +482,14 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
           </>
         )}
         {notesAsks}
-        <div className={cn('ac-eyebrow ic-cap-h', ((host && asking.length > 0) || Boolean(notesAsks)) && 'mt')}>In this call · {here.length}</div>
+        {rooms && (
+          <button type="button" className="ic-roomsrow" aria-label="Breakout rooms" aria-describedby={roomsSaid} onClick={rooms.onOpen}>
+            <Icon name="door" size={20} />
+            <span className="min-w-0"><b>Breakout rooms</b><small id={roomsSaid}>{rooms.open ? 'Rooms are open' : 'Split the call into rooms for a while'}</small></span>
+            <Icon name="chevron" size={16} />
+          </button>
+        )}
+        <div className={cn('ac-eyebrow ic-cap-h', ((host && asking.length > 0) || Boolean(notesAsks) || Boolean(rooms)) && 'mt')}>In this call · {here.length}</div>
         {here.map((p) => (
           <div key={p.id} className="ic-prow">
             <Avatar person={p.person} size={36} />

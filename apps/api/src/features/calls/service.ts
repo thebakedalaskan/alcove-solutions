@@ -1,4 +1,4 @@
-import { MAIN_PLACE, type CallAction, type CallState } from '@alcove/api';
+import { MAIN_PLACE, firstName, type CallAction, type CallState } from '@alcove/api';
 import { id128 } from '../../crypto';
 import { exec, tx } from '../../db';
 import { ConflictError, ValidationError } from '../../errors';
@@ -7,6 +7,7 @@ import * as space from './workspace';
 import * as boards from './boards';
 import { MeetingManifest } from '../meetings/service';
 import { getItem } from '../../vault';
+import { me } from '../account/account';
 import { addedFromLink, takeOffInvite } from '../meetings/invites';
 import { placeOf, relocate } from './places';
 import * as rings from './rings';
@@ -20,7 +21,7 @@ import { closeRooms, load, notice, saveSettled, secondsIn, settle, sharesEnd, te
 import { anyone, stillHosting } from './permissions';
 import { view } from './read-model';
 import { addFollowUp, tickFollowUp } from './insights';
-import { ROOMS_ON_NEW_BOARD, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
+import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { changeCapture } from './recording';
 import { nudge } from './notifications';
 
@@ -41,6 +42,7 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     clog.info('host control', { callId, action: a.type, target: a.identity });
     return view(v, o.pool, callId);
   }
+  if (a.type === 'share-stop') return stopShare(v, callId, a.seat);
   // Who may be rung is settled before the call's lock is taken: knowing the team can take a calendar read.
   if (a.type === 'ring') await rings.mayRing(o, (await load(o, o.pool, callId)).row.meeting_item_id, a.emails);
   /**
@@ -208,6 +210,39 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     throw e;
   });
   return view(v, o.pool, callId);
+}
+
+/**
+ * The organizer stops what someone shares, for everyone (docs: Calls and recordings › Shared screens): LiveKit mutes the picture
+ * and its sound, on whichever of their connections it is, as it mutes a microphone, and everyone who could see it is told who
+ * stopped whose. The organizer's own browser says it in its own words. LiveKit is asked with nothing of the call held; the
+ * call's row is held only to tell everyone. Someone sharing nothing, or not in the call, has nothing to stop (409).
+ */
+async function stopShare(v: Viewer, callId: string, seat: string): Promise<CallState> {
+  const o = v.organizer;
+  const ctx = { callId, action: 'share-stop' };
+  const { row, state } = await load(o, o.pool, callId);
+  if (row.state !== 'live' || !row.room_name) throw new ConflictError('This call has ended.', { context: ctx });
+  stillHosting(v, state, ctx);
+  const key = seatKey(o, callId);
+  const theirs = state.people.filter((j) => j.status === 'in' && seatOf(key, j) === seat);
+  const tracks = theirs.length ? (await o.livekit.sharing(row.room_name)).filter((t) => !t.muted && theirs.some((j) => j.identity === t.identity)) : [];
+  const sharer = theirs.find((j) => tracks.some((t) => t.identity === j.identity));
+  if (!sharer) throw new ConflictError('They aren’t sharing anything.', { context: { ...ctx, connections: theirs.length } });
+  for (const t of tracks) await o.livekit.muteTrack(row.room_name, t.identity, t.sid);
+  const organizer = firstName((await me(o)).name);
+  const closed = await tx(o.pool, async (c) => {
+    const held = await load(o, c, callId, true);
+    if (held.row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
+    const s = settle(held.state, held.row);
+    const j = s.people.find((x) => x.identity === sharer.identity) ?? sharer;
+    return (await saveSettled(o, c, callId, held.state, notice(s, `${organizer} stopped ${firstName(j.name)}’s share.`, 'people', placeOf(s, j), v.pass.identity))).closed;
+  });
+  clog.info('host control', { callId, action: 'share-stop', tracks: tracks.length });
+  return afterClosing({ organizer: o, callId }, closed, async () => {
+    await nudge(o, row.room_name, callId, { call: true, log: false });
+    return view(v, o.pool, callId);
+  });
 }
 
 /** Whether rooms can open as asked: none are open, and everyone sent to one is invited, once. */

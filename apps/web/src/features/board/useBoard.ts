@@ -60,6 +60,8 @@ const BLANK: Box = { x: 0, y: 0, w: 1160, h: 530 };
 const BARE_PAD: Pad = { l: 40, r: 40, t: 56, b: 40 };
 /** A frame filling the sheet, with room for its title. */
 const SLIDE_PAD: Pad = { l: 40, r: 40, t: 96, b: 40 };
+/** The frame you present: clear of the pager at its foot too (14 px up, 40 px tall), so its last sticky shows. */
+const PRESENTING_PAD: Pad = { ...SLIDE_PAD, b: 72 };
 /**
  * Clear of the bar and of the pill under it, with room for a frame's title above the frame: where a vote frames what it's on
  * (tools/run.tsx), and the top of whatever's framed while a pill shows.
@@ -972,7 +974,7 @@ export class Board implements LiveStore<BoardState> {
     const slide = frame?.k === 'frame' ? frame.id : null;
     if (this.state.slide !== slide) this.set({ slide });
     if (frame?.k !== 'frame') { this.fitAll(glide, opening); return; }
-    const cam = this.camera.fitting(frame, SLIDE_PAD);
+    const cam = this.camera.fitting(frame, this.still ? PRESENTING_PAD : SLIDE_PAD);
     if (glide) this.glideTo(cam);
     else this.camera.set(cam);
   }
@@ -1011,7 +1013,7 @@ export class Board implements LiveStore<BoardState> {
     const was = this.pill;
     this.pill = kind;
     if ((was === null) === (kind === null)) return;
-    const theirs = (k: PillKind | null) => k === 'following' || k === 'presenting';
+    const theirs = (k: PillKind | null) => k === 'following';
     if (!this.framed || !this.untouched || this.presented || this.look.mini || this.state.following !== null || theirs(was) || theirs(kind) || !this.camera.width) return;
     this.fitShown(true, true);
     // The board framing itself again isn't anyone touching it: it goes on framing what arrives on it, and as the sheet settles.

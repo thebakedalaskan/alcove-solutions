@@ -2866,11 +2866,12 @@ describe('deleting an account', () => {
     const own = (await b.api.notes.personal(callNote).add({ kind: 'note', text: 'For everyone with it.' })).entries[0]?.id ?? '';
     await b.api.notes.addToShared(callNote, own, { text: 'For everyone with it.', seal: (await b.api.notes.previewAddition(callNote, own)).seal });
 
-    // What she keeps beside a document for presenting it, under her own account.
+    // What she kept beside a document for presenting it, under her own account, as an earlier release kept it: nothing reads or
+    // writes those now, and they still go with her.
     const hers = await b.api.workspaces.create('Hers');
     const plan = await b.api.workspaces.items.create(hers.id, { kind: 'document', name: 'Plan' });
-    await b.api.workspaces.presenterNotes.set(hers.id, plan.id, 'Thank everyone.');
-    // And beside a frame of a board of hers.
+    await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) SELECT $1, owner_id, $2, $3 FROM workspaces WHERE workspace_id = $4', [ownerId, plan.id, Buffer.from('sealed'), hers.id]);
+    // And what she keeps beside a frame of a board of hers.
     const retro = await b.api.workspaces.items.create(hers.id, { kind: 'board', name: 'Retro' });
     const drawn = await b.api.workspaces.document(hers.id, retro.id);
     await drawn.ready;

@@ -21,7 +21,6 @@ import type { CallRoom } from '../media/livekit';
 import { POP_HEADER, type PopKind } from './popOut';
 import { WHOLE, ZOOM_MAX, centreOn, inView, isZoomed, panBy, place, zoomLabel, zoomTo, type Framing, type Point, type Size } from './shareFrame';
 import { HISTORY, LOOK_ARIA, LOOK_KEYS, type HistoryOff, type LookKey, type ShareLook, type ShareLookState } from './shareLook';
-import { ShareMenu } from '../layout/TileMenu';
 import { useLive } from '~/lib/live';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -41,7 +40,7 @@ export function historyNote(off: HistoryOff | null): string {
     case 'unsupported': return 'This browser can’t keep earlier pictures. Zoom and freeze still work.';
   }
 }
-/** What the framing is now, said: for the tile's description and screen readers. */
+/** What the framing is now, said: for the frame's description and screen readers. */
 function framingSaid(s: ShareLookState): string {
   const zoom = isZoomed(s.framing) ? `zoomed to ${zoomLabel(Math.round(s.framing.zoom * 4) / 4)}` : 'the whole picture';
   if (!s.held) return `Live, ${zoom}`;
@@ -86,7 +85,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   label: string;
   /** Opening it in its own window, or bringing it back; null where this browser can't. */
   popOut: { open: boolean; toggle: () => void } | null;
-  /** The id of the line that describes how it's framed, for the tile's aria-describedby. */
+  /** The id of the line that describes how it's framed, for its frame's aria-describedby. */
   describe?: string | undefined;
   /** Drawn on the live picture, in its box: it moves with it, and isn't shown while a picture is held still. */
   overLive?: ReactNode;
@@ -281,7 +280,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   const held = s.held;
   const newest = held !== null && (held.index === null || held.index === s.count - 1);
   // A new framing from a key, a button or the menu glides; one from a drag, a pinch or the wheel follows the pointer, and
-  // the view or the picture changing size (a divider dragged, the layout moving, a new picture) follows the tile at once.
+  // the view or the picture changing size (the layout moving, a new picture) follows the frame at once.
   const now = performance.now();
   const was = drawn.current;
   const resized = !was || !sameSize(was.view, s.view) || !sameSize(was.pic, pic);
@@ -343,27 +342,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   );
 }
 
-type ShareMenuProps = Omit<Parameters<typeof ShareMenu>[0], 'look'>;
-/** A share's ⋯ menu. For a share you see big it offers zoom, freeze and earlier pictures, following them while it's open. */
-export function ShareMenuFor({ look, ...menu }: ShareMenuProps & { look: ShareLook | null }) {
-  return look ? <LookedMenu look={look} {...menu} /> : <ShareMenu {...menu} />;
-}
-function LookedMenu({ look, point, ...menu }: ShareMenuProps & { look: ShareLook }) {
-  const s = useLive(look);
-  // Pointers and marks are about the picture now: while one is held still, you go back to live to point.
-  const held = s.held !== null;
-  return (
-    <ShareMenu {...menu} point={point ? { ...point, held, can: point.can && !held } : null} look={{
-      zoomed: isZoomed(s.framing), max: s.framing.zoom >= ZOOM_MAX - 0.001,
-      zoomIn: () => look.zoomStep(1), zoomOut: () => look.zoomStep(-1), whole: () => look.whole(),
-      held: s.held !== null, canEarlier: s.canEarlier,
-      freeze: () => { void look.freeze(); }, live: () => look.live(), earlier: () => { void look.earlier(); }, later: () => look.later(),
-      note: historyNote(s.off)
-    }} />
-  );
-}
-
-/** A share open in its own window: the stage keeps its place as a tile, with a way to bring it back. */
+/** A share open in its own window: its frame keeps its place, with a way to bring it back. */
 export function ShareAway({ onBack }: { onBack: () => void }) {
   return (
     <div className="ic-svaway" data-ui>

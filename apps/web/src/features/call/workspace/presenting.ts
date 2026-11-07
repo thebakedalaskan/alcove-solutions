@@ -1,142 +1,138 @@
 /*
- * Presenting a document in a call, as this browser sees it (docs: Calls and recordings › Presenting). The call says what's
- * presented in the part of it you're in (`CallWorkspace.present`), the same for everyone who can open it. What's kept here is
- * yours alone: whether you're watching or working on your own, and whether the workspace was opened for the presentation,
- * so it's put away again when it ends. Your own page is never moved: what's presented is drawn over it (Presentation.tsx),
- * so when it stops, everyone's back exactly where they were.
+ * Presenting the workspace, as this browser has it (docs: Calls and recordings › Presenting). The call says what's presented in
+ * the part of it you're in (`CallWorkspace.present`), the same for everyone who can open it; where its presenter is comes from
+ * the workspace's presence, so nothing new goes to the server. Everyone who has it on their stage follows the presenter with
+ * the workspace's own Follow (features/workspace/follow.ts): to their page and their line. Unfollow, or a click, a scroll or a
+ * key in it, and you work on your own (onStage.ts `own`); Follow brings you back. Unfollowing takes you back to where you were
+ * before you followed.
  *
- * A board is presented on the board's own surface, by the whiteboards work: nothing here draws one.
+ * Someone who can't open the workspace is told who's presenting, and nothing else.
  */
-import { errorCode, firstName, type CallParticipant, type CallPresent, type CallSession, type Person } from '@alcove/api';
+import { errorCode, firstName, type CallParticipant, type CallPresent, type CallPresentEnded, type CallSession } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { WorkspacePlace, WorkspacePresenting } from '~/features/workspace/context';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import type { CallTogether, WorkspacePlace } from '~/features/workspace/context';
+import type { StopFollowing } from '~/features/workspace/follow';
 import { log } from '~/lib/log';
 
 const plog = log.child({ component: 'presenting' });
-/** How long after a presentation ends its presenter's leaving the call is taken as why it ended. */
-const PRESENTER_LEFT_MS = 4000;
 
-/** Who started what's presented, and what it is: a new presentation is a new key, even of the same document. */
-const keyOf = (p: CallPresent | null): string | null => (p ? `${p.by.seat} ${p.kind ?? ''} ${p.id ?? ''}` : null);
+/** The workspace presented where you are, and what you're doing about it. */
+export interface WorkspacePresentation {
+  /** Whoever presents it, by their connection, which presence knows them by. */
+  connection: string | null;
+  /** Where its presenter is, in words, for Follow on the frame's bar: what's named is only ever what you can open. Null while that isn't known here. */
+  where: string | null;
+  /** Presents the workspace to everyone in this part of the call. */
+  start: () => Promise<void>;
+  /** Ends it: for you (everyone following keeps it open, on their own), or for everyone. */
+  stop: (close: boolean) => Promise<void>;
+}
 
-export function usePresenting({ session, present, participants, open, inSight, show, hide, go, say, failed }: {
+export function useWorkspacePresenting({ session, present, ended, participants, onStage, following, together, at, act, say, failed, onOwn, access }: {
   session: CallSession;
   present: CallPresent | null;
+  /** How the last presentation here ended, as the call says. */
+  ended: CallPresentEnded | null;
   participants: readonly CallParticipant[];
-  /** The workspace is open, and in sight while nothing it takes turns with is in front. */
-  open: boolean;
-  inSight: boolean;
-  show: () => void;
-  hide: () => void;
-  /** Takes your own page somewhere in the workspace. */
-  go: (to: WorkspacePlace) => void;
+  /** The presented workspace is on your stage and in sight. */
+  onStage: boolean;
+  /** You follow whoever presents it, rather than work on your own. */
+  following: boolean;
+  /** What the workspace says of who's where, and who you follow. */
+  together: CallTogether;
+  /** Where your own page is now. */
+  at: WorkspacePlace;
+  act: { follow: (connection: string) => void; stopFollowing: (how?: StopFollowing) => void; go: (to: WorkspacePlace) => void };
   say: (toast: WsToastData) => void;
   failed: (e: unknown) => void;
-}): WorkspacePresenting {
-  const key = keyOf(present);
-  const presenter: Person | null = useMemo(() => (present ? participants.find((p) => p.seat === present.by.seat)?.person ?? null : null), [present, participants]);
-  /** The presentation you're working on your own during, by its key. */
-  const [ownWay, setOwnWay] = useState<string | null>(null);
-  const away = key !== null && ownWay === key;
-  const isDocument = present?.kind === 'document' && present.id !== null;
-  const watching = isDocument && (present.mine || !away);
-
-  /* Next and Back show at once for whoever presses them; once the call has answered, what it says is what's so. */
-  const [moved, setMoved] = useState<{ key: string; section: number; n: number } | null>(null);
-  const moves = useRef(0);
-  const section = moved && moved.key === key ? moved.section : present?.section ?? 0;
+  /** You stopped following it from inside the workspace: a click, a scroll, a key or Escape. */
+  onOwn: () => void;
+  /** The call's board is one you can't open, brought by someone here you can ask for it, as its frame asks: read as it's presented. */
+  access: () => { who: string; onAsk: () => void } | null;
+}): WorkspacePresentation {
+  const ws = present?.kind === 'workspace' ? present : null;
+  const by = ws?.by ?? present?.by ?? null;
+  const presenterIn = by ? participants.find((p) => p.seat === by.seat) ?? null : null;
+  const connection = presenterIn && !presenterIn.isMe ? presenterIn.id : null;
+  const mine = ws?.mine === true;
+  const watching = ws !== null && !mine && onStage;
 
   /*
-   * The workspace opens for a presentation if it wasn't open, and is put away again when it ends with you watching. Put
-   * away by hand meanwhile, it stays put away; working on your own when it ends, you stay where you are.
+   * Following: the workspace follows the presenter through presence. It's asked once the workspace knows they're there, and
+   * once it's following, its stopping (a click, a scroll, a key, Escape) is you working on your own.
    */
-  const opened = useRef(false);
-  const openNow = useRef(open);
-  openNow.current = open;
+  const want = watching && following && connection !== null;
+  const engaged = useRef(false);
+  const followable = connection !== null && together.followable.includes(connection);
+  const followingThem = connection !== null && together.following === connection;
+  const latest = useRef({ act, onOwn, access });
+  latest.current = { act, onOwn, access };
   useEffect(() => {
-    if (!watching || openNow.current) return;
-    opened.current = true;
-    show();
-  }, [watching, key, show]);
-  useEffect(() => { if (!open) opened.current = false; }, [open]);
-  const presented = isDocument ? key : null;
-  const awayAtEnd = useRef(false);
-  useEffect(() => { if (presented !== null) awayAtEnd.current = away; }, [presented, away]);
-  const last = useRef(presented);
+    if (!want || !connection) { engaged.current = false; return; }
+    if (followingThem) { engaged.current = true; return; }
+    // A click, a scroll, a key or Escape in it: you work on your own where you are, rather than go back to where you were.
+    if (engaged.current) { engaged.current = false; before.current = null; latest.current.onOwn(); return; }
+    if (followable) latest.current.act.follow(connection);
+  }, [want, connection, followable, followingThem]);
+
+  /* Where you were before following, so Unfollow takes you back there. */
+  const before = useRef<WorkspacePlace | null>(null);
+  const atNow = useRef(at);
+  atNow.current = at;
+  const wasWant = useRef(want);
   useEffect(() => {
-    const was = last.current;
-    last.current = presented;
-    if (was === null || presented !== null) return;
-    if (opened.current && openNow.current && !awayAtEnd.current) hide();
-    opened.current = false;
-    awayAtEnd.current = false;
-    setOwnWay(null);
-  }, [presented, hide]);
+    const was = wasWant.current;
+    wasWant.current = want;
+    if (want && !was) before.current = atNow.current;
+    if (!want && was) {
+      if (followingThem) latest.current.act.stopFollowing('quiet');
+      // Unfollowed, still on your stage: back where you were. Ended, closed or put away: you stay where you are.
+      const back = before.current;
+      before.current = null;
+      if (watching && !following && back) latest.current.act.go(back);
+    }
+  }, [want]);
 
   /*
-   * A presentation that ends because its presenter left the call is said to have, for everyone, whether they could open
-   * it or not: otherwise it just vanishes. The call can say they've gone a moment before or after it says the presentation
-   * has, so their going is looked for for a moment after it ends. Someone who stopped it themselves stays, and nothing's said.
+   * Someone who can't open what's presented is told who's presenting, and nothing else, and that it ended only if the call says
+   * it did because its presenter left. Everyone else hears how it ended from their stage (layout/onStage.ts). While the call's
+   * board is one they can't open, brought by someone here, the toast asks for it, as the board's own frame does.
    */
-  const by = useRef<CallPresent['by'] | null>(null);
-  if (present) by.current = present.by;
-  const lastKey = useRef(key);
-  const ended = useRef<{ by: CallPresent['by']; at: number } | null>(null);
-  useEffect(() => {
-    const was = lastKey.current;
-    lastKey.current = key;
-    if (was !== null && key === null && by.current) ended.current = { by: by.current, at: Date.now() };
-    else if (key !== null) ended.current = null;
-  }, [key]);
-  useEffect(() => {
-    const e = ended.current;
-    if (!e) return;
-    if (Date.now() - e.at > PRESENTER_LEFT_MS) { ended.current = null; return; }
-    if (participants.some((p) => p.seat === e.by.seat)) return;
-    ended.current = null;
-    say(wsToast.presenterLeft(firstName(e.by.name)));
-  }, [key, participants, say]);
-
-  /* Someone who can't open what's presented is told who's presenting, and nothing else: in the strip, or here if the workspace isn't in sight. */
   const toldOf = useRef<string | null>(null);
-  const inSightNow = useRef(inSight);
-  inSightNow.current = inSight;
   useEffect(() => {
-    if (!present) { toldOf.current = null; return; }
-    if (present.id !== null || key === toldOf.current) return;
-    toldOf.current = key;
-    if (!inSightNow.current) say(wsToast.presentingPrivate(firstName(present.by.name)));
-  }, [present, key, say]);
+    if (!present) return;
+    if (present.kind !== null || present.key === toldOf.current) return;
+    toldOf.current = present.key;
+    say(wsToast.presentingPrivate(firstName(present.by.name), latest.current.access() ?? undefined));
+  }, [present, say]);
+  const endedKey = ended && ended.key === toldOf.current ? ended.key : null;
+  useEffect(() => {
+    if (!endedKey || !ended || ended.close) return;
+    toldOf.current = null;
+    if (!participants.some((p) => p.seat === ended.by.seat)) say(wsToast.presenterLeft(firstName(ended.by.name)));
+    // An end is read once, as it comes: `endedKey` says which.
+  }, [endedKey]);
 
-  const presentNow = useRef(present);
-  presentNow.current = present;
-  const start = useCallback((documentId: string) => { session.startPresenting('document', documentId, 0).catch(failed); }, [session, failed]);
-  const move = useCallback((to: number) => {
-    const k = keyOf(presentNow.current);
-    if (k === null) return;
-    const n = ++moves.current;
-    setMoved({ key: k, section: to, n });
-    const settle = () => setMoved((m) => (m?.n === n ? null : m));
-    session.movePresenting(to).then(settle, (e: unknown) => { settle(); failed(e); });
-  }, [session, failed]);
-  const stop = useCallback(() => {
-    const p = presentNow.current;
-    if (!p) return;
-    session.stopPresenting().then(() => say(p.mine ? wsToast.stoppedPresenting() : wsToast.stoppedTheirPresenting(firstName(p.by.name))), (e: unknown) => {
-      plog.info('presenting didn’t stop', { code: errorCode(e) });
+  const start = useCallback(async () => {
+    try {
+      await session.startPresenting({ kind: 'workspace' });
+      say(wsToast.workspaceOn());
+    } catch (e) {
+      plog.info('presenting the workspace didn’t start', { code: errorCode(e) });
       failed(e);
-    });
+      throw e;
+    }
   }, [session, say, failed]);
-  /*
-   * Work on my own puts your own page back: where you were, or, with the workspace opened for the presentation, the
-   * document itself, as everyone else edits it.
-   */
-  const setAway = useCallback((on: boolean) => {
-    const p = presentNow.current;
-    setOwnWay(on ? keyOf(p) : null);
-    if (on && opened.current && p?.id) go({ kind: 'document', id: p.id });
-  }, [go]);
-
-  return useMemo(() => ({ present, presenter, watching, away, section, inSight, start, move, stop, setAway }), [present, presenter, watching, away, section, inSight, start, move, stop, setAway]);
+  const stop = useCallback(async (close: boolean) => {
+    try {
+      await session.stopPresenting(close);
+    } catch (e) {
+      plog.info('presenting didn’t stop', { code: errorCode(e), close });
+      failed(e);
+      throw e;
+    }
+  }, [session, failed]);
+  const where = connection ? together.where[connection] ?? null : null;
+  return useMemo(() => ({ connection, where, start, stop }), [connection, where, start, stop]);
 }

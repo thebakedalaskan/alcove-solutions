@@ -33,12 +33,15 @@ src/browser.ts            the browser as a story finds it: connection, devices, 
 src/app.tsx               the app's own router at an address, in memory
 src/page.tsx              what page stories share: `pages` and `page()`
 src/component.tsx         what component stories share: `onStage`, `PopSurface`, `ModalFrame`, `Box`, `Row`, `did()`
-src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `press()`
+src/call.ts               what call stories share: `inCall()`, `atTheDoor()`, `rung()`, `phone()`, `light()`, `press()`, `reach()`
 src/board.tsx             what board stories share: `BoardScene`, the real surface on a board, and `whereItShows`
 stories/foundations/      colour, type, icons, scales, the evening and what passes through
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
-stories/calls/            the call: the lobby and waiting, ringing, the call itself, notes, sharing, rooms, its workspace, a board, leaving
+stories/calls/            the call: the lobby and waiting, ringing, the call itself and every moment of its canvas (`TheCall`, with the
+                          plays it shares in `plays.ts`), how a presentation ends (a reload, a room, closed, replaced, a share
+                          stopped), notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
+                          everyone, moved to Trash), leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
 ```
@@ -166,8 +169,9 @@ over the page is found with `screen` from `storybook/test`, since it isn't insid
 
 `stories/journeys/<nn>-<section>.stories.tsx`, one file per section of `docs/product/user-flows.md` (`04-start-a-call`,
 title `Journeys/4 Start or schedule a call`), a story per journey, named with its number there. A part of a section with
-numbered steps of its own gets a file after its section's, named with the steps each journey takes
-(`06b-a-board-in-the-call`, title `Journeys/6 A board in the call`, a story `1–2 Start a board`). The play function clicks
+numbered steps of its own gets a file after its section's, its journeys numbered on from the section's own
+(`06b-a-board-in-the-call`, title `Journeys/6 A board in the call`, with `6.13 Start a board` to `6.21 On a phone` after the
+call's `6.1` to `6.12`). The play function clicks
 the way a person would, finding what it clicks by role and label, in labelled steps that say what happens, as the canvas's
 journey captions do. It never checks: no `expect` (the policy script refuses it). `findBy…` waits for what the next step
 needs.
@@ -253,7 +257,13 @@ export const SomeoneSharingPhone = phone(SomeoneSharing);
 export const Waiting = atTheDoor({ scenario: 'busy', call: CHECK_IN, script: { door: { hostArrives: 8 } } });
 /** A play that presses a button in the dock, then one in what it opens. */
 export const CallEnded = inCall({ scenario: 'call-soon', call: REVIEW }, { play: press('Leave', { then: ['End call for everyone'] }) });
+/** A play that opens what's yours: at the top right, or from the grid at the top of More on a phone, then a tab of your side. */
+export const Transcript = inCall({ scenario: 'call-soon', call: REVIEW }, { play: reach('Notes', { tab: 'Transcript' }) });
 ```
+
+The dock's More is found by what its label starts with (`MORE`), so it's never mistaken for a board's own More. `clearSide`
+puts your side away first, for a story about something else (a call opens Notes by itself on a wide screen while notes are on),
+and `plays()` runs plays one after another.
 
 A call is one of the scenario's (its link's code) or a `StoryCall` the story puts in the world (`stories/calls/talk.ts`
 has the calls, conversations and shares the call stories share). Times are seconds from joining; the door's, from the
@@ -261,25 +271,35 @@ story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do:
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
-the world's first workspace. Someone else can open a board for everyone (`{ do: 'open-board' }`, with what `draw` puts on it),
-present it (`{ do: 'present' }`), move everyone on (`{ do: 'present-move' }`) and stop; you present the board open where you
+the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
+it), which opens on their stage alone until they present it (`{ do: 'present' }`), move everyone on (`{ do: 'move-presenting' }`)
+and stop (`{ do: 'stop-presenting' }`); the organizer can close it for everyone (`closesPresenting()`), and whoever opened it
+can close it (`closesBoard()`) unless someone else presents it. It leaves the call, as the server takes it out, when someone
+moves it to Trash in the Drive, alone or in its folder (`trashesBoard()`, `trashesBoard({ folder: true })`), or deletes the
+workspace it's kept in (`deletesBoardWorkspace()`): its own connection says which. You present the board open where you
 are, as the server lets you, and your presenter notes last as long as the story. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
-stories are always night, and come on a phone too (`phone()`).
+stories are always night, come on a phone too (`phone()`), and in a light theme (`light()`), where only your side and a board
+are light.
 
 The call's workspace is played too. The first time Workspace opens, the call settles its home as the API does: the
 `StoryCall`'s `workspaceId` (chosen when it was scheduled) with the call's folder put at its top, else a new workspace
 named "<call title> · <day>" with the folder in it, which holds the live Notes, Follow-ups and Transcript. Someone who came
 in with the link gets nothing, so it's private to them. The script's `workspace` says what's brought to the call and who's
-in which document; beats move people (`goesTo`), present (`presents`, `movesPresenting`), play a video for everyone
-(`plays`), ask to see it (`asksToSee`) and tag you (`tagsYou`). Whatever you do in it (switch, present, play, answer an
+in which document; beats move people (`goesTo`), present the workspace or the board open where you are
+(`presentsWorkspace`, `presentsBoard`, `movesPresenting`, `stopsPresenting`, and the organizer's `closesPresenting`), share and
+stop a screen (`shares`, `stopsSharing`, and the organizer's `stopsShare`), play a video for everyone (`plays`), ask to see it
+(`asksToSee`) and tag you (`tagsYou`). Every end of a presentation is said at once, as the server says it (`ended`): someone
+leaving (`leaves`), being moved to a room, or you (`movesToRoom(who, room)`), the workspace switching, or its board going. A
+reload isn't an end: `reloads(who, seconds)` takes them out of the call for that long, what they present hidden meanwhile,
+and brings them back to it with the same key. Whatever you do in it (switch, present, play, answer an
 ask, add a follow-up) changes the call as the server would. `addWalkthrough()` in `talk.ts` puts a document with a film
 in Product, drawn and recorded in the browser (`src/media/film.ts`) the first time it's played.
 
 ```tsx
-/** Priya presents the launch plan two seconds in, and leaves four seconds later. */
+/** Priya presents the workspace two seconds in, and leaves four seconds later. */
 export const PresenterLeft = inCall({
   scenario: 'busy', call: LAUNCH_REVIEW,
-  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presents(PRIYA, PLAN)), ...at(6, leaves(PRIYA))] }
+  script: { here: [{ who: PRIYA }, { who: KOFI }], workspace: { brought: [PLAN] }, cues: [...at(2, presentsWorkspace(PRIYA)), ...at(6, leaves(PRIYA))] }
 });
 ```
 
@@ -294,7 +314,7 @@ would. `stories/calls/boards.ts` has the launch retro the board stories share, f
 What More puts on a board works here as it does in the app: a picture goes into the board's own files (`media.upload`) and
 back through `media.picture`, From your workspace lists the board's workspace as the stand-in's tree has it, and the
 downloads save a file. `stories/calls/BoardMore.stories.tsx` has each of More's items on the launch review, held in Product so
-its documents are there to link, and `14 On a phone` in the board's journeys adds a sticky through +, and starts a timer and a
+its documents are there to link, and `6.21 On a phone` in the board's journeys adds a sticky through +, and starts a timer and a
 vote, at a phone's size.
 
 ```tsx

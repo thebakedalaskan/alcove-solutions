@@ -1,9 +1,4 @@
-/* Your own notes (apps/web/src/features/personal): in the call's panel, at night like the rest of the call, and beside a
-   note (own-). */
-
-/* The head of the panel's view: who it's for, and marking a moment. */
-.own-head { flex: none; display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px 8px 18px; border-bottom: 1px solid var(--line); }
-.own-head .t { flex: 1; min-width: 0; font: 600 14px/1.3 var(--font-sans); color: var(--ink); }
+/* Your own notes (apps/web/src/features/personal): at the foot of the notes in a call, and beside a note (own-). */
 
 /* Everything kept, oldest first. */
 .own-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
