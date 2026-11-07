@@ -267,8 +267,9 @@ story opening. A beat (`joins`, `says`, `shares`, `knocks`, `raisesHand`, `{ do:
 `{ do: 'end' }`...) is anything someone else, the server or LiveKit could do; `run()` is anything else, such as `ringYou()`
 from another call. Rooms the organizer opens (`{ do: 'rooms' }`) can have a board each, or one they share (`board`), and each
 room's people can put stickies on theirs (`work`): the scripted call makes, fills and lands the boards as the server does, in
-the world's first workspace. Someone else can open a board for everyone (`{ do: 'open-board' }`, with what `draw` puts on it),
-present it (`{ do: 'present' }`), move everyone on (`{ do: 'present-move' }`) and stop; you present the board open where you
+the world's first workspace. Someone else can make the board in the call (`{ do: 'open-board' }`, with what `draw` puts on
+it), which opens on their stage alone until they present it (`{ do: 'present' }`), move everyone on (`{ do: 'present-move' }`)
+and stop; you present the board open where you
 are, as the server lets you, and your presenter notes last as long as the story. A call nobody scripted plays `defaultScript`: everyone invited comes in and talks it through. Call
 stories are always night, and come on a phone too (`phone()`).
 

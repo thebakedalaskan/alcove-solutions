@@ -1008,8 +1008,8 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return frames.find((f) => f.title === title) ?? frames[0] ?? null;
   }
   /**
-   * Someone opens a new board for everyone in the main room, made in the call's home and filled as the server fills it, with
-   * what `draw` puts on it; or one you can't open (`closedToYou`). Then the others work on it as the script says. With a
+   * Someone makes a new board, the board in the main room, made in the call's home and filled as the server fills it, with
+   * what `draw` puts on it; or one you can't open (`closedToYou`). It opens on their stage alone until they present it. Then the others work on it as the script says. With a
    * `standing`, your browser opens it as the world says it stands for you: no connection to it, or what's added here refused.
    */
   private theyOpenBoard(who: Person, template: BoardTemplate, closedToYou: boolean, draw?: ((doc: ReturnType<typeof boardDoc>) => void) | undefined, standing?: 'offline' | 'failed' | undefined): void {

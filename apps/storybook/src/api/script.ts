@@ -115,9 +115,9 @@ export type Beat =
   /** Someone tags you in a document of the call's workspace, on a line. */
   | { do: 'tag-you'; who: Person; document: string; block?: string | undefined }
   /**
-   * A board in the call (user-flows 6, A board in the call). Someone opens a new one for everyone in the main room from a
+   * A board in the call (user-flows 6, A board in the call). Someone makes a new one, the board in the main room, from a
    * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
-   * (`closedToYou`); adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
+   * (`closedToYou`), which opens on their stage alone until they present it; adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
    * pointer by it; and whoever opened it closes it. `standing` opens it here with no connection to it (`offline`), or with
    * Alcove refusing what's added here (`failed`), while the call carries on.
    */
@@ -211,7 +211,7 @@ export const stopsShare = (who: Person | 'me'): Beat => ({ do: 'stop-share', who
 export const plays = (who: Person, document: string, media: string): Beat => ({ do: 'play', who, document, media });
 export const asksToSee = (who: Person): Beat => ({ do: 'ask-to-see', who });
 export const tagsYou = (who: Person, document: string, block?: string): Beat => ({ do: 'tag-you', who, document, block });
-/** Someone opens a board from a template for everyone here, or one you can't open, or one that stands badly here. */
+/** Someone makes the board here from a template (on their stage alone until they present it), or one you can't open, or one that stands badly here. */
 export const opensBoard = (who: Person, template: BoardTemplate, o: { closedToYou?: boolean; draw?: (doc: Y.Doc) => void; standing?: 'offline' | 'failed' } = {}): Beat => ({ do: 'open-board', who, template, ...o });
 /** Someone adds a sticky to the frame with this title on the board that's open. */
 export const addsSticky = (who: Person, frame: string, text: string): Beat => ({ do: 'add-sticky', who, frame, text });
