@@ -170,6 +170,18 @@ function useBoardComments(participants: CallState['participants'], workspaceId: 
 /** A saved board you opened just for you, from the picker: by where it's kept, and what it's called. */
 export interface SavedBoard { workspaceId: string; documentId: string; name: string }
 
+/**
+ * What's said when the board in the call leaves it for everyone, but not as a presentation closing for everyone, which the stage
+ * says (layout/onStage.ts). Nothing else closes it while you stay where you are (moving to a room, or back, brings that part's
+ * board, unsaid): it was moved to Trash, alone or in a folder, or deleted, its workspace with it. The board's own session says
+ * which as it hears it, usually before the call does; until it has, both are said, as either is true.
+ */
+function goneWords(name: string, status: DocStatus | null): string {
+  if (status?.trashed) return `${name} was moved to Trash, so it closed for everyone.`;
+  if (status?.closed === 'deleted') return `${name} was deleted, so it closed for everyone.`;
+  return `${name} was moved to Trash or deleted, so it closed for everyone.`;
+}
+
 export interface CallBoardFacts {
   session: CallSession;
   /** Which board is on your stage: the call's, a saved one just for you, or none. */
@@ -182,16 +194,14 @@ export interface CallBoardFacts {
   owner: string | null;
   /** Who's talking now, by connection. */
   talking: readonly string[];
-  /** What a workspace is called, as your Drive has it, if you're in it. */
-  spaceName: (workspaceId: string) => string | null;
-  say: (text: string, icon: 'presentation' | 'lock' | 'eye' | 'image' | 'x' | 'waveform', action?: SaidAction) => void;
+  say: (text: string, icon: 'presentation' | 'lock' | 'eye' | 'image' | 'x' | 'waveform' | 'trash', action?: SaidAction) => void;
   /** The part of the call you're in: arriving in a room with its board open is told as the room, not as the board. */
   place: string;
   /** Rooms have just closed and their boards came back, which the call says itself: a board made for them just opens. */
   cameBack: () => boolean;
 }
 
-export function useCallBoard({ session, stage, saved, state, me, owner, talking, spaceName, say, place, cameBack }: CallBoardFacts) {
+export function useCallBoard({ session, stage, saved, state, me, owner, talking, say, place, cameBack }: CallBoardFacts) {
   const open = state.board.open;
   const pass = session.ticket.pass;
   const reduce = useReducedMotion();
@@ -276,8 +286,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
       const last = presentedBoard.current;
       if (end?.close && last && end.key === last.key && last.documentId === before.documentId) return;
       const gone = latest.current?.documentId === before.documentId ? latest.current : before;
-      const where = gone.workspaceId ? spaceName(gone.workspaceId) : null;
-      say(gone.name ? (where ? `${gone.name} is closed. It’s saved in ${where}.` : `${gone.name} is closed.`) : 'The board is closed.', 'presentation');
+      say(goneWords(gone.name ?? 'The board', status), 'trash');
       return;
     }
     rise();

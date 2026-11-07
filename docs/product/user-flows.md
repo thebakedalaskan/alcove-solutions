@@ -703,7 +703,9 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 5. **Close is for you.** **Close**, on the frame's bar, or pressing the lit **Board** (or **O**), closes a board open just
    for you, and nothing changes for anyone else. On a board someone else presents, it closes it for you: while they present
    it, it's a tile among the people, and **Join** on the tile takes you back in, following. A board nobody presents has no
-   tile. While you present it, Close asks first (step 11).
+   tile. While you present it, Close asks first (step 11). Someone moving the board in the call to Trash, or deleting it,
+   takes it out of the call for everyone, and whoever had it open is told which ("Launch retro was moved to Trash, so it
+   closed for everyone."); restored, it's the board in the call again.
 6. **Beside a shared screen.** While you're on a presented board, a share that starts comes in as a tile among the people,
    with a toast and **Show it**; opening a board just for you puts a share that's on your stage away as a tile, still live.
    **Show beside**, in the **⋯** on the share's tile, puts it beside the board, as two screens sit side by side, and closing

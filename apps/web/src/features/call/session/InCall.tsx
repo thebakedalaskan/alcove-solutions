@@ -495,7 +495,7 @@ export function InCall({ session }: { session: CallSession }) {
   const board = useCallBoard({
     stage: savedOn && saved ? 'saved' : stage.on.includes('board') ? 'call' : null, saved: savedOn ? saved : null,
     place: myRoomId ?? MAIN_PLACE, cameBack,
-    session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])), spaceName,
+    session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])),
     say: (text, icon, action) => { toast(text, { icon, action }); }
   });
   /* A breakout room's board, and the board the rooms come back to, open on everyone's stage there. */

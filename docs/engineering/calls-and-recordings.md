@@ -1239,9 +1239,13 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   `role`, `seal` (`Sealed`, or `Sealed to this room` on a room's own board), and `frame`: on the one board every room shares,
   the frame of the room you're in, where you land; null anywhere else. Someone who can't open it gets `role`, `workspaceId`, `documentId` and
   `name` null: that's "A board you can't open", and nothing names it. A board in Trash, or gone, has left the call for
-  everyone, and one brought back from Trash is open again. Someone waiting to be let in is told nothing. Late joiners and
-  reconnects read it from here like everyone else. None of what happens to a board outside the call tells the call, so while
-  one's open a browser reads the call each time it checks its keys, as it does for what's presented.
+  everyone, and one brought back from Trash is open again. That, and a presentation closing for everyone, are all that take
+  the board in your part of the call away while you stay there. Whoever had it on their stage is told which, as the board's
+  own session hears it, which is usually before the call does: "Launch retro was moved to Trash, so it closed for
+  everyone.", or "… was deleted, …" (its workspace with it), and until the session has said, "… was moved to Trash or
+  deleted, …" (`goneWords` in `features/call/boards/callBoard.ts`). Someone waiting to be let in is told nothing. Late
+  joiners and reconnects read it from here like everyone else. None of what happens to a board outside the call tells the
+  call, so while one's open a browser reads the call each time it checks its keys, as it does for what's presented.
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
   them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
 - **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes;
