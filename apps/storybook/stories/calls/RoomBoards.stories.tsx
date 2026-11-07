@@ -106,15 +106,15 @@ export const JourneyInARoom: PageStory = {
 
 /* ---------- Start a board in a room ---------- */
 
-/** Rooms opened with no board: in Rollout with Kofi, Board is where it always is, at the top right. */
+/** Rooms opened with no board: in Rollout with Kofi, Board is where it always is, at the top right, and opens a board just for the room. */
 export const InARoomWithNoBoard = checkIn(undefined);
-/** The journey: Board, then Blank. The same menu, for this room alone, and it opens for Kofi too. */
+/** The journey: Board, then Blank. The same picker, for this room alone: it comes back with the room when rooms close. */
 export const JourneyStartABoardInARoom: PageStory = {
   ...checkIn(undefined), name: '3. Start a board in a room',
   play: (async ({ userEvent, step }) => {
     await step('Told you’re in Rollout, as rooms with no board say it', async () => { await screen.findByText(/You’re in Rollout for 10 min/, {}, LATER); });
     await step('Press Board', async () => { await userEvent.click(await screen.findByRole('button', { name: 'Board' }, SOON)); });
-    await step('The menu says only this room sees it', async () => { await screen.findByText('Only this room sees it', {}, SOON); });
+    await step('The picker says it comes back with you when rooms close', async () => { await screen.findByText('Comes back with you when rooms close. Alcove can’t read it.', {}, SOON); });
     await step('Press Blank', async () => { await userEvent.click(await screen.findByRole('button', { name: 'Blank' }, SOON)); });
     await step('It opens, sealed to this room', async () => { await screen.findByRole('button', { name: /Sealed to this room/ }, SOON); });
   }) satisfies Play
