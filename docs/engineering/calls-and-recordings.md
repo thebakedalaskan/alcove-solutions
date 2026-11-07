@@ -1782,16 +1782,20 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
     and People, then Raise your hand and Your view.
   - *One width makes a phone*: under 600 px (`PHONE_W`), for the layout and the dock alike.
 - **Your side** (`side.ts`, `useSide`) is one view at a time (`SideView`: `notes`, `chat`, `people`, `rooms`, `mine`), on
-  the right, 368 px wide (340 px in a window under 1200 px), sliding in as the stage gives way. On a phone it's a sheet over
-  the call, and a window that narrows to a phone puts it away. `Panel.tsx` draws each: Notes is a head (This call, in the
-  workspace; Open; the bookmark, for an account) over the tabs Notes, Transcript and Ask, the Notes tab starting with the
-  notes sign and its ⋯ (the organizer's Pause, Resume and Turn off or on, or anyone else's Ask for notes) and ending with
-  Yours; Chat is alone; People has Breakout rooms for the organizer, which opens `rooms`; and `mine` is a presenter's own
-  notes beside a board they present, from the pager's notes button. It takes your theme (`ThemeScope`, so a popover or a
-  list that opens from it takes it too), as a board's sheet does unless it's a night board, while the stage, the dock, the
-  workspace and screens stay night. What's typed in Chat or Ask and not sent is kept above the side (`useDraft`), so moving
-  to another view and back keeps it. A reload finds your side as it was (`CallLayout.side`, never `rooms` or `mine`, which
-  go with the moment), and a call just joined opens Notes on a wide screen while notes are on.
+  the right, 368 px wide (340 px in a window under 1200 px), sliding in as the stage gives way. Where that would leave the
+  stage under 480 px (`STAGE_BESIDE_SIDE`, a window under 864 px), it slides in over the stage instead, which keeps its
+  width and dims under it (`.ic-scrim.is-over`, the main area alone, so the top bar and the dock work as ever); a press on
+  the stage puts it away, and so does choosing something there, as on a phone (`sideCovers`). Someone asking to join is
+  answered in what it leaves clear. On a phone it's a sheet over the call, and a window that narrows to a phone puts it
+  away. `Panel.tsx` draws each: Notes is a head (This call, in the workspace; Open; the bookmark, for an account) over the
+  tabs Notes, Transcript and Ask, the Notes tab starting with the notes sign and its ⋯ (the organizer's Pause, Resume and
+  Turn off or on, or anyone else's Ask for notes) and ending with Yours; Chat is alone; People has Breakout rooms for the
+  organizer, which opens `rooms`; and `mine` is a presenter's own notes beside a board they present, from the pager's notes
+  button. It takes your theme (`ThemeScope`, so a popover or a list that opens from it takes it too), as a board's sheet
+  does unless it's a night board, while the stage, the dock, the workspace and screens stay night. What's typed in Chat or
+  Ask and not sent is kept above the side (`useDraft`), so moving to another view and back keeps it. A reload finds your
+  side as it was (`CallLayout.side`, never `rooms` or `mine`, which go with the moment), and a call just joined opens Notes
+  on a wide screen while notes are on.
 - **The stage** (`Stage.tsx`, `stageLayout.ts`, placed in the main area by `panels.ts`'s `placeMain`) holds the people and
   what you have open (`onStage.ts`: the workspace, the board in the call, a saved board just for you, or someone's screen).
   With nothing open the people fill it, in Auto, Speaker or Grid. With something open, it sits in its frame, and the people
@@ -1927,8 +1931,9 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   goes, then focus. The workspace takes it in the capture phase on `document` and steps aside for all of those (`editing`
   in WorkspacePanel.tsx); with only the caret in the document, the editor never sees it, so the caret stays where it was.
 - **When room runs out**, the people's column narrows with the stage, and under 760 px of stage they're a row of arches over
-  the frame; your side is 340 px wide in a window under 1200 px; and two things on your stage with room for neither side by
-  side nor one over the other take turns, with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
+  the frame; your side is 340 px wide in a window under 1200 px, and in one under 864 px it sits over the stage rather than
+  leave it under 480 px; and two things on your stage with room for neither side by side nor one over the other take turns,
+  with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
   screen under a row of arches, two things take turns with the switcher under the arches, and your side, Share, More, a
   frame's name menu and Close's question are sheets over the call.
 - **The people beside what's open.** Tiles in a column sized to the stage; arches in a row over the frame, their name, mic
@@ -1941,11 +1946,13 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   horizon they're in People. Beside what's open there's no stage to have a corner of, so your own picture is one of the
   people; hidden, its chip waits under the tiles. Nothing here changes while nothing is open: hiding people then says it
   applies once something is. A presented thing's tile (`PresentedTile`) stands first among them.
-- **Toasts in a call** sit left of the dock from 1280 px, spaced as the canvas spaces them so that someone's share is offered
+- **Toasts in a call** sit left of the dock from 1328 px, spaced as the canvas spaces them so that someone's share is offered
   on one line, and right of it when people are on the horizon, so they never cover the foot of the list. Narrower, there's
-  no room for one line beside the dock, so they go above it, in the middle. What presenting says (who you're following,
-  closed for you or for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's
-  `nc.js` has.
+  no room for one line beside the dock, so they go above it, in the middle. They never cover your side's foot, its composer
+  and its buttons: while it's open they keep to the middle of the stage left of it (with people on the horizon, from
+  1328 px too), and on a phone, with your side a sheet, they go to the top. Nor do they cover the pager at the foot of a
+  board you present: they stand above it (all in `call.css`). What presenting says (who you're following, closed for you or
+  for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's `nc.js` has.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto, Speaker or
   Grid; how the people sit beside what's open (Tiles, Arches or Hidden); up to six pins, which share the main stage (in Grid
   they come first and bigger); the order you put people in; who you made bigger; and where you see yourself (in the grid, in

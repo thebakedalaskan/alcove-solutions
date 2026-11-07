@@ -46,7 +46,7 @@ import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/ca
 import { BoardPagerFoot, Frame, FrameBox, type FrameBar } from '~/features/call/layout/frame';
 import { isScreen, screenOf, sharerOf, useOnStage, type Presented, type ThingId } from '~/features/call/layout/onStage';
 import { KeysSheet } from '~/features/call/layout/KeysSheet';
-import { sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
+import { STAGE_BESIDE_SIDE, sideWidth, useSide, type NotesTab, type SidePlace, type SideView } from '~/features/call/layout/side';
 import { PlayTogetherBar, useSharedVideo, useWorkspacePlaying } from '~/features/call/playback/PlayTogether';
 import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
@@ -1129,7 +1129,7 @@ export function InCall({ session }: { session: CallSession }) {
 
   /*
    * ---------- the main area (panels.ts): what's on your stage, each in its frame, and the people beside it ----------
-   * Your side takes its width at the right, and the main area makes room for it.
+   * Your side takes its width at the right, and the main area makes room for it; in a narrow window it sits over the stage.
    */
   const callArea = useCallArea();
   const size = callArea.size;
@@ -1141,10 +1141,18 @@ export function InCall({ session }: { session: CallSession }) {
    * saying where you are, while the sheet says what happened.
    */
   const callOver = ended !== null || leaving;
-  // Your side, beside the main area: not on a phone, where it's a sheet over the call, nor in focus.
+  /*
+   * Your side, beside the main area: not on a phone, where it's a sheet over the call, nor where the stage beside it would be too
+   * narrow, where it sits over the stage at the right rather than squeeze it, nor in focus. While it's over what's on your stage,
+   * choosing something there (or the call showing you something there) puts it away.
+   */
   const sideW = sideWidth(width);
-  const sideRoom = side.view !== null && !phone && !focusOn ? sideW + GAP : 0;
+  const sideOver = !phone && size.w - (sideW + GAP) < STAGE_BESIDE_SIDE;
+  const sideRoom = side.view !== null && !phone && !sideOver && !focusOn ? sideW + GAP : 0;
+  const sideCovers = side.view !== null && (phone || (sideOver && !focusOn));
   const mainW = Math.max(0, size.w - sideRoom);
+  /* What your side over the stage leaves clear, at its left: someone asking to join is answered there, never under your side. */
+  const clearW = sideOver && side.view !== null && !focusOn ? Math.max(0, mainW - (sideW + GAP)) : mainW;
   const top = bar ? 46 : 0;
   const bottom = capNode ? (mainW < 700 ? 150 : 124) : 0;
   // Overseeing rooms, the organizer sees the rooms: what's open waits behind them, as it is.
@@ -1169,7 +1177,7 @@ export function InCall({ session }: { session: CallSession }) {
   const { live: liveCall, put } = useLiveCall(session, talking?.person ?? null, {
     // A list over the page goes, or it would cover what the panel opens beside.
     notes: controls.notes, ask: controls.ask, beside: (v) => { setPop(null); work.act.setPeek(false); goTo(v); },
-    reveal: () => { work.act.reveal(); if (phone) side.close(); }, covered: () => phone && side.view !== null
+    reveal: () => { work.act.reveal(); if (sideCovers) side.close(); }, covered: () => sideCovers
   });
   // Who has a place however little room there is, as Speaker view counts talking: if every word did, the few places would keep changing hands.
   const loudKey = placed.frames.length ? onStage.filter((p) => p.hand || p.id === staged.speaker).map((p) => p.id).join(' ') : '';
@@ -1182,11 +1190,10 @@ export function InCall({ session }: { session: CallSession }) {
   const wsInSight = boxOf('ws') !== null;
   /* When there isn't room for two side by side, they take turns, and the top bar says which is showing. */
   const thingName = (id: ThingId) => (id === 'ws' ? 'Workspace' : id === 'board' || id === 'saved' ? 'Board' : shares.find((x) => screenOf(x.id) === id)?.name ?? 'Shared screen');
-  /* On a phone your side covers what's taking turns, so choosing one puts it away. */
-  const covered = phone && side.view !== null;
+  /* Where your side covers what's taking turns, choosing one puts it away. */
   const swap = placed.turns && shownThings.length > 1 && (
     <div className="ic-swap" role="group" aria-label="What’s showing">
-      {shownThings.map((id) => <button key={id} type="button" aria-pressed={!covered && frontId === id} onClick={() => { setFront(id); if (covered) side.close(); }}>{thingName(id)}</button>)}
+      {shownThings.map((id) => <button key={id} type="button" aria-pressed={!sideCovers && frontId === id} onClick={() => { setFront(id); if (sideCovers) side.close(); }}>{thingName(id)}</button>)}
     </div>
   );
 
@@ -1290,7 +1297,7 @@ export function InCall({ session }: { session: CallSession }) {
   };
   const sideNames: Record<SideView, string> = { notes: 'Notes', chat: 'Chat', people: 'People', rooms: open ? 'Rooms are open' : 'Breakout rooms', mine: 'Your notes' };
   const hostSide: HostSide | null = side.view === null || focusOn ? null
-    : { view: side.view, label: sideNames[side.view], width: sideW, phone, theme, onClose: sideClose, children: sideBody(side.view) };
+    : { view: side.view, label: sideNames[side.view], width: sideW, phone, over: sideOver, theme, onClose: sideClose, children: sideBody(side.view) };
   /* The workspace's list: beside the page where its frame has the room, and otherwise over the page for now. */
   const wsBox = boxOf('ws');
   const listFits = wsBox !== null && wsBox.w >= 760 && !phone;
@@ -1620,7 +1627,7 @@ export function InCall({ session }: { session: CallSession }) {
               <Stage staged={staged} frame={frame} live={false} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
                 together={together} bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onPeopleMode={setPeopleMode} onMorePeople={() => openSide('people')} board={stageBoard} />
-              <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: mainW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
+              <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (
                   <div className="rg-knocks">
                     <AnimatePresence initial={false}>
@@ -1682,7 +1689,7 @@ export function InCall({ session }: { session: CallSession }) {
       </div>
       <ShareWindows shares={shares} looks={looks} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} />
       <WorkspaceKnock session={session} workspace={space} at={work.at} act={work.act}
-        onChoose={() => { work.act.wantList(); setFront('ws'); if (phone) side.close(); onShowList(); }} />
+        onChoose={() => { work.act.wantList(); setFront('ws'); if (sideCovers) side.close(); onShowList(); }} />
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} without={keysWithout} />

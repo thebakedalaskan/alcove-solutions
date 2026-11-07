@@ -249,9 +249,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   - **The top right** holds what's only yours: View, then one group of Board, Workspace, a hairline, Notes, Chat, a
     hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
-  stage gives way as it slides in: Notes (with the tabs Notes, Transcript and Ask, and Yours at the foot of Notes), Chat,
-  People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet does unless it's a
-  night board; the stage, the dock, the workspace and screens stay night.
+  stage gives way as it slides in; where that would leave the stage under 480px (a window under 864px), it slides in over
+  the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript
+  and Ask, and Yours at the foot of Notes), Chat, People, Your notes beside a presented board, and the rooms. It takes your
+  theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it

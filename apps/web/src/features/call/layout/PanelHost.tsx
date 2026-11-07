@@ -1,7 +1,9 @@
 /*
  * The call's area: the main area, where the people and what's open on your stage are (Stage.tsx and frame.tsx, placed by
  * panels.ts), and your side at its right. Your side shows one view at a time at a fixed width, sliding in as the main area
- * makes room for it; on a phone it's a sheet over the whole call.
+ * makes room for it. Where the stage would be too narrow beside it, it slides in over the stage instead, which dims behind it
+ * as a phone's call does, and a press on the stage puts it away; the top bar and the dock stay as they are. On a phone it's a
+ * sheet over the whole call.
  */
 import { ThemeScope, cn } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -62,6 +64,8 @@ export interface HostSide {
   width: number;
   /** A phone: it's a sheet over the call, with the call dimmed behind it. */
   phone: boolean;
+  /** The stage would be too narrow beside it: it sits over the stage at the right, which keeps its width and dims under it. */
+  over: boolean;
   /** Your theme, which the side follows while the call around it stays night. */
   theme: 'light' | 'dark';
   onClose: () => void;
@@ -101,9 +105,12 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
       {measured.current && frames}
       {swap && <div className="ic-swapbar">{swap}</div>}
       <AnimatePresence>
-        {measured.current && side?.phone && <motion.div key="scrim" className="ic-scrim" aria-hidden="true" onClick={side.onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : { duration: 0.24 }} />}
+        {measured.current && (side?.phone || side?.over) && (
+          <motion.div key={side.phone ? 'scrim' : 'dim'} className={cn('ic-scrim', !side.phone && 'is-over')} aria-hidden="true" onClick={side.onClose}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : { duration: 0.24 }} />
+        )}
         {measured.current && side && (
-          <motion.aside key={side.phone ? 'sheet' : 'side'} ref={side.phone ? sheet : undefined} tabIndex={side.phone ? -1 : undefined} className={cn('ic-side', side.theme, side.phone && 'is-sheet')} aria-label={side.label} data-view={side.view}
+          <motion.aside key={side.phone ? 'sheet' : 'side'} ref={side.phone ? sheet : undefined} tabIndex={side.phone ? -1 : undefined} className={cn('ic-side', side.theme, side.phone && 'is-sheet', side.over && !side.phone && 'is-over')} aria-label={side.label} data-view={side.view}
             initial={side.phone ? away : { ...at(sideBox), ...away }} animate={here} exit={away}
             transition={reduce ? { duration: 0 } : side.phone ? SLIDE : { ...slide, x: SLIDE }}>
             <ThemeScope theme={side.theme}>{side.children}</ThemeScope>

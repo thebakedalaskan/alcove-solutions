@@ -189,6 +189,13 @@ export const phone = (story: PageStory, name?: string): PageStory => ({
   globals: { ...story.globals, viewport: { value: 'phone', isRotated: false } }
 });
 
+/** The same story in a narrow window, wider than a phone: your side sits over the stage there, rather than squeezing it. */
+export const narrow = (story: PageStory, name?: string): PageStory => ({
+  ...story,
+  ...(name ? { name } : story.name ? { name: `${story.name}, in a narrow window` } : {}),
+  globals: { ...story.globals, viewport: { value: 'narrow', isRotated: false } }
+});
+
 /**
  * The same story for someone whose theme is light. The stage stays night, as the call always is; a board on it follows their
  * theme, so it's light, as the canvas's in-call frames are.

@@ -13,7 +13,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { at, chats, line, presentsBoard, presentsWorkspace, shares, stopsPresenting, type CallScript, type Cue, type Line, type Present } from '../../src/api/script';
-import { inCall, light, phone, plays, reach, type InCall, type StoryCall } from '../../src/call';
+import { inCall, light, narrow, phone, plays, reach, type InCall, type StoryCall } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { RETRO } from './boards';
@@ -218,6 +218,12 @@ export const TheBoardsNameMenu: PageStory = { ...moment(yours(), ...presented, s
 /** Chat in your side beside the board you present: the stage gives way. */
 export const ChatBesideTheBoard: PageStory = { ...moment(yours(), ...presented, reach('Chat')), name: 'Chat beside the board' };
 export const ChatBesideTheBoardLight: PageStory = { ...light(ChatBesideTheBoard), name: 'Chat beside the board, in a light theme' };
+/**
+ * In a narrow window, wider than a phone, there's no room for the stage beside your side: Chat sits over the stage at the right,
+ * which keeps its width, and toasts keep to the stage left of it, clear of the composer.
+ */
+export const ChatOverTheBoardNarrow: PageStory = narrow(ChatBesideTheBoard, 'Chat over the board, in a narrow window');
+export const ChatOverTheBoardNarrowLight: PageStory = light(ChatOverTheBoardNarrow, 'Chat over the board, in a narrow window, in a light theme');
 const workspaceAway = step('Press Board, then Launch retro: the workspace you present waits as a tile', async (c) => { await pickBoard(c, retro); await frameOf(retro); });
 /** Share's Stop sharing, on what you present: "For you" or "For everyone", asked in Share itself. */
 async function stopInShare(c: Context): Promise<HTMLElement> {

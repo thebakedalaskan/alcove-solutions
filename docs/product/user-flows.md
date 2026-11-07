@@ -331,7 +331,9 @@ time, slides in on the right.
   where your camera has it) and how you see everyone else's cameras: **Auto** (as sharp as each tile on your
   screen), **Data saver**, or **No cameras**, which stays said at the top of the call with **Show cameras**. Both
   are remembered in this browser, and shared screens are never made smaller.
-- **Your side.** One panel at a time, on the right, at a fixed width: it slides in and the stage makes room. **Notes**,
+- **Your side.** One panel at a time, on the right, at a fixed width: it slides in and the stage makes room. In a window
+  too narrow for both (under 864 px), it slides in over the stage instead, which keeps its width and dims behind it, and a
+  press on the stage puts it away; the top bar and the dock work as ever. **Notes**,
   **Chat** and the faces (People) open it from the top right; **Your notes** opens there beside a board you present, and
   **Breakout rooms** (in People or **More**) opens the rooms there. A panel's button is lit while it's open, and pressing it
   again, its **×**, or **Esc** (once no menu is open, you're not in focus, and nobody you pinned is here) puts it away. On a

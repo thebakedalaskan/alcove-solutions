@@ -1,6 +1,8 @@
 /*
- * Your side of the call: one view at a time, on the right, at a fixed width, and on a phone a sheet over the call. Its button at
- * the top right is lit while it's open, and pressing it again puts it away. Only your screen changes: nothing here goes anywhere.
+ * Your side of the call: one view at a time, on the right, at a fixed width, the stage making room for it. In a window too narrow
+ * for both, it sits over the stage instead, as a phone's sheet sits over the call, rather than squeezing it; on a phone it's that
+ * sheet. Its button at the top right is lit while it's open, and pressing it again puts it away. Only your screen changes:
+ * nothing here goes anywhere.
  *
  * - Notes: the call's notes, its transcript and Ask, as tabs, with your own notes at the foot of the notes.
  * - Chat, and People (who's here, and breakout rooms for the organizer).
@@ -15,8 +17,14 @@ export type NotesTab = 'notes' | 'transcript' | 'ask';
 /** Where your side is, to the tab: a view, or the Notes view on one of its tabs (`notes` is its first). */
 export type SidePlace = Exclude<SideView, 'notes'> | NotesTab;
 
-/** How wide the side is: 368 px, or 340 px in a window under 1200 px. */
+/** How wide the side is: 368 px, or 340 px in a window under 1200 px. The call's toasts keep clear of it at the same widths (call.css). */
 export const sideWidth = (windowWidth: number): number => (windowWidth < 1200 ? 340 : 368);
+/**
+ * The narrowest the stage gets beside your side: narrower, and a frame's bar has no room to say what's in it and who presents it.
+ * In a window too narrow for both (wider than a phone and under 864 px), your side sits over the stage, at the right, and the
+ * stage keeps its whole width under it.
+ */
+export const STAGE_BESIDE_SIDE = 480;
 
 export function useSide(opts: { phone: boolean }): { view: SideView | null; open: (v: SideView) => void; toggle: (v: SideView) => void; close: () => void } {
   const [view, setView] = useState<SideView | null>(null);

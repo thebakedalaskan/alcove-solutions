@@ -413,6 +413,8 @@
 /* With people on the horizon, the left of the dock is theirs, and toasts take the right. Above the dock they'd sit on the list's foot. */
 @media (min-width: 1328px) {
   body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
+  /* Unless your side is open: the right is its foot's, so they stand above the dock, mid-stage, as in a narrower window. */
+  body:has(.ic-slot.is-horizon):has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 380px) / 2); right: auto; bottom: 96px; transform: translateX(-50%); justify-items: center; max-width: calc(100vw - 444px); }
   body:has(.ic-call.is-focus) .ac-toasts.on-stage { bottom: 6px; }
   /* The line that says who's up gives way there, and comes back when the toast goes: the arch still shows it. */
   body:has(.ac-toasts.on-stage .ac-toast) .ic-hz.is-past { opacity: 0; }
@@ -484,11 +486,15 @@
 
 /*
  * Your side: one view at a time, at the right of the main area, in your own theme (`.light` or `.dark` on it) while the call
- * around it stays night. On a phone it's a sheet over the call, which dims behind it.
+ * around it stays night. Where the stage beside it would be too narrow, it sits over the stage (`is-over`), lifted off it,
+ * and the stage dims behind it (`.ic-scrim.is-over`, the main area's alone: the top bar and the dock stay as they are); on a
+ * phone it's a sheet over the call, which dims behind it.
  */
 .ic-side { position: absolute; z-index: 20; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; outline: none; }
+.ic-side.is-over { box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .ic-side.is-sheet { position: fixed; z-index: 30; left: 0; right: 0; top: 64px; bottom: 0; border-radius: 24px 24px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .ic-scrim { position: fixed; z-index: 29; inset: 0; background: color-mix(in srgb, var(--stage) 55%, transparent); }
+.ic-scrim.is-over { position: absolute; z-index: 19; border-radius: var(--radius-lg); }
 /* What's on your stage, each in its frame (frame.tsx): placed over the main area where panels.ts puts it. */
 .ic-framebox { position: absolute; z-index: 2; display: flex; min-width: 0; min-height: 0; }
 /* The workspace off your stage: out of sight and out of reach, with whatever's in it kept as it was. */
@@ -1197,4 +1203,29 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 /* On a phone, a sheet risen over the call (Close's question, Share, More) takes the bottom of the screen: toasts say their piece at the top instead. */
 @media (max-width: 599px) {
   body:has(.ac-pop.is-sheet) .ac-toasts.on-stage { top: max(72px, env(safe-area-inset-top, 0px)); bottom: auto; }
+}
+/*
+ * Your side's foot is its composer and its buttons, and toasts never cover it. Under 1328 px they stand above the dock: while
+ * your side is open, beside it or over the stage in a narrow window, they keep to the middle of the stage left of it, at its
+ * width (368 px, or 340 px under 1200 px: side.ts's `sideWidth`, with its 12 px gap). On a phone your side is a sheet over the
+ * call, up to the top bar, so they say their piece over the top bar, which the sheet's scrim already dims.
+ */
+@media (min-width: 600px) and (max-width: 1327px) {
+  body:has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 380px) / 2); max-width: calc(100vw - 444px); }
+}
+@media (min-width: 600px) and (max-width: 1199px) {
+  body:has(.ic-side:not(.is-sheet)) .ac-toasts.on-stage { left: calc((100vw - 352px) / 2); max-width: calc(100vw - 416px); }
+}
+@media (max-width: 599px) {
+  body:has(.ic-side.is-sheet) .ac-toasts.on-stage { top: max(8px, env(safe-area-inset-top, 0px)); bottom: auto; align-content: start; }
+}
+/*
+ * Above the dock they'd also sit on the pager at the foot of a board you present (`.ic-ffoot`, 14 px up, 40 px tall): while it
+ * shows, they stand clear above it, unless a sheet on a phone has sent them to the top.
+ */
+@media (max-width: 1327px) {
+  body:has(.ic-framebox:not(.is-away) [data-pager]):not(:has(.ic-side.is-sheet, .ac-pop.is-sheet)) .ac-toasts.on-stage { bottom: 152px; }
+}
+@media (min-width: 1328px) {
+  body:has(.ic-slot.is-horizon):has(.ic-side:not(.is-sheet)):has(.ic-framebox:not(.is-away) [data-pager]) .ac-toasts.on-stage { bottom: 152px; }
 }
