@@ -7,7 +7,7 @@
  * in More.
  */
 import { clock, type Person } from '@alcove/api';
-import { BoardMenu, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardMenuContent } from '@alcove/ui';
+import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { q, trustLine } from '~/lib/queries';
@@ -16,11 +16,12 @@ import type { SideView } from './side';
 
 /** Board, at the top right. */
 export interface TopBoard {
-  /** A board is on your stage, or the Board menu is open. */
+  /** A board is on your stage, or the board picker is open. */
   on: boolean;
+  /** The picker, or with a board on your stage, Close. */
   onPress: () => void;
-  /** The Board menu, opening under it, while that's how a board starts. Pressing Board opens it through `onPress`. */
-  menu?: { open: boolean; onClose: () => void; content: BoardMenuContent; reach?: (() => void) | undefined } | undefined;
+  /** The board picker, opening under it. Pressing Board opens it through `onPress`. */
+  menu: { open: boolean; onClose: () => void; content: BoardPickerProps; reach?: (() => void) | undefined };
 }
 /** Workspace, at the top right: lit while it's on your stage, with how much has been brought to this call. */
 export interface TopWorkspace { on: boolean; count: number; onPress: () => void }
@@ -46,8 +47,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
   /** Shared screens are read for the notes (or will be once they resume), so frames of them are sealed too. */
   screens: boolean;
   phone: boolean;
-  /** Null for someone who can't start a board while none is open: a guest. */
-  board: TopBoard | null;
+  board: TopBoard;
   workspace: TopWorkspace;
   side: TopSide;
 }) {
@@ -94,10 +94,10 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
       <div className="end">
         {view}
         <CallTopGroup label="Just for you">
-          {board && (board.menu ? (
-            <BoardMenu open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu?.onClose(); }} tip={BOARD_TIP}
-              anchor={boardButton({ onPointerEnter: board.menu.reach })} {...board.menu.content} />
-          ) : <Tooltip label={BOARD_TIP} side="bottom">{boardButton({ onClick: board.onPress })}</Tooltip>)}
+          <Popover open={board.menu.open} onOpenChange={(o) => { if (o) board.onPress(); else board.menu.onClose(); }} tip={BOARD_TIP} side="bottom" align="end" label="Open a board" className="bl"
+            anchor={boardButton({ onPointerEnter: board.menu.reach })}>
+            <BoardPicker {...board.menu.content} />
+          </Popover>
           <Tooltip label={WORKSPACE_TIP} side="bottom">
             <CallTopButton icon="folderOpen" word="Workspace" label={!workspace.on && workspace.count > 0 ? `Workspace, ${workspace.count} in this call` : 'Workspace'}
               on={workspace.on} badge={workspace.count} aria-keyshortcuts="W" onClick={workspace.onPress} />

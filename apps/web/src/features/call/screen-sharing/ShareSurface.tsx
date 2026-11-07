@@ -21,7 +21,6 @@ import type { CallRoom } from '../media/livekit';
 import { POP_HEADER, type PopKind } from './popOut';
 import { WHOLE, ZOOM_MAX, centreOn, inView, isZoomed, panBy, place, zoomLabel, zoomTo, type Framing, type Point, type Size } from './shareFrame';
 import { HISTORY, LOOK_ARIA, LOOK_KEYS, type HistoryOff, type LookKey, type ShareLook, type ShareLookState } from './shareLook';
-import { ShareMenu } from '../layout/TileMenu';
 import { useLive } from '~/lib/live';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
@@ -343,27 +342,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   );
 }
 
-type ShareMenuProps = Omit<Parameters<typeof ShareMenu>[0], 'look'>;
-/** A share's ⋯ menu. For a share you see big it offers zoom, freeze and earlier pictures, following them while it's open. */
-export function ShareMenuFor({ look, ...menu }: ShareMenuProps & { look: ShareLook | null }) {
-  return look ? <LookedMenu look={look} {...menu} /> : <ShareMenu {...menu} />;
-}
-function LookedMenu({ look, point, ...menu }: ShareMenuProps & { look: ShareLook }) {
-  const s = useLive(look);
-  // Pointers and marks are about the picture now: while one is held still, you go back to live to point.
-  const held = s.held !== null;
-  return (
-    <ShareMenu {...menu} point={point ? { ...point, held, can: point.can && !held } : null} look={{
-      zoomed: isZoomed(s.framing), max: s.framing.zoom >= ZOOM_MAX - 0.001,
-      zoomIn: () => look.zoomStep(1), zoomOut: () => look.zoomStep(-1), whole: () => look.whole(),
-      held: s.held !== null, canEarlier: s.canEarlier,
-      freeze: () => { void look.freeze(); }, live: () => look.live(), earlier: () => { void look.earlier(); }, later: () => look.later(),
-      note: historyNote(s.off)
-    }} />
-  );
-}
-
-/** A share open in its own window: the stage keeps its place as a tile, with a way to bring it back. */
+/** A share open in its own window: its frame keeps its place, with a way to bring it back. */
 export function ShareAway({ onBack }: { onBack: () => void }) {
   return (
     <div className="ic-svaway" data-ui>

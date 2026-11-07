@@ -8,7 +8,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useNow } from '~/lib/live';
 import { agoLabel } from '~/lib/time';
 import { useWs } from './context';
-import { presentingStrip } from './Presentation';
 import { nameOf, trashIn } from './tree';
 
 const KEPT_DAYS = 30;
@@ -53,7 +52,7 @@ export function TrashPage() {
   });
   return (
     <WsDoc>
-      {presentingStrip(ws.call?.presenting) ?? <WsDocHead crumbs={[ws.spaceName, 'Trash']} save="quiet" onToggleList={ws.toggleList} />}
+      <WsDocHead crumbs={[ws.spaceName, 'Trash']} save="quiet" onToggleList={ws.toggleList} />
       <WsScroll><WsTrash items={items} /></WsScroll>
     </WsDoc>
   );

@@ -32,7 +32,7 @@ const sidOf = (kind: 'AM' | 'CV' | 'SS', seed: string) => `TR_${kind}${seed.repl
 const ALONE: RoomSide = { people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 };
 
 class ScriptedRoom implements Real.CallRoom {
-  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
+  private view: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
   private listeners = new Set<() => void>();
   private readonly side: LiveStore<RoomSide> | null;
   private ready = false;
@@ -85,7 +85,10 @@ class ScriptedRoom implements Real.CallRoom {
     // The organizer stopped what you share: LiveKit mutes it for everyone, and your browser lets it go.
     if (side.sharesStopped > this.shareStops) {
       this.shareStops = side.sharesStopped;
-      if (this.media.getSnapshot().screen) this.media.stopScreen();
+      if (this.media.getSnapshot().screen) {
+        this.media.stopScreen();
+        this.view = { ...this.view, shareStopped: this.view.shareStopped + 1 };
+      }
     }
     const connection: RoomView['connection'] = side.connection === 'ended' ? 'ended' : !this.ready ? 'connecting' : side.connection;
     this.set({ connection, endReason: side.connection === 'ended' ? side.endReason : null, people: this.people(side) });

@@ -1,6 +1,6 @@
 /* What the list and the page of a workspace share, and what `<Workspace />` takes from whatever it's in. */
 import type { PersonIds } from './ids';
-import type { CallPresent, ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
+import type { ItemPlace, Person, WorkspaceHere, WorkspaceItem, WorkspaceTree, WorkspaceWhere } from '@alcove/api';
 import type { WsMenuRow, WsToastData } from '@alcove/ui';
 import { createContext, useContext, type ReactNode, type RefObject } from 'react';
 import type { Doc } from 'yjs';
@@ -34,31 +34,7 @@ export interface CallTogether {
  * What the call can ask of the workspace: follow someone or stop, go to where they are, and tag them in the document
  * open here, which `canTag` says you can now (one is open, and you can write in it).
  */
-export interface WorkspaceTogether { follow: (connection: string) => void; stop: () => void; go: (connection: string) => void; tag: (connection: string) => void; canTag: () => boolean }
-
-/**
- * Presenting, in a call (features/call/workspace/presenting.ts). `present` is what the call says is presented where you are; `watching`:
- * the page is the presentation, because you're presenting it or watching it rather than working on your own (`away`).
- * `section` is the one on screen, which moves at once for whoever presses Next. `inSight`: the workspace isn't closed or
- * behind something it takes turns with, so its keys are awake.
- */
-export interface WorkspacePresenting {
-  present: CallPresent | null;
-  /** Whoever's presenting, as the call shows them. */
-  presenter: Person | null;
-  watching: boolean;
-  away: boolean;
-  section: number;
-  inSight: boolean;
-  /** Presents the workspace to everyone in this part of the call. */
-  start: () => void;
-  /** Whoever's presenting, or the organizer: moves everyone to a section. */
-  move: (section: number) => void;
-  /** Whoever's presenting, or the organizer: stops it for everyone. */
-  stop: () => void;
-  /** Work on my own, and Back to the presentation. */
-  setAway: (away: boolean) => void;
-}
+export interface WorkspaceTogether { follow: (connection: string) => void; stop: (how?: StopFollowing) => void; go: (connection: string) => void; tag: (connection: string) => void; canTag: () => boolean }
 
 /** A video playing for everyone, in a call (features/call/playback/PlayTogether.tsx). */
 export interface WorkspacePlaying {
@@ -99,8 +75,6 @@ export interface WorkspaceCall {
   picker?: ((head: SpaceHead) => ReactNode) | undefined;
   /** The first name of who chooses the workspace, for anyone else. */
   chooser?: string | undefined;
-  /** Just the document, at the far right of a document's head. */
-  zen?: { on: boolean; onToggle: () => void } | undefined;
   /**
    * Whether the list shows, which is the call's to say (panels.ts): `off`, or only over the page for now (`peek`). `onToggle` is
    * the list's button. `onShow` is for whatever needs the list showing, such as naming a folder: it never hides it. `wanted`
@@ -127,8 +101,11 @@ export interface WorkspaceCall {
   /** ⌘K in the call asked for Find, which opens the workspace first if it's closed. `onFinding` says it's been heard. */
   finding: boolean;
   onFinding: () => void;
-  /** Presenting in this call. */
-  presenting: WorkspacePresenting;
+  /**
+   * Whoever presents the workspace in this call, by connection, while someone does: following them is the frame's to say
+   * (features/call/layout/frame.tsx), so the page doesn't say it too, and stopping says nothing.
+   */
+  presenter: string | null;
   /** Playing a video for everyone. */
   playing: WorkspacePlaying;
 }

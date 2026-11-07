@@ -4,13 +4,12 @@
  * address. See WorkspaceProps in context.ts.
  */
 import { firstName, type WorkspaceLive, type WorkspaceMention, type WorkspaceTree, type WorkspaceWhere } from '@alcove/api';
-import { Button, DURATION, EASE, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
+import { Button, WsCantOpen, WsDoc, WsDocHead, WsDragGhost, WsEmpty, WsOfflineEmpty, WsPane, WsPickDocument, WsToasts, useToast, wsToast, type WsToastData } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '~/lib/api';
-import { moveFocusOut, overlayOpen, typing, withMod } from '~/lib/keys';
+import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, qk } from '~/lib/queries';
@@ -34,7 +33,6 @@ import { useSending } from './live/useSending';
 import { Pictures } from './pictures';
 import { openedIn, placesOf, rememberPlaces } from './places';
 import { othersIn, pageName } from './presence';
-import { Presentation, presentingStrip } from './Presentation';
 import { TrashPage } from './TrashPage';
 import { arrivals, documentsIn, foldersAbove, nameOf, treeOf, type Tree } from './tree';
 import { onStored, talkThrough } from './uploads';
@@ -206,7 +204,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const spaceName = view.tree?.name ?? 'Shared with you';
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
-  const { following, follow, stopFollowing } = useFollow({ others, tree, at, goWith, say });
+  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say });
   /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
   /*
@@ -297,7 +295,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     const someone = (connection: string) => othersNow.current.find((x) => x.callIdentity === connection);
     togetherRef.current = {
       follow: (connection) => { const o = someone(connection); if (o) follow(o.person.id); },
-      stop: () => stopFollowing(),
+      stop: (how) => stopFollowing(how),
       /* To the line they're on, as Go there on their card does. */
       go: (connection) => {
         const o = someone(connection);
@@ -312,22 +310,6 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   /* Leaving with the call's workspace, it's said: they'd otherwise just stop going with whoever they followed. */
   const leaving = call?.leaving ?? false;
   useEffect(() => { if (closed) stopFollowing(leaving ? 'moved' : 'quiet'); }, [closed, leaving, stopFollowing]);
-
-  /*
-   * Watching a presentation, or giving one, it's drawn over your own page, which waits underneath as you left it. The page
-   * counts as out of sight meanwhile (`closed`): you're following nobody, and nothing under it can be reached.
-   */
-  const watching = call?.presenting.watching ?? false;
-  const reduce = useReducedMotion();
-  /*
-   * Your page goes out of reach under it, and with it whatever had your caret: you land on the document being presented,
-   * where a key does nothing, and the call's letters sleep, since you may be mid-sentence.
-   */
-  const pane = useRef<HTMLElement>(null);
-  const over = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    if (watching) moveFocusOut(pane.current, over.current?.querySelector<HTMLElement>('.wd-scroll') ?? over.current);
-  }, [watching]);
 
   /* Everyone can see you're in a document from the moment it's open, and that you've left once it's out of sight. The editor says which line. */
   const livePage = at.kind === 'live' ? at.page : null;
@@ -406,15 +388,15 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
     self: view.here.find((h) => h.isMe)?.person ?? me, actions, say, canChange, spaceName,
     open, setOpen, glowing, blockInto, setBlockInto, draft, setDraft, renaming, setRenaming, listOff, toggleList, justMade, openDoc, page, put, lastDocument, openFind: () => find.setFinding(true), pictures, ids
   };
-  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, zen: call.zen, ids, following, stopFollowing: () => stopFollowing() } : null;
+  const host = call ? { live: call.live, at, go, say, here: view.here, workspaceId, put, lastDocument, closed: call.closed, toggleList, ids, following, stopFollowing: () => stopFollowing() } : null;
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>
-      <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} zen={call?.zen?.on} following={following !== null} under={watching}>
+      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} following={following !== null && !following.quiet}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>
-            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
+            <WsDocHead crumbs={view.tree.name === null ? [] : [spaceName]} save="quiet" onToggleList={toggleList} />
             {/* A board that was open here says it's a board it can't open. A document's words can go into a new one; a board's changes have nowhere else to go. */}
             <KeptHere key={at.id} workspaceId={workspaceId} documentId={at.id} what={known.current.get(at.id)?.board ? 'board' : 'document'} owner={owner} pass={pass} say={say}
               copyTo={canChange && owner !== null && !known.current.get(at.id)?.board ? { workspaceId, name: () => known.current.get(at.id)?.name ?? null, parent: null, go: (id) => go({ kind: 'document', id }) } : undefined}
@@ -423,21 +405,13 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
         ) : (
           /* Nothing's open, so the head has nothing to say, unless the list has gone: then it has the way back to it. */
           <WsDoc className={listOff ? undefined : 'is-bare'}>
-            {presentingStrip(call?.presenting) ?? <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} zen={call?.zen?.on} onZen={call?.zen?.onToggle} />}
+            <WsDocHead crumbs={[spaceName]} save="quiet" onToggleList={toggleList} />
             {empty
               ? <WsEmpty space={spaceName} page={isPage} onDocument={canChange ? () => actions.newDocument(null) : undefined} onFolder={canChange ? newFolder : undefined} />
               : <WsPickDocument onDocument={canChange ? () => actions.newDocument(null) : undefined} />}
           </WsDoc>
         )}
       </WsPane>
-      {/* It comes and goes over 240 ms, and your own page is back underneath as it goes. */}
-      <AnimatePresence>
-        {watching && call && (
-          <motion.div ref={over} tabIndex={-1} key="presenting" className="ws-over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: reduce ? 0 : DURATION[2], ease: EASE.out }}>
-            <Presentation ws={ws} presenting={call.presenting} />
-          </motion.div>
-        )}
-      </AnimatePresence>
       {!call && <WsToasts toasts={toasts} />}
       <Find open={find.finding} onOpenChange={find.setFinding} onKeys={() => find.setListing(true)} />
       <Keys open={find.listing} onOpenChange={find.setListing} />

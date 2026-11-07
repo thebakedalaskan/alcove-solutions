@@ -12,8 +12,8 @@ import { LivePage } from './LivePage';
 import { LiveRows } from './LiveRows';
 import type { LiveCall } from './types';
 
-export function OutsideSpace({ live, at, go, say, closed, zen, list, children }: {
-  live: LiveCall; at: WorkspacePlace; go: (to: WorkspacePlace) => void; say: WorkspaceCall['say']; closed: boolean; zen: WorkspaceCall['zen'];
+export function OutsideSpace({ live, at, go, say, closed, list, children }: {
+  live: LiveCall; at: WorkspacePlace; go: (to: WorkspacePlace) => void; say: WorkspaceCall['say']; closed: boolean;
   list: WorkspaceCall['list'];
   /** What the page says while none of the call's pages is open. */
   children: ReactNode;
@@ -25,17 +25,17 @@ export function OutsideSpace({ live, at, go, say, closed, zen, list, children }:
     else list.onToggle();
   }, [list.onToggle]);
   const goAndClose = useCallback<LiveHost['go']>((to) => { setPhoneList(false); go(to); }, [go]);
-  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, zen, ids: NO_IDS, following: null, stopFollowing: () => undefined }), [live, at, goAndClose, say, closed, toggleList, zen]);
+  const host = useMemo((): LiveHost => ({ live, at, go: goAndClose, say, here: [], workspaceId: null, put: null, lastDocument: null, closed, toggleList, ids: NO_IDS, following: null, stopFollowing: () => undefined }), [live, at, goAndClose, say, closed, toggleList]);
   return (
     <LiveHostContext value={host}>
-      <WsPane listOff={list.off} listPeek={list.peek} phoneList={phoneList} zen={zen?.on}>
+      <WsPane listOff={list.off} listPeek={list.peek} phoneList={phoneList}>
         <WsList label="This call">
           <WsSection key="call" label="This call" area="pins" />
           <LiveRows key="rows" />
         </WsList>
         {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : (
           <WsDoc className={list.off ? undefined : 'is-bare'}>
-            <WsDocHead crumbs={[]} save="quiet" onToggleList={toggleList} zen={zen?.on} onZen={zen?.onToggle} />
+            <WsDocHead crumbs={[]} save="quiet" onToggleList={toggleList} />
             {children}
           </WsDoc>
         )}

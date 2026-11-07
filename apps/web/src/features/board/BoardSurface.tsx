@@ -100,7 +100,6 @@ export interface BoardHandlers {
   /** What the bar's Timer and Vote do where there's no `run` to open their menus, as in a story of the kit. */
   onTimer?: (() => void) | undefined;
   onVote?: (() => void) | undefined;
-  onPresent?: (() => void) | undefined;
   /** Start a call here, on a board's page. */
   onCall?: (() => void) | undefined;
   /** Following stopped from this side: a scroll, a zoom or Esc, Stop, or the person going. */
@@ -379,15 +378,15 @@ function Bar({ board, surface, more }: { board: Board; surface: BoardSurfaceProp
   const mapOn = useBoardState(board, (s) => s.map);
   const moreOn = useBoardState(board, (s) => s.barMenu);
   const following = useBoardState(board, (s) => s.following !== null);
-  const { name = '', nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', faded = false, people = NO_PEOPLE, run, onName, onSeal, onPresent, onCall } = surface;
+  const { name, nameTitle, naming, seal, sealIcon, sealTitle, mode, acts = mode === 'call' || mode === 'phone', faded = false, people = NO_PEOPLE, run, onName, onSeal, onCall } = surface;
   const look = BOARD_LOOKS[mode];
   const faces = useMemo(() => people.map((p) => p.person), [people]);
   return (
     <BoardBar name={name} nameTitle={nameTitle} naming={naming} seal={seal} sealIcon={sealIcon} sealTitle={sealTitle} zoom={zoom} canUndo={canUndo} canRedo={canRedo} editable={look.edit}
       acts={acts && !following} canAct={look.edit || look.phone} moreOn={moreOn} mapOn={mapOn} faded={faded}
-      onName={() => onName?.()} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
+      onName={onName} onSeal={() => onSeal?.()} onUndo={() => board.undo()} onRedo={() => board.redo()}
       onZoomOut={board.zoomOut} onFit={board.showEverything} onZoomIn={board.zoomIn} onMap={() => board.set({ map: !mapOn })}
-      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))} onPresent={onPresent}
+      onTimer={run && (() => board.toggleRunMenu('timer'))} onVote={run && (() => board.toggleRunMenu('vote'))}
       onMore={more ? () => board.toggleBarMenu() : undefined}
       tail={look.page && <BoardPageActions people={faces} onCall={() => onCall?.()} />} />
   );

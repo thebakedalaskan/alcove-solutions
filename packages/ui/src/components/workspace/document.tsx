@@ -35,16 +35,13 @@ export function WsSaveState({ state }: { state: WsSave }) {
 export interface WsFace { person: AvatarPerson; card: WsPop }
 
 /**
- * The head of a document. `crumbs`: the path, the document last, as much of it as fits, from the end. `faces`: who's in it, up to four. Share, Present and ⋯
- * show when they're given (a live page has none), each a button with its popover. `zen` and `onZen` are for a call: the
- * arrows at the far right.
+ * The head of a document. `crumbs`: the path, the document last, as much of it as fits, from the end. `faces`: who's in it,
+ * up to four. Share and ⋯ show when they're given (a live page has none), each a button with its popover.
  */
-export function WsDocHead({ crumbs, save, faces = [], onToggleList, share, present, more, zen = false, onZen }: {
+export function WsDocHead({ crumbs, save, faces = [], onToggleList, share, more }: {
   crumbs: string[]; save: WsSave; faces?: WsFace[] | undefined; onToggleList: () => void;
-  share?: WsPop | undefined; present?: WsPop | undefined; more?: WsPop | undefined;
-  zen?: boolean | undefined; onZen?: (() => void) | undefined;
+  share?: WsPop | undefined; more?: WsPop | undefined;
 }) {
-  const zenLabel = zen ? 'Show everything' : 'Just the document';
   return (
     <header className="wd-head">
       <IconButton icon="panel" size={17} className="wd-ib" label="Show or hide the document list" title="⌘\" onClick={onToggleList} />
@@ -64,9 +61,7 @@ export function WsDocHead({ crumbs, save, faces = [], onToggleList, share, prese
         </span>
       )}
       {share && <WsPopover open={share.open} onOpenChange={share.onOpenChange} label="Share" align="end" anchor={<Button size="xs">Share</Button>}>{share.content}</WsPopover>}
-      {present && <WsPopover open={present.open} onOpenChange={present.onOpenChange} label="Present" align="end" anchor={<Button size="xs" icon="presentation">Present</Button>}>{present.content}</WsPopover>}
       {more && <WsPopover open={more.open} onOpenChange={more.onOpenChange} label="More for this document" align="end" anchor={<IconButton icon="more" size={17} className="wd-ib" label="More for this document" />}>{more.content}</WsPopover>}
-      {onZen && <IconButton icon={zen ? 'shrink' : 'grow'} size={16} className="wd-ib" label={zenLabel} title={`${zenLabel} (⌘⇧F)`} onClick={onZen} />}
     </header>
   );
 }

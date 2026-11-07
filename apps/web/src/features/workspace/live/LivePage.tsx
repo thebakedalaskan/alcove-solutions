@@ -140,8 +140,8 @@ function Page({ host, page, line }: { host: LiveHost; page: LivePageId; line: st
   useEffect(() => (watching ? live.session.watchNotes() : undefined), [watching, live.session]);
   return (
     <WsDoc>
-      <WsDocHead crumbs={[state.title, NAMES[page]]} save={on ? 'live' : 'quiet'} onToggleList={host.toggleList} zen={host.zen?.on} onZen={host.zen?.onToggle} />
-      <WsFollowBar following={host.following} onStop={host.stopFollowing} />
+      <WsDocHead crumbs={[state.title, NAMES[page]]} save={on ? 'live' : 'quiet'} onToggleList={host.toggleList} />
+      <WsFollowBar following={host.following?.quiet ? null : host.following} onStop={host.stopFollowing} />
       <Body key={page} host={host} state={state} page={page} line={line} />
     </WsDoc>
   );

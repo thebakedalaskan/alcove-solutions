@@ -266,27 +266,6 @@
 .ic-scr .ac-tile-name .ac-avatar { --ring: transparent; }
 .ic-scr .ac-tile-name .tl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ic-scr .ac-tile-name .snd { flex: none; color: var(--stage-ink-2); }
-/* A share shown as a tile: a click shows it big. */
-.ic-scr.is-tile { cursor: pointer; }
-.ic-sgrow { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: color-mix(in srgb, var(--stage) 66%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); opacity: 0; transform: translate(-50%, -50%) scale(.92); transition: opacity var(--duration-1), transform var(--duration-1) var(--ease-out); pointer-events: none; }
-.ic-scr.is-tile:hover .ic-sgrow, .ic-scr.is-tile:focus-visible .ic-sgrow { opacity: 1; transform: translate(-50%, -50%); }
-/* A share that just started: a soft ring that fades once, wherever the layout put it. */
-.ic-scr.is-new { animation: ic-arrive var(--duration-5) var(--ease-out) both; }
-/* A share landing as a tile while you're busy glows for 3 s where it lands. */
-.ic-scr.is-tile.is-new { animation: ic-lands 3s var(--ease-out) both; }
-@keyframes ic-lands {
-  0%, 84% { box-shadow: inset 0 0 0 2px var(--speak), 0 0 0 5px rgb(169 178 255 / 0.2); }
-  100% { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 0 0 0 rgb(169 178 255 / 0); }
-}
-/* What a tile waiting among the people offers. */
-.ic-showit { position: absolute; z-index: 3; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 5px; height: 26px; max-width: calc(100% - 16px); padding: 0 9px; border-radius: 8px; background: var(--stage-ink); color: var(--stage); font: 600 12px/1 var(--font-sans); white-space: nowrap; }
-.ic-showit:hover { background: var(--stage-ink-2); }
-/* A tile's name leaves room for its Show it, when it has one. */
-.ic-scr.is-tile:has(.ic-showit) .ac-tile-name { max-width: calc(100% - 96px); }
-@keyframes ic-arrive {
-  from { box-shadow: inset 0 0 0 2px rgba(238, 237, 248, .85), 0 0 0 6px rgba(238, 237, 248, .16); }
-  to { box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06), 0 0 0 0 rgba(238, 237, 248, 0); }
-}
 /*
  * Looking closer at a share you see big (apps/web ShareSurface.tsx): the picture sits in a box the framing moves and
  * sizes, so the video itself grows with the zoom and LiveKit sends the sharpest layer. The bar shows on hover or focus,
@@ -330,7 +309,6 @@
 .ic-svaway { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 12px; background: radial-gradient(70% 60% at 50% 40%, rgba(169, 159, 255, .1), transparent 70%), var(--stage-tile); color: var(--stage-ink-2); font: 500 13px/1.3 var(--font-sans); text-align: center; }
 .ic-svaway .ac-i { color: var(--horizon); }
 .ic-svaway b { color: var(--stage-ink); font-weight: 600; }
-.ic-scr.is-away { cursor: default; }
 /* The share's own window: its own page, night like the call. */
 .ic-popbody { margin: 0; overflow: hidden; background: var(--stage); }
 .ic-pop { display: grid; }
@@ -367,7 +345,6 @@
 .ic-mtag.is-ring { transform: translate(13px, calc(-100% - 13px)); }
 .ic-mdraw .ic-pointer { transition: left 90ms linear, top 90ms linear; }
 .ic-mdraw .ic-pointer.is-mine { transition-duration: 60ms; }
-.ic-scr:has(.ic-marks.is-on) .ac-tile-name { pointer-events: none; }
 /* A small share keeps the arch on each tag and drops the name. */
 @container (max-width: 320px) {
   .ic-mdraw .ac-ptag { gap: 0; padding: 0 3px; }
@@ -389,23 +366,11 @@
 .ic-stage-empty { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; pointer-events: none; }
 .ic-stage-empty > * { pointer-events: auto; }
 /* Sizing the main area: the line between two panels, the people's own small controls, and a share's. Only your screen changes. */
-.ic-div { position: absolute; z-index: 7; display: grid; place-items: center; cursor: col-resize; touch-action: none; outline: none; }
-.ic-div.is-col { cursor: row-resize; }
-.ic-div i { display: block; width: 3px; height: 46px; border-radius: 2px; background: transparent; transition: background-color var(--duration-1); }
-.ic-div.is-col i { width: 46px; height: 3px; }
-.ic-div:hover i, .ic-div:focus-visible i { background: color-mix(in srgb, var(--stage-ink) 50%, transparent); }
-.ic-div.is-on i, .ic-div:active i { background: var(--speak); }
-.ic-main.is-resizing, .ic-main.is-resizing * { transition: none !important; user-select: none; -webkit-user-select: none; }
 /* Over the people: fold them to arches, or hide them. */
 .ic-ppl { position: absolute; z-index: 8; display: inline-flex; gap: 1px; padding: 2px; transform: translateX(-50%); border-radius: 9px; background: color-mix(in srgb, var(--stage) 78%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); opacity: 0; pointer-events: none; transition: opacity var(--duration-1); }
-.ic-stage:has(.ic-slot:hover, .ic-scr.is-tile:hover) .ic-ppl, .ic-ppl:hover, .ic-ppl:focus-within { opacity: 1; pointer-events: auto; }
+.ic-stage:has(.ic-slot:hover) .ic-ppl, .ic-ppl:hover, .ic-ppl:focus-within { opacity: 1; pointer-events: auto; }
 .ic-ppl .b { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
 .ic-ppl .b:hover { background: rgb(255 255 255 / 0.14); }
-/* On a share that's a panel: more room, and back to a tile. */
-.ic-scr-ac { position: absolute; z-index: 3; right: 76px; top: 9px; display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: color-mix(in srgb, var(--stage) 68%, transparent); opacity: 0; transition: opacity var(--duration-1); }
-.ic-scr:hover .ic-scr-ac, .ic-scr-ac:focus-within { opacity: 1; }
-.ic-scr-ac button { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--stage-ink); transition: background-color var(--duration-1); }
-.ic-scr-ac button:hover { background: rgb(255 255 255 / 0.14); }
 /* People as arches, in a column or a strip: their faces, and everything else on the tile's menu. */
 .ic-slot.is-arch > .ac-tile { border-radius: 999px 999px 14px 14px; }
 .ic-slot.is-arch > .ac-tile.is-speaking { box-shadow: inset 0 0 0 2px var(--speak); }
@@ -430,9 +395,9 @@
 .ic-slot.is-up > .ac-tile { transform: translateY(-9px); }
 /* Above the dock, a toast lands on a board's sheet: there it's the night's own pill, as the canvas has it, so it stands out in either theme. */
 @media (max-width: 1327px) {
-  body:has(.ic-surface[data-surface="board"]:not(.is-closed)) .ac-toasts.on-stage .ac-toast { background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), var(--shadow-3); }
-  body:has(.ic-surface[data-surface="board"]:not(.is-closed)) .ac-toasts.on-stage .ac-toast > .ac-i { color: var(--sun-glow); }
-  body:has(.ic-surface[data-surface="board"]:not(.is-closed)) .ac-toasts.on-stage .ac-toast button { color: var(--stage-ink); background: rgb(255 255 255 / 0.12); }
+  body:has(.ic-framebox:is([data-thing="board"], [data-thing="saved"]):not(.is-away)) .ac-toasts.on-stage .ac-toast { background: var(--stage-raised); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1), var(--shadow-3); }
+  body:has(.ic-framebox:is([data-thing="board"], [data-thing="saved"]):not(.is-away)) .ac-toasts.on-stage .ac-toast > .ac-i { color: var(--sun-glow); }
+  body:has(.ic-framebox:is([data-thing="board"], [data-thing="saved"]):not(.is-away)) .ac-toasts.on-stage .ac-toast button { color: var(--stage-ink); background: rgb(255 255 255 / 0.12); }
   /* There they'd cover the foot of the sheet, where ideas from the call wait: the pill and the tray step up out of their way, a toast at a time, and back. */
   .ic-board :is(.bd-heard, .bd-tray) { transition: bottom var(--duration-2) var(--ease-out); }
   body:has(.ac-toasts.on-stage .ac-toast) .ic-board :is(.bd:not(:has(.pc-add)) .bd-heard, .bd-tray) { bottom: 84px; }
@@ -442,26 +407,25 @@
    * On a phone a board's + is at the foot of its sheet, in the toasts' lane: they rise clear of it, and of the ideas' pill
    * beside it. While the ideas' tray is open, + steps aside, and the tray steps up for them instead.
    */
-  body:has(.ic-surface[data-surface="board"]:not(.is-closed) .pc-add):not(:has(.ic-board .bd-tray)) .ac-toasts.on-stage { bottom: 164px; }
-  /* Presenting a board, its frame's Back, Next and Stop presenting sit just over the dock, in the toasts' lane: they rise clear. */
-  body:has(.bd-pres.is-on) .ac-toasts.on-stage { bottom: 152px; }
+  body:has(.ic-framebox:not(.is-away) .pc-add):not(:has(.ic-board .bd-tray)) .ac-toasts.on-stage { bottom: 164px; }
 }
 /* Toasts stand clear of the horizon, where they'd otherwise sit on people's heads. */
 /* With people on the horizon, the left of the dock is theirs, and toasts take the right. Above the dock they'd sit on the list's foot. */
 @media (min-width: 1328px) {
   body:has(.ic-slot.is-horizon) .ac-toasts.on-stage { left: auto; right: max(16px, env(safe-area-inset-right, 0px)); justify-items: end; }
-  body:has(.ic-call.is-zen) .ac-toasts.on-stage { bottom: 6px; }
+  body:has(.ic-call.is-focus) .ac-toasts.on-stage { bottom: 6px; }
   /* The line that says who's up gives way there, and comes back when the toast goes: the arch still shows it. */
   body:has(.ac-toasts.on-stage .ac-toast) .ic-hz.is-past { opacity: 0; }
 }
 .ic-hz { position: absolute; z-index: 3; color: var(--stage-ink-2); font: 500 12.5px/1 var(--font-sans); white-space: nowrap; pointer-events: none; transition: opacity var(--duration-2) var(--ease-out); }
-/* A share waiting among arches or on the horizon, and whoever there's no room for. */
-.ic-scr.is-arch { border-radius: 14px; }
-.ic-scr.is-horizon { z-index: 3; border-radius: 6px; }
-.ic-scr:is(.is-arch, .is-horizon) :is(.ac-tile-name, .ic-sgrow, .ic-spoint) { display: none; }
-.ic-scr:is(.is-arch, .is-horizon) .ic-more { opacity: 0 !important; pointer-events: none; }
-.ic-scr.is-behind { display: none; }
-.ic-slot.is-off, .ic-scr.is-off { visibility: hidden; pointer-events: none; }
+/* Something presented, waiting among the people: its tile, and its menu at the top left, clear of Join. */
+.ic-pslot > .ic-ptile { position: absolute; inset: 0; }
+.ic-pslot .ic-more { left: 8px; right: auto; }
+.ic-pslot:hover .ic-more, .ic-pslot:focus-visible .ic-more { opacity: 1; }
+.ic-pslot.is-horizon { z-index: 3; }
+/* The board drawn small in its tile: at its own size, shrunk from the top left. */
+.ic-ptile-board { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.ic-slot.is-off { visibility: hidden; pointer-events: none; }
 .ic-tmore { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--stage-tile); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1); color: var(--stage-ink-2); font: 600 14px/1 var(--font-sans); transition: color var(--duration-1), background-color var(--duration-1); }
 .ic-tmore:hover { background: var(--stage-raised); color: var(--stage-ink); }
 .ic-tmore.is-arch { border-radius: 999px 999px 14px 14px; }
@@ -525,20 +489,19 @@
 .ic-side { position: absolute; z-index: 20; display: flex; flex-direction: column; border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); overflow: hidden; outline: none; }
 .ic-side.is-sheet { position: fixed; z-index: 30; left: 0; right: 0; top: 64px; bottom: 0; border-radius: 24px 24px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-3); }
 .ic-scrim { position: fixed; z-index: 29; inset: 0; background: color-mix(in srgb, var(--stage) 55%, transparent); }
-/* The workspace and the board on the stage. */
-.ic-surface { position: absolute; z-index: 2; display: flex; min-width: 0; }
-/* Behind something else, or closed: out of sight and out of reach, with whatever's in it kept as it was. */
-.ic-surface.is-off, .ic-surface.is-closed { visibility: hidden; pointer-events: none; }
-.ic-surface.is-closed { transition: visibility 0s linear var(--duration-2); }
-/* The board on the stage, filling the place the panels give it; held out of sight while it's a tile, so it keeps where you were. */
-.ic-board { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
-.ic-board[hidden] { display: none; }
+/* What's on your stage, each in its frame (frame.tsx): placed over the main area where panels.ts puts it. */
+.ic-framebox { position: absolute; z-index: 2; display: flex; min-width: 0; min-height: 0; }
+/* The workspace off your stage: out of sight and out of reach, with whatever's in it kept as it was. */
+.ic-framebox.is-away { visibility: hidden; pointer-events: none; transition: visibility 0s linear var(--duration-2); }
+/* In the frame's body, what's open fills it. */
+.ic-fbody > :is(.ic-board, .ic-wsx, .ic-scr-body) { position: absolute; inset: 0; display: flex; min-width: 0; min-height: 0; }
 /* Closed for everyone: the board sinks back through the arch, 420 ms (callBoard.ts's SINK_MS), before the faces come back. */
 .ic-board.is-sinking .bd { animation: bd-sink var(--duration-3) var(--ease-in) both; }
-/* The board as a live tile among the faces, for someone who hid it, and a share beside the board, which swaps with it when pressed. */
-.ic-btile { display: flex; }
-.ic-btile > .bd-tile { flex: 1; }
-.ic-scr.is-beside { cursor: pointer; }
+/* A screen in its frame: one tab stop, whose keys are the share's. */
+.ic-scr-body { overflow: hidden; background: var(--stage); outline: none; container-type: inline-size; }
+.ic-scr-body > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ic-scr-body:focus-visible { box-shadow: inset 0 0 0 2px var(--speak); }
+.ic-scr-body:hover .ic-svbar, .ic-scr-body:focus-visible .ic-svbar { opacity: 1; pointer-events: auto; }
 /* The workspace, and while the call moves to another one, what was there: over what's coming until that's drawn, then gone, 240 ms. */
 .ic-wsx { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
 .ic-wsx-slot { display: flex; flex: 1; min-width: 0; min-height: 0; }
@@ -875,8 +838,8 @@
  * Just the document: the bars slide off and the page takes the room they leave (panels.ts places it past the call's area, so
  * it glides there like any other panel). Your microphone, camera and everyone's arches stay, in a shorter strip at the foot.
  */
-.ic-call.is-zen .ic-top { transform: translateY(-100%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out), visibility 0s linear var(--duration-3); }
-.ic-call.is-zen .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }
+.ic-call.is-focus .ic-top { transform: translateY(-100%); opacity: 0; visibility: hidden; pointer-events: none; transition: transform var(--duration-3) var(--ease-out), opacity var(--duration-3) var(--ease-out), visibility 0s linear var(--duration-3); }
+.ic-call.is-focus .ic-dockbar .ac-dock { transform: translateY(calc((var(--bar) - 56px) / 2)); }
 
 /* choosing what to share */
 .ic-share { width: min(620px, calc(100vw - 32px)); }
@@ -1211,3 +1174,20 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-sharepop :is(.bl-sub, .bl-r small, .bl-r .when, .bl-f) { color: var(--stage-ink-2); }
 .ic-sharepop .bl-r:hover:not(:disabled) { background: rgb(255 255 255 / .06); }
 .ic-sharepop .bl-f { border-top-color: rgb(255 255 255 / .08); }
+
+/* Your notes beside the board you present, in your side: where everyone is, your words for this frame, and the next one. */
+.ic-mine { display: flex; flex-direction: column; gap: 12px; min-height: 100%; }
+.ic-mine .pos { font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
+.ic-mine .now { margin: -4px 0 0; font: 600 20px/1.25 var(--font-sans); letter-spacing: -.01em; color: var(--ink); }
+.ic-mine .notes { min-height: 128px; padding: 14px 16px; border: 0; border-radius: var(--radius-md); background: var(--sunk); color: var(--ink); font: 400 14.5px/1.5 var(--font-sans); resize: vertical; box-shadow: inset 0 0 0 1px var(--line); }
+.ic-mine .notes:focus-visible { outline: 2px solid var(--horizon); outline-offset: 1px; }
+.ic-mine .notes::placeholder { color: var(--ink-3); }
+.ic-mine .next { display: grid; gap: 8px; margin-top: 6px; }
+.ic-mine .pic { position: relative; display: block; overflow: hidden; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--line); }
+.ic-mine .pic > span { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
+.ic-mine .foot { display: flex; align-items: center; gap: 8px; margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--line); font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
+.ic-mine-none { margin: 0; font: 400 13.5px/1.5 var(--font-sans); color: var(--ink-3); }
+/* A name menu's rows, and what one opens in their place: who can add to a board. */
+.ic-menu .mi.is-stopall { color: var(--stage-ink); font-weight: 600; }
+.ic-menu-sheet { width: min(360px, calc(100vw - 32px)); }
+.ic-menu .ic-readline { display: flex; align-items: center; gap: 6px; }

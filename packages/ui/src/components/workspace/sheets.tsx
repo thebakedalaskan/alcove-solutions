@@ -307,17 +307,6 @@ export function WsSwitchSheet({ name, current, home, cantOpen = [], onSwitch, on
   );
 }
 
-/** What people will see, and one button to start. `sections`: how many the document splits into. */
-export function WsPresentPreview({ name, sections, onStart }: { name: string; sections: number; onStart: () => void }) {
-  return (
-    <div className="wv-pres">
-      <div className="wv-pv"><b className="ac-clamp-2">{name}</b><span className="l a" /><span className="l b" /><span className="l c" /></div>
-      <b className="t">Present to everyone in this call</b>
-      <p>They see this document without menus or anyone’s cursor, one section at a time. Your notes stay with you, and anyone can keep working.</p>
-      <Button variant="primary" size="sm" onClick={onStart}><Icon name="presentation" size={16} />Present {sections} {sections === 1 ? 'section' : 'sections'}</Button>
-    </div>
-  );
-}
 
 /** A document or a line that find turned up. `sub`: where it is. */
 export interface WsFindHit { id: string; name: string; sub: string; icon: IconName }

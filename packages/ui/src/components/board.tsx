@@ -10,7 +10,6 @@ import { cn } from '../cn';
 import { CallDock, DockButton, DockSeparator, SharePointer, ShareStepHead } from './call';
 import { Icon, type IconName } from './icon';
 import { EmptyArch } from './illustrations';
-import { Popover } from './overlay';
 import { Avatar, Faces, type AvatarPerson } from './people';
 import { Button, IconButton } from './primitives';
 import { useSettledPress } from './settle';
@@ -158,7 +157,8 @@ export interface BoardNaming {
 }
 
 export interface BoardBarProps {
-  name: string;
+  /** Its name, as a menu: on its page. In a call, the frame's bar has it, and the board's bar shows it only as a field while it's renamed. */
+  name?: string | undefined;
   /** The name as a field, while it's being renamed. */
   naming?: BoardNaming | undefined;
   /** What the seal says: Sealed, Sealed to this room, Reconnecting, Not saved, View only. Empty hides it. */
@@ -176,7 +176,7 @@ export interface BoardBarProps {
   canRedo?: boolean | undefined;
   /** Undo and Redo: false for someone who can only look. */
   editable?: boolean | undefined;
-  /** Timer, Vote and Present, each shown only with its handler: false where there's no session to run. More shows whenever it's given. */
+  /** Timer and Vote, each shown only with its handler: false where there's no session to run. More shows whenever it's given. */
   acts?: boolean | undefined;
   /** Whether this person can start a timer, a vote or present: false for someone who can only look, who sees them disabled, saying why. More stays theirs. */
   canAct?: boolean | undefined;
@@ -184,10 +184,10 @@ export interface BoardBarProps {
   moreOn?: boolean | undefined;
   mapOn?: boolean | undefined;
   faded?: boolean | undefined;
-  onName: () => void; onSeal: () => void;
+  onName?: (() => void) | undefined; onSeal: () => void;
   onUndo?: (() => void) | undefined; onRedo?: (() => void) | undefined;
   onZoomOut: () => void; onFit: () => void; onZoomIn: () => void; onMap: () => void;
-  onTimer?: (() => void) | undefined; onVote?: (() => void) | undefined; onPresent?: (() => void) | undefined; onMore?: (() => void) | undefined;
+  onTimer?: (() => void) | undefined; onVote?: (() => void) | undefined; onMore?: (() => void) | undefined;
   className?: string | undefined;
 }
 
@@ -217,11 +217,10 @@ function NameField({ naming }: { naming: BoardNaming }) {
   );
 }
 
-/** Why Timer, Vote and Present can't be pressed by someone who can only look at a board. */
+/** Why Timer and Vote can't be pressed by someone who can only look at a board. */
 const ONLY_EDITORS = {
   timer: 'Only people who can add to this board can start a timer',
-  vote: 'Only people who can add to this board can vote',
-  present: 'Only people who can add to this board can present'
+  vote: 'Only people who can add to this board can vote'
 } as const;
 
 /** A button on the bar that someone who can only look sees, disabled, with why in its tip: a disabled button can't show a tip. */
@@ -231,11 +230,11 @@ function Barred({ icon, size, label, why }: { icon: IconName; size: number; labe
 
 /** Everything about the board that isn't a tool, in one line along the top of the sheet. */
 export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a link', seal = 'Sealed', sealIcon = 'sealed', sealTitle = 'Sealed. Alcove can’t read this board.', tail, zoom, canUndo = false, canRedo = false, editable = true, acts = true, canAct = true, moreOn = false,
-  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onPresent, onMore, className }: BoardBarProps) {
+  mapOn = false, faded = false, onName, onSeal, onUndo, onRedo, onZoomOut, onFit, onZoomIn, onMap, onTimer, onVote, onMore, className }: BoardBarProps) {
   return (
     <div className={cn('bd-head', acts && editable && 'is-full', faded && 'is-faded', className)}>
       {naming ? <NameField naming={naming} />
-        : <button type="button" className="nm" title={nameTitle} aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
+        : name && onName && <button type="button" className="nm" title={nameTitle} aria-haspopup="dialog" onClick={onName}><Icon name="presenter" size={16} /><span>{name}</span><Icon name="down" size={14} /></button>}
       {seal && <button type="button" className="sv" title={sealTitle} onClick={onSeal}><Icon name={sealIcon} size={15} /><span>{seal}</span></button>}
       <span className="sp" />
       {editable && (
@@ -250,16 +249,15 @@ export function BoardBar({ name, naming, nameTitle = 'Rename, share or copy a li
       <IconButton className="bt zm" icon="plus" size={16} label="Zoom in" onClick={onZoomIn} />
       <IconButton className="bt zm mp" icon="map" size={16} label="Map" aria-pressed={mapOn} onClick={onMap} />
       {/*
-        * Each is there only with something to do: no button does nothing. Someone who can only look sees Timer, Vote and Present
+        * Each is there only with something to do: no button does nothing. Someone who can only look sees Timer and Vote
         * where they're offered, disabled, saying why. More changes nothing on the board, so it's there for them, and while
         * following someone, too.
         */}
-      {((acts && (onTimer || onVote || onPresent)) || onMore) && (
+      {((acts && (onTimer || onVote)) || onMore) && (
         <>
           <span className="vr" />
           {acts && onTimer && (canAct ? <IconButton className="bt run" icon="timer" size={17} label="Timer" onClick={onTimer} /> : <Barred icon="timer" size={17} label="Timer" why={ONLY_EDITORS.timer} />)}
           {acts && onVote && (canAct ? <IconButton className="bt run" icon="vote" size={17} label="Vote" onClick={onVote} /> : <Barred icon="vote" size={17} label="Vote" why={ONLY_EDITORS.vote} />)}
-          {acts && onPresent && (canAct ? <IconButton className="bt run" icon="play" size={15} label="Present" onClick={onPresent} /> : <Barred icon="play" size={15} label="Present" why={ONLY_EDITORS.present} />)}
           {onMore && <IconButton className="bt" icon="more" size={17} label="More" aria-expanded={moreOn} onClick={onMore} />}
         </>
       )}
@@ -296,72 +294,6 @@ export function BoardPill({ icon = 'clock', title, text, time, soon = false, act
       {said !== undefined && <p className="sr-only" role="status">{said}</p>}
       {action && <button type="button" onClick={onAction}>{action}</button>}
       {second && <button type="button" onClick={second.onClick}>{second.label}</button>}
-    </div>
-  );
-}
-
-/** What whoever's presenting a board has around it: where they are, the next frame, their notes, and the way on. */
-export interface BoardPresenting {
-  /** Which frame everyone is on, from 1, and how many there are. */
-  at: number;
-  total: number;
-  /** A picture of the next frame, drawn at `NEXT_FRAME` and shrunk to fit; null at the end. */
-  next: ReactNode | null;
-  /** Their notes beside this frame, or null for someone without an account, who has nowhere to keep them. */
-  notes: string | null;
-  onNotes: (notes: string) => void;
-  onBack: () => void;
-  onNext: () => void;
-  onStop: () => void;
-}
-
-/** The size the next frame's picture is drawn at before it's shrunk into its place: the canvas's board on a call's stage. */
-export const NEXT_FRAME = { w: 1114, h: 674 } as const;
-/** The room the next frame's picture has, beside the board. */
-const NEXT_W = 248;
-
-/**
- * The board on a call's stage, and, while you're presenting it, your view of it: the frame as everyone sees it, ringed and
- * marked so, with where it is, Back a frame, Next frame and Stop presenting under it, and beside it, for you alone, the next
- * frame and your notes. `children` is the board, which stays where it is in the page whether you're presenting or not, so it's
- * never drawn afresh: what you were doing on it is as you left it when you stop. On a narrow stage the notes go under it.
- */
-export function BoardPresenter({ presenting, className, children }: { presenting: BoardPresenting | null; className?: string | undefined; children: ReactNode }) {
-  const p = presenting;
-  return (
-    <div className={cn('bd-pres', p && 'is-on', className)}>
-      <div className="bd-pres-in">
-        <div className="pm">
-          <div className="shown">
-            {p && <span className="tag"><Icon name="eye" size={15} />Everyone sees this</span>}
-            {children}
-          </div>
-          {p && (
-            // aria-disabled, not disabled, at either end: the keys stay on the button pressed.
-            <div className="ctl">
-              <button type="button" className="go" aria-label="Back a frame" title="Back a frame · ←" aria-keyshortcuts="ArrowLeft" aria-disabled={p.at <= 1 || undefined} onClick={() => { if (p.at > 1) p.onBack(); }}><Icon name="chevronLeft" size={20} /></button>
-              <span className="at" aria-live="polite">{p.at} of {p.total}</span>
-              <button type="button" className="go" aria-label="Next frame" title="Next frame · →" aria-keyshortcuts="ArrowRight" aria-disabled={p.at >= p.total || undefined} onClick={() => { if (p.at < p.total) p.onNext(); }}><Icon name="chevron" size={20} /></button>
-              <button type="button" className="stop" onClick={p.onStop}>Stop presenting</button>
-            </div>
-          )}
-        </div>
-        {p && (
-          <aside className="side" aria-label="Only you see this">
-            <span className="lab">Next</span>
-            <div className="nx">
-              {p.next ? <span className="bd-mini" style={{ width: NEXT_FRAME.w, height: NEXT_FRAME.h, transform: `scale(${NEXT_W / NEXT_FRAME.w})` }}>{p.next}</span>
-                : <span className="end">That’s the end</span>}
-            </div>
-            {p.notes !== null && (
-              <label className="pn">
-                <span className="lab">Only you see this</span>
-                <textarea value={p.notes} placeholder="Notes for this frame" aria-label="Your notes" spellCheck onChange={(e) => p.onNotes(e.target.value)} />
-              </label>
-            )}
-          </aside>
-        )}
-      </div>
     </div>
   );
 }
@@ -952,7 +884,7 @@ const TEMPLATES: { id: BoardTemplate; label: string; art: ReactNode }[] = [
 ];
 
 /** A small picture for a saved board in the Board menu. */
-export function BoardMenuThumb({ kind }: { kind: 'flow' | 'columns' }) {
+export function BoardPickerThumb({ kind }: { kind: 'flow' | 'columns' }) {
   return (
     <svg viewBox="0 0 38 38" aria-hidden="true">
       {kind === 'flow'
@@ -962,7 +894,7 @@ export function BoardMenuThumb({ kind }: { kind: 'flow' | 'columns' }) {
   );
 }
 
-export interface BoardMenuRecent {
+export interface BoardPickerRecent {
   id: string; name: string;
   /** Whose it is. */
   by: string;
@@ -972,10 +904,10 @@ export interface BoardMenuRecent {
 }
 
 /** The team's recent boards, and the workspace they're from. */
-export interface BoardMenuRecents { workspace: string; boards: BoardMenuRecent[] }
+export interface BoardPickerRecents { workspace: string; boards: BoardPickerRecent[] }
 
 /** Some people here can't open the saved board: the opener decides before anything opens. */
-export interface BoardMenuAccess {
+export interface BoardPickerAccess {
   names: string[];
   board: string;
   /** Where it's kept, as it should read after "It’s in". */
@@ -987,74 +919,16 @@ export interface BoardMenuAccess {
 
 const namesList = (names: string[]): string => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`);
 
-/** What the Board menu offers: a new board from a template, the team's recent boards and, in place of those, the access step. */
-export interface BoardMenuContent {
-  /** It's only for this room, and leaves the saved boards out. */
-  inRoom?: boolean | undefined;
-  recents?: BoardMenuRecents | undefined;
-  access?: BoardMenuAccess | undefined;
-  /** Something chosen is on its way, so nothing else can be. */
-  busy?: boolean | undefined;
-  onTemplate: (template: BoardTemplate) => void;
-  onRecent?: ((id: string) => void) | undefined;
-}
-
 /** Who here can't open the saved board, and the ways on: let them in for this call (for someone who may share it), or go on without them. */
-function AccessAsk({ access, busy, press, without }: { access: BoardMenuAccess; busy: boolean; press: (act: () => void) => () => void; without: string }) {
+function AccessAsk({ access, busy, press }: { access: BoardPickerAccess; busy: boolean; press: (act: () => void) => () => void }) {
   return (
     <div className="bl-q">
       <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
       <div className="acts">
         {access.onLetIn && <Button variant="primary" disabled={busy} onClick={press(access.onLetIn)}>Let them in for this call</Button>}
-        <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>{without}</Button>
+        <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>Present without them</Button>
       </div>
     </div>
-  );
-}
-
-/**
- * What the Board menu holds, wherever it opens: in a popover with the class `bl`, from the dock's button or from More. Each row
- * is told apart by what it is, a template or a board by its `id`, and for a moment after the rows move, as the recent boards
- * come in or the access step takes their place, a press does nothing (`useSettledPress`).
- */
-export function BoardMenuBody({ inRoom = false, recents, access, busy = false, onTemplate, onRecent }: BoardMenuContent) {
-  const saved = !access && !inRoom && recents ? recents.boards : [];
-  const press = useSettledPress([
-    ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`),
-    ...(access ? [...(access.onLetIn ? ['access:let-in'] : []), 'access:without'] : [])
-  ].join('\n'));
-  return (
-    <>
-      <div className="bl-h"><span>New board</span><small>{inRoom ? 'Only this room sees it' : 'Opens for everyone here'}</small></div>
-      <div className="bl-tpl">
-        {TEMPLATES.map((t) => <button key={t.id} type="button" className="bl-c" disabled={busy} onClick={press(() => onTemplate(t.id))}><span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span></button>)}
-      </div>
-      {recents && saved.length > 0 && (
-        <>
-          <div className="bl-sub">From {recents.workspace}</div>
-          {saved.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={press(() => onRecent?.(r.id))}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
-        </>
-      )}
-      {access && <AccessAsk access={access} busy={busy} press={press} without="Open without them" />}
-      <div className="bl-f"><Icon name="sealed" size={15} /><span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : 'Sealed. Alcove can’t read boards.'}</span></div>
-    </>
-  );
-}
-
-/**
- * The Board button's menu, rising from `anchor` (the dock's button), with what `BoardMenuBody` holds. `tip` names the button on
- * hover, as a dock button's does. `inRoom` says it's only for this room, and leaves the saved boards out. `busy`: something
- * chosen is on its way, so nothing else can be.
- */
-export function BoardMenu({ open, onOpenChange, anchor, tip, side = 'bottom', align = 'end', className, ...content }: BoardMenuContent & {
-  open: boolean; onOpenChange: (open: boolean) => void; anchor: ReactNode; tip?: ReactNode;
-  /** Where it opens from its button: under Board at the top right of the call. */
-  side?: 'top' | 'bottom' | undefined; align?: 'start' | 'center' | 'end' | undefined; className?: string | undefined;
-}) {
-  return (
-    <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side={side} align={align} label="Open a board" className={cn('bl', content.busy && 'is-busy', className)}>
-      <BoardMenuBody {...content} />
-    </Popover>
   );
 }
 
@@ -1081,9 +955,9 @@ export interface BoardPickerProps {
   /** A breakout room: a new board is only this room's, and the saved boards are left out. */
   inRoom?: boolean | undefined;
   /** The team's boards. An empty `workspace` says they come from several places: each one's `by` can say where ("Priya · Product"). */
-  recents?: BoardMenuRecents | undefined;
+  recents?: BoardPickerRecents | undefined;
   /** Some people here can't open the saved board picked in Share › A board: the question in place of the saved boards. */
-  access?: BoardMenuAccess | undefined;
+  access?: BoardPickerAccess | undefined;
   /** Something chosen is on its way, so nothing else can be. */
   busy?: boolean | undefined;
   onTemplate: (template: BoardTemplate) => void;
@@ -1136,35 +1010,12 @@ export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, ac
           ))}
         </>
       )}
-      {access && <AccessAsk access={access} busy={busy} press={press} without="Present without them" />}
+      {access && <AccessAsk access={access} busy={busy} press={press} />}
       <div className="bl-f">
         <Icon name="sealed" size={15} />
         <span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : step ? 'Opens for everyone here. Alcove can’t read boards.' : 'Sealed. Alcove can’t read boards.'}</span>
       </div>
     </>
-  );
-}
-
-/* ---------- A live tile ---------- */
-
-/**
- * The board as a tile, drawn small from its own full size: `children` is a `mini` sheet at `w` by `h`, shrunk by `scale`.
- * `compact` is the one that sits above the tiles beside a big share, and takes its height from `style`.
- */
-export function BoardTile({ person, name, label, w, h, scale, compact = false, onOpen, style, className, children }: {
-  /** Whoever opened it. */
-  person: AvatarPerson; name: string;
-  /** What pressing it does: Open the board, Go back to the board. */
-  label: string;
-  w: number; h: number; scale: number; compact?: boolean | undefined; onOpen: () => void;
-  style?: CSSProperties | undefined; className?: string | undefined; children: ReactNode;
-}) {
-  return (
-    <button type="button" className={cn('bd-tile', compact && 'is-col', className)} style={style} aria-label={label} onClick={onOpen}>
-      <span className="bd-mini" style={{ width: w, height: h, transform: `scale(${scale})` }}>{children}</span>
-      <span className="ac-tile-name"><Avatar person={person} size={compact ? 16 : 18} />{name}</span>
-      {!compact && <span className="open"><Icon name="grow" size={16} /></span>}
-    </button>
   );
 }
 

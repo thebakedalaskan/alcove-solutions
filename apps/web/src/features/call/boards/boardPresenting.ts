@@ -1,60 +1,96 @@
 /*
- * A board presented in a call, as this browser has it (docs: Calls and recordings › Presenting a board). What's presented,
- * and which frame everyone's on, is the call's, as it is for a document (`usePresenting`, presenting.ts): a board is presented
- * from its own bar, and it's always the one open where you are. What's kept here is yours: your notes beside each frame while
- * you're presenting, the board brought back for it if you'd hidden it, and, while you present it, the board kept in front of
- * you. features/board/CallBoard.tsx draws it.
+ * A board presented in a call, as this browser has it (docs: Calls and recordings › Presenting a board). What's presented, and
+ * which frame everyone's on, is the call's (`CallWorkspace.present`): a board is presented from its frame's bar, or straight away
+ * from Share, and it's always the board in the call where you are. Whoever presents steps through its frames from the pager at
+ * its foot (← and → too), with their own notes beside each frame in the side (`mine`); everyone else sees the frame they're on,
+ * until they unfollow to work on their own (layout/onStage.ts). features/board/CallBoard.tsx draws it.
  */
-import { firstName, type CallSession } from '@alcove/api';
-import { useCallback, useEffect, useMemo } from 'react';
+import { errorCode, firstName, type CallPresent, type CallSession } from '@alcove/api';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { BoardPresentation } from '~/features/board/CallBoard';
-import type { WorkspacePresenting } from '~/features/workspace/context';
 import { usePresenterFrameNotes } from '~/features/workspace/presenterNotes';
+import { log } from '~/lib/log';
 import type { CallBoard } from './callBoard';
 
-/** What hiding the board you're presenting says instead: everyone's watching it with you, so it stays where you can see it. */
-const STOP_PRESENTING_FIRST ='Stop presenting first. Everyone sees this board while you present it.';
+const plog = log.child({ component: 'board-presenting' });
 
-export function useBoardPresenting({ session, presenting, board, account, failed, notesFailed, refuse }: {
+export function useBoardPresenting({ session, present, board, account, following, onFollow, notesOpen, onNotes, failed, notesFailed }: {
   session: CallSession;
-  presenting: WorkspacePresenting;
+  /** What's presented where you are, as the call says. */
+  present: CallPresent | null;
   board: CallBoard;
   /** You're signed in, so there's somewhere to keep your notes. */
   account: boolean;
+  /** You follow whoever presents it, rather than work on your own. */
+  following: boolean;
+  onFollow: (following: boolean) => void;
+  /** Your notes are open in the side, and opening or closing them there. */
+  notesOpen: boolean;
+  onNotes: () => void;
   failed: (e: unknown) => void;
   notesFailed: (message: string) => void;
-  /** Says why something you pressed wasn't done. */
-  refuse: (text: string) => void;
 }): {
+  /** The board on your stage presented, as the board draws it; null when it isn't the one presented. */
   present: BoardPresentation | null;
-  start: (() => void) | undefined;
-  /**
-   * While you present it, the board stays in front of you, so you always see what everyone sees: O, the dock's Board button and
-   * a share made big beside it call this instead, which says to stop presenting first. Null while you aren't presenting it.
-   */
-  hold: (() => void) | null;
+  /** The presentation, whichever board it's of. */
+  call: CallPresent | null;
+  mine: boolean;
+  /** Your notes beside each of its frames, while you present it; null without an account. */
+  notes: Readonly<Record<string, string>> | null;
+  setNote: (frame: string, text: string) => void;
+  /** The frame everyone's on now, from 0. */
+  section: number;
+  /** Presents the board in the call, from its first frame. */
+  start: () => Promise<void>;
+  stop: (close: boolean) => Promise<void>;
 } {
-  const p = presenting.present;
+  const p = present?.kind === 'board' ? present : null;
   const open = board.open;
-  const ours = p !== null && p.kind === 'board' && p.id !== null && open !== null && open.documentId === p.id ? p : null;
-  const mine = ours?.mine === true;
+  // The board on your stage is the one presented: the call's, which is what's drawn unless a saved board just for you is.
+  const ours = p !== null && p.id !== null && open !== null && open.documentId === p.id && !board.savedDrawn ? p : null;
+  const mine = p?.mine === true;
   const { notes, setNote } = usePresenterFrameNotes({ workspaceId: open?.workspaceId ?? '', boardId: open?.documentId ?? '', pass: session.ticket.pass, mine: mine && account, failed: notesFailed });
 
-  /* Presented to you, it's on your stage even if you'd hidden it: you're back to it as it begins. */
-  const begun = ours ? `${ours.by.seat} ${ours.id ?? ''}` : null;
-  const { hidden, show } = board;
-  useEffect(() => { if (begun && !mine && hidden) show(); }, [begun]);
-
-  const { section, away, setAway, move, stop } = presenting;
-  const watch = useCallback((watching: boolean) => setAway(!watching), [setAway]);
-  // The organizer can stop anyone's, as they can a document's: from the pill, since it isn't theirs to present.
-  const canStop = ours !== null && ours.canControl && !ours.mine;
-  const present = useMemo<BoardPresentation | null>(() => (ours ? {
-    by: firstName(ours.by.name), mine: ours.mine, section, watching: !away, canStop, onWatch: watch, onMove: move, onStop: stop, notes, onNotes: setNote
-  } : null), [ours?.by.name, ours?.mine, section, away, canStop, watch, move, stop, notes, setNote]);
+  /* Back and Next show at once for whoever presses them; once the call has answered, what it says is what's so. */
+  const [moved, setMoved] = useState<{ key: string; section: number; n: number } | null>(null);
+  const moves = useRef(0);
+  const key = p?.key ?? null;
+  const section = moved && moved.key === key ? moved.section : p?.section ?? 0;
+  const keyNow = useRef(key);
+  keyNow.current = key;
+  const move = useCallback((to: number) => {
+    const k = keyNow.current;
+    if (k === null) return;
+    const n = ++moves.current;
+    setMoved({ key: k, section: to, n });
+    const settle = () => setMoved((m) => (m?.n === n ? null : m));
+    session.movePresenting(to).then(settle, (e: unknown) => { settle(); failed(e); });
+  }, [session, failed]);
 
   const boardId = open?.documentId ?? null;
-  const start = useMemo(() => (boardId ? () => { session.startPresenting({ kind: 'board', id: boardId }).catch(failed); } : undefined), [session, boardId, failed]);
-  const hold = mine ? () => refuse(STOP_PRESENTING_FIRST) : null;
-  return { present, start, hold };
+  const start = useCallback(async () => {
+    if (!boardId) return;
+    try {
+      await session.startPresenting({ kind: 'board', id: boardId });
+    } catch (e) {
+      plog.info('presenting a board didn’t start', { code: errorCode(e) });
+      failed(e);
+      throw e;
+    }
+  }, [session, boardId, failed]);
+  const stop = useCallback(async (close: boolean) => {
+    try {
+      await session.stopPresenting(close);
+    } catch (e) {
+      plog.info('presenting a board didn’t stop', { code: errorCode(e), close });
+      failed(e);
+      throw e;
+    }
+  }, [session, failed]);
+  const watch = useCallback((on: boolean) => onFollow(on), [onFollow]);
+  const presentation = useMemo<BoardPresentation | null>(() => (ours ? {
+    by: firstName(ours.by.name), mine: ours.mine, section, watching: !ours.mine && following, onWatch: watch, onMove: move,
+    notes: ours.mine && account ? { on: notesOpen, onToggle: onNotes } : null
+  } : null), [ours?.by.name, ours?.mine, section, following, watch, move, account, notesOpen, onNotes]);
+  return { present: presentation, call: p, mine, notes, setNote, section, start, stop };
 }

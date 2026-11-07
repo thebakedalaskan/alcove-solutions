@@ -1,7 +1,6 @@
 /*
  * The one pill at the top of a board. Everything the whole board shares goes in it, and only one shows at a time, the most
- * pressing first: how the board stands when that needs saying (Reconnecting, Couldn't save), someone presenting, a vote under
- * way, a vote's results, the rooms closing, following someone, the timer, then the room you're in. Each pill is built by
+ * pressing first: how the board stands when that needs saying (Reconnecting, Couldn't save), a vote under way, a vote's results, the rooms closing, following someone, the timer, then the room you're in. Each pill is built by
  * whatever it's about; this alone decides which shows, and says which kind that is to whatever needs to know, so whoever adds a
  * kind adds it here and nowhere else.
  */
@@ -11,11 +10,11 @@ import type { BoardPerson } from './BoardSurface';
 import type { Standing } from './standing';
 
 /** What can be in the pill, the most pressing first. */
-export const PILL_ORDER = ['standing', 'presenting', 'voting', 'results', 'closing', 'following', 'timer', 'room'] as const;
+export const PILL_ORDER = ['standing', 'voting', 'results', 'closing', 'following', 'timer', 'room'] as const;
 export type PillKind = (typeof PILL_ORDER)[number];
 /** The pills there are now, by kind. Only the first in `PILL_ORDER` shows. */
 export type Pills = Partial<Record<PillKind, ReactNode>>;
-/** What the call puts in the board's pill itself: how the board stands, and the rooms' time. The board's own run, following and presenting are the board's. */
+/** What the call puts in the board's pill itself: how the board stands, and the rooms' time. The board's own run and following are the board's. */
 export type CallPills = Pick<Pills, 'standing' | 'closing' | 'room'>;
 
 /** How the board stands, while that needs saying: Reconnecting, or Couldn't save with Try again (`standingOf`). */
@@ -26,17 +25,6 @@ export function StandingPill({ pill }: { pill: NonNullable<Standing['pill']> }) 
 /** Following someone: whose view this is, with the way back to your own. */
 export function FollowingPill({ person, onStop }: { person: BoardPerson; onStop: () => void }) {
   return <BoardPill icon="eye" title={`Following ${person.name}`} action="Stop" onAction={onStop} />;
-}
-
-/**
- * Someone presenting the board, to everyone else: who, and the way to look around on your own, or back to the frame they're
- * on; and for the organizer, `onStop`, which stops it for everyone. Whoever's presenting has their own view of it, and no pill.
- */
-export function PresentingPill({ name, watching, onToggle, onStop }: { name: string; watching: boolean; onToggle: () => void; onStop?: (() => void) | undefined }) {
-  return (
-    <BoardPill icon="play" title={`${name} is presenting`} action={watching ? 'Look around' : `Back to ${name}`} onAction={onToggle}
-      second={onStop ? { label: 'Stop presenting', onClick: onStop } : undefined} />
-  );
 }
 
 /** Time left in the rooms, as the rooms show it: 4:12. */

@@ -1,72 +1,12 @@
-/* Presenting, playing a video for everyone, and a document's history. */
+/* Playing a video for everyone, a page that swaps in place, and a document's history. */
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { cn } from '../../cn';
 import { Icon } from '../icon';
-import { Faces, type AvatarPerson } from '../people';
 import { Button, IconButton } from '../primitives';
 import { useMove } from './shared';
 
-/** At the top of the page for whoever's presenting: what everyone is seeing. */
-export interface WsPresentMine { mine: true; name: string; at: number; total: number }
-/**
- * At the top of the page for everyone else who can open it. `away`: they've gone to Work on my own, and the strip brings
- * them back. `onStop` is for the organizer, who can stop anyone's presentation.
- */
-export interface WsPresentTheirs { mine?: false | undefined; name: string; presenter: AvatarPerson; by: string; away: boolean; onToggle: () => void; onStop?: (() => void) | undefined }
-/** For someone who can't open what's being presented: who's presenting, and nothing about what. */
-export interface WsPresentPrivate { mine?: false | undefined; name: null; presenter: AvatarPerson; by: string; onStop?: (() => void) | undefined }
-
-/** The strip that says what's being presented. It takes the place of a document's head. */
-export function WsPresentStrip(props: WsPresentMine | WsPresentTheirs | WsPresentPrivate) {
-  if (props.mine) {
-    return (
-      <div className="wp-tag" role="status">
-        <span className="ws-live" /><b>Everyone sees this</b><span className="wp-name">{props.name} · {props.at} of {props.total}</span>
-      </div>
-    );
-  }
-  const stop = props.onStop && <Button variant="quiet" size="xs" onClick={props.onStop}>Stop presenting</Button>;
-  return (
-    <div className="wp-tag" role="status">
-      <Faces people={[props.presenter]} size={20} /><b>{props.by} is presenting</b><span className="wp-name">{props.name ?? 'Something you can’t open'}</span>
-      {(props.name !== null || stop) && (
-        <span className="wp-acts">
-          {props.name !== null && <Button variant="quiet" size="xs" onClick={props.onToggle}>{props.away ? 'Back to the presentation' : 'Work on my own'}</Button>}
-          {stop}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * Beside the page, for whoever's presenting: where you are, Back and Next, your notes and Stop presenting, which stays at
- * the foot. `part`: this section's name. `next`: the next one's, or null at the end. `notes` is null for someone without an
- * account, who has nowhere to keep them.
- */
-export function WsPresenterView({ at, total, part, next, notes, onNotes, onBack, onNext, onStop }: {
-  at: number; total: number; part: string; next: string | null; notes: string | null; onNotes: (notes: string) => void; onBack: () => void; onNext: () => void; onStop: () => void;
-}) {
-  return (
-    <aside className="wp" aria-label="Presenter view">
-      <div className="wp-sec">
-        <span className="ac-eyebrow">Only you see this</span>
-        <div className="wp-now"><span className="n">{at}<small>of {total}</small></span><div><b>{part}</b><small>Next: {next ?? 'That’s the end'}</small></div></div>
-        <div className="wp-go">
-          <Button size="sm" disabled={at <= 1} onClick={onBack}><Icon name="left" size={15} />Back</Button>
-          <Button variant="primary" size="sm" disabled={next === null} onClick={onNext}>Next<Icon name="right" size={15} /></Button>
-        </div>
-      </div>
-      {notes === null ? <div className="wp-sec grow" /> : (
-        <div className="wp-sec grow"><span className="ac-eyebrow">Your notes</span><textarea className="wp-notes" aria-label="Your notes" value={notes} onChange={(e) => onNotes(e.target.value)} /></div>
-      )}
-      <Button variant="quiet" size="sm" onClick={onStop}><Icon name="stop" size={13} />Stop presenting</Button>
-    </aside>
-  );
-}
-
-/** Swaps what's inside in place, cross-fading 240 ms, when `id` changes: a presentation's sections, the page of a document. */
+/** Swaps what's inside in place, cross-fading 240 ms, when `id` changes: the page of a document. */
 export function WsFade({ id, children, className }: { id: string; children: ReactNode; className?: string | undefined }) {
   const move = useMove();
   return <motion.div key={id} className={className} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={move(2)}>{children}</motion.div>;

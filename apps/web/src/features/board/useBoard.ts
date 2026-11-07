@@ -1011,7 +1011,7 @@ export class Board implements LiveStore<BoardState> {
     const was = this.pill;
     this.pill = kind;
     if ((was === null) === (kind === null)) return;
-    const theirs = (k: PillKind | null) => k === 'following' || k === 'presenting';
+    const theirs = (k: PillKind | null) => k === 'following';
     if (!this.framed || !this.untouched || this.presented || this.look.mini || this.state.following !== null || theirs(was) || theirs(kind) || !this.camera.width) return;
     this.fitShown(true, true);
     // The board framing itself again isn't anyone touching it: it goes on framing what arrives on it, and as the sheet settles.

@@ -7,7 +7,6 @@ import type { IconName } from '@alcove/ui';
 import type { ReactNode, Ref } from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 import type { Doc } from 'yjs';
-import type { DocSection } from './sections';
 
 /** A block or inline piece as plain data: ProseMirror's JSON for the nodes in schema.ts. */
 export interface BlockJSON {
@@ -255,13 +254,6 @@ export interface EditorProps {
   whenBlank?: ReactNode | undefined;
   /** Where the caret starts when the document opens. */
   autoFocus?: 'title' | 'end' | undefined;
-  /**
-   * The audience's view of a presentation: only this section (sections.ts), and the title only with the first. Pass
-   * `readOnly` with it. A number past the last section shows the last.
-   */
-  section?: number | null | undefined;
-  /** The document's sections, now and whenever they change, for presenting it. */
-  onSections?: ((sections: readonly DocSection[]) => void) | undefined;
   ref?: Ref<EditorHandle> | undefined;
 }
 

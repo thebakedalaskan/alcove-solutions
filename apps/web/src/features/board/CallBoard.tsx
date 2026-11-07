@@ -1,37 +1,28 @@
 /*
- * A board in a call, loaded only once one is open, so a call without one pays nothing for it: the board on the stage, with the
- * menu under its name, how it stands (its seal, and Reconnecting and Couldn't save in its pill, as on its page) and the call's
- * one pill, ideas from the call, and the same board as a live tile among the faces or above them. Presented, it's a frame at a
- * time: whoever's presenting has their view of it round it, and everyone else the frame alone, until they look around. The
- * call (features/call/boards/callBoard.ts) holds the board's session and says what's true; this draws it.
+ * A board in a call, loaded only once one is open, so a call without one pays nothing for it: the board inside its frame on the
+ * stage (features/call/layout/frame.tsx, whose bar has its name, its menu, Present and Close), with how it stands (its seal, and
+ * Reconnecting and Couldn't save in its pill, as on its page) and the call's one pill, and ideas from the call. Presented, it's a
+ * frame at a time: whoever presents steps through them with the pager at the frame's foot, and their notes beside each frame are
+ * in their side (`CallBoardMine`); everyone following sees the frame alone, until they unfollow. The same board, drawn small, is
+ * its presented tile (`CallBoardMini`). The call (features/call/boards/callBoard.ts) holds the board's session and says what's
+ * true; this draws it.
  */
 import type { DocSession } from '@alcove/api';
-import { BoardHeard, BoardPop, BoardPresenter, BoardTile, BoardTray, type AvatarPerson, type BoardNaming, type BoardPresenting, type IconName } from '@alcove/ui';
+import { readBoard } from '@alcove/board';
+import { BoardHeard, BoardPop, BoardTray, Icon, type BoardNaming, type IconName } from '@alcove/ui';
 import { useReducedMotion } from 'motion/react';
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { BoardIdeas } from '~/features/call/boards/callBoard';
 import { typing } from '~/lib/keys';
 import { BoardSurface, type BoardHandle, type BoardLanding, type BoardPerson, type BoardPictures } from './BoardSurface';
 import type { BoardCommenting } from './comments';
 import type { BoardUpload, BoardWorkspace } from './more/items';
 import type { BoardLinks } from './more/objects';
-import { FollowingPill, PresentingPill, type CallPills, type PillKind, type Pills } from './pills';
+import { FollowingPill, type CallPills, type PillKind, type Pills } from './pills';
 import { slideAt, useSlides } from './slides';
 import type { Standing } from './standing';
 import type { BoardRun, RunPills } from './tools/run';
 import type { SortAsk } from './useBoard';
-
-/** What's under the board's name, each offered only where it's true. */
-export interface BoardNameMenu {
-  /** Renames it, for anyone who can change it. A rename that doesn't take puts the name back. */
-  rename?: ((name: string) => Promise<void>) | undefined;
-  /** Where it's kept: its workspace's name, and opening it. */
-  saved?: { name: string; onOpen: () => void } | undefined;
-  /** Who can add to it: its item's share sheet, for whoever may share it. */
-  share?: (() => ReactNode) | undefined;
-  /** Closes it for everyone: whoever opened it, or the organizer. */
-  close?: (() => void) | undefined;
-}
 
 /** This board presented where you are: by whom, which frame, and what you can do about it. */
 export interface BoardPresentation {
@@ -41,19 +32,17 @@ export interface BoardPresentation {
   mine: boolean;
   /** The frame everyone's on, from 0: what the call says, or where you've just moved it, if you're presenting. */
   section: number;
-  /** You're watching it with everyone, rather than looking around on your own. */
+  /** You're following whoever presents it, rather than working on your own. */
   watching: boolean;
-  /** You can stop it though it isn't yours: you're the organizer. */
-  canStop: boolean;
-  /** Look around, and Back to them. */
+  /** Follow, and work on your own: a scroll, a drag or a pinch on the frame does the second. */
   onWatch: (watching: boolean) => void;
-  /** Whoever's presenting: to a frame. Whoever's presenting, or the organizer: stop. */
+  /** Whoever's presenting: to a frame. */
   onMove: (section: number) => void;
-  onStop: () => void;
-  /** Your notes beside each frame, by frame, or null without an account. */
-  notes: Readonly<Record<string, string>> | null;
-  onNotes: (frame: string, notes: string) => void;
+  /** Whoever's presenting, with an account: their notes in the side, open or not. */
+  notes: { on: boolean; onToggle: () => void } | null;
 }
+/** Where whoever presents a board is in it, for the pager at the frame's foot. */
+export interface BoardPager { at: number; total: number; part: string }
 
 /** How long the tools take to fade before a presentation takes the sheet: `--duration-2`. */
 const FADE_MS = 240;
@@ -67,7 +56,9 @@ export interface CallBoardSheetProps {
   everyone: boolean;
   /** How it stands: what its seal says, on hover and pressed. Its pill, when it has one, comes in `pills`. */
   seal: Standing;
-  menu: BoardNameMenu;
+  /** Renames it, for anyone who can change it: Rename in the frame's name menu asks (`renameAsk` goes up), and its name becomes a field. A rename that doesn't take puts the name back. */
+  rename?: ((name: string) => Promise<void>) | undefined;
+  renameAsk: number;
   people: readonly BoardPerson[];
   talking: ReadonlySet<string>;
   pictures: BoardPictures;
@@ -83,12 +74,10 @@ export interface CallBoardSheetProps {
   landing: BoardLanding | null;
   /** It's being presented where you are. */
   present: BoardPresentation | null;
-  /** Presents it to everyone where you are, from its first frame: on a bigger screen than a phone. */
-  onPresent: (() => void) | undefined;
+  /** Where whoever presents it is, for their pager at the frame's foot and Follow on everyone else's bar: told as it changes, and null while it isn't presented. */
+  onPager?: ((pager: BoardPager | null) => void) | undefined;
   /** It's been closed for everyone: it sinks back through the arch, and takes nothing more. */
   sinking?: boolean | undefined;
-  /** Out of sight while it's a tile, keeping where you were on it, what's selected and your undo. */
-  hidden?: boolean | undefined;
   theme: 'light' | 'dark';
   /** Ideas from the call, for someone who can add to it. */
   ideas?: BoardIdeas | undefined;
@@ -110,7 +99,7 @@ export interface CallBoardSheetProps {
   onSay: (text: string, icon: IconName) => void;
 }
 
-type Pop = 'title' | 'seal' | 'share' | null;
+type Pop = 'seal' | null;
 
 /**
  * The tray of ideas from the call, over the bottom of the sheet. It takes the keys as it opens, and Escape closes it; working on
@@ -167,18 +156,6 @@ function usePop(close: () => void, from: () => HTMLElement | null) {
   return ref;
 }
 
-function NamePop({ menu, onPick, onClose, from }: { menu: BoardNameMenu; onPick: (pick: 'rename' | 'saved' | 'share' | 'close') => void; onClose: () => void; from: () => HTMLElement | null }) {
-  const ref = usePop(onClose, from);
-  // Each is told apart by what it does, so one coming or going (Saved in, once the workspace's name is known) never puts another under a press.
-  const items = [
-    ...(menu.rename ? [{ id: 'rename', icon: 'pen' as const, label: 'Rename', onPick: () => onPick('rename') }] : []),
-    ...(menu.saved ? [{ id: 'saved', icon: 'folderOpen' as const, label: `Saved in ${menu.saved.name}`, onPick: () => onPick('saved') }] : []),
-    ...(menu.share ? [{ id: 'share', icon: 'people' as const, label: 'Who can add to it', onPick: () => onPick('share') }] : []),
-    ...(menu.close ? [{ id: 'close', icon: 'x' as const, label: 'Close for everyone', onPick: () => onPick('close') }] : [])
-  ];
-  return <BoardPop ref={ref} left={12} top={62} label="The board" items={items} />;
-}
-
 /** Where a pop sits on the sheet: under the bar, or under the pill when there's one, which may hold what to press (Try again). */
 const POP_TOP = 62;
 const UNDER_PILL = 8;
@@ -197,55 +174,44 @@ function SealPop({ seal, onClose, from }: { seal: Standing; onClose: () => void;
   return <BoardPop ref={ref} left={12} top={top} title={seal.pop.title} rows={seal.pop.rows} />;
 }
 
-/** Who can add to it, under the name: the board's own Share, as its workspace has it. */
-function SharePop({ sheet, onClose, from }: { sheet: ReactNode; onClose: () => void; from: () => HTMLElement | null }) {
-  const ref = usePop(onClose, from);
-  return <div ref={ref} className="bp bp-share" style={{ left: 12, top: 62 }} role="dialog" aria-label="Who can add to it">{sheet}</div>;
-}
-
 /** The board on the stage: everyone works on it here. */
 export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(function CallBoardSheet(props, ref) {
-  const { session, name, role, everyone, seal, menu, people, talking, pictures, pills, onPill, run, fresh, sinking = false, landing, present, onPresent, hidden = false, theme, phone, upload, workspace, links, link, comments, ideas, onSort, onFollow, onSay } = props;
+  const { session, name, role, everyone, seal, rename, renameAsk, people, talking, pictures, pills, onPill, run, fresh, sinking = false, landing, present, onPager, theme, phone, upload, workspace, links, link, comments, ideas, onSort, onFollow, onSay } = props;
   const [pop, setPop] = useState<Pop>(null);
   const [naming, setNaming] = useState<string | null>(null);
   /** What it was renamed to here, until the call says so too. */
   const [renamed, setRenamed] = useState<string | null>(null);
   useEffect(() => { if (renamed !== null && name === renamed) setRenamed(null); }, [name, renamed]);
   const shown = renamed ?? name;
-  // A name's menu goes with what it offered: someone who loses the board's close, or its name, has nothing to choose from.
-  useEffect(() => { if (pop === 'title' && !menu.rename && !menu.saved && !menu.share && !menu.close) setPop(null); }, [pop, menu.rename, menu.saved, menu.share, menu.close]);
-  // Share goes with the right to share it.
-  useEffect(() => { if (pop === 'share' && !menu.share) setPop(null); }, [pop, menu.share]);
   const wrap = useRef<HTMLDivElement>(null);
   const button = (sel: string) => () => wrap.current?.querySelector<HTMLElement>(sel) ?? null;
   /** Back to the sheet, for the keys, once something over it has closed. */
   const toSheet = () => requestAnimationFrame(() => wrap.current?.querySelector<HTMLElement>('[role="application"]')?.focus({ preventScroll: true }));
-  const nameButton = button('.bd-head .nm');
   const sealButton = button('.bd-head .sv');
-
-  const pick = (what: 'rename' | 'saved' | 'share' | 'close') => {
-    setPop(what === 'share' ? 'share' : null);
-    if (what === 'rename') setNaming(shown);
-    else if (what === 'saved') menu.saved?.onOpen();
-    else if (what === 'close') menu.close?.();
-  };
+  /* Rename, from the frame's name menu: the name is a field at the start of the board's bar until it's done. */
+  const asked = useRef(renameAsk);
+  useEffect(() => {
+    if (renameAsk === asked.current) return;
+    asked.current = renameAsk;
+    if (rename) setNaming(shown);
+  }, [renameAsk]);
   const nameField: BoardNaming | undefined = naming === null ? undefined : {
     value: naming,
     onChange: setNaming,
     onDone: () => {
       const to = naming.replace(/\s+/g, ' ').trim();
       setNaming(null);
-      if (to && to !== shown && menu.rename) { setRenamed(to); menu.rename(to).catch(() => setRenamed(null)); }
-      requestAnimationFrame(() => nameButton()?.focus({ preventScroll: true }));
+      if (to && to !== shown && rename) { setRenamed(to); rename(to).catch(() => setRenamed(null)); }
+      toSheet();
     },
     onCancel: () => {
       setNaming(null);
-      requestAnimationFrame(() => nameButton()?.focus({ preventScroll: true }));
+      toSheet();
     }
   };
   /*
-   * Presented: frames are slides. Whoever's presenting sees the frame as everyone does, and can't move off it; everyone else
-   * sees it alone, once the tools have faded, until they look around. Your own view waits, and comes back when it ends.
+   * Presented: frames are slides. Whoever's presenting sees the frame as everyone does, and can't move off it; everyone following
+   * sees it alone, once the tools have faded, until they unfollow. Your own view waits, and comes back when it ends.
    */
   const slides = useSlides(session.doc);
   const presenting = present?.mine === true;
@@ -263,46 +229,45 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
   useEffect(() => { if (presenting || watching) setPop(null); }, [presenting, watching]);
   /*
    * Whoever's presenting moves on with → and back with ←, as a clicker's Page Down and Page Up do, while the presentation has the
-   * keys: the frame, or Back a frame, Next frame and Stop presenting under it. Keys anywhere else move nothing, nor does one
-   * something else has already used, nor one aimed at any other control (the notes beside the frame, the pill).
+   * keys: the frame, or the pager at the frame's foot. Keys anywhere else move nothing, nor does one something else has already
+   * used, nor one aimed at any other control (the notes in the side, the pill).
    */
   const at = on?.at ?? 0;
   const total = slides.length;
   const move = present?.onMove;
   useEffect(() => {
     const el = wrap.current;
-    if (!presenting || hidden || !move || !el) return undefined;
+    if (!presenting || !move || !el) return undefined;
     const keys = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || typing(e.target)) return;
-      if (!(e.target instanceof Element) || !(e.target.matches('[role="application"]') || e.target.closest('.bd-pres .ctl'))) return;
+      if (!(e.target instanceof Element) || !(e.target.matches('[role="application"]') || e.target.closest('[data-pager]'))) return;
       const by = e.key === 'ArrowRight' || e.key === 'PageDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'PageUp' ? -1 : 0;
       if (by === 0) return;
       e.preventDefault();
       const to = at + by;
       if (to >= 0 && to < total) move(to);
     };
-    el.addEventListener('keydown', keys);
-    return () => el.removeEventListener('keydown', keys);
-  }, [presenting, hidden, move, at, total]);
+    // The pager is the frame's, outside the board: its keys come by the document.
+    document.addEventListener('keydown', keys);
+    return () => document.removeEventListener('keydown', keys);
+  }, [presenting, move, at, total]);
+  /* Where whoever presents is: for their pager at the frame's foot, and for Follow on everyone else's bar. */
+  const onId = present ? on?.id ?? null : null;
+  const part = useMemo(() => (onId ? readBoard(session.doc).frames.find((f) => f.id === onId)?.title ?? '' : ''), [onId, slides, session.doc]);
+  const toldPager = useRef(onPager);
+  toldPager.current = onPager;
+  useEffect(() => { toldPager.current?.(present && on ? { at: at + 1, total: Math.max(total, 1), part } : null); }, [present !== null, at, total, part]);
+  useEffect(() => () => toldPager.current?.(null), []);
   const own = role === 'edit' ? (phone ? 'phone' : 'call') : 'read';
   const mode = presenting || (watching && !fading) ? 'present' : own;
   const slide = (presenting || watching) && on ? on.id : undefined;
-  const nextId = presenting && on ? slides[on.at + 1] ?? null : null;
-  const parts: BoardPresenting | null = presenting && present && on ? {
-    at: on.at + 1, total: Math.max(slides.length, 1),
-    next: nextId ? <BoardSurface doc={session.doc} awareness={session.awareness} mode="tile" slide={nextId} pictures={pictures} links={links} theme={theme} /> : null,
-    // Beside each frame its own; a board with no frames has nothing to keep them beside.
-    notes: present.notes && on.id ? present.notes[on.id] ?? '' : null, onNotes: (text) => { if (on.id) present.onNotes(on.id, text); },
-    onBack: () => present.onMove(on.at - 1), onNext: () => present.onMove(on.at + 1), onStop: present.onStop
-  } : null;
   const theirs = present && !present.mine ? present : null;
 
   /*
    * Where the keys go as a presentation begins and ends, for whoever had them on the board or lost them as it changed under them;
-   * anyone with the keys anywhere else keeps them there. Presenting, they go to Next frame (Stop presenting on a board of one
-   * frame), and back to Present on the bar as it ends. Watching, they go to Look around in the pill as the frame takes the sheet,
-   * and to the sheet as the presentation lets them go, if the pill took them with it. Someone who was typing a moment ago is
-   * mid-sentence, and the rest of it must never press a button, so their keys stay where they are.
+   * anyone with the keys anywhere else keeps them there. Presenting, they go to Next frame in the pager at the frame's foot.
+   * As it lets them go, they go to the sheet. Someone who was typing a moment ago is mid-sentence, and the rest of it must never
+   * press a button, so their keys stay where they are.
    */
   const seat = presenting ? 'presenting' : theirs ? (watching && !fading ? 'watching' : 'around') : null;
   const wasSeat = useRef(seat);
@@ -314,92 +279,107 @@ export const CallBoardSheet = forwardRef<BoardHandle, CallBoardSheetProps>(funct
     if (was === seat || !el || typing(now)) return;
     const lost = now === null || now === document.body;
     const here = lost || el.contains(now);
-    const find = (sel: string) => el.querySelector<HTMLElement>(sel);
-    const to = seat === 'presenting' ? (here ? find('.bd-pres .ctl .go[aria-label="Next frame"]:not([aria-disabled="true"])') ?? find('.bd-pres .ctl .stop') : null)
-      : seat === 'watching' ? (here ? find('.bd-pill button') : null)
-      : seat === null && was === 'presenting' ? (here ? find('.bd-head button[aria-label="Present"]') : null)
-      : seat === null && lost ? find('[role="application"]') : null;
+    const to = seat === 'presenting' ? (here ? el.closest('[data-frame]')?.querySelector<HTMLElement>('[data-pager] [aria-label="Next frame"]:not([aria-disabled="true"])') ?? null : null)
+      : seat === null && lost ? el.querySelector<HTMLElement>('[role="application"]') : null;
     to?.focus({ preventScroll: true });
   }, [seat]);
-  /*
-   * Back from being a tile, above the faces or among them (it rises as it comes back): the keys go to the sheet, if the tile
-   * they were on has gone with them.
-   */
-  const wasBack = useRef({ hidden, fresh });
+  /* Back on your stage (it rises as it comes back): the keys go to the sheet, if what they were on has gone with them. */
+  const wasBack = useRef(fresh);
   useEffect(() => {
     const was = wasBack.current;
-    wasBack.current = { hidden, fresh };
+    wasBack.current = fresh;
     const now = document.activeElement;
-    const back = (was.hidden && !hidden) || (fresh && !was.fresh);
-    if (back && !hidden && (now === null || now === document.body) && !typing(now)) toSheet();
-  }, [hidden, fresh]);
+    if (fresh && !was && (now === null || now === document.body) && !typing(now)) toSheet();
+  }, [fresh]);
 
-  // Every pill there is, from the call, the board's run, someone presenting and following: `BoardPills` shows the most pressing.
+  // Every pill there is, from the call, the board's run and following: `BoardPills` shows the most pressing. Someone presenting is the frame's bar's to say.
   const pill = (following: BoardPerson | null, stop: () => void, running: RunPills): Pills => ({
     ...pills,
     ...running,
-    presenting: theirs && <PresentingPill name={theirs.by} watching={theirs.watching} onToggle={() => theirs.onWatch(!theirs.watching)} onStop={theirs.canStop ? theirs.onStop : undefined} />,
     following: following && <FollowingPill person={following} onStop={stop} />
   });
   /* Which pill shows, told to the call: none while the board is a tile, or sinking, when it's out of sight. */
   const [pillShown, setPillShown] = useState<PillKind | null>(null);
-  const pillSeen = hidden || sinking ? null : pillShown;
+  const pillSeen = sinking ? null : pillShown;
   const toldPill = useRef(onPill);
   toldPill.current = onPill;
   useEffect(() => { toldPill.current?.(pillSeen); }, [pillSeen]);
   useEffect(() => () => toldPill.current?.(null), []);
 
   return (
-    <div ref={wrap} className={sinking ? 'ic-board is-sinking' : 'ic-board'} hidden={hidden} inert={sinking || undefined}>
-      <BoardPresenter presenting={parts}>
-        <BoardSurface ref={ref} doc={session.doc} awareness={session.awareness} mode={mode} name={shown} naming={nameField} slide={slide} still={presenting} faded={watching && fading}
-          seal={seal.seal} sealIcon={seal.icon} sealTitle={seal.title} everyone={everyone} people={people} talking={talking} pictures={pictures} fresh={fresh} landing={landing} theme={theme} run={run} pill={pill} onPill={setPillShown}
-          upload={upload} workspace={workspace} links={links} link={link} comments={comments}
-          onName={() => setPop((p) => (p === 'title' ? null : 'title'))} onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}
-          onPresent={phone ? undefined : onPresent} onLook={watching ? () => theirs?.onWatch(false) : undefined} onFollow={onFollow} onSay={onSay} onSort={role === 'edit' ? onSort : undefined}>
-          {pop === 'title' && <NamePop menu={menu} onPick={pick} onClose={() => setPop(null)} from={nameButton} />}
-          {pop === 'seal' && <SealPop seal={seal} onClose={() => setPop(null)} from={sealButton} />}
-          {pop === 'share' && menu.share && <SharePop sheet={menu.share()} onClose={() => setPop(null)} from={nameButton} />}
-          {/* Ideas from the call are for working on the board, so they wait while it's presented. */}
-          {role === 'edit' && ideas && mode !== 'present' && (ideas.tray
-            ? <IdeasTray ideas={{ ...ideas, tray: ideas.tray }} onDone={toSheet} />
-            : ideas.waiting > 0 && <BoardHeard count={ideas.waiting} onOpen={ideas.open} />)}
-        </BoardSurface>
-      </BoardPresenter>
+    <div ref={wrap} className={sinking ? 'ic-board is-sinking' : 'ic-board'} inert={sinking || undefined}>
+      <BoardSurface ref={ref} doc={session.doc} awareness={session.awareness} mode={mode} naming={nameField} slide={slide} still={presenting} faded={watching && fading}
+        seal={seal.seal} sealIcon={seal.icon} sealTitle={seal.title} everyone={everyone} people={people} talking={talking} pictures={pictures} fresh={fresh} landing={landing} theme={theme} run={run} pill={pill} onPill={setPillShown}
+        upload={upload} workspace={workspace} links={links} link={link} comments={comments}
+        onSeal={() => setPop((p) => (p === 'seal' ? null : 'seal'))}
+        onLook={watching ? () => theirs?.onWatch(false) : undefined} onFollow={onFollow} onSay={onSay} onSort={role === 'edit' ? onSort : undefined}>
+        {pop === 'seal' && <SealPop seal={seal} onClose={() => setPop(null)} from={sealButton} />}
+        {/* Ideas from the call are for working on the board, so they wait while it's presented. */}
+        {role === 'edit' && ideas && mode !== 'present' && (ideas.tray
+          ? <IdeasTray ideas={{ ...ideas, tray: ideas.tray }} onDone={toSheet} />
+          : ideas.waiting > 0 && <BoardHeard count={ideas.waiting} onOpen={ideas.open} />)}
+      </BoardSurface>
     </div>
   );
 });
 
-export interface CallBoardTileProps {
-  session: DocSession;
-  /** Whoever opened it, in the arch beside its name. */
-  person: AvatarPerson;
-  /** What the tile says: whose board it is. */
-  name: string;
-  /** What pressing it does. */
-  label: string;
-  /** The room it has. */
-  width: number;
-  height: number;
-  /** The smaller one above the tiles beside a share shown big. */
-  compact: boolean;
-  pictures: BoardPictures;
-  /** Each link's name for you, as on the board itself. */
-  links: BoardLinks;
-  theme: 'light' | 'dark';
-  onOpen: () => void;
-}
-
-/** The size a tile draws the board at before shrinking it: the canvas's board on a call's stage. */
+/** The size the board is drawn at before shrinking it into a tile: the canvas's board on a call's stage. */
 const TILE_W = 1114;
 
-/** The board as a live tile: a picture of all of it, kept up to date, that brings it back when pressed. */
-export function CallBoardTile({ session, person, name, label, width, height, compact, pictures, links, theme, onOpen }: CallBoardTileProps) {
+/** The board drawn small, kept up to date, for its tile among the people while it's presented and isn't on your stage. */
+export function CallBoardMini({ session, width, height, pictures, links, theme }: {
+  session: DocSession; width: number; height: number; pictures: BoardPictures; links: BoardLinks; theme: 'light' | 'dark';
+}) {
   const scale = width > 0 ? width / TILE_W : 1;
   const h = Math.max(1, Math.round(height / scale));
   return (
-    <BoardTile person={person} name={name} label={label} w={TILE_W} h={h} scale={scale} compact={compact} onOpen={onOpen} style={{ width, height }}>
+    <span className="ic-ptile-board" style={{ width: TILE_W, height: h, transform: `scale(${scale})` }}>
       <BoardSurface doc={session.doc} awareness={session.awareness} mode="tile" pictures={pictures} links={links} theme={theme} />
-    </BoardTile>
+    </span>
+  );
+}
+
+/** The size the next frame's picture is drawn at before it's shrunk into the side. */
+const NEXT = { w: 1114, h: 674 } as const;
+/** The room the next frame's picture has in the side. */
+const NEXT_W = 316;
+
+/**
+ * Your notes beside the board you present, in your side: which frame everyone's on, your words for it (only yours, kept for next
+ * time), and the next frame. A board with no frames has nothing to keep them beside.
+ */
+export function CallBoardMine({ session, section, notes, onNote, pictures, links, theme }: {
+  session: DocSession; section: number;
+  /** Your notes by frame, or null without an account. */
+  notes: Readonly<Record<string, string>> | null;
+  onNote: (frame: string, text: string) => void;
+  pictures: BoardPictures; links: BoardLinks; theme: 'light' | 'dark';
+}) {
+  const slides = useSlides(session.doc);
+  const on = slideAt(slides, section);
+  const frames = useMemo(() => new Map(readBoard(session.doc).frames.map((f) => [f.id, f.title])), [slides, session.doc]);
+  const next = slides[on.at + 1] ?? null;
+  const k = NEXT_W / NEXT.w;
+  if (!on.id) return <p className="ic-mine-none">This board has no frames, so there’s nothing to keep notes beside.</p>;
+  return (
+    <div className="ic-mine">
+      <span className="pos">{on.at + 1} of {slides.length} · you’re sharing it</span>
+      <p className="now">{frames.get(on.id) || 'Untitled frame'}</p>
+      {notes ? (
+        <textarea className="notes" aria-label={`Your notes on ${frames.get(on.id) || 'this frame'}, only you see them`} placeholder="What you want to say about this frame"
+          value={notes[on.id] ?? ''} onChange={(e) => { if (on.id) onNote(on.id, e.target.value); }} />
+      ) : <p className="ic-mine-none">Sign in to keep notes beside each frame.</p>}
+      <div className="next">
+        <span className="pos">{next ? `Next: ${frames.get(next) || 'Untitled frame'}` : 'That’s the last one'}</span>
+        {next && (
+          <span className="pic" style={{ height: Math.round(NEXT.h * k) }} aria-hidden="true">
+            <span style={{ width: NEXT.w, height: NEXT.h, transform: `scale(${k})` }}>
+              <BoardSurface doc={session.doc} awareness={session.awareness} mode="tile" slide={next} pictures={pictures} links={links} theme={theme} />
+            </span>
+          </span>
+        )}
+      </div>
+      <p className="foot"><Icon name="lock" size={15} />Kept for next time. Only you see them.</p>
+    </div>
   );
 }

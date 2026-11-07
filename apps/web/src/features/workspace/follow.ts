@@ -12,14 +12,19 @@ import type { WorkspacePlace } from './context';
 import { pageName, type Someone } from './presence';
 import { nameOf, type Tree } from './tree';
 
-/** Who you're following and where they are now. `document` and `block` only ever name what you can open. */
-export interface Following { person: Person; name: string; where: string; lost: boolean; document: string | null; block: string | null }
+/**
+ * Who you're following and where they are now. `document` and `block` only ever name what you can open. `quiet`: they're
+ * presenting the workspace, which the call's frame says, so the page says nothing about it.
+ */
+export interface Following { person: Person; name: string; where: string; lost: boolean; document: string | null; block: string | null; quiet: boolean }
 
 /** Why it stopped. `quiet` says nothing: something else took over. `moved`: the call's workspace changed under them, which is said. */
 export type StopFollowing = 'asked' | 'quiet' | 'moved';
 
 interface FollowInput {
   others: readonly Someone[];
+  /** Whoever presents the workspace in a call, by connection: following them is said by the call's frame, not here. */
+  presenter: string | null;
   tree: Tree;
   at: WorkspacePlace;
   /** Goes there without it counting as you going somewhere. */
@@ -27,7 +32,7 @@ interface FollowInput {
   say: (toast: WsToastData) => void;
 }
 
-export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
+export function useFollow({ others, presenter, tree, at, goWith, say }: FollowInput) {
   const [id, setId] = useState<string | null>(null);
   /** Their face, for after they've gone. */
   const known = useRef<Person | null>(null);
@@ -41,14 +46,15 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
   const here = at.kind === 'document' ? at.id : at.kind === 'live' ? `$${at.page}` : null;
 
   const follow = useCallback((person: string) => setId(person), []);
-  const latest = useRef({ id, say });
-  latest.current = { id, say };
+  const quiet = someone !== undefined && presenter !== null && someone.callIdentity === presenter;
+  const latest = useRef({ id, say, quiet });
+  latest.current = { id, say, quiet };
   const stop = useCallback((how: StopFollowing = 'asked') => {
-    const { id: was, say: tell } = latest.current;
+    const { id: was, say: tell, quiet: hush } = latest.current;
     const person = known.current;
     if (was === null) return;
     setId(null);
-    if (how === 'asked' && person) tell(wsToast.stoppedFollowing(firstName(person.name), () => setId(was)));
+    if (how === 'asked' && person && !hush) tell(wsToast.stoppedFollowing(firstName(person.name), () => setId(was)));
     if (how === 'moved' && person) tell(wsToast.followingEnded(firstName(person.name)));
   }, []);
 
@@ -81,7 +87,7 @@ export function useFollow({ others, tree, at, goWith, say }: FollowInput) {
   const following: Following | null = id === null || !person ? null : {
     person, name: firstName(person.name), lost,
     where: item ? nameOf(item) : page ? pageName(page) : 'Not in the workspace',
-    document: target, block: target !== null ? someone?.block ?? null : null
+    document: target, block: target !== null ? someone?.block ?? null : null, quiet
   };
   return { following, follow, stopFollowing: stop };
 }

@@ -4,7 +4,7 @@
  * boards. While someone presents a board, or for a guest, a new one waits, and it says why. In a breakout room a new board is
  * only that room's, and the saved boards stay in the main room. Share › A board shows the same picker as its step.
  */
-import { BoardMenuThumb, BoardPicker, CallTopButton, CallTopGroup, CallTopRule, cn, Popover } from '@alcove/ui';
+import { BoardPickerThumb, BoardPicker, CallTopButton, CallTopGroup, CallTopRule, cn, Popover } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import '../../../src/board.css';
@@ -13,8 +13,8 @@ import { did, onStage } from '../../../src/component';
 const RECENTS = {
   workspace: 'Product',
   boards: [
-    { id: 'retro', name: 'Launch retro', by: 'Priya', when: 'Today', thumb: <BoardMenuThumb kind="columns" /> },
-    { id: 'september', name: 'September retro', by: 'Art', when: '2 Oct', thumb: <BoardMenuThumb kind="columns" /> }
+    { id: 'retro', name: 'Launch retro', by: 'Priya', when: 'Today', thumb: <BoardPickerThumb kind="columns" /> },
+    { id: 'september', name: 'September retro', by: 'Art', when: '2 Oct', thumb: <BoardPickerThumb kind="columns" /> }
   ]
 };
 

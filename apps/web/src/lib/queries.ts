@@ -51,8 +51,7 @@ export const qk = {
   documentShare: (id: string, documentId: string) => ['workspaces', id, 'share', documentId] as const,
   documentVersions: (id: string, documentId: string) => ['workspaces', id, 'versions', documentId] as const,
   documentVersion: (id: string, documentId: string, version: string) => ['workspaces', id, 'versions', documentId, version] as const,
-  /** Your own notes for presenting a document: never anyone else's, and gone with the cache when someone else signs in. */
-  presenterNotes: (id: string, documentId: string) => ['workspaces', id, 'presenter-notes', documentId] as const,
+  /** Your own notes beside a board's frames: never anyone else's, and gone with the cache when someone else signs in. */
   presenterFrameNotes: (id: string, boardId: string) => ['workspaces', id, 'presenter-notes', boardId, 'frames'] as const,
   workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
   workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
@@ -171,8 +170,6 @@ export const q = {
   documentVersions: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersions(id, documentId), queryFn: () => api.workspaces.versions(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
   /** A version never changes, so what's read stays good for as long as it's being looked at, and goes soon after. */
   documentVersion: (id: string, documentId: string, version: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentVersion(id, documentId, version), queryFn: () => api.workspaces.version(id, documentId, version, pass ? { pass } : undefined), staleTime: Infinity, gcTime: 60_000 }),
-  /** What you keep beside a document for presenting it. Only you write them, so what's here stays right until you change it. */
-  presenterNotes: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterNotes(id, documentId), queryFn: () => api.workspaces.presenterNotes.get(id, documentId, pass ? { pass } : undefined), staleTime: Infinity }),
   /** Your notes beside each frame of a board, by frame. */
   presenterFrameNotes: (id: string, boardId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.presenterFrameNotes(id, boardId), queryFn: () => api.workspaces.presenterNotes.frames(id, boardId, pass ? { pass } : undefined), staleTime: Infinity }),
   /** One document or folder as you see it: what it's called now, and what you can do with it. */
@@ -668,8 +665,8 @@ export function useRenameWorkspace() {
   return useMutation({ mutationFn: (v: { id: string; name: string }) => api.workspaces.rename(v.id, v.name), onSuccess: () => qc.invalidateQueries({ queryKey: qk.workspaces, exact: true }) });
 }
 /** Renames a board open in a call, for anyone who can change it: the call reads its new name from the workspace. `pass`: the call's. */
-export function useRenameBoard(pass: string) {
-  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, { pass }) });
+export function useRenameBoard(pass: string | undefined) {
+  return useMutation({ mutationFn: (v: { workspaceId: string; id: string; name: string }) => api.workspaces.items.rename(v.workspaceId, v.id, v.name, pass ? { pass } : undefined) });
 }
 /**
  * Sort into themes on a board: what the stickies picked say goes to confidential compute through the board's document, and
@@ -722,14 +719,6 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
 export function useMentionSeen() {
   const qc = useQueryClient();
   return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
-}
-/** Keeps your notes for presenting a document. Empty text deletes them. */
-export function useSavePresenterNotes(workspaceId: string, documentId: string, pass?: string | undefined) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (text: string) => api.workspaces.presenterNotes.set(workspaceId, documentId, text, pass ? { pass } : undefined),
-    onSuccess: (_: void, text: string) => qc.setQueryData(qk.presenterNotes(workspaceId, documentId), { text })
-  });
 }
 /** Keeps your notes beside one frame of a board: what's kept is what the board's notes say from then on. Empty text takes them away. */
 export function useSavePresenterFrameNote(workspaceId: string, boardId: string, pass?: string | undefined) {

@@ -10,7 +10,7 @@ import type { LocalMedia } from './media';
 const clog = log.child({ component: 'call' });
 
 /** Before the room has connected: nobody's media yet. */
-const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, audioBlocked: false, screenFailed: null };
+const NO_VIEW: RoomView = { connection: 'connecting', endReason: null, people: {}, hostMuted: 0, shareStopped: 0, audioBlocked: false, screenFailed: null };
 const NO_ROOM: CallRoom = {
   getSnapshot: () => NO_VIEW, subscribe: () => () => undefined, attach: () => () => undefined, heard: () => [], playOnly: () => undefined, startAudio: async () => undefined,
   muteShare: () => undefined, send: () => undefined, receive: () => () => undefined, leave: async () => undefined

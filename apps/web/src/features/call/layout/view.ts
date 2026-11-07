@@ -1,29 +1,28 @@
 /*
  * Your view of a call, which changes your screen only and is never sent anywhere.
  *
- * - How you like to see calls (`CallViewPrefs`: Auto, speaker or grid, how much room shared screens get, where you see
- *   yourself) is remembered in this browser for your account, for every call.
- * - How you like the call's main area (`CallPanels`: how you see people beside what's shared, the room each thing has) is
- *   too, so tomorrow's call starts the way you left this one. It says where kinds of things go, and names nobody (panels.ts).
- * - How you arranged this call (`CallLayout`: who you pinned, the order you put people in, who you made bigger, which
- *   shares you see big, where you are in the workspace, what your side shows) lasts for this call only: it's kept in this
- *   tab, so a reload keeps it, and it's deleted when you leave. It names people by their seat in the call, which is random
- *   and means nothing anywhere else.
+ * - How you like to see calls (`CallViewPrefs`: Auto, speaker or grid, where you see yourself) is remembered in this
+ *   browser for your account, for every call.
+ * - How you like the people beside what's open on your stage (`CallPanels`: tiles, arches or hidden, and whether the
+ *   workspace shows its list) is too, so tomorrow's call starts the way you left this one. It names nobody.
+ * - How you arranged this call (`CallLayout`: who you pinned, the order you put people in, who you made bigger, where you
+ *   are in the workspace, what your side shows) lasts for this call only: it's kept in this tab, so a reload keeps it, and
+ *   it's deleted when you leave. It names people by their seat in the call, which is random and means nothing anywhere else.
  *
  * Neither holds a name or anything said or shared. The layout engine (stageLayout.ts) turns both into the stage.
  */
 import {
-  CALL_LAYOUT_MAX, CALL_SHARE_ROOM, CALL_SHARE_SPLIT, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner
+  CALL_LAYOUT_MAX, CallLayoutSchema, CallPanelsSchema, CallViewPrefsSchema, type CallLayout, type CallPanels, type CallSide, type CallViewMode, type CallViewPrefs, type SelfView, type StageCorner
 } from '@alcove/api';
 import { useCallback, useRef, useState } from 'react';
 import { log } from '~/lib/log';
-import { DEFAULT_PANELS, panelsSound, reset as resetPanels } from './panels';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', ratio: CALL_SHARE_ROOM.start, self: 'grid', corner: 'bottom-right' };
-export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], shares: [], workspace: { open: false, document: null }, split: CALL_SHARE_SPLIT.start };
-const clamp = (v: number, r: { min: number; max: number }) => Math.max(r.min, Math.min(r.max, v));
+export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right' };
+export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], workspace: { open: false, document: null } };
+/** The people as tiles beside what's open, and the workspace with its list. */
+export const DEFAULT_PANELS: CallPanels = { people: 'tiles', list: true };
 
 /* Preferences by account (its opaque owner ID); a browser without an account has one set of its own. */
 const prefsKey = (account: string | null) => (account ? `alcove.callView.${account}` : 'alcove.callView');
@@ -45,7 +44,7 @@ function readPanels(account: string | null): CallPanels {
     const raw = localStorage.getItem(panelsKey(account));
     if (!raw) return DEFAULT_PANELS;
     const r = CallPanelsSchema.safeParse(JSON.parse(raw));
-    return r.success && panelsSound(r.data) ? r.data : DEFAULT_PANELS;
+    return r.success ? r.data : DEFAULT_PANELS;
   } catch {
     return DEFAULT_PANELS;
   }
@@ -69,22 +68,11 @@ function keep(store: 'local' | 'session', key: string, value: unknown) {
 }
 
 /** You changed the layout from what Auto gives: View offers a way back. Where you see yourself is a standing choice, not part of it. */
-export const isCustom = (p: CallViewPrefs, l: CallLayout) => p.mode !== 'auto' || Math.abs(p.ratio - DEFAULT_PREFS.ratio) > 0.001
-  || l.pins.length > 0 || l.order.length > 0 || l.big.length > 0 || l.shares.length > 0 || Math.abs(l.split - EMPTY_LAYOUT.split) > 0.001;
+export const isCustom = (p: CallViewPrefs, l: CallLayout, panels: CallPanels) => p.mode !== 'auto' || l.pins.length > 0 || l.order.length > 0 || l.big.length > 0
+  || panels.people !== DEFAULT_PANELS.people || panels.list !== DEFAULT_PANELS.list;
 
 /** A view to go back to: Undo after a reset. */
 export interface ViewSnapshot { prefs: CallViewPrefs; layout: CallLayout; panels: CallPanels }
-
-/** The shares big now, in the order they came to be: any the layout put there (first to start, first), then your picks. */
-function picked(l: CallLayout, big: string[]): string[] {
-  const chosen = l.shares.filter((s) => s.show === 'big' && big.includes(s.id)).map((s) => s.id);
-  return [...big.filter((s) => !chosen.includes(s)), ...chosen];
-}
-/** Your choices about shares with these big and the rest as they were: the ones you made tiles stay tiles. */
-function sharesWith(l: CallLayout, big: string[], tile: string | null): CallLayout['shares'] {
-  const tiles = l.shares.filter((s) => s.show === 'tile' && s.id !== tile && !big.includes(s.id));
-  return [...tiles, ...(tile ? [{ id: tile, show: 'tile' as const }] : []), ...big.map((id) => ({ id, show: 'big' as const }))].slice(-CALL_LAYOUT_MAX.shares);
-}
 
 /**
  * Your view of the call `callId`. `account` is your account's owner ID, null without an account, or undefined while
@@ -106,7 +94,7 @@ export function useCallView(callId: string, account: string | null | undefined) 
   const updatePrefs = useCallback((fn: (p: CallViewPrefs) => CallViewPrefs) => {
     setPrefs((p) => { const next = fn(p); if (account !== undefined) keep('local', prefsKey(account), next); return next; });
   }, [account]);
-  /** Changes how the panels are arranged, and remembers it. */
+  /** Changes how the people sit beside what's open, or whether the workspace shows its list, and remembers it. */
   const arrange = useCallback((fn: (p: CallPanels) => CallPanels) => {
     setPanels((p) => { const next = fn(p); if (next !== p && account !== undefined) keep('local', panelsKey(account), next); return next; });
   }, [account]);
@@ -125,16 +113,11 @@ export function useCallView(callId: string, account: string | null | undefined) 
     const fresh = seats.filter((s) => !l.arrived.includes(s));
     return fresh.length ? { ...l, arrived: [...l.arrived, ...fresh].slice(-CALL_LAYOUT_MAX.arrived) } : l;
   }), [updateLayout]);
-  /** Shares that stopped aren't anyone's choice any more. */
-  const endShares = useCallback((ended: string[]) => updateLayout((l) => (l.shares.some((s) => ended.includes(s.id)) ? { ...l, shares: l.shares.filter((s) => !ended.includes(s.id)) } : l)), [updateLayout]);
 
   return {
-    arrive, endShares, forget,
+    arrive, forget,
     prefs, layout, panels, arrange,
-    /** The panels as a line is being dragged: what's remembered is what's there when it's let go. */
-    arrangeLive: setPanels,
     setMode: (mode: CallViewMode) => updatePrefs((p) => ({ ...p, mode })),
-    setRatio: (ratio: number) => updatePrefs((p) => ({ ...p, ratio: clamp(ratio, CALL_SHARE_ROOM) })),
     setSelf: (self: SelfView) => updatePrefs((p) => ({ ...p, self })),
     setCorner: (corner: StageCorner) => updatePrefs((p) => ({ ...p, corner })),
     /**
@@ -152,25 +135,16 @@ export function useCallView(callId: string, account: string | null | undefined) 
     setPins: (pins: string[]) => updateLayout((l) => ({ ...l, pins: pins.slice(0, CALL_LAYOUT_MAX.pins) })),
     setOrder: (order: string[]) => updateLayout((l) => ({ ...l, order: order.slice(0, CALL_LAYOUT_MAX.order) })),
     setBig: (seat: string, big: boolean) => updateLayout((l) => ({ ...l, big: big ? [...new Set([...l.big, seat])].slice(-CALL_LAYOUT_MAX.big) : l.big.filter((s) => s !== seat) })),
-    /**
-     * Shows a share big, after the ones big now (`big`, which become your choice too). The stage shows the latest of them
-     * that fit: beside what's big, or in place of the one that's been big longest. Kept whole, so a stage that grows
-     * (the panel closing) shows them again.
-     */
-    showShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, [...picked(l, big).filter((s) => s !== id), id], null) })),
-    /** Shows a share as a tile: the others big now stay big, and nothing takes its place, now or when another share starts. */
-    hideShare: (id: string, big: string[]) => updateLayout((l) => ({ ...l, shares: sharesWith(l, picked(l, big).filter((s) => s !== id), id) })),
-    setSplit: (split: number) => updateLayout((l) => ({ ...l, split: clamp(split, CALL_SHARE_SPLIT) })),
     /** Where you are in the workspace, whatever else changes about how you see the call. */
     keepWorkspace: (workspace: CallLayout['workspace']) => updateLayout((l) => (l.workspace.open === workspace.open && l.workspace.document === workspace.document ? l : { ...l, workspace })),
     /** What your side shows, so a reload finds it as it was. */
     keepSide: (side: CallSide | null) => updateLayout((l) => (l.side === side ? l : { ...l, side })),
-    /** Back to the call's layout: Auto, nobody pinned, the call's order and sizes, the main area as it starts. Where you see yourself, and your side, stay as they are. */
+    /** Back to the call's layout: Auto, nobody pinned, the call's order and sizes, the people as tiles. Where you see yourself, and your side, stay as they are. */
     reset: (): ViewSnapshot => {
       const was = { prefs, layout, panels };
-      updatePrefs((p) => ({ ...p, mode: DEFAULT_PREFS.mode, ratio: DEFAULT_PREFS.ratio }));
+      updatePrefs((p) => ({ ...p, mode: DEFAULT_PREFS.mode }));
       updateLayout((l) => ({ ...EMPTY_LAYOUT, arrived: l.arrived, workspace: l.workspace, side: l.side }));
-      arrange(resetPanels);
+      arrange(() => DEFAULT_PANELS);
       return was;
     },
     restore: (v: ViewSnapshot) => { updatePrefs(() => v.prefs); updateLayout((l) => ({ ...v.layout, arrived: l.arrived, workspace: l.workspace, side: l.side })); arrange(() => v.panels); }

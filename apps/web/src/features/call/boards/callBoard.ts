@@ -1,8 +1,10 @@
 /*
- * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the one open where you are
- * (`CallState.board`), its session while you can open it, whether you've hidden it for yourself, who you're following on it,
- * and what you're told as it opens and closes. Opening, closing and hiding change nothing about the call itself: a call with
- * no board open is exactly what it was. What's drawn is features/board/CallBoard.tsx, loaded the first time it's needed.
+ * The board in a call, as this browser holds it (docs: Calls and recordings › A board in a call): the board in the part of the
+ * call you're in (`CallState.board`), which timers, votes, ideas from the call and breakout rooms hang on, or a saved board you
+ * opened just for you, which touches nothing in the call. Whichever is on your stage (layout/onStage.ts) has its session open
+ * while you can open it; so does the call's board while it's in the call, for its presented tile. Who you're following on it,
+ * and what you're told as it closes, are here too. What's drawn is features/board/CallBoard.tsx, loaded the first time it's
+ * needed.
  *
  * And how the call helps with it: ideas from what's said while notes are on, in the tray, and Sort into themes, which goes to
  * confidential compute unless notes are paused (docs: Calls and recordings › A board in a call).
@@ -74,7 +76,7 @@ const sameClients = (a: ReadonlyMap<string, readonly number[]>, b: ReadonlyMap<s
  * board's page does (features/workspace/opened.ts): once the connection's back if it couldn't open at all, by itself a little
  * later each time if it can't be opened right now, and with `reopen`, which is Try again: what's kept here goes again.
  */
-function useBoardSession(open: CallBoardOpen | null, owner: string | null, pass: string): { doc: DocSession | null; status: DocStatus | null; reopen: () => void } {
+function useBoardSession(open: CallBoardOpen | null, owner: string | null, pass: string | undefined): { doc: DocSession | null; status: DocStatus | null; reopen: () => void } {
   const workspaceId = open?.role ? open.workspaceId : null;
   const documentId = open?.role ? open.documentId : null;
   const [round, setRound] = useState(0);
@@ -165,8 +167,15 @@ function useBoardComments(participants: CallState['participants'], workspaceId: 
   }, [people, ids, canAdd, toast]);
 }
 
+/** A saved board you opened just for you, from the picker: by where it's kept, and what it's called. */
+export interface SavedBoard { workspaceId: string; documentId: string; name: string }
+
 export interface CallBoardFacts {
   session: CallSession;
+  /** Which board is on your stage: the call's, a saved one just for you, or none. */
+  stage: 'call' | 'saved' | null;
+  /** The saved board you opened just for you, while you have it. */
+  saved: SavedBoard | null;
   state: CallState;
   me: string;
   /** Your account, for keeping what's typed offline: null for a guest. */
@@ -176,19 +185,18 @@ export interface CallBoardFacts {
   /** What a workspace is called, as your Drive has it, if you're in it. */
   spaceName: (workspaceId: string) => string | null;
   say: (text: string, icon: 'presentation' | 'lock' | 'eye' | 'image' | 'x' | 'waveform', action?: SaidAction) => void;
-  /** The first person sharing now who isn't you, for what a board opening beside a share says. */
-  sharer: Person | null;
   /** The part of the call you're in: arriving in a room with its board open is told as the room, not as the board. */
   place: string;
   /** Rooms have just closed and their boards came back, which the call says itself: a board made for them just opens. */
   cameBack: () => boolean;
 }
 
-export function useCallBoard({ session, state, me, owner, talking, spaceName, say, sharer, place, cameBack }: CallBoardFacts) {
+export function useCallBoard({ session, stage, saved, state, me, owner, talking, spaceName, say, place, cameBack }: CallBoardFacts) {
   const open = state.board.open;
   const pass = session.ticket.pass;
   const reduce = useReducedMotion();
-  const [hidden, setHidden] = useState(false);
+  const onStage = stage === 'call';
+  const hidden = !onStage;
   const key = open ? `${open.workspaceId ?? ''}/${open.documentId ?? ''}/${open.openedBy ?? ''}` : '';
   /** The open board as it last read: renamed while it's open, it closes under its new name. */
   const latest = useRef<CallBoardOpen | null>(null);
@@ -205,7 +213,15 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
     const t = setTimeout(() => setShut((was) => (was.sinking === sinking ? { ...was, sinking: null } : was)), SINK_MS);
     return () => clearTimeout(t);
   }, [sinking]);
-  const { doc, status, reopen } = useBoardSession(open ?? sinking, owner, pass);
+  /*
+   * A saved board just for you is opened as yours, with your account, not the call's pass: the call has nothing to do with it.
+   * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes.
+   */
+  const savedOpen = useMemo((): CallBoardOpen | null => (saved ? {
+    workspaceId: saved.workspaceId, documentId: saved.documentId, name: saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
+  } : null), [saved?.workspaceId, saved?.documentId, saved?.name, me]);
+  const mineDrawn = stage === 'saved' && savedOpen !== null;
+  const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);
   const { people, onBoard } = useBoardPeople(doc, state.participants, me);
   const talkingKey = [...talking].sort().join(' ');
   const talkingSet = useMemo(() => new Set(talkingKey ? talkingKey.split(' ') : []), [talkingKey]);
@@ -214,6 +230,10 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
   const [fresh, setFresh] = useState(false);
   /** A board you can't open is said to be so only once it's been so for a moment (`NO_ACCESS_WAIT_MS`). */
   const [refused, setRefused] = useState(false);
+  /** How many times a board came to you with the rest of your part of the call (rooms opening or closing): it opens on your stage. */
+  const [arrived, setArrived] = useState(0);
+  /** The call's board was on your stage, as it was before this render: only then is its closing said. */
+  const shownNow = useRef(false);
 
   /* What's said as boards open and close, and what rises. Joining a call that has one open says nothing: it was already open. */
   const was = useRef<CallBoardOpen | null | undefined>(undefined);
@@ -238,13 +258,13 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
     if (before === undefined) return;
     const same = before && open && before.documentId === open.documentId && before.workspaceId === open.workspaceId;
     if (same) return;
-    // Someone's own choice to hide a board goes with it, and so does following anyone on it.
-    setHidden(false);
+    // Following anyone on it goes with it.
     setFollowing(null);
     // Going to a room, or back: what's open there just rises, as the rest of the room does, and the call says where you are.
-    if (moved || (open && cameBack())) { if (open) rise(); return; }
+    if (moved || (open && cameBack())) { if (open) { rise(); setArrived((n) => n + 1); } return; }
     if (open === null) {
-      if (!before) return;
+      // Only someone who had it open hears it's gone: nobody else's screen had it.
+      if (!before || !shownNow.current) return;
       const gone = latest.current?.documentId === before.documentId ? latest.current : before;
       const where = gone.workspaceId ? spaceName(gone.workspaceId) : null;
       say(gone.name ? (where ? `${gone.name} is closed. It’s saved in ${where}.` : `${gone.name} is closed.`) : 'The board is closed.', 'presentation');
@@ -253,17 +273,11 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
     rise();
     const told = next.current;
     next.current = null;
-    if (open.role === null) return;
-    if (open.openedBy === me) {
-      if (told) { say(told, 'lock'); return; }
-      const still = sharer ? ` ${callName(sharer)} is still sharing.` : '';
-      say(open.everyone ? `Everyone here can add to this board.${still}` : `${open.name ?? 'The board'} is open.${still}`, 'presentation');
-      return;
-    }
-    const who = opener ? callName(opener.person) : 'Someone';
-    say(open.everyone && open.role === 'edit' ? `${who} opened ${open.name ?? 'a board'}. Everyone here can add to it.` : open.role === 'edit' ? `${who} opened ${open.name ?? 'a board'}. You can add to it.` : `${who} opened ${open.name ?? 'a board'}.`, 'presentation');
+    // Whoever made or brought it hears what it let in; nobody else's screen changes for a board someone else opened.
+    if (open.role !== null && open.openedBy === me && told) say(told, 'lock');
     // `key` says everything about the open board this reads, and `place` where you are.
   }, [key, place]);
+  useEffect(() => { shownNow.current = onStage && open !== null; });
   /* A board you can't open is shown so once it's held a moment, and one that opens to you meanwhile just opens. */
   const blocked = open !== null && open.role === null;
   useEffect(() => {
@@ -311,31 +325,31 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
   const goTo = useCallback((id: string) => { handle.current?.goTo(id); }, []);
   const onFollow = useCallback((id: string | null) => setFollowing(id), []);
 
-  /* Pictures on the board, read through its document with the call's pass: the one sinking too. */
-  const workspaceId = (open ?? sinking)?.workspaceId ?? null;
-  const documentId = (open ?? sinking)?.documentId ?? null;
-  const pictures = useMemo<BoardPictures>(() => (workspaceId && documentId ? boardPictures(workspaceId, documentId, pass) : () => Promise.reject(new Error('no board'))), [workspaceId, documentId, pass]);
+  /* Pictures on the board, read through its document: the call's with the call's pass (the one sinking too), a saved one as yours. */
+  const drawnOpen = mineDrawn ? savedOpen : open ?? sinking;
+  const drawnPass = mineDrawn ? undefined : pass;
+  const workspaceId = drawnOpen?.workspaceId ?? null;
+  const documentId = drawnOpen?.documentId ?? null;
+  const pictures = useMemo<BoardPictures>(() => (workspaceId && documentId ? boardPictures(workspaceId, documentId, drawnPass) : () => Promise.reject(new Error('no board'))), [workspaceId, documentId, drawnPass]);
   /* A picture put on the board is kept in its document, as a picture of a screen is, for whoever can add to it. */
-  const canAdd = (open ?? sinking)?.role === 'edit';
-  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, pass) : undefined), [workspaceId, documentId, pass, canAdd]);
+  const canAdd = drawnOpen?.role === 'edit';
+  const upload = useMemo<BoardUpload | undefined>(() => (workspaceId && documentId && canAdd ? boardUpload(workspaceId, documentId, drawnPass) : undefined), [workspaceId, documentId, drawnPass, canAdd]);
   /*
    * The board's workspace as you can open it, read once it's open to you: each link's name for you, and what More links to.
    * Someone it isn't open to reads nothing of it.
    */
-  const tree = useQuery({ ...q.workspaceTree(workspaceId ?? '', pass), enabled: workspaceId !== null && (open ?? sinking)?.role != null }).data;
+  const tree = useQuery({ ...q.workspaceTree(workspaceId ?? '', drawnPass), enabled: workspaceId !== null && drawnOpen?.role != null }).data;
   const linkable = useMemo(() => (tree ? linkableIn(tree.items) : null), [tree]);
   const named = useMemo(() => new Map((linkable ?? []).map((i) => [i.id, i])), [linkable]);
   const itemFor = useCallback((item: string): BoardItem | null => named.get(item) ?? null, [named]);
   /** What More's From your workspace offers: everything there you can open, but the board itself. Null while it's read. */
   const toLink = useMemo(() => (canAdd ? { items: linkable && linkable.filter((i) => i.id !== documentId) } : undefined), [canAdd, linkable, documentId]);
-  const comments = useBoardComments(state.participants, workspaceId, pass, canAdd);
-
-  const show = useCallback(() => { setHidden(false); rise(); }, [rise]);
-  const hide = useCallback(() => { handle.current?.follow(null); setFollowing(null); setHidden(true); }, []);
+  const comments = useBoardComments(state.participants, workspaceId, drawnPass ?? '', canAdd);
 
   /* How the call helps: ideas while notes are on here, and Sort into themes unless they're paused. Both are for whoever can add to it. */
   const notes = captureHere(state.capture).mode;
-  const editing = open?.role === 'edit' && doc !== null;
+  // The call's board, open on your stage: a saved board just for you has no ideas from the call, no timer and no vote.
+  const editing = open?.role === 'edit' && doc !== null && !mineDrawn;
   // Whoever has it open looks for ideas, and the server looks once a minute at most, for everyone here.
   const watching = editing && notes === 'on' && state.phase === 'in-call';
   useEffect(() => (watching ? session.watchIdeas() : undefined), [session, watching]);
@@ -348,16 +362,20 @@ export function useCallBoard({ session, state, me, owner, talking, spaceName, sa
   }, [editing, notes, workspaceId, documentId, sortIn]);
 
   return {
-    open, doc, people, onBoard, talking: talkingSet, handle, hidden, show, hide, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments,
+    open, doc, people, onBoard, talking: talkingSet, handle, following, follow, goTo, onFollow, fresh, rise, pictures, ideas, sort, upload, itemFor, toLink, comments,
+    /** A saved board just for you is what's drawn: the call's board isn't. */
+    savedDrawn: mineDrawn,
+    /** Goes up each time a board comes to you with the rest of your part of the call, to open on your stage. */
+    arrived,
     /** How its session is doing: saved, on its way, offline or refused. Null while there's none. */
     status,
     /** Try again, for what Alcove refused: it opens again, and what's kept on this device goes again. Only an account keeps it. */
     tryAgain: owner !== null && canKeepEdits() ? reopen : undefined,
-    /** What's drawn: the open board, or the one sinking for a moment as it closes. */
-    drawn: open ?? sinking,
-    sinking: sinking !== null,
-    /** Shown as a board, for you: it's open, you haven't hidden it, and it's yours to see or says it isn't; or it's sinking. */
-    shown: (open !== null && !hidden && (open.role !== null || refused)) || sinking !== null,
+    /** What's drawn: a saved board just for you, the call's open board, or the one sinking for a moment as it closes. */
+    drawn: drawnOpen,
+    sinking: sinking !== null && !mineDrawn,
+    /** Shown as a board, for you: on your stage, and yours to see or says it isn't; or it's sinking. */
+    shown: mineDrawn || (open !== null && onStage && (open.role !== null || refused)) || (sinking !== null && !mineDrawn),
     /** What opening says next, in place of the usual, for whoever opened it here. */
     expect: (text: string) => { next.current = text; },
     opener: opener?.person ?? null
