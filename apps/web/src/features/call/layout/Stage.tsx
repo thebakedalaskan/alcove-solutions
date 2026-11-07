@@ -350,7 +350,9 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
 
   const startDrag = (e: ReactPointerEvent, id: string, corner = false) => {
     if (e.button !== 0 || rooms || (!corner && (!handsOn || !groupOf(id)))) return;
-    if (e.target instanceof Element && e.target.closest('button, [data-handle]')) return;
+    // A press in the tile's menu reaches here through its portal: only a press on the tile itself moves it.
+    if (!(e.target instanceof Element) || !e.currentTarget.contains(e.target)) return;
+    if (e.target.closest('button, input, [data-handle]')) return;
     const r = corner ? L.self : L.slots.get(id);
     const at = ref.current?.getBoundingClientRect();
     if (!r || !at) return;
