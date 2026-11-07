@@ -142,7 +142,7 @@ export function BoardScene({ board, mode, name = 'Launch retro', seal, sealIcon,
   return (
     <BoardSurface ref={handle} doc={made.doc} awareness={awareness} mode={mode} slide={mode === 'present' ? focused : undefined} name={name} seal={seal} sealIcon={sealIcon} acts={acts}
       people={people} comments={comments} talking={speaking} theme={resolved} fresh={fresh}
-      onName={did('name')} onSeal={did('seal')} run={mode === 'call' || mode === 'phone' ? RUN : undefined} onPresent={did('present')}
+      onName={did('name')} onSeal={did('seal')} run={mode === 'call' || mode === 'phone' ? RUN : undefined}
       link={LINK} onCall={did('start a call here')} onFollow={did('following')} onSay={did('tell')}
       onSort={(stickies) => {
         asked(stickies);

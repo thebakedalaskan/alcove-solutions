@@ -1,8 +1,9 @@
 /*
  * The workspace's toasts and the bar above a phone's keyboard. A toast (WsToast) is a face or an icon, the words, and
  * maybe one thing to press; they rise into the corner (WsToasts) and go after their time, and `wsToast` has every one
- * the workspace says, in its words. On a phone, the keyboard bar (WsKeyboardBar) sits on top of the keyboard while
- * you write, with blocks, styles, tagging, photos and checklists, and Done to put the keyboard away.
+ * the workspace says, in its words, and what the call says as something is presented, followed, closed and stopped, in the
+ * canvas's. On a phone, the keyboard bar (WsKeyboardBar) sits on top of the keyboard while you write, with blocks, styles,
+ * tagging, photos and checklists, and Done to put the keyboard away.
  */
 import { Button, WsKeyboardBar, WsPane, WsToast, WsToasts, wsToast, type WsToastData } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -33,8 +34,6 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   restored: wsToast.restored(),
   deleted: wsToast.deleted('Old roadmap'),
   failed: wsToast.failed('That workspace isn’t there, or you can’t open it.'),
-  stoppedPresenting: wsToast.stoppedPresenting(),
-  stoppedTheirPresenting: wsToast.stoppedTheirPresenting(first(PRIYA)),
   presentingPrivate: wsToast.presentingPrivate(first(KOFI)),
   presenterLeft: wsToast.presenterLeft(first(PRIYA)),
   switched: wsToast.switched('Design', 'Product', did('onBack')),
@@ -48,7 +47,22 @@ const EVERY: { [K in keyof typeof wsToast]: WsToastData } = {
   copiedText: wsToast.copiedText(),
   savedAsNew: wsToast.savedAsNew(did('onOpen')),
   discarded: wsToast.discarded(),
-  sharing: wsToast.sharing(KOFI, first(KOFI), did('onShow'))
+  screenOn: wsToast.screenOn('tab'),
+  screenOff: wsToast.screenOff(),
+  boardOn: wsToast.boardOn('Launch retro'),
+  workspaceOn: wsToast.workspaceOn(),
+  closedForYou: wsToast.closedForYou(),
+  closedForAll: wsToast.closedForAll(),
+  closedWhile: wsToast.closedWhile(first(PRIYA)),
+  followingWorkspace: wsToast.followingWorkspace(first(PRIYA)),
+  followingBoard: wsToast.followingBoard(first(PRIYA), 'Launch retro'),
+  presentingScreen: wsToast.presentingScreen(first(PRIYA)),
+  presentingToo: wsToast.presentingToo(KOFI, first(KOFI), 'their screen', did('onShow')),
+  stoppedPresentingIt: wsToast.stoppedPresentingIt('folderOpen', first(PRIYA), 'the workspace'),
+  closedEverywhere: wsToast.closedEverywhere('Launch retro'),
+  stoppedSharing: wsToast.stoppedSharing(first(KOFI)),
+  stoppedTheirShare: wsToast.stoppedTheirShare(first(PRIYA)),
+  boardBlocked: wsToast.boardBlocked(first(PRIYA))
 };
 const ALL = Object.entries(EVERY);
 
