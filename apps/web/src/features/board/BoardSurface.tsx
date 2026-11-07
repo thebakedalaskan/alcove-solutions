@@ -8,7 +8,7 @@
  * and what the bars offer is in `tools/`, and what More adds in `more/`.
  */
 import { errorCode } from '@alcove/api';
-import { addObject, addStickies, bounds, hasBox, roomFrameId, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
+import { addObject, addStickies, bounds, hasBox, roomFrameId, setNight, shapePath, type Added, type BoardStep, type BoardView, type Landing, type PlacedObject } from '@alcove/board';
 import {
   BOARD_MORE, BoardBar, BoardDots, BoardEmpty, BoardFrame, BoardGuide, BoardLayout, BoardLine, BoardLines, BoardMarquee, BoardPageActions, BoardPicture, BoardRail, BoardSelectionBox, BoardShape, BoardSheet, BoardSticky,
   BoardStroke, BoardText, BoardWorld, DURATION, useToast, type AvatarPerson, type BoardNaming, type IconName
@@ -85,6 +85,15 @@ export interface BoardHandle {
   addStickies(stickies: readonly Landing[]): { added: readonly Added[]; step: BoardStep | null } | null;
   /** Takes back one change of this person's by itself, wherever it is in their undo, as a toast's Undo does: on a phone too. */
   undoStep(step: BoardStep): void;
+  /** Download as an image, as the bar's More does: what this person's board shows them, drawn and saved here. */
+  saveImage(): void;
+  /** Whether it's a night board: dark in any theme, for everyone. */
+  night(): boolean;
+  /**
+   * Night board on or off, for everyone, as the bar's More has it. It's for whoever can change the board, which whoever offers it
+   * makes sure of: someone presenting a board they can change draws nothing on it, but can still make it a night board.
+   */
+  setNight(on: boolean): void;
 }
 
 /** Rooms' boards coming back to this one: which rooms, by id, and until when (ms) they're on their way. */
@@ -541,8 +550,11 @@ export const BoardSurface = forwardRef<BoardHandle, BoardSurfaceProps>(function 
       return id;
     },
     addStickies: (stickies) => addLanded(board, stickies),
-    undoStep: (step) => board.undoStep(step)
-  }), [board, presence]);
+    undoStep: (step) => board.undoStep(step),
+    saveImage: () => barItems.image?.(),
+    night: () => board.getSnapshot().night,
+    setNight: (on) => setNight(board.doc, on, board.origin)
+  }), [board, presence, barItems]);
 
   return (
     <Pictures.Provider value={pictures}>

@@ -88,18 +88,23 @@ export function BoardMine({ board, section, notes, onNote, theme }: {
 
 /**
  * What the board's frame's name menu offers, each only where it's true: Rename, Open where it's saved, Who can add to it (the
- * board's own Share, in place of the rows) and Copy link. Downloading it and Night board are in the board's own More.
+ * board's own Share, in place of the rows), Copy link, Download as an image, and Night board for whoever can change the board.
+ * The board's own More, on its bar, has the downloads and Night board too.
  */
-export function BoardMenuRows({ rename, where, share, link, onDone }: {
+export function BoardMenuRows({ rename, where, share, link, image, night, onDone }: {
   rename: (() => void) | undefined;
   /** Where it's kept, and opening that. */
   where: { name: string; onOpen: () => void } | null;
   share: ReactNode;
   link: (() => void) | undefined;
+  /** Download as an image, of what your board shows you. */
+  image: (() => void) | undefined;
+  /** Night board, for whoever can change the board: whether it's on, and turning it on or off for everyone. */
+  night: { on: boolean; onToggle: () => void } | undefined;
   onDone: () => void;
 }) {
   const [sharing, setSharing] = useState(false);
-  const press = useSettledPress(['rename', 'saved', 'share', 'link'].join('\n'));
+  const press = useSettledPress(['rename', 'saved', 'share', 'link', 'image', 'night'].join('\n'));
   const pick = (f: () => void) => press(() => { onDone(); f(); });
   if (sharing && share) return <div className="ic-menu-sheet">{share}</div>;
   const row = (icon: IconName, label: string, onPick: () => void) => (
@@ -111,7 +116,13 @@ export function BoardMenuRows({ rename, where, share, link, onDone }: {
       {where && row('folderOpen', 'Open where it’s saved', pick(where.onOpen))}
       {share && row('people', 'Who can add to it', press(() => setSharing(true)))}
       {link && row('link', 'Copy link', pick(link))}
-      {!rename && !where && !share && !link && <p className="hint">Its own More, on the board, has the rest.</p>}
+      {image && row('download', 'Download as an image', pick(image))}
+      {night && (
+        <button type="button" className="mi" role="menuitemcheckbox" aria-checked={night.on} onClick={pick(night.onToggle)}>
+          <Icon name="moon" size={17} /><span className="t">Night board</span><Icon name="check" size={16} className="tick" />
+        </button>
+      )}
+      {!rename && !where && !share && !link && !image && !night && <p className="hint">There’s nothing to do with it until it opens for you.</p>}
     </>
   );
 }

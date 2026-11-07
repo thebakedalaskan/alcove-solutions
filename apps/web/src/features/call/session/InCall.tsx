@@ -1454,7 +1454,15 @@ export function InCall({ session }: { session: CallSession }) {
             follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
             present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
             onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : null,
-            rows: (close) => <BoardMenuRows rename={boardRename ? () => setRenameAsk((n) => n + 1) : undefined} where={where} share={boardShare} link={copyLinkOf(boardLink)} onDone={close} />,
+            rows: (close) => {
+              // What the board itself has to offer, read as the menu opens: there's none until it's drawn here. Night board changes
+              // it for everyone, so it's for whoever can change it.
+              const h = board.handle.current;
+              return (
+                <BoardMenuRows rename={boardRename ? () => setRenameAsk((n) => n + 1) : undefined} where={where} share={boardShare} link={copyLinkOf(boardLink)}
+                  image={h ? () => h.saveImage() : undefined} night={h && boardOpen?.role === 'edit' ? { on: h.night(), onToggle: () => h.setNight(!h.night()) } : undefined} onDone={close} />
+              );
+            },
             stop: p && !p.mine && organizer ? { label: 'Close it for everyone', onPick: closeTheirs } : null
           };
           const mine = p?.mine === true && pager !== null && boardPresenting.present !== null;
