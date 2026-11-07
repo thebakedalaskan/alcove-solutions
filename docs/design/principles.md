@@ -126,7 +126,8 @@ page. Blue Hour takes the page and the pressable colour from the logo's own sky 
 | A highlight or comment in a document | `hl` |
 
 - Every screen works in light and dark. Design both, and don't simply invert: check contrast (4.5:1 for text) in each.
-- The side panel is dark in both themes. The call is night in both. Record is night in both.
+- The side panel is dark in both themes. The call is night in both, but for your side in it and a board on its stage,
+  which take your theme. Record is night in both.
 - `.light` and `.dark` on any element scope one theme to that part of a page.
 
 ## Type

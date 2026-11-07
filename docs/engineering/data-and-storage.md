@@ -563,7 +563,7 @@ process readable and is sealed there (`apps/api/src/features/workspaces/media.ts
   to…, has its files attached there first, and its pictures wait for that. A picture that's `not-found` shows as deleted; a file
   or a film does when the workspace's list of files, read after the block was first seen, no longer has it through that
   document, or a player or a download is refused it. Taking a block out (Delete) leaves its file; Delete for good, from the
-  block's menu, is `remove`. A version in History and a presentation in a call draw from the same (`useMediaView` in
+  block's menu, is `remove`. A version in History draws from the same (`useMediaView` in
   `DocumentMedia.tsx`), so a file deleted for good since shows as deleted there too.
 - **What a process takes on.** Every call runs in the same one process, so what a file can hold there is limited
   (`MEDIA_LIMITS` in `features/workspaces/media.ts`). At most 16 pieces are coming in at once, 4 for any one person, counted from before

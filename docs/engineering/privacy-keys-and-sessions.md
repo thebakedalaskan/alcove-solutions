@@ -750,9 +750,10 @@ third-party loads.
   data keys like pointers and marks, which names the share by its track ID and nothing else ([Calls and recordings › Put on
   the board](calls-and-recordings.md#put-on-the-board)).
 
-- **Your view of a call** never leaves the browser. Layout preferences and where the panels sit stay in `localStorage` for the account and
-  the arrangement of the call you're in stays in `sessionStorage` until you leave it, naming people by their
-  random per-call seat and shares by their sharer's random connection ID: no names, addresses or call content ([Calls and recordings › The call
+- **Your view of a call** never leaves the browser, and nor does what's on your stage or whom you follow. Layout preferences and how
+  the people sit beside what's open stay in `localStorage` for the account, and the arrangement of the call you're in (pins,
+  order, sizes, your side, where you are in the workspace) stays in `sessionStorage` until you leave it, naming people by their
+  random per-call seat: no names, addresses or call content ([Calls and recordings › The call
   screen](calls-and-recordings.md#the-call-screen)). How you zoom into a share, and the earlier pictures of it you can
   step back through, live only in the page's memory: at most 30 pictures and 16 MiB a share, taken from what the
   browser already decrypts and shows, never written to any storage, sent or logged, and gone when the share stops,

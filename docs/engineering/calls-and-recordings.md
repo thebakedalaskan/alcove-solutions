@@ -577,8 +577,8 @@ call (`apps/web/src/features/call/notes/frames.ts`, `apps/api/src/features/recor
   so (`POST /v1/live/calls/:id/frames/ended {share}`), so its last frame's stretch ends there, and the API takes
   no frame of it taken after that. A presenter's connection leaving the call (they leave, are removed, or a new
   connection of theirs takes over) ends every share of theirs on the server, so a share whose browser couldn't
-  say so still stops where they left. The share bar says **Read for the notes**, and the share picker says so
-  before anyone chooses (during a pause: that it's read once notes resume).
+  say so still stops where they left. The presenter's share's name menu says **Read for the notes**, and Share › Your
+  screen says so before they share (during a pause: that it's read once notes resume).
 - **The request.** `POST /v1/live/calls/:id/frames` with the JPEG as the body (`content-type: image/jpeg`), the
   share's LiveKit track ID in `x-alcove-share` and how long ago it was taken in `x-alcove-age-ms` (at most 30
   seconds counts). A body over 1 MiB (`MAX_FRAME_BYTES`) is refused from its `content-length` before it's read;
@@ -606,7 +606,7 @@ call (`apps/web/src/features/call/notes/frames.ts`, `apps/api/src/features/recor
   minute for four hours, or an hour of a screen that keeps changing. The frame after that is refused (`409`:
   "The notes have kept as many shared screens as they can for this call"), and screen notes turn off for
   everyone, as if the organizer had turned them off, with a notice saying why; the presenters' browsers stop
-  looking, and the share bar stops saying **Read for the notes**. The organizer can't turn them on again for
+  looking, and their share's name menu stops saying **Read for the notes**. The organizer can't turn them on again for
   that call (`409`); what was kept stays.
 - **Into the note.** When the call ends, its frames become the note's screen moments (`Note.screens`): each
   placed in the recording as transcript lines are (in its segment, counted from when that segment started, kept
@@ -644,44 +644,43 @@ and marks go from browser to browser, end-to-end encrypted: nothing of them reac
 and nothing reaches anyone's computer but a picture drawn over the share on their own screen. No input of any kind is
 ever sent to the presenter's computer.
 
-- **Who may point.** Anyone let in, at any share they show big, while the organizer allows pointing for the call
-  (`CallState.pointing`; `{type: "pointing", on}`, the organizer's only, on until they turn it off, each change a
-  notice for everyone) and the share's presenter lets others point at it (`CallParticipant.othersPoint`;
-  `{type: "others-point", on}`, anyone in the call about their own shares, kept by person so it holds across their
-  reconnections and moves to another device, 20 changes a minute per person). A presenter can always point at their own share. Both live in the
-  call's sealed state, the server checks who may change them, and every browser enforces them on what it sends and on
-  what it takes: marks from someone the presenter doesn't let point never show, whatever that person's browser sends.
-  Turning either off takes the pointers and marks it covers away at once, everywhere. Everyone may point by default
-  because in a working call pointing is how people talk about what's shared; a presenter keeps their screen to
-  themselves with one switch on their share bar (a demo, something sensitive), and the organizer turns it off for a
-  large or formal call from People.
+- **Who may point.** Anyone let in, at any share on their stage, while the organizer allows pointing for the call
+  (`CallState.pointing`; `{type: "pointing", on}`, the organizer's only, on until they turn it off, each change a notice for
+  everyone) and the share's presenter lets others point at it (`CallParticipant.othersPoint`; `{type: "others-point", on}`,
+  anyone in the call about their own shares, kept by person so it holds across their reconnections and moves to another
+  device, 20 changes a minute per person). A presenter can always point at their own share. Both live in the call's sealed
+  state, the server checks who may change them, and every browser enforces them on what it sends and on what it takes: marks
+  from someone the presenter doesn't let point never show, whatever that person's browser sends. Turning either off takes
+  the pointers and marks it covers away at once, everywhere. Everyone may point by default because in a working call
+  pointing is how people talk about what's shared; a presenter keeps their screen to themselves with one switch in their
+  share's name menu, **Others can point at it** (a demo, something sensitive), and the organizer turns it off for a large or
+  formal call from People.
 - **On screen.** A pointer is an arrow with its owner's face in the arch and their name beside it, never told apart by
   colour alone. A click leaves a ring and a drag a line, named the same way (at a ring, and where a line starts). Marks
   last 8 seconds (`SHARE_MARK_MS`), fading over the last 1.5. A pointer's browser says where it is up to 20 times a
   second while it moves (`SHARE_POINT_EVERY_MS`), once a second while it's still, and stops after 6 seconds without
   moving; a pointer nothing has been heard of for 2.5 seconds goes. Its author takes their last mark back (Undo in the
-  pointing bar, or Backspace), and the presenter clears every mark on their share (**Clear marks** on their share bar).
+  pointing bar, or Backspace), and the presenter clears every mark on their share (**Clear marks** in its name menu).
   Everything goes when the share stops, its author leaves the call or your part of it, you move to another part of the
   call (sent to a room, back to the main room, moved, or, for the organizer, visiting one), the room disconnects, or
   pointing is turned off; someone else coming or going takes only their own pointer and marks with them. The marks on a
   share go when its presenter changes what's shared, since they were about the old picture. On a phone, a tap leaves a ring and
   a drag a line; there's no pointer to hover with.
-- **Where marks land.** Every place is a fraction of the shared picture, 0 to 1 across and down
-  ([the coordinate model](#looking-closer-at-a-share), `shareFrame.ts`), so a mark lands on the same spot of the picture
-  on a phone and on a wide screen, in a tile or big, however each viewer has framed it. The drawing sits on the
-  picture's own box, in parts of it: on a share someone looks at closer it's inside the box `place` gives for their
-  framing, so it moves with every zoom and pan and glides with the picture; elsewhere it's the box the video shows the
-  picture in (`place` with the whole picture, letterboxed in its tile). Rings and lines keep their size on screen at any
-  zoom. A press goes the other way, through the viewer's framing (`toShare`). A picture held still (frozen, or an
-  earlier one) shows no pointers or marks, as they're about the live picture, and holding one ends your pointing; a
-  share in its own window shows them, and you point in the call. A message names its share by the picture's LiveKit
-  track sid, which no later share has: a message about a share that stopped, or one this browser doesn't show, lands
-  nowhere.
-- **Keyboard.** On a share shown big and live, L (or **Point and mark** in its ⋯) starts pointing. The arrow keys move
-  your pointer (with Shift, further), Enter or Space leaves a ring, Backspace takes back your last mark and Escape
-  stops. While you point, the arrows move your pointer rather than to the next tile or around a zoomed picture; +, −,
-  0, F, comma and full stop still frame the share, and so do its bar, the wheel and a pinch. A drag draws rather than
-  moving the picture.
+- **Where marks land.** Every place is a fraction of the shared picture, 0 to 1 across and down ([the coordinate
+  model](#looking-closer-at-a-share), `shareFrame.ts`), so a mark lands on the same spot of the picture on a phone and on a
+  wide screen, however each viewer has framed it. The drawing sits on the picture's own box, in parts of it: on a share
+  someone looks at closer it's inside the box `place` gives for their framing, so it moves with every zoom and pan and
+  glides with the picture; elsewhere it's the box the video shows the picture in (`place` with the whole picture,
+  letterboxed in its frame). Rings and lines keep their size on screen at any zoom. A press goes the other way, through the
+  viewer's framing (`toShare`). A picture held still (frozen, or an earlier one) shows no pointers or marks, as they're
+  about the live picture, and holding one ends your pointing; a share in its own window shows them, and you point in the
+  call. A message names its share by the picture's LiveKit track sid, which no later share has: a message about a share that
+  stopped, or one this browser doesn't show, lands nowhere.
+- **Keyboard.** On a share on your stage and live, with its frame focused, L (or **Point at it** in its name menu) starts
+  pointing. The arrow keys move your pointer (with Shift, further), Enter or Space leaves a ring, Backspace takes back your
+  last mark and Escape stops. While you point, the arrows move your pointer rather than around a zoomed picture; +, −, 0, F,
+  comma and full stop still frame the share, and so do its bar, the wheel and a pinch. A drag draws rather than moving the
+  picture.
 - **Breakout rooms.** Pointers and marks stay in the part of the call they're made in. Each part has its own MLS
   group, so what's sealed in a room opens only with that room's keys. A browser also takes them only from the people
   in its own part, about shares it shows (a room's shares are shown only in the room), and drops them all when its
@@ -691,7 +690,7 @@ ever sent to the presenter's computer.
   nothing adds them. The only way one reaches a frame is the presenter's own screen showing it: someone sharing a whole
   screen with the call's window on it shares whatever that window shows, marks included, like anything else on that
   screen. The notes don't link marks to what was said.
-- **The presenter's view.** Marks show on the presenter's own share as well, in its tile or shown big. A web page can't
+- **The presenter's view.** Marks show on the presenter's own share on their stage as well. A web page can't
   draw over other apps, so they aren't drawn on the presenter's own screen outside Alcove.
 
 ### How it travels
@@ -1138,10 +1137,13 @@ into the call. Being in a call, or organizing it, opens nothing.
     read from someone who can open something in the workspace, or from whoever started it, never from someone with nothing in
     it, who's told only that something's being presented until then. While something's showing, a browser reads the call each
     time it checks its keys, so it never waits on a nudge that isn't coming.
-- **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`).
-  - *The workspace presented* is said in the strip at the top of what you have open in the workspace: who's presenting it, with
-    Stop for whoever may, which ends it for whoever presented it (`close` false). Nothing is drawn over your own page, and
-    nobody follows the presenter yet. Present, on a document in a call, presents the workspace.
+- **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, with what's on each person's stage in
+  `layout/onStage.ts`: [The call screen](#the-call-screen)).
+  - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
+    presenting it. Following takes you to the presenter's page and line, through the workspace's own Follow and presence
+    (`features/workspace/follow.ts`), so nothing new goes to the server. Unfollow takes you back to where you were before
+    you followed; a click, a scroll, a key or Escape in it leaves you where you are, on your own (`onOwn`). Present, on the
+    workspace's frame, or Share › The workspace, presents it; Close, while you present it, asks whom it ends for.
   - *A presentation ending* because its presenter left the call says so, for everyone. Which presentation it is, is its `key`.
   - *Presenter notes* beside a board's frames are as [Presenting a board](#presenting-a-board) says.
 - **Playing together, in the browser** (`features/call/playback/sharedVideo.ts`, `PlayTogether.tsx`).
@@ -1242,7 +1244,8 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   one's open a browser reads the call each time it checks its keys, as it does for what's presented.
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
   them `403` in the same words whatever they asked for, logged at info, before anything is read or settled.
-- **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes.
+- **One board per part of the call.** Opening one replaces whatever's open there for everyone, and the old one just closes;
+  a browser that had the old one on its stage keeps it there, just for that person, as a saved board (`InCall.tsx`).
   A main board doesn't show in a breakout room, unless rooms share it ([Boards in breakout rooms](#boards-in-breakout-rooms)).
   The call's seats on it are for the whole call, so someone in a room finds it when they come back, and `boardCheck` counts
   them. A new board started in a room is the room's; a saved board is the main room's to bring: `board-open` with one, and
@@ -1278,14 +1281,15 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   template`), and the board opens as it is: a board left as it started is still a board. The call's row is held only for the
   second step, so nothing of the call waits on the fill.
 - **A saved board** (`board-open` with `workspaceId`, `documentId` and `letIn`) comes from the workspace the request names,
-  whichever that is: a call's home is new, so what a team already has is across the Drive, and the Board menu offers boards
-  from there, with any brought to the call first. The browser reads them as the menu opens, from the newest 12 workspaces in
-  your Drive's list (`q.boardsToBring`); reaching for the Board button reads only that list, ahead. Bringing one needs `edit`
+  whichever that is: a call's home is new, so what a team already has is across the Drive, and the board picker offers boards
+  from there, with any brought to the call first. The browser reads them as the picker opens, from the newest 12 workspaces in
+  your Drive's list (`q.boardsToBring`); reaching for Board reads only that list, ahead. Bringing one needs `edit`
   on it, and it opens from where it is, whichever workspace the call views; nothing moves. Someone who can only read it gets
   `403`, and one in Trash is `409`. Anything else is the same `404` in the same words, whatever it was: a workspace they can't
   open, a board that isn't in the one named, someone else's board, a document, or nothing at all.
-  `GET /v1/live/calls/:id/boards/:workspace/:document` (`boardCheck`) says what opening it would mean, for the menu to ask
-  first: the first names of everyone in the call who can't open it, and whether the asker may let them in.
+  `GET /v1/live/calls/:id/boards/:workspace/:document` (`boardCheck`) says what presenting it would mean, for Present (or the
+  picker in Share › A board) to ask first: the first names of everyone in the call who can't open it, and whether the asker
+  may let them in.
 - **Letting people in.** `letIn: true` needs the right to share that board, the workspace's rule, so nobody gets past it through
   a call. It's a policy on the call, not a list. Everyone here who can't open it gets a seat at `edit`, and whoever can keeps
   what they have. `syncBoardSeats(call)`, started wherever someone's let in, does the same for anyone who comes later, on
@@ -1373,13 +1377,16 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   its room, and into the note when the call ends: the note shows it, and
   that part's notes read it when everyone the note went to can open it ([Notes and inference › Boards in the
   notes](notes-and-inference.md#boards-in-the-notes)). What the note says of it is read for each reader, as for documents.
-- **Bringing one to a call.** A board scheduled into a call is one of the meeting's `documents`, as any document is, and comes
-  first in the Board menu; joining never opens it. Start a call here, on a board's page, opens the start flow with the board
-  brought (`InstantCallInput.documents`, from the starter's own library, checked by `validDocuments` as a scheduled call's
-  are), and the starter's browser opens it for everyone once the call is under way there (`features/call/session/opening.ts`), with
-  nobody let in: someone who can't open it is told, as for any board. A board they can only read is brought and not opened, as
-  opening one for everyone needs edit. A reload in between forgets the opening, and the board is still brought. The next call in a series brings what this one brought, and the boards open for everyone in it that the organizer
-  can still bring (`documents.boardsFrom`, from the note), up to 12 in all.
+- **Bringing one to a call.** A board scheduled into a call is one of the meeting's `documents`, as any document is, and
+  comes first in the board picker's Your team's boards; joining never opens it. Start a call here, on a board's page, opens
+  the start flow with the board brought (`InstantCallInput.documents`, from the starter's own library, checked by
+  `validDocuments` as a scheduled call's are), and the starter's browser opens it once the call is under way there
+  (`features/call/session/opening.ts`): on their stage, just for them, as a saved board picked from the picker opens, so
+  nothing in the call changes until they present it. Present brings it into the call first, asking about anyone who can't
+  open it, as for any saved board. A board they can only read is brought and not opened, as presenting one needs edit. A
+  reload in between forgets the opening, and the board is still brought. The next call in a series brings what this one
+  brought, and the boards open for everyone in it that the organizer can still bring (`documents.boardsFrom`, from the
+  note), up to 12 in all.
 
 A board is two steps too, as everything about the call's workspace is (`prepare` in `callBoards.ts`). Making a board, giving
 its grants and seats, and checking who may bring one are done with nothing of the call held, in the workspace's own transaction.
@@ -1393,8 +1400,9 @@ never a hand going up, nor anyone being let in.
 ### Put on the board
 
 The one capture of a shared screen that doesn't come from the presenter's own browser. Anyone who can edit the board open in the
-call can put a picture of a share on it from the share's ⋯ menu, someone else's share included, and whether or not screen notes
-are on: it has nothing to do with the notes, and nothing of it reaches them.
+call can put a picture of someone else's share on it, from the share's name menu, while that board is on their stage beside the
+share (Show beside), and whether or not screen notes are on: it has nothing to do with the notes, and nothing of it reaches
+them. A saved board open just for you takes none, and your own share's menu doesn't offer it.
 
 - **What's taken.** The share's picture as that viewer's own browser shows it now (the frame held for looking back, if they're
   on one), drawn into a JPEG at most 2560 pixels on its longer side (`keepShot` in `features/call/boards/callBoard.ts`). Nothing
@@ -1407,7 +1415,7 @@ are on: it has nothing to do with the notes, and nothing of it reaches them.
 - **The sharer is told.** Whoever put it on the board sends `board-shot/1` through LiveKit, sealed with their call data keys as
   pointers and marks are, saying which share by its picture's track ID and nothing else (at most 256 bytes; a browser reads a
   burst of 4 from someone, then 1 a second). The sharer's browser says "Art put a picture of your screen on the board.", and
-  takes it only from someone in the call, about its own share. A picture of your own screen tells only you.
+  takes it only from someone in the call, about its own share.
 
 ### A board's timer and vote
 
@@ -1467,48 +1475,46 @@ Each step counts towards the same 240 a minute as what goes on in the workspace.
 
 ### Presenting a board
 
-Present on the board's bar presents the board open where you are (`present-start` with `what: { kind: 'board', id }`, from its
-first frame); what's kept, who may move and stop it, how it ends and what stops it are as for anything presented
-([Presenting](#the-calls-workspace)). In the browser: `features/call/boards/boardPresenting.ts` turns the call's present state
-into the board's, and `features/board/CallBoard.tsx` draws it. Stop presenting there ends it for whoever presented it
-(`close` false): the board stays in the call.
+Present, on the bar of the board's frame, presents the board open where you are
+(`present-start` with `what: { kind: 'board', id }`, from its first frame), and Share › A board presents what's picked there
+straight away; what's kept, who may move and stop it, how it ends and what stops it are as for anything presented
+([Presenting](#the-calls-workspace)). A saved board open just for you is brought into the call first (`board-open`, after
+`boardCheck` and its question), then presented. In the browser: `features/call/boards/boardPresenting.ts` turns the call's
+present state into the board's, `features/board/CallBoard.tsx` draws it, and the frame's bar and its pager are
+`layout/frame.tsx`'s. Close, while you present it, asks whom it ends for: For you (`close` false) leaves the board in the
+call, open on everyone's stage who followed, on their own; For everyone closes it.
 
 - **Frames are slides.** The board's top-level frames, in the order every browser reads them (`slides.ts`): a frame held in
   another is part of it. `section` is a slide's place in that order, so it means the same frame everywhere; past the last it
   shows the last, and a board with no frames is one slide of everything.
-- **Whoever's presenting** has their view of it on their stage (`BoardPresenter` in the kit): the frame as everyone sees it,
-  ringed, marked Everyone sees this, with where it is, Back a frame, Next frame (and ←, →, Page Up and Page Down) and Stop
-  presenting under it; beside it, for them alone, the next frame alone and their notes beside this frame, each frame its own,
-  kept under their account ([Data and storage › Presenter notes](data-and-storage.md#presenter-notes)). A board with no
-  frames has nothing to keep them beside.
-  Their camera is the board's to put (`still`): nothing they do moves it off the frame. Their pointer shows to everyone, on the
-  frame. On a narrow stage the notes go under the frame and the next frame waits for a wider one. Presenting is for bigger
-  screens: a phone's bar has Timer and Vote, and no Present.
-- **The board stays in front of whoever's presenting**, so what they see is what everyone sees: while it's theirs,
-  `useBoardPresenting` gives the call a `hold`, which O, the dock's Board button (and More's Hide the board) and making a share
-  beside it big call in place of hiding it or swapping, and which says "Stop presenting first. Everyone sees this board while
-  you present it." with the refusal's cross. So their own view of it is never a tile while the frames move.
-- **Their keys.** The arrows (and Page Up and Page Down) are heard on the presentation itself, not the window
-  (`CallBoard.tsx`), and move a frame only from the sheet, or Back a frame, Next frame and Stop presenting under it: never
-  from the notes beside the frame (or within a moment of typing there, `typing`), from any other control, or from a key
-  something has already used (`defaultPrevented`). Back a frame and Next frame are `aria-disabled` at either end, not
-  `disabled`, so the keys stay on the one pressed. As a presentation starts, the keys go to Next frame (Stop presenting on a
-  board of one frame), and as it ends to Present on the bar; for someone watching, to Look around in the pill as the frame
-  takes the sheet, and to the sheet as it ends if the pill had them. Only keys that were on the board, or lost as it changed,
-  are moved: anyone typing in the chat keeps their place.
-- **Everyone else** sees the frame alone, with no bar, tools or dots (`mode="present"`, `slide`), held there as their sheet and
-  the frame change, with the pill: who's presenting, and Look around. The tools fade first (240 ms), and the board glides to the
-  frame. Anyone who'd hidden the board has it back as a presentation begins. Look around gives them their own view back, as they
-  left it, tools and all, and the pill says Back to them; a scroll, a drag or a pinch on the frame is looking around too, from
-  wherever it takes them (`onLook`). Whoever's presenting moving on never pulls them back, and Back to them is one press. The
-  organizer, who can stop anyone's, has **Stop presenting** in the pill too, which stops it, as the workspace's strip has, and
-  leaves the board in the call. Nobody
-  goes to or follows anyone on a board while it's being presented to them.
+- **Whoever's presenting** sees the frame alone, as everyone following does, with no bar, tools or dots (`mode="present"`,
+  `slide`), held there as their sheet and the frame change. Their camera is the board's to put (`still`): nothing they do moves
+  it off the frame. Their pointer shows to everyone, on the frame. At the frame's foot, for them alone, the pager
+  (`FramePager`) has Back a frame and Next frame on either side of where they are ("1 of 3", with the frame's name), and, for
+  an account, the button for Your notes, which opens `mine` on their side: where they are, their notes beside this frame,
+  each frame its own, kept under their account ([Data and storage › Presenter notes](data-and-storage.md#presenter-notes)),
+  and the next frame, drawn small. A board with no frames has nothing to keep them beside. Present on the frame's bar is for
+  bigger screens: a phone's frame has no Present, and a board is presented there from Share › A board.
+- **It's on their stage like anything they have open.** Opening something else puts it away and they go on presenting: it's
+  a tile among the people, with Open, which takes them back. O, or the lit Board, is Close, and asks the same question.
+- **Their keys.** → and ← (and Page Down and Page Up) move a frame while the presentation has the keys: the sheet, or the
+  pager (`data-pager`), whose keys come by the document (`CallBoard.tsx`). Never from the notes in the side, from any other
+  control, while typing (`typing`), or from a key something has already used (`defaultPrevented`). Back a frame and Next
+  frame are `aria-disabled` at either end, not `disabled`, so the keys stay on the one pressed. As a presentation starts,
+  keys that were on the board, or lost as it changed, go to Next frame (none move on a board of one frame), and as it ends,
+  keys that were lost go to the sheet. Anyone typing keeps their place.
+- **Everyone else** follows: their tools fade (240 ms), then they see the frame alone (`mode="present"`, `slide`), held there
+  as their sheet and the frame change, and the board glides to it. The frame's bar says who's presenting and Following them,
+  with Unfollow, which gives them their own view back, as they left it, tools and all (`onWatch`); a scroll, a drag or a pinch
+  on the frame is working on their own too, from wherever it takes them (`onLook`). Follow, on the bar, with the frame the
+  presenter is on, takes them back. Whoever's presenting moving on never pulls them back. The organizer, who can stop
+  anyone's, has Close it for everyone in the board's name menu. Nobody goes to or follows anyone on a board while it's being
+  presented to them, and ideas from the call wait while the frame alone is shown, to whoever's presenting or following.
 - **When it ends**, everyone's own view comes back as they left it. Someone who came in during it gets the whole board.
 - **Rooms' frames.** Once rooms close, each room's board is a frame on the main board, so presenting it, each room's frame is a
   slide; a board made for what came back has only theirs.
-- **What reaches anyone else** is which board, which frame and who: notes, the next frame and the presenter's own view are this
-  browser's, and nothing about presenting changes who can open the board.
+- **What reaches anyone else** is which board, which frame and who: notes and the next frame are this browser's, and nothing
+  about presenting changes who can open the board.
 
 ### Boards in breakout rooms
 
@@ -1522,7 +1528,8 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   whoever is in the room now, and nobody else: not the workspace's members, not its admins, and not the organizer, whom being
   organizer gives nothing, except while visiting. A restricted board opens for its creator and whoever restricted it, so a room's
   has neither, and whoever started one in a room doesn't keep it once moved out.
-- **Started in a room.** `board-open` with a template from a room makes the same: the room's alone, open there for everyone in it.
+- **Started in a room.** `board-open` with a template from a room makes the same: the room's alone, the board in that part of
+  the call for everyone in it, though it opens only on the stage of whoever started it until they present it.
 - **`syncRoomBoards(call)`** keeps each room's board with the people in its room: the seats of whoever is in it get `edit`, and
   every other seat of the call on it goes (`seatsInStep`). It reads the call under the board's workspace lock, so of several at once
   the last goes by the latest. It runs wherever people move, after the call's row is let go and before anyone's told: rooms
@@ -1542,7 +1549,7 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   stranded (`keepRoomsOfEndedCalls`).
 - **Shared.** The main board gets an empty frame for each room, named for it with who's going (`roomFrames`), after whatever's
   there: the board open in the main room, while whoever opened it can still edit it (asked again as the frames are written, with
-  its workspace held), or a new one from `template`, made as the Board menu makes one, which opens in its place: then the call
+  its workspace held), or a new one from `template`, made as the board picker makes one, which opens in its place: then the call
   says "The rooms share a new board. The one that was open can't take their frames." Everyone stays on it:
   in a room with no board of its own, the main board shows, sealed as the main board, with `frame` set to the room's frame, made
   from its ID (`roomFrameId`), the same every time. Closing it from a room closes the main board. The panel says plainly that
@@ -1554,10 +1561,10 @@ says whether it's on a board of its own (`rooms[].board`), which is all anyone o
   twice, at ten seconds and as they close, never each second. The rooms closing come after a vote's results and before
   following someone in the pill's order; the room itself comes last. The board hands up which kind of pill it shows
   (`BoardPills`' `onShown`, through `CallBoardSheet`'s `onPill`, which says none while the board is a tile or sinking), and
-  the rooms line over the call stays unless that's the rooms' own (`room` or `closing`): under a timer, a vote, following,
-  presenting or how the board stands, the line says where you are and how long is left. The call's top bar is built only from
-  what's in it, so with nothing to say over the call there's no empty band above the board; while it says anything, a phone's
-  row of faces and the board stand under it (`solvePhone`), as a wider screen's panels do. While a pill shows, the board
+  the rooms line over the call stays unless that's the rooms' own (`room` or `closing`): under a timer, a vote, following or
+  how the board stands, the line says where you are and how long is left. The line over the call is built only from what's
+  in it, so with nothing to say there's no empty band above the board; while it says anything, a phone's row of arches and
+  the board stand under it, as a wider screen's frames do (`placeMain`'s `top`). While a pill shows, the board
   frames what it shows clear of it (`CLEAR` in `useBoard.ts`, as a vote frames its frame), and frames itself again as one
   comes or goes, until someone moves round it.
 - **The rooms' words.** Rooms worked on boards (`breakouts.open.board` other than `none`, or a room on its own,
@@ -1608,8 +1615,8 @@ person's own access where the call uses its pass, and its links open on the page
   call's pass, `q.workspaceTree`): documents and boards they can open, not in Trash, the board aside. It offers nothing from
   any other workspace, not even the library's, so links stay within what the board's readers can reach. A `link` keeps the item's ID
   and nothing else, and each browser names it from its own tree, so someone who can't open it sees "A document you can't
-  open". Opening one goes to the call's workspace panel when that's the workspace everyone's viewing, and to a tab of its own
-  for an account otherwise.
+  open". Opening one opens it in the workspace on your stage when that's the workspace everyone's viewing, and in a tab of its
+  own for an account otherwise.
 - **A comment** from **Comment** (or **K**) is the board's own comment thread, as on its page. In a call, each one names its
   writer as the board's workspace knows them: the ID it keys their address under (`api.workspaces.ids` with the call's pass),
   which is a member's own ID there, so the page finds their face; never the address. Someone with no address, or none known
@@ -1699,13 +1706,14 @@ link: the organizer's lobby (`features/calls/lobby/Lobby.tsx`) by their account,
 ## The call screen
 
 `apps/web/src/routes/call.$code.tsx` is the call for everyone in it; no account is needed, since the call's
-pass is what lets a guest in. It's built from `apps/web/src/features/call/`. The shell is `layout/`: the top bar
-(`TopBar.tsx`) and View (`ViewMenu.tsx`); your side (`side.ts`, drawn by `Panel.tsx`); the stage (`Stage.tsx`, laid out
-by `stageLayout.ts` from your view in `view.ts`, with who's talking settled in `speakers.ts`), with the main area in
-`PanelHost.tsx`; each tile's menu (`TileMenu.tsx`); the frame and Close's question (`frame.tsx`); Share's menu
-(`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`). Presenting the workspace is `workspace/presenting.ts`, a board
-and its picker are in `boards/`, and shares in `screen-sharing/`. Then breakout rooms (`Rooms.tsx`), captions, the share
-picker, the leave sheet and the device pickers.
+pass is what lets a guest in. It's built from `apps/web/src/features/call/`, put together in `session/InCall.tsx`. The shell
+is `layout/`: the top bar (`TopBar.tsx`) and View (`ViewMenu.tsx`); the call's area (`PanelHost.tsx`), with your side at its
+right (`side.ts`, drawn by `Panel.tsx`) and its main area shared out by `panels.ts`; what's on your stage (`onStage.ts`), each
+in its frame, with Close's question (`frame.tsx`); the people (`Stage.tsx`, laid out by `stageLayout.ts` from your view in
+`view.ts`, with who's talking settled in `media/speakers.ts`); each tile's menu and a presented tile's (`TileMenu.tsx`); Share's
+steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/useCallShortcuts.ts`). Presenting the workspace is
+`workspace/presenting.ts`, a board, its picker and presenting it are in `boards/`, and a share in its frame is
+`screen-sharing/ShareInFrame.tsx`. Then breakout rooms (`Rooms.tsx`), captions, the leave sheet and the device pickers.
 
 - **What it reads.** The `CallSession` (who's in, hands, spotlight, rooms, notes, the transcript, the live notes), its
   `crypto` store (MLS status and members, media keys, chat) and the LiveKit room (`livekit.ts`: mic, camera,
@@ -1754,13 +1762,15 @@ picker, the leave sheet and the device pickers.
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
 - **The shell** (`layout/`) has fixed places, each with one job, and nothing in it is dragged, torn off or rearranged:
   what's open is always in the middle, and your side always on the right.
-  - *The top bar* (`TopBar.tsx`). On the left, the title, the clock, the notes sign, the shield and Reconnecting. On the
-    right, View, then one group (`CallTopGroup` of `CallTopButton`s, with a `CallTopRule` between kinds): Board, Workspace
-    (counting what's been brought), Notes, Chat (counting what's unread) and the faces, which open People. Each is lit
-    (`on`) while what it opens is open, and a press on a lit one puts it away. On a phone it's the title, the notes sign,
-    Chat and the faces.
-  - *The dock* (`CallDock`): the microphone and camera with their menus, Share (a `DockButton` with a `word`, which says
-    Presenting while you present), Raise your hand, More, Leave, and Show everything while in focus.
+  - *The top bar* (`TopBar.tsx`). On the left, the title, the clock, the notes sign, the shield, Reconnecting, and, when two
+    things on your stage take turns, which is showing. On the right, View, then one group (`CallTopGroup` of
+    `CallTopButton`s, with a `CallTopRule` between kinds): Board, which opens the board picker under it, Workspace (counting
+    what's been brought), Notes, Chat (counting what's unread) and the faces, which open People (counting who's asking to
+    join, for whoever hosts). Each is lit (`on`) while what it opens is open, and a press on a lit one puts it away: on Board
+    or Workspace that's Close, which asks first while you present it. On a phone it's the title, the notes sign, Chat and
+    the faces.
+  - *The dock* (`CallDock`): the microphone and camera with their menus, a hairline, Share (a `DockButton` with a `word`,
+    which says Presenting while you present), Raise your hand, More, a hairline, Show everything while in focus, and Leave.
   - *More* is the same on every screen: Turn on captions, Mark this moment (with an account), Catch up on what you missed,
     Breakout rooms (the organizer's), then Audio and video settings, Video quality, Move to another device and Keyboard
     shortcuts, which opens `KeysSheet.tsx` on only the keys you have here. On a phone the dock is the microphone, camera,
@@ -1768,86 +1778,115 @@ picker, the leave sheet and the device pickers.
     and People, then Raise your hand and Your view.
   - *One width makes a phone*: under 600 px (`PHONE_W`), for the layout and the dock alike.
 - **Your side** (`side.ts`, `useSide`) is one view at a time (`SideView`: `notes`, `chat`, `people`, `rooms`, `mine`), on
-  the right, 368 px wide (340 px in a window under 1200 px), sliding in as the stage gives way. On a phone it's a sheet
-  over the call, and a window that narrows to a phone puts it away. `Panel.tsx` draws each: Notes is a head (This call, in
-  the workspace; Open; the bookmark; the organizer's ⋯) over the tabs Notes, Transcript and Ask, with Yours at the foot of
-  the Notes tab; Chat is alone; People has Breakout rooms for the organizer, which opens `rooms`; and `mine` is a
-  presenter's own notes beside a board they present. It takes your theme (`ThemeScope`, so a popover or a list that opens
-  from it takes it too), while the stage, the dock and what's shared stay night. What's typed in Chat or Ask and not sent is
-  kept above the side (`useDraft`), so moving to another view and back keeps it. A reload finds your side as it was
-  (`CallLayout.side`, never `rooms` or `mine`, which go with the moment), and a call just joined opens Notes on a wide
-  screen while notes are on.
-- **The stage** (`Stage.tsx`, `stageLayout.ts`) holds the people and what you have open. With nothing open the people fill
-  it, in Auto, Speaker or Grid. With something open, it sits in the frame, and the people sit beside it as View says: Tiles
-  is a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows; Arches is a row over the frame, which
-  any stage under 760 px gets; Hidden puts them on the horizon by the dock. Your stage holds one thing: opening something
-  puts away what was there, so a presentation becomes its tile, and what's open just for you closes (the workspace keeping
-  your place, caret and undo). Show beside is the one exception: it puts a second presented thing beside the first, as two
-  screens sit. The organizer's stage shows every breakout room while they're open.
-- **The frame** (`frame.tsx`, drawing `CallFrame` from the kit) is one for a screen, a board or the workspace, with one
-  bar. On the left, the presenter's face (or the kind's icon while nobody presents), the name as a menu of the kind's own
-  commands, and a line: Open just for you, You're presenting · 3 following, You're presenting · a tab with sound, or Priya
-  is presenting. On the right, only what applies: Following Priya with Unfollow, or Follow Priya with where she is;
-  Present, on a board or the workspace open just for you; focus; Stop sharing, on your own screen; and Close everywhere
-  else. While you present a board or the workspace, Close asks For you or For everyone (`CloseAsk`: a popover on a wide
-  screen, a sheet on a phone). The organizer's name menu on someone else's has Close it for everyone, or, on a screen, Stop
-  it for everyone. A board keeps its own controls inside the frame: the seal, Timer, Vote, More, the pill, the rail, zoom
-  and the phone's +; a board you present puts its pager at its foot, with the button for Your notes (`mine`).
-- **Presented, and not on your stage** (`PresentedTile`): a tile among the people, with a live miniature, its name, who's
-  presenting it and Join (Open when it's yours), which puts it on your stage, following. It's there only while it's
-  presented: when the presentation ends, its tile goes.
-- **A presentation starting** takes the stage of everyone who isn't watching another, and they follow it, with a toast;
-  someone watching another gets it as a tile, with a toast and Show it. Following the workspace is the workspace's own
-  Follow, through presence (`features/workspace/follow.ts`), so nothing new goes to the server; following a board is the
-  presenter's frame, as it always was. Unfollow, or a click, scroll or key in it, works on your own, and Follow brings you
-  back; a screen can't be unfollowed. Close on someone else's makes it a tile for you while they present. When it ends,
-  followers stay in it on their own if the presenter closed it for themselves, and it closes if they closed it for
-  everyone ([Presenting](#the-calls-workspace)).
-- **The workspace in the call** (`WorkspacePanel.tsx`) is the app's `<Workspace mode="call">` in the frame. The screen holds
-  whether it's open on your stage and where you are in it; `CallState.workspace` says which workspace it is
-  (`openWorkspace`, the first time it opens in this browser) and what's been brought. `PanelHost` keeps it mounted once
-  it's been opened, out of sight when closed or when something else is on your stage, so a page keeps its caret, scroll and
-  undo, and its keys sleep (`WorkspaceCall.closed`). Where you are is kept with `CallLayout`, so a reload finds it. Everything it
-  says goes through the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken
-  up some other way. The list gives way when the frame has no room for it, and the call tells it (`WorkspaceCall.list`): one
-  that gave way comes over the page (`peek`). Whatever needs it showing, such as ⇧N naming a folder, asks with
-  `list.onShow`, which never hides it, so the list over the page behaves as it does docked.
+  the right, 368 px wide (340 px in a window under 1200 px), sliding in as the stage gives way. On a phone it's a sheet over
+  the call, and a window that narrows to a phone puts it away. `Panel.tsx` draws each: Notes is a head (This call, in the
+  workspace; Open; the bookmark, for an account) over the tabs Notes, Transcript and Ask, the Notes tab starting with the
+  notes sign and its ⋯ (the organizer's Pause, Resume and Turn off or on, or anyone else's Ask for notes) and ending with
+  Yours; Chat is alone; People has Breakout rooms for the organizer, which opens `rooms`; and `mine` is a presenter's own
+  notes beside a board they present, from the pager's notes button. It takes your theme (`ThemeScope`, so a popover or a
+  list that opens from it takes it too), as a board's sheet does unless it's a night board, while the stage, the dock, the
+  workspace and screens stay night. What's typed in Chat or Ask and not sent is kept above the side (`useDraft`), so moving
+  to another view and back keeps it. A reload finds your side as it was (`CallLayout.side`, never `rooms` or `mine`, which
+  go with the moment), and a call just joined opens Notes on a wide screen while notes are on.
+- **The stage** (`Stage.tsx`, `stageLayout.ts`, placed in the main area by `panels.ts`'s `placeMain`) holds the people and
+  what you have open (`onStage.ts`: the workspace, the board in the call, a saved board just for you, or someone's screen).
+  With nothing open the people fill it, in Auto, Speaker or Grid. With something open, it sits in its frame, and the people
+  sit beside it as View says: Tiles is a column on the right, about 300, 248, 216 or 176 px wide as the stage narrows; Arches
+  is a row over the frame, which any stage under 760 px gets; Hidden puts them on the horizon by the dock. Your stage holds one
+  thing: opening something puts away what was there, so a presentation becomes its tile, and what's open just for you closes
+  (the workspace keeping your place, caret and undo). Show beside is the one exception: it puts a second presented thing
+  beside the first, side by side where there's 900 px across for them, else one over the other where there's 620 px down,
+  else taking turns, with a switcher in the top bar (under the arches on a phone). Nothing between them is dragged. The
+  organizer's stage shows every breakout room while they're open, unless there's a board to be on (the one every room
+  shares, or the board of the room they're visiting); what's open waits behind the rooms, as it was.
+- **The frame** (`frame.tsx`, drawing `CallFrame` from the kit) is one for a screen, a board or the workspace, with one bar;
+  it rises into its place as it opens, and glides as the room round it changes (`FrameBox`). On the left, the presenter's
+  face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Open just for
+  you, You're presenting · 3 following (everyone else in your part of the call), You're presenting · a tab with sound
+  (Starting to share… until LiveKit has it), or Priya is presenting. On the right, only what applies: Following Priya with
+  Unfollow, or Follow Priya with where she is; Present; focus; Stop sharing, on your own screen; and Close everywhere else.
+  Present is on a board you can add to, open just for you on a wider screen, for anyone but a guest, while nobody else
+  presents a board there (on a saved board, `PresentAsk` comes first when someone here can't open it), and on the workspace
+  for anyone in it, on a phone too, while nobody else presents a board or the workspace. While you present a board or the
+  workspace, Close asks For you or For everyone (`CloseAsk`: a popover on a wide screen, a sheet on a phone). The name
+  menus: a board's Rename, Open where it's saved, Who can add to it, Copy link, Download as an image and Night board
+  (`BoardMenuRows` in `boards/BoardStage.tsx`); the workspace's Switch workspace (the organizer's), Find in the workspace,
+  Who's in it and Copy link (`WorkspaceMenuRows`); someone else's screen's pointing, looking closer, its sound, its own
+  window, Put on the board and Show beside (`ShareMenuRows`); and your own screen's Others can point at it, Clear marks and
+  Change what you share, saying Read for the notes while it is (`MyShareMenuRows`). The organizer's name menu on someone
+  else's has, after a line, Close it for everyone, or, on a screen, Stop it for everyone. A board keeps its own controls
+  inside the frame: the seal, Timer, Vote, More, the pill, the rail, zoom and the phone's +; a board you present puts its
+  pager at its foot, with the button for Your notes (`mine`).
+- **Presented, and not on your stage** (`PresentedTile`, with `ThingMenu` in `TileMenu.tsx`): a tile first among the people,
+  with its name, who's presenting it and Join (Open when it's yours), which puts it on your stage, following, as Enter, Space
+  or P on it do. A screen's tile shows it live, and a board's shows it drawn small (`BoardMini`); the workspace's has no
+  picture, and says where its presenter is. Among arches or on the horizon it's small: the kind's icon and
+  the presenter's face. Its ⋯ has Show it, Show beside (while your stage holds one thing, and not on a phone) and, for a share
+  with sound, its sound for you. It's there only while it's presented: when the presentation ends, its tile goes.
+- **A presentation starting** takes the stage of everyone who isn't watching another (what was open just for them closes),
+  and they follow it, with a toast ("Priya is presenting the workspace, and you're following.", "Priya is presenting Launch
+  retro, and you're following." or "Priya is presenting their screen."); someone watching another gets it as a tile, with a
+  toast ("Priya is presenting their screen. It's with the people.") and Show it, which goes once it's been taken up some
+  other way. Someone who can't open it gets no frame and no tile, only who's presenting. Following the workspace is the
+  workspace's own Follow, through presence (`features/workspace/follow.ts`), so nothing new goes to the server; following a
+  board is seeing the presenter's frame. Unfollow takes you back: in the workspace to where you were before you followed, on
+  a board to your own view as you left it. A click, scroll or key in the workspace, or a scroll, drag or pinch on a board,
+  works on your own from where you are. Follow, with where the presenter is, brings you back; a screen can't be unfollowed.
+  Close on someone else's makes it a tile for you while they present. When it ends, its tile goes, and followers stay in it
+  on their own if the presenter ended it for themselves, and it closes if they closed it for everyone
+  ([Presenting](#the-calls-workspace)); a screen that stops leaves every stage. A board or the workspace that stops being
+  presented without the call saying how (its presenter may be reloading) is waited for, 30 seconds (`HOLD_MS`), its frame
+  and tile as they were, and carries on with nothing said if it comes back. What's on your stage, and whether you follow, is
+  this browser's alone.
+- **The workspace in the call** (`WorkspacePanel.tsx`) is the app's `<Workspace mode="call">` in its frame. The screen holds
+  whether it's on your stage and where you are in it; `CallState.workspace` says which workspace it is (`openWorkspace`, the
+  first time it opens in this browser) and what's been brought. It first opens on this call's agenda or the first thing
+  brought to it, in the workspace the call uses now, and with neither on what you had open there last (`firstPlace`), and so
+  does a switch to another workspace. Its frame stays once it's been opened (`mounted`), out of sight and `inert` when it
+  isn't on your stage, so a page keeps its caret, scroll and undo, and its keys sleep (`WorkspaceCall.closed`). Where you
+  are, and whether it was on your stage, are kept with `CallLayout`, so a reload finds them. Everything it says goes through
+  the call's one place for toasts, one at a time, and a share's offer stays beside that until it's taken up some other way.
+  The list gives way when the frame has no room for it (under 760 px across, or on a phone), and the call tells it
+  (`WorkspaceCall.list`): one that gave way comes over the page (`peek`). Whatever needs it showing, such as ⇧N naming a
+  folder, asks with `list.onShow`, which never hides it, so the list over the page behaves as it does docked.
 - **Switching it and asking for it.** For the organizer, the name at the top of the list is the call's picker
-  (`SpacePicker.tsx`, as `WorkspaceCall.picker`): their workspaces they can write in, the workspace's people, and New
-  workspace, which makes one with `newWorkspace` and opens a blank document in it. Picking another asks first, in place of
-  the menu, with `previewWorkspace` saying who can't open it; Switch is `setWorkspace`, and Back on the toast switches back.
-  The panel shows only the workspace everyone views now, so what was brought from another stays with that one, and anyone
-  who can't open this one is told it's private (`WsNoAccess`, whose Ask is `askForWorkspace`). When which it shows changes,
-  what was there stays over what's coming, as it was and out of reach, until that has drawn its list and page (or says
-  it's private), then fades, 240 ms. The organizer answers asks at the top of the call, or above the dock on a phone (`WsKnock`,
-  `WorkspaceAsks.tsx`), with the document in front of them, else the agenda or the first thing brought; with none, Open the
-  workspace opens the document they were last in there, or the list (`WorkspaceCall.list.wanted`): `grantWorkspaceAsk` to read or edit,
-  `declineWorkspaceAsk` for not now, and only a document they can share is offered. Whoever asked sees the workspace open by
-  itself on the document (on a phone too, which otherwise shows the list first), or hears not now and can ask again.
-- **The call's own pages** (`features/workspace/live`). The call gives the workspace one object for the whole call (`LiveCall`, from
-  `useLiveCall`): the session, who's talking (a store of its own, so the screen draws nothing for it), and what to do when
-  something asks for a panel or a toast goes there. `LiveRows` are Notes, Follow-ups and Transcript, quiet with notes off: in the
-  call's folder in its home (`CallPages`, for the folder whose `call.here` says it's the call you're in, opened the first time
-  it's there), and pinned at the top of the list while everyone views another workspace. `LivePage` draws each from `CallState`
-  as it stands, so nothing is kept in step. Another call's folder opens its note in a tab of its own, from a call, and in place
-  from the Drive. Where you are can be one of
-  them (`WorkspacePlace` `live`), like a document. Someone who can't open the workspace has the same rows and pages: `OutsideSpace`
-  puts them around the private state, with no tree, and the arrows go because there's no document to send to. With nothing to show
-  and notes off a page is `WsNotesOff`; with something to show, a `Notice` says what's holding the notes back. Notes and Follow-ups
-  watch the notes while they show; the transcript comes with the call. A row's button opens Notes on its Notes or Transcript tab
-  on your side (`LiveCall.beside`), and **Open**, at the top of Notes, goes the other way. At the end of the transcript
-  is whoever's talking, you included, with no words: a line is written once its clip is heard.
+  (`SpacePicker.tsx`, as `WorkspaceCall.picker`), and so is Switch workspace in the frame's name menu: their workspaces they
+  can write in, the workspace's people, and New workspace, which makes one with `newWorkspace` and opens a blank document in
+  it. Picking another asks first, in place of the menu, with `previewWorkspace` saying who can't open it; Switch is
+  `setWorkspace`, and Back on the toast switches back. The frame shows only the workspace everyone views now, so what was
+  brought from another stays with that one, and anyone who can't open this one is told it's private (`WsNoAccess`, whose Ask
+  is `askForWorkspace`). When which it shows changes, what was there stays over what's coming, as it was and out of reach,
+  until that has drawn its list and page (or says it's private), then fades, 240 ms. The organizer answers asks at the top
+  of the call, or above the dock on a phone (`WsKnock`, `WorkspaceAsks.tsx`), with the document in front of them, else the
+  agenda or the first thing brought; with none, Open the workspace opens the document they were last in there, or the list
+  (`WorkspaceCall.list.wanted`): `grantWorkspaceAsk` to read or edit, `declineWorkspaceAsk` for not now, and only a document
+  they can share is offered. Whoever asked sees the workspace open by itself on the document (on a phone too, which
+  otherwise shows the list first), or hears not now and can ask again.
+- **The call's own pages** (`features/workspace/live`). The call gives the workspace one object for the whole call
+  (`LiveCall`, from `useLiveCall`): the session, who's talking (a store of its own, so the screen draws nothing for it), and
+  what to do when something asks for your side or a toast goes there. `LiveRows` are Notes, Follow-ups and Transcript, quiet
+  with notes off: in the call's folder in its home (`CallPages`, for the folder whose `call.here` says it's the call you're
+  in, opened the first time it's there), and pinned at the top of the list while everyone views another workspace.
+  `LivePage` draws each from `CallState` as it stands, so nothing is kept in step. Another call's folder opens its note in a
+  tab of its own, from a call, and in place from the Drive. Where you are can be one of them (`WorkspacePlace` `live`), like
+  a document. Someone who can't open the workspace has the same rows and pages: `OutsideSpace` puts them around the private
+  state, with no tree, and the arrows go because there's no document to send to. With nothing to show and notes off a page
+  is `WsNotesOff`; with something to show, a `Notice` says what's holding the notes back. Notes and Follow-ups watch the
+  notes while they show; the transcript comes with the call. A row's button opens Notes on its Notes or Transcript tab on
+  your side (`LiveCall.beside`), and **Open**, at the top of Notes, goes the other way. At the end of the transcript is
+  whoever's talking, you included, with no words: a line is written once its clip is heard.
 - **Follow-ups on the page** (`useFollowUps`) put what the call holds beside `CallSession.followUps`. A line in a document with the
   same words as something said or added, for the same person if both say who, is that follow-up: one row, done if either is.
   Ticking the row ticks both, and so does the Notes tab's box (`tickEverywhere`), which finds the line from the last time the list
   read it. The box in the document ticks the line alone: the row reads done, and the Notes tab doesn't. **Mine** goes by name for
   what's said, and by tag for what's written.
-- **Sending from the call** (`useSending`). Arrows on the pages and panels send to the last document you were in while you can edit
-  it (`LivePut`, which the side panels get through `LiveCall.onPut`). With that document open it goes in at the end, over a blank last
-  line, and scrolls there and glows; closed, or with a phone's panel over it (`LiveCall.covered`), it goes in the same way and a toast
-  says so. With another open, it goes in through `withDocument` and a toast goes there. A day the notes put in words becomes a date
-  tag when it can be read as one (`dates.ts`), and otherwise stays words. Who it tags is who's in the call by that name, by their
-  address, as a workspace knows people (`asInDocuments`), or else someone in the workspace by that name.
+- **Sending from the call** (`useSending`). Arrows on the pages and in your side send to the last document you were in while
+  you can edit it (`LivePut`, which your side gets through `LiveCall.onPut`). With that document open it goes in at the end,
+  over a blank last line, and scrolls there and glows; closed, or with your side's sheet over it on a phone
+  (`LiveCall.covered`), it goes in the same way and a toast says so. With another open, it goes in through `withDocument`
+  and a toast goes there. A day the notes put in words becomes a date tag when it can be read as one (`dates.ts`), and
+  otherwise stays words. Who it tags is who's in the call by that name, by their address, as a workspace knows people
+  (`asInDocuments`), or else someone in the workspace by that name.
 - **From the call in `/`** (`useEditorCall`). A `live` block is written by browsers in the call that can edit the document, with
   nothing but the notes to go on, so a dozen mustn't fight. What's written is the same in every browser (`liveLinesOf`: moments and
   words as they were said, read in each reader's time when drawn), and writing what's already there writes nothing, so all that's
@@ -1877,48 +1916,48 @@ picker, the leave sheet and the device pickers.
   goes, then focus. The workspace takes it in the capture phase on `document` and steps aside for all of those (`editing`
   in WorkspacePanel.tsx); with only the caret in the document, the editor never sees it, so the caret stays where it was.
 - **When room runs out**, the people's column narrows with the stage, and under 760 px of stage they're a row of arches over
-  the frame; your side is 340 px wide in a window under 1200 px; and when the window is too narrow to show everything,
-  what's big takes turns, with a switcher in the top bar. Under 600 px it's a phone: what's open fills the screen under a
-  row of arches, and your side, Close's question and More are sheets over the call.
+  the frame; your side is 340 px wide in a window under 1200 px; and two things on your stage with room for neither side by
+  side nor one over the other take turns, with a switcher in the top bar. Under 600 px it's a phone: what's open fills the
+  screen under a row of arches, two things take turns with the switcher under the arches, and your side, Share, More, a
+  frame's name menu and Close's question are sheets over the call.
 - **The people beside what's open.** Tiles in a column sized to the stage; arches in a row over the frame, their name, mic
-  and menu moved to a click on the arch; or, hidden (**⇧P**, or View's Beside what's shared), small arches on the horizon
-  beside the dock, in space nothing else uses. Whoever has a hand up, or has been talking a moment (`speakers.ts`, as
-  Speaker view counts it, so a quick "yes" moves nothing), rises 9 px, with a line beside them saying so. As many as fit
-  are shown, then a count that opens People, and the speaker and anyone with a hand up always have a place, unless the dock
-  leaves room for nobody: nothing ever stands on it. Those there's no room for stay mounted, out of sight. Someone rung
-  waits in a tile among the tiles; among arches or on the horizon they're in People. Beside what's open there's no stage
-  to have a corner of, so your own picture is one of the people; hidden, its chip waits under the tiles. Nothing here
-  changes while nothing is open: hiding people then says it applies once something is. A presented thing's tile
-  (`PresentedTile`) stands among them.
+  and menu moved to a click on the arch; or, hidden (**⇧P**, the small toolbar over them, which also folds tiles to arches
+  and back, or View's Beside what's shared), small arches on the horizon beside the dock, in space nothing else uses.
+  Whoever has a hand up, or has been talking a moment (`speakers.ts`, as Speaker view counts it, so a quick "yes" moves
+  nothing), rises 9 px, with a line beside them saying so. As many as fit are shown, then a count that opens People, and the
+  speaker and anyone with a hand up always have a place, unless the dock leaves room for nobody: nothing ever stands on it.
+  Those there's no room for stay mounted, out of sight. Someone rung waits in a tile among the tiles; among arches or on the
+  horizon they're in People. Beside what's open there's no stage to have a corner of, so your own picture is one of the
+  people; hidden, its chip waits under the tiles. Nothing here changes while nothing is open: hiding people then says it
+  applies once something is. A presented thing's tile (`PresentedTile`) stands first among them.
 - **Toasts in a call** sit left of the dock from 1280 px, spaced as the canvas spaces them so that someone's share is offered
   on one line, and right of it when people are on the horizon, so they never cover the foot of the list. Narrower, there's
   no room for one line beside the dock, so they go above it, in the middle. What presenting says (who you're following,
   closed for you or for everyone, a share the organizer stopped) is built with `wsToast`, in the words the canvas's
   `nc.js` has.
 - **Your view** (`view.ts`, laid out by `stageLayout.ts`) is each viewer's own and is never sent anywhere: Auto, Speaker or
-  Grid; how the people sit beside what's open (Tiles, Arches or Hidden); up to six pins, which share the main stage (in
-  Grid they come first and bigger); the order you put people in; who you made bigger; how two shares side by side split
-  the room; and where you see yourself (in the grid, in a corner the layout makes room for so it never covers a tile, or
-  hidden, folded into a chip there). **View** in the top bar holds The people, Beside what's shared, See yourself and
-  **Reset my view**. Reset puts everything back as the call starts it (where you see yourself stays as it is, and what's
-  open stays open), with Undo in its toast, as unpinning everyone has.
-- **What's remembered where.** How you like calls (the mode, where you see yourself and its
-  corner: `CallViewPrefsSchema`) is in `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a
-  browser without an account), because it's about you, not about anyone in a call. So is how you like the main area
-  (`CallPanelsSchema`, with how you see people), `alcove.callPanels.<ownerId>`, so tomorrow's call starts the way you left
-  this one; it never names a person, a call or a share. Your side isn't part of it: it shows one thing at a time, on the
-  right, at a fixed width. A record that doesn't parse is ignored, a phone starts with your side closed, and a call just
-  joined on a wide screen opens Notes while notes are on. How you arranged this call
-  (pins, order, sizes, your side, where you were in the workspace: `CallLayoutSchema`) only means something in this call, so it's in
-  `sessionStorage` for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it.
-  It names people by their `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit
-  identities, new for every connection (a reload is a new connection), while a seat is the same across someone's
-  reconnections (a reload's pass carries their random `person`, and so does a move to another device; the organizer
-  has one seat on any device; anyone else joining from a second browser without moving is a new person with a new
-  seat). The API makes it when the call is read, a MAC
-  of that `person` under a key for the call from the organizer's root, so nobody can work one out, it stores nothing
-  new, and it differs in every call. Shares are named by their sharer's participant ID, since a share lives and dies
-  with its connection. Neither store holds a name, an address, or anything said or shared.
+  Grid; how the people sit beside what's open (Tiles, Arches or Hidden); up to six pins, which share the main stage (in Grid
+  they come first and bigger); the order you put people in; who you made bigger; and where you see yourself (in the grid, in
+  a corner the layout makes room for so it never covers a tile, or hidden, folded into a chip there). **View** in the top
+  bar holds The people, Beside what's shared, See yourself and **Reset my view**; on a phone it's Your view in More, without
+  Beside what's shared, since what's open fills the screen there under a row of arches. Reset puts everything back as the
+  call starts it (where you see yourself stays as it is, and what's open stays open), with Undo in its toast, as unpinning
+  everyone has.
+- **What's remembered where.** How you like calls (the mode, where you see yourself and its corner: `CallViewPrefsSchema`)
+  is in `localStorage` for your account, `alcove.callView.<ownerId>` (one set for a browser without an account), because
+  it's about you, not about anyone in a call. So is how you like the main area (`CallPanelsSchema`: how the people sit
+  beside what's open, and whether the workspace shows its list), `alcove.callPanels.<ownerId>`, so tomorrow's call starts
+  the way you left this one; it never names a person, a call or a share. Your side isn't part of it: it shows one thing at a
+  time, on the right, at a fixed width. A record that doesn't parse is ignored, a phone starts with your side closed, and a
+  call just joined on a wide screen opens Notes while notes are on. How you arranged this call (pins, order, sizes, your
+  side, where you were in the workspace: `CallLayoutSchema`) only means something in this call, so it's in `sessionStorage`
+  for the tab, `alcove.callLayout.<callId>`: a reload keeps it, and leaving the call deletes it. It names people by their
+  `seat` (`CallParticipant.seat`), not their participant ID: participant IDs are LiveKit identities, new for every
+  connection (a reload is a new connection), while a seat is the same across someone's reconnections (a reload's pass
+  carries their random `person`, and so does a move to another device; the organizer has one seat on any device; anyone else
+  joining from a second browser without moving is a new person with a new seat). The API makes it when the call is read, a
+  MAC of that `person` under a key for the call from the organizer's root, so nobody can work one out, it stores nothing
+  new, and it differs in every call. Neither store holds a name, an address, or anything said or shared.
 - **Nothing you chose moves by itself.** Someone you pinned who leaves keeps their pin and has it again when they
   come back to the same seat; you're told both times. With all six pins taken, pinning someone else gives up the
   oldest pin of someone who isn't here, and someone the organizer removes loses the organizer's pin, since they
@@ -1929,39 +1968,40 @@ picker, the leave sheet and the device pickers.
   counted), and only while you haven't arranged anything. A presentation that starts takes your stage only while you
   aren't watching another; otherwise it comes in as a tile, and nothing you see moves. Your pins stay first beside what's
   open, and when it closes everything is where it was. Cameras turning off move nothing.
-- **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu,
-  P pins or unpins, Shift with an arrow moves a tile earlier or later (your
-  corner picture to another corner), and + and − make it bigger or smaller; L on a share on your stage starts pointing at it
-  ([Pointing at shared screens](#pointing-at-shared-screens)); Escape stops pointing, then unpins everyone, then puts your
-  side away. The line between two shares side by side is a separator moved with the arrow keys (24 px), Home and End, and
-  evened with Enter. The call's own keys are M and V (microphone and camera), C (Chat), B (Mark this moment), W
-  (Workspace), O (Board), ⇧P (hide the people or bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus); captions
-  have none, and Keyboard shortcuts in More lists them. On a board you present, ← and → move its frames. On someone
-  else's share on your stage, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your
-  pointer, while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
+- **Keyboard.** The stage is one tab stop. Arrow keys move between tiles, Enter (or Shift+F10) opens a tile's menu, P pins
+  or unpins, Shift with an arrow moves a tile earlier or later (your corner picture to another corner), and + and − make it
+  bigger or smaller; on a presented thing's tile, Enter, Space or P puts it on your stage. A share's frame is one tab stop
+  too, where L starts pointing at it ([Pointing at shared screens](#pointing-at-shared-screens)). Escape stops pointing;
+  then, once no menu or sheet is open, it leaves focus, then unpins everyone, then puts your side away. The call's own keys
+  are M and V (microphone and camera), C (Chat), B (Mark this moment), W (Workspace), O (Board), ⇧P (hide the people or
+  bring them back), ⌘K (find in the workspace) and ⌘⇧F (focus); captions have none, the letters sleep while you type, and
+  Keyboard shortcuts in More lists the ones you have there. On a board you present, ← and → move its frames. On someone
+  else's share on your stage, + and − zoom, 0 shows the whole picture, the arrows move around while zoomed in (your pointer,
+  while you point), F freezes it or goes back to live, and comma and full stop step through earlier pictures
   ([below](#looking-closer-at-a-share)). Each tile's menu shows its keys, and on touch screens its ⋯ is always there.
 - **Shares.** Several people can share at once, a screen each, and nobody's share replaces anyone else's. A share
   starts only while fewer than four (`MAX_SHARES`, `share.ts`) are going in your part of the call, yours counted:
   two sit side by side with Show beside and the rest are tiles, and past four the stage would give screens more room than people
   while every browser decrypts and decodes one more stream for each. The cap is the browser's, not LiveKit's: it's
-  checked when the share picker opens and again at the click that starts sharing, so people still choosing in their
-  browser's own picker at the same moment can take it over, and the stage takes any number. While four share, the
-  share button says so.
-- **Seeing shares.** The stage keeps shares in the order they started here. A share is a presentation like a board or
-  the workspace: it sits in the frame, which names whoever shares it, in the arch with their name (never by colour
-  alone), and says when it carries sound. Its name menu has Point at it, Freeze the picture, Earlier picture, zoom, Mute
-  its sound for you, Open in its own window, Put on the board and Show beside; on your own, Others can point at it, Clear
-  marks and Change what you share, with Stop sharing on the bar. Show beside puts two side by side or one above the
-  other, whichever shows both pictures bigger, with a line between them that you drag or move with the arrow keys (Home,
-  End, Enter for half and half). Close on someone else's makes it a tile for you while they share, and Join on the tile
-  brings it back. Choices about a share go when it stops: one seen on this connection that's gone.
-- **A share starting or stopping.** A new share glows for a moment where it lands. It takes your stage unless you're
-  watching another presentation, when it comes in as a tile and a toast says who's presenting it, with Show it; when one
-  on your stage stops, the toast says that too. The organizer can stop anyone's share for everyone (Stop it for everyone,
-  in its name menu): the sharer's browser stops it, everyone's notice says who stopped it, and the organizer's toast says
-  the sharer is told. Neither toast is said once the call has ended or while
-  the room isn't connected, nor for a few seconds after it connects, reconnects or your part of the call changes
-  (breakout rooms opening, closing or moving you), when shares come and go with the connection or the room.
+  checked when Share › Your screen opens and again at the click that starts sharing, so people still choosing in their
+  browser's own picker at the same moment can take it over, and the stage takes any number. While four share, Share's
+  Your screen says so, and can't be pressed.
+- **Seeing shares.** The stage keeps shares in the order they started here. A share is a presentation like a board or the
+  workspace: it sits in the frame, which names whoever shares it, in the arch with their name (never by colour alone), and
+  says when it carries sound. Its name menu has Point at it, Freeze the picture, Earlier picture, zoom, Mute its sound for
+  you, Open in its own window, Put on the board (while the board in the call is beside it, for someone who can add to it)
+  and a Show beside for each other thing presented ("Show Kofi's screen beside", while your stage holds one); on your own,
+  Others can point at it, Clear marks and Change what you share, with Stop sharing on the bar. Two side by side are placed
+  as the stage above says, with nothing between them to drag. Close on someone else's makes it a tile for you while they
+  share, and Join on the tile brings it back. A share that leaves your stage goes back to live and lets its earlier pictures
+  go, and everything about it goes when it stops.
+- **A share starting or stopping.** A new share takes your stage, its frame rising into place, unless you're watching
+  another presentation, when it comes in as a tile and a toast says who's presenting it, with Show it; when one on your
+  stage stops, the toast says that too ("Priya stopped sharing."). The organizer can stop anyone's share for everyone (Stop
+  it for everyone, in its name menu): the sharer's browser stops it, everyone's notice says who stopped it, and the
+  organizer's toast says the sharer is told. Neither toast is said once the call has ended or while the room isn't
+  connected, nor for a few seconds after it connects, reconnects or your part of the call changes (breakout rooms opening,
+  closing or moving you), when shares come and go with the connection or the room.
 - **Changing what you share** swaps the track inside the same LiveKit publication, so everyone sees it change in
   place, with their choices and its muting kept, rather than one share stopping and another starting.
 - **A share's sound.** Anyone can mute the sound of someone else's share for themselves from its name menu (`CallRoom.muteShare`:
@@ -1977,8 +2017,8 @@ picker, the leave sheet and the device pickers.
   LiveKit unpublishes it, so it goes for everyone at once; a presenter who leaves or drops takes their share with
   them when LiveKit says they've gone.
 - **Shared screens in the notes.** The organizer has a **Read shared screens** switch under what's captured
-  while notes are on or paused. The presenter's frame says **Read for the notes**, and the share picker says
-  it before they choose. A frame that can't reach the notes after three tries says so in the Notes panel.
+  while notes are on or paused. The presenter's share's name menu says **Read for the notes**, and Share › Your screen
+  says it before they share. A frame that can't reach the notes after three tries says so in the Notes tab.
 - **Captions** show the newest live transcript line the viewer may read (said in their part of the call while
   they were there), under whoever said it, translated for each viewer who picks a language. They show in
   breakout rooms too, each room its own, and say so instead of showing an old line while notes are paused or
@@ -2057,7 +2097,7 @@ picker, the leave sheet and the device pickers.
   notes, and that they're written in confidential compute; with the organizer's **Pause notes**, **Resume
   notes** and **Turn off** or **Turn on notes**, or anyone else's **Ask for notes**. Its sentence says what's
   captured now: what everyone says recorded and transcribed, less whatever the host's browser can't do. The
-  notes panel has the same controls in its menu and empty states. The transcript, in the call and in the note,
+  Notes, on your side, has the same controls in its ⋯ and empty states. The transcript, in the call and in the note,
   marks each gap, and dots what it isn't sure of: words that were hard to hear, and a name heard on more than one
   microphone ([Notes and inference › The live transcript](notes-and-inference.md#the-live-transcript)).
 - **Asks for notes.** The organizer gets a toast with Turn on (or Resume), and an Asking for notes section in
@@ -2100,7 +2140,7 @@ picker, the leave sheet and the device pickers.
 
 ## Looking closer at a share
 
-Someone else's share you see big can be zoomed into, moved around, frozen and stepped back through, or opened in its
+Someone else's share on your stage can be zoomed into, moved around, frozen and stepped back through, or opened in its
 own window: for you only, in this browser only. Nothing is sent, the presenter's screen and everyone else's view don't
 change, and the server is never involved (`ShareSurface.tsx`, with `shareLook.ts` for the state and `shareFrame.ts` for
 the coordinates). Your own share has none of this: you have the original.
@@ -2110,11 +2150,12 @@ the coordinates). Your own share has none of this: you have the original.
   anywhere between, where the pointer is. A drag, or the wheel, moves around once zoomed in; a double-click goes to 200%
   or back to the whole picture; 0 (or the label, "200%") shows the whole picture again. While zoomed in, the bar stays up
   with the label and a minimap of where you are, which you can press or drag. The bar's buttons are for pointers and
-  touch (on a phone a tap shows it); from the keyboard the keys on the focused share do the same, and its ⋯ menu lists
-  them (Later picture while one is held, and the arrows while zoomed in), so the stage stays one tab stop. The keys are
+  touch (on a phone a tap shows it); from the keyboard the keys on the focused share do the same, and its name menu lists
+  them (Later picture while one is held, and Zoom out and See the whole picture while zoomed in), so its frame stays one
+  tab stop. The keys are
   one table (`LOOK_KEYS`) that the share, its menu, its bar and `aria-keyshortcuts` all read. A new framing from a key, a
   button or the menu glides (instantly under reduced motion); a drag or a pinch follows the pointer, and the view
-  changing size (a divider dragged, the layout moving) moves the picture with its tile at once.
+  changing size (the layout moving, your side coming or going) moves the picture with its frame at once.
 - **Sharp when zoomed.** LiveKit sends a screen in two layers (full and half size) and its adaptive stream picks one by
   the size of the element showing it. Zooming makes the video element itself bigger, inside a box that clips it, so a
   zoomed-in share asks for the full layer and stays sharp; at 100% it may get the half one.
@@ -2133,14 +2174,13 @@ the coordinates). Your own share has none of this: you have the original.
   16 MiB, the oldest going first (never the one you're looking at). Each is a moment the picture changed, judged on the
   same 48 × 27 grey grid the notes' frames use (`screenGrid.ts`) but more finely: 0.6% of it moving, or all of it
   shifting a little (a new slide, a scroll or a window moved counts; a cursor moving doesn't). They're taken at most once
-  a second from the video this browser already decodes to show the share, and only while you see that share big or in
-  its own window. They're compressed (WebP, or JPEG from the first picture on where the browser can't write WebP, at
+  a second from the video this browser already decodes to show the share, and only while that share is on your stage or
+  in its own window. They're compressed (WebP, or JPEG from the first picture on where the browser can't write WebP, at
   most 4K) into ArrayBuffers in the page: never written to storage, a file or a Blob that's kept, never sent, never
   logged. A frozen picture is shown from a bitmap of the frame on screen, also at most 4K, so holding a 6K screen still
   costs no more than a 4K one: one such picture per share, apart from the 16 MiB, gone when you go back to live. The one
-  line under the share's menu says it: up to 30 earlier pictures stay in
-  this browser's memory until the share stops, and nothing is saved or sent. Presenters are told in the share picker
-  that everyone can zoom in and look back at its last 30 pictures, each on their own screen, until they stop.
+  line at the foot of the share's name menu says it: up to 30 earlier pictures stay in
+  this browser's memory until the share stops, and nothing is saved or sent.
 - **Apart from screen notes.** [Shared screens](#shared-screens) are frames a presenter's own browser sends to the API
   while the organizer has them read for the notes. These are pictures a viewer's browser keeps for that viewer alone,
   whatever the notes do; nothing of them reaches the API, unless that viewer puts one on a board ([Put on the
@@ -2153,26 +2193,26 @@ the coordinates). Your own share has none of this: you have the original.
   (LiveKit takes the share out of every room at once, and their pass can't get them back in) or drops out of the call's
   group (the MLS check stops showing it). All of it goes when this browser moves to another part of the call
   (`CallCrypto.place`: sent to a breakout room, back from one, or the organizer visiting one, each move a change of
-  keys) and when you leave or are removed. Showing a share as a tile
-  goes back to live and lets its earlier pictures go. A share's own window closes at the same moments. A presenter's
+  keys) and when you leave or are removed. A share leaving your stage (closed for you, or put away by something else
+  you open) goes back to live and lets its earlier pictures go. A share's own window closes at the same moments. A presenter's
   Change swaps the track inside the same publication, so viewers can't tell a new surface from new content: pictures
   from before a change stay until the share stops.
 - **Without earlier pictures.** While the organizer has paused notes nothing new is kept and what was kept goes (pausing
   stops every kind of capture), and they're kept again when notes resume. A device with little memory
   (`navigator.deviceMemory` under 2 GB) or a browser that can't draw or compress the picture keeps none either. Zoom,
   pan and freezing still work, and the menu says why there's nothing earlier.
-- **Its own window.** Open in its own window (the share's ⋯ or its bar) puts the share in a window of its own, to keep
-  in view over other apps or put on another screen. Document Picture-in-Picture where the browser has it (Chrome and
-  Edge 116+, Firefox 151+): an always-on-top window this page fills itself, which LiveKit's adaptive stream counts as
-  on screen even while the call's tab is in the background. Elsewhere on a computer (Safari) a popup window, which can
-  go full screen on another display; LiveKit pauses its picture while the call's tab is hidden, as it pauses every
-  video then, and the window says so. Phones and tablets show shares in the call only, and the menu says that. One share
-  at a time: the stage keeps it as a tile ("In its own window", Bring it back, or P), and the next share takes its
-  place. The window has the share's own bar and keys, with the share focused as soon as it opens (and again when you
-  come back to the window), so its keys work at once; bringing it back (Back to the call, Bring it back, or closing the
-  window) puts focus back on its tile. It's a blank page that carries the call's own CSP, whose `base-uri 'none'`
-  refuses a `<base>`, so the app's stylesheets are linked by their full address. It uses its own timers (so it keeps
-  going while the call's tab is in the background), and nothing in it relies on the call tab's animation frames.
+- **Its own window.** Open in its own window (in the share's name menu, or on its bar) puts the share in a window of its
+  own, to keep in view over other apps or put on another screen. Document Picture-in-Picture where the browser has it
+  (Chrome and Edge 116+, Firefox 151+): an always-on-top window this page fills itself, which LiveKit's adaptive stream
+  counts as on screen even while the call's tab is in the background. Elsewhere on a computer (Safari) a popup window, which
+  can go full screen on another display; LiveKit pauses its picture while the call's tab is hidden, as it pauses every video
+  then, and the window says so. Phones and tablets show shares in the call only, and the menu says that. One share at a
+  time: its frame keeps its place, saying In its own window, with Bring it back, and the next share takes its place. The
+  window has the share's own bar and keys, with the share focused as soon as it opens (and again when you come back to the
+  window), so its keys work at once; Back to the call, Bring it back, or closing the window brings it back to its frame.
+  It's a blank page that carries the call's own CSP, whose `base-uri 'none'` refuses a `<base>`, so the app's stylesheets
+  are linked by their full address. It uses its own timers (so it keeps going while the call's tab is in the background),
+  and nothing in it relies on the call tab's animation frames.
 - **Comparing shares.** Two shares sit side by side ([The call screen](#the-call-screen)); each is zoomed, frozen and
   stepped back through on its own, so you can hold one still beside the other live, or open one in its own window on
   another screen beside the call.
@@ -2426,19 +2466,20 @@ uploads), Alcove is asked who's signed in (`GET /v1/session`): only the account 
 - The microphone test (`apps/web/src/features/call/media/devices.ts`) records three seconds in memory and plays
   them back through the chosen speaker. Nothing is uploaded or kept. In the call, **Play test sound** plays a
   short chime through the chosen speaker.
-- `getDisplayMedia` for screen sharing (`shareScreen`), opened on the kind picked in the share picker (tab, window or
-  screen), from the click itself (Safari and Firefox need that), with the call's own tab left out of the browser's
-  picker. It captures nothing but what's picked: sound only when asked for (a tab's, or the computer's on a whole
-  screen), and with `restrictOwnAudio`, so where the browser knows that constraint the computer's sound never carries
-  the call's own (everyone's voices). The picker offers sound only where the browser can share it: Chrome and Edge
-  share a tab's sound, Firefox and Safari share none. Ending it from the browser's own control updates the call.
-- Why a share didn't start is read from the browser's refusal (`share.ts`): closing the picker says nothing; Chrome's
-  "Permission denied by system" is the computer refusing (macOS without Screen & System Audio Recording permission:
-  the picker comes back saying where to allow it, and offers a tab, which needs no permission); a refusal faster than
-  anyone could answer a picker is the browser or a policy blocking it; the rest are nothing to share, the capture
-  held by another app, or a failure to try again. Each comes back in the picker with what to do. A browser without
-  `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't
-  come (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
+- `getDisplayMedia` for screen sharing (`shareScreen`), opened on the kind picked in Share › Your screen (a tab, a window or
+  your whole screen), from the click itself (Safari and Firefox need that), with the call's own tab left out of the
+  browser's picker. It captures nothing but what's picked: sound only when asked for (a tab's, or the computer's on a whole
+  screen), and with `restrictOwnAudio`, so where the browser knows that constraint the computer's sound never carries the
+  call's own (everyone's voices). Share › Your screen offers sound only where the browser can share it (Also share the tab's
+  sound, or your computer's on a whole screen): Chrome and Edge share a tab's sound, Firefox and Safari share none. Ending
+  it from the browser's own control updates the call.
+- Why a share didn't start is read from the browser's refusal (`share.ts`): closing the browser's picker says nothing;
+  Chrome's "Permission denied by system" is the computer refusing (macOS without Screen & System Audio Recording permission:
+  Share › Your screen comes back saying where to allow it, with A tab picked, which needs no permission); a refusal faster
+  than anyone could answer a picker is the browser or a policy blocking it; the rest are nothing to share, the capture held
+  by another app, or a failure to try again. Each comes back in Share › Your screen with what to do. A browser without
+  `getDisplayMedia` (phones and tablets) is told it can't share and can still see shares. Sound asked for that didn't come
+  (the browser picker's own switch was off, or the computer wouldn't share it) is said, with Change.
 - A Web Audio analyser drives the mic meter (in the microphone picker before the call and beside the microphone
   in its menu), the speaking ring and the recorder's voice on the water (`useVoice`, which changes CSS variables
   and never renders). On Record the page has its own `LocalMedia`, which

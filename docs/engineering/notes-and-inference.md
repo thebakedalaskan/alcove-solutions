@@ -1144,7 +1144,7 @@ account that can edit the board. Nothing is kept, and it has no receipt.
 A board open for everyone in a part of a call goes into what the call worked on (`CallSpace.worked`, with `open`: `main` or
 the breakout room's ID), whether or not anyone changes it, and into the note with the rest when the call ends (`workedOn`):
 every board in the call's `board.open` is noted each time the call is saved, and again as it ends, however it opened (from the
-Board menu, with rooms opening with a board each or one they share, or started in a room). A board someone only changed from
+board picker or Share › A board, with rooms opening with a board each or one they share, or started in a room). A board someone only changed from
 the list moved nobody else, so its `open` is null, as it is for what a call kept before boards were noted, until it's open
 somewhere in the call as it's saved or ends. A board is noted in the first part of the call it opened in. A room's own board is
 everyone invited's once its room closes or the call ends, so its room's notes read it; the one board rooms share is the main

@@ -250,15 +250,17 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
     hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
   stage gives way as it slides in: Notes (with the tabs Notes, Transcript and Ask, and Yours at the foot of Notes), Chat,
-  People, Your notes beside a presented board, and the rooms. It's day in the light theme; the stage, the dock and what's
-  shared stay night.
+  People, Your notes beside a presented board, and the rooms. It takes your theme, as a board's sheet does unless it's a
+  night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
   is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it
   as View says: a column of tiles on the right, a row of arches over it (which any stage under 760px gets), or on the
   horizon.
-- **A tile only while it's presented.** Something presented that isn't on your stage is a live tile among the people, with
-  who's presenting it and Join.
+- **Share**, in the dock, opens one menu over it, a step at a time: Your screen, A board or The workspace, then the kind of
+  screen or the board picker in the same menu, so no window opens over another.
+- **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people (a
+  screen live, a board drawn small, the workspace with where its presenter is), with who's presenting it and Join.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
   keeps the microphone, camera, Show everything and Leave.
 - **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
