@@ -1187,9 +1187,11 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-mine .pic > span { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; }
 .ic-mine .foot { display: flex; align-items: center; gap: 8px; margin: auto 0 0; padding-top: 12px; border-top: 1px solid var(--line); font: 500 12.5px/1.3 var(--font-sans); color: var(--ink-3); }
 .ic-mine-none { margin: 0; font: 400 13.5px/1.5 var(--font-sans); color: var(--ink-3); }
-/* A name menu's rows, and what one opens in their place: who can add to a board. */
+/* A name menu's rows, and what one opens in their place: who can add to a board, or who's in the workspace, as wide as it needs. */
 .ic-menu .mi.is-stopall { color: var(--stage-ink); font-weight: 600; }
+.ic-menu:has(.ic-menu-sheet) { width: auto; }
 .ic-menu-sheet { width: min(360px, calc(100vw - 32px)); }
+.ic-menu-sheet .wv-share { width: 100%; }
 .ic-menu .ic-readline { display: flex; align-items: center; gap: 6px; }
 /* On a phone, a sheet risen over the call (Close's question, Share, More) takes the bottom of the screen: toasts say their piece at the top instead. */
 @media (max-width: 599px) {

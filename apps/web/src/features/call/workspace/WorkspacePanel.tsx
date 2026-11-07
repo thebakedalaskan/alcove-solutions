@@ -16,6 +16,7 @@ import type { CallPerson, CallTogether, SpaceHead, WorkspaceCall, WorkspacePlace
 import type { StopFollowing } from '~/features/workspace/follow';
 import { LiveRows } from '~/features/workspace/live/LiveRows';
 import { OutsideSpace } from '~/features/workspace/live/OutsideSpace';
+import { PeopleSheetFor } from '~/features/workspace/Sheets';
 import type { LiveCall } from '~/features/workspace/live/types';
 import { Workspace } from '~/features/workspace/Workspace';
 import { moveFocusOut, overlayOpen, shortcut } from '~/lib/keys';
@@ -359,8 +360,8 @@ function useLeaving(now: Shown, settled: boolean) {
 }
 
 /**
- * What the workspace's frame's name menu offers: Switch workspace (the organizer, in place of the rows), Find in the workspace
- * and Copy link.
+ * What the workspace's frame's name menu offers: Switch workspace (the organizer), Find in the workspace, Who's in it (for
+ * someone in it) and Copy link. Switch workspace and Who's in it open in place of the rows.
  */
 export function WorkspaceMenuRows({ workspace, organizer, act, onFind, onCopy, onDone }: {
   workspace: CallWorkspace; organizer: boolean; act: WorkspacePanelState['act'];
@@ -368,19 +369,23 @@ export function WorkspaceMenuRows({ workspace, organizer, act, onFind, onCopy, o
   onCopy: (() => void) | undefined;
   onDone: () => void;
 }) {
-  const [switching, setSwitching] = useState(false);
-  const press = useSettledPress(['switch', 'find', 'link'].join('\n'));
+  const [inside, setInside] = useState<'switch' | 'people' | null>(null);
+  const press = useSettledPress(['switch', 'find', 'people', 'link'].join('\n'));
   const pick = (f: () => void) => press(() => { onDone(); f(); });
-  if (switching && workspace.id !== null) {
+  if (inside === 'switch' && workspace.id !== null) {
     return <SpacePicker head={{ workspaceId: workspace.id, name: workspace.name ?? 'Untitled', people: null, about: [], close: onDone }} act={act} home={workspace.home} />;
+  }
+  if (inside === 'people' && workspace.id !== null) {
+    return <div className="ic-menu-sheet"><PeopleSheetFor workspaceId={workspace.id} name={workspace.name ?? 'Untitled'} admin={workspace.role === 'admin'} say={act.say} /></div>;
   }
   const row = (icon: IconName, label: string, onPick: () => void, kb?: string) => (
     <button type="button" className="mi" role="menuitem" onClick={onPick}><Icon name={icon} size={17} /><span className="t">{label}</span>{kb && <Kbd>{kb}</Kbd>}</button>
   );
   return (
     <>
-      {organizer && workspace.id !== null && row('folders', 'Switch workspace', press(() => setSwitching(true)))}
+      {organizer && workspace.id !== null && row('folders', 'Switch workspace', press(() => setInside('switch')))}
       {row('search', 'Find in the workspace', pick(onFind), shortcut('K'))}
+      {workspace.id !== null && workspace.role !== null && row('people', 'Who’s in it', press(() => setInside('people')))}
       {onCopy && row('link', 'Copy link', pick(onCopy))}
     </>
   );

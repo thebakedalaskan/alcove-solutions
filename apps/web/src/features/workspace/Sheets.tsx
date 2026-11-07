@@ -112,13 +112,17 @@ function roleFor(p: WorkspacePerson, admin: boolean, setRole: (role: WorkspaceRo
   };
 }
 
-/** Who's in a workspace and what they can do, in the same sheet as Share. */
+/** Who's in the workspace open here and what they can do, in the same sheet as Share. */
 export function PeopleSheet() {
   const ws = useWs();
-  const admin = ws.sent.role === 'admin';
-  const people = useQuery(q.workspacePeople(ws.workspaceId)).data ?? [];
-  const changes = useWorkspacePeople(ws.workspaceId);
-  const refused = (e: unknown) => { ws.say(wsToast.failed(errorCode(e) === 'conflict' ? 'A workspace always keeps an admin.' : errorMessage(e))); };
+  return <PeopleSheetFor workspaceId={ws.workspaceId} name={ws.spaceName} admin={ws.sent.role === 'admin'} say={ws.say} />;
+}
+
+/** Who's in a workspace and what they can do, wherever it's asked: an admin changes anyone, and anyone else can leave. */
+export function PeopleSheetFor({ workspaceId, name, admin, say }: { workspaceId: string; name: string; admin: boolean; say: (toast: WsToastData) => void }) {
+  const people = useQuery(q.workspacePeople(workspaceId)).data ?? [];
+  const changes = useWorkspacePeople(workspaceId);
+  const refused = (e: unknown) => { say(wsToast.failed(errorCode(e) === 'conflict' ? 'A workspace always keeps an admin.' : errorMessage(e))); };
   const adding = useAdding(
     (p) => people.some((w) => w.person.email === p.email),
     (p) => { changes.add.mutateAsync({ email: p.email, role: 'edit' }).catch(refused); }
@@ -127,5 +131,5 @@ export function PeopleSheet() {
     id: p.id, people: [p.person], name: p.isMe ? `${p.person.name} (you)` : p.person.name, sub: addressUnder(p.person),
     role: roleFor(p, admin, (role) => { changes.setRole.mutateAsync({ id: p.id, role }).catch(refused); }, () => { changes.remove.mutateAsync(p.id).catch(refused); })
   }));
-  return <WsShareSheet title={`People in ${ws.spaceName}`} rows={rows} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
+  return <WsShareSheet title={`People in ${name}`} rows={rows} {...(admin ? { query: adding.query, onQuery: adding.setQuery, onAdd: adding.onAdd, matches: adding.matches } : {})} />;
 }
