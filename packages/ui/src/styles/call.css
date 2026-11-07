@@ -1191,3 +1191,7 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-menu .mi.is-stopall { color: var(--stage-ink); font-weight: 600; }
 .ic-menu-sheet { width: min(360px, calc(100vw - 32px)); }
 .ic-menu .ic-readline { display: flex; align-items: center; gap: 6px; }
+/* On a phone, a sheet risen over the call (Close's question, Share, More) takes the bottom of the screen: toasts say their piece at the top instead. */
+@media (max-width: 599px) {
+  body:has(.ac-pop.is-sheet) .ac-toasts.on-stage { top: max(72px, env(safe-area-inset-top, 0px)); bottom: auto; }
+}

@@ -449,7 +449,7 @@ export function InCall({ session }: { session: CallSession }) {
   ];
   /* What a toast offers (Show it) goes once it's been taken up some other way, or what it's about stops. */
   const offers = useRef(new Map<string, () => void>());
-  /** Someone else's presentation you closed for everyone, as the organizer: its end isn't said twice. */
+  /** Someone else's presentation or share you ended for everyone, as the organizer: its end isn't said twice. */
   const stoppedByMe = useRef<string | null>(null);
   const stage = useOnStage({
     presented, ended: space.ended, settled, kept: layout.layout.workspace.open,
@@ -460,10 +460,10 @@ export function InCall({ session }: { session: CallSession }) {
         sayIt(isScreen(p.id) ? wsToast.presentingScreen(p.first) : p.id === 'ws' ? wsToast.followingWorkspace(p.first) : wsToast.followingBoard(p.first, p.name));
       },
       ended: (p, was) => {
+        // Stopped or closed by you, the organizer, which you've been told already.
+        if (stoppedByMe.current === p.key) { stoppedByMe.current = null; return; }
         if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first)); return; }
         const what = p.id === 'ws' ? 'the workspace' : p.name;
-        // Closed by you, the organizer, which you've been told already.
-        if (stoppedByMe.current === p.key) { stoppedByMe.current = null; return; }
         sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what));
       }
     }
@@ -1259,7 +1259,9 @@ export function InCall({ session }: { session: CallSession }) {
         <>
           <SideHead title="Your notes" onClose={sideClose} />
           <SideBody view="mine">
-            <BoardMine board={board} section={boardPresenting.section} notes={boardPresenting.notes} onNote={boardPresenting.setNote} theme={theme} />
+            <div className="ic-scroll ic-pad">
+              <BoardMine board={board} section={boardPresenting.section} notes={boardPresenting.notes} onNote={boardPresenting.setNote} theme={theme} />
+            </div>
           </SideBody>
         </>
       );
@@ -1396,7 +1398,8 @@ export function InCall({ session }: { session: CallSession }) {
   const stopTheirShare = (s: StageShare) => {
     const seat = state.participants.find((p) => p.id === s.id)?.seat;
     if (!seat) return;
-    session.stopShare(seat).then(() => sayIt(wsToast.stoppedTheirShare(callName(s.presenter))), failed);
+    stoppedByMe.current = `screen:${s.id}`;
+    session.stopShare(seat).then(() => sayIt(wsToast.stoppedTheirShare(callName(s.presenter))), (e: unknown) => { stoppedByMe.current = null; failed(e); });
   };
   /** The organizer's, on someone else's board or workspace: it closes for everyone. */
   const closeTheirs = () => {
