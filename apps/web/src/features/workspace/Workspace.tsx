@@ -204,7 +204,8 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   const spaceName = view.tree?.name ?? 'Shared with you';
   const others = useMemo(() => othersIn(view.here), [view.here]);
   const goWith = useCallback((to: WorkspacePlace) => { setPhoneList(false); onGo(to, { replace: true }); }, [onGo]);
-  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say });
+  const pane = useRef<HTMLElement>(null);
+  const { following, follow, stopFollowing } = useFollow({ others, presenter: call?.presenter ?? null, tree, at, goWith, say, pane });
   /* Going anywhere puts a phone's list away, even to what's already open behind it, and going yourself stops following. */
   const go = useCallback<WorkspaceProps['onGo']>((to, how) => { stopFollowing(); setPhoneList(to.kind === 'home'); onGo(to, how); }, [onGo, stopFollowing]);
   /*
@@ -395,7 +396,7 @@ function Pane({ store, mode, workspaceId, at, onGo, onSwitch, onLeave, pass, cal
   return (
     <WsContext value={ws}>
      <LiveHostContext value={host}>
-      <WsPane page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} following={following !== null && !following.quiet}>
+      <WsPane ref={pane} page={isPage} listOff={listOff} listPeek={call?.list.peek} phoneList={phoneList} following={following !== null && !following.quiet}>
         <List drags={{ drag, arm, ended }} />
         {at.kind === 'live' ? <LivePage page={at.page} line={at.line} /> : at.kind === 'trash' ? <TrashPage /> : item?.kind === 'board' ? <BoardPane key={item.id} item={item} /> : item && item.kind !== 'folder' ? <DocumentPane key={item.id} item={item} /> : at.kind === 'document' ? (
           <WsDoc>

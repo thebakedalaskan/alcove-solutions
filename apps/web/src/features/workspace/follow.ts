@@ -1,12 +1,12 @@
 /*
  * Following someone: going where they go, to the same line, until you choose to stop. It's all in this browser, from who's
  * here: nobody is told, nobody is pulled along, and the person followed does nothing. Somewhere you can't open you stay put,
- * and the stream says only that it's elsewhere, so nothing here can name it. Pressing, scrolling, typing, Esc or going
- * somewhere yourself stops it, and a toast picks it back up.
+ * and the stream says only that it's elsewhere, so nothing here can name it. Pressing, scrolling, typing, Esc in the
+ * workspace or going somewhere yourself stops it, and a toast picks it back up.
  */
 import { firstName, type Person } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { overlayOpen } from '~/lib/keys';
 import type { WorkspacePlace } from './context';
 import { pageName, type Someone } from './presence';
@@ -30,9 +30,11 @@ interface FollowInput {
   /** Goes there without it counting as you going somewhere. */
   goWith: (to: WorkspacePlace) => void;
   say: (toast: WsToastData) => void;
+  /** The workspace itself: Esc stops following only from inside it, so a call round it keeps its own Esc (focus, your side). */
+  pane: RefObject<HTMLElement | null>;
 }
 
-export function useFollow({ others, presenter, tree, at, goWith, say }: FollowInput) {
+export function useFollow({ others, presenter, tree, at, goWith, say, pane }: FollowInput) {
   const [id, setId] = useState<string | null>(null);
   /** Their face, for after they've gone. */
   const known = useRef<Person | null>(null);
@@ -69,18 +71,18 @@ export function useFollow({ others, presenter, tree, at, goWith, say }: FollowIn
     else if (page !== null) goWith({ kind: 'live', page });
   }, [id, there, target, page, here, goWith, stop]);
 
-  /* Esc, once nothing's open on top of the page. */
+  /* Esc in the workspace, once nothing's open on top of the page. */
   useEffect(() => {
     if (id === null) return;
     const keys = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || overlayOpen()) return;
+      if (e.key !== 'Escape' || overlayOpen() || !(e.target instanceof Node) || !pane.current?.contains(e.target)) return;
       e.preventDefault();
       e.stopPropagation();
       stop();
     };
     addEventListener('keydown', keys, true);
     return () => removeEventListener('keydown', keys, true);
-  }, [id, stop]);
+  }, [id, stop, pane]);
 
   const person = someone?.person ?? known.current;
   const lost = someone?.elsewhere === true;

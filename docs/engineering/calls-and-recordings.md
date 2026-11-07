@@ -1142,8 +1142,10 @@ into the call. Being in a call, or organizing it, opens nothing.
   - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
     presenting it. Following takes you to the presenter's page and line, through the workspace's own Follow and presence
     (`features/workspace/follow.ts`), so nothing new goes to the server. Unfollow takes you back to where you were before
-    you followed; a click, a scroll, a key or Escape in it leaves you where you are, on your own (`onOwn`). Present, on the
-    workspace's frame, or Share › The workspace, presents it; Close, while you present it, asks whom it ends for.
+    you followed; a click, a scroll, a key or Escape in it leaves you where you are, on your own (`onOwn`). Only in it:
+    `useFollow` takes Escape from inside the workspace's pane alone, so an Escape anywhere else (focus, the chat box, your
+    side) stays the call's. Present, on the workspace's frame, or Share › The workspace, presents it; Close, while you
+    present it, asks whom it ends for.
   - *A presentation ending* because its presenter left the call says so, for everyone. Which presentation it is, is its `key`.
   - *Presenter notes* beside a board's frames are as [Presenting a board](#presenting-a-board) says.
 - **Playing together, in the browser** (`features/call/playback/sharedVideo.ts`, `PlayTogether.tsx`).

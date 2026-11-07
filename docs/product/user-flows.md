@@ -1361,9 +1361,9 @@ face and first name while they move, which fade after three seconds of quiet. Op
 **Following someone.** **Follow** goes where they go, to the same line: a frame around the workspace and a bar under the head
 say so, and the page scrolls to them. In a call that's the call's own **Notes**, **Follow-ups** and **Transcript** too, and the
 bar names the page. Nobody else moves, and they do nothing. If they open something you can't, you stay put
-and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following** or **Esc** ends
-it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are, and a toast offers
-**Follow again**.
+and the bar says **In a document you can’t open**; you catch up as soon as they come back. **Stop following**, or **Esc** in
+the workspace, ends it, and so does scrolling, typing, pressing the page or going somewhere yourself: you stay where you are,
+and a toast offers **Follow again**. In a call, **Esc** anywhere else is the call's (a field, focus, your side).
 
 **Tagging.** **@** anywhere in a line lists people, then documents and dates, narrowing as you type: the workspace's people
 first, then your company (in a call, who's in it first, then who's invited). The list says who **Can’t open this yet**
