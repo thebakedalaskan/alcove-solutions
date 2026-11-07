@@ -799,11 +799,11 @@ export function InCall({ session }: { session: CallSession }) {
   const boardMenuOpen = boardMenu && !phone;
   const picked = { onOpenCall: () => stageOpen('board'), onOpenSaved: (b: SavedBoard) => { setSaved(b); stageOpen('saved'); }, onMade: () => stageOpen('board'), onPresented: (name: string) => { stageOpen('board'); sayIt(wsToast.boardOn(name)); }, failed };
   const openPicker = useBoardPicker({
-    session, board, mode: 'open', inRoom: boardInRoom, brought: space.documents, spaceName, showing: boardMenuOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
+    session, board, mode: 'open', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: boardMenuOpen || pop === 'board', blocked: boardBlocked, inCall: callBoardRow,
     onDone: () => { setBoardMenu(false); setPop(null); }, ...picked
   });
   const sharePicker = useBoardPicker({
-    session, board, mode: 'present', inRoom: boardInRoom, brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: boardBlocked, inCall: callBoardRow,
+    session, board, mode: 'present', inRoom: boardInRoom, account: state.role !== 'guest', brought: space.documents, spaceName, showing: pop === 'shareBoard', blocked: boardBlocked, inCall: callBoardRow,
     onDone: () => setPop(null), ...picked
   });
   /** Present, on a saved board just for you: brought into the call first, asking first if some people here can't open it. */
@@ -1588,7 +1588,7 @@ export function InCall({ session }: { session: CallSession }) {
           view={<ViewMenu {...viewChoices} />}
           board={{
             on: boardOnStage !== null || boardMenuOpen, onPress: pressBoard,
-            menu: { open: boardMenuOpen, onClose: () => { openPicker.reset(); setBoardMenu(false); }, content: openPicker.picker, reach: () => { if (!boardInRoom) void qc.prefetchQuery(q.workspaces()); } }
+            menu: { open: boardMenuOpen, onClose: () => { openPicker.reset(); setBoardMenu(false); }, content: openPicker.picker, reach: () => { if (!boardInRoom && state.role !== 'guest') void qc.prefetchQuery(q.workspaces()); } }
           }}
           workspace={{ on: stage.on.includes('ws'), count: broughtHere, onPress: pressWorkspace }}
           side={{ view: side.view, toggle: flipSide, unread }} />
@@ -1638,7 +1638,7 @@ export function InCall({ session }: { session: CallSession }) {
                 changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
               }}
               board={canStartBoard ? { picker: sharePicker.picker, onPick: loadBoard } : { why: 'Guests can’t start a board here.' }}
-              workspace={canPresentWs && !someoneElse ? { onPress: presentWorkspace } : { why: someoneElse ? `${firstName(presentNow.by.name)} is presenting. You can present once they stop.` : 'You can’t open this call’s workspace.' }} />
+              workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : someoneElse ? { why: `${firstName(presentNow.by.name)} is presenting. You can present once they stop.` } : { onPress: presentWorkspace }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
                 on={!!me?.hand} onClick={() => setHand(!me?.hand)} />

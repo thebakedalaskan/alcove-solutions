@@ -75,6 +75,8 @@ interface PickerFrom {
   mode: 'open' | 'present';
   /** You're in a breakout room: a new board is the room's alone, and saved boards stay the main room's. */
   inRoom: boolean;
+  /** You have an account, and so a Drive to offer boards from: a guest has neither, and asking would be refused. */
+  account: boolean;
   /** What's been brought to this call that you can open. */
   brought: readonly CallBrought[];
   /** What a workspace is called, where you can know it. */
@@ -99,10 +101,10 @@ interface PickerFrom {
 }
 
 /** What the board picker offers and does, wherever it opens. `reset` forgets the access question, as the picker closes. */
-export function useBoardPicker({ session, board, mode, inRoom, brought, spaceName, showing, blocked, inCall, onOpenCall, onOpenSaved, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
+export function useBoardPicker({ session, board, mode, inRoom, account, brought, spaceName, showing, blocked, inCall, onOpenCall, onOpenSaved, onMade, onPresented, onDone, failed }: PickerFrom): { picker: BoardPickerProps; reset: () => void } {
   // Your Drive's workspaces, which reaching for the picker read already, then the boards in the newest of them.
-  const spaces = useQuery({ ...q.workspaces(), enabled: showing && !inRoom }).data;
-  const drive = useQuery({ ...q.boardsToBring(spaces ?? []), enabled: showing && !inRoom && spaces !== undefined });
+  const spaces = useQuery({ ...q.workspaces(), enabled: showing && !inRoom && account }).data;
+  const drive = useQuery({ ...q.boardsToBring(spaces ?? []), enabled: showing && !inRoom && account && spaces !== undefined });
   const [access, setAccess] = useState<BoardPickerAccess | null>(null);
   const [busy, setBusy] = useState(false);
   const rows = offered(brought, drive.data ?? [], spaceName);
