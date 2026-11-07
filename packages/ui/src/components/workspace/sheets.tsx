@@ -406,8 +406,8 @@ export function WsKeyboard({ open, onOpenChange, groups, note }: { open: boolean
 }
 
 /**
- * Someone in the call asked to see the workspace, on the organizer's screen: at the top, or above the dock on a phone, where
- * it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
+ * Someone in the call asked to see the workspace, on the organizer's screen: below the frame's bar and a document's head, so
+ * Present, Close and Share stay free, or above the dock on a phone, where it leaves the list's button free. Pass the person to show it: it drops in 8 px, 420 ms, waits, and lifts away, 240 ms, when
  * you pass null. `document`: what they can be let into, read only (`onLet`) or to edit (`onEdit`), the one open in front of
  * you. With none open, `onChoose` opens the workspace on something to share, or its list to pick one.
  */
