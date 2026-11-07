@@ -10,6 +10,10 @@
  * A second thing presented can sit beside the first (Show beside), as two screens do; when there isn't room for both they take
  * turns, and the top bar says which is showing. Focus fills your window with what's in the frame, the people on the horizon.
  *
+ * While breakout rooms are open, the organizer's stage shows the rooms (Stage.tsx), and what's open stands beside them, the
+ * rooms in place of the people. Where there isn't room for both, on a phone and on a narrow stage, what's open goes over the
+ * rooms until it's closed, with whoever's in your part of the call beside it as anyone else's are.
+ *
  * Everything here is pure: the room and what's open in, rectangles out.
  */
 import type { CallPeopleMode } from '@alcove/api';
@@ -32,9 +36,13 @@ const FOCUS_DOCK = 92;
 /** Two frames side by side need this much across, or they're one over the other; with room for neither, they take turns. */
 const BESIDE_W = 900;
 const STACKED_H = 620;
+/** The rooms stand beside what's open only on a stage this wide: under it, what's open goes over them. */
+const ROOMS_BESIDE = 880;
 
 /** The people's column beside what's open, by how wide the stage is. */
 export const columnWidth = (w: number) => (w >= 1500 ? 300 : w >= 1300 ? 248 : w >= 980 ? 216 : 176);
+/** The rooms beside what's open: a little over a third of the stage, enough for every room to say who's in it. */
+const roomsWidth = (w: number) => Math.round(Math.min(560, Math.max(340, w * 0.38)));
 
 export interface MainFacts {
   /** How many things are on your stage: none, one, or two (Show beside). */
@@ -44,7 +52,7 @@ export interface MainFacts {
   phone: boolean;
   /** Focus: the frame fills your window, past the bars that tuck away. */
   focus: Box | null;
-  /** The organizer's stage shows every breakout room, so it stays whole. */
+  /** The organizer's stage shows every breakout room: what's open stands beside them, where there's room. */
   rooms: boolean;
   /** Room kept at the top for the status bar while it says anything, and at the bottom for captions. */
   top: number;
@@ -59,9 +67,14 @@ export interface MainPlaced {
   mode: PeopleMode;
   /** Two things are open and there isn't room for both: they take turns, one frame at a time. */
   turns: boolean;
+  /**
+   * Where the organizer's rooms go: the whole stage with nothing open, or beside what's open. Null with no rooms to show, and
+   * where what's open goes over them.
+   */
+  rooms: Box | null;
 }
 
-const NOTHING: MainPlaced = { frames: [], people: null, mode: 'tiles', turns: false };
+const NOTHING: MainPlaced = { frames: [], people: null, mode: 'tiles', turns: false, rooms: null };
 
 /** Two frames in a box: side by side, one over the other, or (no room for either) one at a time. */
 function two(r: Box): { frames: Box[]; turns: boolean } {
@@ -78,23 +91,30 @@ function two(r: Box): { frames: Box[]; turns: boolean } {
 
 /** Where the frames and the people go in the main area. */
 export function placeMain(size: Size, f: MainFacts): MainPlaced {
-  if (f.frames === 0 || f.rooms || size.w <= 0) return NOTHING;
+  if (size.w <= 0) return NOTHING;
+  if (f.frames === 0) return f.rooms ? { ...NOTHING, rooms: { x: 0, y: 0, w: size.w, h: size.h } } : NOTHING;
   const many = (r: Box): Pick<MainPlaced, 'frames' | 'turns'> => (f.frames > 1 ? two(r) : { frames: [r], turns: false });
-  if (f.focus) return { ...many(f.focus), people: null, mode: 'hidden' };
+  if (f.focus) return { ...many(f.focus), people: null, mode: 'hidden', rooms: null };
   const room: Box = { x: 0, y: f.top, w: size.w, h: Math.max(0, size.h - f.top - f.bottom) };
   if (f.phone) {
     // A phone: the faces in a row of arches over one thing at a time.
     const body: Box = { x: 0, y: room.y + ARCH_ROW + 10, w: size.w, h: Math.max(0, room.h - ARCH_ROW - 10) };
-    return { frames: [body, ...(f.frames > 1 ? [body] : [])], turns: f.frames > 1, people: { x: 8, y: room.y + 2, w: size.w - 16, h: ARCH_ROW }, mode: 'arches' };
+    return { frames: [body, ...(f.frames > 1 ? [body] : [])], turns: f.frames > 1, people: { x: 8, y: room.y + 2, w: size.w - 16, h: ARCH_ROW }, mode: 'arches', rooms: null };
   }
-  if (f.people === 'hidden') return { ...many(room), people: null, mode: 'hidden' };
+  if (f.rooms && room.w >= ROOMS_BESIDE) {
+    // The rooms keep the stage, at its right where the people would be, and what's open stands beside them.
+    const w = roomsWidth(room.w);
+    const body: Box = { x: room.x, y: room.y, w: room.w - w - GAP, h: room.h };
+    return { ...many(body), people: null, mode: 'hidden', rooms: { x: room.x + body.w + GAP, y: room.y, w, h: room.h } };
+  }
+  if (f.people === 'hidden') return { ...many(room), people: null, mode: 'hidden', rooms: null };
   if (f.people === 'arches' || room.w < ARCHES_UNDER) {
     const body: Box = { x: room.x, y: room.y + ARCH_ROW + 10, w: room.w, h: Math.max(0, room.h - ARCH_ROW - 10) };
-    return { ...many(body), people: { x: room.x, y: room.y, w: room.w, h: ARCH_ROW }, mode: 'arches' };
+    return { ...many(body), people: { x: room.x, y: room.y, w: room.w, h: ARCH_ROW }, mode: 'arches', rooms: null };
   }
   const col = columnWidth(room.w);
   const body: Box = { x: room.x, y: room.y, w: room.w - col - GAP, h: room.h };
-  return { ...many(body), people: { x: room.x + body.w + GAP, y: room.y, w: col, h: room.h }, mode: 'tiles' };
+  return { ...many(body), people: { x: room.x + body.w + GAP, y: room.y, w: col, h: room.h }, mode: 'tiles', rooms: null };
 }
 
 /** Focus: the room it has in the call's area. The bars have tucked away, so it reaches past it. */

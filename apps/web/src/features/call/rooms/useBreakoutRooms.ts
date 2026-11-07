@@ -75,11 +75,11 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
     toast(`${organizerPerson ? callName(organizerPerson) : 'The organizer'}, to every room: ${message.text}`, { icon: 'send', ms: 8000 });
   }, [messageKey]);
   /**
-   * The organizer oversees the rooms from the main room, unless there's a board to be on: the one every room shares, or the
-   * board of the room they're visiting.
+   * The rooms as the organizer oversees them on their stage. While there's a board the rooms are worked on, the one every room
+   * shares or the board of the room they're visiting, that board takes their place whenever it's on the organizer's stage.
    */
-  const onRoomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
-  const stageRooms: StageRooms | null = open && organizer && !onRoomsBoard ? {
+  const roomsBoard = state.board.open !== null && (myRoom >= 0 || open?.board === 'shared');
+  const roomsView: StageRooms | null = open && organizer ? {
     // Each room's notes: paused while the whole call is, or while the organizer has paused that room.
     rooms: open.rooms.map((r, k) => ({ name: r.name, ids: r.members.filter((id) => byId.has(id)), help: helps[k] ?? null, notes: mode === 'paused' || (on && r.paused) ? 'paused' : on ? 'on' : 'off', board: r.board })),
     main: mainIds, joined: myRoom >= 0 ? myRoom : null, left, boards: roomsOnBoards,
@@ -190,7 +190,7 @@ export function useBreakoutRooms({ session, state, room, roomView, invited, open
   };
 
   return {
-    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, stageRooms, myRoomId,
+    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
     candidates, guestsHere, visit, renameRoom, moveTo, openRooms, landing, cameBack: () => Date.now() - backFromRooms.current < CAME_BACK_MS
   };
 }

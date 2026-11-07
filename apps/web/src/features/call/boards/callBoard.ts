@@ -240,7 +240,10 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const [fresh, setFresh] = useState(false);
   /** A board you can't open is said to be so only once it's been so for a moment (`NO_ACCESS_WAIT_MS`). */
   const [refused, setRefused] = useState(false);
-  /** How many times a board came to you with the rest of your part of the call (rooms opening or closing): it opens on your stage. */
+  /**
+   * How many times a board came to you with the rest of your part of the call (rooms opening or closing, or rooms that share it
+   * opening while you oversee them): it opens on your stage.
+   */
   const [arrived, setArrived] = useState(0);
   /** The call's board was on your stage, as it was before this render: only then is its closing said. */
   const shownNow = useRef(false);
@@ -313,6 +316,12 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
   const frame = open?.frame ?? null;
   const shared = state.breakouts.open?.board === 'shared';
   const roomIds = state.breakouts.open?.rooms.map((r) => r.id).join(' ') ?? '';
+  /*
+   * Rooms that share the board open: whoever oversees them has it come onto their stage, as everyone in a room lands on theirs,
+   * and so it does for the organizer joining again while they're open.
+   */
+  const sharedFrom = state.isOrganizer && shared && open !== null ? state.breakouts.open?.from ?? null : null;
+  useEffect(() => { if (sharedFrom !== null) setArrived((n) => n + 1); }, [sharedFrom]);
   const framed = useRef<{ doc: DocSession | null; frame: string | null; shared: boolean }>({ doc: null, frame: null, shared: false });
   useEffect(() => {
     if (!doc) return undefined;

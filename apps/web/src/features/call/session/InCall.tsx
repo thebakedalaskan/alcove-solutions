@@ -373,7 +373,7 @@ export function InCall({ session }: { session: CallSession }) {
     : viewerGuest ? [] : state.participants.flatMap((p) => (p.isOrganizer || p.person.email ? [p.person] : [])).filter((p, k, all) => all.findIndex((x) => x.id === p.id) === k);
 
   const {
-    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, stageRooms, myRoomId,
+    open, left, roomName, placeName, inARoom, unit, unitKey, activity, organizerPerson, message, roomsOnBoards, roomsView, roomsBoard, myRoomId,
     candidates, guestsHere, visit, renameRoom, moveTo, openRooms, landing, cameBack
   } = useBreakoutRooms({ session, state, room, roomView, invited, openSide: side.open });
 
@@ -499,9 +499,18 @@ export function InCall({ session }: { session: CallSession }) {
     session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])),
     say: (text, icon, action) => { toast(text, { icon, action }); }
   });
-  /* A breakout room's board, and the board the rooms come back to, open on everyone's stage there. */
+  /*
+   * A breakout room's board, and the board the rooms come back to, open on everyone's stage there; the board rooms share opens on
+   * the stage of whoever oversees them.
+   */
   const boardArrived = board.arrived;
   useEffect(() => { if (boardArrived > 0) stageOpen('board'); }, [boardArrived, stageOpen]);
+  /*
+   * Overseeing open rooms, the organizer's stage shows them, and what's open stands beside them (panels.ts). A board the rooms are
+   * worked on takes their place while it's on the organizer's stage: the one every room shares, or the board of the room they're
+   * visiting.
+   */
+  const stageRooms = roomsView && !(roomsBoard && stage.on.includes('board')) ? roomsView : null;
   /* The board in the call, closed (and done sinking), leaves your stage. */
   const boardGone = state.board.open === null && !board.sinking && stage.on.includes('board');
   useEffect(() => { if (boardGone) stageClose('board'); }, [boardGone, stageClose]);
@@ -1119,8 +1128,6 @@ export function InCall({ session }: { session: CallSession }) {
       </>
     ) : null;
 
-  /* While rooms are open, everyone but the organizer sees only their own room (or the main room). */
-  const onStage = unit && !organizer ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
   const roomsHere = organizer && (others.length > 0 || !!open);
   /* Breakout rooms in your side go with the last person who could be sent to one. */
   const roomsGone = !roomsHere && side.view === 'rooms';
@@ -1155,12 +1162,15 @@ export function InCall({ session }: { session: CallSession }) {
   const clearW = sideOver && side.view !== null && !focusOn ? Math.max(0, mainW - (sideW + GAP)) : mainW;
   const top = bar ? 46 : 0;
   const bottom = capNode ? (mainW < 700 ? 150 : 124) : 0;
-  // Overseeing rooms, the organizer sees the rooms: what's open waits behind them, as it is.
-  const shownThings = callOver || stageRooms ? [] : stage.on;
+  const shownThings = callOver ? [] : stage.on;
   /** Two on your stage with no room for both take turns: the one you brought to the front. */
   const [front, setFront] = useState<ThingId | null>(null);
   const focusBox = focusOn ? focusRoom(size, horizon) : null;
   const placed = placeMain({ w: mainW, h: size.h }, { frames: shownThings.length, people: panels.people, phone, focus: focusBox, rooms: !!stageRooms, top, bottom });
+  /** The organizer's rooms are in sight: on the whole stage, or beside what's open, rather than under it. */
+  const roomsShown = placed.rooms !== null;
+  /* While rooms are open, you see the people in your own room (or the main room), and the organizer overseeing them sees every room. */
+  const onStage = unit && !roomsShown ? stagePeople.filter((p) => unit.includes(p.id)) : stagePeople;
   const frontId = placed.turns ? (front && shownThings.includes(front) ? front : shownThings[0] ?? null) : null;
   const boxOf = (id: ThingId): Box | null => {
     const i = shownThings.indexOf(id);
@@ -1181,10 +1191,10 @@ export function InCall({ session }: { session: CallSession }) {
   });
   // Who has a place however little room there is, as Speaker view counts talking: if every word did, the few places would keep changing hands.
   const loudKey = placed.frames.length ? onStage.filter((p) => p.hand || p.id === staged.speaker).map((p) => p.id).join(' ') : '';
-  const placedKey = JSON.stringify([placed.people, placed.mode, placed.frames.length]);
+  const placedKey = JSON.stringify([placed.people, placed.mode, placed.frames.length, placed.rooms]);
   const frame = useMemo((): StageFrame => ({
-    box: { x: 0, y: 0, w: mainW, h: size.h }, top, bottom,
-    panels: placed.frames.length ? { people: placed.people, mode: placed.mode, horizon, loud: new Set(loudKey.split(' ')), small: phone } : null
+    box: placed.rooms ?? { x: 0, y: 0, w: mainW, h: size.h }, top, bottom,
+    panels: placed.frames.length && !roomsShown ? { people: placed.people, mode: placed.mode, horizon, loud: new Set(loudKey.split(' ')), small: phone } : null
   }), [mainW, size.h, top, bottom, placedKey, horizon, loudKey, phone]);
   /** The workspace is on your stage and in sight: what's clear starts at its left, so its list has the bottom left of it. */
   const wsInSight = boxOf('ws') !== null;
@@ -1417,7 +1427,8 @@ export function InCall({ session }: { session: CallSession }) {
   /* ---------- what's on your stage, each in its frame (frame.tsx) ---------- */
   /** Everyone else in your part of the call follows what you present. */
   const followers = Math.max(0, onStage.length - 1);
-  const focusFor = phone ? null : { on: focusOn, onToggle: toggleFocus };
+  // Focus is on offer only where it can fill your window: not on a phone, nor while the rooms hold the stage beside it.
+  const focusFor = focusOffered ? { on: focusOn, onToggle: toggleFocus } : null;
   const askFor = (id: ThingId) => ({ open: asking === id, onOpenChange: (o: boolean) => setAsking(o ? id : null), onMe: () => closeFor(id, false), onEveryone: () => closeFor(id, true), phone });
   const byOf = (p: Presented | null) => (p ? { person: p.by, first: p.first, mine: p.mine } : null);
   /** Another presented thing to put beside what's on your stage, while it holds one. */
@@ -1535,7 +1546,7 @@ export function InCall({ session }: { session: CallSession }) {
     </>
   );
   /* What's presented and isn't on your stage: a tile with the people, which takes you back to it. */
-  const presentedTiles: StagePresented[] = callOver || stageRooms ? [] : stage.tiles.map((t) => {
+  const presentedTiles: StagePresented[] = callOver || roomsShown ? [] : stage.tiles.map((t) => {
     const s = isScreen(t.id) ? shares.find((x) => screenOf(x.id) === t.id) : undefined;
     return {
       id: t.id, name: t.name, icon: isScreen(t.id) ? 'screen' : t.id === 'ws' ? 'folderOpen' : 'presentation', sub: t.mine ? 'You’re presenting' : `${t.first} is presenting`,
@@ -1625,7 +1636,7 @@ export function InCall({ session }: { session: CallSession }) {
           tiles={(
             <>
               <Stage staged={staged} frame={frame} live={false} phone={phone} people={onStage} waiting={waiting} presented={presentedTiles} spotlight={spotlight} view={layout} organizer={hosting}
-                together={together} bar={bar} caption={capNode} rooms={stageRooms} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
+                together={together} bar={bar} caption={capNode} rooms={roomsShown ? stageRooms : null} onSpotlight={setSpot} onPin={setPin} onSelf={setSelf} onCustom={onCustom} volumes={volumes}
                 onPeopleMode={setPeopleMode} onMorePeople={() => openSide('people')} board={stageBoard} />
               <motion.div className="ic-frame" initial={false} animate={{ left: 0, top: 0, width: clearW, height: size.h }} transition={reduce ? { duration: 0 } : GLIDE}>
                 {hosting && side.view !== 'people' && state.waiting.length > 0 && (

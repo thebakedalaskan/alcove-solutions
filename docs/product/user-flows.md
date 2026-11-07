@@ -593,8 +593,11 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      the call lights their tile for a moment. Tagged while the workspace isn't open, you get the same toast, a little later:
      **Go there** opens it on the line. Putting the workspace away, or opening something else on your stage, stops
      following, and for everyone else you've left it.
-   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace, like anything else open
-     there, waits behind them as it was until the rooms close. Focus isn't on offer until then.
+   - **While breakout rooms are open** the organizer's stage shows the rooms, and the workspace stands beside them, as
+     anything else open there does, the rooms where the people would be; Workspace, **W**, Find and the notes' **Open**
+     all open it there, and so does **Open the workspace** for someone in the main room asking to see it. On a phone, or a
+     window too narrow for both, the workspace goes over the rooms until it's closed. Focus isn't on offer until the rooms
+     close.
    - **An organizer taken out of the workspace** everyone's viewing is told so, and **New workspace** has everyone view one
      of their own. Everyone else carries on.
 2. **Only the organizer switches what everyone views**, from the name at the top of the list, or **Switch workspace** in the
@@ -863,7 +866,8 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
    "The rooms' boards didn't come back: this call's home can't take a new board any more. Each one is still saved there."
    Afterwards a room's board is a saved board like any other, everyone invited's, and nothing to a teammate who wasn't invited.
    **Present** then makes each room's frame a slide: the room reports back, and the organizer moves on.
-6. **One board for every room.** With Shared, the organizer stays on the board and can watch every frame fill up; when the one
+6. **One board for every room.** With Shared, the board comes onto the organizer's stage as the rooms open, and they watch
+   every frame fill up (closed just for them, the rooms take its place until they open it again); when the one
    open can't take the rooms' frames (whoever brought it can't edit it now), the rooms share a new one in its place: "The rooms
    share a new board. The one that was open can't take their frames." In a room you land on your room's frame, hear your room
    only, and the pill says **Everyone can see this board** with the room's time; in the main room it says how many rooms are

@@ -5,7 +5,7 @@
  * puts them and glide there. Your own view (view.ts): drag tiles into another order, make one bigger from its corner, pin
  * people, and see yourself in the grid, in a corner or not at all. Every tile can be focused, then pinned, moved and sized
  * from the keyboard (its ⋯ menu says how). All of that changes your view only. With rooms open, the organizer's stage shows
- * every room; everyone else's shows the people in their own room.
+ * every room, beside what's open on it; everyone else's shows the people in their own room.
  *
  * Beside what's open on your stage, the people sit as View says: as a column of tiles, as arches, or small on the horizon
  * beside the dock, where whoever's talking or has a hand up rises. A small toolbar over them folds them to arches, or hides
@@ -399,7 +399,14 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, pre
     'aria-keyshortcuts': 'Enter P Shift+ArrowLeft Shift+ArrowRight', onKeyDown: keysFor(k), onFocus: (e: ReactFocusEvent) => { if (e.target === e.currentTarget) setFocusKey(k); }
   });
 
-  if (rooms) return <div ref={ref} className="ic-stage"><div className="ic-frame is-rooms" style={{ left: fx, top: fy, width: w, height: h }}><RoomsStage people={people} rooms={rooms} w={w} h={h} reduce={!!reduce} /></div></div>;
+  // The rooms hold the whole stage, or stand beside what's open on it, and glide between the two.
+  if (rooms) return (
+    <div ref={ref} className="ic-stage">
+      <motion.div className="ic-frame is-rooms" initial={false} animate={{ left: fx, top: fy, width: w, height: h }} transition={reduce ? { duration: 0 } : GLIDE}>
+        <RoomsStage people={people} rooms={rooms} w={w} h={h} reduce={!!reduce} />
+      </motion.div>
+    </div>
+  );
 
   const name = (p: StageParticipant) => (p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person));
   const menuFor = (p: StageParticipant, corner: boolean): PersonMenu => {

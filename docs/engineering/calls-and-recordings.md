@@ -1805,8 +1805,12 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   (the workspace keeping your place, caret and undo). Show beside is the one exception: it puts a second presented thing
   beside the first, side by side where there's 900 px across for them, else one over the other where there's 620 px down,
   else taking turns, with a switcher in the top bar (under the arches on a phone). Nothing between them is dragged. The
-  organizer's stage shows every breakout room while they're open, unless there's a board to be on (the one every room
-  shares, or the board of the room they're visiting); what's open waits behind the rooms, as it was.
+  organizer's stage shows every breakout room while they're open (`StageRooms`), and what's open stands beside them, the rooms
+  in place of the people, a little over a third of the stage (340 to 560 px). On a phone, and on a stage under 880 px, what's
+  open goes over the rooms until it's closed, with whoever's in the organizer's part of the call in arches over it, as anyone
+  else's are. A board the rooms are worked on takes the rooms' place while it's on the organizer's stage: the one every room
+  shares, which comes onto it as those rooms open (`useCallBoard`'s `arrived`, and again on joining while they're open), or
+  the board of the room they're visiting. Focus isn't on offer while the rooms hold the stage.
 - **The frame** (`frame.tsx`, drawing `CallFrame` from the kit) is one for a screen, a board or the workspace, with one bar;
   it rises into its place as it opens, and glides as the room round it changes (`FrameBox`). On the left, the presenter's
   face (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line: Open just for
