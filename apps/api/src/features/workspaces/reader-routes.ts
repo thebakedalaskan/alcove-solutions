@@ -1,4 +1,4 @@
-import { DocAwarenessBodySchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema, PresenterNotesBodySchema } from '@alcove/api';
+import { DocAwarenessBodySchema, ItemRenameSchema, MediaInputSchema, MAX_DOC_AWARENESS_BYTES, MAX_DOC_BYTES, MAX_DOC_UPDATE_BYTES, MentionBodySchema, PersonIdsBodySchema, PresenceBodySchema, MAX_MEDIA_PREVIEW_BYTES, DocAskBodySchema, BoardSortBodySchema, PresenterFrameNoteBodySchema } from '@alcove/api';
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { bodyLimit } from 'hono/body-limit';
@@ -141,19 +141,7 @@ export function registerWorkspaceReaderRoutes(app: Hono<Env>, runtime: HttpRunti
     return c.json({ restored: true });
   });
 
-  /* What someone keeps beside a document for presenting it, under their own account. */
-  app.use('/v1/workspaces/:id/documents/:doc/presenter-notes', capped(128 * 1024));
-
-  app.get('/v1/workspaces/:id/documents/:doc/presenter-notes', async (c) => c.json(await presenterNotes.read(d, await readerOf(c), c.req.param('id'), c.req.param('doc'))));
-
-  app.post('/v1/workspaces/:id/documents/:doc/presenter-notes', async (c) => {
-    const r = await readerOf(c);
-    presenterLimiter(access.limitKey(r), 'presenter notes');
-    await presenterNotes.write(d, r, c.req.param('id'), c.req.param('doc'), (await body(c, PresenterNotesBodySchema)).text);
-    return c.json({ kept: true });
-  });
-
-  /* And beside each frame of a board, by frame: the frame goes in the body, never the path. */
+  /* What someone keeps beside each frame of a board for presenting it, under their own account: the frame goes in the body, never the path. */
   app.use('/v1/workspaces/:id/documents/:doc/presenter-notes/frames', capped(32 * 1024));
 
   app.get('/v1/workspaces/:id/documents/:doc/presenter-notes/frames', async (c) => c.json(await presenterNotes.readFrames(d, await readerOf(c), c.req.param('id'), c.req.param('doc'))));

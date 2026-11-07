@@ -248,16 +248,6 @@ export interface DocVersion extends DocVersionSummary { update: Uint8Array }
 
 /* ---------- presenter notes ---------- */
 
-/** The longest someone's own notes on a document can be. */
-export const MAX_PRESENTER_NOTES = 20_000;
-
-/** What you keep beside a document for presenting it, for your eyes only. Empty when you have none. */
-export const PresenterNotesSchema = z.object({ text: z.string() });
-
-export type PresenterNotes = z.infer<typeof PresenterNotesSchema>;
-
-export const PresenterNotesBodySchema = z.object({ text: z.string().max(MAX_PRESENTER_NOTES) });
-
 /** The longest someone's own notes on one frame of a board can be. */
 export const MAX_FRAME_NOTES = 4_000;
 

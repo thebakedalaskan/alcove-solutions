@@ -13,7 +13,7 @@ import pg from 'pg';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { z } from 'zod';
-import { id128, openJson, sealJson, sealRecord, stateKey, toJson, utf8 } from '../../crypto';
+import { id128, openJson, sealJson, stateKey, toJson } from '../../crypto';
 import { tx } from '../../db';
 import { NotFoundError } from '../../errors';
 import { DocFailure } from '../../live/docPool';
@@ -571,7 +571,6 @@ describe('someone who can’t open it', () => {
     for (const [workspaceId, documentId] of [[id, plan], [id, film], [id, nothing]] as const) {
       expect(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId, documentId, block: 'first', done: true }))).toEqual(await refusal(jamie.call.tickDocumentFollowUp({ workspaceId: nothing, documentId: nothing, block: 'first', done: true })));
     }
-    expect(await code(jamie.api.workspaces.presenterNotes.get(id, plan, pass))).toBe('not-found');
     expect(await code(collect(jamie.api.workspaces.ask(id, plan, { action: 'shorter', text: 'Words' }, pass)))).toBe('not-found');
     const stream = jamie.api.workspaces.live(id, pass);
     await until(() => stream.getSnapshot().status === 'closed', 'their stream to be refused');
@@ -1424,58 +1423,17 @@ describe('presenting the workspace', () => {
 });
 
 describe('presenter notes', () => {
-  it('are yours alone, by document, for anyone with an account who can open it, and sealed', async () => {
-    const art = await account();
-    const priya = await account();
-    const id = await workspace(art, 'Product', [[priya, 'edit']]);
-    const plan = await doc(art, id, 'Plan');
-    const other = await workspace(priya, 'Hers');
-    const hers = await doc(priya, other, 'Hers');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: '' });
-    await art.api.workspaces.presenterNotes.set(id, plan, 'CANARY-PRESENTER thank Aiko');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: 'CANARY-PRESENTER thank Aiko' });
-    // Someone else who can open it has their own.
-    expect(await priya.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: '' });
-    await priya.api.workspaces.presenterNotes.set(id, plan, 'Priya’s');
-    expect(await art.api.workspaces.presenterNotes.get(id, plan)).toEqual({ text: 'CANARY-PRESENTER thank Aiko' });
-    // A document they can't open, or that's in another workspace, reads as nothing there.
-    expect(await refusal(art.api.workspaces.presenterNotes.get(other, hers))).toEqual(await refusal(art.api.workspaces.presenterNotes.get(madeUp(), hers)));
-    expect(await code(art.api.workspaces.presenterNotes.set(other, hers, 'No'))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.get(id, hers))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.set(id, plan, 'x'.repeat(20_001)))).toBe('invalid');
-    // Someone in a call with no account has nowhere to keep them, even with the document open.
-    const { host, code: c } = await callBy(art);
-    await host.setWorkspace(id);
-    const jamie = await guest(host, c);
-    await jamie.call.askForWorkspace(true);
-    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
-    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'edit');
-    expect(await code(jamie.api.workspaces.presenterNotes.get(id, plan, { pass: jamie.call.ticket.pass }))).toBe('forbidden');
-    expect(await code(jamie.api.workspaces.presenterNotes.set(id, plan, 'Mine', { pass: jamie.call.ticket.pass }))).toBe('forbidden');
-    // Losing the document loses the way to them, and the record can't be moved to another place.
-    const lost = await workspace(art, 'Lost', [[priya, 'edit']]);
-    const lostDoc = await doc(art, lost, 'Lost');
-    await priya.api.workspaces.presenterNotes.set(lost, lostDoc, 'Mine');
-    await art.api.workspaces.share.restrict(lost, lostDoc, true);
-    expect(await code(priya.api.workspaces.presenterNotes.get(lost, lostDoc))).toBe('not-found');
-    const row = (await h.pool.query<{ body_ciphertext: Buffer }>('SELECT body_ciphertext FROM presenter_notes WHERE owner_id = $1 AND document_id = $2', [art.ownerId, plan])).rows[0];
-    expect(row?.body_ciphertext.includes(Buffer.from('CANARY-PRESENTER'))).toBe(false);
-    await h.pool.query('UPDATE presenter_notes SET body_ciphertext = $3 WHERE owner_id = $1 AND document_id = $2', [priya.ownerId, plan, row?.body_ciphertext]);
-    expect(await code(priya.api.workspaces.presenterNotes.get(id, plan))).toBe('key-unavailable');
-    // Empty text leaves nothing.
-    await art.api.workspaces.presenterNotes.set(id, plan, '');
-    expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE owner_id = $1 AND document_id = $2', [art.ownerId, plan])).toBe(0);
-  });
-
-  it('go with the document, the workspace or the account, leaving no rows', async () => {
+  it('kept beside a whole document or board by an earlier release go with the document, the workspace or the account, leaving no rows', async () => {
     const art = await account();
     const priya = await account();
     const id = await workspace(art, 'Product', [[priya, 'edit']]);
     const one = await doc(art, id, 'One');
     const two = await doc(art, id, 'Two');
+    // Art's and Priya's on each, as an earlier release kept them: nothing reads or writes them now, and nothing here opens them.
     for (const d of [one, two]) {
-      await art.api.workspaces.presenterNotes.set(id, d, 'Art’s');
-      await priya.api.workspaces.presenterNotes.set(id, d, 'Priya’s');
+      for (const who of [art, priya]) {
+        await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) SELECT $1, owner_id, $2, $3 FROM workspaces WHERE workspace_id = $4', [who.ownerId, d, Buffer.from('sealed'), id]);
+      }
     }
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE document_id = ANY($1::text[])', [[one, two]])).toBe(4);
     await art.api.workspaces.items.trash(id, one);
@@ -1489,7 +1447,7 @@ describe('presenter notes', () => {
     expect(await count('SELECT count(*)::int AS n FROM presenter_notes WHERE owner_id = $1', [art.ownerId])).toBe(0);
   });
 
-  it('on a board are by frame: each frame its own, yours alone, sealed with the frame they’re for, and what was kept for the whole board still opens', async () => {
+  it('on a board are by frame: each frame its own, yours alone, and sealed with the frame they’re for', async () => {
     const art = await account();
     const priya = await account();
     const lena = await account();
@@ -1497,12 +1455,6 @@ describe('presenter notes', () => {
     const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Launch retro' })).id;
     const plan = await doc(art, id, 'Plan');
     const well = 'wentWell0001', fix = 'couldImprove';
-    // What the release before kept for the whole board, the only way it could, sealed as it sealed it.
-    const o = await openOwner(h.deps, art.ownerId, undefined);
-    const space = z.object({ owner_id: z.string() }).parse((await h.pool.query('SELECT owner_id FROM workspaces WHERE workspace_id = $1', [id])).rows[0]);
-    const before = sealRecord(stateKey(o.root, art.ownerId, `presenter-notes:${board}`), { v: 1, kind: 'presenter-notes', ownerId: art.ownerId, workspaceId: id, documentId: board }, utf8('The whole board, kept before'));
-    await h.pool.query('INSERT INTO presenter_notes (owner_id, workspace_owner_id, document_id, body_ciphertext) VALUES ($1, $2, $3, $4)', [art.ownerId, space.owner_id, board, before]);
-    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
     expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
 
     // Each frame its own, and changing one leaves the rest.
@@ -1511,8 +1463,6 @@ describe('presenter notes', () => {
     expect(await art.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: { [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya to take the changelog point.' } });
     await art.api.workspaces.presenterNotes.setFrame(id, board, fix, 'Ask Priya first.');
     expect((await art.api.workspaces.presenterNotes.frames(id, board)).frames).toEqual({ [well]: 'CANARY-FRAMENOTE thank Maya’s team for launch day', [fix]: 'Ask Priya first.' });
-    // What was kept for the whole board is as it was.
-    expect(await art.api.workspaces.presenterNotes.get(id, board)).toEqual({ text: 'The whole board, kept before' });
 
     // Yours alone: Priya can open the board and has her own, none of Art's, and hers change nothing of his.
     expect(await priya.api.workspaces.presenterNotes.frames(id, board)).toEqual({ frames: {} });
@@ -2374,6 +2324,7 @@ describe('every ID from a request', () => {
     const plan = await doc(art, mine, 'Plan');
     const hers = await workspace(lena, 'Hers');
     const herDoc = await doc(lena, hers, 'Hers');
+    const herBoard = (await lena.api.workspaces.items.create(hers, { kind: 'board', name: 'Hers' })).id;
     const herVideo = madeUp();
     const hv = await open(lena, hers, herDoc);
     addVideo(hv, 'v', herVideo);
@@ -2396,8 +2347,8 @@ describe('every ID from a request', () => {
       expect(`${path} → ${res.status}`).toMatch(/→ 40[14]$/);
     }
     // A workspace's routes with a document of another workspace.
-    expect(await code(art.api.workspaces.presenterNotes.get(mine, herDoc))).toBe('not-found');
-    expect(await code(art.api.workspaces.presenterNotes.set(mine, herDoc, 'No'))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.frames(mine, herBoard))).toBe('not-found');
+    expect(await code(art.api.workspaces.presenterNotes.setFrame(mine, herBoard, 'wentWell0001', 'No'))).toBe('not-found');
     expect(await code(collect(art.api.workspaces.ask(mine, herDoc, { action: 'shorter', text: 'No' })))).toBe('not-found');
     expect(await code(host.tickDocumentFollowUp({ workspaceId: hers, documentId: herDoc, block: 'v', done: true }))).toBe('not-found');
     // What's in a request that isn't an ID is refused before it reaches anything.
@@ -2433,8 +2384,6 @@ describe('what’s kept', () => {
     const worker = await account('canary-worker@canary.example');
     const id = await workspace(art, 'CANARY-CALLSPACE', [[worker, 'edit']]);
     const agenda = await doc(art, id, 'Agenda CANARY-AGENDANAME');
-    await art.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-PRESENTERNOTE thank the pilot team');
-    await worker.api.workspaces.presenterNotes.set(id, agenda, 'CANARY-THEIRNOTE mention the 20th');
     const retro = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Retro' })).id;
     await art.api.workspaces.presenterNotes.setFrame(id, retro, 'canaryFrame1', 'CANARY-FRAMENOTE thank the support team');
     const at = Date.now() + 3_600_000;
@@ -2469,9 +2418,8 @@ describe('what’s kept', () => {
     await nextCall.leave();
     await until(async () => (await art.api.workspaces.versions(id, agenda)).some((v) => v.reason === 'call'), 'the version');
 
-    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-PRESENTERNOTE', 'CANARY-THEIRNOTE', 'CANARY-FRAMENOTE', 'canaryFrame1', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
+    const canaries = ['CANARY-CALLSPACE', 'CANARY-AGENDANAME', 'CANARY-FRAMENOTE', 'canaryFrame1', 'CANARY-CALLTITLE', 'CANARY-OPENTODO', 'CANARY-MENTION', 'canary-mention', 'CANARY-GUESTNAME', 'CANARY-ASKEDSELECTION', 'canary-worker', 'Canary Worker', 'From last time', media];
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
-    expect(tables).toContain('presenter_notes');
     expect(tables).toContain('presenter_frame_notes');
     const dump = await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (${tables.map((t) => `SELECT row_to_json(x)::text AS t FROM ${t} x`).join(' UNION ALL ')}) q`);
     const rowsText = `${String(dump.rows[0]?.all ?? '')} ${live}`;

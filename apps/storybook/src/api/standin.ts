@@ -604,8 +604,6 @@ export const standIn: AlcoveApi = {
     }),
     get: (id: ID) => answer(() => spaces.treeFor(id)),
     presenterNotes: {
-      get: (_id: ID, documentId: ID) => answer(() => ({ text: spaces.presenterNotes(documentId) })),
-      set: (_id: ID, documentId: ID, text: string) => answer(() => { spaces.keepPresenterNotes(documentId, text); }),
       frames: (_id: ID, boardId: ID) => answer(() => ({ frames: spaces.presenterFrameNotes(boardId) })),
       setFrame: (_id: ID, boardId: ID, frame: string, text: string) => answer(() => { spaces.keepFrameNotes(boardId, frame, text); })
     },

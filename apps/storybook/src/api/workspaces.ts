@@ -539,21 +539,11 @@ export function forgetDocuments(): void {
   presence.clear();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();
-  notes.clear();
   frameNotes.clear();
 }
 
-/**
- * What you keep beside each document for presenting it, and beside each frame of a board, as your account would, for as long
- * as the story lasts.
- */
-const notes = new Map<string, string>();
+/** What you keep beside each frame of a board for presenting it, as your account would, for as long as the story lasts. */
 const frameNotes = new Map<string, Map<string, string>>();
-export const presenterNotes = (documentId: string): string => notes.get(documentId) ?? '';
-export function keepPresenterNotes(documentId: string, text: string): void {
-  if (text) notes.set(documentId, text);
-  else notes.delete(documentId);
-}
 export const presenterFrameNotes = (boardId: string): Record<string, string> => Object.fromEntries(frameNotes.get(boardId) ?? []);
 export function keepFrameNotes(boardId: string, frame: string, text: string): void {
   const kept = frameNotes.get(boardId) ?? new Map<string, string>();

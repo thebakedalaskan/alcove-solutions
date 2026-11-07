@@ -516,8 +516,7 @@ describe('what a guest’s pass reaches', () => {
       'GET /v1/workspaces/:id', 'GET /v1/workspaces/:id/live', 'GET /v1/workspaces/:id/items/:item', 'PATCH /v1/workspaces/:id/items/:item', 'POST /v1/workspaces/:id/items/:item/restore', 'POST /v1/workspaces/:id/presence', 'GET /v1/workspaces/:id/search',
       'GET /v1/workspaces/:id/documents/:doc/live', 'POST /v1/workspaces/:id/documents/:doc/updates', 'POST /v1/workspaces/:id/documents/:doc/awareness', 'GET /v1/workspaces/:id/documents/:doc/versions',
       'GET /v1/workspaces/:id/documents/:doc/versions/:version', 'POST /v1/workspaces/:id/documents/:doc/versions/:version/restore',
-      'GET /v1/workspaces/:id/documents/:doc/presenter-notes', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes', 'GET /v1/workspaces/:id/documents/:doc/presenter-notes/frames',
-      'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/ask',
+      'GET /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames', 'POST /v1/workspaces/:id/documents/:doc/ask',
       'POST /v1/workspaces/:id/documents/:doc/sort',
       'GET /v1/workspaces/:id/media', 'POST /v1/workspaces/:id/documents/:doc/media', 'GET /v1/workspaces/:id/documents/:doc/media/:media/token', 'POST /v1/workspaces/:id/documents/:doc/media/:media/pieces/:seq',
       'POST /v1/workspaces/:id/documents/:doc/media/:media/finish', 'POST /v1/workspaces/:id/documents/:doc/media/:media/attach', 'DELETE /v1/workspaces/:id/documents/:doc/media/:media',
@@ -560,7 +559,7 @@ describe('what a guest’s pass reaches', () => {
     const presence = { connection: 'x'.repeat(22), document: null, block: null, typing: false, page: null };
     const asking: Record<string, unknown> = {
       'POST /v1/workspaces/:id/presence': presence, 'POST /v1/workspaces/:id/documents/:doc/updates': { update }, 'POST /v1/workspaces/:id/documents/:doc/awareness': { update: 'AA' },
-      'POST /v1/workspaces/:id/documents/:doc/presenter-notes': { text: 'Mine' }, 'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames': { frame: 'x'.repeat(12), text: 'Mine' },
+      'POST /v1/workspaces/:id/documents/:doc/presenter-notes/frames': { frame: 'x'.repeat(12), text: 'Mine' },
       'POST /v1/workspaces/:id/documents/:doc/ask': { action: 'shorter', text: 'Words' },
       'POST /v1/workspaces/:id/documents/:doc/sort': { stickies: [{ id: 'a', text: 'Ship on Monday' }, { id: 'b', text: 'Tell support' }] },
       'POST /v1/workspaces/:id/documents/:doc/mentions': { to: { email: 'someone@example.com' }, block: null },

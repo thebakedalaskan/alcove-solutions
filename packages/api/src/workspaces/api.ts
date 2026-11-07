@@ -1,5 +1,5 @@
 import { type ID } from '../shared/ids';
-import { type BoardSortBody, type BoardThemes, type DocAskBody, type DocAskPart, type DocSession, type DocSessionOptions, type DocVersion, type DocVersionSummary, type PresenterFrameNotes, type PresenterNotes, type SearchDoc } from './documents';
+import { type BoardSortBody, type BoardThemes, type DocAskBody, type DocAskPart, type DocSession, type DocSessionOptions, type DocVersion, type DocVersionSummary, type PresenterFrameNotes, type SearchDoc } from './documents';
 import { type DocumentLibrary } from './library';
 import { type MediaPictureOptions, type MediaUploadOptions, type WorkspaceMedia } from './media';
 import { type DocumentRole, type DocumentShare, type ItemInput, type ItemPlace, type MentionBody, type MentionNotice, type ShareTarget, type WorkspaceItem, type WorkspaceLive, type WorkspacePerson, type WorkspaceReadOptions, type WorkspaceRole, type WorkspaceSummary, type WorkspaceTree } from './schema';
@@ -148,12 +148,9 @@ export interface WorkspacesApi {
   restoreVersion(id: ID, documentId: ID, versionId: ID, opts?: WorkspaceReadOptions): Promise<void>;
   /** Every document you can open here as blocks of words, for searching in this browser: nothing you type in a search reaches Alcove. */
   searchText(id: ID, opts?: WorkspaceReadOptions): AsyncIterable<SearchDoc>;
-  /** What you keep beside a document for presenting it: yours alone, under your own account, whoever else can open it. */
+  /** What you keep beside each frame of a board for presenting it: yours alone, under your own account, whoever else can open it. */
   presenterNotes: {
-    get(id: ID, documentId: ID, opts?: WorkspaceReadOptions): Promise<PresenterNotes>;
-    /** Empty text deletes them. */
-    set(id: ID, documentId: ID, text: string, opts?: WorkspaceReadOptions): Promise<void>;
-    /** What you keep beside each frame of a board, by frame: yours alone, as your notes on a document are. */
+    /** Yours beside each of a board's frames, by frame. */
     frames(id: ID, boardId: ID, opts?: WorkspaceReadOptions): Promise<PresenterFrameNotes>;
     /** One frame's. Empty text deletes them. */
     setFrame(id: ID, boardId: ID, frame: string, text: string, opts?: WorkspaceReadOptions): Promise<void>;

@@ -2161,9 +2161,7 @@ describe('presenting a board', () => {
   it('keeps everything of the presenter’s but the frame to them: their notes beside it reach nobody, and nothing of them is in the call or on the board', async () => {
     const r = await retroOpen();
     const from = h.logs.length;
-    const notes = 'CANARY-BOARD-NOTES thank the support team first';
-    await r.art.api.workspaces.presenterNotes.set(r.id, r.board, notes, { pass: r.host.ticket.pass });
-    // And beside each frame, as the presenter's view keeps them: the frames are the board's own.
+    // Their notes beside each frame, kept as the presenter's view keeps them: the frames are the board's own.
     const page0 = await pageOf(r.art, r.id, r.board, r.host);
     const [well, improve] = readBoard(page0.doc).frames.map((f) => f.id);
     page0.close();
@@ -2175,13 +2173,9 @@ describe('presenting a board', () => {
     for (const call of [r.p, r.t, r.jamie.call]) {
       const s = await read(call);
       expect(s.workspace.present).toEqual({ key: expect.any(String), kind: 'board', id: r.board, name: 'Launch retro', section: 1, by: { seat: expect.any(String), name: r.art.name }, mine: false, canControl: false });
-      expect(said(s)).not.toContain('CANARY-BOARD-NOTES');
       expect(said(s)).not.toContain('CANARY-FRAME-NOTES');
     }
     // Their own notes beside it are their own: empty until they write some, and none at all for someone with the link.
-    expect(await r.priya.api.workspaces.presenterNotes.get(r.id, r.board, { pass: r.p.ticket.pass })).toEqual({ text: '' });
-    expect(await r.theo.api.workspaces.presenterNotes.get(r.id, r.board, { pass: r.t.ticket.pass })).toEqual({ text: '' });
-    expect(await code(r.jamie.api.workspaces.presenterNotes.get(r.id, r.board, { pass: r.jamie.call.ticket.pass }))).toBe('forbidden');
     expect(await r.priya.api.workspaces.presenterNotes.frames(r.id, r.board, { pass: r.p.ticket.pass })).toEqual({ frames: {} });
     expect(await r.theo.api.workspaces.presenterNotes.frames(r.id, r.board, { pass: r.t.ticket.pass })).toEqual({ frames: {} });
     expect(await code(r.jamie.api.workspaces.presenterNotes.frames(r.id, r.board, { pass: r.jamie.call.ticket.pass }))).toBe('forbidden');
@@ -2189,10 +2183,8 @@ describe('presenting a board', () => {
     const page = await pageOf(r.priya, r.id, r.board, r.p);
     expect(boardText(page.doc)).not.toContain('CANARY');
     page.close();
-    expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-BOARD-NOTES');
     expect(h.logs.slice(from).join('\n')).not.toContain('CANARY-FRAME-NOTES');
     // And they're the presenter's, as they left them.
-    expect(await r.art.api.workspaces.presenterNotes.get(r.id, r.board, { pass: r.host.ticket.pass })).toEqual({ text: notes });
     expect(await r.art.api.workspaces.presenterNotes.frames(r.id, r.board, { pass: r.host.ticket.pass })).toEqual({ frames: frameNotes });
   });
 
