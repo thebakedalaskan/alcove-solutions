@@ -24,8 +24,8 @@ import { log, type LogContext } from '../../log';
 import { findItem } from '../../vault';
 import { profile } from '../account/account';
 import type { Viewer } from './participants';
-import { withBoardClosed, type BoardLetIn, type BoardVote, type CallBoards, type CallSpace, type Controller, type Landing, type OpenBoard, type RoomBoard } from './space-state';
-import { boardPresentedOver, controllerOf } from './workspace';
+import { type BoardLetIn, type BoardVote, type CallBoards, type CallSpace, type Controller, type Landing, type OpenBoard, type RoomBoard } from './space-state';
+import { boardClosed, boardPresentedOver, controllerOf, ending } from './workspace';
 import { MeetingManifest } from '../meetings/service';
 import { boardPlace, type Placing } from './places';
 import {
@@ -326,7 +326,7 @@ export interface Changing<S extends Boarded> {
 export interface Changed<S> {
   s: S;
   ended: string[];
-  done: { what: 'board opened'; workspaceId: string; documentId: string; made: boolean; letIn: boolean; invited: number; here: number } | { what: 'board closed'; workspaceId: string; documentId: string };
+  done: { what: 'board opened'; workspaceId: string; documentId: string; made: boolean; letIn: boolean; invited: number; here: number } | { what: 'board closed'; workspaceId: string; documentId: string; presented: number };
 }
 /**
  * The change to what the call keeps, under its row, from the call as it is then. It never needs asking again: a board made and a
@@ -744,7 +744,9 @@ async function prepareSaved<S extends Boarded>(x: Changing<S>, workspaceId: stri
 
 /**
  * Whoever opened it, or the organizer. It closes for everyone there, and that's all: seats stay until the call ends, because
- * people may open it again. In a room on a board every room shares, that's the main room's board.
+ * people may open it again. In a room on a board every room shares, that's the main room's board. Nobody but the organizer closes
+ * it while someone else presents it, as nobody opens a board over theirs (`stageFree`); presented, its presentation ends for
+ * everyone too, said at once (`boardClosed`).
  */
 function closing<S extends Boarded>(y: Changing<S>): Changed<S> {
   const { v, s, callId } = y;
@@ -752,7 +754,10 @@ function closing<S extends Boarded>(y: Changing<S>): Changed<S> {
   const open = s.board.open[place];
   if (!open) throw new ConflictError('No board is open here.', { context: { callId } });
   if (open.by.person !== v.pass.person && !v.isOrganizer) throw new ForbiddenError('Only whoever opened this board, or the organizer, can close it.', { context: { callId, role: v.role } });
-  return { s: { ...s, board: withBoardClosed(s.board, place) }, ended: [], done: { what: 'board closed', workspaceId: open.workspaceId, documentId: open.documentId } };
+  if (!v.isOrganizer && boardPresentedOver(s, place, v.pass.person, null)) throw new ConflictError('Someone else is presenting this board. You can close it once they stop.', { context: { callId } });
+  const out = boardClosed(s, place, ending(v.organizer, callId), { person: v.pass.person, organizer: v.isOrganizer });
+  const presented = s.workspace.present.length - out.workspace.present.length;
+  return { s: out, ended: [], done: { what: 'board closed', workspaceId: open.workspaceId, documentId: open.documentId, presented } };
 }
 
 /**

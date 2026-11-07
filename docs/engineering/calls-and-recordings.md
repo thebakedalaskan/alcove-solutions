@@ -1100,18 +1100,23 @@ into the call. Being in a call, or organizing it, opens nothing.
     what the call keeps. It moves a frame at a time (`present-move`; `409` while the workspace is what's presented), by whoever
     started it or the organizer. Frames are the browser's to count ([Presenting a board](#presenting-a-board)).
   - *One at a time.* Nobody starts either over someone else presenting there (`409` "Someone else is presenting here."), unless
-    they're reloading or have lost it. Starting while you present one presents this in its place, and the same again is the
-    same presentation, with its key.
+    they're reloading or have lost it: then theirs ends for good, said there (below). Starting while you present one presents
+    this in its place, and the same again is the same presentation, with its key.
   - *Access doesn't change*: someone who can't open it is told something's being presented, by whom, and its `key`, with
     `kind`, `id`, `name` and `section` null. Which workspace is said only to someone something in it opens for, and which board
     only to someone who can open it. Presenter notes aren't call state: see
     [Data and storage › Presenter notes](data-and-storage.md#presenter-notes).
 - **Ending a presentation.** `present-stop` is for whoever started it, or the organizer (`403` for anyone else), and says
-  whom it ends for: whoever presented it (`close` false), everyone following keeping it open on their own, or everyone
-  (`close`), which closes a board in the call as `board-close` does, for whoever's presenting it as well as whoever opened it.
+  whom it ends for: whoever presented it (`close` false), everyone following keeping it open on their own, which only they can
+  choose (`403` for the organizer on someone else's); or everyone (`close`). A board closed for everyone closes in the call too,
+  as `board-close` closes it: by the organizer always, and by anyone else when it's their part of the call's own board, or they
+  opened it, and nobody else presents it anywhere it shows. Otherwise, in a room on the board the rooms share, or while someone
+  else presents it in another room, it's closed for everyone in their part of the call, and stays the call's.
   The call keeps how the last presentation in each part ended, `workspace.ended`, `{ place, key, close, by, at }`, `by` being its
   presenter whoever stopped it, until another starts there, and tells everyone there (`CallWorkspace.ended`: `key`, `close` and
-  `by`), so whoever was following it knows whether to keep it open. Nothing else that ends one says how (below).
+  `by`), so whoever was following it knows whether to keep it open. Every end is said there as it happens, whatever ends it
+  (below), and only its presenter or the organizer ends one for everyone: a presenter whose presentation closed for everyone
+  without them can tell it was the organizer, and nothing else is sent to say so.
 - **What a release before this one kept.** A document it presented a section at a time is over, and the next change takes it out
   of what the call keeps. A board it presented has no `key` (`''`) or `since` (0): it's told with a key made from where it is,
   whose it is and which board, keyed under the call's own key (`call-present:<callId>`), so it's the same on every read and for
@@ -1126,17 +1131,25 @@ into the call. Being in a call, or organizing it, opens nothing.
 - **What stops them.** What's presented and what's playing belong to the part of the call they started in, and show only to
   the people there.
   - Someone reloading hides what they started until they're back: it isn't stopped, nothing says it ended, and they find it as
-    it was, with its key.
-  - Their part of the call closing, their being removed, their moving to another part, or their leaving on purpose stops it
-    for good, as a change of workspace and the call ending do. Only they can say they left on purpose (`onPurpose` on `leave`,
-    which a page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
-    How a presentation ended in a part of the call goes when that part closes, and everything presented with the call.
+    it was, with its key. A page going away sends `leave` without `onPurpose`, which is all a reload is to the call.
+  - Their being removed, their moving to another part of the call (sent to a room, moved, or the organizer visiting one, even
+    while they reload), or their leaving on purpose stops it for good, as a change of workspace, the board no longer being open
+    where it was presented (another opened in its place, closed, in Trash, or its workspace deleted) and the call ending do.
+    Each is said where it was presented as it happens, in `workspace.ended` (`close` false: nobody closed it for everyone), so
+    nobody's browser waits to see whether it comes back. What decides it says it, and whatever saves the call takes what's over
+    out of it and says so in the same save (`tidied`). Only they can say they left on purpose (`onPurpose` on `leave`, which a
+    page going away doesn't send), and handing the call on counts. Someone still here on another connection hasn't left.
+    Their part of the call closing says nothing there, as nobody's left in it: how a presentation ended in a part of the call
+    goes when that part closes, and everything presented with the call. A presenter presenting something else in place of their
+    own makes a new presentation, by the same person in the same part, and clears how the last one ended, as every start does:
+    that's the last one's end.
   - Someone losing the document stops being told at once, on their next read. Whoever started it losing it stops it for
     everyone, and the workspace presented stops once nothing in it opens for its presenter: losing a document or a workspace
-    says nothing to the call, so a read that finds this takes it out of the call's state and tells everyone. It's found by a
-    read from someone who can open something in the workspace, or from whoever started it, never from someone with nothing in
-    it, who's told only that something's being presented until then. While something's showing, a browser reads the call each
-    time it checks its keys, so it never waits on a nudge that isn't coming.
+    says nothing to the call, so a read that finds this takes it out of the call's state and tells everyone, that read included
+    (`ended`, as above). It's found by a read from someone who can open something in the workspace, or from whoever started it,
+    never from someone with nothing in it, who's told only that something's being presented until then. A workspace that's
+    been deleted is found by any read. While something's showing, a browser reads the call each time it checks its keys, so it
+    never waits on a nudge that isn't coming.
 - **Presenting, in the browser** (`apps/web/src/features/call/workspace/presenting.ts`, with what's on each person's stage in
   `layout/onStage.ts`: [The call screen](#the-call-screen)).
   - *The workspace presented* is in its frame on the stage of everyone following it, and the frame's bar says who's
@@ -1328,10 +1341,14 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   opens the session again so what the device keeps goes again; the session tries again by itself as well. **View only** for
   someone who can only read it. A session that ends `unavailable` opens again by itself, a little later each time
   (`useOpensAgain`, as the page's does), and one that couldn't open at all opens again once the browser is back online.
-- **Closing** (`board-close`) is for whoever opened it, on any connection of theirs, or the organizer, and only closes it.
-  Nothing is deleted, seats stay until the call ends because people may open it again, and what the call lets people into stays.
-  While it's presented, ending the presentation for everyone (`present-stop` with `close`) closes it the same way, for whoever's
-  presenting it too ([Presenting](#the-calls-workspace)).
+- **Closing** (`board-close`) is for whoever opened it, on any connection of theirs, or the organizer, and only closes it: it's
+  how a board nobody presents leaves the call (`canClose` says who may). In a room on a board every room shares, it's the main
+  room's board, for every room. Nobody but the organizer closes it while someone else presents it where it shows (`409`
+  "Someone else is presenting this board. You can close it once they stop."), as nobody opens a board over theirs. Closed while
+  it's presented, wherever it's presented, the presentation ends too, said at once (`workspace.ended`), for everyone when the
+  organizer or its presenter closed it. Nothing is deleted, seats stay until the call ends because people may open it again, and
+  what the call lets people into stays. While it's presented, ending the presentation for everyone (`present-stop` with
+  `close`) closes it the same way, for whoever's presenting it too ([Presenting](#the-calls-workspace)).
 - **When it stops.** The call ending ends every seat, and what it kept of its boards goes. A change of workspace leaves what's
   open alone: a board says where it is, and only a new one goes to the new workspace.
 - **Ideas from the call** are kept by part of the call in its sealed state (`board.ideas`: when they were last looked for, a

@@ -606,6 +606,75 @@ describe('closing a board', () => {
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
   });
 
+  it('takes a board nobody presents out of the call, which nothing else does: there’s no presentation to end', async () => {
+    const art = await account();
+    const kofi = await account();
+    const id = await workspace(art, 'Product', [[kofi, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email], home: id, title: 'Launch review' });
+    const k = await invited(host, c, kofi);
+    // Kofi makes a board (Board › New › Blank opens it just for him), and it's the board in the call, for him or the organizer
+    // to close.
+    await k.openBoard({ template: 'blank' });
+    const board = (await opened(host))?.documentId ?? '';
+    expect(board).not.toBe('');
+    expect(await opened(k)).toMatchObject({ documentId: board, canClose: true });
+    expect(await opened(host)).toMatchObject({ documentId: board, canClose: true });
+    // Nobody presents it, so ending a presentation for everyone has nothing to end, for Kofi or the organizer.
+    expect(await code(k.stopPresenting(true))).toBe('conflict');
+    expect(await code(host.stopPresenting(true))).toBe('conflict');
+    expect(await opened(host)).toMatchObject({ documentId: board });
+    // Closing it takes it out of the call for everyone, and nothing was presented, so nothing's said to have ended.
+    expect(await code(host.closeBoard())).toBe('allowed');
+    for (const call of [host, k]) {
+      const s = await read(call);
+      expect(s.board.open).toBeNull();
+      expect(s.workspace.ended).toBeNull();
+    }
+    expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toContain(board);
+  });
+
+  it('isn’t for whoever opened it while someone else presents it, as no board opens over theirs; the organizer’s ends it for everyone', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product', [[kofi, 'edit'], [priya, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], home: id });
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    const by = (who: Account) => ({ seat: expect.any(String), name: who.name });
+    await k.openBoard({ template: 'blank' });
+    const board = (await opened(k))?.documentId ?? '';
+    // Priya presents Kofi's board: he can't take it off everyone's stage from under her.
+    await p.startPresenting({ kind: 'board', id: board });
+    const hers = (await presented(k))?.key;
+    expect(await refusal(k.closeBoard())).toEqual({ code: 'conflict', status: 409, message: 'Someone else is presenting this board. You can close it once they stop.' });
+    expect(await opened(host)).toMatchObject({ documentId: board });
+    expect(await presented(host)).toMatchObject({ key: hers });
+    // While she reloads, hers is in nobody's way: closing it ends hers for her alone, as nobody who may close hers for everyone did.
+    p.closing();
+    await settle(host, (s) => !s.participants.some((x) => x.id === p.ticket.identity));
+    await k.closeBoard();
+    expect((await read(host)).workspace).toMatchObject({ present: null, ended: { key: hers, close: false, by: by(priya) } });
+    const back = await invited(host, c, priya, p.ticket.pass);
+    expect(await presented(back)).toBeNull();
+    // His own, presented, he closes: his presentation of it closes for everyone with it.
+    await k.openBoard({ workspaceId: id, documentId: board, letIn: true });
+    await k.startPresenting({ kind: 'board', id: board });
+    const his = (await presented(back))?.key;
+    await k.closeBoard();
+    expect((await read(back)).workspace).toMatchObject({ present: null, ended: { key: his, close: true, by: by(kofi) } });
+    // The organizer closes it whoever presents it, and that closes it for everyone.
+    await k.openBoard({ workspaceId: id, documentId: board, letIn: true });
+    await back.startPresenting({ kind: 'board', id: board });
+    const again = (await presented(k))?.key;
+    await host.closeBoard();
+    for (const call of [k, back, host]) {
+      const s = await read(call);
+      expect(s.board.open).toBeNull();
+      expect(s.workspace).toMatchObject({ present: null, ended: { key: again, close: true, by: by(priya) } });
+    }
+  });
+
   it('stays the organizer’s when whoever opened it has gone, and doesn’t go with hosting', async () => {
     const art = await account();
     const kofi = await account();
@@ -2101,11 +2170,12 @@ describe('presenting a board', () => {
     expect((await action(r.art, r.host, { type: 'present-start', what: { kind: 'document', id: r.board } })).status).toBe(400);
     expect(await presented(r.t)).toBeNull();
 
-    // Closed, it's over: it doesn't come back with the board.
+    // Closed by the organizer, it's over for everyone, closed for everyone, and said at once.
     await r.p.startPresenting({ kind: 'board', id: r.board, section: 1 });
+    const key = (await presented(r.t))?.key;
     await r.host.closeBoard();
-    expect(await presented(r.t)).toBeNull();
-    expect(await presented(r.p)).toBeNull();
+    for (const call of [r.t, r.jamie.call, r.p, r.host]) expect((await read(call)).workspace).toMatchObject({ present: null, ended: { key, close: true, by: { seat: expect.any(String), name: r.priya.name } } });
+    // It doesn't come back with the board.
     await r.host.openBoard({ workspaceId: r.id, documentId: r.board, letIn: true });
     expect(await opened(r.t)).toMatchObject({ documentId: r.board, role: 'edit' });
     expect(await presented(r.t)).toBeNull();
@@ -2188,22 +2258,23 @@ describe('presenting a board', () => {
     expect(await r.art.api.workspaces.presenterNotes.frames(r.id, r.board, { pass: r.host.ticket.pass })).toEqual({ frames: frameNotes });
   });
 
-  it('waits while whoever’s presenting reloads, and ends for everyone when they leave, with the board still everyone’s', async () => {
+  it('waits while whoever’s presenting reloads, and ends for everyone when they leave, said at once, with the board still everyone’s', async () => {
     const r = await retroOpen();
     await r.p.startPresenting({ kind: 'board', id: r.board, section: 1 });
+    const key = (await presented(r.t))?.key;
+    // A reload is no end: hidden while she's away, with nothing said, and the same presentation when she's back.
     r.p.closing();
     await settle(r.host, (s) => !s.participants.some((x) => x.id === r.p.ticket.identity));
-    expect(await presented(r.t)).toBeNull();
+    expect((await read(r.t)).workspace).toMatchObject({ present: null, ended: null });
     const back = await r.priya.api.calls.join(r.c, { mic: false, cam: false, previous: r.p.ticket.pass });
     await inGroup(back);
     await settle(r.host, (s) => s.participants.some((x) => x.id === back.ticket.identity));
-    expect(await presented(r.t)).toMatchObject({ kind: 'board', id: r.board, section: 1, mine: false });
-    expect(await presented(back)).toMatchObject({ kind: 'board', section: 1, mine: true });
+    expect((await read(r.t)).workspace).toMatchObject({ present: { key, kind: 'board', id: r.board, section: 1, mine: false }, ended: null });
+    expect(await presented(back)).toMatchObject({ key, kind: 'board', section: 1, mine: true });
 
+    // Leaving on purpose ends it for good, for her, and everyone following is told as she goes.
     await back.leave();
-    await settle(r.host, (s) => !s.participants.some((x) => x.id === back.ticket.identity));
-    expect(await presented(r.t)).toBeNull();
-    expect(await presented(r.host)).toBeNull();
+    for (const call of [r.t, r.host, r.jamie.call]) expect((await read(call)).workspace).toMatchObject({ present: null, ended: { key, close: false, by: { seat: expect.any(String), name: r.priya.name } } });
     expect(await opened(r.t)).toMatchObject({ documentId: r.board, role: 'edit' });
     // Coming back doesn't bring it back.
     const again = await r.priya.api.calls.join(r.c, { mic: false, cam: false, previous: back.ticket.pass });
@@ -2232,6 +2303,28 @@ describe('presenting a board', () => {
     await r.p.startPresenting({ kind: 'board', id: board });
     expect(await presented(r.host)).toMatchObject({ kind: 'board', id: board, name: 'Onboarding flow', section: 0, mine: false });
     expect(await presented(r.t)).toEqual({ key: expect.any(String), kind: null, id: null, name: null, section: null, by: { seat: expect.any(String), name: r.priya.name }, mine: false });
+  });
+
+  it('ends for everyone, said at once, when its workspace is deleted, or it goes to Trash', async () => {
+    const r = await retroOpen();
+    const by = { seat: expect.any(String), name: r.priya.name };
+    // A board brought from Design, presented by Priya: Design is deleted. Nothing can open it now, so it's over for everyone, and
+    // the first read after says so, as every one after it does.
+    const design = await workspace(r.art, 'Design', [[r.priya, 'edit']]);
+    const flow = await saved(r.art, design, 'Onboarding flow');
+    await r.host.openBoard({ workspaceId: design, documentId: flow, letIn: true });
+    await r.p.startPresenting({ kind: 'board', id: flow });
+    const first = (await presented(r.t))?.key;
+    await r.art.api.workspaces.remove(design);
+    for (const call of [r.t, r.host, r.p, r.jamie.call]) expect((await read(call)).workspace).toMatchObject({ present: null, ended: { key: first, close: false, by } });
+    expect(await opened(r.t)).toBeNull();
+    // The retro, presented, goes to Trash: it leaves the call, and its presentation ends for everyone, said at once.
+    await r.host.openBoard({ workspaceId: r.id, documentId: r.board, letIn: true });
+    await r.p.startPresenting({ kind: 'board', id: r.board });
+    const second = (await presented(r.t))?.key;
+    await r.art.api.workspaces.items.trash(r.id, r.board);
+    for (const call of [r.t, r.host, r.p]) expect((await read(call)).workspace).toMatchObject({ present: null, ended: { key: second, close: false, by } });
+    expect(await opened(r.t)).toBeNull();
   });
 
   it('closing for the presenter keeps the board in the call; closing for everyone closes it, by the presenter or the organizer', async () => {
@@ -2294,9 +2387,11 @@ describe('presenting a board', () => {
     // Bringing in the board that's presented takes it off nobody's stage, so that's still anyone's to do.
     await r.host.openBoard({ workspaceId: r.id, documentId: r.board, letIn: true });
     expect(await presented(r.t)).toMatchObject({ kind: 'board', id: r.board });
-    // Whoever's presenting can open another: their presentation ends with the board it was of.
+    // Whoever's presenting can open another: their presentation ends with the board it was of, and everyone following is told
+    // at once, keeping the old one open on their own.
+    const was = (await presented(r.t))?.key;
     await r.p.openBoard({ template: 'blank' });
-    expect(await presented(r.t)).toBeNull();
+    expect((await read(r.t)).workspace).toMatchObject({ present: null, ended: { key: was, close: false, by: { seat: expect.any(String), name: r.priya.name } } });
     expect((await opened(r.t))?.documentId).not.toBe(r.board);
     // And once nobody presents one, anyone invited can.
     await r.host.openBoard({ workspaceId: r.id, documentId: planning, letIn: false });
@@ -2344,6 +2439,72 @@ describe('presenting a board', () => {
     await r.host.movePresenting(1);
     expect(await presented(r.k)).toMatchObject({ kind: 'board', id: mainId, section: 1, mine: false });
     expect(await presented(r.p)).toMatchObject({ kind: 'board', id: mainId, section: 1, mine: false });
+  });
+});
+
+describe('presenting the board the rooms share', () => {
+  it('closed for everyone in a room by whoever presents it there, closes for that room alone: only whoever opened it, or the organizer, closes it for the call', async () => {
+    const r = await inRooms({ mode: 'shared', template: 'retro' });
+    const shared = await opened(r.k);
+    // Kofi didn't open it and may not close it: board-close says so.
+    expect(shared).toMatchObject({ canClose: false });
+    expect(await code(r.k.closeBoard())).toBe('forbidden');
+    const board = shared?.documentId ?? '';
+    // In room One he presents it to his room, and closes it for everyone ("It closes for everyone in the call"): it's closed for
+    // everyone in room One, and the board is still the call's, for room Two and the main room as for room One.
+    await r.k.startPresenting({ kind: 'board', id: board });
+    const kofis = (await presented(r.k))?.key;
+    expect(await presented(r.k)).toMatchObject({ kind: 'board', mine: true });
+    await r.k.stopPresenting(true);
+    expect((await read(r.k)).workspace).toMatchObject({ present: null, ended: { key: kofis, close: true, by: { seat: expect.any(String), name: r.kofi.name } } });
+    for (const call of [r.k, r.p, r.host]) expect((await opened(call))?.documentId).toBe(board);
+    for (const call of [r.p, r.host]) expect((await read(call)).workspace.ended).toBeNull();
+
+    // The organizer, visiting room One, presents it there and closes it for everyone: it closes for the call, in every room and
+    // the main room, and so does Priya's presentation of it in room Two, closed for everyone, said there at once.
+    await r.p.startPresenting({ kind: 'board', id: board });
+    const priyas = (await presented(r.p))?.key;
+    expect((await action(r.art, r.host, { type: 'rooms-visit', roomId: r.one })).status).toBe(200);
+    await r.host.startPresenting({ kind: 'board', id: board });
+    const arts = (await presented(r.k))?.key;
+    await r.host.stopPresenting(true);
+    for (const call of [r.k, r.p, r.host]) expect(await opened(call)).toBeNull();
+    expect((await read(r.k)).workspace).toMatchObject({ present: null, ended: { key: arts, close: true } });
+    expect((await read(r.p)).workspace).toMatchObject({ present: null, ended: { key: priyas, close: true, by: { seat: expect.any(String), name: r.priya.name } } });
+  });
+
+  it('closed for everyone by whoever opened it, closes for the call only while nobody else presents it in another room', async () => {
+    const art = await account();
+    const kofi = await account();
+    const priya = await account();
+    const id = await workspace(art, 'Product', [[kofi, 'edit'], [priya, 'edit']]);
+    const { host, code: c } = await callBy(art, { guests: [kofi.email, priya.email], home: id, title: 'Launch retro' });
+    const k = await invited(host, c, kofi);
+    const p = await invited(host, c, priya);
+    // Kofi opens the main board, and the rooms share it.
+    await k.openBoard({ template: 'retro' });
+    const board = (await opened(host))?.documentId ?? '';
+    expect((await action(art, host, { type: 'rooms-open', rooms: [{ name: 'One', emails: [kofi.email] }, { name: 'Two', emails: [priya.email] }], minutes: 10, board: { mode: 'shared', template: 'retro' } })).status).toBe(200);
+    const [one, two] = ((await settle(host, (s) => s.breakouts.open !== null)).breakouts.open?.rooms ?? []).map((x) => x.id);
+    await until(() => k.crypto.getSnapshot().place === one && p.crypto.getSnapshot().place === two, 'Kofi and Priya in their rooms');
+    expect(await opened(k)).toMatchObject({ documentId: board, canClose: true });
+    // With Priya presenting it in room Two, Kofi's close for everyone in room One is for room One alone: it stays the call's.
+    await p.startPresenting({ kind: 'board', id: board });
+    const hers = (await presented(p))?.key;
+    await k.startPresenting({ kind: 'board', id: board });
+    const first = (await presented(k))?.key;
+    await k.stopPresenting(true);
+    expect((await read(k)).workspace).toMatchObject({ present: null, ended: { key: first, close: true } });
+    for (const call of [k, p, host]) expect((await opened(call))?.documentId).toBe(board);
+    expect((await read(p)).workspace).toMatchObject({ present: { key: hers }, ended: null });
+    // Once nobody else presents it, his close for everyone closes it for the call, as board-close would.
+    await p.stopPresenting(false);
+    await k.startPresenting({ kind: 'board', id: board });
+    const second = (await presented(k))?.key;
+    await k.stopPresenting(true);
+    for (const call of [k, p, host]) expect(await opened(call)).toBeNull();
+    expect((await read(k)).workspace).toMatchObject({ present: null, ended: { key: second, close: true } });
+    expect((await read(p)).workspace).toMatchObject({ present: null, ended: { key: hers, close: false } });
   });
 });
 

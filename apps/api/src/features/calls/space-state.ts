@@ -42,9 +42,10 @@ export type Presenting = z.infer<typeof Presenting>;
 const SpacePresenting = z.object({ place: z.string(), workspaceId: z.string(), key: z.string(), since: z.number(), by: Controller });
 export type SpacePresenting = z.infer<typeof SpacePresenting>;
 /**
- * How the last presentation in one part of the call ended, until another starts there: which one it was (`key`), when (`at`, in
- * ms on this server's clock), and whether it closed for everyone (`close`) or only for whoever presented it, so everyone
- * following knows whether to keep it open.
+ * How the last presentation in one part of the call ended, whatever ended it, said as it ended, until another starts there:
+ * which one it was (`key`), who presented it (`by`, whoever stopped it), when (`at`, in ms on this server's clock), and whether
+ * it closed for everyone (`close`) or only for whoever presented it, so everyone following knows whether to keep it open. A start
+ * in the place of someone else's, hidden while they reload, says how theirs ended instead (features/calls/workspace.ts).
  */
 const PresentEnded = z.object({ place: z.string(), key: z.string(), close: z.boolean(), by: Controller, at: z.number() });
 export type PresentEnded = z.infer<typeof PresentEnded>;
@@ -88,12 +89,6 @@ export const CallSpace = z.object({
 });
 export type CallSpace = z.infer<typeof CallSpace>;
 export const NO_SPACE: CallSpace = { asks: [], present: [], space: [], ended: [], play: [], worked: [], agendaLooked: false, agendaDraft: null, viewing: null, home: null, made: [] };
-
-/**
- * Everyone views another workspace: nothing presented there, a board or the workspace, or playing, is left. How the last
- * presentation in each part ended stays until another starts there, as it does however a presentation ends.
- */
-export const stopped = (w: CallSpace): CallSpace => ({ ...w, present: [], space: [], play: [] });
 
 /** A timer on a board, the same for everyone where it's open: when it runs out, in seconds since the call started, and how long it was set for, in seconds. */
 const BoardTimer = z.object({ until: z.number(), length: z.number(), by: Controller });

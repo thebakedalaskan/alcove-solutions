@@ -119,12 +119,16 @@ export async function load(o: Owner, db: Db, callId: string, lock: boolean | 'sh
 /**
  * Saves the call's sealed state, with each open breakout room's record brought up to date: who was in it, and its scribe. `s` is
  * the call as it was read under its row, changed: a call worked out from a settled one is saved with `saveSettled`, so rooms whose
- * time ran out close with what goes with them.
+ * time ran out close with what goes with them. What's over goes from it as it's saved, and a presentation that's over is said to
+ * have ended where it was presented (`space.tidied`): whatever ended it is this change, so it's said as it happens. Says what it
+ * saved, before each room's record.
  */
-export async function save(o: Owner, db: Db, callId: string, s: Stored) {
+export async function save(o: Owner, db: Db, callId: string, s: Stored): Promise<Stored> {
+  const tidy = space.tidied(s, space.ending(o, callId));
   // A board open in any part of the call goes into the note, for that part's notes to read, whether or not anyone changes it.
-  const kept = keepRooms({ ...s, workspace: withOpenBoards(s.workspace, s.board.open) }, Date.now());
+  const kept = keepRooms({ ...tidy, workspace: withOpenBoards(tidy.workspace, tidy.board.open) }, Date.now());
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);
+  return tidy;
 }
 
 /** A notice for everyone, or only those in one part of the call (`place`), and for everyone but one connection (`not`). */
@@ -216,8 +220,7 @@ export const roomsClosedBetween = (before: Stored, after: Stored): boolean => {
  * out. Says what was saved, and whether rooms closed, for the caller to follow through once the row's let go (`afterClosing`).
  */
 export async function saveSettled(o: Owner, db: Db, callId: string, stored: Stored, next: Stored): Promise<{ s: Stored; closed: boolean }> {
-  const s = space.tidied(await roomsChanged(o, db, callId, stored, next));
-  await save(o, db, callId, s);
+  const s = await save(o, db, callId, await roomsChanged(o, db, callId, stored, next));
   return { s, closed: roomsClosedBetween(stored, s) };
 }
 

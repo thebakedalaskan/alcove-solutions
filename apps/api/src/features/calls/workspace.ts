@@ -22,7 +22,7 @@ import { log } from '../../log';
 import { findItem, type Loaded } from '../../vault';
 import { profile } from '../account/account';
 import { seatOfViewer, type Viewer } from './participants';
-import { stopped, withBoardClosed, type AgendaDraft, type CallBoards, type CallHome, type CallSpace, type Controller, type Playing, type PresentEnded, type Presenting, type SpacePresenting, type WorkedBy, type WorkedDocument } from './space-state';
+import { withBoardClosed, type AgendaDraft, type CallBoards, type CallHome, type CallSpace, type Controller, type Playing, type PresentEnded, type Presenting, type SpacePresenting, type WorkedBy, type WorkedDocument } from './space-state';
 import type { DocTodo, FollowUpLimits, Run } from '../workspaces/document-text';
 import { MeetingManifest, all as allMeetings, updateManifest } from '../meetings/service';
 import { boardPlace, placeOf, placesOf, type Joined, type Placing } from './places';
@@ -66,10 +66,21 @@ function showing(s: Placing, x: { place: string; by: Controller }): boolean {
   const j = here(s, x.by.person);
   return j !== undefined && placeOf(s, j) === x.place;
 }
-/** What's over for good: its part of the call closed, whoever started it was removed, or they've gone to another part of the call. */
+/**
+ * Where someone is in the call, by their latest connection, whether it's in now or they're reloading: every connection of one
+ * browser is in the same part of it.
+ */
+function placed(s: Placing, person: string): string | undefined {
+  const j = s.people.findLast((x) => x.person === person);
+  return j ? placeOf(s, j) : undefined;
+}
+/**
+ * What's over for good: its part of the call closed, whoever started it was removed, or they've gone to another part of the
+ * call, even while they're reloading, as they come back there.
+ */
 function over(s: Spaced, x: { place: string; by: Controller }): boolean {
-  const j = here(s, x.by.person);
-  return !placesOf(s).includes(x.place) || s.removed.includes(x.by.person) || (j !== undefined && placeOf(s, j) !== x.place);
+  const where = placed(s, x.by.person);
+  return !placesOf(s).includes(x.place) || s.removed.includes(x.by.person) || (where !== undefined && where !== x.place);
 }
 /**
  * Whether a board presented is still there to present: while it's the one open in the part of the call it was presented in, on
@@ -78,44 +89,91 @@ function over(s: Spaced, x: { place: string; by: Controller }): boolean {
  */
 const onStage = (s: Spaced, p: Presenting): boolean => p.kind === 'board' && s.board.open[boardPlace(s, p.place)]?.documentId === p.id;
 /**
- * Someone chose to leave on this connection: what they started stops for good, so it doesn't come back if they do. A reload
- * isn't this, and nor is one device of two: they're still here.
- */
-export function leftForGood<S extends Spaced>(s: S, person: string, identity: string): S {
-  if (s.people.some((j) => j.person === person && j.status === 'in' && j.identity !== identity)) return s;
-  const w = s.workspace;
-  const others = (x: { by: Controller }) => x.by.person !== person;
-  return w.present.every(others) && w.space.every(others) && w.play.every(others) ? s
-    : { ...s, workspace: { ...w, present: w.present.filter(others), space: w.space.filter(others), play: w.play.filter(others) } };
-}
-/**
- * The call as it stands, with what's over gone from what it keeps. A workspace presented that isn't the one everyone views is
- * over too, as far as this can tell: switching stops it (`stopped`), but a release before this one switching stops only what
- * it knows. Reading the call tells nobody of one that isn't the workspace viewed, whatever's kept. How a presentation ended
- * goes with the part of the call it ended in.
- */
-export function tidied<S extends Spaced>(s: S): S {
-  const w = s.workspace;
-  const open = placesOf(s);
-  return {
-    ...s,
-    workspace: {
-      ...w,
-      present: w.present.filter((x) => !over(s, x) && onStage(s, x)),
-      space: w.space.filter((x) => !over(s, x) && (w.viewing === null || x.workspaceId === w.viewing)),
-      ended: w.ended.filter((x) => open.includes(x.place)),
-      play: w.play.filter((x) => !over(s, x)),
-      asks: w.asks.filter((a) => !s.removed.includes(a.person))
-    }
-  };
-}
-/**
  * Which presentation a board presented is, for everyone told of it. One a release before keys were kept started has none
  * (`''`): it's given one made from where it is, whose and what, keyed under this call's own key, so it's the same on every read
  * and for everyone, and nobody without that key can tell anything from it. A new one's key is random (`id128`).
  */
 const keyOf = (o: Owner, callId: string, p: Presenting): string =>
   p.key || b64u(mac(stateKey(o.root, o.ownerId, `call-present:${callId}`), utf8([p.place, p.by.person, p.kind, p.workspaceId, p.id].join('\n')))).slice(0, 22);
+/** What saying a presentation ended takes: when, on this server's clock, and which presentation a board presented is (`keyOf`). */
+export interface Ending { at: number; key: (p: Presenting) => string }
+/** Presentations ending in this call, now. */
+export const ending = (o: Owner, callId: string, at = Date.now()): Ending => ({ at, key: (p) => keyOf(o, callId, p) });
+/**
+ * The call's workspace with these presentations over for good, each said to have ended where it was presented, at once
+ * (`ended`), so everyone who was following it knows how: for whoever presented it (`close` false), everyone following keeping
+ * it open on their own, whatever ended it; or for everyone (`close`). `by` is whoever presented it, whoever or whatever ended
+ * it. A part of the call that's closed has nobody there to tell, and a document, which only a release before this one
+ * presented, was never told. Where two end in one part at once, as only a release before this one could leave them, it's the
+ * one that started last, which is the one that showed.
+ */
+function endedFor(w: CallSpace, gone: { present: readonly Presenting[]; space: readonly SpacePresenting[] }, open: readonly string[], e: Ending, close = false): CallSpace {
+  if (!gone.present.length && !gone.space.length) return w;
+  const told = [
+    ...gone.present.flatMap((p) => (p.kind === 'board' ? [{ place: p.place, key: e.key(p), by: p.by, since: p.since }] : [])),
+    ...gone.space.map((p) => ({ place: p.place, key: p.key, by: p.by, since: p.since }))
+  ].filter((x) => open.includes(x.place)).sort((a, b) => a.since - b.since);
+  const said = new Map(told.map((x): [string, PresentEnded] => [x.place, { place: x.place, key: x.key, close, by: x.by, at: e.at }]));
+  return {
+    ...w,
+    present: w.present.filter((p) => !gone.present.includes(p)),
+    space: w.space.filter((p) => !gone.space.includes(p)),
+    ended: [...w.ended.filter((x) => !said.has(x.place)), ...said.values()]
+  };
+}
+/**
+ * Someone chose to leave on this connection: what they started stops for good, so it doesn't come back if they do, and how it
+ * ended is said at once. A reload isn't this, and nor is one device of two: they're still here.
+ */
+export function leftForGood<S extends Spaced>(s: S, person: string, identity: string, e: Ending): S {
+  if (s.people.some((j) => j.person === person && j.status === 'in' && j.identity !== identity)) return s;
+  const w = s.workspace;
+  const theirs = (x: { by: Controller }) => x.by.person === person;
+  if (!w.present.some(theirs) && !w.space.some(theirs) && !w.play.some(theirs)) return s;
+  const over = endedFor(w, { present: w.present.filter(theirs), space: w.space.filter(theirs) }, placesOf(s), e);
+  return { ...s, workspace: { ...over, play: w.play.filter((x) => !theirs(x)) } };
+}
+/**
+ * The call as it's saved, with what's over gone from what it keeps, and each presentation that's over said to have ended where it
+ * was presented (`endedFor`). The change that ends one is being saved, whatever it is: whoever presented it removed or moved to
+ * another part of the call, or a board no longer open where it was presented. So it's said as it happens. A workspace presented
+ * that isn't the one everyone views is over too, as far as this can tell: switching stops it (`view`), but a release before this
+ * one switching stops only what it knows. Reading the call tells nobody of one that isn't the workspace viewed, whatever's kept.
+ * How a presentation ended goes with the part of the call it ended in.
+ */
+export function tidied<S extends Spaced>(s: S, e: Ending): S {
+  const w = s.workspace;
+  const open = placesOf(s);
+  const gone = {
+    present: w.present.filter((x) => over(s, x) || !onStage(s, x)),
+    space: w.space.filter((x) => over(s, x) || (w.viewing !== null && x.workspaceId !== w.viewing))
+  };
+  const kept = endedFor(w, gone, open, e);
+  return {
+    ...s,
+    workspace: {
+      ...kept,
+      ended: kept.ended.filter((x) => open.includes(x.place)),
+      play: w.play.filter((x) => !over(s, x)),
+      asks: w.asks.filter((a) => !s.removed.includes(a.person))
+    }
+  };
+}
+/**
+ * The board open in a part of the call (`at`) closed for everyone (`withBoardClosed`) by `by`, and every presentation of it ended
+ * wherever it was presented, there and in each room that shares it, as it's said at once. A presentation closes for everyone
+ * (`close`) only when its presenter or the organizer ended it, so that's what a presenter told theirs closed without them can take
+ * it to mean: anyone else's ends for them alone. Nobody else closes a board someone else presents while it shows (`present-stop`,
+ * `board-close`), so that's only ever one whose presenter is reloading.
+ */
+export function boardClosed<S extends Spaced>(s: S, at: string, e: Ending, by: { person: string; organizer: boolean }): S {
+  const open = s.board.open[at];
+  const of = open ? s.workspace.present.filter((p) => p.kind === 'board' && p.id === open.documentId && boardPlace(s, p.place) === at) : [];
+  const closes = (p: Presenting) => by.organizer || p.by.person === by.person;
+  const places = placesOf(s);
+  const closed = endedFor(s.workspace, { present: of.filter(closes), space: [] }, places, e, true);
+  return { ...s, workspace: endedFor(closed, { present: of.filter((p) => !closes(p)), space: [] }, places, e), board: withBoardClosed(s.board, at) };
+}
 /**
  * What's presented in a part of the call now, for everyone there: the board on its stage, or the workspace `viewed`. There's
  * one at a time, unless a release before this one left both: then it's whichever started last.
@@ -172,16 +230,18 @@ const playAs = (v: Viewer, p: Playing): CallPlay => {
 
 /**
  * What whoever started it has lost the document of, found while reading the call. Losing a document says nothing to the call,
- * so this is where it's noticed: it stops for good (`withoutLost`), and doesn't come back if they're given it again.
+ * so this is where it's noticed: it stops for good (`withoutLost`), how a presentation ended is said where it was presented, and
+ * it doesn't come back if they're given it again.
  */
 export interface Lost { present: Presenting[]; space: SpacePresenting[]; play: Playing[] }
 const sameStart = (a: { place: string; by: Controller }, b: { place: string; by: Controller }) => a.place === b.place && a.by.person === b.by.person;
-export const withoutLost = (w: CallSpace, lost: Lost): CallSpace => ({
-  ...w,
-  present: w.present.filter((p) => !lost.present.some((x) => sameStart(x, p) && x.id === p.id)),
-  space: w.space.filter((p) => !lost.space.some((x) => sameStart(x, p) && x.key === p.key)),
-  play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId))
-});
+export const withoutLost = (w: CallSpace, lost: Lost, open: readonly string[], e: Ending): CallSpace => {
+  const gone = {
+    present: w.present.filter((p) => lost.present.some((x) => sameStart(x, p) && x.id === p.id)),
+    space: w.space.filter((p) => lost.space.some((x) => sameStart(x, p) && x.key === p.key))
+  };
+  return { ...endedFor(w, gone, open, e), play: w.play.filter((p) => !lost.play.some((x) => sameStart(x, p) && x.mediaId === p.mediaId)) };
+};
 
 /* ---------- what calls read of a tree: once for each version, for everyone ---------- */
 
@@ -256,8 +316,10 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
   if (!home && !s.workspace.viewing && !brought.length && !boards.length) return { shown: shut, lost };
   const d = v.organizer;
   try {
-    // A workspace everyone was viewing that's been deleted since: they're back in the home.
+    // A workspace everyone was viewing that's been deleted since: they're back in the home, and its presentation here is over, as
+    // losing it would make it (`stopLost`).
     const inUse = s.workspace.viewing !== null && await workspaceAt(d.pool, s.workspace.viewing) ? s.workspace.viewing : home;
+    if (s.workspace.viewing !== null && inUse !== s.workspace.viewing) lost.space.push(...s.workspace.space.filter((p) => p.place === place && p.workspaceId === s.workspace.viewing && showing(s, p)));
     const workspaces = new Set([...(inUse ? [inUse] : []), ...(home ? [home] : []), ...brought.map((b) => b.workspaceId), ...boards]);
     const reader = await readerInCall(v);
     const out = { ...shut };
@@ -267,7 +329,12 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
     const startedHere = (p: { by: Controller } | undefined) => p !== undefined && p.by.person === v.pass.person;
     for (const workspaceId of workspaces) {
       const at = await workspaceAt(d.pool, workspaceId);
-      if (!at) continue;
+      if (!at) {
+        // Deleted: what's presented from it here is over for everyone, as losing it would make it.
+        lost.present.push(...s.workspace.present.filter((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p) && onStage(s, p)));
+        lost.space.push(...s.workspace.space.filter((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p)));
+        continue;
+      }
       const inCall = workspaceId === inUse;
       // A board is presented from wherever it's kept, while it's on the stage; the workspace, while it's the one everyone views.
       const present = s.workspace.present.find((p) => p.place === place && p.workspaceId === workspaceId && showing(s, p) && onStage(s, p));
@@ -320,11 +387,17 @@ export async function shownTo(x: Seeing): Promise<{ shown: CallWorkspace; lost: 
         else if (roleIn(reader, standing, play.documentId)) out.play = playAs(v, play);
       }
     }
-    const shown = presents.reduce<{ since: number; is: CallPresent } | undefined>((a, b) => (a && a.since >= b.since ? a : b), undefined)?.is ?? null;
+    const latest = presents.reduce<{ since: number; is: CallPresent } | undefined>((a, b) => (a && a.since >= b.since ? a : b), undefined);
+    const shown = latest?.is ?? null;
+    // What whoever presented it has lost ends now for everyone here, as taking it out of what the call keeps says (`stopLost`),
+    // so this read says so at once, as the next one will.
+    const gone = [...lost.present.map((p) => ({ since: p.since, key: keyOf(d, x.callId, p), by: p.by })), ...lost.space.map((p) => ({ since: p.since, key: p.key, by: p.by }))]
+      .reduce<{ since: number; key: string; by: Controller } | undefined>((a, b) => (a && a.since >= b.since ? a : b), undefined);
+    const said = gone && (!latest || gone.since >= latest.since) ? { key: gone.key, close: false, by: asSeat(gone.by) } : ended;
     const inOrder = meeting.documents.flatMap((id) => documents.get(id) ?? []);
     const agenda = meeting.agenda ? documents.get(broughtId(meeting.agenda.workspaceId, meeting.agenda.documentId)) : undefined;
     // What's going on hasn't ended: a release before this one can have started one again with no key.
-    return { shown: { ...out, present: shown, ended: shown && ended?.key === shown.key ? null : ended, documents: inOrder, agenda: agenda?.id ?? null }, lost };
+    return { shown: { ...out, present: shown, ended: shown && said?.key === shown.key ? null : said, documents: inOrder, agenda: agenda?.id ?? null }, lost };
   } catch (e) {
     wlog.warn('workspace not read for someone in a call', { callId: x.callId, err: e });
     return { shown: shut, lost: { present: [], space: [], play: [] } };
@@ -601,12 +674,17 @@ async function presentable<S extends Spaced>(x: Changing<S>, what: PresentWhat, 
   return { kind: 'board', workspaceId: open.workspaceId, id: what.id, section: what.section };
 }
 
-/** Everyone views `workspaceId` together, the home or another: what's being presented and played stops, and the notes still go home. */
+/**
+ * Everyone views `workspaceId` together, the home or another: what's being presented, a board or the workspace, ends for good in
+ * every part of the call, and that's said there at once; what's playing stops; and the notes still go home.
+ */
 function view<S extends Spaced>(x: Changing<S>, workspaceId: string): Changed<S> {
   const home = x.meeting.manifest.workspaceId;
   if (viewedIn(x.meeting.manifest, x.s.workspace) === workspaceId) return { s: x.s };
   wlog.info('call views a workspace', { callId: x.callId, workspaceId, home: workspaceId === home });
-  return { s: withSpace(x.s, { ...stopped(x.s.workspace), viewing: workspaceId === home ? null : workspaceId }) };
+  const w = x.s.workspace;
+  const over = endedFor(w, { present: w.present, space: w.space }, placesOf(x.s), ending(x.v.organizer, x.callId, x.now));
+  return { s: withSpace(x.s, { ...over, play: [], viewing: workspaceId === home ? null : workspaceId }) };
 }
 
 /**
@@ -685,7 +763,9 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
     };
     /*
      * One at a time in each part of the call: nobody starts over someone else presenting there (`presentable` says what may be).
-     * Starting while you present one presents this in its place, as a new presentation unless it's the same again.
+     * Starting while you present one presents this in its place, as a new presentation unless it's the same again: a start clears
+     * how the last one here ended, and a new presentation by the same person here is the end of their last. Someone else's here
+     * is hidden while they reload, or the start would have been refused: it ends for good, and that's said.
      */
     case 'present-start': {
       const what = await presentable(x, a.what, inUse);
@@ -697,14 +777,17 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
         if (!still || y.place !== place || presentSlot(y.s, place) !== slot) return 'again';
         const by = controllerOf(v, reader);
         const mine = (p: { place: string; by: Controller }) => p.place === place && p.by.person === v.pass.person;
-        const others = { present: now.present.filter((p) => p.place !== place), space: now.space.filter((p) => p.place !== place), ended: now.ended.filter((e) => e.place !== place) };
+        const theirs = (p: { place: string; by: Controller }) => p.place === place && p.by.person !== v.pass.person;
+        const cleared = { ...now, ended: now.ended.filter((e) => e.place !== place) };
+        const after = endedFor(cleared, { present: now.present.filter(theirs), space: now.space.filter(theirs) }, placesOf(y.s), ending(o, callId, y.now));
+        const others = { present: after.present.filter((p) => p.place !== place), space: after.space.filter((p) => p.place !== place) };
         if (what.kind === 'board') {
           const was = now.present.find((p) => mine(p) && p.kind === 'board' && p.id === what.id);
           const next: Presenting = { place, workspaceId: what.workspaceId, kind: 'board', id: what.id, section: what.section, by, key: was ? was.key : id128(), since: was ? was.since : y.now };
-          return { s: withSpace(y.s, { ...now, ...others, present: [...others.present, next] }) };
+          return { s: withSpace(y.s, { ...after, ...others, present: [...others.present, next] }) };
         }
         const next: SpacePresenting = now.space.find((p) => mine(p) && p.workspaceId === what.workspaceId) ?? { place, workspaceId: what.workspaceId, key: id128(), since: y.now, by };
-        return { s: withSpace(y.s, { ...now, ...others, space: [...others.space, next] }) };
+        return { s: withSpace(y.s, { ...after, ...others, space: [...others.space, next] }) };
       };
     }
     /* A board, a frame at a time. */
@@ -718,20 +801,27 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
       return { s: withSpace(y.s, { ...now, present: [...now.present.filter((q) => q !== board), { ...board, section: a.section }] }) };
     };
     /*
-     * It ends for whoever presented it, and everyone following keeps it open on their own; or for everyone (`close`), which closes a
-     * board in the call as Close does, and for that whoever's presenting it counts as well as whoever opened it. Everyone there is
-     * told which, until another starts there: `ended` names the presentation, and its presenter, whoever stopped it.
+     * It ends for whoever presented it, and everyone following keeps it open on their own, which only they can choose; or for
+     * everyone (`close`), by them or the organizer. So a presenter told theirs closed for everyone without them knows it was the
+     * organizer. Everyone there is told which, until another starts there: `ended` names the presentation, and its presenter,
+     * whoever stopped it. A board closed for everyone closes in the call too, where it's open, as board-close closes it: by the
+     * organizer always; by anyone else when it's this part of the call's own board, or they opened it, and nobody else presents it
+     * anywhere it shows. Otherwise it's closed for everyone in their part of the call, and stays the call's.
      */
     case 'present-stop': return async (y) => {
       const now = y.s.workspace;
       const p = presentedHere(y.s, y.place, viewedIn(y.meeting.manifest, now));
       if (!p) throw new ConflictError('Nothing is being presented here.', { context: { callId, what: a.type } });
       if (!control(p.p)) throw notYours(callId, a.type);
-      const ended: PresentEnded = { place: y.place, key: p.kind === 'board' ? keyOf(o, callId, p.p) : p.p.key, close: a.close, by: p.p.by, at: y.now };
-      const rest = { present: now.present.filter((q) => q !== p.p), space: now.space.filter((q) => q !== p.p), ended: [...now.ended.filter((e) => e.place !== y.place), ended] };
-      const over = withSpace(y.s, { ...now, ...rest });
-      wlog.info('presentation ended', { callId, kind: p.kind, close: a.close, theirs: p.p.by.person === v.pass.person });
-      return { s: p.kind === 'board' && a.close ? { ...over, board: withBoardClosed(over.board, boardPlace(over, y.place)) } : over };
+      const theirs = p.p.by.person === v.pass.person;
+      if (!a.close && !theirs) throw new ForbiddenError('Only whoever’s presenting this can end it just for themselves.', { context: { callId, what: a.type } });
+      const e = ending(o, callId, y.now);
+      const stopped = withSpace(y.s, endedFor(now, p.kind === 'board' ? { present: [p.p], space: [] } : { present: [], space: [p.p] }, placesOf(y.s), e, a.close));
+      const at = boardPlace(stopped, y.place);
+      const mayClose = v.isOrganizer || ((at === y.place || stopped.board.open[at]?.by.person === v.pass.person) && !boardPresentedOver(stopped, at, v.pass.person, null));
+      const closes = p.kind === 'board' && a.close && mayClose;
+      wlog.info('presentation ended', { callId, kind: p.kind, close: a.close, theirs, boardClosed: closes });
+      return { s: closes ? boardClosed(stopped, at, e, { person: v.pass.person, organizer: v.isOrganizer }) : stopped };
     };
     case 'play-start': {
       if (!inUse) throw noDocument(a.documentId);
