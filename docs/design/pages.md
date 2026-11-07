@@ -236,11 +236,34 @@ One modal, one question at a time, and a sheet on a phone.
 
 ## A call
 
-`routes/call.$code.tsx`, `features/call/`, `styles/call.css`. The call's panels are `features/call/layout/Panel.tsx`, styled with
-`ic-` classes.
+`routes/call.$code.tsx`, `features/call/` (the shell in `layout/`), `styles/call.css`, styled with `ic-` classes. Boards:
+[canvas/call/](canvas/call/README.md).
 
-Always night, in both themes, on the stage tokens. People are in arches, never circles, and whoever speaks gets the `speak`
-ring. The camera appears only here and on the join screen.
+Always night, in both themes, on the stage tokens, except your side, which takes your theme. People are in arches, never
+circles, and whoever speaks gets the `speak` ring. The camera appears only here and on the join screen.
+
+- **Three places, each with one job.**
+  - **The stage** holds the people and what you have open.
+  - **The dock** holds what you do in the call: the microphone and camera with their arrows, a hairline, Share, Raise your
+    hand, More, a hairline, Leave, and in focus Show everything. Share is the one control it names in words.
+  - **The top right** holds what's only yours: View, then one group of Board, Workspace, a hairline, Notes, Chat, a
+    hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
+- **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
+  stage gives way as it slides in: Notes (with the tabs Notes, Transcript and Ask, and Yours at the foot of Notes), Chat,
+  People, Your notes beside a presented board, and the rooms. It's day in the light theme; the stage, the dock and what's
+  shared stay night.
+- **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
+  (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
+  is. On the right, only what applies: following or Follow, Present, focus, Stop sharing, or Close. The people sit beside it
+  as View says: a column of tiles on the right, a row of arches over it (which any stage under 760px gets), or on the
+  horizon.
+- **A tile only while it's presented.** Something presented that isn't on your stage is a live tile among the people, with
+  who's presenting it and Join.
+- **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
+  keeps the microphone, camera, Show everything and Leave.
+- **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
+  camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
+  Workspace, Notes, Chat and People; and your side and Close's question are sheets.
 
 ## A board
 

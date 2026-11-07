@@ -194,7 +194,11 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `Toast`,
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
-  in a popover: one, or several with ticks), `CallTile`, `CallDock`, `VolumeControl` (how loud someone is for you, said
+  in a popover: one, or several with ticks), `CallTile`, `CallDock` with `DockButton` (its `word` is said beside the icon,
+  for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
+  buttons and hairlines), `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallFrame` (one frame for a screen, a
+  board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
+  `CloseAsk` (Close's question: for you or for everyone), `VolumeControl` (how loud someone is for you, said
   beside their name by `volumeTag`),
   `RingArch` and `RingAddArch` (who to ring), `WaitArch`, `WaitTile`, `RingReply` and `RingAgain` (someone rung, waiting on
   the stage), `RingCard` in a `RingShelf` (being rung, on any page, over a modal), `KnockCard` (someone asking to join),
@@ -202,6 +206,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `Segmented`, `SettingsPart`, `SettingRow` and `SettingFact` (Settings' sheet: a heading, then a label and a control on one axis), `SunLine` (time left, on a row's hairline), `ThemePreview` (a small evening in a theme's own colours), `MicLevel`, `RecorderSun` (the recorder on
   the horizon, moved with the microphone by `useVoice`), `RecMeter`, `RecPrint`, `TourDialog`, `Coachmark`,
   `EmptyState`, `Modal` (several questions go one at a time inside one modal; no window ever opens over another),
+  `ThemeScope` (one theme for a part of a page, such as your side of a call, so what opens from it takes that theme too),
   `BackgroundPicker` (what shows behind someone on camera, with `SCENE_PICTURES`), and `Fit` with `useSceneLoop` for scenes drawn at a design size that play while on screen.
   For starting and scheduling a call: `FlowView`, `FlowHead`, `FlowSteps`, `FlowBody`, `FlowFoot`, `FlowNote`, `FlowRow`,
   `SwitchLine`, `NotesSwitches` (whether a call writes notes, and what they keep), `ScopeBar` (this call, or this and later
@@ -211,10 +216,10 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `WsSaveState`, `WsFollowBar`, `WsOfflineBar`, `WsUnsavedBar` (with `WsRescue` for what didn't reach Alcove), `WsGoneBar`,
   `WsReadOnlyBar`, `WsVersionBar`, `WsVersionFailed`, `WsScroll`, `WsPage`, `WsDocBy`, `WsTemplates`, `WsTail`, `WsTrash`,
   `WsEmpty`, `WsPickDocument`, `WsCantOpen`, `WsUnavailable`, `WsOfflineEmpty`, `WsNoAccess`, `WsLostSpace`), with
-  `WsHistory` or `WsPresenterView` beside it and `WsPresentStrip` in place of the head.
+  `WsHistory` beside it.
   Anything that opens sits on `WsPopover` (a sheet on a phone by itself, and it hands focus back): `WsMenu` and its
   `WsNewMenu`, `WsRowMenu`, `WsDocMenu`, `WsMovePicker`, `WsSpacePicker`, `WsAskMenu`, `WsAskAnswer`; `WsPersonCard`, `WsMentionPrompt`,
-  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsPresentPreview`, `WsUploadPicker`. The call's
+  `WsCommentCompose`, `WsCommentThread`, `WsShareSheet`, `WsSwitchSheet`, `WsDeleteAsk`, `WsDiscardAsk`, `WsUploadPicker`. The call's
   own pages are `WsNotesPage`, `WsFollowUps`, `WsTranscript` and `WsNotesOff`. Over the call: `WsFind`, `WsKeyboard`, `WsKnock`,
   `WsPlayBar`, `WsToasts` (say them with `wsToast`, which has every toast's words), `WsDragGhost`, `WsKeyboardBar`. On the
   note: `WsWorkedOn`. `WsFade` swaps what's inside in place.
@@ -222,7 +227,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   `BoardWorld` (`moveBoardCamera` writes its one transform), `BoardRail`, `BoardBar`, `BoardPill`, `BoardPop`, `BoardFlyout`,
   `BoardSelectionBar`, `BoardSelectionBox`, `BoardDots`, `BoardMarquee`, `BoardGuide`, `BoardFrame`, `BoardSticky`, `BoardText`, `BoardShape`,
   `BoardPicture`, `BoardPointer`, `BoardComment`, `BoardLines` with `BoardLine` and `BoardStroke`, `BoardEdit`, `BoardHeard`, `BoardTray`,
-  `BoardMap`, `BoardMenu`, `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
+  `BoardMap`, `BoardMenu`, `BoardPicker` (Board's picker at the top of a call: in this call, new, your team's boards), `BoardEmpty`, `BoardTile`, `BoardPageActions`, `BoardNoAccess`, `BoardPhoneAdd` and `BoardPhoneSheet`. What's on a
   board is `memo`ised and takes no handlers: `data-id`, `data-h` and `data-p` say what was pressed, for one listener on the sheet.
   A row's menu is an `IconButton` as the anchor of a `Popover` with a `tip`.
 - Colours, shadows, radii, fonts and easing come from the tokens in `packages/ui/src/styles.css`: light
