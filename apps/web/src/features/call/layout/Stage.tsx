@@ -452,7 +452,7 @@ export function Stage({ staged, frame, live: sizing, phone, people, waiting, pre
           if (!r) return null;
           const mode = L.modes.get(k);
           return (
-            <motion.div key={k} {...tileProps(k, `${t.label}. ${t.sub}`)} aria-roledescription="presented" className={cn('ic-slot ic-pslot', mode && `is-${mode}`, L.off.has(k) && 'is-off')}
+            <motion.div key={k} {...tileProps(k, `${t.label}. ${t.sub}`)} aria-roledescription="presented" data-tile={t.id} className={cn('ic-slot ic-pslot', mode && `is-${mode}`, L.off.has(k) && 'is-off')}
               initial={{ ...box(r), opacity: 0, scale: 0.97 }} animate={{ ...box(r), opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }}
               transition={instant ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
               <PresentedTile name={t.name} icon={t.icon} sub={t.sub} by={t.by} go={t.go} label={t.label} where={t.where} small={mode !== undefined} onPress={t.onJoin}>

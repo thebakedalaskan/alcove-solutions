@@ -39,7 +39,7 @@ import { useCatchingUp } from '~/features/call/notes/catchingUp';
 import { FromLastTime } from '~/features/call/notes/FromLastTime';
 import { Yours, useOwnInCall } from '~/features/call/notes/Yours';
 import { useShareMarkCount } from '~/features/call/screen-sharing/SharePointing';
-import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
+import { MyShareMenuRows, ShareInFrame, ShareMenuRows, ShareWindows, useFocusBack, usePointing, usePopOut, useShareLooks } from '~/features/call/screen-sharing/ShareInFrame';
 import { LocalMedia, type ShareChoice } from '~/features/call/media/media';
 import { ChatView, NotesTabs, NotesView, PeopleView, SideBody, SideHead, TranscriptView, type HostControls, type PanelPerson } from '~/features/call/layout/Panel';
 import { PanelHost, useCallArea, useHorizon, type HostSide } from '~/features/call/layout/PanelHost';
@@ -1181,6 +1181,7 @@ export function InCall({ session }: { session: CallSession }) {
   /* ---------- screens on your stage: how you look at each, pointing, its own window (ShareInFrame.tsx) ---------- */
   const screensShown = shownThings.flatMap((id) => { const sh = sharerOf(id); return sh ? [sh] : []; });
   const looks = useShareLooks({ shares, part: crypto.place, paused: mode === 'paused', kept: screensShown });
+  useFocusBack(looks);
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
   /*

@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, 
 import { createPortal } from 'react-dom';
 import { useLive } from '~/lib/live';
 import { callName } from '~/lib/people';
+import { screenOf } from '../layout/onStage';
 import type { StageShare } from '../layout/Stage';
 import { FeedVideo } from '../media/Video';
 import type { ShareMarks } from './marks';
@@ -33,6 +34,21 @@ export function useShareLooks({ shares, part, paused, kept }: { shares: readonly
   return { looks, seen, popped };
 }
 export type Looks = ReturnType<typeof useShareLooks>;
+
+/**
+ * A share you brought back from its own window (Back to the call, in its frame or in the window, Bring it back here, or closing
+ * the window) takes the keys back: on your stage, its frame's body, where its keys work; as a tile, its tile. So focus never
+ * drops to the page as the button that brought it back goes.
+ */
+export function useFocusBack(looks: Looks): void {
+  const n = looks.seen.back?.n ?? 0;
+  const { looks: store } = looks;
+  useEffect(() => {
+    const id = store.getSnapshot().back?.id;
+    if (!n || !id) return;
+    document.querySelector<HTMLElement>(`.ic-scr-body[data-share="${CSS.escape(id)}"], [data-tile="${CSS.escape(screenOf(id))}"]`)?.focus({ preventScroll: true });
+  }, [n, store]);
+}
 
 /** Pointing at a share: which one you point at (one at a time), and the keys each share's pointing takes while you do. */
 export function usePointing(shares: readonly StageShare[], onStage: (id: string) => boolean, popped: string | null) {
