@@ -98,7 +98,7 @@ export function ShareInFrame({ share: s, look, looks, popped, marks, me, whoIs, 
     here ? 'you’re pointing at it: arrow keys move your pointer, Enter marks, Backspace takes your last mark back, Escape stops' : can ? 'L to point at it' : ''];
   const drawing = s.point && marks ? <ShareMarksDrawing marks={marks} share={s.point.sid} whoIs={whoIs} me={me} /> : null;
   const point = s.point && marks ? (
-    <SharePointing marks={marks} share={s.point.sid} look={look} mine={s.mine} big can={s.point.closed === null} active={here}
+    <SharePointing marks={marks} share={s.point.sid} look={look} mine={s.mine} can={s.point.closed === null} active={here}
       onKeys={pointing.keysOf(s.id)} onActive={(on) => pointing.set(on ? s.id : null)}>{look ? null : drawing}</SharePointing>
   ) : null;
   return (

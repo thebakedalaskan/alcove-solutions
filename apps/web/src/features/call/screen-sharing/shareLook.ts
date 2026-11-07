@@ -400,7 +400,7 @@ export class ShareLook implements LiveStore<ShareLookState> {
     this.lastSeen = 0;
     if (this.hold && !this.hold.bitmap) this.live();
   }
-  /** Shown as a tile now: back to live, and everything kept goes. The framing stays for when it's big again. */
+  /** Shown as a tile now: back to live, and everything kept goes. The framing stays for when it's on your stage again. */
   rest() {
     if (!this.hold && !this.kept.length) return;
     this.dropKept();

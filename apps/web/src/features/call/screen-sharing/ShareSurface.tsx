@@ -40,7 +40,7 @@ export function historyNote(off: HistoryOff | null): string {
     case 'unsupported': return 'This browser can’t keep earlier pictures. Zoom and freeze still work.';
   }
 }
-/** What the framing is now, said: for the tile's description and screen readers. */
+/** What the framing is now, said: for the frame's description and screen readers. */
 function framingSaid(s: ShareLookState): string {
   const zoom = isZoomed(s.framing) ? `zoomed to ${zoomLabel(Math.round(s.framing.zoom * 4) / 4)}` : 'the whole picture';
   if (!s.held) return `Live, ${zoom}`;
@@ -85,7 +85,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   label: string;
   /** Opening it in its own window, or bringing it back; null where this browser can't. */
   popOut: { open: boolean; toggle: () => void } | null;
-  /** The id of the line that describes how it's framed, for the tile's aria-describedby. */
+  /** The id of the line that describes how it's framed, for its frame's aria-describedby. */
   describe?: string | undefined;
   /** Drawn on the live picture, in its box: it moves with it, and isn't shown while a picture is held still. */
   overLive?: ReactNode;
@@ -280,7 +280,7 @@ export function ShareSurface({ look, feed, where, label, popOut, describe, overL
   const held = s.held;
   const newest = held !== null && (held.index === null || held.index === s.count - 1);
   // A new framing from a key, a button or the menu glides; one from a drag, a pinch or the wheel follows the pointer, and
-  // the view or the picture changing size (a divider dragged, the layout moving, a new picture) follows the tile at once.
+  // the view or the picture changing size (the layout moving, a new picture) follows the frame at once.
   const now = performance.now();
   const was = drawn.current;
   const resized = !was || !sameSize(was.view, s.view) || !sameSize(was.pic, pic);
