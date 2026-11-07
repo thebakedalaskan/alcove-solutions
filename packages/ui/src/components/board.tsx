@@ -7,7 +7,7 @@
  */
 import { forwardRef, memo, useLayoutEffect, useRef, type CSSProperties, type HTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { cn } from '../cn';
-import { CallDock, DockButton, DockSeparator, SharePointer } from './call';
+import { CallDock, DockButton, DockSeparator, SharePointer, ShareStepHead } from './call';
 import { Icon, type IconName } from './icon';
 import { EmptyArch } from './illustrations';
 import { Popover } from './overlay';
@@ -999,6 +999,19 @@ export interface BoardMenuContent {
   onRecent?: ((id: string) => void) | undefined;
 }
 
+/** Who here can't open the saved board, and the ways on: let them in for this call (for someone who may share it), or go on without them. */
+function AccessAsk({ access, busy, press, without }: { access: BoardMenuAccess; busy: boolean; press: (act: () => void) => () => void; without: string }) {
+  return (
+    <div className="bl-q">
+      <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
+      <div className="acts">
+        {access.onLetIn && <Button variant="primary" disabled={busy} onClick={press(access.onLetIn)}>Let them in for this call</Button>}
+        <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>{without}</Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * What the Board menu holds, wherever it opens: in a popover with the class `bl`, from the dock's button or from More. Each row
  * is told apart by what it is, a template or a board by its `id`, and for a moment after the rows move, as the recent boards
@@ -1022,15 +1035,7 @@ export function BoardMenuBody({ inRoom = false, recents, access, busy = false, o
           {saved.map((r) => <button key={r.id} type="button" className="bl-r" disabled={busy} onClick={press(() => onRecent?.(r.id))}><span className="bl-th">{r.thumb}</span><span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span></button>)}
         </>
       )}
-      {access && (
-        <div className="bl-q">
-          <p><b>{namesList(access.names)} can’t open {access.board}.</b> It’s in {access.where}.</p>
-          <div className="acts">
-            {access.onLetIn && <Button variant="primary" disabled={busy} onClick={press(access.onLetIn)}>Let them in for this call</Button>}
-            <Button variant={access.onLetIn ? 'secondary' : 'primary'} disabled={busy} onClick={press(access.onWithout)}>Open without them</Button>
-          </div>
-        </div>
-      )}
+      {access && <AccessAsk access={access} busy={busy} press={press} without="Open without them" />}
       <div className="bl-f"><Icon name="sealed" size={15} /><span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : 'Sealed. Alcove can’t read boards.'}</span></div>
     </>
   );
@@ -1050,6 +1055,93 @@ export function BoardMenu({ open, onOpenChange, anchor, tip, side = 'bottom', al
     <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side={side} align={align} label="Open a board" className={cn('bl', content.busy && 'is-busy', className)}>
       <BoardMenuBody {...content} />
     </Popover>
+  );
+}
+
+/* ---------- The board picker ---------- */
+
+/** The board this call has, first in the picker. */
+export interface BoardPickerInCall {
+  name: string;
+  /** "Priya · brought it", "Priya is presenting it", "You’re presenting it". */
+  by: string;
+  onOpen: () => void;
+}
+
+export interface BoardPickerProps {
+  /** Share › A board: Share's step head in place of the picker's own, and the board opens for everyone here. */
+  step?: { onBack: () => void } | undefined;
+  /** In this call: the board the call has, if it has one. */
+  inCall?: BoardPickerInCall | undefined;
+  /**
+   * Why a new board and the team's boards can't be picked now, said quietly over them: "Priya is presenting a board. You can
+   * start one once they stop.", "Guests can’t start a board here."
+   */
+  blocked?: string | undefined;
+  /** A breakout room: a new board is only this room's, and the saved boards are left out. */
+  inRoom?: boolean | undefined;
+  /** The team's boards. An empty `workspace` says they come from several places: each one's `by` can say where ("Priya · Product"). */
+  recents?: BoardMenuRecents | undefined;
+  /** Some people here can't open the saved board picked in Share › A board: the question in place of the saved boards. */
+  access?: BoardMenuAccess | undefined;
+  /** Something chosen is on its way, so nothing else can be. */
+  busy?: boolean | undefined;
+  onTemplate: (template: BoardTemplate) => void;
+  onRecent?: ((id: string) => void) | undefined;
+}
+
+/**
+ * Board, at the top right of the call, opens this under itself (a popover with the class `bl`): a board opens just for you
+ * until you present it. Share › A board shows it as its step (`step`), where what's picked opens for everyone. The board the
+ * call has comes first, then a new one from Blank, Retro, Ideas or Flow, then the team's. As in every menu, a press does
+ * nothing for a moment after the rows move (`useSettledPress`).
+ */
+export function BoardPicker({ step, inCall, blocked, inRoom = false, recents, access, busy = false, onTemplate, onRecent }: BoardPickerProps) {
+  const saved = !access && !inRoom && recents ? recents.boards : [];
+  const now = access ? undefined : inCall;
+  const off = busy || !!blocked;
+  const press = useSettledPress([
+    ...(now ? ['in-call'] : []), ...TEMPLATES.map((t) => `template:${t.id}`), ...saved.map((r) => `board:${r.id}`),
+    ...(access ? [...(access.onLetIn ? ['access:let-in'] : []), 'access:without'] : [])
+  ].join('\n'));
+  return (
+    <>
+      {step ? <ShareStepHead title="A board" onBack={step.onBack} /> : <div className="bl-hd"><b>Open a board</b><span>Only you see it until you present it.</span></div>}
+      {now && (
+        <>
+          <div className="bl-sub">In this call</div>
+          <button type="button" className="bl-r bl-now" disabled={busy} onClick={press(now.onOpen)}>
+            <span className="bl-th is-icon"><Icon name="presentation" size={18} /></span>
+            <span><b>{now.name}</b><small>{now.by}</small></span>
+          </button>
+        </>
+      )}
+      {blocked && <p className="bl-why"><Icon name="info" size={15} /><span>{blocked}</span></p>}
+      <div className="bl-sub">New</div>
+      <div className="bl-tpl">
+        {TEMPLATES.map((t) => (
+          <button key={t.id} type="button" className={cn('bl-c', blocked && 'is-off')} disabled={off} onClick={press(() => onTemplate(t.id))}>
+            <span className="bl-th"><svg viewBox="0 0 80 60" aria-hidden="true">{t.art}</svg></span><span className="lb">{t.label}</span>
+          </button>
+        ))}
+      </div>
+      {recents && saved.length > 0 && (
+        <>
+          <div className="bl-sub">{recents.workspace ? `From ${recents.workspace}` : 'Your team’s boards'}</div>
+          {saved.map((r) => (
+            <button key={r.id} type="button" className={cn('bl-r', blocked && 'is-off')} disabled={off} onClick={press(() => onRecent?.(r.id))}>
+              <span className={cn('bl-th', !r.thumb && 'is-icon')}>{r.thumb ?? <Icon name="presentation" size={18} />}</span>
+              <span><b>{r.name}</b><small>{r.by}</small></span><span className="when">{r.when}</span>
+            </button>
+          ))}
+        </>
+      )}
+      {access && <AccessAsk access={access} busy={busy} press={press} without="Present without them" />}
+      <div className="bl-f">
+        <Icon name="sealed" size={15} />
+        <span>{inRoom ? 'Comes back with you when rooms close. Alcove can’t read it.' : step ? 'Opens for everyone here. Alcove can’t read boards.' : 'Sealed. Alcove can’t read boards.'}</span>
+      </div>
+    </>
   );
 }
 

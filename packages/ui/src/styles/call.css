@@ -1052,3 +1052,162 @@
 @media (max-width: 560px) {
   .mv-card h1, .mv-plain h1, .mv-done h1 { font-size: 30px; }
 }
+
+/*
+ * What's open on your stage wears a frame (`CallFrame`): whose it is and what it is on the left of its bar, what's yours to
+ * press on the right, the thing itself under it, and a pager floating at its foot while you present a board. What someone
+ * presents waits among the people as a tile (`PresentedTile`). Close's and Present's questions open under their buttons, and
+ * Share's steps over the dock. The frame fills the box the app gives it; its edges are drawn over what's in it, so a picture
+ * running to the edge never covers them.
+ */
+.ic-frame-box { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-lg); background: var(--stage-tile); color: var(--stage-ink); box-shadow: 0 30px 60px -36px rgb(0 0 0 / .9); animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.ic-frame-box::after { content: ""; position: absolute; z-index: 6; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); pointer-events: none; transition: box-shadow var(--duration-2) var(--ease-out); }
+/* Following whoever presents it: its edge in horizon, the colour of what you're being shown. */
+.ic-frame-box.is-lit::after { box-shadow: inset 0 0 0 2px var(--horizon), inset 0 0 0 5px color-mix(in srgb, var(--horizon) 14%, transparent); }
+.ic-frame-box.is-focused, .ic-frame-box.is-phone { border-radius: var(--radius-md); }
+.ic-fbar { position: relative; z-index: 4; flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 10px 0 12px; background: color-mix(in srgb, var(--stage-tile) 66%, var(--stage-raised)); box-shadow: inset 0 -1px 0 rgb(255 255 255 / .07); }
+.ic-fwho { flex: 1; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ic-fwho > .ac-avatar, .ic-fol .ac-avatar, .ic-follow .ac-avatar, .ic-tback .ac-avatar { --ring: transparent; }
+.ic-fic { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: rgb(255 255 255 / .08); color: var(--stage-ink); }
+.ic-fnm { flex: 0 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.ic-fname { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 6px; min-width: 48px; max-width: 100%; height: 34px; padding: 0 8px 0 6px; border-radius: 9px; color: var(--stage-ink); font: 600 14px/1.2 var(--font-sans); text-align: left; transition: background-color var(--duration-1); }
+button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 255 / .07); }
+.ic-fname .ac-i { flex: none; color: var(--stage-ink-2); }
+/* How it stands gives way first: a long name keeps its room, and neither ever widens the bar. */
+.ic-fmeta { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stage-ink-2); font: 500 12.5px/1.2 var(--font-sans); }
+.ic-fend { flex: none; display: flex; align-items: center; gap: 6px; }
+/* Following its presenter: horizon, the colour of what you're being shown, with Unfollow inside. */
+.ic-fol { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 4px 0 7px; border-radius: 11px; background: color-mix(in srgb, var(--horizon) 15%, transparent); color: var(--horizon); }
+.ic-fol .t { font: 600 12.5px/1 var(--font-sans); white-space: nowrap; }
+.ic-unf { height: 26px; padding: 0 10px; border-radius: 8px; background: rgb(255 255 255 / .1); color: var(--stage-ink); font: 600 12px/26px var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1); }
+.ic-unf:hover { background: rgb(255 255 255 / .16); }
+.ic-follow { display: inline-flex; align-items: center; gap: 8px; height: 34px; max-width: 240px; padding: 0 12px 0 7px; border-radius: 11px; background: rgb(255 255 255 / .06); color: var(--stage-ink); text-align: left; transition: background-color var(--duration-1); }
+.ic-follow:hover { background: rgb(255 255 255 / .1); }
+.ic-follow .ft { display: grid; min-width: 0; }
+.ic-follow .ft b { font: 600 12.5px/1.15 var(--font-sans); white-space: nowrap; }
+.ic-follow .ft small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stage-ink-2); font: 500 11px/1.2 var(--font-sans); }
+/* Present: the one filled thing on the bar, in the sun, which is cream at night. */
+.ic-present { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px 0 11px; border-radius: 10px; background: var(--sun); color: var(--on-sun); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: filter var(--duration-1); }
+.ic-present:hover { filter: brightness(1.06); }
+.ic-present:disabled { opacity: .7; cursor: progress; }
+.ic-present .ac-spin { width: 14px; height: 14px; }
+.ic-fib { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 10px; color: var(--stage-ink-2); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-fib:hover { background: rgb(255 255 255 / .08); color: var(--stage-ink); }
+.ic-fib.is-on { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+/* Stop sharing ends it for everyone, so it reads like Leave, smaller. */
+.ic-stop { display: inline-flex; flex: none; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 10px; background: rgb(255 255 255 / .1); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .12); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1); }
+.ic-stop:hover { background: rgb(255 255 255 / .16); }
+.ic-close { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px; border-radius: 10px; background: rgb(255 255 255 / .06); color: var(--stage-ink); font: 600 13px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1); }
+.ic-close:hover, .ic-close[data-state="open"] { background: rgb(255 255 255 / .12); }
+.ic-close .chev { margin-left: -1px; color: var(--stage-ink-2); }
+.ic-fbody { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.ic-ffoot { position: absolute; z-index: 3; left: 50%; bottom: 14px; max-width: calc(100% - 24px); transform: translateX(-50%); }
+/* A phone: how it stands goes under the name, and the bar keeps only what fits a thumb. Words that go are still read out. */
+.ic-frame-box.is-phone .ic-fbar { height: 54px; padding: 0 6px 0 8px; gap: 6px; }
+.ic-frame-box.is-phone .ic-fnm { flex: 1 1 auto; flex-direction: column; align-items: flex-start; gap: 1px; }
+.ic-frame-box.is-phone .ic-fname { height: 24px; min-width: 0; padding: 0 6px 0 5px; font-size: 13.5px; border-radius: 7px; }
+.ic-frame-box.is-phone .ic-fmeta { max-width: 100%; padding: 0 5px; font-size: 11.5px; }
+.ic-frame-box.is-phone .ic-fol { padding-left: 5px; }
+.ic-frame-box.is-phone :is(.ic-fol .t, .ic-follow .ft small) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ic-frame-box.is-phone .ic-follow { padding: 0 10px 0 6px; }
+.ic-frame-box.is-phone .ic-present { padding: 0 11px 0 9px; }
+.ic-frame-box.is-phone .ic-close { padding: 0 10px 0 8px; }
+
+/* The board presenter's pager: back, where everyone is, next, and their own notes. */
+.ic-pager { display: inline-flex; align-items: center; gap: 2px; height: 40px; padding: 0 4px; border-radius: 12px; background: color-mix(in srgb, var(--stage-raised) 94%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1), 0 12px 26px -12px rgb(0 0 0 / .8); color: var(--stage-ink); }
+.ic-pb { display: inline-grid; place-items: center; flex: none; width: 32px; height: 32px; border-radius: 9px; color: var(--stage-ink); transition: background-color var(--duration-1), color var(--duration-1), opacity var(--duration-1); }
+.ic-pb:hover { background: rgb(255 255 255 / .08); }
+.ic-pb[aria-disabled="true"] { opacity: .35; cursor: default; }
+.ic-pb[aria-disabled="true"]:hover { background: transparent; }
+.ic-pb.is-on { background: color-mix(in srgb, var(--stage-sun) 16%, transparent); color: var(--stage-sun); }
+.ic-pt { display: grid; min-width: 64px; padding: 0 6px; text-align: center; }
+.ic-pt b { font: 600 12.5px/1.15 var(--font-sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ic-pt small { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stage-ink-2); font: 500 11px/1.25 var(--font-sans); }
+.ic-psep { flex: none; width: 1px; height: 20px; margin: 0 3px; background: rgb(255 255 255 / .1); }
+
+/* What someone presents, waiting among the people: live while they present it, so it carries the horizon's ring. */
+.ic-ptile { position: relative; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-md); background: var(--stage-tile); color: var(--stage-ink); text-align: left; cursor: pointer; animation: ac-fade var(--duration-2) var(--ease-out) both; }
+.ic-ptile::after { content: ""; position: absolute; z-index: 1; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(180deg, transparent 50%, color-mix(in srgb, var(--stage) 62%, transparent)); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--horizon) 55%, transparent); transition: box-shadow var(--duration-1); }
+.ic-ptile:hover::after { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--horizon) 85%, transparent); }
+.ic-ptile:focus-visible { outline-offset: 3px; }
+.ic-tmini { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ic-tplace { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 16px 16px 44px; background: radial-gradient(70% 60% at 50% 42%, color-mix(in srgb, var(--horizon) 9%, transparent), transparent 72%); text-align: center; }
+.ic-tplace .sq { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px; background: rgb(255 255 255 / .06); color: var(--stage-ink-2); }
+.ic-tplace b { max-width: 100%; color: var(--stage-ink); font: 600 15px/1.3 var(--font-sans); }
+.ic-tback { position: absolute; z-index: 2; right: 8px; top: 8px; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 6px; border-radius: 8px; background: color-mix(in srgb, var(--stage) 70%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--stage-ink); font: 600 12px/1 var(--font-sans); white-space: nowrap; transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-ptile:hover .ic-tback, .ic-ptile:focus-visible .ic-tback { background: var(--stage-ink); color: var(--stage); }
+.ic-ptile .ac-tile-name { z-index: 2; gap: 6px; max-width: calc(100% - 20px); overflow: hidden; }
+.ic-ptile .ac-tile-name > .ac-i { flex: none; margin-left: -2px; color: var(--stage-ink-2); }
+.ic-ptile .ac-tile-name .nm { flex: 0 1 auto; }
+/* Who presents it gives way before what it is. */
+.ic-tsub { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--horizon); }
+/* As an arch, among arches or on the horizon: the kind and the presenter's face. */
+.ic-ptile.is-small { container-type: size; border-radius: var(--radius-arch) var(--radius-arch) var(--radius-md) var(--radius-md); }
+.ic-ptile.is-small::after { background: none; }
+.ic-tsm { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 6%; color: var(--stage-ink); }
+.ic-tsm .ac-avatar { position: absolute; right: 12%; bottom: 8%; --ring: var(--stage-tile); }
+@container (max-width: 52px) {
+  .ic-tsm .ac-i { width: 14px; height: 14px; }
+  .ic-tsm .ac-avatar { --size: 13px !important; right: 6%; bottom: 6%; }
+}
+
+/* Close's question, and Present's: on the stage's own raised night, under their buttons, or a sheet on a phone. */
+.ic-closeask { width: 316px; max-width: calc(100vw - 24px); padding: 8px; }
+.ic-askh { padding: 10px 12px 8px; color: var(--stage-ink); font: 600 15px/1.25 var(--font-sans); }
+.ic-cm { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; align-items: center; width: 100%; min-height: 58px; padding: 8px 12px 8px 10px; border-radius: 13px; color: var(--stage-ink); text-align: left; transition: background-color var(--duration-1); }
+.ic-cm:hover { background: rgb(255 255 255 / .06); }
+.ic-cm .sq { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: rgb(255 255 255 / .07); }
+.ic-cm b { display: block; font: 600 14px/1.25 var(--font-sans); }
+.ic-cm small { display: block; margin-top: 3px; color: var(--stage-ink-2); font: 500 12.5px/1.3 var(--font-sans); }
+.ic-presentask { width: 372px; max-width: calc(100vw - 24px); padding: 14px; }
+.ic-presentask p { color: var(--stage-ink-2); font: 400 13.5px/1.45 var(--font-sans); }
+.ic-presentask p b { color: var(--stage-ink); font-weight: 600; }
+.ic-presentask .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+/* Share, over the dock: one popover, each step in the place of the one before. */
+.ic-sharepop { width: 412px; max-width: calc(100vw - 24px); padding: 8px; background: var(--stage-raised); color: var(--stage-ink); }
+.ic-sp-hd { display: grid; gap: 4px; padding: 10px 12px; }
+.ic-sp-hd b { font: 600 15px/1.2 var(--font-sans); }
+.ic-sp-hd span { color: var(--stage-ink-2); font: 500 12.5px/1.35 var(--font-sans); }
+.ic-sp-row { display: grid; grid-template-columns: 40px minmax(0, 1fr) 16px; gap: 12px; align-items: center; width: 100%; min-height: 62px; padding: 8px 12px 8px 10px; border-radius: 13px; color: var(--stage-ink); text-align: left; transition: background-color var(--duration-1), opacity var(--duration-1); }
+.ic-sp-row:hover { background: rgb(255 255 255 / .06); }
+.ic-sp-row[aria-disabled="true"] { opacity: .55; cursor: default; }
+.ic-sp-row[aria-disabled="true"]:hover { background: transparent; }
+.ic-sp-row .sq { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: rgb(255 255 255 / .07); }
+.ic-sp-row .tx { min-width: 0; }
+.ic-sp-row b { display: block; font: 600 14px/1.25 var(--font-sans); }
+.ic-sp-row small { display: block; margin-top: 3px; color: var(--stage-ink-2); font: 500 12.5px/1.3 var(--font-sans); }
+.ic-sp-row > .ac-i:last-child:not(:first-child) { color: var(--stage-ink-2); }
+.ic-sp-mine { display: flex; align-items: center; gap: 10px; margin: 2px 4px 6px; padding: 8px 8px 8px 12px; border-radius: 13px; background: color-mix(in srgb, var(--stage-sun) 10%, transparent); font: 500 13px/1.3 var(--font-sans); }
+.ic-sp-mine > .ac-i { flex: none; }
+.ic-sp-mine > span { flex: 1; }
+.ic-sp-foot { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 10px 12px 6px; border-top: 1px solid rgb(255 255 255 / .08); color: var(--stage-ink-2); font: 500 12px/1.3 var(--font-sans); }
+.ic-sp-foot .ac-i { flex: none; }
+.ic-sp-step { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 4px 6px; }
+.ic-sp-step b { min-width: 0; font: 600 15px/1.2 var(--font-sans); }
+.ic-sp-back { display: inline-flex; flex: none; align-items: center; gap: 6px; height: 32px; padding: 0 10px 0 6px; border-radius: 9px; color: var(--stage-ink-2); font: 600 13px/1 var(--font-sans); transition: background-color var(--duration-1), color var(--duration-1); }
+.ic-sp-back:hover { background: rgb(255 255 255 / .07); color: var(--stage-ink); }
+.ic-sp-trouble { margin: 4px 6px 6px; }
+.ic-sp-picks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 6px 6px 4px; }
+.ic-sp-pick { display: grid; justify-items: center; gap: 9px; min-width: 0; padding: 14px 6px 12px; border-radius: 14px; background: rgb(255 255 255 / .05); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .08); color: var(--stage-ink); font: 600 12.5px/1.2 var(--font-sans); text-align: center; transition: background-color var(--duration-1), box-shadow var(--duration-1); }
+.ic-sp-pick:hover { background: rgb(255 255 255 / .08); }
+.ic-sp-pick[aria-pressed="true"] { background: color-mix(in srgb, var(--stage-sun) 12%, transparent); box-shadow: inset 0 0 0 1.5px var(--stage-sun); }
+.ic-sp-pick .pic { display: grid; place-items: center; width: 64px; max-width: 100%; height: 42px; border-radius: 8px; background: rgb(255 255 255 / .07); color: var(--stage-ink-2); }
+.ic-sp-pick[aria-pressed="true"] .pic { color: var(--stage-ink); }
+.ic-sp-sw { display: flex; align-items: center; gap: 10px; padding: 12px 12px 4px; font: 500 13.5px/1.3 var(--font-sans); }
+.ic-sp-sw > span { flex: 1; min-width: 0; }
+/* Read for the notes: the notes' own crimson, and only ever that. */
+.ic-sp-read { display: flex; align-items: center; gap: 8px; padding: 8px 12px 2px; color: color-mix(in srgb, var(--rec) 72%, var(--stage-ink)); font: 500 12.5px/1.3 var(--font-sans); }
+.ic-sp-read.is-paused { color: var(--stage-ink-2); }
+.ic-sp-read .ac-i { flex: none; }
+.ic-sp-acts { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 6px 4px; }
+/* Quiet and second buttons on the night popovers, as the stage draws them. */
+.ic-sharepop .ac-btn.is-quiet { color: var(--stage-ink); }
+.ic-sharepop .ac-btn.is-quiet:hover { background: rgb(255 255 255 / .07); }
+.ic-presentask .ac-btn.is-secondary { background: rgb(255 255 255 / .08); color: var(--stage-ink); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .14); }
+.ic-presentask .ac-btn.is-secondary:hover { background: rgb(255 255 255 / .14); }
+/* A board, as Share's step: the picker's rows on the share's night. */
+.ic-sharepop .ic-sp-step + .bl-sub { margin-top: 6px; }
+.ic-sharepop :is(.bl-sub, .bl-r small, .bl-r .when, .bl-f) { color: var(--stage-ink-2); }
+.ic-sharepop .bl-r:hover:not(:disabled) { background: rgb(255 255 255 / .06); }
+.ic-sharepop .bl-f { border-top-color: rgb(255 255 255 / .08); }

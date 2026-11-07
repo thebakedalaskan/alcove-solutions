@@ -446,6 +446,19 @@
 .bl-q .acts { display: flex; gap: 8px; margin-top: 10px; }
 .bl-q .ac-btn { height: 34px; padding: 0 12px; font-size: 13px; }
 .bl.is-busy { cursor: progress; }
+/* The board picker (`BoardPicker`): its own head, the board the call has, and why what's new can't be picked just now. */
+.bl-hd { display: grid; gap: 4px; padding: 4px 6px 2px; }
+.bl-hd b { font: 600 15px/1.2 var(--font-sans); letter-spacing: -.005em; }
+.bl-hd span { font: 500 12.5px/1.35 var(--font-sans); color: var(--ink-3); }
+.bl-hd + .bl-sub { margin-top: 10px; }
+.bl-th.is-icon { display: grid; place-items: center; color: var(--ink-2); }
+.bl-th.is-icon svg { width: 18px; height: 18px; }
+.bl-now b { color: var(--ink); }
+.bl-why { display: flex; align-items: flex-start; gap: 8px; margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--sunk); font: 500 13px/1.4 var(--font-sans); color: var(--ink-2); }
+.bl-why .ac-i { flex: none; margin-top: 1px; color: var(--ink-3); }
+.bl-c.is-off, .bl-r.is-off { opacity: .45; cursor: default; }
+.bl-c.is-off:hover { box-shadow: inset 0 0 0 1px var(--line); transform: none; }
+.bl-r.is-off:hover { background: none; }
 
 /* ---------------------------------------------------------------- a live tile */
 /* The board as a tile on the stage, when someone keeps faces big. `is-col` is the smaller one above the tiles beside a big share. */
