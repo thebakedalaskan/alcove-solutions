@@ -2,7 +2,7 @@
  * A board in the call (user-flows 6, A board in the call): Board's picker; the board in the call, opened by Priya and filled as
  * the design review talks, on your stage just for you from the picker's In this call, with its name's menu and its seal, and in a
  * light theme, light on the night stage; Priya presenting it, closed for you, its tile taking you back; Priya's shared screen
- * as a tile while Kofi presents it, Show beside and P; a board you can't open; a share taking your stage
+ * as a tile while Kofi presents it, Show beside and P; a board you can't open; closed for everyone; a share taking your stage
  * from it; how it stands when its connection drops (Reconnecting) and when Alcove won't take what you add (Couldn't save); its
  * timer, running and in its last minute; a vote, from a press or the keyboard, and its results; and the one pill, which shows the
  * most pressing thing. Everyone else's browser is the script's (stories/calls/boards.ts): who opens it, what they put on it,
@@ -10,7 +10,7 @@
  */
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { at, clearsVote, endsVote, opensBoard, presentsBoard, shares, startsTimer, startsVote, type CallScript, type Cue, type Present } from '../../src/api/script';
+import { at, clearsVote, closesBoard, endsVote, opensBoard, presentsBoard, shares, startsTimer, startsVote, type CallScript, type Cue, type Present } from '../../src/api/script';
 import { inCall, light, phone, plays } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { RETRO, filledAfter, retroWith } from './boards';
@@ -117,6 +117,10 @@ export const ABoardYouCantOpen: PageStory = {
   name: 'A Board You Can’t Open'
 };
 export const ABoardYouCantOpenPhone = phone(ABoardYouCantOpen, 'A Board You Can’t Open Phone');
+
+/** Priya closes it for everyone while it's on your stage: it sinks back through the arch, the faces come back, and one line says where it's saved. */
+export const Closed = review([...at(1, opensBoard(PRIYA, 'retro')), ...at(12, closesBoard())], retroWith(3), onIt(step('Priya closes it for everyone', () => toldThat(/^Design review is closed/))));
+export const ClosedPhone = phone(Closed);
 
 /**
  * Priya starts sharing while the board is open just for you: nobody presents the board, so her screen takes your stage, as a

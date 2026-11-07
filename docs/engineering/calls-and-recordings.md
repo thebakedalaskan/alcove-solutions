@@ -1108,7 +1108,7 @@ into the call. Being in a call, or organizing it, opens nothing.
     [Data and storage › Presenter notes](data-and-storage.md#presenter-notes).
 - **Ending a presentation.** `present-stop` is for whoever started it, or the organizer (`403` for anyone else), and says
   whom it ends for: whoever presented it (`close` false), everyone following keeping it open on their own, or everyone
-  (`close`), which closes a board in the call too ([A board in a call](#a-board-in-a-call)).
+  (`close`), which closes a board in the call as `board-close` does, for whoever's presenting it as well as whoever opened it.
   The call keeps how the last presentation in each part ended, `workspace.ended`, `{ place, key, close, by, at }`, `by` being its
   presenter whoever stopped it, until another starts there, and tells everyone there (`CallWorkspace.ended`: `key`, `close` and
   `by`), so whoever was following it knows whether to keep it open. Nothing else that ends one says how (below).
@@ -1234,7 +1234,7 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
 `callSpace.ts`, and who can open what is `workspaceAccess.ts`, on every read.
 
 - **`CallState.board.open`** is per viewer, for the part of the call they're in: `workspaceId`, `documentId`, `name` (what it's
-  called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call),
+  called now), `openedBy` (the connection whoever opened it is on now, or null when they aren't in the call), `canClose`,
   `everyone` (the call made it and it's still the call's to give, so everyone in it can add to it, anyone let in later too,
   which is what the board's seal, a blank board and the call's toasts say; false once it's restricted or the organizer can't
   edit in its workspace, for a saved board, and for anyone who can't open it; a room's own board is everyone in the room's),
@@ -1328,11 +1328,10 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   opens the session again so what the device keeps goes again; the session tries again by itself as well. **View only** for
   someone who can only read it. A session that ends `unavailable` opens again by itself, a little later each time
   (`useOpensAgain`, as the page's does), and one that couldn't open at all opens again once the browser is back online.
-- **Closing** is ending a presentation of it for everyone (`present-stop` with `close`), for whoever's presenting it or the
-  organizer ([Presenting](#the-calls-workspace)), and only closes it: its timer, vote and ideas from the call go with it.
+- **Closing** (`board-close`) is for whoever opened it, on any connection of theirs, or the organizer, and only closes it.
   Nothing is deleted, seats stay until the call ends because people may open it again, and what the call lets people into stays.
-  Nobody closes it for everyone any other way: it stays the board in the call unless another opens in its place, it goes to
-  Trash, or its part of the call ends.
+  While it's presented, ending the presentation for everyone (`present-stop` with `close`) closes it the same way, for whoever's
+  presenting it too ([Presenting](#the-calls-workspace)).
 - **When it stops.** The call ending ends every seat, and what it kept of its boards goes. A change of workspace leaves what's
   open alone: a board says where it is, and only a new one goes to the new workspace.
 - **Ideas from the call** are kept by part of the call in its sealed state (`board.ideas`: when they were last looked for, a

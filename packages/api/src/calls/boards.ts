@@ -34,6 +34,8 @@ export const CallBoardOpenSchema = z.object({
   name: z.string().nullable(),
   /** Whoever opened it, by participant ID: the connection they're on now, or null when they aren't in the call. */
   openedBy: z.string().nullable(),
+  /** You can close it for everyone: you opened it, or you're the organizer. */
+  canClose: z.boolean(),
   /**
    * The call made it, so everyone in it can add to it, anyone let in later too, for as long as it's the call's to give: what
    * the board can say about who's on it. A saved board says only what each person has.

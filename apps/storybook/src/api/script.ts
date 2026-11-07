@@ -117,12 +117,13 @@ export type Beat =
   /**
    * A board in the call (user-flows 6, A board in the call). Someone makes a new one, the board in the main room, from a
    * template, made in the call's home and filled as the server fills it, with what `draw` puts on it, or one you can't open
-   * (`closedToYou`), which opens on their stage alone until they present it; and adds a sticky to one of the frames of the
-   * board where you are, by the frame's title, which puts their pointer by it. `standing` opens it here with no connection to
-   * it (`offline`), or with Alcove refusing what's added here (`failed`), while the call carries on.
+   * (`closedToYou`), which opens on their stage alone until they present it; adds a sticky to one of the frames of the board where you are, by the frame's title, which puts their
+   * pointer by it; and whoever opened it closes it. `standing` opens it here with no connection to it (`offline`), or with
+   * Alcove refusing what's added here (`failed`), while the call carries on.
    */
   | { do: 'open-board'; who: Person; template: BoardTemplate; closedToYou?: boolean | undefined; draw?: ((doc: Y.Doc) => void) | undefined; standing?: 'offline' | 'failed' | undefined }
   | { do: 'add-sticky'; who: Person; frame: string; text: string }
+  | { do: 'close-board' }
   /**
    * The board's timer and vote, run by someone else: a timer (`left`: seconds still to go, for one near its end), a vote on a
    * frame by its title (null: every sticky), ended with everyone else's votes by what each sticky says, and cleared.
@@ -214,6 +215,7 @@ export const tagsYou = (who: Person, document: string, block?: string): Beat => 
 export const opensBoard = (who: Person, template: BoardTemplate, o: { closedToYou?: boolean; draw?: (doc: Y.Doc) => void; standing?: 'offline' | 'failed' } = {}): Beat => ({ do: 'open-board', who, template, ...o });
 /** Someone adds a sticky to the frame with this title on the board that's open. */
 export const addsSticky = (who: Person, frame: string, text: string): Beat => ({ do: 'add-sticky', who, frame, text });
+export const closesBoard = (): Beat => ({ do: 'close-board' });
 export const hears = (...ideas: HeardIdea[]): Beat => ({ do: 'heard', ideas });
 /** Someone starts the board's timer: `left` seconds to go, if it started a while ago. */
 export const startsTimer = (who: Person, minutes: BoardTimerMinutes, left?: number): Beat => ({ do: 'start-timer', who, minutes, left });

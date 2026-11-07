@@ -228,7 +228,7 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
    * It's what's drawn while it's on your stage; otherwise the call's board is, or the one sinking as it closes.
    */
   const savedOpen = useMemo((): CallBoardOpen | null => (saved ? {
-    workspaceId: saved.workspaceId, documentId: saved.documentId, name: saved.name, openedBy: me, everyone: false, role: 'edit', seal: 'Sealed', frame: null
+    workspaceId: saved.workspaceId, documentId: saved.documentId, name: saved.name, openedBy: me, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null
   } : null), [saved?.workspaceId, saved?.documentId, saved?.name, me]);
   const mineDrawn = stage === 'saved' && savedOpen !== null;
   const { doc, status, reopen } = useBoardSession(mineDrawn ? savedOpen : open ?? sinking, owner, mineDrawn ? undefined : pass);

@@ -156,8 +156,10 @@ describe('a new board', () => {
     await k.openBoard({ template: 'retro' });
     const made = k.getSnapshot().board.open;
     const board = made?.documentId ?? '';
-    expect(made).toEqual({ workspaceId: id, documentId: board, name: 'Launch review', openedBy: k.ticket.identity, everyone: true, role: 'edit', seal: 'Sealed', frame: null });
-    for (const call of [host, p, jamie.call]) expect(await opened(call)).toEqual(made);
+    expect(made).toEqual({ workspaceId: id, documentId: board, name: 'Launch review', openedBy: k.ticket.identity, canClose: true, everyone: true, role: 'edit', seal: 'Sealed', frame: null });
+    expect(await opened(host)).toEqual({ ...made, canClose: true });
+    expect(await opened(p)).toEqual({ ...made, canClose: false });
+    expect(await opened(jamie.call)).toEqual({ ...made, canClose: false });
 
     // It's an item like any other, by whoever started it, and every stream of the workspace hears of it.
     await until(() => stream.getSnapshot().tree?.items.some((x) => x.id === board) === true, 'the stream to hear of it');
@@ -335,7 +337,7 @@ describe('a new board', () => {
     const waiting = await b.api.calls.join(c, { mic: false, cam: false, name: 'Waiting Guest' });
     await settle(host, (s) => s.waiting.some((w) => w.id === waiting.ticket.identity));
     expect(await code(waiting.openBoard({ template: 'blank' }))).toBe('forbidden');
-    expect(await code(waiting.stopPresenting(true))).toBe('forbidden');
+    expect(await code(waiting.closeBoard())).toBe('forbidden');
     expect(await code(waiting.boardCheck(madeUp(), madeUp()))).toBe('forbidden');
     await host.openBoard({ template: 'blank' });
     expect(waiting.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
@@ -355,11 +357,11 @@ describe('a new board', () => {
 
     // Someone invited who comes late has it by email.
     const k = await invited(host, c, kofi);
-    expect(await opened(k)).toMatchObject({ documentId: board, role: 'edit', openedBy: host.ticket.identity });
+    expect(await opened(k)).toMatchObject({ documentId: board, role: 'edit', canClose: false, openedBy: host.ticket.identity });
     // A guest who comes late is given a seat as they're let in.
     const jamie = await guest(host, c);
     await until(async () => (await opened(jamie.call))?.role === 'edit', 'a seat for the guest who came late');
-    expect(await opened(jamie.call)).toMatchObject({ workspaceId: id, documentId: board, name: expect.any(String) });
+    expect(await opened(jamie.call)).toMatchObject({ workspaceId: id, documentId: board, name: expect.any(String), canClose: false });
     expect(await seats(board)).toBe(2);
     const page = await open(jamie, id, board, { pass: jamie.call.ticket.pass });
     expect(page.getSnapshot().role).toBe('edit');
@@ -371,12 +373,12 @@ describe('a new board', () => {
     expect(await opened(back)).toMatchObject({ documentId: board, role: 'edit' });
     expect(await seats(board)).toBe(2);
 
-    // Whoever opened it is the same person on a new connection, and everyone's told who they are now.
+    // Whoever opened it is the same person on a new connection: they can still close it, and everyone's told who they are now.
     const again = await art.api.calls.join(c, { mic: false, cam: false });
     await inGroup(again);
-    expect(await opened(again)).toMatchObject({ documentId: board, openedBy: again.ticket.identity });
+    expect(await opened(again)).toMatchObject({ documentId: board, openedBy: again.ticket.identity, canClose: true });
     await inGroup(k);
-    expect(await opened(k)).toMatchObject({ openedBy: again.ticket.identity });
+    expect(await opened(k)).toMatchObject({ openedBy: again.ticket.identity, canClose: false });
   });
 
   it('replaces what’s open for everyone there, and the old one just closes', async () => {
@@ -391,8 +393,8 @@ describe('a new board', () => {
     const after = k.getSnapshot().board.open?.documentId ?? '';
     expect(after).not.toBe(before);
     // Who opened it now is whoever opened this one: the one it replaced was theirs and nobody's now.
-    expect(await opened(host)).toMatchObject({ documentId: after, openedBy: k.ticket.identity });
-    expect(k.getSnapshot().board.open).toMatchObject({ documentId: after, openedBy: k.ticket.identity });
+    expect(await opened(host)).toMatchObject({ documentId: after, openedBy: k.ticket.identity, canClose: true });
+    expect(k.getSnapshot().board.open).toMatchObject({ documentId: after, openedBy: k.ticket.identity, canClose: true });
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id).sort()).toEqual([before, after].sort());
     // Two at once: one is open, and both are kept.
     await Promise.all([host.openBoard({ template: 'blank' }), k.openBoard({ template: 'blank' })]);
@@ -566,7 +568,7 @@ describe('a new board', () => {
 });
 
 describe('closing a board', () => {
-  it('is for whoever presents it or the organizer, for everyone, deletes nothing, and leaves its seats until the call ends', async () => {
+  it('is for whoever opened it or the organizer, deletes nothing, and leaves its seats until the call ends', async () => {
     const art = await account();
     const kofi = await account();
     const priya = await account();
@@ -575,19 +577,18 @@ describe('closing a board', () => {
     const k = await invited(host, c, kofi);
     const p = await invited(host, c, priya);
     const jamie = await guest(host, c);
-    expect(await refusal(k.stopPresenting(true))).toMatchObject({ code: 'conflict', message: 'Nothing is being presented here.' });
+    expect(await refusal(k.closeBoard())).toMatchObject({ code: 'conflict', message: 'No board is open here.' });
 
     await k.openBoard({ template: 'blank' });
     const board = k.getSnapshot().board.open?.documentId ?? '';
-    await k.startPresenting({ kind: 'board', id: board });
     // Nobody else who's in it, and a guest with a seat least of all.
-    const notYours = { code: 'forbidden', status: 403, message: 'Only whoever started this, or the organizer, can do that.' };
-    expect(await refusal(p.stopPresenting(true))).toEqual(notYours);
-    expect(await refusal(jamie.call.stopPresenting(true))).toEqual(notYours);
+    const notYours = { code: 'forbidden', status: 403, message: 'Only whoever opened this board, or the organizer, can close it.' };
+    expect(await refusal(p.closeBoard())).toEqual(notYours);
+    expect(await refusal(jamie.call.closeBoard())).toEqual(notYours);
     expect(await opened(p)).toMatchObject({ documentId: board });
 
-    // Whoever presents it.
-    await k.stopPresenting(true);
+    // Whoever opened it.
+    await k.closeBoard();
     expect(k.getSnapshot().board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     expect((await read(jamie.call)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
@@ -597,11 +598,10 @@ describe('closing a board', () => {
     // People may open it again: it's the same board, and the guest is still in it.
     await p.openBoard({ workspaceId: id, documentId: board, letIn: false });
     expect(await opened(jamie.call)).toMatchObject({ documentId: board, role: 'edit', openedBy: p.ticket.identity });
-    await p.startPresenting({ kind: 'board', id: board });
-    expect(await refusal(k.stopPresenting(true))).toEqual(notYours);
+    expect(await refusal(k.closeBoard())).toEqual(notYours);
 
-    // The organizer, whoever presents it.
-    await host.stopPresenting(true);
+    // The organizer, whoever opened it.
+    await host.closeBoard();
     expect(await opened(p)).toBeNull();
     expect(inTree(await art.api.workspaces.get(id)).map((x) => x.id)).toEqual([board]);
   });
@@ -615,15 +615,12 @@ describe('closing a board', () => {
     const k = await invited(host, c, kofi);
     const p = await invited(host, c, priya);
     await k.openBoard({ template: 'blank' });
-    const board = k.getSnapshot().board.open?.documentId ?? '';
     await k.leave();
     await settle(host, (s) => !s.participants.some((x) => x.id === k.ticket.identity));
-    expect(await opened(host)).toMatchObject({ documentId: board, openedBy: null });
-    expect(await opened(p)).toMatchObject({ documentId: board, openedBy: null });
-    // The organizer presents it, and closes it for everyone; nobody else here can.
-    await host.startPresenting({ kind: 'board', id: board });
-    expect(await code(p.stopPresenting(true))).toBe('forbidden');
-    await host.stopPresenting(true);
+    expect(await opened(host)).toMatchObject({ openedBy: null, canClose: true });
+    expect(await opened(p)).toMatchObject({ openedBy: null, canClose: false });
+    expect(await code(p.closeBoard())).toBe('forbidden');
+    await host.closeBoard();
     expect(await opened(p)).toBeNull();
   });
 });
@@ -702,10 +699,10 @@ describe('a saved board', () => {
     const t = await invited(host, c, theo);
     const jamie = await guest(host, c);
     await p.openBoard({ workspaceId: id, documentId: board, letIn: true });
-    expect(p.getSnapshot().board.open).toEqual({ workspaceId: id, documentId: board, name: 'Onboarding flow', openedBy: p.ticket.identity, everyone: false, role: 'edit', seal: 'Sealed', frame: null });
+    expect(p.getSnapshot().board.open).toEqual({ workspaceId: id, documentId: board, name: 'Onboarding flow', openedBy: p.ticket.identity, canClose: true, everyone: false, role: 'edit', seal: 'Sealed', frame: null });
     // Only the people who couldn't open it: Rita keeps what the workspace gives her.
     expect(await seats(board)).toBe(2);
-    for (const who of [t, jamie.call]) expect(await opened(who)).toMatchObject({ documentId: board, name: 'Onboarding flow', role: 'edit' });
+    for (const who of [t, jamie.call]) expect(await opened(who)).toMatchObject({ documentId: board, name: 'Onboarding flow', role: 'edit', canClose: false });
     expect(await opened(r)).toMatchObject({ documentId: board, role: 'read' });
     expect((await art.api.workspaces.share.list(id, board)).entries.map((e) => [e.kind, e.role]).sort()).toEqual([['seat', 'edit'], ['seat', 'edit']]);
     // They see that one board and nothing else in the workspace, by their seat.
@@ -716,10 +713,8 @@ describe('a saved board', () => {
     const sam = await guest(host, c, 'Sam Guest');
     await until(async () => (await opened(sam.call))?.role === 'edit', 'a seat for someone admitted later');
     expect(await seats(board)).toBe(3);
-    // Closing it for everyone leaves the policy where it was, and someone admitted now finds it when it's opened again.
-    await p.startPresenting({ kind: 'board', id: board });
-    await p.stopPresenting(true);
-    expect(await opened(host)).toBeNull();
+    // Closing leaves the policy where it was, and someone admitted now finds it when it's opened again.
+    await p.closeBoard();
     const lee = await guest(host, c, 'Lee Guest');
     await until(async () => (await seats(board)) === 4, 'a seat for someone admitted while it’s closed');
     await p.openBoard({ workspaceId: id, documentId: board, letIn: false });
@@ -738,7 +733,7 @@ describe('a saved board', () => {
     const p = await invited(host, c, priya);
     const t = await invited(host, c, theo);
     await p.openBoard({ workspaceId: id, documentId: board, letIn: false });
-    const left = { workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, everyone: false, role: null, seal: 'Sealed', frame: null };
+    const left = { workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, canClose: false, everyone: false, role: null, seal: 'Sealed', frame: null };
     expect(await opened(t)).toEqual(left);
     const jamie = await guest(host, c);
     await rest(150);
@@ -746,8 +741,8 @@ describe('a saved board', () => {
     expect(await seats(board)).toBe(0);
     expect(await code(jamie.api.workspaces.get(id, { pass: jamie.call.ticket.pass }))).toBe('not-found');
     expect(await code(theo.api.workspaces.get(id, { pass: t.ticket.pass }))).toBe('not-found');
-    // Anyone who can open it has it.
-    expect(await opened(host)).toMatchObject({ documentId: board, role: 'edit' });
+    // Anyone who can open it has it, and the organizer can still close what they can't.
+    expect(await opened(host)).toMatchObject({ documentId: board, role: 'edit', canClose: true });
     // Letting them in afterwards is another choice, and takes in everyone here.
     await p.openBoard({ workspaceId: id, documentId: board, letIn: true });
     expect(await opened(t)).toMatchObject({ documentId: board, role: 'edit' });
@@ -818,9 +813,9 @@ describe('a saved board', () => {
     await p.openBoard({ workspaceId: id, documentId: board, letIn: true });
     const page = await open(priya, id, board, { pass: p.ticket.pass });
     await art.api.workspaces.share.restrict(id, board, true);
-    // Priya had it through the workspace. She's told she opened it, and that's all.
+    // Priya had it through the workspace. She can still close it, as whoever opened it, and that's all she's told.
     const seen = await read(p);
-    expect(seen.board.open).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, everyone: false, role: null, seal: 'Sealed', frame: null });
+    expect(seen.board.open).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, canClose: true, everyone: false, role: null, seal: 'Sealed', frame: null });
     expect(said(seen)).not.toContain('Onboarding flow');
     await until(() => page.getSnapshot().closed === 'access', 'her page to close');
     expect(await code(p.openBoard({ workspaceId: id, documentId: board, letIn: false }))).toBe('not-found');
@@ -833,6 +828,8 @@ describe('a saved board', () => {
     await rest(150);
     expect(await opened(jamie.call)).toMatchObject({ role: null, name: null });
     expect(await seats(board)).toBe(1);
+    await p.closeBoard();
+    expect(await opened(host)).toBeNull();
   });
 
   it('gives the organizer a seat too when they come back to what they can’t open: being organizer gives nothing', async () => {
@@ -855,7 +852,7 @@ describe('a saved board', () => {
     await inGroup(back);
     // Joining doesn't wait for the workspace: the seat lands a moment later.
     await until(async () => (await opened(back))?.role === 'edit', 'a seat for the organizer');
-    expect(await opened(back)).toMatchObject({ documentId: board, role: 'edit' });
+    expect(await opened(back)).toMatchObject({ documentId: board, role: 'edit', canClose: true });
     expect(await seats(board)).toBe(1);
   });
 
@@ -901,9 +898,9 @@ describe('a saved board', () => {
     // Art can only read it, so he can't bring it, as anywhere.
     expect(await code(host.openBoard({ workspaceId: team, documentId: flow, letIn: false }))).toBe('forbidden');
     await p.openBoard({ workspaceId: team, documentId: flow, letIn: false });
-    expect(await opened(p)).toMatchObject({ workspaceId: team, documentId: flow, name: 'Onboarding flow', role: 'edit', everyone: false });
-    expect(await opened(host)).toMatchObject({ workspaceId: team, documentId: flow, role: 'read' });
-    expect(await opened(t)).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, everyone: false, role: null, seal: 'Sealed', frame: null });
+    expect(await opened(p)).toMatchObject({ workspaceId: team, documentId: flow, name: 'Onboarding flow', role: 'edit', canClose: true, everyone: false });
+    expect(await opened(host)).toMatchObject({ workspaceId: team, documentId: flow, role: 'read', canClose: true });
+    expect(await opened(t)).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: p.ticket.identity, canClose: false, everyone: false, role: null, seal: 'Sealed', frame: null });
     // Nothing moved: it's still where it was, and the call's home has nothing new.
     expect((await priya.api.workspaces.get(team)).items.map((x) => x.id)).toEqual([flow]);
     expect(inTree(await art.api.workspaces.get(home))).toEqual([]);
@@ -926,7 +923,7 @@ describe('a saved board', () => {
     expect(host.getSnapshot().board.open?.name).toBe('CANARY-BOARD Onboarding flow');
     for (const call of [t, jamie.call]) {
       const seen = await read(call);
-      expect(seen.board.open).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: host.ticket.identity, everyone: false, role: null, seal: 'Sealed', frame: null });
+      expect(seen.board.open).toEqual({ workspaceId: null, documentId: null, name: null, openedBy: host.ticket.identity, canClose: false, everyone: false, role: null, seal: 'Sealed', frame: null });
       for (const name of ['CANARY', id, board]) expect(said(seen), name).not.toContain(name);
     }
     // What they try reads the same as for what doesn't exist, in the same words.
@@ -934,9 +931,7 @@ describe('a saved board', () => {
     expect(await refusal(t.boardCheck(id, board))).toEqual(await refusal(t.boardCheck(id, nothing)));
     expect(await refusal(t.openBoard({ workspaceId: id, documentId: board, letIn: false }))).toEqual(await refusal(t.openBoard({ workspaceId: id, documentId: nothing, letIn: false })));
     expect(await refusal(t.openBoard({ workspaceId: id, documentId: board, letIn: true }))).toEqual(await refusal(t.openBoard({ workspaceId: id, documentId: nothing, letIn: true })));
-    // Presented without them, closing it for everyone isn't theirs, and the refusal names nothing.
-    await host.startPresenting({ kind: 'board', id: board });
-    const closing = await refusal(t.stopPresenting(true));
+    const closing = await refusal(t.closeBoard());
     expect(closing?.code).toBe('forbidden');
     expect(JSON.stringify(closing)).not.toContain('CANARY');
     expect(await code(theo.api.workspaces.get(id, { pass: t.ticket.pass }))).toBe('not-found');
@@ -974,8 +969,7 @@ describe('someone who joins the invite during a call', () => {
     expect((await read(n)).role).toBe('invited');
     await until(async () => (await Promise.all([n, o, r, before].map(opened))).every((x) => x?.role === 'edit'), 'a seat for each of them');
     // Whoever brings it back later, it's still the call's to give: someone here letting people in again doesn't make it theirs.
-    await host.startPresenting({ kind: 'board', id: board });
-    await host.stopPresenting(true);
+    await host.closeBoard();
     await host.openBoard({ workspaceId: id, documentId: board, letIn: true });
     // Taken out of the call, they lose it at once, and with the invite goes any claim on it.
     await host.remove(o.ticket.identity);
@@ -1494,10 +1488,7 @@ describe('breakout rooms', () => {
     const told = { code: 'conflict', status: 409, message: 'Open a board from the main room.' };
     expect(await refusal(k.openBoard({ workspaceId: id, documentId: board, letIn: false }))).toEqual(told);
     expect(await refusal(k.boardCheck(id, board))).toEqual(told);
-    // Presented in the main room, it isn't closed from a room: nothing is presented there.
-    await host.startPresenting({ kind: 'board', id: board });
-    expect(await refusal(k.stopPresenting(true))).toMatchObject({ code: 'conflict', message: 'Nothing is being presented here.' });
-    expect(await opened(host)).toMatchObject({ documentId: board });
+    expect(await refusal(k.closeBoard())).toMatchObject({ code: 'conflict', message: 'No board is open here.' });
     host.closeRooms();
     await settle(host, (s) => s.breakouts.open === null);
     await until(async () => (await opened(k))?.documentId === board, 'Kofi to find it back in the main room');
@@ -1597,7 +1588,7 @@ describe('boards in breakout rooms', () => {
     const r = await inRooms({ mode: 'each', template: 'retro' });
     const one = await opened(r.k);
     const two = await opened(r.p);
-    expect(one).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'One board', openedBy: r.host.ticket.identity, everyone: true, role: 'edit', seal: 'Sealed to this room', frame: null });
+    expect(one).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'One board', openedBy: r.host.ticket.identity, canClose: false, everyone: true, role: 'edit', seal: 'Sealed to this room', frame: null });
     expect(two).toMatchObject({ workspaceId: r.id, name: 'Two board', role: 'edit', seal: 'Sealed to this room' });
     const oneId = one?.documentId ?? '';
     const twoId = two?.documentId ?? '';
@@ -1632,7 +1623,7 @@ describe('boards in breakout rooms', () => {
     expect((await read(r.host)).breakouts.open).toMatchObject({ board: 'none', rooms: [{ board: false }, { board: false }] });
     await r.k.openBoard({ template: 'ideas' });
     const made = await opened(r.k);
-    expect(made).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'One board', openedBy: r.k.ticket.identity, everyone: true, role: 'edit', seal: 'Sealed to this room', frame: null });
+    expect(made).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'One board', openedBy: r.k.ticket.identity, canClose: true, everyone: true, role: 'edit', seal: 'Sealed to this room', frame: null });
     const board = made?.documentId ?? '';
     // It's the room's, not the main room's, and not Priya's room's.
     expect(await opened(r.host)).toBeNull();
@@ -1648,7 +1639,7 @@ describe('boards in breakout rooms', () => {
     expect(await opens(r.kofi, r.id, board)).toBe('not-found');
     expect((await action(r.art, r.host, { type: 'rooms-move', email: r.priya.email, roomId: r.one })).status).toBe(200);
     expect(await opens(r.priya, r.id, board, r.p)).toBe('allowed');
-    expect(await opened(r.p)).toMatchObject({ documentId: board, role: 'edit' });
+    expect(await opened(r.p)).toMatchObject({ documentId: board, canClose: false, role: 'edit' });
     expect(await opened(r.k)).toBeNull();
   });
 
@@ -1662,7 +1653,7 @@ describe('boards in breakout rooms', () => {
     expect((await action(r.art, r.host, { type: 'rooms-visit', roomId: r.one })).status).toBe(200);
     const visiting = await pageOf(r.art, r.id, one, r.host);
     expect(visiting.getSnapshot().role).toBe('edit');
-    expect(await opened(r.host)).toMatchObject({ documentId: one, seal: 'Sealed to this room' });
+    expect(await opened(r.host)).toMatchObject({ documentId: one, seal: 'Sealed to this room', canClose: true });
     expect((await action(r.art, r.host, { type: 'rooms-visit', roomId: null })).status).toBe(200);
     expect(await opens(r.art, r.id, one, r.host)).toBe('not-found');
     await until(() => visiting.getSnapshot().closed === 'access', 'the organizer’s page to close as they leave the room');
@@ -1891,7 +1882,7 @@ describe('boards in breakout rooms', () => {
     const r = await inRooms({ mode: 'shared', template: 'retro' });
     const k = await opened(r.k);
     // There was no main board, so one is made from the template, with a frame for each room after it.
-    expect(k).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'Launch retro', openedBy: r.host.ticket.identity, everyone: true, role: 'edit', seal: 'Sealed', frame: roomFrameId(r.one) });
+    expect(k).toEqual({ workspaceId: r.id, documentId: expect.any(String), name: 'Launch retro', openedBy: r.host.ticket.identity, canClose: false, everyone: true, role: 'edit', seal: 'Sealed', frame: roomFrameId(r.one) });
     const board = k?.documentId ?? '';
     expect(await opened(r.p)).toMatchObject({ documentId: board, frame: roomFrameId(r.two) });
     expect(await opened(r.host)).toMatchObject({ documentId: board, frame: null });
@@ -2110,10 +2101,9 @@ describe('presenting a board', () => {
     expect((await action(r.art, r.host, { type: 'present-start', what: { kind: 'document', id: r.board } })).status).toBe(400);
     expect(await presented(r.t)).toBeNull();
 
-    // Closed for everyone, it's over: it doesn't come back with the board.
+    // Closed, it's over: it doesn't come back with the board.
     await r.p.startPresenting({ kind: 'board', id: r.board, section: 1 });
-    await r.host.stopPresenting(true);
-    expect(await opened(r.t)).toBeNull();
+    await r.host.closeBoard();
     expect(await presented(r.t)).toBeNull();
     expect(await presented(r.p)).toBeNull();
     await r.host.openBoard({ workspaceId: r.id, documentId: r.board, letIn: true });
@@ -2264,7 +2254,8 @@ describe('presenting a board', () => {
     expect(await code(r.t.stopPresenting(true))).toBe('forbidden');
     expect(await code(r.jamie.call.stopPresenting(true))).toBe('forbidden');
     expect(await opened(r.t)).toMatchObject({ documentId: r.board });
-    // Priya didn't open it, and presenting it, she closes it for everyone.
+    // Priya didn't open it, so she can't close it by itself; for everyone, presenting it, she can: it closes as Close closes it.
+    expect(await code(r.p.closeBoard())).toBe('forbidden');
     await r.p.stopPresenting(true);
     for (const call of [r.p, r.t, r.jamie.call, r.host]) {
       const s = await read(call);
@@ -2455,7 +2446,7 @@ describe('what the previous release stored', () => {
 
     expect((await read(host)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     expect((await read(k)).board).toEqual({ open: null, timer: null, vote: null, ideas: [] });
-    expect(await code(k.stopPresenting(true))).toBe('conflict');
+    expect(await code(k.closeBoard())).toBe('conflict');
     await k.openBoard({ template: 'retro' });
     const open1 = await opened(host);
     expect(open1).toMatchObject({ openedBy: k.ticket.identity, role: 'edit', seal: 'Sealed', frame: null });
