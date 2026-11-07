@@ -2396,10 +2396,11 @@ describe('presenting a board', () => {
     // And once nobody presents one, anyone invited can.
     await r.host.openBoard({ workspaceId: r.id, documentId: planning, letIn: false });
     expect(await opened(r.p)).toMatchObject({ documentId: planning });
-    // The workspace presented is in no board's way.
+    // The workspace presented is in no board's way. Theo, given only the call's board in it, is told who's presenting, never what.
     await r.p.startPresenting({ kind: 'workspace' });
     await r.host.openBoard({ template: 'blank' });
-    expect(await presented(r.t)).toMatchObject({ kind: 'workspace' });
+    expect(await presented(r.host)).toMatchObject({ kind: 'workspace', id: r.id });
+    expect(await presented(r.t)).toMatchObject({ kind: null, id: null, by: { name: r.priya.name } });
   });
 
   it('is told in a call that has no home of its own yet, from where the board is kept', async () => {

@@ -1234,6 +1234,27 @@ describe('presenting the workspace', () => {
     expect((await action(priya, again, { type: 'present-start', kind: 'document', id, section: 0 })).status).toBe(400);
   });
 
+  it('isn’t opened to a guest by the board the call seats them on: they’re told who, never what, and follow once let into a document', async () => {
+    const { art, priya, id, plan, host, c, p } = await presented();
+    const board = (await art.api.workspaces.items.create(id, { kind: 'board', name: 'Board' })).id;
+    await host.openBoard({ workspaceId: id, documentId: board, letIn: true });
+    const jamie = await guest(host, c);
+    await until(async () => (await read(jamie.call)).board.open?.role === 'edit', 'Jamie to have the board');
+    // The board opens for them, from where it's kept; the workspace doesn't, as boards aren't in its list: it's private, unnamed.
+    expect(await space(jamie.call)).toMatchObject({ id: null, name: null, canOpen: false, role: null });
+    // Nor can they present it.
+    expect(await code(jamie.call.startPresenting({ kind: 'workspace' }))).toBe('not-found');
+    // Presented, it's who and never what, as for anyone with nothing in it.
+    await p.startPresenting({ kind: 'workspace' });
+    const key = p.getSnapshot().workspace.present?.key ?? '';
+    expect((await space(jamie.call)).present).toEqual({ key, kind: null, id: null, name: null, section: null, by: by(priya), mine: false });
+    // They ask, are let into a document, and now it opens for them, presented.
+    await jamie.call.askForWorkspace(true);
+    const ask = (await settle(host, (x) => x.workspace.asks.length === 1)).workspace.asks[0];
+    await host.grantWorkspaceAsk(ask?.id ?? '', plan, 'read');
+    expect(await space(jamie.call)).toMatchObject({ id, canOpen: true, present: { key, kind: 'workspace', id, mine: false } });
+  });
+
   it('allows one presented board or workspace in a part of the call', async () => {
     const { priya, kofi, host, p, k } = await presented();
     await host.openBoard({ template: 'blank' });
