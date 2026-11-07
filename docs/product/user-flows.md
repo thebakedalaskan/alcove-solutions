@@ -389,7 +389,12 @@ time, slides in on the right.
   - **Close is for you.** On something open just for you, **Close** closes it. On someone else's presentation, it closes
     it for you: "Closed for you. While Priya presents, its tile takes you back." While you present a board or the
     workspace, Close asks first: **For you** ("Everyone else keeps it open, on their own.") or **For everyone** ("It
-    closes for everyone in the call."), as a sheet on a phone, and so do the lit **Board** and **Workspace** (**O**, **W**);
+    closes for everyone in the call.", or in a breakout room "It closes for everyone in this room.", where it does, unless
+    it's the board every room shares and you opened it or you're the organizer), as a sheet on a phone, and so do the lit
+    **Board** and **Workspace** (**O**, **W**). On the call's board while nobody presents it, whoever opened it and the
+    organizer are asked too: **For you** ("It stays in the call, and Board opens it again.") or **For everyone** ("It
+    leaves the call for everyone, and stays saved in Product."), which takes it out of the call for everyone, who are
+    told "Launch retro was closed for everyone. It's saved in Product."; while rooms share it, only the organizer is;
     **Stop sharing** in Share's first step, which says what you're presenting, asks the same in Share itself, wherever what
     you present is. Your own screen has **Stop sharing** instead of Close. The organizer can close anyone's presented
     board or workspace for everyone (**Close it for everyone**), and stop anyone's screen (**Stop it for everyone**), from
@@ -661,11 +666,14 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
      following stays in it, working on their own; or **For everyone**, and it closes for everyone in the call. The
      organizer can close anyone's for everyone from its name, and whoever presented it is told who did ("Art closed the
      workspace for everyone."). It also ends when the presenter leaves the call for good
-     ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call, when their
-     breakout room closes, when the workspace everyone views switches, or when the call ends. A reload doesn't end it:
-     everyone's screen keeps it as it was for half a minute, and it carries on when they're back. When it ends, its tile
-     goes, and whoever was following keeps it open on their own unless it closed for everyone. Nobody's access changes:
-     someone who can't open it is told who's presenting, never what.
+     ("Priya left the call, so the presentation ended"), is removed or moved to another part of the call ("Priya stopped
+     presenting the workspace."), when they present something else in its place, when their breakout room closes, when the
+     workspace everyone views switches, or when the call ends; each ends it at once, as the call says it. Going to another
+     part of the call yourself leaves what was presented where you were, without a word. A reload doesn't end it: nothing
+     is said, everyone's screen keeps it as it was, and it carries on when they're back; only if they aren't back within
+     half a minute is it said to have ended. When it ends, its tile goes, and whoever was following keeps it open on their
+     own unless it closed for everyone. Nobody's access changes: someone who can't open it is told who's presenting, never
+     what.
 6. **Play for everyone**, on a video in a document, plays it at the same moment on the screen of everyone who can open it,
    from the workspace: no screen share, and nobody hears it twice. Late joiners land at the same moment.
    - **The bar** above the dock says what's playing and who started it, and has your own volume. Whoever started it, or the

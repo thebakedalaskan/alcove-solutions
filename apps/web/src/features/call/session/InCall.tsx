@@ -443,9 +443,9 @@ export function InCall({ session }: { session: CallSession }) {
   const presentNow = space.present;
   const presenterIn = presentNow ? state.participants.find((p) => p.seat === presentNow.by.seat) ?? null : null;
   const presented: Presented[] = [
-    ...shares.map((s): Presented => ({ id: screenOf(s.id), key: `screen:${s.id}`, by: s.presenter, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine, name: s.name })),
+    ...shares.map((s): Presented => ({ id: screenOf(s.id), key: `screen:${s.id}`, by: s.presenter, seat: null, first: s.mine ? 'You' : callName(s.presenter), mine: s.mine, name: s.name })),
     ...(presentNow && presentNow.kind !== null ? [{
-      id: presentNow.kind === 'workspace' ? 'ws' as const : 'board' as const, key: presentNow.key, by: presenterIn?.person ?? { ...SOMEONE, name: presentNow.by.name },
+      id: presentNow.kind === 'workspace' ? 'ws' as const : 'board' as const, key: presentNow.key, by: presenterIn?.person ?? { ...SOMEONE, name: presentNow.by.name }, seat: presentNow.by.seat,
       first: firstName(presentNow.by.name), mine: presentNow.mine, name: presentNow.kind === 'workspace' ? space.name ?? 'the workspace' : presentNow.name ?? 'the board'
     }] : [])
   ];
@@ -454,7 +454,7 @@ export function InCall({ session }: { session: CallSession }) {
   /** A presentation or share you ended, yours or (as the organizer) someone else's: you've been told, so its end isn't said twice. */
   const stoppedByMe = useRef<string | null>(null);
   const stage = useOnStage({
-    presented, ended: space.ended, settled, kept: layout.layout.workspace.open,
+    presented, ended: space.ended, place: myRoomId ?? MAIN_PLACE, settled, kept: layout.layout.workspace.open,
     told: {
       started: (p, following, show) => {
         const what = isScreen(p.id) ? 'their screen' : p.id === 'ws' ? 'the workspace' : p.name;
@@ -467,7 +467,11 @@ export function InCall({ session }: { session: CallSession }) {
         // Yours, closed for everyone, and not by you: only the organizer can, and you're told it was them, as a stopped share is.
         if (p.mine) { if (was.closed && !isScreen(p.id)) sayIt(wsToast.closedByOrganizer(organizerFirst(state), what)); return; }
         if (isScreen(p.id)) { if (was.onStage && settled()) sayIt(wsToast.stoppedSharing(p.first)); return; }
-        sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what));
+        // The call said it ended, and its presenter is gone from it: they left, which is why.
+        if (was.said && !was.closed && p.seat !== null && !state.participants.some((x) => x.seat === p.seat)) { sayIt(wsToast.presenterLeft(p.first)); return; }
+        // In a room, the board every room shares closes for that room alone, and stays the call's.
+        const roomOnly = myRoomId !== null && (p.id === 'ws' || state.board.open !== null);
+        sayIt(was.closed && was.onStage ? wsToast.closedEverywhere(what, roomOnly) : wsToast.stoppedPresentingIt(p.id === 'ws' ? 'folderOpen' : 'presentation', p.first, what));
       }
     }
   });
@@ -496,7 +500,7 @@ export function InCall({ session }: { session: CallSession }) {
   const spaceName = (id: string): string | null => drive?.find((w) => w.id === id)?.name ?? (space.id === id ? space.name : null);
   const board = useCallBoard({
     stage: savedOn && saved ? 'saved' : stage.on.includes('board') ? 'call' : null, saved: savedOn ? saved : null,
-    place: myRoomId ?? MAIN_PLACE, cameBack,
+    place: myRoomId ?? MAIN_PLACE, cameBack, spaceName,
     session, state, me: meId, owner: account.data?.ownerId ?? null, talking: stagePeople.flatMap((p) => (p.speaking ? [p.id] : [])),
     say: (text, icon, action) => { toast(text, { icon, action }); }
   });
@@ -755,7 +759,7 @@ export function InCall({ session }: { session: CallSession }) {
    * Following whoever presents is the stage's to keep (onStage.ts); these keep the workspace with them, and the board's pager.
    */
   const wsPresenting = useWorkspacePresenting({
-    session, present: space.present, participants: state.participants, onStage: stage.on.includes('ws') && ended === null && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
+    session, present: space.present, ended: space.ended, participants: state.participants, onStage: stage.on.includes('ws') && ended === null && !leaving, following: stage.following('ws'), together: work.together, at: work.at,
     act: { follow: work.act.follow, stopFollowing: work.act.stopFollowing, go: work.act.go }, say: work.act.say, failed: work.act.failed, onOwn: () => stage.setFollow('ws', false)
   });
   const toggleMine = useCallback(() => side.toggle('mine'), [side]);
@@ -775,15 +779,30 @@ export function InCall({ session }: { session: CallSession }) {
   const land = useLandKeys(phone);
   /** Close's question, while you present a board or the workspace: which frame it's open on. */
   const [asking, setAsking] = useState<ThingId | null>(null);
-  /** Close, on a frame's bar, or the lit Board or Workspace: on your own presentation it asks, on its frame, in front. */
+  /**
+   * Close, on a frame's bar, or the lit Board or Workspace: on your own presentation it asks, on its frame, in front, and so it
+   * does on the call's board nobody presents, for whoever may take it out of the call (`boardClosable`).
+   */
   const closeThing = (id: ThingId) => {
     const p = stage.presentedOf(id);
     if (p?.mine && isScreen(id)) { land({ to: 'opener', id }, holding()); stopShare(); return; }
-    if (p?.mine) { setFront(id); setAsking(id); return; }
+    if (p?.mine || (id === 'board' && !p && boardClosable)) { setFront(id); setAsking(id); return; }
+    closeForMe(id);
+  };
+  /** It closes on your stage alone: someone else's presentation becomes its tile, and anything else closes. */
+  const closeForMe = (id: ThingId) => {
+    const p = stage.presentedOf(id);
+    setAsking(null);
     if (stage.on.length <= 1) setFocus(false);
     land(p ? { to: 'tile', id } : { to: 'opener', id }, holding());
     stageClose(id);
     if (p) sayIt(wsToast.closedWhile(p.first));
+  };
+  /** The call's board leaves the call for everyone, as whoever opened it or the organizer: the board says so as it goes (callBoard.ts). */
+  const closeBoardForAll = () => {
+    setAsking(null);
+    land({ to: 'opener', id: 'board' }, holding());
+    session.closeBoard().catch(failed);
   };
   /** Your presentation of a board or the workspace ends, for you or for everyone: from Close's question, or Share's. */
   const closeFor = (id: ThingId, everyone: boolean) => {
@@ -796,7 +815,7 @@ export function InCall({ session }: { session: CallSession }) {
       land({ to: 'opener', id }, holding());
       stageClose(id);
       if (side.view === 'mine') side.close();
-      sayIt(everyone ? wsToast.closedForAll() : wsToast.closedForYou());
+      sayIt(everyone ? wsToast.closedForAll(forRoomOnly(id)) : wsToast.closedForYou());
     }, () => { stoppedByMe.current = null; });
   };
 
@@ -828,6 +847,12 @@ export function InCall({ session }: { session: CallSession }) {
   const boardBy = presentNow?.kind === 'board' && !presentNow.mine ? firstName(presentNow.by.name) : null;
   const boardBlocked = state.role === 'guest' ? 'Guests can’t start a board here.' : boardBy ? `${boardBy} is presenting a board. You can start one once they stop.` : undefined;
   const callBoardOpen = state.board.open;
+  /**
+   * Whoever opened the call's board, or the organizer, may take it out of the call while nobody presents it: Close asks them for
+   * whom. While rooms share it, only the organizer may, as someone in a room may be presenting it there, where nobody else can
+   * see, and the call would refuse.
+   */
+  const boardClosable = callBoardOpen !== null && (organizer || (callBoardOpen.canClose && open?.board !== 'shared'));
   const callBoardRow = callBoardOpen && callBoardOpen.role !== null ? {
     name: callBoardOpen.name ?? 'Untitled board',
     by: presentNow?.kind === 'board' && presentNow.id === callBoardOpen.documentId ? (presentNow.mine ? 'You’re presenting it' : `${firstName(presentNow.by.name)} is presenting it`)
@@ -1437,7 +1462,18 @@ export function InCall({ session }: { session: CallSession }) {
   const followers = Math.max(0, onStage.length - 1);
   // Focus is on offer only where it can fill your window: not on a phone, nor while the rooms hold the stage beside it.
   const focusFor = focusOffered ? { on: focusOn, onToggle: toggleFocus } : null;
-  const askFor = (id: ThingId) => ({ open: asking === id, onOpenChange: (o: boolean) => setAsking(o ? id : null), onMe: () => closeFor(id, false), onEveryone: () => closeFor(id, true), phone });
+  const askFor = (id: ThingId) => ({ open: asking === id, onOpenChange: (o: boolean) => setAsking(o ? id : null), onMe: () => closeFor(id, false), onEveryone: () => closeFor(id, true), everyone: closesFor(id), phone });
+  /**
+   * What your presentation's For everyone closes: in a room, it's that room's, unless it's the board every room shares and you
+   * opened it or you're the organizer, when the board leaves the call. Anywhere else, it's everyone's in the call.
+   */
+  const forRoomOnly = (id: ThingId) => myRoomId !== null && !(id === 'board' && open?.board === 'shared' && (organizer || callBoardOpen?.canClose === true));
+  const closesFor = (id: ThingId): string | undefined => (forRoomOnly(id) ? 'It closes for everyone in this room.' : myRoomId !== null ? 'It closes for everyone in the call, every room too.' : undefined);
+  /** The call's board nobody presents, for whoever may take it out of the call: for you, it stays in the call; for everyone, it leaves it. */
+  const boardAsk = {
+    open: asking === 'board', onOpenChange: (o: boolean) => setAsking(o ? 'board' : null), onMe: () => closeForMe('board'), onEveryone: closeBoardForAll, phone,
+    me: 'It stays in the call, and Board opens it again.', everyone: boardWhere ? `It leaves the call for everyone, and stays saved in ${boardWhere}.` : 'It leaves the call for everyone, and stays saved.'
+  };
   const byOf = (p: Presented | null) => (p ? { person: p.by, first: p.first, mine: p.mine } : null);
   /** Another presented thing to put beside what's on your stage, while it holds one. */
   const besideFor = (id: ThingId) => (phone || stage.on.length !== 1 ? [] : stage.tiles.filter((t) => t.id !== id).map((t) => ({ name: t.name, onPick: () => stage.beside(t.id) })));
@@ -1501,7 +1537,7 @@ export function InCall({ session }: { session: CallSession }) {
             icon: 'presentation', name: boardOpen?.name ?? 'Board', by: byOf(p), followers, phone, focus: focusFor,
             follow: p && !p.mine ? { on: stage.following('board'), where: pager?.part || 'the board', onToggle: () => stage.setFollow('board', !stage.following('board')) } : null,
             present: canPresent ? { onPress: presentBoardNow, busy: presentBusy, ask: presentAsk ?? undefined } : null,
-            onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : null,
+            onClose: () => closeThing(id), ask: p?.mine ? askFor(id) : id === 'board' && !p && boardClosable ? boardAsk : null,
             rows: (close) => {
               // What the board itself has to offer, read as the menu opens: there's none until it's drawn here. Night board changes
               // it for everyone, so it's for whoever can change it.
@@ -1681,7 +1717,7 @@ export function InCall({ session }: { session: CallSession }) {
             {!phone && <DockSeparator />}
             <ShareMenu step={shareStep} onStep={setPop} phone={phone}
               presenting={myThing ? {
-                what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, asks: !isScreen(myThing.id),
+                what: isScreen(myThing.id) ? 'your screen' : myThing.id === 'ws' ? 'the workspace' : myThing.name, asks: !isScreen(myThing.id), everyone: closesFor(myThing.id),
                 onStop: (everyone) => { setPop(null); if (isScreen(myThing.id)) stopShare(); else closeFor(myThing.id, everyone); }
               } : null}
               screen={{

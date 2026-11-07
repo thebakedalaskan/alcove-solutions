@@ -65,7 +65,8 @@ export const wsToast = {
   boardOn: (board: string) => say('presentation', `Everyone follows you on ${board}. They can unfollow to add to it.`),
   workspaceOn: () => say('folderOpen', 'Everyone follows you in the workspace. They can unfollow to work alongside you.'),
   closedForYou: () => say('x', 'Closed for you. The others keep it open, on their own.'),
-  closedForAll: () => say('x', 'Closed for everyone.'),
+  /** `here`: in a room, where it closed for the room alone. */
+  closedForAll: (here = false) => say('x', here ? 'Closed for everyone in this room.' : 'Closed for everyone.'),
   closedWhile: (first: string) => say('x', `Closed for you. While ${first} presents, its tile takes you back.`),
   followingWorkspace: (first: string) => say('folderOpen', `${first} is presenting the workspace, and you’re following.`),
   followingBoard: (first: string, board: string) => say('presentation', `${first} is presenting ${board}, and you’re following.`),
@@ -73,8 +74,8 @@ export const wsToast = {
   /** Someone presents something while you watch something else: it's a tile with the people, and Show it puts it on your stage. */
   presentingToo: (person: AvatarPerson, first: string, what: string, onShow: () => void): WsToastData => ({ person, text: `${first} is presenting ${what}. It’s with the people.`, action: { label: 'Show it', onClick: onShow }, ms: 12000 }),
   stoppedPresentingIt: (icon: IconName, first: string, what: string) => say(icon, `${first} stopped presenting ${what}.`),
-  /** What you followed, closed for everyone by whoever presented it, or by the organizer. */
-  closedEverywhere: (what: string) => say('x', `${what.charAt(0).toUpperCase()}${what.slice(1)} closed for everyone.`),
+  /** What you followed, closed for everyone by whoever presented it, or by the organizer; `here`, for everyone in your room alone. */
+  closedEverywhere: (what: string, here = false) => say('x', `${what.charAt(0).toUpperCase()}${what.slice(1)} closed for everyone${here ? ' in this room' : ''}.`),
   /** What you presented, closed for everyone by the organizer: you're told who, as a share they stop is. */
   closedByOrganizer: (organizer: string, what: string) => say('x', `${organizer} closed ${what} for everyone.`),
   stoppedSharing: (first: string) => say('stopShare', `${first} stopped sharing.`),

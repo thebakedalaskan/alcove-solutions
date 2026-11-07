@@ -172,14 +172,14 @@ export interface SavedBoard { workspaceId: string; documentId: string; name: str
 
 /**
  * What's said when the board in the call leaves it for everyone, but not as a presentation closing for everyone, which the stage
- * says (layout/onStage.ts). Nothing else closes it while you stay where you are (moving to a room, or back, brings that part's
- * board, unsaid): it was moved to Trash, alone or in a folder, or deleted, its workspace with it. The board's own session says
- * which as it hears it, usually before the call does; until it has, both are said, as either is true.
+ * says (layout/onStage.ts). Moving to a room, or back, brings that part's board, unsaid. Otherwise it was closed for everyone
+ * by whoever opened it or the organizer (`board-close`), and it's still saved where it was; or it was moved to Trash, alone or
+ * in a folder, or deleted, its workspace with it, which the board's own session says as it hears it.
  */
-function goneWords(name: string, status: DocStatus | null): string {
-  if (status?.trashed) return `${name} was moved to Trash, so it closed for everyone.`;
-  if (status?.closed === 'deleted') return `${name} was deleted, so it closed for everyone.`;
-  return `${name} was moved to Trash or deleted, so it closed for everyone.`;
+function goneWords(name: string, status: DocStatus | null, where: string | null): { text: string; icon: 'x' | 'trash' } {
+  if (status?.trashed) return { text: `${name} was moved to Trash, so it closed for everyone.`, icon: 'trash' };
+  if (status?.closed === 'deleted') return { text: `${name} was deleted, so it closed for everyone.`, icon: 'trash' };
+  return { text: where ? `${name} was closed for everyone. It’s saved in ${where}.` : `${name} was closed for everyone.`, icon: 'x' };
 }
 
 export interface CallBoardFacts {
@@ -199,9 +199,11 @@ export interface CallBoardFacts {
   place: string;
   /** Rooms have just closed and their boards came back, which the call says itself: a board made for them just opens. */
   cameBack: () => boolean;
+  /** A workspace's name, where it's known here: where a board closed for everyone stays saved. */
+  spaceName: (workspaceId: string) => string | null;
 }
 
-export function useCallBoard({ session, stage, saved, state, me, owner, talking, say, place, cameBack }: CallBoardFacts) {
+export function useCallBoard({ session, stage, saved, state, me, owner, talking, say, place, cameBack, spaceName }: CallBoardFacts) {
   const open = state.board.open;
   const pass = session.ticket.pass;
   const reduce = useReducedMotion();
@@ -289,7 +291,8 @@ export function useCallBoard({ session, stage, saved, state, me, owner, talking,
       const last = presentedBoard.current;
       if (end?.close && last && end.key === last.key && last.documentId === before.documentId) return;
       const gone = latest.current?.documentId === before.documentId ? latest.current : before;
-      say(goneWords(gone.name ?? 'The board', status), 'trash');
+      const said = goneWords(gone.name ?? 'The board', status, gone.workspaceId ? spaceName(gone.workspaceId) : null);
+      say(said.text, said.icon);
       return;
     }
     rise();

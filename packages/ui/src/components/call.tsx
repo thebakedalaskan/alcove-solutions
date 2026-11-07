@@ -222,7 +222,7 @@ export interface CallFrameClose {
   /** What it does, on hover: "Close it", "Close it for you, or for everyone", "Close it for you. While Priya presents, its tile takes you back". */
   tip: string;
   onClose: () => void;
-  /** While you present a board or the workspace: Close has a ▾ and opens `CloseAsk` under itself instead of closing. */
+  /** While it asks for whom (`CloseAsk`): Close has a ▾ and opens the question under itself instead of closing. */
   ask?: CloseAskProps | undefined;
 }
 
@@ -376,42 +376,47 @@ export function PresentedTile({ name, icon, sub, by, go, onPress, label, where, 
   );
 }
 
-/** Close's question while you present a board or the workspace: for you, or for everyone. */
+/**
+ * Close's question while you present a board or the workspace, or on a board in the call that nobody presents for whoever may
+ * take it out of the call: for you, or for everyone. Each says what it does.
+ */
 export interface CloseAskProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** "Close Launch review · 4 Nov" */
   title: string;
-  /** For you: everyone else keeps it open, on their own. */
+  /** For you: everyone else keeps it open, on their own, unless `me` says otherwise. */
   onMe: () => void;
-  /** For everyone: it closes for everyone in the call. */
+  /** For everyone: it closes for everyone in the call, unless `everyone` says otherwise ("It closes for everyone in this room."). */
   onEveryone: () => void;
+  me?: string | undefined;
+  everyone?: string | undefined;
   /** A phone: a sheet from the bottom. */
   phone?: boolean | undefined;
 }
 
-/** What ending a board or the workspace you present can be: for you, or for everyone. Close's question and Share's last step both ask it. */
-function CloseChoices({ onMe, onEveryone }: Pick<CloseAskProps, 'onMe' | 'onEveryone'>) {
+/** What closing it can be: for you, or for everyone. Close's question and Share's last step both ask it. */
+function CloseChoices({ onMe, onEveryone, me = 'Everyone else keeps it open, on their own.', everyone = 'It closes for everyone in the call.' }: Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'me' | 'everyone'>) {
   return (
     <>
       <button type="button" className="ic-cm" onClick={onMe}>
         <span className="sq"><Icon name="user" size={18} /></span>
-        <span><b>For you</b><small>Everyone else keeps it open, on their own.</small></span>
+        <span><b>For you</b><small>{me}</small></span>
       </button>
       <button type="button" className="ic-cm" onClick={onEveryone}>
         <span className="sq"><Icon name="people" size={18} /></span>
-        <span><b>For everyone</b><small>It closes for everyone in the call.</small></span>
+        <span><b>For everyone</b><small>{everyone}</small></span>
       </button>
     </>
   );
 }
 
 /** Close's question, under `anchor` (Close ▾ on the frame's bar). `tip` names Close on hover, as it does without the question. */
-export function CloseAsk({ open, onOpenChange, title, onMe, onEveryone, phone = false, anchor, tip }: CloseAskProps & { anchor: ReactNode; tip?: ReactNode }) {
+export function CloseAsk({ open, onOpenChange, title, onMe, onEveryone, me, everyone, phone = false, anchor, tip }: CloseAskProps & { anchor: ReactNode; tip?: ReactNode }) {
   return (
     <Popover open={open} onOpenChange={onOpenChange} anchor={anchor} tip={tip} side="bottom" align="end" stage label={title} className={cn('ic-closeask', phone && 'is-sheet')}>
       <p className="ic-askh ac-clamp-2">{title}</p>
-      <CloseChoices onMe={onMe} onEveryone={onEveryone} />
+      <CloseChoices onMe={onMe} onEveryone={onEveryone} me={me} everyone={everyone} />
     </Popover>
   );
 }
@@ -558,15 +563,15 @@ export function ShareStepHead({ title, onBack }: { title: string; onBack: () => 
  * Share › Stop sharing, on a board or the workspace you present: Close's question, in Share's own menu, so it's asked wherever
  * what you present is, on your stage, a tile, or out of sight.
  */
-export function ShareStopStep({ what, onBack, onMe, onEveryone }: {
+export function ShareStopStep({ what, onBack, onMe, onEveryone, everyone }: {
   /** What you present, as Share's first step says it: "Launch retro", "the workspace". */
   what: string;
   onBack: () => void;
-} & Pick<CloseAskProps, 'onMe' | 'onEveryone'>) {
+} & Pick<CloseAskProps, 'onMe' | 'onEveryone' | 'everyone'>) {
   return (
     <>
       <ShareStepHead title={`Stop sharing ${what}`} onBack={onBack} />
-      <CloseChoices onMe={onMe} onEveryone={onEveryone} />
+      <CloseChoices onMe={onMe} onEveryone={onEveryone} everyone={everyone} />
     </>
   );
 }

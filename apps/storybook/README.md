@@ -39,7 +39,9 @@ stories/foundations/      colour, type, icons, scales, the evening and what pass
 stories/components/       one file per @alcove/ui component, a story per state, in a folder per group
 stories/pages/            one file per page, a story per state
 stories/calls/            the call: the lobby and waiting, ringing, the call itself and every moment of its canvas (`TheCall`, with the
-                          plays it shares in `plays.ts`), notes, sharing, rooms, its workspace, a board, leaving
+                          plays it shares in `plays.ts`), how a presentation ends (a reload, a room, closed, replaced, a share
+                          stopped), notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
+                          everyone, moved to Trash), leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
 ```

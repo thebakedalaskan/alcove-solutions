@@ -11,8 +11,11 @@
  * held in Product, so its documents and its launch retro are there. Everyone else's browser is the script's.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen, within } from 'storybook/test';
-import { at, chats, line, presentsBoard, presentsWorkspace, shares, stopsPresenting, type CallScript, type Cue, type Line, type Present } from '../../src/api/script';
+import { screen, waitFor, within } from 'storybook/test';
+import {
+  at, chats, closesPresenting, line, movesPresenting, movesToRoom, presentsBoard, presentsWorkspace, reloads, shares, stopsPresenting, stopsShare, type CallScript, type Cue, type Line,
+  type Present
+} from '../../src/api/script';
 import { inCall, light, narrow, phone, plays, reach, type InCall, type StoryCall } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { iso } from '../../src/world/clock';
@@ -294,10 +297,11 @@ export const ABoardOfYoursWhilePriyaPresents: PageStory = {
 export const ShareWhilePriyaPresents: PageStory = { ...moment(priyaWs, followingPriya, openShare), name: 'Share, while Priya presents' };
 /** Priya organizes this call: while you present the workspace, she closes it for everyone from its name, and you're told it was her. */
 export const PriyaClosesWhatYouPresent: PageStory = {
-  ...moment(hers({ cues: at(30, stopsPresenting(true)) }), openWorkspace, presentWorkspace, followsYou,
+  ...moment(hers({ cues: at(30, closesPresenting()) }), openWorkspace, presentWorkspace, followsYou,
     step('Priya closes it for everyone: you’re told it was her', () => toldThat('Priya closed the workspace for everyone.'))),
   name: 'Priya closes what you present'
 };
+
 /** Focus: what Priya presents fills your window. Show everything, or Esc, brings it all back. */
 export const FollowingInFocus: PageStory = {
   ...moment(priyaWs, followingPriya,
@@ -316,6 +320,67 @@ export const PriyasBoardClosedForYou: PageStory = {
   ...moment(priyaBoard, followingHerBoard, step('Press Close on its bar', (c) => close(c, herBoard)), itsTile), name: 'Priya’s board, closed for you'
 };
 
+/* ---------- how a presentation ends: the call says each end as it happens ---------- */
+
+/** Priya's tile among the people: there while she's in the call. */
+const herTile = () => screen.queryByRole('group', { name: /^Priya\. / });
+/**
+ * Priya's page reloads while she presents the workspace: she's gone from the people for a moment, and nothing is said. Nothing
+ * says her presentation ended, so you stay with it as it was, and she comes back presenting it, with you still following.
+ */
+export const PriyaReloads: PageStory = {
+  ...moment(hers({ cues: [...at(PRIYA_PRESENTS, presentsWorkspace(PRIYA)), ...at(PRIYA_PRESENTS + 6, reloads(PRIYA, 6))] }), followingPriya,
+    step('Priya reloads: she’s gone from the people, and nothing is said', () => waitFor(() => { if (herTile()) throw new Error('Priya is still here.'); }, LATER)),
+    step('She’s back, presenting as she was, and you’re still following her', async () => {
+      await waitFor(() => { if (!herTile()) throw new Error('Priya isn’t back yet.'); }, LATER);
+      await screen.findByRole('button', { name: 'Unfollow Priya' }, SOON);
+    })),
+  name: 'Priya reloads while she presents'
+};
+/** Priya, presenting a board, moves on a frame: you're following, so you move with her, to Could improve. */
+export const MovingWithPriya: PageStory = {
+  ...moment(hers({ board: RETRO, cues: [...at(PRIYA_PRESENTS - 1, { do: 'open-board', who: PRIYA, template: 'retro' }), ...at(PRIYA_PRESENTS, presentsBoard(PRIYA, 0)), ...at(PRIYA_PRESENTS + 6, movesPresenting(1))] }),
+    followingHerBoard, step('Priya moves on a frame: you move with her, and see Could improve', () => toldThat('Could improve', LATER))),
+  name: 'Moving on with Priya'
+};
+/**
+ * Priya presents the workspace, then a board in its place: hers ends as the board starts, so the board takes your stage, and
+ * the workspace has no tile and nothing waits.
+ */
+export const PriyaPresentsABoardInstead: PageStory = {
+  ...moment(hers({ board: RETRO, cues: [...at(PRIYA_PRESENTS, presentsWorkspace(PRIYA)), ...at(PRIYA_PRESENTS + 7, { do: 'open-board', who: PRIYA, template: 'retro' }), ...at(PRIYA_PRESENTS + 8, presentsBoard(PRIYA, 0))] }),
+    followingPriya, step('Priya presents a board in its place: it takes your stage', () => toldThat(`Priya is presenting ${herBoard}, and you’re following.`))),
+  name: 'Priya presents a board instead'
+};
+/** Priya closes what she presents for everyone: it closes on your stage too, and you're told. */
+export const PriyaClosesItForEveryone: PageStory = {
+  ...moment(hers({ cues: [...at(PRIYA_PRESENTS, presentsWorkspace(PRIYA)), ...at(PRIYA_PRESENTS + 8, stopsPresenting(true))] }), followingPriya,
+    step('Priya closes it for everyone: it closes here too', () => toldThat('The workspace closed for everyone.'))),
+  name: 'Priya closes it for everyone'
+};
+/**
+ * Kofi presents the workspace in Priya's call, and she sends him to a breakout room: his presentation ends there and then, said
+ * at once, and what you followed stays open, just for you.
+ */
+const kofiPresents = (cues: Cue[]) => hers({ cues: [...at(PRIYA_PRESENTS, presentsWorkspace(KOFI)), ...at(PRIYA_PRESENTS + 3, { do: 'rooms', rooms: [{ name: 'Rollout', people: [AIKO] }, { name: 'Support', people: [] }], minutes: 10 }), ...cues] });
+const followingKofi = step('Kofi presents the workspace: you follow him', () => toldThat('Kofi is presenting the workspace, and you’re following.'));
+export const KofiMovedToARoom: PageStory = {
+  ...moment(kofiPresents(at(PRIYA_PRESENTS + 9, movesToRoom(KOFI, 'Rollout'))), followingKofi,
+    step('Priya moves Kofi to Rollout: his presentation ends, and you’re told at once', () => toldThat('Kofi stopped presenting the workspace.')),
+    step('What you followed stays open, just for you', () => screen.findByText('Open just for you', {}, SOON))),
+  name: 'Kofi moved to a room while he presents'
+};
+/** You're moved to a room while you follow Kofi: what was presented where you were ends for you without a word, and stays open just for you. */
+export const YouMovedToARoom: PageStory = {
+  ...moment(kofiPresents(at(PRIYA_PRESENTS + 9, movesToRoom('me', 'Support'))), followingKofi,
+    step('Priya moves you to Support: what Kofi presents stays in the main room, and the workspace stays open just for you', () => screen.findByText('Open just for you', {}, LATER))),
+  name: 'You, moved to a room while Kofi presents'
+};
+/** Priya organizes the call: she stops what you share for everyone, and the call says it was her. */
+export const YourShareStopped: PageStory = {
+  ...moment(hers({ cues: at(24, stopsShare('me')) }), shareTab, seesYourTab, step('Priya stops your share: it stops for everyone, and you’re told it was her', () => toldThat('Priya stopped Art’s share.'))),
+  name: 'Your share, stopped by Priya'
+};
 /* ---------- 6 Priya's screen, in your call ---------- */
 
 const priyaScreen = yours({ cues: at(PRIYA_PRESENTS, shares(PRIYA, CHECKLIST)) });

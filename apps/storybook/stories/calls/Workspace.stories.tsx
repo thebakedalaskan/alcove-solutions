@@ -267,12 +267,16 @@ export const Watching = inCall(reviewing({ cues: at(6, presentsWorkspace(PRIYA))
 });
 export const WatchingPhone = phone(Watching);
 
-/** Priya leaves while she's presenting the workspace: it ends, and the toast says why. What you had open stays, just for you. */
+/**
+ * Priya leaves while she's presenting the workspace: the call says it ended as she goes, so it ends at once, and the toast says
+ * why. What you had open stays, just for you.
+ */
 export const PresenterLeft = inCall(reviewing({ cues: [...at(6, presentsWorkspace(PRIYA)), ...at(12, leaves(PRIYA))] }), {
   play: async (c) => {
     await c.step('Priya presents the workspace, then leaves: it ends, and you’re told why', async () => {
       await screen.findByText('Priya left the call, so the presentation ended', {}, { timeout: 25000 });
     });
+    await c.step('What you had open stays, just for you', async () => { await screen.findByText('Open just for you', {}, { timeout: 5000 }); });
   }
 });
 export const PresenterLeftPhone = phone(PresenterLeft);

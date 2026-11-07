@@ -30,7 +30,7 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
    * What you present now ("your screen", "the workspace", a board's name), or null. Stopping your screen stops it for
    * everyone (`asks` false); a board or the workspace asks first, for you or for everyone.
    */
-  presenting: { what: string; asks: boolean; onStop: (everyone: boolean) => void } | null;
+  presenting: { what: string; asks: boolean; everyone?: string | undefined; onStop: (everyone: boolean) => void } | null;
   screen: {
     /** Why no more screens can be shared ("4 people are sharing. …"), or null. */
     full: string | null;
@@ -67,7 +67,7 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
   ) : step === 'shareBoard' && 'picker' in board ? (
     <BoardPicker step={{ onBack: () => onStep('share') }} {...board.picker} />
   ) : step === 'shareStop' && presenting?.asks ? (
-    <ShareStopStep what={presenting.what} onBack={() => onStep('share')} onMe={() => presenting.onStop(false)} onEveryone={() => presenting.onStop(true)} />
+    <ShareStopStep what={presenting.what} onBack={() => onStep('share')} onMe={() => presenting.onStop(false)} onEveryone={() => presenting.onStop(true)} everyone={presenting.everyone} />
   ) : (
     <ShareKinds sharing={presenting ? { what: presenting.what, onStop: () => { if (presenting.asks) onStep('shareStop'); else presenting.onStop(true); } } : null}
       screenWhy={phone ? 'Sharing a screen needs a computer' : !canShareScreen() ? SHARE_PROBLEMS.unsupported : screen.full}

@@ -8,7 +8,7 @@
  *
  * Someone who can't open the workspace is told who's presenting, and nothing else.
  */
-import { errorCode, firstName, type CallParticipant, type CallPresent, type CallSession, type Person } from '@alcove/api';
+import { errorCode, firstName, type CallParticipant, type CallPresent, type CallPresentEnded, type CallSession, type Person } from '@alcove/api';
 import { wsToast, type WsToastData } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { CallTogether, WorkspacePlace } from '~/features/workspace/context';
@@ -16,8 +16,6 @@ import type { StopFollowing } from '~/features/workspace/follow';
 import { log } from '~/lib/log';
 
 const plog = log.child({ component: 'presenting' });
-/** How long after a presentation ends its presenter's leaving the call is taken as why it ended. */
-const PRESENTER_LEFT_MS = 4000;
 
 /** The workspace presented where you are, and what you're doing about it. */
 export interface WorkspacePresentation {
@@ -35,9 +33,11 @@ export interface WorkspacePresentation {
   stop: (close: boolean) => Promise<void>;
 }
 
-export function useWorkspacePresenting({ session, present, participants, onStage, following, together, at, act, say, failed, onOwn }: {
+export function useWorkspacePresenting({ session, present, ended, participants, onStage, following, together, at, act, say, failed, onOwn }: {
   session: CallSession;
   present: CallPresent | null;
+  /** How the last presentation here ended, as the call says. */
+  ended: CallPresentEnded | null;
   participants: readonly CallParticipant[];
   /** The presented workspace is on your stage and in sight. */
   onStage: boolean;
@@ -98,38 +98,23 @@ export function useWorkspacePresenting({ session, present, participants, onStage
   }, [want]);
 
   /*
-   * A presentation that ends because its presenter left the call is said to have, for everyone, whether they could open it or
-   * not: otherwise it just vanishes. The call can say they've gone a moment before or after it says the presentation has, so
-   * their going is looked for for a moment after it ends. Someone who stopped it themselves stays, and nothing's said.
+   * Someone who can't open what's presented is told who's presenting, and nothing else, and that it ended only if the call says
+   * it did because its presenter left. Everyone else hears how it ended from their stage (layout/onStage.ts).
    */
-  const anyKey = present?.key ?? null;
-  const byNow = useRef<CallPresent['by'] | null>(null);
-  if (present) byNow.current = present.by;
-  const lastKey = useRef(anyKey);
-  const ended = useRef<{ by: CallPresent['by']; at: number } | null>(null);
-  useEffect(() => {
-    const was = lastKey.current;
-    lastKey.current = anyKey;
-    if (was !== null && anyKey === null && byNow.current) ended.current = { by: byNow.current, at: Date.now() };
-    else if (anyKey !== null) ended.current = null;
-  }, [anyKey]);
-  useEffect(() => {
-    const e = ended.current;
-    if (!e) return;
-    if (Date.now() - e.at > PRESENTER_LEFT_MS) { ended.current = null; return; }
-    if (participants.some((p) => p.seat === e.by.seat)) return;
-    ended.current = null;
-    say(wsToast.presenterLeft(firstName(e.by.name)));
-  }, [anyKey, participants, say]);
-
-  /* Someone who can't open what's presented is told who's presenting, and nothing else. */
   const toldOf = useRef<string | null>(null);
   useEffect(() => {
-    if (!present) { toldOf.current = null; return; }
+    if (!present) return;
     if (present.kind !== null || present.key === toldOf.current) return;
     toldOf.current = present.key;
     say(wsToast.presentingPrivate(firstName(present.by.name)));
   }, [present, say]);
+  const endedKey = ended && ended.key === toldOf.current ? ended.key : null;
+  useEffect(() => {
+    if (!endedKey || !ended || ended.close) return;
+    toldOf.current = null;
+    if (!participants.some((p) => p.seat === ended.by.seat)) say(wsToast.presenterLeft(firstName(ended.by.name)));
+    // An end is read once, as it comes: `endedKey` says which.
+  }, [endedKey]);
 
   const start = useCallback(async () => {
     try {

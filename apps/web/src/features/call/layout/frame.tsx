@@ -3,7 +3,8 @@
  * with one bar that works the same way for all three (`CallFrame` in @alcove/ui). On its left, whoever presents it (or the
  * kind's icon while it's open just for you), its name as a menu, and a line of what's so. On its right, only what applies:
  * following whoever presents it, Present, focus, Stop sharing on your own screen, and Close everywhere else, which asks "for
- * you or for everyone" while you present a board or the workspace.
+ * you or for everyone" while you present a board or the workspace, and on the call's board nobody presents for whoever opened
+ * it or the organizer.
  *
  * The frames sit over the main area where panels.ts puts them, and glide there. The workspace stays here once it's been open,
  * out of sight while it isn't on your stage, so it keeps its place, its caret and its undo.
@@ -53,7 +54,10 @@ export interface FrameBar {
   phone: boolean;
   /** Close: closes what's open just for you, or someone else's presentation for you. */
   onClose: () => void;
-  /** While you present a board or the workspace, Close asks: for you, or for everyone. */
+  /**
+   * Close asks, for you or for everyone, while you present a board or the workspace, and on the call's board nobody presents
+   * for whoever may take it out of the call.
+   */
   ask: Omit<CloseAskProps, 'title'> | null;
   /** The name's menu, as each kind fills it; with the organizer's stop after a line on someone else's. */
   rows: (close: () => void) => ReactNode;
@@ -77,7 +81,7 @@ export function Frame({ bar, meta, onStop, foot, children }: {
   const theirs = by !== null && !by.mine;
   const line = meta ?? (by === null ? 'Open just for you' : by.mine ? `You’re presenting · ${bar.followers} following` : `${by.first} is presenting`);
   const rows = bar.rows(() => setMenu(false));
-  const tip = by === null ? 'Close it' : by.mine ? 'Close it for you, or for everyone' : `Close it for you. While ${by.first} presents, its tile takes you back`;
+  const tip = bar.ask ? 'Close it for you, or for everyone' : by === null ? 'Close it' : `Close it for you. While ${by.first} presents, its tile takes you back`;
   return (
     <CallFrame who={by?.person ?? null} icon={bar.icon} name={bar.name} meta={line} label={`${bar.name}, ${by ? 'everyone sees it' : 'only you see it'}`}
       menu={{

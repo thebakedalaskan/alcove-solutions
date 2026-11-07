@@ -8,10 +8,9 @@
  * Whatever's on your stage is in a frame, named for what's in it and who sees it: "Product, only you see it", "Launch retro,
  * everyone sees it". 6.8 onward are the call's other journeys; a board in the call has its own after them (06b).
  */
-import type { CallSession } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
-import { at, chats, knocks, presentsWorkspace, shares, type CallScript, type Present } from '../../src/api/script';
+import { at, chats, knocks, presentsWorkspace, shares, stopsPresenting, type CallScript, type Present } from '../../src/api/script';
 import { MORE, inCall, phone, reach } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import {
@@ -46,8 +45,8 @@ async function sideAway({ userEvent, step }: Context): Promise<void> {
  * The launch review, a minute and a half in: the empty states are decided already, and pricing is talked through as the
  * journey plays. Priya is in the launch plan, and Kofi is typing there.
  */
-const launchReview = (script: CallScript = {}, then?: (s: CallSession) => void): PageStory => inCall({
-  scenario: 'busy', call: LAUNCH_REVIEW, ...(then ? { then } : {}),
+const launchReview = (script: CallScript = {}): PageStory => inCall({
+  scenario: 'busy', call: LAUNCH_REVIEW,
   script: {
     here: REVIEWERS, since: 100, earlier: REVIEW_TALK.slice(0, 7), talk: { lines: REVIEW_TALK.slice(7), from: 3, every: 5 }, summary: REVIEW_SUMMARY,
     workspace: { where: [{ who: PRIYA, document: PLAN }, { who: KOFI, document: PLAN, typing: true }] }, ...script
@@ -79,11 +78,10 @@ const forYou = () => screen.findByRole('button', { name: /^For you/ }, SOON);
 const forEveryone = () => screen.findByRole('button', { name: /^For everyone/ }, SOON);
 
 /**
- * The call as the stand-in plays it, kept as you join, for what someone else does at a moment the journey picks rather than
- * at a time in the script. You're the organizer, so the stand-in takes your ending what Priya presents as her stopping.
+ * Priya stops presenting this long into 6.3, once the journey has had her presentation closed for you twice: well after its
+ * steps, however slowly they're played, and waited for as the call says it.
  */
-let theCall: CallSession | null = null;
-const keepTheCall = (s: CallSession): void => { theCall = s; };
+const PRIYA_STOPS = 55;
 
 export const OpenTheWorkspace: PageStory = {
   name: '6.1 Open the workspace, then present it',
@@ -157,7 +155,7 @@ export const OpenABoard: PageStory = {
 
 export const WhenSomeoneElsePresents: PageStory = {
   name: '6.3 When someone else presents',
-  ...launchReview({ cues: at(10, presentsWorkspace(PRIYA)) }, keepTheCall),
+  ...launchReview({ cues: [...at(10, presentsWorkspace(PRIYA)), ...at(PRIYA_STOPS, stopsPresenting())] }),
   play: async (c) => {
     const { userEvent, step } = c;
     await sideAway(c);
@@ -190,8 +188,7 @@ export const WhenSomeoneElsePresents: PageStory = {
     await step('If Priya stops while it’s closed for you, its tile goes too. Workspace, at the top right, still opens it just for you', async () => {
       await userEvent.click(await onBar(await frame(everyones), /^Close /));
       await screen.findByRole('button', { name: /^Join / }, SOON);
-      await theCall?.stopPresenting(false);
-      await told('Priya stopped presenting the workspace.');
+      await screen.findByText('Priya stopped presenting the workspace.', {}, { timeout: PRIYA_STOPS * 1000 });
       await away('button', /^Join /);
     });
   }

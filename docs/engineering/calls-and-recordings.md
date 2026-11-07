@@ -1159,7 +1159,8 @@ into the call. Being in a call, or organizing it, opens nothing.
     `useFollow` takes Escape from inside the workspace's pane alone, so an Escape anywhere else (focus, the chat box, your
     side) stays the call's. Present, on the workspace's frame, or Share › The workspace, presents it; Close, while you
     present it, asks whom it ends for.
-  - *A presentation ending* because its presenter left the call says so, for everyone. Which presentation it is, is its `key`.
+  - *A presentation ending* because its presenter left the call says so, for everyone, as the call says it ended
+    (`CallWorkspace.ended`) with them gone from it. Which presentation it is, is its `key`.
   - *Presenter notes* beside a board's frames are as [Presenting a board](#presenting-a-board) says.
 - **Playing together, in the browser** (`features/call/playback/sharedVideo.ts`, `PlayTogether.tsx`).
   - *One player per call*, playing whatever's open. A video block on screen borrows its `<video>`, which moves into the block
@@ -1254,11 +1255,16 @@ it, by their name, address and seat, and which boards it lets everyone into. Wha
   `role`, `seal` (`Sealed`, or `Sealed to this room` on a room's own board), and `frame`: on the one board every room shares,
   the frame of the room you're in, where you land; null anywhere else. Someone who can't open it gets `role`, `workspaceId`, `documentId` and
   `name` null: that's "A board you can't open", and nothing names it. A board in Trash, or gone, has left the call for
-  everyone, and one brought back from Trash is open again. That, and a presentation closing for everyone, are all that take
-  the board in your part of the call away while you stay there. Whoever had it on their stage is told which, as the board's
-  own session hears it, which is usually before the call does: "Launch retro was moved to Trash, so it closed for
-  everyone.", or "… was deleted, …" (its workspace with it), and until the session has said, "… was moved to Trash or
-  deleted, …" (`goneWords` in `features/call/boards/callBoard.ts`). Someone waiting to be let in is told nothing. Late
+  everyone, and one brought back from Trash is open again. That, `board-close` by whoever opened it or the organizer, and a
+  presentation closing for everyone are all that take the board in your part of the call away while you stay there. Whoever
+  had it on their stage is told which, as the board's own session hears it, which is usually before the call does:
+  "Launch retro was moved to Trash, so it closed for everyone.", or "… was deleted, …" (its workspace with it); a board the
+  session says neither of was closed: "Launch retro was closed for everyone. It's saved in Product." (`goneWords` in
+  `features/call/boards/callBoard.ts`). A presentation closing for everyone is said by the stage instead. In the browser,
+  Close on the call's board while nobody presents it asks whoever may close it (`canClose`, or the organizer) for whom:
+  For you closes it on their stage alone, For everyone sends `board-close`. While rooms share the board, only the organizer
+  is asked, as someone may be presenting it in a room, which nobody else can see and the call would refuse (`409`).
+  Someone waiting to be let in is told nothing. Late
   joiners and reconnects read it from here like everyone else. None of what happens to a board outside the call tells the
   call, so while one's open a browser reads the call each time it checks its keys, as it does for what's presented.
 - **Who can open one.** Anyone invited. Guests add to what's open and don't start one: `board-open`, and `boardCheck`, answer
@@ -1871,10 +1877,16 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   on their own if the presenter ended it for themselves, and it closes if they closed it for everyone
   ([Presenting](#the-calls-workspace)); a screen that stops leaves every stage. Yours, closed for everyone and not by you, was
   the organizer's doing, the only other who can: you're told who ("Art closed the workspace for everyone.",
-  `wsToast.closedByOrganizer`), as a stopped share's sharer is. A board or the workspace that stops being
-  presented without the call saying how (its presenter may be reloading) is waited for, 30 seconds (`HOLD_MS`), its frame
-  and tile as they were, and carries on with nothing said if it comes back. What's on your stage, and whether you follow, is
-  this browser's alone.
+  `wsToast.closedByOrganizer`), as a stopped share's sharer is. Every end the call decides comes as `ended`, naming the
+  presentation's key, and ends it at once; what ended goes before what started in the same change, so a presentation
+  started in its place takes the stage. Two more end at once, unsaid: one whose presenter starts another here (a new key
+  from the same seat), and everything presented where you were when you go to another part of the call, which no `ended`
+  follows. Said by the call with nobody closing it for everyone, and its presenter's seat gone from `participants`, it's
+  "Priya left the call, so the presentation ended" (`presenting.ts` says it to someone who couldn't open it). A board or the
+  workspace that goes with none of that is its presenter reloading: it's waited for, 30 seconds (`HOLD_MS`), its frame and
+  tile as they were, nothing said, and carries on if it comes back; only if it doesn't is it said to have ended. In a room on
+  the board every room shares, closing it for everyone while `board.open` stays is that room's alone ("… closed for everyone
+  in this room."). What's on your stage, and whether you follow, is this browser's alone.
 - **The workspace in the call** (`WorkspacePanel.tsx`) is the app's `<Workspace mode="call">` in its frame. The screen holds
   whether it's on your stage and where you are in it; `CallState.workspace` says which workspace it is (`openWorkspace`, the
   first time it opens in this browser) and what's been brought. It first opens on this call's agenda or the first thing
