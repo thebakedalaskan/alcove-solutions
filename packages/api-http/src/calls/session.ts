@@ -768,7 +768,6 @@ export class HttpCall extends Live<CallState> implements CallSession {
   seekPlaying = (positionMs: number) => this.space({ type: 'play-seek', positionMs });
   stopPlaying = () => this.space({ type: 'play-stop' });
   openBoard = (from: BoardOpen) => this.space({ type: 'board-open', ...from });
-  closeBoard = () => this.space({ type: 'board-close' });
   boardCheck = (workspaceId: string, documentId: string) => this.t.boardCheck(this.state.callId, workspaceId, documentId);
   startTimer = (minutes: BoardTimerMinutes) => this.space({ type: 'board-timer', minutes });
   stopTimer = () => this.space({ type: 'board-timer', minutes: null });

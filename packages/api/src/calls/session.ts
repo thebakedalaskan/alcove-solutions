@@ -287,8 +287,6 @@ export interface CallSession extends LiveStore<CallState> {
    * once it's open, with `board` up to date.
    */
   openBoard(from: BoardOpen): Promise<void>;
-  /** Whoever opened it, or the organizer: closes it for everyone. Nothing is deleted, and nobody loses what the call gave them. */
-  closeBoard(): Promise<void>;
   /** What opening a saved board would mean: who here can't open it, and whether you may let them in. For someone who could bring it. Changes nothing. */
   boardCheck(workspaceId: string, documentId: string): Promise<BoardCheck>;
   /**

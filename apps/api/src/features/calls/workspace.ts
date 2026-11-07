@@ -719,8 +719,9 @@ export async function prepare<S extends Spaced>(x: Changing<S>, a: SpaceAction):
     };
     /*
      * It ends for whoever presented it, and everyone following keeps it open on their own; or for everyone (`close`), which closes a
-     * board in the call as Close does, and for that whoever's presenting it counts as well as whoever opened it. Everyone there is
-     * told which, until another starts there: `ended` names the presentation, and its presenter, whoever stopped it.
+     * board in the call for everyone there too, with its timer, vote and ideas (`withBoardClosed`): nothing on it is deleted, and
+     * seats stay until the call ends. Everyone there is told which, until another starts there: `ended` names the presentation, and
+     * its presenter, whoever stopped it.
      */
     case 'present-stop': return async (y) => {
       const now = y.s.workspace;

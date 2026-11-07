@@ -757,9 +757,12 @@ describe('who is told of them', () => {
     expect(await board(k)).toMatchObject({ timer: null, vote: null });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
     expect(await board(k)).toMatchObject({ open: { documentId: firstId }, timer: null, vote: null });
-    // Closing ends them too.
+    // Closing it for everyone ends them too.
     await k.startTimer(3);
-    await host.closeBoard();
+    await k.startVote(b.fix, 3);
+    expect(await board(k)).toMatchObject({ timer: { length: 180 }, vote: { on: true } });
+    await host.startPresenting({ kind: 'board', id: firstId });
+    await host.stopPresenting(true);
     expect(await board(k)).toEqual({ open: null, timer: null, vote: null, ideas: [] });
     await host.openBoard({ workspaceId: first?.workspaceId ?? '', documentId: firstId, letIn: false });
     expect(await board(k)).toMatchObject({ timer: null, vote: null });

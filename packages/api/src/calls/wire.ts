@@ -111,8 +111,6 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('play-resume') }),
   z.object({ type: z.literal('play-seek'), positionMs: PlayPositionSchema }),
   z.object({ type: z.literal('play-stop') }),
-  /** Whoever opened the board open here, or the organizer: it closes for everyone there, and nothing is deleted. */
-  z.object({ type: z.literal('board-close') }),
   /** Anyone in the part of the call the ideas are from: they were added to the board, or put aside, so they go for everyone there. */
   z.object({ type: z.literal('board-ideas-done'), ids: z.array(IDSchema).min(1).max(20) }),
   /**

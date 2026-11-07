@@ -17,13 +17,13 @@ import { view } from './read-model';
 const clog = log.child({ component: 'calls' });
 
 /**
- * Someone opens or closes a board, in two steps (`boards.prepare`), as everything about the call's workspace is: what reads or
- * changes a workspace, with nothing of the call held; then the call's row, held only to save what came of it, from the call as
- * it is then. Seats given meanwhile to someone taken out are taken back once it's let go, and anyone let in meanwhile is seated.
+ * Someone opens a board, in two steps (`boards.prepare`), as everything about the call's workspace is: what reads or changes a
+ * workspace, with nothing of the call held; then the call's row, held only to save what came of it, from the call as it is
+ * then. Seats given meanwhile to someone taken out are taken back once it's let go, and anyone let in meanwhile is seated.
  */
 export async function actOnBoard(v: Viewer, callId: string, a: boards.BoardAction): Promise<CallState> {
   const o = v.organizer;
-  if (a.type === 'board-open') boards.requireStarter(v, a.type);
+  boards.requireStarter(v, a.type);
   const reader = await readerInCall(v);
   const ctx = { callId, action: a.type };
   /** The call as it stands, read with `db`: the pool, or the transaction that holds its row. */
@@ -51,7 +51,7 @@ export async function actOnBoard(v: Viewer, callId: string, a: boards.BoardActio
   // A seat given to someone taken out while it was given goes, as their removal took everything else.
   for (const seat of changed.ended) await endSeat(o, callId, seat);
   // Anyone let in while it was being opened; and in a room, whoever's come or gone meanwhile.
-  if (a.type === 'board-open') void syncBoardSeats({ organizer: o, callId });
+  void syncBoardSeats({ organizer: o, callId });
   // Rooms whose time ran out closed with it, and come back; a board started in a room is everyone's there before anyone's told.
   return afterClosing({ organizer: o, callId }, closed, async () => {
     if (!closed && changed.s.board.rooms.length > roomBoards) await syncRoomBoards({ organizer: o, callId });

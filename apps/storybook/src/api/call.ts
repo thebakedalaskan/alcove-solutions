@@ -260,7 +260,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'tag-you': this.tagsYou(b.who, b.document, b.block ?? null); return;
       case 'open-board': this.theyOpenBoard(b.who, b.template, b.closedToYou ?? false, b.draw, b.standing); return;
       case 'add-sticky': this.theyAddSticky(b.who, b.frame, b.text); return;
-      case 'close-board': this.boardGoes(); return;
       case 'start-timer': this.theyStartTimer(b.who, b.minutes, b.left); return;
       case 'stop-timer': void this.session((x) => ({ ...x, timer: null })); return;
       case 'start-vote': this.theyStartVote(b.who, b.frame, b.per); return;
@@ -457,7 +456,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const b = this.boards.get(at);
     if (!b) return { open: null, timer: null, vote: null, ideas: [] };
     const openedBy = this.getSnapshot().participants.some((p) => p.id === b.openedBy) ? b.openedBy : null;
-    const seen = { openedBy, canClose: b.openedBy === this.me.id || this.me.isOrganizer, seal: at === 'main' ? 'Sealed' : 'Sealed to this room', frame: at === place ? null : roomFrameId(place) };
+    const seen = { openedBy, seal: at === 'main' ? 'Sealed' : 'Sealed to this room', frame: at === place ? null : roomFrameId(place) };
     if (!b.at) return { open: { workspaceId: null, documentId: null, name: null, role: null, everyone: false, ...seen }, timer: null, vote: null, ideas: [] };
     const item = this.itemIn(b.at.workspaceId, b.at.documentId);
     if (!item) return { open: null, timer: null, vote: null, ideas: [] };
@@ -1055,12 +1054,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.onIt.set(p.id, { x: x + 110, y: y + 120 });
     this.sayWhoIsOn();
   }
-  /** Whoever opened the board where you are closes it for everyone there: the faces come back, and nothing on it is lost. */
-  private boardGoes(): void {
-    this.boards.delete(this.shownAt(this.crypto.getSnapshot().place));
-    this.onIt.clear();
-    this.showBoard();
-  }
   private theyStartTimer(who: Person, minutes: BoardTimerMinutes, left: number | undefined): void {
     if (!this.find(who)) return;
     void this.session((b) => ({ ...b, timer: { until: this.getSnapshot().elapsed + (left ?? minutes * 60), length: minutes * 60, text: 'Add your stickies', canStop: this.me.isOrganizer } }));
@@ -1114,7 +1107,6 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     if (place === 'main') this.othersWorkOnIt();
     return Promise.resolve();
   }
-  closeBoard(): Promise<void> { this.boardGoes(); return Promise.resolve(); }
   /**
    * Who here can't open a saved board: anyone who came with the link, and anyone not in its workspace. You may let them in if
    * you may share it: you can edit it, in a workspace you're in.
