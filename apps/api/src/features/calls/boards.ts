@@ -398,8 +398,8 @@ async function madeMain(m: MainBoardFor, workspaceId: string, folderId: string |
   });
 }
 /**
- * Makes the call's main board, as a new board from the Board menu does, and as rooms sharing one board do when nothing they can
- * share is open. One the home can't take is refused, in the words its asker is told.
+ * Makes the call's main board, as a new board from the board picker does (Board, or Share › A board, then New), and as rooms
+ * sharing one board do when nothing they can share is open. One the home can't take is refused, in the words its asker is told.
  */
 export async function makeMainBoard(m: MainBoardFor, workspaceId: string, folderId: string | null): Promise<MadeMain> {
   const made = await madeMain(m, workspaceId, folderId);

@@ -358,7 +358,7 @@ describe('bringing a board to a call', () => {
     const meetingId = host.getSnapshot().meetingId;
     await noteOf(art, (await host.leave())?.pendingNoteId);
 
-    // The next call brings what this one brought, and the boards open in it, which its Board menu offers first.
+    // The next call brings what this one brought, and the boards open in it, which its board picker lists first among your team's.
     const next = await art.api.meetings.scheduleNext(meetingId, new Date(Date.now() + 7 * 86_400_000).toISOString());
     expect(next.documents.map((d) => [d.kind, d.name])).toEqual([['board', 'Launch retro'], ['board', expect.any(String)]]);
     const nextHost = await art.api.calls.join(next.code, { mic: false, cam: false });

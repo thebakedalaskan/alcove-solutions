@@ -210,7 +210,7 @@ function withBoardOpened(w: CallSpace, at: { workspaceId: string; documentId: st
 
 /**
  * The same, with every board open in the call noted in the part it's open in (`open` is by part: `main`, or a room's ID),
- * however it opened: from the Board menu, with rooms opening, or started in a room.
+ * however it opened: from the board picker, with rooms opening, or started in a room.
  */
 export function withOpenBoards(w: CallSpace, open: Readonly<Record<string, { workspaceId: string; documentId: string }>>): CallSpace {
   return Object.entries(open).reduce((x, [place, at]) => withBoardOpened(x, at, place), w);
