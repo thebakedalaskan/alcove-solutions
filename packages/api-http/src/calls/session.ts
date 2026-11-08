@@ -223,8 +223,13 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.emit('debug', 'left a part of the call’s group', { why, room: place !== MAIN_PLACE });
   }
 
-  /** The server's state, minus notices this screen has dismissed. */
-  private take(s: CallState) { this.apply({ ...s, notices: s.notices.filter((n) => !this.hidden.has(n.id)) }); }
+  /**
+   * The server's state, minus notices this screen has dismissed. Confirmed chat reads only grow for this seat:
+   * a GET already in flight when a read succeeds must not bring its mention back while that response arrives.
+   */
+  private take(s: CallState) {
+    this.apply({ ...s, chatRead: [...new Set([...this.state.chatRead, ...s.chatRead])], notices: s.notices.filter((n) => !this.hidden.has(n.id)) });
+  }
   private notify(text: string) { this.set({ ...this.state, notices: [...this.state.notices, { id: b64u(randomBytes(8)), kind: 'info', text }] }); }
   private patch(p: Partial<CallCrypto>) { this.crypto.set({ ...this.crypto.getSnapshot(), ...p }); }
   refresh = async (what?: { call: boolean; log: boolean } | undefined) => {

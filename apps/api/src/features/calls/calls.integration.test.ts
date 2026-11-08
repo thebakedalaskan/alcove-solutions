@@ -242,6 +242,8 @@ describe('end-to-end encryption', () => {
     const secondApi = createHttpApi({ baseUrl: second.baseUrl, fetch: browser.fetch });
     const again = await secondApi.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
     await inGroup(again);
+    // MLS enters before its authorized call-state read finishes; the join snapshot carries no private receipts yet.
+    await again.refresh({ call: true, log: false });
     expect(again.getSnapshot().chatRead).toEqual([messageId]);
     await again.readChat([messageId]);
     expect(again.getSnapshot().chatRead).toEqual([messageId]);
@@ -255,6 +257,55 @@ describe('end-to-end encryption', () => {
     again.close();
     await host.leave();
     await second.close();
+  });
+
+  it('never revives a read mention when an older call response arrives after its read receipt', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const transport = h.browser();
+    let holdNext = false;
+    let held = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const browser = h.browser({
+      callPollMs: 600_000,
+      fetch: async (input, init) => {
+        const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).pathname;
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+        const delay = holdNext && method === 'GET' && path === `/v1/live/calls/${host.ticket.callId}`;
+        if (delay) holdNext = false;
+        const response = await transport.fetch(input, init);
+        if (delay) { held = true; await gate; }
+        return response;
+      }
+    });
+    const sam = await browser.api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const text = '@Sam please review this';
+    await host.sendChat(text, [{ identity: sam.ticket.identity, start: 0, end: 4 }]);
+    await readLog(sam, () => chatOf(sam).includes(text), 'the mention before its read receipt');
+    const messageId = sam.crypto.getSnapshot().chat.find((m) => m.text === text)?.id ?? '';
+    expect(messageId).not.toBe('');
+    holdNext = true;
+    const older = sam.refresh({ call: true, log: false });
+    await waitFor(() => held, 'the older call response in transit');
+    const snapshots: boolean[] = [];
+    let stop = () => {};
+    try {
+      await sam.readChat([messageId]);
+      expect(sam.getSnapshot().chatRead).toContain(messageId);
+      stop = sam.subscribe(() => snapshots.push(sam.getSnapshot().chatRead.includes(messageId)));
+    } finally {
+      release();
+      await older;
+      stop();
+    }
+    expect(snapshots).not.toEqual([]);
+    expect(snapshots.every(Boolean)).toBe(true);
+    expect(sam.getSnapshot().chatRead).toContain(messageId);
+    await host.leave();
   });
 
   it('lets people react to chat, add to a reaction and take theirs back, as unreadable to the server as chat', async () => {

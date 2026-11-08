@@ -73,12 +73,34 @@ export const FourOfYouPhone = phone(FourOfYou);
 
 /** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
 export const MentionedInChat = inCall({
-  scenario: 'busy', call: REVIEW,
+  scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }
 }, {
   play: plays(async ({ canvas }) => { await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 }); }, reach('Chat'))
 });
 export const MentionedInChatPhone = phone(MentionedInChat);
+
+const LONG_MENTION = `@Art Vandelay ${'The launch checklist has the updated empty states, the welcome copy and the call controls. We can review each screen at the small and wide sizes, then collect the remaining questions in the workspace. '.repeat(16)}`;
+/** The addressed words start a long message: opening its end does not mark those words read. */
+export const MentionInLongMessage = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, cues: at(2, chats(AIKO, LONG_MENTION, ['me'])) }
+}, {
+  play: plays(
+    async ({ canvas, step }) => {
+      await step('Aiko mentions you at the start of a long design discussion', async () => {
+        await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 });
+      });
+    },
+    reach('Chat'),
+    async ({ userEvent, step }) => {
+      await step('Open mention goes to the addressed words. Seeing them clears the unread mention', async () => {
+        await userEvent.click(await screen.findByRole('button', { name: 'Open mention' }));
+      });
+    }
+  )
+});
+export const MentionInLongMessagePhone = phone(MentionInLongMessage);
 
 /** A tag, then a host decision: answer the card, then read Chat to restore the normal tab icon. */
 export const TabAttentionWithoutNotifications = inCall({
