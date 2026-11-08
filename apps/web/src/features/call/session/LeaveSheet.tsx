@@ -1,5 +1,5 @@
 /*
- * Leaving: one calm sheet whose content changes in place. First the choice. Anyone who doesn't host just leaves.
+ * The host's departure: one calm sheet whose content changes in place. Other participants leave without this sheet.
  * Whoever hosts (the organizer, or someone standing in for them) ends the call for everyone, or leaves and keeps it
  * going with someone else hosting: the best person is chosen already, and Change shows who else could. Once the call
  * has ended, who gets the notes and how they're coming along, until they can be read.
@@ -19,10 +19,8 @@ export type Ended = { noteId: string | null; duration: number };
 /** Someone who could host after you, by participant ID. */
 export interface NextHost { id: string; person: Person }
 
-export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome, inline = false }: {
+export function LeaveSheet({ open, onOpenChange, title, elapsed, organizer, standingInFor, next, notes, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome, inline = false }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; elapsed: number;
-  /** You host the call now: leaving ends it for everyone, or hands it to someone. Anyone else just leaves. */
-  hosting: boolean;
   /** You organized the call. */
   organizer: boolean;
   /** You're hosting in someone's place: the organizer, by name. */
@@ -31,8 +29,6 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
   next: NextHost[];
   /** Notes have been on at some point, so the call has notes. */
   notes: boolean;
-  /** Nobody new can join, so someone who leaves can't come back. */
-  locked: boolean;
   /** Anyone else in the call. */
   others: number;
   /** Everyone invited besides you: they get the notes too. */
@@ -68,15 +64,13 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
 
   const minutes = Math.max(1, Math.floor((ended?.duration ?? elapsed) / 60));
   // Leaving can keep the call going only for someone hosting with somebody here who can take over.
-  const keep = hosting && others > 0 && pick !== null;
+  const keep = others > 0 && pick !== null;
   const back = standingInFor ? firstName(standingInFor) : null;
-  const said = !hosting ? (locked ? 'The call goes on without you. It’s locked, so you can’t join again unless the host unlocks it.' : 'The call goes on without you. You can join again with the link.')
-    : !others ? 'You’re the only one here, so leaving ends the call.'
+  const said = !others ? 'You’re the only one here, so leaving ends the call.'
       : !keep ? `${back ? `You’re hosting while ${back} is away.` : 'You organized this call.'} Nobody else here can host: guests can’t. Leaving ends it for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
         : back ? `You’re hosting while ${back} is away. Someone else can host, or you can end the call for everyone${notes ? ', and the notes go to everyone invited' : ''}.`
           : `You organized this call. End it for everyone${notes ? ', and the notes go to everyone invited' : ''}, or leave it with someone else hosting until you’re back.`;
-  // Anyone who doesn't host only leaves: the call goes on without them.
-  const endLabel = !hosting ? (leaving ? 'Leaving…' : 'Leave the call') : leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
+  const endLabel = leaving ? 'Ending the call…' : others ? 'End call for everyone' : 'End the call';
   const endButton = <Button key="end" variant={keep && back ? 'secondary' : 'primary'} loading={leaving && !keep} disabled={leaving} onClick={onEnd} autoFocus={!(keep && back)}>{endLabel}</Button>;
   const keepButton = keep && pick
     ? <Button key="keep" variant={back ? 'primary' : 'secondary'} disabled={leaving} onClick={() => onHandOff(pick.id)} autoFocus={Boolean(back)}>Leave and keep it going</Button>
