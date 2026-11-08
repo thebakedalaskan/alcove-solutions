@@ -27,8 +27,8 @@ function ConfirmationPreview(args: FloatingCallProps) {
   return (
     <Box width="min(400px, 100%)" height={420}>
       <FloatingCall {...args} onLeave={() => { args.onLeave(); setOpen(true); }}>
-        {open && <LeaveSheet inline open onOpenChange={setOpen} title={args.title} elapsed={720} hosting organizer standingInFor={null}
-          next={[{ id: 'preview-priya', person: PRIYA }, { id: 'preview-kofi', person: KOFI }]} notes locked={false} others={3}
+        {open && <LeaveSheet inline open onOpenChange={setOpen} title={args.title} elapsed={720} organizer standingInFor={null}
+          next={[{ id: 'preview-priya', person: PRIYA }, { id: 'preview-kofi', person: KOFI }]} notes others={3}
           getting={[PRIYA, KOFI, AIKO]} leaving={args.busy} ended={null}
           onEnd={did('End call for everyone')} onHandOff={did('Leave and keep it going')} onRead={did('Read notes')} onHome={did('Home')} />}
       </FloatingCall>

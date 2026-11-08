@@ -3,11 +3,14 @@
  * canvas never drew: from the call, through the sheet that becomes Call ended, to the note being written. The call is the
  * call stories' design review, twenty-three minutes in.
  */
+import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
-import { inCall } from '../../src/call';
+import { at, ringFrom, run } from '../../src/api/script';
+import { ringYou } from '../../src/api/standin';
+import { inCall, light, phone } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
-import { AIKO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
+import { AIKO, BOARD_PREP, CHECK_IN, INES, KOFI, MAYA, PREP, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from '../calls/talk';
 import { LATER, SOON } from './play';
 
 const meta = { title: 'Journeys/7 End the call and get the notes', ...pages } satisfies Meta<PageArgs>;
@@ -53,3 +56,83 @@ export const LeaveAndKeepItGoing: PageStory = {
     });
   }
 };
+
+/** An invited participant's Leave is one press; the host and everyone else carry on. */
+export const ParticipantLeaves: PageStory = {
+  name: '7.3 Leave as a participant',
+  ...inCall({ scenario: 'busy', call: CHECK_IN, script: { here: [{ who: KOFI }, { who: AIKO }], notes: 'off' } }),
+  play: async ({ userEvent, step }) => {
+    await step('Press Leave once, without a confirmation', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Leave' }, LATER));
+    });
+    await step('The call’s join page is ready to return to the ongoing call', async () => {
+      await screen.findByRole('heading', { name: 'Launch check-in', level: 1 }, LATER);
+    });
+  }
+};
+export const ParticipantLeavesPhone = phone(ParticipantLeaves, '7.3 Leave as a participant, on a phone');
+export const ParticipantLeavesLight = light(ParticipantLeaves, '7.3 Leave as a participant, in a light theme');
+
+/** The same behavior for a guest admitted from the call's link. */
+export const GuestLeaves: PageStory = {
+  name: '7.4 Leave as a guest',
+  ...inCall({
+    scenario: 'signed-out', call: PREP,
+    script: { here: [{ who: KOFI, organizer: true }, { who: MAYA }], notes: 'off', cues: at(0.5, { do: 'let-in' }) }
+  }),
+  play: async ({ userEvent, step }) => {
+    await step('After the host admits you, press Leave once', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Leave' }, LATER));
+    });
+    await step('The call goes on and its link is ready to ask to join again', async () => {
+      await screen.findByRole('heading', { name: 'Harbourline prep', level: 1 }, LATER);
+    });
+  }
+};
+
+export const ParticipantRetriesLeaving: PageStory = {
+  name: '7.5 Retry a participant departure',
+  ...inCall({
+    scenario: 'busy', call: CHECK_IN, script: { here: [{ who: KOFI }, { who: AIKO }], notes: 'off' },
+    then: (session) => {
+      const leave = session.leave.bind(session);
+      let refused = false;
+      session.leave = () => {
+        if (refused) return leave();
+        refused = true;
+        return Promise.reject(new AlcoveApiError('unavailable', 'Alcove couldn’t leave the call. Try again.'));
+      };
+    }
+  }),
+  play: async ({ userEvent, step }) => {
+    await step('The first Leave fails and the same call stays open', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Leave' }, LATER));
+      await screen.findAllByText('Alcove couldn’t leave the call. Try again.', {}, SOON);
+    });
+    await step('Press Leave again to retry and return to the call’s join page', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Leave' }, SOON));
+      await screen.findByRole('heading', { name: 'Launch check-in', level: 1 }, LATER);
+    });
+  }
+};
+
+export const ParticipantJoinsAnotherCall: PageStory = {
+  name: '7.6 Join another call as a participant',
+  ...inCall({
+    scenario: 'busy', call: CHECK_IN, also: [BOARD_PREP],
+    script: {
+      here: [{ who: KOFI }, { who: AIKO }], notes: 'off',
+      cues: at(1, run(() => ringYou(ringFrom(INES, BOARD_PREP.code, BOARD_PREP.title))))
+    }
+  }),
+  play: async ({ userEvent, step }) => {
+    await step('Ines rings while you are in Priya’s call. Press Join', async () => {
+      const card = await screen.findByRole('alertdialog', { name: 'Ines is ringing you' }, LATER);
+      await userEvent.click(within(card).getByRole('button', { name: 'Join' }));
+    });
+    await step('Leave the current call without a question and continue to Board prep’s lobby', async () => {
+      await screen.findByRole('heading', { name: 'Board prep', level: 1 }, LATER);
+    });
+  }
+};
+export const ParticipantJoinsAnotherCallPhone = phone(ParticipantJoinsAnotherCall, '7.6 Join another call as a participant, on a phone');

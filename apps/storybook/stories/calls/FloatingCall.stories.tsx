@@ -8,7 +8,7 @@ import type { Meta } from '@storybook/react-vite';
 import { at, chats, knocks, raisesHand, shares, stopsSharing } from '../../src/api/script';
 import { inCall, light, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
-import { AIKO, CHECKLIST, DIEGO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
+import { AIKO, CHECK_IN, CHECKLIST, DIEGO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
 const meta = {
   title: 'Calls/Floating call',
@@ -80,3 +80,17 @@ export const HandRefused = inCall({
 export const DevicesBlocked = inCall({
   scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS }, you: { mic: false, cam: false }
 }, { ...ready, parameters: { opening: { browser: { devices: 'denied' } } } });
+
+/** A participant uses the same immediate Leave action in the real floating window. Open it with a real browser click. */
+export const ParticipantReadyToOpen = inCall({
+  scenario: 'busy', call: CHECK_IN, script: { here: [{ who: KOFI }, { who: AIKO }], notes: 'off' }
+}, ready);
+export const ParticipantReadyToOpenLight = light(ParticipantReadyToOpen);
+
+/** The participant stays in the floating call after a refused departure, with Leave available to retry. */
+export const ParticipantLeaveRefused = inCall({
+  scenario: 'busy', call: CHECK_IN, script: { here: [{ who: KOFI }, { who: AIKO }], notes: 'off' },
+  then: (session) => {
+    session.leave = () => Promise.reject(new AlcoveApiError('unavailable', 'Alcove couldn’t leave the call. Try again.'));
+  }
+}, ready);
