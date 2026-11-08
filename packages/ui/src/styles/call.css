@@ -629,6 +629,25 @@
 .ic-msg .meta b { font-weight: 600; }
 .ic-msg .meta .ac-time { font-size: 12px; color: var(--ink-3); }
 .ic-msg p { margin: 2px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+.ic-msg.has-unread-mention { box-shadow: inset 2px 0 var(--horizon); }
+.ic-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ic-mention { padding: 1px 3px; border-radius: var(--radius-xs); color: var(--horizon); background: var(--horizon-soft); font-weight: 600; }
+.ic-mention.is-me { text-decoration: underline; text-underline-offset: 3px; }
+.ic-mention-unread { flex: none; display: flex; gap: 8px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--line); color: var(--horizon); font-size: 13px; }
+.ic-mention-unread > span { flex: 1; }
+.ic-chat-compose { position: relative; }
+.ic-mention-picker { position: absolute; z-index: 2; bottom: calc(100% + 4px); left: 12px; right: 12px; padding: 6px; border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
+.ic-mention-head { padding: 6px 8px 8px; font-size: 12px; color: var(--ink-2); }
+.ic-mention-list { max-height: min(280px, 35vh); overflow-y: auto; }
+.ic-mention-option { width: 100%; display: flex; gap: 10px; align-items: center; padding: 8px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--ink); text-align: left; }
+.ic-mention-option.is-active { background: var(--horizon-soft); }
+.ic-mention-option > span { display: grid; min-width: 0; }
+.ic-mention-option b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.ic-mention-option small { font-size: 12px; color: var(--ink-2); overflow-wrap: anywhere; }
+.ic-mention-none { margin: 0; padding: 12px 8px; color: var(--ink-2); font-size: 13px; }
+.ic-mention-chosen { display: flex; flex-wrap: wrap; gap: 4px; max-height: 96px; overflow-y: auto; }
+.ic-mention-token { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 2px 3px 2px 7px; border-radius: var(--radius-sm); color: var(--horizon); background: var(--horizon-soft); font-size: 12px; overflow-wrap: anywhere; }
+.ic-mention-token .ac-icon-btn { flex: none; width: 24px; height: 24px; color: inherit; }
 .ic-cap-h { margin-bottom: 6px; }
 .ic-cap-h.mt { margin-top: 18px; }
 .ic-prow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 60px; border-top: 1px solid var(--line); }

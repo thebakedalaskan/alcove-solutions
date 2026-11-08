@@ -414,3 +414,20 @@ export function useNotesAskedNotifications(state: CallState) {
     showOnce(owner, alerts, go);
   }, [allowed, owner, on, asks, mode, go]);
 }
+
+/** Chat tags share the Tagged preference. The OS never receives a person's name or message preview. */
+export function useChatMentionNotifications(state: CallState, unread: readonly string[]) {
+  const permission = useNotifyPermission();
+  const owner = useQuery(q.session()).data?.ownerId;
+  const allowed = state.phase === 'in-call' && permission === 'granted' && owner !== undefined;
+  const on = useQuery({ ...q.prefs(), enabled: allowed, ...KEEP_READING }).data?.notifications.tagged === true;
+  const go = useGo();
+  useEffect(() => {
+    if (!allowed || owner === undefined || !on || !unread.length) return;
+    if (document.visibilityState === 'visible' && document.hasFocus()) return;
+    const alerts = unread.map((id): Alert => ({ key: `chat-tag:${state.callId}:${id}`, kind: 'tagged', title: 'You were mentioned in chat',
+      body: 'Open Alcove to read the message.', open: { to: 'call', code: state.code } }));
+    showOnce(owner, alerts, go, 1, (many) => ({ key: `chat-tags:${state.callId}:${Date.now()}`, kind: 'tagged', title: 'You have unread chat mentions',
+      body: `${many.length} messages mention you.`, open: { to: 'call', code: state.code } }));
+  }, [allowed, owner, on, unread, state.callId, state.code, go]);
+}

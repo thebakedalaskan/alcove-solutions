@@ -56,7 +56,8 @@ import { useBoardPresenting } from '~/features/call/boards/boardPresenting';
 import { useWorkspacePresenting } from '~/features/call/workspace/presenting';
 import { GAP, PHONE_W, focusRoom, placeMain } from '~/features/call/layout/panels';
 import { CaptureButton, NotesAsks, askedTag, organizerName, useCaptureAlerts } from '~/features/call/notes/Capture';
-import { useNotesAskedNotifications } from '~/features/shell/notify';
+import { useChatMentionNotifications, useNotesAskedNotifications } from '~/features/shell/notify';
+import { unreadChatMentions, useCallAttention } from './attention';
 import { captureHere } from '~/lib/capture';
 import { RoomsLive, RoomsSetup } from '~/features/call/rooms/Rooms';
 import { MAX_SHARES, SHARE_PROBLEMS, canShareScreen } from '~/features/call/screen-sharing/share';
@@ -206,7 +207,21 @@ export function InCall({ session }: { session: CallSession }) {
   const theirChat = crypto.chat.filter((c) => !c.isMe && c.place === crypto.place).length;
   const [seenChat, setSeenChat] = useState({ part: crypto.place, count: theirChat });
   if (seenChat.part !== crypto.place) setSeenChat({ part: crypto.place, count: theirChat });
-  const unread = Math.max(0, theirChat - (seenChat.part === crypto.place ? seenChat.count : theirChat));
+  const unreadChat = Math.max(0, theirChat - (seenChat.part === crypto.place ? seenChat.count : theirChat));
+  const unreadMentions = useMemo(() => unreadChatMentions(state, crypto, self), [state, crypto, self]);
+  const unread = Math.max(unreadChat, unreadMentions.length);
+  const attentionAllowed = useCallAttention(state, crypto, unreadMentions, !leaving && ended === null);
+  useChatMentionNotifications(state, attentionAllowed ? unreadMentions : []);
+  const readingMentions = useRef(new Set<string>());
+  const readMentions = useCallback((ids: readonly string[]) => {
+    const fresh = ids.filter((id) => !readingMentions.current.has(id));
+    for (let at = 0; at < fresh.length; at += 200) {
+      const batch = fresh.slice(at, at + 200);
+      for (const id of batch) readingMentions.current.add(id);
+      void session.readChat(batch).catch((e: unknown) => clog.warn('chat read state not saved', { code: errorCode(e) }))
+        .finally(() => { for (const id of batch) readingMentions.current.delete(id); });
+    }
+  }, [session]);
 
   const { room, roomView, marks } = useCallRoom({ session, media, toast, guard: guardRef });
 
@@ -1344,7 +1359,10 @@ export function InCall({ session }: { session: CallSession }) {
           <SideHead title="Chat" onClose={sideClose} />
           <SideBody view="chat">
             <ChatView chat={crypto.chat} missed={crypto.missedChat} ready={crypto.status === 'in'} moving={crypto.status === 'moving'} here={open ? roomName ?? 'the main room' : null} placeName={placeName}
-              who={personOf} place={crypto.place} me={session.ticket.identity} draft={drafts.current.chat} onSend={(t) => session.sendChat(t)} onReact={(id, r, on) => session.react(id, r, on)} />
+              who={personOf} place={crypto.place} me={session.ticket.identity} draft={drafts.current.chat}
+              mentionPeople={state.participants.filter((person) => crypto.members.includes(person.id)).map((person) => ({ identity: person.id, person: person.person }))}
+              unreadMentionIds={unreadMentions} onReadMentions={readMentions}
+              onSend={(t, mentions) => session.sendChat(t, mentions)} onReact={(id, r, on) => session.react(id, r, on)} />
           </SideBody>
         </>
       );

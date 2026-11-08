@@ -1299,17 +1299,19 @@ describe('the live stream', () => {
     const theo = await account();
     const id = await workspace(ann, 'Ours', [[theo, 'read']]);
     const s = stream(h.baseUrl, theo.fetch, id);
-    await until(() => s.lines.length === 1, 'the first tree');
+    await until(() => s.lines.length === 2, 'the first tree and unread snapshot');
     expect(s.status).toBe(200);
+    expect(s.lines.map((line) => line.type)).toEqual(['tree', 'mentions']);
+    expect(s.lines[1]).toEqual({ type: 'mentions', mentions: [] });
     const [first] = s.lines;
     if (first?.type !== 'tree') throw new Error('the first line isn’t the tree');
     expect(first.tree).toEqual({ id, name: 'Ours', role: 'read', people: 2, items: [] });
 
     const me = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email)?.id ?? '';
     await ann.api.workspaces.setRole(id, me, 'edit');
-    await until(() => s.lines.length >= 3, 'the role’s lines');
-    expect(s.lines.slice(1).map((l) => l.type)).toEqual(['access', 'tree']);
-    expect(s.lines[1]).toEqual({ type: 'access', role: 'edit' });
+    await until(() => s.lines.length >= 4, 'the role’s lines');
+    expect(s.lines.slice(2).map((l) => l.type)).toEqual(['access', 'tree']);
+    expect(s.lines[2]).toEqual({ type: 'access', role: 'edit' });
 
     // Changes that make no difference to this reader send nothing.
     const before = s.lines.length;
