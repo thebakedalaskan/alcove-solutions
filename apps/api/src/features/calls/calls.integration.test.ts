@@ -1870,7 +1870,7 @@ describe('ending', () => {
     expect((await invited.api.notes.get(noteId)).id).toBe(noteId);
   });
 
-  it('keeps the call going when someone other than the organizer leaves, and takes them out of the group', async () => {
+  it('keeps the call going when another participant’s browser closes, and takes them out of the group', async () => {
     const org = await account();
     const { code: c } = await org.api.calls.startNow({});
     const host = await org.api.calls.join(c, { mic: true, cam: false });
@@ -1878,6 +1878,7 @@ describe('ending', () => {
     const guest = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
     await letIn(host, guest);
     const guestRoom = await joinRoom(guest);
+    guest.close();
     await guestRoom.disconnect();
     expect((await hook('participant_left', host.ticket.roomName, guest.ticket.identity)).status).toBe(200);
     await waitFor(() => !host.crypto.getSnapshot().members.includes(guest.ticket.identity), 'the guest out of the group');
