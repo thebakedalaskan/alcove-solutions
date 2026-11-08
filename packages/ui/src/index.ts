@@ -1,4 +1,5 @@
 import './css-vars';
+export * from './components/tab-attention';
 export { cn } from './cn';
 export * from './components/icon';
 export * from './components/emoji';

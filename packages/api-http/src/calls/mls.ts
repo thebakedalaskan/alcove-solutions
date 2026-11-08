@@ -1,6 +1,5 @@
-import { CALL_CHAT_MAX, type CallReaction, CallReactionSchema } from '@alcove/api';
+import { CALL_CHAT_MAX, CallChatPayloadSchema, type CallChatMention, type CallChatPayload, type CallReaction } from '@alcove/api';
 import { type CiphersuiteImpl, type ClientConfig, type ClientState, type IncomingMessageCallback, type KeyPackage, type MLSMessage, type PrivateKeyPackage, type PrivateMessage, type Proposal, type RatchetTree } from 'ts-mls';
-import { z } from 'zod';
 
 const SUITE = 'MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519' as const;
 
@@ -62,14 +61,6 @@ function lib(): Promise<Lib> {
   })();
   return loading;
 }
-
-/** What goes inside an application message: a chat line, or a reaction to one (by its ID in the log) added or taken back. */
-const ChatPayloadSchema = z.union([
-  z.object({ text: z.string().min(1).max(CALL_CHAT_MAX), at: z.number() }),
-  z.object({ react: z.object({ target: z.string().min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }), at: z.number() }),
-]);
-export type ChatPayload = z.infer<typeof ChatPayloadSchema>;
-
 
 function identityOf(cred: { credentialType: string; identity?: Uint8Array }): string | undefined {
   if (cred.credentialType !== 'basic' || !cred.identity) return undefined;
@@ -210,7 +201,7 @@ export type Applied = 'applied' | 'skipped' | 'refused' | 'removed' | 'behind';
 
 /** Chat from the log, read: who sent it as MLS vouches for it, or why it can't be read here. */
 export type Read =
-  | { kind: 'chat'; from: string; text: string; at: number }
+  | { kind: 'chat'; from: string; text: string; mentions: CallChatMention[]; at: number }
   | { kind: 'react'; from: string; target: string; reaction: CallReaction; on: boolean; at: number }
   | { kind: 'before' }
   | { kind: 'unreadable' };
@@ -351,12 +342,13 @@ export class MlsGroup {
   }
 
   /** Chat or a reaction, encrypted for everyone in the group now. */
-  encrypt(payload: ChatPayload): Promise<{ message: string; epoch: number }> {
+  encrypt(payload: CallChatPayload): Promise<{ message: string; epoch: number }> {
     return this.run(async () => {
       const st = this.state;
       if (!st) throw new MlsError('Not in the group.');
       if (this.pending) throw new MlsError('The keys are moving on; try again.');
       if ('text' in payload && payload.text.length > CALL_CHAT_MAX) throw new MlsError('That message is too long.');
+      if ('text' in payload && payload.mentions.some((m) => !this.members().includes(m.identity))) throw new MlsError('That person is no longer in this part of the call.');
       const r = await this.l.m.createApplicationMessage(st, enc.encode(JSON.stringify(payload)), this.l.cs);
       this.state = r.newState;
       r.consumed.forEach((b) => this.l.m.zeroOutUint8Array(b));
@@ -391,9 +383,14 @@ export class MlsGroup {
         r.consumed.forEach((b) => this.l.m.zeroOutUint8Array(b));
         let payload: unknown;
         try { payload = JSON.parse(dec.decode(r.message)); } catch { return { kind: 'unreadable' }; }
-        const p = ChatPayloadSchema.safeParse(payload);
+        const p = CallChatPayloadSchema.safeParse(payload);
         if (!p.success) return { kind: 'unreadable' };
-        return 'text' in p.data ? { kind: 'chat', from, text: p.data.text, at: p.data.at } : { kind: 'react', from, ...p.data.react, at: p.data.at };
+        if ('text' in p.data) {
+          const members = new Set(leaves(current ? st.ratchetTree : past?.ratchetTree ?? []).values());
+          if (p.data.mentions.some((m) => !members.has(m.identity))) return { kind: 'unreadable' };
+          return { kind: 'chat', from, text: p.data.text, mentions: p.data.mentions, at: p.data.at };
+        }
+        return { kind: 'react', from, ...p.data.react, at: p.data.at };
       } catch {
         return { kind: 'unreadable' };
       }

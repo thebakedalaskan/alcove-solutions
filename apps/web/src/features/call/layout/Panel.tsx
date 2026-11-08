@@ -6,7 +6,7 @@
  * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { CALL_CHAT_MAX, clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallReaction, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallChatMention, type CallReaction, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
 import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
@@ -20,8 +20,9 @@ import { hm } from '~/lib/time';
 import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '../notes/Capture';
 import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
-import { useDraft, type Draft, type NotesTab } from './side';
+import type { NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
+import { ChatComposer, MentionText, useReadMentions, type ChatDraft, type MentionPerson } from './ChatMentions';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
@@ -315,7 +316,7 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
  * can't be read here, which the view says. Hovering a message (or reaching it with the keyboard) offers a reaction;
  * pressing one under it adds yours, or takes it back.
  */
-export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, onSend, onReact }: {
+export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, mentionPeople, unreadMentionIds = [], onReadMentions, onSend, onReact }: {
   chat: CallChatMessage[];
   /** There was chat in this part of the call while you weren't in it. */
   missed: boolean;
@@ -332,18 +333,24 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   place: string;
   /** Your identity in the call, to mark your own reactions. */
   me: string;
-  draft: Draft;
-  onSend: (text: string) => Promise<void>;
+  draft: ChatDraft;
+  mentionPeople: readonly MentionPerson[];
+  unreadMentionIds?: readonly string[] | undefined;
+  onReadMentions?: ((ids: readonly string[]) => void) | undefined;
+  onSend: (text: string, mentions?: readonly CallChatMention[]) => Promise<void>;
   onReact: (messageId: string, reaction: CallReaction, on: boolean) => Promise<void>;
 }) {
-  const [text, setText] = useDraft(draft);
   const toast = useToast();
   const end = useRef<HTMLDivElement>(null);
+  const scroll = useRef<HTMLDivElement>(null);
+  useReadMentions(scroll, unreadMentionIds, onReadMentions);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
-  /* A message that isn't sent is taken back: say so, and give the text back. */
-  const send = (t: string) => {
-    setText('');
-    void onSend(t).catch((e: unknown) => { toast(errorMessage(e), { icon: 'x' }); draft.text ||= t; setText((now) => now || t); });
+  const openMention = () => {
+    const first = unreadMentionIds[0];
+    if (!first) return;
+    const message = document.getElementById(`chat-message-${first}`);
+    (message?.querySelector('.ic-mention.is-me') ?? message)?.scrollIntoView({ block: 'center' });
+    message?.focus({ preventScroll: true });
   };
   const react = (id: string) => (r: CallReaction, on: boolean) => { void onReact(id, r, on).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); };
   const shown = (c: CallChatMessage): ReactionShown[] =>
@@ -353,7 +360,8 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   const to = here ?? 'everyone';
   return (
     <>
-      <div className="ic-scroll ic-pad">
+      {!!unreadMentionIds.length && <div className="ic-mention-unread" role="status"><Icon name="chat" size={16} /><span>{unreadMentionIds.length} unread {unreadMentionIds.length === 1 ? 'mention' : 'mentions'}</span><Button variant="quiet" size="sm" onClick={openMention}>Open mention</Button></div>}
+      <div ref={scroll} className="ic-scroll ic-pad">
         {missed && <Notice icon="lock" className="ic-missed">Messages sent here before you came aren’t shown. Only people who were here then can read them.</Notice>}
         {chat.length ? (
           <div className="ic-chat">
@@ -365,10 +373,10 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
               return (
                 <Fragment key={c.id}>
                   {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
-                  <motion.div className="ic-msg" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
+                  <motion.div id={`chat-message-${c.id}`} data-chat-message={c.id} tabIndex={-1} className={cn('ic-msg', unreadMentionIds.includes(c.id) && 'has-unread-mention')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
                     <Avatar person={from} size={28} />
                     <div>
-                      <div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p>{c.text}</p>
+                      <div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p><MentionText text={c.text} mentions={c.mentions} me={me} /></p>
                       <Reactions reactions={reactions} onToggle={react(c.id)} canReact={canReact} />
                     </div>
                     {canReact && !reactions.length && <div className="ic-msg-acts"><ReactionAdd mine={reactions.filter((r) => r.mine).map((r) => r.name)} onPick={react(c.id)} /></div>}
@@ -384,13 +392,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
         )}
         <div ref={end} />
       </div>
-      <form className="ic-foot" autoComplete="off" onSubmit={(e) => { e.preventDefault(); const t = text.trim(); if (t && ready) send(t); }}>
-        <div className="inrow">
-          <input className="ac-input" value={text} maxLength={CALL_CHAT_MAX} disabled={!ready} onChange={(e) => setText(e.target.value)}
-            placeholder={ready ? `Message ${to}` : moving ? 'Moving to another room…' : 'Getting the call’s keys…'} aria-label={`Message ${to}`} />
-          <button type="submit" className="ac-btn is-primary" aria-label={`Send to ${to}`} disabled={!ready || !text.trim()}><Icon name="sendLine" size={18} /></button>
-        </div>
-      </form>
+      <ChatComposer draft={draft} people={mentionPeople} ready={ready} moving={moving} to={to} onSend={onSend} />
     </>
   );
 }

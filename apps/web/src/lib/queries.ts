@@ -5,6 +5,7 @@ import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, 
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
 import { forgetNotified } from '~/features/shell/notified';
+import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
@@ -164,6 +165,16 @@ export const q = {
   personIds: (id: string, emails: readonly string[], pass?: string | undefined) => queryOptions({ queryKey: qk.personIds(id, emails), queryFn: () => api.workspaces.ids(id, [...emails], pass ? { pass } : undefined), staleTime: Infinity }),
   /** What you've been tagged in and haven't seen, anywhere. */
   mentions: () => queryOptions({ queryKey: qk.mentions, queryFn: () => api.workspaces.mentions() }),
+  /** The tab indicator never uses a previous account's cached notices or a result arriving after a switch. */
+  attentionMentions: (owner: string) => queryOptions({
+    queryKey: [...qk.mentions, owner],
+    queryFn: async () => {
+      if ((await api.auth.getSession())?.ownerId !== owner) return [];
+      const notices = await api.workspaces.mentions();
+      return (await api.auth.getSession())?.ownerId === owner ? notices : [];
+    },
+    retry: false, refetchInterval: 15_000, refetchIntervalInBackground: true, staleTime: 0
+  }),
   /** Who has a document, for the Share sheet. Someone else may have changed it, so it's read each time the sheet opens. */
   documentShare: (id: string, documentId: string, pass?: string | undefined) => queryOptions({ queryKey: qk.documentShare(id, documentId), queryFn: () => api.workspaces.share.list(id, documentId, pass ? { pass } : undefined), staleTime: 0 }),
   /** What History lists, read afresh each time it opens. `pass`: a guest's. */
@@ -720,7 +731,11 @@ export function useMention(workspaceId: string, pass?: string | undefined) {
 /** You've heard about a tag. */
 export function useMentionSeen() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => qc.invalidateQueries({ queryKey: qk.mentions }) });
+  return useMutation({ mutationFn: (v: { workspaceId: string; mention: string }) => api.workspaces.mentionSeen(v.workspaceId, v.mention), onSuccess: () => {
+    const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+    if (owner) announceMentionsRead(owner);
+    return qc.invalidateQueries({ queryKey: qk.mentions });
+  } });
 }
 /** Keeps your notes beside one frame of a board: what's kept is what the board's notes say from then on. Empty text takes them away. */
 export function useSavePresenterFrameNote(workspaceId: string, boardId: string, pass?: string | undefined) {

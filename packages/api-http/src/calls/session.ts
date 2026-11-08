@@ -1,9 +1,9 @@
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
-import { type ChatPayload, groupName, MlsError, MlsGroup, MlsKeys } from './mls';
+import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -161,7 +161,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * Chat and reactions waiting to go out (encrypted in the sync loop, so nothing else touches the keys meanwhile), and
    * what was sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all.
    */
-  private outbox: { local: string; payload: ChatPayload; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
+  private outbox: { local: string; payload: CallChatPayload; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
   private sent = new Map<string, string>();
   private media: CallMediaKeys | null = null;
   private running: Promise<void> | null = null;
@@ -500,7 +500,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const m = await h.group.decrypt(body);
     if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
-      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, at: m.at, place, sending: false, reactions: [] }] });
+      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, at: m.at, place, sending: false, reactions: [] }] });
     } else if (m.kind === 'react') {
       // Only to a message of the part of the call it was sent in: one this browser never had (sent before it came in), or
       // one from another part, changes nothing here.
@@ -686,18 +686,27 @@ export class HttpCall extends Live<CallState> implements CallSession {
   }
   /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be nudged. */
   private actAndSync(a: CallAction) { this.act(a, () => { void this.sync(); }); }
-  sendChat = async (text: string) => {
+  sendChat = async (text: string, mentions: readonly CallChatMention[] = []) => {
     const t = text.trim();
     if (!t) return;
     if (t.length > CALL_CHAT_MAX) throw new AlcoveApiError('invalid', `Messages can be up to ${CALL_CHAT_MAX} characters.`);
     const status = this.crypto.getSnapshot().status;
     if (status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. Send it once you’re there.');
     if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
+    const leading = text.length - text.trimStart().length;
+    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), at: this.state.elapsed });
+    const members = new Set(this.groups.get(this.place)?.group.members() ?? []);
+    if (!checked.success || checked.data.mentions.some((m) => !members.has(m.identity))) throw new AlcoveApiError('invalid', 'Choose people who are in this part of the call.');
+    const payload = checked.data;
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: t, at: this.state.elapsed, place: this.place, sending: true, reactions: [] }] });
-    this.outbox.push({ local, payload: { text: t, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, at: payload.at, place: this.place, sending: true, reactions: [] }] });
+    this.outbox.push({ local, payload, place: this.place, tries: 0, sealed: null });
     await this.sync();
+  };
+  readChat = async (ids: readonly string[]) => {
+    if (!ids.length) return;
+    this.take(await this.t.act(this.state.callId, { type: 'read-chat', messages: [...ids] }));
   };
   react = async (messageId: string, reaction: CallReaction, on: boolean) => {
     const s = this.crypto.getSnapshot();

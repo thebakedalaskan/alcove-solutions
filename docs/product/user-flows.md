@@ -495,6 +495,12 @@ time, slides in on the right.
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
   tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
   once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
+- **Mentioning someone in chat.** Type **@** and search the people who can read this room. Their address, or a guest's
+  identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
+  Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
+  that selection. An unread mention counts in Chat and in the browser tab. **Open mention** goes to the exact message;
+  seeing that message in a visible, focused Chat panel marks it read across your open clients. Drafts, failed sends and
+  self-mentions do not add unread attention. Mentioning someone never adds them to a room.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
