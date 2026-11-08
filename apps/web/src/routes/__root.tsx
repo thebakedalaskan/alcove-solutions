@@ -5,6 +5,7 @@ import { type ReactNode, useEffect } from 'react';
 import { RingHost } from '~/features/calls/ringing/RingHost';
 import { Arrival } from '~/features/onboarding/Arrival';
 import { useNotifications } from '~/features/shell/notify';
+import { TabAttention } from '~/features/shell/TabAttention';
 import { registerServiceWorker } from '~/lib/serviceWorker';
 import css from '~/styles/app.css?url';
 
@@ -48,6 +49,7 @@ function Root() {
             <Arrival />
             <RingHost />
             <Notifications />
+            <TabAttention />
           </ToastProvider>
         </TooltipProvider>
       </ThemeProvider>

@@ -158,9 +158,12 @@ who has what. Everything happens under the workspace's lock, so nothing's told a
 What's told waits in `workspace_mentions`: the document, the keyed hash access knows them by (their address's if they're
 signed in, even when tagged by their seat, so it reaches them after the call), and a sealed `workspace-mention` record of who
 tagged them, by name and face, and the line. A notice (`told:<hash>`) wakes only that person's streams, which read what's
-waiting, ask access whether they can open each document now, and write a `mention` line. Opening a stream does the same, so
+waiting, ask access whether they can open each document now, and write the complete authorized set in a `mentions` line.
+Opening a stream does the same, so
 a tag is heard on arrival, as often as it takes until someone says they've seen it: `DELETE /v1/workspaces/:id/mentions/:id`
-(`WorkspaceLive.seen`), which only they can do. `GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
+(`WorkspaceLive.seen`), which only they can do. Reading a tag publishes the same private notice, so every open stream replaces
+its unread set, including with an empty set. Tree changes recompute it too, so losing a document removes its tags.
+`GET /v1/mentions` (`api.workspaces.mentions`) is the same across all their
 workspaces, with what each document's called, for the side panel's count and the browser's notification.
 
 Nobody hears of a tag in something they can't open now, however long it waited. A tag in something they've lost is deleted when
@@ -616,7 +619,7 @@ and this way it runs through the same auth, origin check and tests as everything
   than closing the oldest, so a stream at work is never taken from anyone, and that's decided before anything is read. The
   browser tries again by itself and gets in when one closes.
 - **A workspace's stream** (`GET /v1/workspaces/:id/live`). Lines: `tree`, whole, first and whenever what this reader sees
-  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mention`, someone tagged them
+  changes; `presence`, everyone here that they can know of, whole, whenever that changes; `mentions`, their authorized unread tags, whole
   ([Tags](#tags)); `access`, when their role changes, just before the `tree` that shows it; `ping`, every 25 seconds; `closed`, when
   they can't open it any more, and it ends. Every stream of a workspace on an instance shares one subscription and one
   read of each change, for the streams behind it: `version` moves on with every change to the tree or to who has what, and

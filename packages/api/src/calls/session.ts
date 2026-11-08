@@ -12,12 +12,17 @@ import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type
 import { type CallMoveOut, type MoveMedia } from './moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
 import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
+import { CallIdentity } from './wire';
+
+/** One selected person in a chat line, at UTF-16 offsets including the @ and their displayed name. */
+export const CallChatMentionSchema = z.object({ identity: CallIdentity, start: z.number().int().nonnegative(), end: z.number().int().positive() });
+export type CallChatMention = z.infer<typeof CallChatMentionSchema>;
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
  * yours that isn't in the log yet, so nobody can react to it.
  */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; at: number; place: string; sending: boolean; reactions: CallChatReaction[] }
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; at: number; place: string; sending: boolean; reactions: CallChatReaction[] }
 
 /** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
 export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
@@ -29,6 +34,28 @@ export interface CallChatReaction { reaction: CallReaction; by: string[] }
 
 /** The longest chat message in a call, in characters. */
 export const CALL_CHAT_MAX = 4000;
+
+/**
+ * Chat and its selected recipients travel inside the MLS application message, never in server-readable metadata.
+ * Existing encrypted chat has no mentions field and opens with no selected recipients.
+ */
+export const CallChatTextSchema = z.object({
+  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), at: z.number()
+}).refine(({ text, mentions }) => {
+  let until = 0;
+  for (const m of [...mentions].sort((a, b) => a.start - b.start)) {
+    if (m.start < until || m.end <= m.start + 1 || m.end > text.length || text[m.start] !== '@' || /\s$/u.test(text.slice(m.start, m.end))) return false;
+    until = m.end;
+  }
+  return true;
+}, 'Chat mentions must mark separate names in the message.');
+
+/** The application payload, parsed only after authenticated decryption. */
+export const CallChatPayloadSchema = z.union([
+  CallChatTextSchema,
+  z.object({ react: z.object({ target: z.string().min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }), at: z.number() })
+]);
+export type CallChatPayload = z.infer<typeof CallChatPayloadSchema>;
 
 /**
  * How much longer data browsers send each other is once sealed (CallSession.sealData): a version byte, the key's ring
@@ -119,7 +146,9 @@ export interface CallSession extends LiveStore<CallState> {
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
   /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
-  sendChat(text: string): Promise<void>;
+  sendChat(text: string, mentions?: readonly CallChatMention[]): Promise<void>;
+  /** Mark readable chat messages as read for this person's seat, shared with their other clients. */
+  readChat(ids: readonly string[]): Promise<void>;
   /**
    * Adds (`on`) or takes back your reaction to a chat message (by its ID, once it's in the log), encrypted like chat
    * for everyone in the group of the part of the call you're in.

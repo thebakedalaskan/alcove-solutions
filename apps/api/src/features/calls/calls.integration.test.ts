@@ -5,7 +5,7 @@
  * the tokens the API hands out, encrypting media with keys from the call's MLS group, so media travels for real.
  */
 import { AlcoveApiError, CallMlsSchema, firstName, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type TranscriptClip, type TranscriptLine } from '@alcove/api';
-import type { ClientEvent } from '@alcove/api-http';
+import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livekit/rtc-node';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -162,6 +162,149 @@ describe('end-to-end encryption', () => {
     expect(chatOf(late)).toEqual([]);
     await guest.sendChat('after Lee joined');
     await waitFor(() => chatOf(late).includes('after Lee joined'), 'new chat for the late joiner');
+    await host.leave();
+  });
+
+  it('keeps addressed chat spans inside the encrypted group and refuses tags outside it', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const sam = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    const text = '🙂 @Sam CANARY-ADDRESSED-CHAT';
+    const mentions = [{ identity: sam.ticket.identity, start: 3, end: 7 }];
+    await host.sendChat(text, mentions);
+    await waitFor(() => chatOf(sam).includes(text) && chatOf(lee).includes(text), 'the encrypted addressed message');
+    for (const call of [host, sam, lee]) {
+      expect(call.crypto.getSnapshot().chat.find((m) => m.text === text)).toMatchObject({ text, mentions });
+    }
+    // Typing someone's name alone does not invent a target; self-tags carry the same explicit identity.
+    await sam.sendChat('@Lee is plain text');
+    await lee.sendChat('@Lee checking my own message', [{ identity: lee.ticket.identity, start: 0, end: 4 }]);
+    await readLog(host, () => chatOf(host).length === 3, 'plain and self-tagged chat');
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === '@Lee is plain text')?.mentions).toEqual([]);
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === '@Lee checking my own message')?.mentions).toEqual([{ identity: lee.ticket.identity, start: 0, end: 4 }]);
+
+    const outsider = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Avery' });
+    await settle(host, (s) => s.waiting.some((w) => w.id === outsider.ticket.identity));
+    for (const invalid of [
+      [{ identity: outsider.ticket.identity, start: 0, end: 4 }],
+      [{ identity: sam.ticket.identity, start: 1, end: 4 }],
+      [{ identity: sam.ticket.identity, start: 0, end: 40 }],
+      [{ identity: sam.ticket.identity, start: 0, end: 4 }, { identity: lee.ticket.identity, start: 0, end: 4 }]
+    ]) await expect(host.sendChat('@Sam hello', invalid)).rejects.toMatchObject({ code: 'invalid' });
+    // A removed target cannot be kept in a draft and tagged after its keys were taken away.
+    await host.remove(sam.ticket.identity);
+    await waitFor(() => !host.crypto.getSnapshot().members.includes(sam.ticket.identity), 'Sam outside the group');
+    await expect(host.sendChat('@Sam hello', mentions.map((m) => ({ ...m, start: 0, end: 4 })))).rejects.toMatchObject({ code: 'invalid' });
+    expect(chatOf(outsider)).toEqual([]);
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-ADDRESSED-CHAT']);
+    expect(h.logs.join('')).not.toContain('CANARY-ADDRESSED-CHAT');
+    await host.leave();
+  });
+
+  it('keeps chat reads for the same seat across refreshes and reconnects, without clearing anyone else’s', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const browser = h.browser();
+    const sam = await browser.api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const lee = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Lee' });
+    await letIn(host, lee);
+    const text = '@Sam @Lee CANARY-READ-CHAT';
+    await host.sendChat(text, [
+      { identity: sam.ticket.identity, start: 0, end: 4 },
+      { identity: lee.ticket.identity, start: 5, end: 9 }
+    ]);
+    await readLog(sam, () => chatOf(sam).includes(text), 'the addressed message to read');
+    const messageId = sam.crypto.getSnapshot().chat.find((m) => m.text === text)?.id ?? '';
+    expect(messageId).not.toBe('');
+    expect(sam.getSnapshot().chatRead).toEqual([]);
+    await sam.readChat([messageId, messageId]);
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await expect(sam.readChat(Array.from({ length: 201 }, () => messageId))).rejects.toMatchObject({ code: 'invalid' });
+    await sam.readChat(['0:999999999']);
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await sam.refresh();
+    expect(sam.getSnapshot().chatRead).toEqual([messageId]);
+    await lee.refresh();
+    await host.refresh();
+    expect(lee.getSnapshot().chatRead).toEqual([]);
+    expect(host.getSnapshot().chatRead).toEqual([]);
+    // A new connection carries the same person's receipts, rather than replaying an already-read mention.
+    sam.closing();
+    const second = await h.secondServer();
+    const secondApi = createHttpApi({ baseUrl: second.baseUrl, fetch: browser.fetch });
+    const again = await secondApi.calls.join(c, { mic: true, cam: false, name: 'Sam', previous: sam.ticket.pass });
+    await inGroup(again);
+    // MLS enters before its authorized call-state read finishes; the join snapshot carries no private receipts yet.
+    await again.refresh({ call: true, log: false });
+    expect(again.getSnapshot().chatRead).toEqual([messageId]);
+    await again.readChat([messageId]);
+    expect(again.getSnapshot().chatRead).toEqual([messageId]);
+    const outsider = await guestBrowser().calls.join(c, { mic: true, cam: false, name: 'Avery' });
+    expect(outsider.getSnapshot().chatRead).toEqual([]);
+    await expect(outsider.readChat([messageId])).rejects.toMatchObject({ code: 'forbidden' });
+    await host.remove(again.ticket.identity);
+    await expect(again.readChat([messageId])).rejects.toMatchObject({ code: 'forbidden' });
+    await expectNotInRows(['calls', 'call_mls'], ['CANARY-READ-CHAT']);
+    expect(h.logs.join('')).not.toContain('CANARY-READ-CHAT');
+    again.close();
+    await host.leave();
+    await second.close();
+  });
+
+  it('never revives a read mention when an older call response arrives after its read receipt', async () => {
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off' });
+    const host = await org.api.calls.join(c, { mic: true, cam: false });
+    await inGroup(host);
+    const transport = h.browser();
+    let holdNext = false;
+    let held = false;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const browser = h.browser({
+      callPollMs: 600_000,
+      fetch: async (input, init) => {
+        const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).pathname;
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+        const delay = holdNext && method === 'GET' && path === `/v1/live/calls/${host.ticket.callId}`;
+        if (delay) holdNext = false;
+        const response = await transport.fetch(input, init);
+        if (delay) { held = true; await gate; }
+        return response;
+      }
+    });
+    const sam = await browser.api.calls.join(c, { mic: true, cam: false, name: 'Sam' });
+    await letIn(host, sam);
+    const text = '@Sam please review this';
+    await host.sendChat(text, [{ identity: sam.ticket.identity, start: 0, end: 4 }]);
+    await readLog(sam, () => chatOf(sam).includes(text), 'the mention before its read receipt');
+    const messageId = sam.crypto.getSnapshot().chat.find((m) => m.text === text)?.id ?? '';
+    expect(messageId).not.toBe('');
+    holdNext = true;
+    const older = sam.refresh({ call: true, log: false });
+    await waitFor(() => held, 'the older call response in transit');
+    const snapshots: boolean[] = [];
+    let stop = () => {};
+    try {
+      await sam.readChat([messageId]);
+      expect(sam.getSnapshot().chatRead).toContain(messageId);
+      stop = sam.subscribe(() => snapshots.push(sam.getSnapshot().chatRead.includes(messageId)));
+    } finally {
+      release();
+      await older;
+      stop();
+    }
+    expect(snapshots).not.toEqual([]);
+    expect(snapshots.every(Boolean)).toBe(true);
+    expect(sam.getSnapshot().chatRead).toContain(messageId);
     await host.leave();
   });
 
@@ -531,10 +674,17 @@ describe('breakout rooms, each with its own keys', () => {
     host.visitRoom(design);
     await inPlace(host, design);
     expect((await settle(kofi.call, (s) => s.breakouts.open?.rooms[0]?.members.includes(host.ticket.identity) === true)).breakouts.open?.rooms[0]?.members).toContain(host.ticket.identity);
-    await kofi.call.sendChat('welcome to Design');
-    await waitFor(() => chatOf(host).includes('welcome to Design'), 'the organizer in Design’s chat');
+    await expect(kofi.call.sendChat('@Lena are you there?', [{ identity: lena.call.ticket.identity, start: 0, end: 5 }])).rejects.toMatchObject({ code: 'invalid' });
+    const addressed = '@Host welcome to Design';
+    const mentions = [{ identity: host.ticket.identity, start: 0, end: 5 }];
+    await kofi.call.sendChat(addressed, mentions);
+    await waitFor(() => chatOf(host).includes(addressed), 'the organizer in Design’s addressed chat');
     expect(chatOf(host)).not.toContain('CANARY-DESIGN for Design only');
-    expect(host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.place).toBe(design);
+    expect(host.crypto.getSnapshot().chat.find((m) => m.text === addressed)).toMatchObject({ place: design, mentions });
+    await lena.call.refresh();
+    await guest.refresh();
+    expect(chatOf(lena.call)).not.toContain(addressed);
+    expect(chatOf(guest)).not.toContain(addressed);
     await host.sendChat('the organizer, in Design');
     await waitFor(() => chatOf(kofi.call).includes('the organizer, in Design'), 'Design reads the organizer');
     await lena.call.refresh();
@@ -542,10 +692,10 @@ describe('breakout rooms, each with its own keys', () => {
     // Reactions stay in their room too: the organizer, in Design, still has the main room's chat but can't react to it.
     const mainId = host.crypto.getSnapshot().chat.find((m) => m.text === 'for the main room')?.id ?? '';
     await expect(host.react(mainId, 'thumbs-up', true)).rejects.toMatchObject({ code: 'not-found' });
-    const designId = host.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.id ?? '';
+    const designId = host.crypto.getSnapshot().chat.find((m) => m.text === addressed)?.id ?? '';
     await host.react(designId, 'heart', true);
     await readLog(kofi.call, () => kofi.call.crypto.getSnapshot().chat.some((m) => m.reactions.length > 0), 'the organizer’s reaction in Design');
-    expect(kofi.call.crypto.getSnapshot().chat.find((m) => m.text === 'welcome to Design')?.reactions).toEqual([{ reaction: 'heart', by: [host.ticket.identity] }]);
+    expect(kofi.call.crypto.getSnapshot().chat.find((m) => m.text === addressed)?.reactions).toEqual([{ reaction: 'heart', by: [host.ticket.identity] }]);
     await guest.refresh();
     expect(guest.crypto.getSnapshot().chat.flatMap((m) => m.reactions)).toEqual([]);
     // A room member can't post into another room's chat, nor anyone into a room they're not in.

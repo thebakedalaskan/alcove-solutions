@@ -7,7 +7,7 @@
 import type { Meta } from '@storybook/react-vite';
 import { screen } from 'storybook/test';
 import { at, chats, reacts, joins, knocks, leaves, line, lowersHand, mutes, raisesHand, says, unmutes } from '../../src/api/script';
-import { MORE, clearSide, inCall, phone, plays, press, reach } from '../../src/call';
+import { MORE, clearSide, inCall, light, phone, plays, press, reach } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { iso } from '../../src/world/clock';
 import { AIKO, ALL_HANDS, CHECK_IN, DIEGO, EVERYONE, KOFI, KOFI_TALKS, MAYA, ONE_ON_ONE, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK, SAM } from './talk';
@@ -70,6 +70,65 @@ export const ChatPhone = { ...phone(Chat), name: 'Chat, on a phone' };
 /** The design review, everyone there and talking it through while notes are on: Notes opens beside the stage by itself on a wide screen. */
 export const FourOfYou = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY } });
 export const FourOfYouPhone = phone(FourOfYou);
+
+/** A message addressed to Art is highlighted when Chat opens, and viewing it clears its unread attention. */
+export const MentionedInChat = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }
+}, {
+  play: plays(async ({ canvas }) => { await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 }); }, reach('Chat'))
+});
+export const MentionedInChatPhone = phone(MentionedInChat);
+
+const LONG_MENTION = `@Art Vandelay ${'The launch checklist has the updated empty states, the welcome copy and the call controls. We can review each screen at the small and wide sizes, then collect the remaining questions in the workspace. '.repeat(16)}`;
+/** The addressed words start a long message: opening its end does not mark those words read. */
+export const MentionInLongMessage = inCall({
+  scenario: 'call-soon', call: REVIEW,
+  script: { here: REVIEWERS, cues: at(2, chats(AIKO, LONG_MENTION, ['me'])) }
+}, {
+  play: plays(
+    async ({ canvas, step }) => {
+      await step('Aiko mentions you at the start of a long design discussion', async () => {
+        await canvas.findByRole('button', { name: /^Chat, / }, { timeout: 10000 });
+      });
+    },
+    reach('Chat'),
+    async ({ userEvent, step }) => {
+      await step('Open mention goes to the addressed words. Seeing them clears the unread mention', async () => {
+        await userEvent.click(await screen.findByRole('button', { name: 'Open mention' }));
+      });
+    }
+  )
+});
+export const MentionInLongMessagePhone = phone(MentionInLongMessage);
+
+/** A tag, then a host decision: answer the card, then read Chat to restore the normal tab icon. */
+export const TabAttentionWithoutNotifications = inCall({
+  scenario: 'first-day', call: { id: 'm-attention', title: 'Design review', startsAt: iso(0, 16, 10), minutes: 30, code: 'attn-call-ana', guests: [] },
+  script: { here: REVIEWERS, cues: [...at(2, chats(AIKO, '@Art Vandelay, can you review the checklist?', ['me'])), ...at(4, knocks(DIEGO))] }
+}, { parameters: { opening: { browser: { notifications: 'denied' } } } });
+
+/** Type @ without leaving the composer: arrows choose someone in this room, Enter inserts their identity. */
+export const MentionPicker = {
+  ...FourOfYou, name: 'Mention someone in chat',
+  play: plays(reach('Chat'), async ({ userEvent }) => {
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@');
+  })
+};
+export const MentionPickerPhone = phone(MentionPicker);
+export const MentionPickerLight = light(MentionPicker);
+export const MentionPickerLightPhone = phone(MentionPickerLight);
+
+/** A selected mention has a chip in the composer as well as its words on the line. */
+export const SelectedMention = {
+  ...FourOfYou, name: 'A selected chat mention',
+  play: plays(reach('Chat'), async ({ userEvent }) => {
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), '@Pri');
+    await userEvent.keyboard('{Enter}');
+    await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'can you review this?');
+  })
+};
+
 /**
  * More, above the dock: captions, marking a moment, catching up, breakout rooms (the organizer's), then your devices, video
  * quality, moving to another device and the keyboard's shortcuts. The same on every screen.

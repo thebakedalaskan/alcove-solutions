@@ -94,12 +94,19 @@ describe('a tag', () => {
     const id = await workspace(ann, 'Ours', [[theo, 'edit']]);
     const doc = await make(ann, id, 'Doc');
     const second = await h.secondServer();
-    const other = createHttpApi({ baseUrl: second.baseUrl, fetch: theo.fetch }).workspaces.live(id);
+    const otherApi = createHttpApi({ baseUrl: second.baseUrl, fetch: theo.fetch });
+    const other = otherApi.workspaces.live(id);
     const same = theo.api.workspaces.live(id);
     await opened(other, 'one window');
     await opened(same, 'another window');
     await tag(ann, id, doc, theo);
     await until(() => told(other).length === 1 && told(same).length === 1, 'both windows to hear');
+    const mentionId = told(same)[0]?.id ?? '';
+    expect(mentionId).not.toBe('');
+    await same.seen(mentionId);
+    await until(() => told(other).length === 0 && told(same).length === 0, 'both windows to clear the read tag');
+    expect(await otherApi.workspaces.mentions()).toEqual([]);
+    expect(await theo.api.workspaces.mentions()).toEqual([]);
     other.close();
     same.close();
     await second.close();
@@ -218,6 +225,8 @@ describe('a tag', () => {
     const zoes = await zoe.api.workspaces.mentions();
     const theos = await theo.api.workspaces.mentions();
     expect(theos).toHaveLength(3);
+    const stream = theo.api.workspaces.live(id);
+    await until(() => told(stream).length === 3, 'the unread tags before access changes');
     await zoe.api.workspaces.mentionSeen(id, theos[0]?.id ?? '');
     expect(await theo.api.workspaces.mentions()).toHaveLength(3);
     expect(await code(theo.api.workspaces.mentionSeen(madeUp(), zoes[0]?.id ?? ''))).toBe('not-found');
@@ -227,10 +236,8 @@ describe('a tag', () => {
     const left = await theo.api.workspaces.mentions();
     expect(left.map((m) => m.document)).toEqual([kept]);
     expect(JSON.stringify(left)).not.toContain('CANARY-LOST-DOC');
-    const stream = theo.api.workspaces.live(id);
     await until(() => told(stream).length === 1, 'the tag that’s left');
     expect(told(stream)[0]?.document).toBe(kept);
-    stream.close();
     // A tag in something they lost is gone for good. One in Trash waits to see if it comes back.
     expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = $1', [lost])).toBe(0);
     expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = $1', [trashed])).toBe(1);
@@ -241,6 +248,9 @@ describe('a tag', () => {
     const person = (await ann.api.workspaces.people(id)).find((p) => p.person.email === theo.email);
     await ann.api.workspaces.removePerson(id, person?.id ?? '');
     expect(await theo.api.workspaces.mentions()).toEqual([]);
+    await until(() => stream.getSnapshot().status === 'closed', 'the removed person’s stream to close');
+    expect(told(stream)).toEqual([]);
+    stream.close();
     expect(await count('SELECT count(*)::int AS n FROM workspace_mentions WHERE document_id = ANY($1::text[]) AND mention_id <> $2', [[kept, trashed], zoes[0]?.id ?? ''])).toBe(0);
   });
 

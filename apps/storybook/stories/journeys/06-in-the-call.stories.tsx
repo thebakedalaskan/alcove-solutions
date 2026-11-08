@@ -398,3 +398,28 @@ export const CatchUp: PageStory = {
     });
   }
 };
+
+export const MentionSomeone: PageStory = {
+  name: '6.13 Mention someone in chat',
+  ...launchReview({ cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }),
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await step('Aiko mentions you. Chat says there is something unread while you carry on in the call', async () => {
+      await dock();
+      await screen.findByRole('button', { name: /^Chat, / }, LATER);
+    });
+    await step('Open Chat and read the message addressed to you. Reading it clears its mention attention', async () => {
+      await reach('Chat')(c);
+      await screen.findByText('@Art Vandelay', {}, SOON);
+    });
+    await step('Type @ and choose Priya with the keyboard. Only people who can read this room are offered', async () => {
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }, SOON), '@Pri');
+      await userEvent.keyboard('{ArrowDown}{ArrowUp}{Enter}');
+    });
+    await step('Send the message. The selected person stays highlighted in the sent message', async () => {
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }, SOON), 'I’ll review it now.');
+      await userEvent.click(await screen.findByRole('button', { name: 'Send to everyone' }, SOON));
+      await screen.findByText(`@${PRIYA.name}`, {}, SOON);
+    });
+  }
+};

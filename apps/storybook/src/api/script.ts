@@ -71,7 +71,7 @@ export type Beat =
   | { do: 'hand'; who: Person; up: boolean }
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
-  | { do: 'chat'; who: Person; text: string }
+  | { do: 'chat'; who: Person; text: string; tagged: readonly (Person | 'me')[] }
   /** Someone reacts to the latest chat message with this text. */
   | { do: 'react'; who: Person; text: string; reaction: CallReaction }
   /** Someone asks to join: signed in (their address shows), or by name only. */
@@ -217,7 +217,7 @@ export const raisesHand = (who: Person): Beat => ({ do: 'hand', who, up: true })
 export const lowersHand = (who: Person): Beat => ({ do: 'hand', who, up: false });
 export const shares = (who: Person, screen: Screen): Beat => ({ do: 'share', who, screen });
 export const stopsSharing = (who: Person): Beat => ({ do: 'stop-sharing', who });
-export const chats = (who: Person, text: string): Beat => ({ do: 'chat', who, text });
+export const chats = (who: Person, text: string, tagged: readonly (Person | 'me')[] = []): Beat => ({ do: 'chat', who, text, tagged });
 export const reacts = (who: Person, text: string, reaction: CallReaction): Beat => ({ do: 'react', who, text, reaction });
 export const knocks = (who: Person, o: { byName?: boolean } = {}): Beat => ({ do: 'knock', who, ...o });
 export const asksForNotes = (who: Person): Beat => ({ do: 'ask-for-notes', who });
