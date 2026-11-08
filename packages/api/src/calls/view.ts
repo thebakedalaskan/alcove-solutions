@@ -37,7 +37,9 @@ export const CallViewPrefsSchema = z.object({
   mode: CallViewModeSchema,
   self: SelfViewSchema,
   /** The corner your own picture sits in. */
-  corner: StageCornerSchema
+  corner: StageCornerSchema,
+  /** Browser-driven floating call, opted into on this account in this browser only. */
+  autoFloat: z.boolean().default(false)
 });
 
 export type CallViewPrefs = z.infer<typeof CallViewPrefsSchema>;

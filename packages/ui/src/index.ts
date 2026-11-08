@@ -18,6 +18,7 @@ export * from './components/cove';
 export * from './components/recorder';
 export * from './components/empty';
 export * from './components/call';
+export * from './components/floating-call';
 export * from './components/capture';
 export * from './components/ringing';
 export * from './components/screens';

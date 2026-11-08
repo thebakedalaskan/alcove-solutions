@@ -7,7 +7,7 @@
 import { errorMessage, firstName, minutesLabel, type NoteProgress, type Person } from '@alcove/api';
 import { Avatar, Button, Dots, Faces, Icon, Modal } from '@alcove/ui';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { callName, listNames } from '~/lib/people';
@@ -19,7 +19,7 @@ export type Ended = { noteId: string | null; duration: number };
 /** Someone who could host after you, by participant ID. */
 export interface NextHost { id: string; person: Person }
 
-export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome }: {
+export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organizer, standingInFor, next, notes, locked, others, getting, leaving, ended, onEnd, onHandOff, onRead, onHome, inline = false }: {
   open: boolean; onOpenChange: (o: boolean) => void; title: string; elapsed: number;
   /** You host the call now: leaving ends it for everyone, or hands it to someone. Anyone else just leaves. */
   hosting: boolean;
@@ -39,8 +39,11 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
   getting: Person[];
   leaving: boolean; ended: Ended | null;
   onEnd: () => void; onHandOff: (to: string) => void; onRead: (noteId: string) => void; onHome: () => void;
+  /** A floating call has its own document: the same question replaces its picture, without a main-document modal. */
+  inline?: boolean | undefined;
 }) {
-  const reduce = useReducedMotion();
+  const reducedMotion = useReducedMotion();
+  const reduce = reducedMotion || inline;
   const [progress, setProgress] = useState<NoteProgress | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   // Who hosts after you: the best person, unless you choose someone else (and they're still here to).
@@ -78,8 +81,8 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
   const keepButton = keep && pick
     ? <Button key="keep" variant={back ? 'primary' : 'secondary'} disabled={leaving} onClick={() => onHandOff(pick.id)} autoFocus={Boolean(back)}>Leave and keep it going</Button>
     : null;
-  return (
-    <Modal open={open} onOpenChange={(o) => { if (!ended && !leaving) onOpenChange(o); }} placement="bottom" label="Leave the call" className="ic-leave">
+  const change = (o: boolean) => { if (!ended && !leaving) onOpenChange(o); };
+  const content = (
       <motion.div layout={!reduce} transition={UI} className="in">
         <AnimatePresence mode="wait" initial={false}>
           {!ended ? (
@@ -139,6 +142,34 @@ export function LeaveSheet({ open, onOpenChange, title, elapsed, hosting, organi
           )}
         </AnimatePresence>
       </motion.div>
-    </Modal>
   );
+  return inline
+    ? open && <InlineLeave onStay={() => change(false)}>{content}</InlineLeave>
+    : <Modal open={open} onOpenChange={change} placement="bottom" label="Leave the call" className="ic-leave">{content}</Modal>;
+}
+
+/** Owns this question's focus within the child document; closing never focuses the opener's document. */
+function InlineLeave({ onStay, children }: { onStay: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const stay = useRef(onStay);
+  stay.current = onStay;
+  useLayoutEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    root.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); stay.current(); return; }
+      if (event.key !== 'Tab') return;
+      const all = [...root.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const first = all[0];
+      const last = all.at(-1);
+      if (!first || !last) { event.preventDefault(); return; }
+      const at = root.ownerDocument.activeElement;
+      if (event.shiftKey && (at === first || !root.contains(at))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (at === last || !root.contains(at))) { event.preventDefault(); first.focus(); }
+    };
+    root.addEventListener('keydown', key);
+    return () => root.removeEventListener('keydown', key);
+  }, []);
+  return <div ref={ref} className="ic-leave" role="dialog" aria-label="Leave the call">{children}</div>;
 }

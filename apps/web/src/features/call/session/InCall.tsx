@@ -6,6 +6,9 @@ import { useSpeaking } from '../media/useSpeaking';
 import { useWidth } from '../layout/useWidth';
 import { useNotesCapture } from '../notes/useNotesCapture';
 import { useScreenCapture } from '../notes/useScreenCapture';
+import { useCallControls } from './useCallControls';
+import { useFloatingWindow } from './floatingWindow';
+import { FloatingCallPortal } from './FloatingCallPortal';
 import { asShown, SOMEONE } from './participants';
 import {
   BOARD_SHOT_LIMITS, CALL_LAYOUT_MAX, CAPTION_LANGUAGES, MAIN_PLACE, errorCode, errorMessage, firstName, notesAreOn, type CallAsker, type CallPeopleMode, type CallSession, type CallState, type CaptionLanguage,
@@ -141,6 +144,7 @@ export function InCall({ session }: { session: CallSession }) {
   /** Share › Your screen: why the last try didn't start, if it didn't. */
   const [shareTrouble, setShareTrouble] = useState<ShareTrouble | null>(null);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaveInFloating, setLeaveInFloating] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [ended, setEnded] = useState<Ended | null>(null);
   const [cc, setCc] = useState(false);
@@ -200,10 +204,10 @@ export function InCall({ session }: { session: CallSession }) {
   const guard = useLeaveGuard(() => setLeaveOpen(true));
   const guardRef = useRef(guard);
   guardRef.current = guard;
-  const theirChat = crypto.chat.filter((c) => !c.isMe).length;
-  const seenChat = useRef(theirChat);
-  if (side.view === 'chat') seenChat.current = theirChat;
-  const unread = Math.max(0, theirChat - seenChat.current);
+  const theirChat = crypto.chat.filter((c) => !c.isMe && c.place === crypto.place).length;
+  const [seenChat, setSeenChat] = useState({ part: crypto.place, count: theirChat });
+  if (seenChat.part !== crypto.place) setSeenChat({ part: crypto.place, count: theirChat });
+  const unread = Math.max(0, theirChat - (seenChat.part === crypto.place ? seenChat.count : theirChat));
 
   const { room, roomView, marks } = useCallRoom({ session, media, toast, guard: guardRef });
 
@@ -560,6 +564,13 @@ export function InCall({ session }: { session: CallSession }) {
   }, BOARD_SHOT_LIMITS), [room, myShare]);
 
   /* ---------- actions ---------- */
+  const callControls = useCallControls({
+    session, media,
+    enabled: () => live && !leaving && !ended && !over.current,
+    problem: (kind) => setPop(kind),
+    failed: (message) => toast(message, { icon: 'x' }),
+    handChanged: (up) => toast(!up ? 'Your hand is lowered' : roomName && !organizer ? `Your hand is raised. The organizer sees that ${roomName} wants help.` : 'Your hand is raised. Everyone can see it.', { icon: 'hand' })
+  });
   const fullText = `${MAX_SHARES} people are sharing. You can share once one of them stops.`;
   const share = (c: ShareChoice) => {
     setPop(null);
@@ -608,8 +619,7 @@ export function InCall({ session }: { session: CallSession }) {
     if (media.getSnapshot().screen) media.stopScreen();
   }, [stoppedBy, media]);
   const setHand = (up: boolean) => {
-    session.setHand(up);
-    toast(!up ? 'Your hand is lowered' : roomName && !organizer ? `Your hand is raised. The organizer sees that ${roomName} wants help.` : 'Your hand is raised. Everyone can see it.', { icon: 'hand' });
+    callControls.hand(up);
   };
   const setSpot = (id: string | null) => {
     const name = id ? (id === meId ? 'You’re' : `${callName(byId.get(id) ?? SOMEONE)} is`) : '';
@@ -718,14 +728,14 @@ export function InCall({ session }: { session: CallSession }) {
   const capNode = !cc ? null : <CallCaption caption={caption} language={lang} hearing={hearing} mode={capHere.mode} languageButton={capButton} />;
 
   /* Turning on a device that isn't working opens its menu, which says what's wrong and how to fix it. */
-  const pressMic = () => { void media.setMic(!media.getSnapshot().mic).then((ok) => { if (!ok) setPop('mic'); }); };
+  const pressMic = () => callControls.mic();
   const handLabel = me?.hand ? 'Lower your hand' : roomName && !organizer && !roomsOnBoards ? 'Ask for help' : 'Raise your hand';
   const flipCaptions = () => {
     const v = !cc;
     setCc(v);
     toast(v ? `Captions on${lang ? `, in ${CAPTION_LANGUAGES.find((x) => x.code === lang)?.english ?? lang}` : ''}` : 'Captions off. The call is still transcribed for notes.', { icon: 'captions' });
   };
-  const pressCam = () => { void media.setCam(!media.getSnapshot().cam).then((ok) => { if (!ok) setPop('cam'); }); };
+  const pressCam = () => callControls.cam();
 
   /* ---------- keys ---------- */
   // Escape unpins only when you can see a pin: someone pinned who's here.
@@ -961,6 +971,7 @@ export function InCall({ session }: { session: CallSession }) {
     } catch (e) {
       departure.rollback();
       clog.error('leaving the call failed', { err: e });
+      callControls.setError(errorMessage(e));
       toast(errorMessage(e), { icon: 'x' });
     } finally {
       setLeaving(false);
@@ -994,6 +1005,7 @@ export function InCall({ session }: { session: CallSession }) {
     } catch (e) {
       departure.rollback();
       clog.warn('handing the call on failed', { err: e });
+      callControls.setError(errorMessage(e));
       setLeaveOpen(true);
       toast(errorMessage(e), { icon: 'x' });
     } finally {
@@ -1252,6 +1264,29 @@ export function InCall({ session }: { session: CallSession }) {
   useFocusBack(looks);
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
+  const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended', layout.prefs.autoFloat,
+    Boolean((m.mic && media.micTrack()?.readyState === 'live') || (m.cam && m.camera?.getVideoTracks().some((t) => t.readyState === 'live'))));
+  useEffect(() => { if (floating.error) toast(floating.error, { icon: 'pip' }); }, [floating.error, toast]);
+  // Selecting Chat in the main call does not read it while that tab is hidden, unfocused or covered by focus view.
+  useEffect(() => {
+    if (floating.mainVisible && side.view === 'chat' && !focusOn && !leaveOpen && !ended && !moving.open && !keysOpen && pop === null && seenChat.count !== theirChat) setSeenChat({ part: crypto.place, count: theirChat });
+  }, [floating.mainVisible, side.view, focusOn, leaveOpen, ended, moving.open, keysOpen, pop, crypto.place, theirChat, seenChat.count]);
+  useEffect(() => {
+    if (floating.target || !leaveInFloating) return;
+    setLeaveInFloating(false);
+    if (!leaving) { setLeaveOpen(false); guardRef.current.stay(); }
+  }, [floating.target, leaveInFloating, leaving]);
+  const returnToCall = () => { floating.owner.returnToCall(); };
+  const floatShare = (frontId ? shares.find((s) => screenOf(s.id) === frontId) : undefined)
+    ?? shares.find((s) => screensShown.includes(s.id));
+  const floatPeople = onStage.filter((p) => p.isMe || crypto.members.includes(p.id));
+  const floatPerson = floatPeople.find((p) => p.id === staged.speaker) ?? floatPeople.find((p) => !p.isMe) ?? floatPeople.find((p) => p.isMe);
+  const floatFeed = crypto.status === 'in' ? floatShare?.feed ?? floatPerson?.video ?? null : null;
+  const floatAttention = {
+    hands: onStage.filter((p) => !p.isMe && p.hand && crypto.members.includes(p.id)).length,
+    waiting: hosting ? state.waiting.length : 0,
+    chat: unread
+  };
   /*
    * Put on the board: a picture of someone else's share as this browser shows it, into the board's own files, and whoever shares
    * it is told. It's on their share's name menu only: your own screen has none.
@@ -1624,8 +1659,27 @@ export function InCall({ session }: { session: CallSession }) {
   );
   const viewChoices = {
     mode: layout.prefs.mode, people: panels.people, self: layout.prefs.self, custom, phone,
-    onMode: (m: typeof layout.prefs.mode) => { if (!roomsHold()) layout.setMode(m); }, onPeople: setPeopleMode, onSelf: (where: SelfView) => { if (!roomsHold()) setSelf(where); }, onReset: resetView
+    onMode: (m: typeof layout.prefs.mode) => { if (!roomsHold()) layout.setMode(m); }, onPeople: setPeopleMode, onSelf: (where: SelfView) => { if (!roomsHold()) setSelf(where); }, onReset: resetView,
+    floating: (close: () => void) => <div className="ic-vfloat">
+      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || !!ended} aria-busy={floating.pending} onClick={() => { void floating.owner.open(); close(); }}>
+        <Icon name="pip" size={17} /><span className="t">{floating.pending ? 'Opening floating call…' : floating.target ? 'Return to floating call' : 'Open floating call'}</span>
+      </button>
+      {floating.supported ? <>
+        <label><input type="checkbox" checked={layout.prefs.autoFloat} onChange={(e) => layout.setAutoFloat(e.currentTarget.checked)} />Open automatically when I leave this tab</label>
+        <p>{layout.prefs.autoFloat && floating.autoStatus === 'unavailable' ? 'This browser can’t open the call automatically. Use Open floating call.'
+          : layout.prefs.autoFloat && floating.autoStatus === 'devices' ? 'Automatic opening needs a microphone or camera already on. You can always open the floating call yourself.'
+            : 'Your browser decides when to open it and may ask permission. Keep the original call tab open.'}</p>
+      </> : <p>This browser can’t open a floating call. Your call controls stay here.</p>}
+      {floating.error && <p role="alert">{floating.error}</p>}
+    </div>
   };
+  const leaveQuestion = (
+    <LeaveSheet inline={leaveInFloating && floating.target !== null} open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
+        hosting={hosting} organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
+        notes={state.notes.everOn} locked={state.locked} others={others.length}
+        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
+  );
+
   const moreBody = pop === 'devices' ? (
     <>
       <MicOptions media={media} m={m} devices={devices} live onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
@@ -1637,7 +1691,7 @@ export function InCall({ session }: { session: CallSession }) {
   ) : pop === 'board' ? (
     <BoardPicker {...openPicker.picker} />
   ) : pop === 'view' ? (
-    <ViewChoices {...viewChoices} onReset={() => { setPop(null); resetView(); }} />
+    <ViewChoices {...viewChoices} onReset={() => { setPop(null); resetView(); }} onDone={() => setPop(null)} />
   ) : (
     <>
       {phone && (
@@ -1713,13 +1767,13 @@ export function InCall({ session }: { session: CallSession }) {
         <footer ref={dockBar} className="ic-dockbar">
           <CallDock tucked={focusOn}>
             <DockSplit className="keep">
-              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} onClick={pressMic}
+              <DockButton icon={m.mic ? 'mic' : 'micOff'} label={m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : m.mic ? 'Mute' : 'Unmute'} off={!m.mic} alert={!!m.access.mic.problem} disabled={callControls.pending.mic || leaving || !!ended} aria-busy={callControls.pending.mic} onClick={pressMic}
                 tip={m.access.mic.problem ? `${stateOf('mic', m.access.mic.problem)}. Press to see how to fix it` : `${m.mic ? 'Mute' : 'Unmute'}${micLabel ? ` · ${micLabel}` : ''}`} />
               <MicMenu media={media} m={m} devices={devices} open={pop === 'mic'} onOpenChange={(o) => setPop(o ? 'mic' : null)}
                 onSwitched={(what, label) => toast(`Switched to ${label}`, { icon: what === 'mic' ? 'mic' : 'speaker' })} />
             </DockSplit>
             <DockSplit className="keep">
-              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} onClick={pressCam}
+              <DockButton icon={m.cam ? 'video' : 'videoOff'} label={m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : m.cam ? 'Turn camera off' : 'Turn camera on'} off={!m.cam} alert={!!m.access.cam.problem} disabled={callControls.pending.cam || leaving || !!ended} aria-busy={callControls.pending.cam} onClick={pressCam}
                 tip={m.access.cam.problem ? `${stateOf('cam', m.access.cam.problem)}. Press to see how to fix it` : `${m.cam ? 'Turn camera off' : 'Turn camera on'}${devices.cam.find((d) => d.id === m.camId)?.label ? ` · ${devices.cam.find((d) => d.id === m.camId)?.label ?? ''}` : ''}`} />
               <CamMenu media={media} m={m} devices={devices} me={me?.person ?? { name: 'You' }} open={pop === 'cam'} onOpenChange={(o) => setPop(o ? 'cam' : null)}
                 onSwitched={(label) => toast(`Switched to ${label}`, { icon: 'video' })} />
@@ -1738,9 +1792,10 @@ export function InCall({ session }: { session: CallSession }) {
               workspace={!canPresentWs ? { why: 'You can’t open this call’s workspace.' } : othersWhy ? { why: othersWhy } : { onPress: presentWorkspace }} />
             {!phone && (
               <DockButton icon="hand" label={handLabel} tip={me?.hand ? 'Lower your hand' : roomName && !organizer ? `Raise your hand to ask ${roomsOnBoards && organizerPerson ? callName(organizerPerson) : 'the organizer'} for help` : 'Raise your hand'}
-                on={!!me?.hand} onClick={() => setHand(!me?.hand)} />
+                on={!!me?.hand} disabled={callControls.pending.hand || leaving || !!ended} aria-busy={callControls.pending.hand} onClick={() => setHand(!me?.hand)} />
             )}
             <Popover open={moreOpen} onOpenChange={(o) => setPop(o ? 'more' : null)} side="top" align="center" label={pop === 'board' ? 'Open a board' : pop === 'view' ? 'Your view' : 'More'}
+              onCloseFocus={() => { const current = floating.owner.getSnapshot(); return current.pending || current.target !== null; }}
               tip={phone ? undefined : MORE_SAYS}
               className={cn(pop === 'devices' ? 'ic-dmenu ic-devices' : pop === 'quality' ? 'ic-dmenu' : pop === 'board' ? 'bl' : 'ic-menu ic-morepop', phone && 'is-sheet')}
               anchor={<DockButton icon="more" label={!phone ? MORE_SAYS : unread ? `More: ${unread} new in Chat` : 'More: board, workspace, notes, chat, people'} title={undefined} data-more="" on={moreOpen} badge={phone ? unread : 0} />}>
@@ -1758,10 +1813,23 @@ export function InCall({ session }: { session: CallSession }) {
       <MoveSheet open={moving.open} onOpenChange={(o) => { if (!o) moving.hide(); }} move={moving.move} media={{ mic: m.mic, cam: m.cam }} account={state.role !== 'guest'}
         sharing={!!m.screen} onStopSharing={stopShare} onMove={() => void moving.go()} onAgain={moving.again} />
       <KeysSheet open={keysOpen} onOpenChange={setKeysOpen} without={keysWithout} backTo={() => dockBar.current?.querySelector<HTMLElement>('[data-more]') ?? null} />
-      <LeaveSheet open={leaveOpen || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
-        hosting={hosting} organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
-        notes={state.notes.everOn} locked={state.locked} others={others.length}
-        getting={invited} leaving={leaving} ended={ended} onEnd={() => void end()} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
+      {!(leaveInFloating && floating.target) && leaveQuestion}
+      <FloatingCallPortal target={floating.target} view={{
+        title: state.title,
+        picture: floatFeed ? <FeedVideo feed={floatFeed} className={!floatShare && floatPerson?.isMe ? 'is-self' : undefined} /> : null,
+        person: floatShare?.presenter ?? floatPerson?.person ?? null,
+        label: crypto.status === 'moving' ? 'Moving between rooms…' : crypto.status !== 'in' ? 'Connecting securely…' : floatShare?.label ?? (floatPerson ? `${callName(floatPerson.person)}${floatPerson.video ? '' : ' · camera off'}` : 'Waiting for someone to join'),
+        connection: roomView.connection,
+        mic: { on: m.mic, pending: callControls.pending.mic, problem: m.access.mic.problem ? stateOf('mic', m.access.mic.problem) : null },
+        cam: { on: m.cam, pending: callControls.pending.cam, problem: m.access.cam.problem ? stateOf('cam', m.access.cam.problem) : null },
+        hand: !!me?.hand, handPending: callControls.pending.hand, busy: leaving || !!ended,
+        attention: floatAttention, error: crypto.status === 'failed' ? 'This device lost the call’s encryption keys. Return to the call to reload.' : callControls.error, soundBlocked: roomView.audioBlocked, onSound: playSound,
+        onMic: () => callControls.mic('floating'), onCam: () => callControls.cam('floating'), onHand: () => callControls.hand(!me?.hand, 'floating'),
+        onLeave: () => { callControls.setError(null); setLeaveInFloating(true); setLeaveOpen(true); },
+        onReturn: returnToCall,
+        onAttention: (kind) => { returnToCall(); openSide(kind === 'chat' ? 'chat' : 'people'); },
+        children: leaveInFloating && leaveOpen ? leaveQuestion : null
+      }} />
     </div>
   );
 }
