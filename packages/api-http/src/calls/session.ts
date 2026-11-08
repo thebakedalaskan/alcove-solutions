@@ -174,6 +174,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
   private waits = 0;
   private closed = false;
+  /** A deliberate departure must follow any return already sent, and never start another meanwhile. */
+  private departures = 0;
+  private returning: Promise<void> | null = null;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
   /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
@@ -487,18 +490,23 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private async comeBack(log: CallMls): Promise<void> {
     // A closed call never comes back by itself, whatever a check it sent before closing says: its page let go (left,
     // moved or went away), and a slow answer mustn't bring it back in with nobody there.
-    if (this.closed) return;
+    if (this.closed || this.departures > 0) return;
     const now = Date.now();
     if (now < this.backAfter) return;
     this.backAfter = now + BACK_WAIT_MS;
     for (const place of [...this.groups.keys()]) await this.drop(place, 'removed');
+    if (this.closed || this.departures > 0) return;
     this.patch({ status: 'joining' });
+    const returning = this.t.back(this.state.callId, { generation: log.generation });
+    this.returning = returning;
     try {
-      await this.t.back(this.state.callId, { generation: log.generation });
+      await returning;
       this.emit('info', 'back in the call after its connection dropped', { generation: log.generation });
     } catch (e) {
       if (errorCode(e) !== 'conflict') throw e;
       this.emit('debug', 'not back in yet', { code: 'conflict' });
+    } finally {
+      this.returning = null;
     }
   }
 
@@ -895,17 +903,22 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * takes this browser hosting as the call last said and the server agreeing: one that has only just been made host
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
-  leave = async () => {
-    const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
-    // A refused or failed departure is still a live call: polling, keys and capture can carry on until a retry.
-    this.close();
-    this.set({ ...this.state, phase: 'ended' });
-    return r;
-  };
+  leave = () => this.depart(() => this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true }));
   /** Whoever hosts leaves, and the call goes on with `to` hosting until the organizer is back. */
-  handOff = async (to: string) => {
-    await this.t.handOff(this.state.callId, to);
-    this.close();
-    this.set({ ...this.state, phase: 'ended' });
-  };
+  handOff = (to: string) => this.depart(() => this.t.handOff(this.state.callId, to));
+  /** Keep ordinary polling alive until departure succeeds, without mistaking the deliberate exit for a dropped connection. */
+  private async depart<T>(send: () => Promise<T>): Promise<T> {
+    this.departures++;
+    try {
+      // A return already on the wire finishes first: it must not arrive after the departure and put us back in.
+      await this.returning?.catch((e: unknown) => this.emit('debug', 'return finished before leaving', { code: errorCode(e) }));
+      const result = await send();
+      this.close();
+      this.set({ ...this.state, phase: 'ended' });
+      return result;
+    } finally {
+      // A refused or failed departure is still a live call: keys, chat and recovery carry on until a retry.
+      this.departures--;
+    }
+  }
 }
