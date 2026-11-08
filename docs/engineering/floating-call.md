@@ -45,17 +45,21 @@ These are documented API capabilities, not a claim that every version/platform h
 outside this desktop feature. An ordinary popup does not provide the same always-on-top guarantee; normal meeting
 controls remain available when Document PiP is absent or blocked.
 
-Automatic opening starts on and is remembered in the browser's per-account call-view preferences. Previously saved
-preferences without `autoFloat` take the enabled default while retaining their mode, self-view and corner. A saved
-`autoFloat: false` remains off. This changes only browser-local preferences; no database migration or sealed-record
-upgrade is needed. App preference and browser permission are separate: Chrome may ask for permission on the first tab
-switch. The browser triggers `enterpictureinpicture`; arbitrary `blur` or `visibilitychange` does not open a window.
-Visibility is used for returning an automatically opened presentation, not for gaining permission to open one.
+Automatic opening is the normal call behavior where the browser permits it. There is no Alcove automatic-opening
+preference or explanatory control in View: the browser owns its permission and may ask when the person first switches
+tabs. View retains the manual opening action and any opening failure. The browser triggers `enterpictureinpicture`;
+arbitrary `blur` or `visibilitychange` does not open a window. Visibility is used for returning an automatically opened
+presentation, not for gaining permission to open one.
+
+The former browser-local `autoFloat` field is no longer part of `CallViewPrefsSchema`. The schema ignores that old field
+while preserving mode, self-view and corner; the next normal preference save writes the current shape without it.
+Browser automatic-PiP permission remains the choice that controls opening. No database migration or sealed-record
+upgrade is needed.
 
 Chrome's conferencing eligibility path requires an HTTPS origin, existing live camera or microphone capture and browser
 permission. A muted microphone whose capture track is still live remains eligible; the app must not confuse mute with
 stopped capture. A call with no live capture uses manual opening. HTTP localhost supports manual Document PiP but does not
-qualify for Chrome's automatic path, and View explains that limitation. No new `getUserMedia` or `getDisplayMedia` request
+qualify for Chrome's automatic path. No new `getUserMedia` or `getDisplayMedia` request
 is made for eligibility. The PiP action owns only its own handler: existing shared-video play/pause handlers and media
 metadata continue to belong to playback. Modern action details call the reason `enterPictureInPictureReason`, with
 `useraction` and `contentoccluded`; older browsers may omit it. Failed or denied automatic opening must not repeatedly
@@ -80,12 +84,12 @@ Do not assume a PiP window is excluded from screen recording or sharing. Behavio
 operating system; verify what another participant actually receives. Keep private notes/message text absent regardless.
 Do not place call content in new window URLs, logs or platform media metadata.
 
-Storybook shows compact states and the real call entry point. Native PiP requires a genuine user gesture and a top-level
-document; an iframe journey or simulated click cannot establish native-browser coverage. API integration tests exercise
+Storybook shows compact states and the real call entry point. Manual Document PiP opening requires a genuine user gesture
+and a top-level document; an iframe journey or simulated click cannot establish native-browser coverage. API integration tests exercise
 actual multi-client control states and rejection, admission, host controls, reconnect, handoff and departure. They do not
 prove browser capture flushing or window focus.
 
-Release verification records actual platform/version and results for manual opening/refusal, auto preference and browser
+Release verification records actual platform/version and results for manual opening/refusal, browser automatic-PiP
 permission, tab/window/app switches, resizing, repeated close/open, return focus, device errors, host mute, room changes,
 screen sharing, reconnect, removal, failed Leave and normal termination. Check one participant identity, one audio playback
 endpoint per track and one capture owner. Distinguish unexercised combinations from passes.
@@ -102,11 +106,15 @@ Native Chrome 156 on macOS 27.2, using the real local API, Postgres, object stor
 - Camera/microphone permission denial produced compact device feedback. Devices and notes stayed off throughout this run.
 - Stopping the isolated API made Leave fail visibly inside the still-open child. After the API restarted, Stay and a
   confirmed raised-hand action worked. Normal ending closed the child and reached the other participant.
-- The automatic-opening preference survived reload and re-entry. With no active capture it explained eligibility while
-  retaining the manual action. Component previews were checked in both themes at 280 × 380 and 400 × 420.
+- Component previews were checked in both themes at 280 × 380 and 400 × 420.
 
-This run does **not** verify successful live camera/microphone capture, audible output/recording, browser-triggered automatic
-opening or its permission prompt, native resizing, screen-capture inclusion/exclusion, share arbitration across rooms,
-or Edge/Firefox/Safari/Windows behavior. Their capability descriptions and source/integration coverage are separate from
-this native-browser evidence. The regression flow for a failed HTTP departure separately verifies continued incoming MLS
-chat, hand refresh and a successful retry over real services; it does not establish browser recorder flush/rollback.
+In a separate production HTTPS check on Chrome 156/macOS 27.2, the person running the call confirmed automatic floating
+opening after leaving the tab. The microphone was muted, camera off and notes off. This is user-observed automatic-opening
+evidence, separate from the local scripted-service checks above.
+
+These checks do **not** verify audible output/recording, the native automatic-PiP permission prompt, native resizing,
+minimization or desktop-app switching, screen-capture inclusion/exclusion, share arbitration across rooms, or
+Edge/Firefox/Safari/Windows behavior. They do not establish automatic-return focus or capture privacy from the production
+observation alone. Their capability descriptions and source/integration coverage are separate from this native-browser
+evidence. The regression flow for a failed HTTP departure separately verifies continued incoming MLS chat, hand refresh
+and a successful retry over real services; it does not establish browser recorder flush/rollback.

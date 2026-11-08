@@ -26,7 +26,7 @@ export const OpenFloatingCall: PageStory = {
   parameters: {
     docs: {
       description: {
-        story: 'View shows the automatic-opening preference, enabled by default unless this browser saved an off choice. Browser hand-off: open this preview as its own tab and click Open floating call. Try the microphone, camera, hand and Leave, then Stay in the call; return, close and reopen the window. The raised hand, question, new chat and waiting person arrive after 30, 33, 35 and 40 seconds. Verify automatic opening separately in the HTTPS app with a live microphone or camera, browser permission and a real tab switch; the microphone can stay muted. HTTP localhost and scripted Storybook media do not establish native auto eligibility. Native close, focus, capture privacy and audio ownership also need manual browser verification.'
+        story: 'Automatic opening follows the browser’s native permission, without an Alcove preference. Browser hand-off: open this preview as its own tab and click Open floating call. Try the microphone, camera, hand and Leave, then Stay in the call; return, close and reopen the window. The raised hand, question, new chat and waiting person arrive after 30, 33, 35 and 40 seconds. Verify automatic opening separately in the HTTPS app with a live microphone or camera, browser permission and a real tab switch; the microphone can stay muted. HTTP localhost and scripted Storybook media do not establish native auto eligibility. Native close, focus, capture privacy and audio ownership also need manual browser verification.'
       }
     }
   },
@@ -34,7 +34,6 @@ export const OpenFloatingCall: PageStory = {
     await step('Open View in the real call', async () => {
       await screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
       await userEvent.click(await screen.findByRole('button', { name: 'Your view' }, SOON));
-      await screen.findByRole('checkbox', { name: 'Open automatically when I leave this tab' }, SOON);
     });
     await step('Continue in a top-level browser tab: click Open floating call yourself. The browser decides whether opening is available', async () => {
       await screen.findByRole('button', { name: 'Open floating call' }, SOON);

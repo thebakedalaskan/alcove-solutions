@@ -13,7 +13,6 @@ interface FloatingWindowState {
   pending: boolean;
   error: string | null;
   mainVisible: boolean;
-  autoStatus: 'off' | 'ready' | 'devices' | 'insecure' | 'unavailable';
 }
 
 /* This action belongs to the active call only. Playback owns its other Media Session actions and metadata. */
@@ -23,12 +22,11 @@ const mainVisible = () => document.visibilityState === 'visible' && document.has
 /** Owns the child document, browser callbacks and their cleanup. It owns no call connection, capture or media track. */
 class FloatingWindow implements LiveStore<FloatingWindowState> {
   readonly supported = typeof window !== 'undefined' && Boolean(window.documentPictureInPicture);
-  private state: FloatingWindowState = { target: null, origin: null, pending: false, error: null, mainVisible: typeof document !== 'undefined' && mainVisible(), autoStatus: 'off' };
+  private state: FloatingWindowState = { target: null, origin: null, pending: false, error: null, mainVisible: typeof document !== 'undefined' && mainVisible() };
   private listeners = new Set<() => void>();
   private generation = 0;
   private running = false;
   private active = false;
-  private auto = false;
   private eligible = false;
   private dismissedAuto = false;
   private stopChild: (() => void) | null = null;
@@ -70,31 +68,26 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
     };
   }
 
-  configure(active: boolean, auto: boolean, eligible: boolean): void {
+  configure(active: boolean, eligible: boolean): void {
     this.active = active;
-    this.auto = auto;
     this.eligible = eligible;
-    if (!active || (!auto && this.state.origin === 'auto')) this.close();
+    if (!active) this.close();
     this.unregister();
-    if (!auto) { this.set({ autoStatus: 'off' }); return; }
-    if (!this.supported || !('mediaSession' in navigator)) { this.set({ autoStatus: 'unavailable' }); return; }
+    if (!active || !eligible || !this.supported || !('mediaSession' in navigator)) return;
     // Chrome's native automatic-PiP policy requires HTTPS or file, even where localhost supports manual PiP.
-    if (location.protocol !== 'https:' && location.protocol !== 'file:') { this.set({ autoStatus: 'insecure' }); return; }
-    if (!eligible || !active) { this.set({ autoStatus: 'devices' }); return; }
+    if (location.protocol !== 'https:' && location.protocol !== 'file:') return;
     try {
       navigator.mediaSession.setActionHandler('enterpictureinpicture', (details) => {
         const reason = details.enterPictureInPictureReason === 'useraction' ? 'useraction' : details.enterPictureInPictureReason === 'contentoccluded' ? 'contentoccluded' : 'unspecified';
-        flog.info('browser requested floating call', { reason, owned: nativeOwner === this, active: this.active, auto: this.auto, eligible: this.eligible });
-        if (nativeOwner !== this || !this.running || !this.active || !this.auto || !this.eligible) return;
+        flog.info('browser requested floating call', { reason, owned: nativeOwner === this, active: this.active, eligible: this.eligible });
+        if (nativeOwner !== this || !this.running || !this.active || !this.eligible) return;
         // Only the browser invokes this. Older browsers supply no reason, so treat those requests as automatic.
         void this.open(reason === 'useraction' ? 'manual' : 'auto');
       });
       nativeOwner = this;
-      this.set({ autoStatus: 'ready' });
       flog.debug('automatic floating call action registered');
     } catch (e) {
       flog.debug('automatic floating call unavailable', { err: e });
-      this.set({ autoStatus: 'unavailable' });
     }
   }
   private unregister() {
@@ -119,7 +112,7 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
     try {
       const target = await openPop('pip', 'Alcove call', 1.6, { width: 400, height: 360 });
       if (!target) { if (generation === this.generation) this.set({ pending: false, origin: null, error: 'Your browser didn’t open the floating call. Try again.' }); return; }
-      if (!this.running || !this.active || (origin === 'auto' && !this.auto) || generation !== this.generation || this.shares.getSnapshot().popped || window.documentPictureInPicture?.window !== target) {
+      if (!this.running || !this.active || generation !== this.generation || this.shares.getSnapshot().popped || window.documentPictureInPicture?.window !== target) {
         target.close();
         if (generation === this.generation) this.set({ pending: false, origin: null });
         return;
@@ -153,10 +146,10 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
 }
 
 /** The mounted call owns the window; reconnects retain it, terminal transitions and unmount always close it. */
-export function useFloatingWindow(shares: ShareLooks, active: boolean, auto: boolean, eligible: boolean) {
+export function useFloatingWindow(shares: ShareLooks, active: boolean, eligible: boolean) {
   const [owner] = useState(() => new FloatingWindow(shares));
   const state = useLive(owner);
   useEffect(() => owner.start(), [owner]);
-  useEffect(() => { owner.configure(active, auto, eligible); }, [owner, active, auto, eligible]);
+  useEffect(() => { owner.configure(active, eligible); }, [owner, active, eligible]);
   return { owner, ...state, supported: owner.supported };
 }

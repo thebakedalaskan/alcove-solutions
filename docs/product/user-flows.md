@@ -621,12 +621,12 @@ Hands, open Q&A, people asking to enter (for the host), and new chat have compac
 The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
 the full call, where **Open mention** finds the exact message and reading it clears its mention attention.
 
-Automatic opening starts on for this browser; **View** can turn it off, and an existing off choice stays off. On a
-supported secure site, switching tabs lets the browser open the floating call and may show its permission question.
+On a supported secure site, the call floats automatically when you switch tabs, subject to the browser's permission.
+There is no separate Alcove preference; the browser controls this choice and may show its permission question.
 An already-allowed live microphone can stay muted. The call never requests camera, microphone or screen access just to
-enable automatic opening. If there is no live capture, the browser refuses, or the address does not support automatic
-opening, **View** keeps manual opening available. Open it manually before minimizing Chrome when needed: minimizing
-and switching tabs are different browser behaviors. Unsupported browsers keep the normal call controls.
+enable automatic opening. **View** retains **Open floating call** when manual opening is needed. Minimizing Chrome and
+switching tabs are different browser behaviors; an already-open floating window can remain over other apps.
+Unsupported browsers keep the normal call controls.
 
 See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
 
