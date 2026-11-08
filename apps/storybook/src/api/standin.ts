@@ -9,7 +9,7 @@
  */
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
-  AlcoveApiError, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
+  ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
   type CallDocument, type CallSession, type Change, type ChangeScope, type DecisionPatch, type DecisionProposal, type ID, type Inbox, type IncomingRing,
   type InstantCallInput, type Interval, type LinePatch, type Meeting, type MeetingInput, type Note, type NoteFound, type NoteKind, type NoteProgress,
   type Patch, type Preferences, type PromoteBody, type PromotionPreview, type QuestionPatch, type RecipientRole, type RingReply, type Rsvp, type Series,
@@ -68,6 +68,8 @@ const changeNote = (id: string, change: (n: Note, w: World) => Note) => answer((
   return next;
 });
 const roleIn = (n: Note): RecipientRole => n.recipients.find((r) => r.person.email === me().email)?.role ?? 'shared';
+const reviewedActions = new WeakMap<World, Map<string, FollowUpReview>>();
+const taskTarget = (a: NoteAction): FollowUpTarget => ({ id: a.id, revision: a.revision, text: a.text, owner: a.owner?.person?.email ?? null, due: a.due ?? null });
 const changeBy = (n: Note, what: Change['what'], extra: Partial<Change> = {}): Change => ({ by: changer(me(), roleIn(n)), at: new Date().toISOString(), what, ...extra });
 
 /** A new call's link code, `abc-defg-hij`. */
@@ -494,9 +496,36 @@ export const standIn: AlcoveApi = {
       return {
         ...n, totalActions: n.totalActions + 1, openActions: n.openActions + 1,
         actions: [...n.actions, {
-          id: nextId('a'), text: p.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: owner?.email === me().email, ...(p.due ? { due: p.due } : {}),
+          ...ACCEPTED_FOLLOW_UP, revision: nextId('revision'), id: nextId('a'), text: p.text, ...(owner ? { owner: { name: owner.name, person: owner } } : {}), takenOn: false, ...(p.due ? { due: p.due } : {}),
           done: false, lines: p.lines ?? [], against: [], changes: [changeBy(n, 'proposed')], from: null, evidence: { moments: [], flags: p.lines?.length ? [] : ['missing'] }
         }]
+      };
+    }),
+    reviewAction: (noteId: ID, review: FollowUpReview) => changeNote(noteId, (n, w) => {
+      let history = reviewedActions.get(w);
+      if (!history) { history = new Map(); reviewedActions.set(w, history); }
+      const key = `${noteId}:${review.id}`;
+      const previous = history.get(key);
+      if (previous) {
+        if (previous.revision === review.revision && previous.decision === review.decision) return n;
+        throw refused('conflict', 'That suggestion has already been reviewed.');
+      }
+      const room = n.rooms.find((r) => r.suggestions.some((a) => a.id === review.id));
+      const suggestions = room?.suggestions ?? n.suggestions;
+      const actions = room?.actions ?? n.actions;
+      const proposal = suggestions.find((a) => a.id === review.id);
+      if (!proposal || proposal.revision !== review.revision) throw refused('conflict', 'That suggestion changed. Close review and open it again.');
+      const target = proposal.target;
+      const actual = target ? actions.find((a) => a.id === target.id) : undefined;
+      if (target && (!actual || JSON.stringify(taskTarget(actual)) !== JSON.stringify(target))) throw refused('conflict', 'That follow-up changed. Close review and open it again.');
+      const pending = suggestions.filter((a) => a.id !== review.id);
+      const accepted: NoteAction = { ...proposal, ...ACCEPTED_FOLLOW_UP, id: target?.id ?? proposal.id, revision: nextId('revision'), takenOn: false, done: actual?.done ?? false, reviewed: { by: changer(me(), roleIn(n)), at: new Date().toISOString(), decision: review.decision }, changes: [...proposal.changes, changeBy(n, 'accepted')] };
+      const next = review.decision === 'dismiss' ? actions : target ? actions.map((a) => a.id === target.id ? accepted : a) : [...actions, accepted];
+      history.set(key, review);
+      return {
+        ...n,
+        ...(room ? { rooms: n.rooms.map((r) => r.id === room.id ? { ...r, actions: next, suggestions: pending } : r) } : { actions: next, suggestions: pending }),
+        ...(!room ? { totalActions: next.length, openActions: next.filter((a) => !a.done).length } : {})
       };
     }),
     updateDecision: (noteId: ID, decisionId: ID, p: DecisionPatch) => changeNote(noteId, (n) => ({
@@ -519,7 +548,7 @@ export const standIn: AlcoveApi = {
         const { owner: _was, due: _due, ...rest } = a;
         const due = p.due === null ? undefined : p.due ?? a.due;
         return {
-          ...rest, text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined ? owner?.email === me().email && p.owner !== null : a.takenOn,
+          ...rest, revision: nextId('revision'), text: p.text ?? a.text, done: p.done ?? a.done, takenOn: p.takeOn ? true : p.owner !== undefined || (a.owner?.person?.email !== me().email && (p.text !== undefined || p.due !== undefined)) ? false : a.takenOn,
           ...(owner ? { owner: { name: owner.name, person: owner } } : {}), ...(due ? { due } : {}), changes
         };
       });

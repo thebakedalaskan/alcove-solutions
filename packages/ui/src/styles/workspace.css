@@ -476,3 +476,8 @@
   .ws-play .bar { position: absolute; left: 16px; right: 16px; bottom: 0; flex: none; height: 3px; }
   .ws-play .v small, .ws-play .vb { display: none; }
 }
+.wl-todo.is-editing { flex-direction: column; }
+.wl-todo > .ac-icon-btn { flex: none; width: 28px; height: 28px; }
+.wl-compact .wl-todo { font-size: 13.5px; }
+.wl-compact .wl-due { font-size: 12px; }
+.wl-compact .wl-todo .who { font-size: 12px; }

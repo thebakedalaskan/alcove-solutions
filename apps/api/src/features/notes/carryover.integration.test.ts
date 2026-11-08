@@ -8,6 +8,7 @@
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type AlcoveApi, type CallSession, type CallState, type Series, type SeriesAnswerPart, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
+import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
 import { disposeLiveKit } from '../../testing/livekit';
 
@@ -68,6 +69,7 @@ async function hold(api: AlcoveApi, callCode: string, words: string): Promise<{ 
   if (!end) throw new Error('the organizer’s leave ended nothing');
   const noteId = end.pendingNoteId ?? '';
   await written(api, noteId);
+  await acceptNoteSuggestions(api, noteId);
   return { noteId, meetingId: end.meetingId };
 }
 /** The same clock time a week after `iso`, a week further each time until it's still to come: what the app sends. */
@@ -610,6 +612,7 @@ describe('breakout rooms in what carries over', () => {
     await settle(host, (s) => s.breakouts.open === null);
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
+    await acceptNoteSuggestions(org.api, noteId);
     const meetingId = (await org.api.notes.get(noteId)).meetingId ?? '';
     const next = await scheduleNext(org.api, meetingId);
     await org.api.meetings.update(next.id, { guests: [kofi.email, lena.email] });

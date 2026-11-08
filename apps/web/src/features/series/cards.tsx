@@ -3,7 +3,7 @@
  * way to start one. `CarriedGroups` is what carries over itself, which a call and its pre-join show. Everything
  * comes from the notes the reader has, put together when they look.
  */
-import { firstName, type CarriedDecision, type Meeting, type Note, type Series, type SeriesNote } from '@alcove/api';
+import { firstName, isAcceptedFollowUp, type CarriedDecision, type Meeting, type Note, type Series, type SeriesNote } from '@alcove/api';
 import { Button, Icon } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -46,9 +46,9 @@ export function carriedFrom(s: Series) {
     decided: s.decisions.filter((d) => d.state === 'confirmed'),
     unconfirmed: s.decisions.filter((d) => d.state === 'proposed'),
     stopped: s.decisions.filter((d) => d.state === 'superseded' && (stoppedAt(d) ?? '') >= since),
-    taken: s.actions.filter((a) => !a.done && a.takenOn),
-    untaken: s.actions.filter((a) => !a.done && !a.takenOn),
-    done: s.actions.filter((a) => a.done)
+    taken: s.actions.filter((a) => isAcceptedFollowUp(a) && !a.done && a.takenOn),
+    untaken: s.actions.filter((a) => isAcceptedFollowUp(a) && !a.done && !a.takenOn),
+    done: s.actions.filter((a) => isAcceptedFollowUp(a) && a.done)
   };
 }
 /** How many things carry over, as a call counts them: what's decided and what's still to settle. */
@@ -83,7 +83,7 @@ export function CarriedGroups({ s, me, shown = SHOWN, open = false }: { s: Serie
           {also([[s.questions.length - shown, 'more still open']])}
         </Group>
       )}
-      {s.actions.length > 0 && (
+      {s.actions.some(isAcceptedFollowUp) && (
         <Group label="Follow-ups" count={taken.length ? `${taken.length} taken on` : undefined}>
           {todo.slice(0, shown).map((a) => <CarriedActionRow key={a.id} a={a} calls={from} me={me} />)}
           {also(open ? [[todo.length - shown, 'more follow-ups'], [done.length, 'done since the last call']] : [[taken.length - shown, 'more taken on'], [untaken.length, 'not taken on yet'], [done.length, 'done since the last call']])}
@@ -103,7 +103,7 @@ export function CarriedGroups({ s, me, shown = SHOWN, open = false }: { s: Serie
 /** Whether there's nothing for `CarriedGroups` to show: a decision that stopped holding before the latest call isn't news. */
 export function nothingCarried(s: Series): boolean {
   const c = carriedFrom(s);
-  return !c.decided.length && !c.unconfirmed.length && !c.stopped.length && !s.questions.length && !s.answered.length && !s.actions.length;
+  return !c.decided.length && !c.unconfirmed.length && !c.stopped.length && !s.questions.length && !s.answered.length && !s.actions.some(isAcceptedFollowUp);
 }
 
 /** Days between two calls, by the calendar. */
@@ -156,7 +156,7 @@ function InSeries({ seriesId, noteId }: { seriesId: string; noteId: string }) {
   const gist = (n: SeriesNote) => (n.status === 'ready' ? notes?.find((x) => x.id === n.id)?.excerpt || n.title : 'Notes being written');
   const latest = s.notes.find((n) => n.meetingId)?.meetingId;
   const questions = s.questions.length;
-  const actions = s.actions.filter((a) => !a.done).length;
+  const actions = s.actions.filter((a) => isAcceptedFollowUp(a) && !a.done).length;
   const open = [questions ? `${questions} question${questions === 1 ? '' : 's'}` : '', actions ? `${actions} follow-up${actions === 1 ? '' : 's'}` : ''].filter(Boolean);
   const across = s.isOrganizer ? (s.notes.length === 1 ? 'from its first call' : `across its ${calls(s.notes.length)}`) : 'across the calls you have notes from';
   return (

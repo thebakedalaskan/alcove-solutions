@@ -1,3 +1,4 @@
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
 import { type AudioPiece, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip } from '../recordings/capture';
@@ -226,11 +227,13 @@ export interface CallSession extends LiveStore<CallState> {
    */
   tickFollowUp(id: string, done: boolean): Promise<void>;
   /**
-   * Anyone in the call who gets the notes: adds a follow-up nobody said, in your own words, for you, for everyone in that
-   * part of the call. It's ticked with `tickFollowUp`, comes with the call (`CallState.liveNotes.added`), and is yours in
+   * Anyone in the call who gets the notes: adds an actual follow-up in your own words, with an invited owner or nobody
+   * and an optional date, for everyone in that part of the call. It's ticked with `tickFollowUp`, comes with the call (`CallState.liveNotes.added`), and keeps its identity in
    * the note when the call ends. The same words again add nothing. Refused where ticking is, and where notes have never been on.
    */
-  addFollowUp(text: string): Promise<void>;
+  addFollowUp(input: FollowUpCreate): Promise<void>;
+  updateFollowUp(id: string, patch: FollowUpPatch): Promise<void>;
+  reviewFollowUp(review: FollowUpReview): Promise<void>;
   /**
    * Opening Workspace, for anyone in the call: the first time, it settles the call's home (the meeting's, else a new one
    * named after the call and the day, where this browser is), with the call's folder in it, and the next call in a series

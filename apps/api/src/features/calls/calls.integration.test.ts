@@ -1006,10 +1006,12 @@ describe('breakout rooms, each with its own keys', () => {
     expect(d?.summary).toBe('Heard 3 lines. It ended on: Should links be green?');
     expect(d?.decisions.map((x) => x.text)).toEqual(['We agreed on blue buttons.']);
     expect(d?.questions.map((x) => x.text)).toEqual(['Should links be green?']);
-    expect(d?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Friday', 'Friday']]);
+    expect(d?.actions).toEqual([]);
+    expect(d?.suggestions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Friday', 'Friday']]);
     expect(d?.chapters.length).toBeGreaterThan(0);
     expect(sp?.summary).toBe('Heard 2 lines. It ended on: Ade will call the bank on Monday.');
-    expect(sp?.actions.map((x) => x.text)).toEqual(['Call the bank on Monday']);
+    expect(sp?.actions).toEqual([]);
+    expect(sp?.suggestions.map((x) => x.text)).toEqual(['Call the bank on Monday']);
     // Each was its own request to the notes model, with that room's lines and nobody else's; the call's had neither.
     const prompts = h.near.prompts.slice(before);
     const forRoom = (name: string) => prompts.filter((x) => x.includes(`the breakout room “${name}”`));
@@ -1032,9 +1034,13 @@ describe('breakout rooms, each with its own keys', () => {
     expect(h.near.prompts.at(-1)).toContain('Mia will draw the icons by Friday.');
     expect(h.near.prompts.at(-1)).toContain('the queue is down to ten');
 
-    // A room's decisions and follow-ups wait on people as the call's do: Design's decision, settled by nobody yet, in
-    // Kofi's inbox, and the room's follow-up for Mia in hers.
+    // A suggested task is not in an inbox until somebody accepts it. Accepting it still cannot claim Mia's consent.
     expect((await kofi.browser.api.notes.inbox()).decisions.map((x) => [x.text, x.noteId])).toContainEqual(['We agreed on blue buttons.', noteId]);
+    expect((await mia.browser.api.notes.inbox()).followUps).toEqual([]);
+    const iconTask = d?.suggestions[0];
+    if (!iconTask) throw new Error('The room did not suggest its icons task.');
+    const acceptedIcons = await org.api.notes.reviewAction(noteId, { id: iconTask.id, revision: iconTask.revision, decision: 'accept' });
+    expect(acceptedIcons.rooms[0]?.actions[0]?.takenOn).toBe(false);
     expect((await mia.browser.api.notes.inbox()).followUps.map((x) => [x.text, x.noteId])).toContainEqual(['Draw the icons by Friday', noteId]);
     // And they're settled like the call's, by anyone invited.
     const blue = d?.decisions[0]?.id ?? '';
@@ -1069,7 +1075,9 @@ describe('breakout rooms, each with its own keys', () => {
     expect(again.writingAgain).toBe(false);
     // What was settled in the room stays as it was, and the room's notes model was told so; the rest is written again.
     expect(again.rooms[0]?.decisions.map((x) => [x.text, x.state])).toEqual([['We agreed on blue buttons.', 'confirmed'], ['The buttons stay blue in dark mode.', 'proposed']]);
-    expect(again.rooms[0]?.actions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
+    expect(again.rooms[0]?.actions.map((x) => [x.id, x.text, x.due])).toEqual([[iconTask.id, 'Draw the icons by Friday', 'Friday']]);
+    expect(again.rooms[0]?.suggestions.map((x) => [x.text, x.due])).toEqual([['Draw the icons by Thursday', 'Thursday']]);
+    expect(again.rooms[0]?.suggestions[0]?.changeOf).toBe(iconTask.id);
     const rewritten = h.near.prompts.slice(sentAgain).find((x) => x.includes('the breakout room “Design”')) ?? '';
     expect(rewritten).toContain('Mia will draw the icons by Thursday.');
     expect(rewritten).toContain('Already settled (don\'t list these again):\n- Decision (confirmed): We agreed on blue buttons.');

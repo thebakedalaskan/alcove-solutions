@@ -20,7 +20,7 @@ import { actOnBoard, runOnBoard } from './board-actions';
 import { closeRooms, load, notice, saveSettled, secondsIn, settle, sharesEnd, tenthsIn, type Stored, withPerson } from './state';
 import { anyone, stillHosting } from './permissions';
 import { view } from './read-model';
-import { addFollowUp, tickFollowUp } from './insights';
+import { addFollowUp, editFollowUp, reviewFollowUp, tickFollowUp } from './insights';
 import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { changeCapture } from './recording';
 import { nudge } from './notifications';
@@ -81,6 +81,10 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
       if (kept) s = { ...s, board: { ...s.board, ideas: { ...s.board.ideas, [place]: { ...kept, list: kept.list.filter((i) => !a.ids.includes(i.id)) } } } };
     } else if (a.type === 'follow-up') {
       await tickFollowUp(v, c, row, s, a);
+    } else if (a.type === 'follow-up-edit') {
+      await editFollowUp(v, c, row, s, a);
+    } else if (a.type === 'follow-up-review') {
+      await reviewFollowUp(v, c, row, s, a);
     } else if (a.type === 'follow-up-add') {
       await addFollowUp(v, c, row, s, a, at);
     } else if (a.type === 'pointing') {

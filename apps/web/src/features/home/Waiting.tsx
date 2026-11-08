@@ -3,7 +3,7 @@
  * notes suggest are yours, and notes shared with you this past week, newest first. What you answer stays in place, saying
  * what you did, until you leave Home, so nothing moves under your pointer.
  */
-import { errorMessage, firstName, mayDecide, proposerOf, type ActionPatch, type DecisionPatch, type Inbox, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision } from '@alcove/api';
+import { errorMessage, firstName, isAcceptedFollowUp, mayDecide, proposerOf, type ActionPatch, type DecisionPatch, type Inbox, type NoteReader, type NoteSummary, type OpenAction, type PendingDecision } from '@alcove/api';
 import { Icon, ShowMore, cn, useToast } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
@@ -30,7 +30,7 @@ const ORDER: Record<Item['kind'], number> = { decision: 0, suggestion: 1, shared
 export function waitingOf(inbox: Inbox, notes: readonly NoteSummary[], now: number): Item[] {
   return [
     ...inbox.decisions.map((d): Item => ({ kind: 'decision', key: `d:${d.noteId}:${d.id}`, at: d.noteStartedAt, d })),
-    ...inbox.followUps.filter((a) => !a.takenOn).map((a): Item => ({ kind: 'suggestion', key: `a:${a.noteId}:${a.id}`, at: a.noteStartedAt, a })),
+    ...inbox.followUps.filter((a) => isAcceptedFollowUp(a) && !a.takenOn).map((a): Item => ({ kind: 'suggestion', key: `a:${a.noteId}:${a.id}`, at: a.noteStartedAt, a })),
     ...sharedLately(notes, now).map((n): Item => ({ kind: 'shared', key: `s:${n.id}`, at: n.received?.at ?? n.startedAt, n }))
   ].sort((x, y) => y.at.localeCompare(x.at) || ORDER[x.kind] - ORDER[y.kind]);
 }

@@ -32,5 +32,6 @@ export * from './components/qr';
 export * from './components/board';
 export * from './components/settle';
 export * from './components/noteBoard';
+export * from './components/follow-ups';
 export * from './components/flow';
 export * from './components/backgrounds';

@@ -1,3 +1,4 @@
+import { type FollowUpReview } from './follow-ups';
 import { type ID } from '../shared/ids';
 import { type PersonalApi, type PromoteBody, type PromotionPreview } from './personal';
 import { type NoteProgress } from './progress';
@@ -27,12 +28,13 @@ export interface NotesApi {
    * the same words again adds nothing.
    */
   proposeDecision(noteId: ID, proposal: DecisionProposal): Promise<Note>;
-  /** Adds a follow-up the notes didn't hear, as `proposeDecision` does. It's only a suggestion until whoever it's for takes it on. */
+  /** Adds an actual task in your exact words. The assigned person accepts responsibility separately. */
   proposeAction(noteId: ID, proposal: ActionProposal): Promise<Note>;
   /** Confirms a decision, says it wasn't decided, reopens or rewords it, as far as `grants.ts` lets you. */
   updateDecision(noteId: ID, decisionId: ID, patch: DecisionPatch): Promise<Note>;
   /** Takes on or turns down (the person it's for), gives, rewords, dates or ticks a follow-up, as far as `grants.ts` lets you. */
   updateAction(noteId: ID, actionId: ID, patch: ActionPatch): Promise<Note>;
+  reviewAction(noteId: ID, review: FollowUpReview): Promise<Note>;
   /** Says an open question was answered, opens it again, or rewords it. Anyone who has the notes can. */
   updateQuestion(noteId: ID, questionId: ID, patch: QuestionPatch): Promise<Note>;
   /**

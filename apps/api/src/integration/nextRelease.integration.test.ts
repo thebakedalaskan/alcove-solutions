@@ -239,7 +239,10 @@ describe('what the next release stores', () => {
     await call.transcribe(speech, call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(art.api, noteId);
-    const first = (await art.api.notes.get(noteId)).actions[0];
+    const proposal = (await art.api.notes.get(noteId)).suggestions[0];
+    if (!proposal) throw new Error('expected a follow-up proposal');
+    const accepted = await art.api.notes.reviewAction(noteId, { id: proposal.id, revision: proposal.revision, decision: 'accept' });
+    const first = accepted.actions[0];
     expect(first).toMatchObject({ text: 'Send the deck by Friday', from: null });
 
     // The next release keeps a follow-up from a board's Actions frame as that.

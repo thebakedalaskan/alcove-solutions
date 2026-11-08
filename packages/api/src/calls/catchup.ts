@@ -1,3 +1,5 @@
+import { PersonSchema } from '../identity/people';
+import { FollowUpReviewFields } from '../notes/follow-ups';
 import { CaptureGapSchema } from '../notes/schema';
 import { TranscriptLineSchema } from '../notes/transcript';
 import { IDSchema } from '../shared/ids';
@@ -101,12 +103,8 @@ export const CatchUpSchema = z.object({
 export type CatchUp = z.infer<typeof CatchUpSchema>;
 
 
-/**
- * Something to do in a call's shared live notes. `id` stays with it from one refresh to the next, however the notes
- * model rewords it, for as long as the notes model says it's the same item; `done` is the same for everyone reading these
- * notes (CallAction `follow-up`).
- */
-export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean() });
+/** A shared task or immutable proposal. Only accepted tasks appear in the checklist; proposals have their own array. */
+export const LiveFollowUpSchema = CatchUpItemSchema.extend({ id: IDSchema, done: z.boolean(), ownerPerson: PersonSchema.nullable(), ...FollowUpReviewFields });
 
 export type LiveFollowUp = z.infer<typeof LiveFollowUpSchema>;
 
@@ -122,7 +120,7 @@ export type AddedFollowUp = z.infer<typeof AddedFollowUpSchema>;
 /**
  * A call's live notes (docs: Notes and inference › Live notes): kept sealed on the server for each part of the call and
  * refreshed at most every 30 seconds while someone is watching (CallSession.watchNotes), in one run for everyone who can
- * read the same lines. As a catch-up on the whole of that part of the call, with its follow-ups tickable.
+ * read the same lines. As a catch-up on that part of the call, with actual tasks and conversation proposals kept separate.
  */
 export const LiveNotesSchema = z.object({
   /**
@@ -133,6 +131,8 @@ export const LiveNotesSchema = z.object({
   notes: CatchUpSchema.extend({ next: z.array(LiveFollowUpSchema) }).nullable(),
   /** What people added to the follow-ups by hand, the oldest first, whether or not any notes are written yet. Only for people who get the notes. */
   added: z.array(AddedFollowUpSchema),
+  /** Conversation proposals awaiting an explicit decision, never checklist items. */
+  suggestions: z.array(LiveFollowUpSchema),
   /** They're being refreshed now. */
   writing: z.boolean(),
   /** Says the latest refresh of these notes didn't work; they stay as they were, and it's tried again. Null otherwise. */

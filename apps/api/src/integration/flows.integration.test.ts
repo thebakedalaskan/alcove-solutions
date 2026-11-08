@@ -14,6 +14,7 @@ import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
 import { startFakeDstack } from '../testing/fake-dstack';
+import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
 import { screenJpeg, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
@@ -1140,10 +1141,13 @@ describe('live transcript and written notes', () => {
     const lineOf = (said: string) => note.transcript?.find((l) => l.text.startsWith(said))?.id;
     const backedBy = (said: string) => ({ lines: [lineOf(said)], against: [], evidence: { flags: [], moments: [expect.objectContaining({ kind: 'line', id: lineOf(said), against: false, corrected: false })] } });
     expect(note.decisions).toEqual([{ id: expect.any(String), text: 'We agreed to move the launch to the 18th.', at: 0, state: 'proposed', disputes: [], changes: [], ...backedBy('We agreed') }]);
-    expect(note.actions).toEqual([{
+    expect(note.actions).toEqual([]);
+    expect(note).toMatchObject({ openActions: 0, totalActions: 0 });
+    expect(note.suggestions).toEqual([expect.objectContaining({
+      review: 'suggested', changeOf: null, target: null, revision: expect.any(String),
       id: expect.any(String), text: 'Send the new screens by Wednesday', owner: { name: 'Kofi', person: expect.objectContaining({ email: guestEmail }) },
       takenOn: false, due: 'Wednesday', at: 6, done: false, changes: [], from: null, ...backedBy('Kofi will')
-    }]);
+    })]);
     expect(note.chapters.map((x) => x.at)).toEqual([0, 8]);
     expect(note.suggestedQuestions).toHaveLength(3);
     // Each model was verified first, on the dstack image NEAR AI's models boot, and the speech and the
@@ -1359,7 +1363,9 @@ describe('live transcript and written notes', () => {
     const note = await api.notes.get(pendingNoteId);
     expect(note).toMatchObject({ kind: 'room', status: 'ready', decisions: [{ text: 'We decided to keep the darker header.', at: 4, state: 'proposed' }] });
     expect(note.transcript?.map((l) => [l.at, l.text, l.speaker])).toEqual([[0, 'Sam will tidy the spacing by Friday.', undefined], [4, 'We decided to keep the darker header.', undefined]]);
-    expect(note.actions).toMatchObject([{ id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
+    expect(note.actions).toEqual([]);
+    expect(note).toMatchObject({ openActions: 0, totalActions: 0 });
+    expect(note.suggestions).toMatchObject([{ review: 'suggested', id: expect.any(String), text: 'Tidy the spacing by Friday', owner: { name: 'Sam' }, takenOn: false, due: 'Friday', at: 0, done: false, changes: [] }]);
   });
 
   it('notes are written in the chosen language and length', async () => {
@@ -1929,7 +1935,8 @@ describe('confirming what the notes say', () => {
     await call.transcribe(speech('We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.', 0, 0), call.ticket.identity);
     const noteId = (await ended(call)).pendingNoteId ?? '';
     await written(org.api, noteId);
-    let note = await org.api.notes.get(noteId);
+    expect((await org.api.notes.get(noteId)).actions).toEqual([]);
+    let note = await acceptNoteSuggestions(org.api, noteId);
     const decision = note.decisions[0]?.id ?? '';
     const action = note.actions[0]?.id ?? '';
     const guest = await account(guestEmail);
@@ -1970,7 +1977,7 @@ describe('confirming what the notes say', () => {
     expect(note.actions[0]?.owner).toBeUndefined();
     expect(note.actions[0]?.due).toBeUndefined();
     expect(who(note.actions[0] ?? { changes: [] })).toEqual([
-      [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
+      [org.session.user.email, 'accepted', null], [guestEmail, 'took-on', null], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'due', 'Wednesday'],
       [org.session.user.email, 'reassigned', org.session.user.name],
       [org.session.user.email, 'reworded', 'Send the new screens by Wednesday'], [org.session.user.email, 'took-on', 'Kofi'], [org.session.user.email, 'done', null],
       [org.session.user.email, 'declined', org.session.user.name], [org.session.user.email, 'due', 'Friday']
@@ -1989,21 +1996,22 @@ describe('confirming what the notes say', () => {
 });
 
 describe('the inbox', () => {
-  /** A written note whose one decision and one follow-up (for the guest, Kofi) are still the notes' suggestions. */
-  async function suggested(org: Awaited<ReturnType<typeof account>>, guestEmail: string, said: string) {
+  /** A written note with one proposed decision and a task someone accepted, whose suggested owner has not agreed. */
+  async function withAcceptedTask(org: Awaited<ReturnType<typeof account>>, guestEmail: string, said: string) {
     const call = await org.api.calls.join((await org.api.calls.startNow({ notes: 'on', guests: [guestEmail] })).code, { mic: true, cam: false });
     await call.transcribe(speech(said, 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    expect((await org.api.notes.get(noteId)).actions).toEqual([]);
+    const note = await acceptNoteSuggestions(org.api, noteId);
     return { noteId, decision: note.decisions[0]?.id ?? '', action: note.actions[0]?.id ?? '' };
   }
 
   it('the inbox gathers your follow-ups and unconfirmed decisions from every note you have', async () => {
     const org = await account(unique('organizer'));
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
-    const first = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
-    const second = await suggested(org, guestEmail, 'We agreed to keep the beta small. // Kofi will write the invite by Friday.');
+    const first = await withAcceptedTask(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const second = await withAcceptedTask(org, guestEmail, 'We agreed to keep the beta small. // Kofi will write the invite by Friday.');
     const guest = await account(guestEmail);
 
     // The follow-up is Kofi's: it's in his inbox, not yet taken on, and not in the organizer's.
@@ -2034,7 +2042,7 @@ describe('the inbox', () => {
   it('a follow-up can’t be given to someone who removed the note', async () => {
     const org = await account(unique('organizer'));
     const guestEmail = `kofi@g${Date.now().toString(36)}${(seq++).toString(36)}.example`;
-    const { noteId, action } = await suggested(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
+    const { noteId, action } = await withAcceptedTask(org, guestEmail, 'We agreed to move the launch to the 18th. // Kofi will send the new screens by Wednesday.');
     const guest = await account(guestEmail);
     await org.api.notes.updateAction(noteId, action, { owner: null });
     expect((await org.api.notes.updateAction(noteId, action, { owner: guestEmail })).actions[0]).toMatchObject({ owner: { person: { email: guestEmail } } });
@@ -2560,7 +2568,7 @@ describe('who has the notes', () => {
     await call.transcribe(speech('We agreed to ship on Thursday. // Can we test it first? // Someone will write the release notes.', 0, 0), call.ticket.identity);
     const noteId = (await call.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    const note = await acceptNoteSuggestions(org.api, noteId);
     const guest = await account(guestEmail);
 
     // Everything someone given the notes can change, each with an operation ID, as the app sends it.
@@ -3190,9 +3198,12 @@ describe('privacy at rest', () => {
     const watching = call.watchNotes();
     await settle(call, (x) => x.liveNotes.notes !== null && !x.liveNotes.writing);
     watching();
-    const liveFollowUp = call.getSnapshot().liveNotes.notes?.next[0];
+    expect(call.getSnapshot().liveNotes.notes?.next).toEqual([]);
+    const liveFollowUp = call.getSnapshot().liveNotes.suggestions[0];
     expect(liveFollowUp?.text).toContain('CANARY-LIVENOTE');
-    await call.tickFollowUp(liveFollowUp?.id ?? '', true);
+    if (!liveFollowUp) throw new Error('The canary follow-up has no proposal to review.');
+    await call.reviewFollowUp({ id: liveFollowUp.id, revision: liveFollowUp.revision, decision: 'accept' });
+    await call.tickFollowUp(liveFollowUp.id, true);
     const liveNoteRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_notes x`)).rows[0]?.all ?? '');
     expect(liveNoteRows).not.toBe('');
     // While the call is on, the live transcript is sealed rows too.
@@ -3392,7 +3403,11 @@ describe('privacy at rest', () => {
     actionsBoard.close();
     const ideasEnded = await ideasCall.leave();
     await written(c.api, ideasEnded?.pendingNoteId ?? '');
-    expect((await c.api.notes.get(ideasEnded?.pendingNoteId ?? '')).actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
+    const boardProposals = await c.api.notes.get(ideasEnded?.pendingNoteId ?? '');
+    expect(boardProposals.actions.filter((a) => a.from === 'board')).toEqual([]);
+    expect(boardProposals.suggestions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
+    const boardAccepted = await acceptNoteSuggestions(c.api, boardProposals.id);
+    expect(boardAccepted.actions.filter((a) => a.from === 'board').map((a) => a.text)).toEqual(['CANARY-BOARDACTION order the doors']);
     // Breakout rooms with a board each: a room's name names its board, and what's on it lands on a main board made for it as
     // rooms close. Names are in the workspace's sealed state, stickies in its sealed updates, and the call keeps only IDs.
     const roomsCall = await c.api.calls.startNow({ notes: 'off', guests: ['canary-roomie@canary.example'] });

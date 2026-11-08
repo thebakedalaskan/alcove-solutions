@@ -4,6 +4,7 @@ import { screen } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
 import { troubled } from './changes';
 
@@ -154,3 +155,16 @@ export const WorkedOnNight = page('/notes/n4', 'busy', { play: toWorkedOn, globa
 export const CouldntOpen = page('/notes/n3', 'busy', { beforeEach: changing(troubled({ 'notes.get': (id) => (id === 'n3' ? 'failed' : null) })) });
 /** Opened without a connection: a note needs one, and Record still works. */
 export const Offline = page('/notes/n2', 'offline');
+
+/** Actual tasks stay on the checklist. AI proposals wait behind a quiet count after the call too. */
+export const FollowUpProposals = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals) });
+export const FollowUpProposalsPhone = phone(FollowUpProposals);
+export const FollowUpProposalsNight = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', { beforeEach: changing(withFollowUpProposals), globals: { theme: 'dark' } });
+export const ReviewingFollowUpProposals = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy', {
+  beforeEach: changing(withFollowUpProposals),
+  play: async ({ userEvent, step }) => {
+    await step('Open the optional fixed batch under the actual follow-ups', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: '2 suggestions from the call' }));
+    });
+  }
+});

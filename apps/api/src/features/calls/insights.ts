@@ -1,3 +1,4 @@
+import { firstName, type Speaker } from '@alcove/api';
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
 import { id128 } from '../../crypto';
@@ -243,7 +244,7 @@ export async function askEarlier(v: Viewer, callId: string, asker: Owner, questi
 /* ---------- the call's shared live notes: kept in features/calls/live-notes.ts; who reads what, and when they're refreshed, is here ---------- */
 
 /** Nothing to read: until notes are written, for someone waiting to be let in, and once the call has ended and they're in the note. */
-export const NO_NOTES: LiveNotes = { notes: null, added: [], writing: false, error: null };
+export const NO_NOTES: LiveNotes = { notes: null, added: [], suggestions: [], writing: false, error: null };
 
 /** As much of a whole call's follow-ups as its live notes keep from one refresh, as many as the notes at the end may have. */
 const FOLLOW_UPS_READ = 20;
@@ -340,7 +341,19 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
       lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
       cut: sorted.cut?.count ?? 0, ms: Math.round(performance.now() - t0)
     };
-    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 });
+    const invitedEmails = new Set([...meeting.manifest.guests, part.person.email].map((email) => email.toLowerCase()));
+    const people = [...new Map([
+      ...meeting.manifest.guests.map((email) => personOf(email)),
+      ...s.people.map((j) => personFor(j, j.identity, j.name, part.person)), part.person
+    ].filter((p) => p.email && invitedEmails.has(p.email.toLowerCase())).map((p) => [p.email.toLowerCase(), p])).values()];
+    const folded = (text: string) => text.normalize('NFKC').trim().toLowerCase();
+    const ownerOf = (name: string): Person | null => {
+      const exact = people.filter((p) => folded(p.name) === folded(name) || folded(p.email) === folded(name));
+      const first = people.filter((p) => folded(firstName(p.name)) === folded(name));
+      const matches = exact.length ? exact : first;
+      return matches.length === 1 ? matches[0] ?? null : null;
+    };
+    const run = liveNotes.runOf(sorted, lines, barred, { ...catchup.withCut(read, sorted.cut, lines), whileHere: barred.length > 0 }, ownerOf);
     if (!await liveNotes.keep(o, callId, place, view, claim, run, reader)) {
       clog.info('live notes written too late to keep', { ...ctx, ...done });
       return false;
@@ -523,10 +536,31 @@ export async function tickFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Ext
 /** A follow-up nobody said, for whoever adds it. It goes into the note, so there has to be one. */
 export async function addFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-add' }>, said: number): Promise<void> {
   const o = v.organizer;
-  const { mine, by, place, reader } = await changing(v, c, row, s, a.type);
+  const { by, place, reader } = await changing(v, c, row, s, a.type);
   if (!s.notes.noteId) throw new ConflictError('Notes haven’t been on in this call, so there’s nowhere for this to go.', { context: { callId: row.call_id, what: a.type } });
-  const person = personFor(mine, mine.identity, mine.name, await me(o));
-  await liveNotes.add(o, c, row.call_id, place, { text: a.text, owner: { name: person.name, person }, by, said }, reader);
+  await liveNotes.add(o, c, row.call_id, place, { text: a.input.text, owner: await ownerFor(v, c, row, s, a.input.owner), due: a.input.due, takenOn: false, by, said }, reader);
+}
+
+
+/** A manual owner names a real invited identity, never a model-supplied display name. */
+async function ownerFor(v: Viewer, c: Db, row: Row, s: Stored, email: string | null): Promise<Speaker | null> {
+  if (email === null) return null;
+  const organizer = await me(v.organizer);
+  const meeting = await getItem(v.organizer, c, 'meeting', row.meeting_item_id, MeetingManifest, 'That meeting');
+  if (organizer.email === email) return { name: organizer.name, person: organizer };
+  if (!meeting.manifest.guests.some((x) => x.toLowerCase() === email)) throw new ForbiddenError('Choose someone invited to this call.', { context: { callId: row.call_id } });
+  const joined = s.people.find((x) => x.email?.toLowerCase() === email);
+  const person = joined ? personFor(joined, joined.identity, joined.name, organizer) : personOf(email);
+  return { name: person.name, person };
+}
+export async function editFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-edit' }>): Promise<void> {
+  const { place, reader, by } = await changing(v, c, row, s, a.type);
+  const owner = a.patch.owner === undefined ? undefined : await ownerFor(v, c, row, s, a.patch.owner);
+  await liveNotes.edit(v.organizer, c, row.call_id, place, a.id, a.patch, owner, reader, by);
+}
+export async function reviewFollowUp(v: Viewer, c: Db, row: Row, s: Stored, a: Extract<CallAction, { type: 'follow-up-review' }>): Promise<void> {
+  const { place, reader, by } = await changing(v, c, row, s, a.type);
+  await liveNotes.review(v.organizer, c, row.call_id, place, a.review, reader, by);
 }
 
 /** What this person can catch up on, for choosing what to read. */

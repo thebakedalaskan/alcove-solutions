@@ -72,7 +72,7 @@ export async function workedOnFor(o: Owner, worked: WorkedDocument[], emails: re
 }
 
 /** A board as a part of the notes reads it: its name, its words, and the stickies in its Actions frames. */
-export interface BoardRead { place: string; name: string; text: string; followUps: { id: string; text: string }[] }
+export interface BoardRead { key: string; place: string; name: string; text: string; followUps: { id: string; text: string }[] }
 
 /** How much of one board the notes read: its words, and the stickies in its Actions frames, each cut to so many characters. */
 const BOARD_READ = { chars: 12_000, max: 20, each: 300 } as const;
@@ -92,7 +92,7 @@ export async function boardsToRead(d: Deps, worked: readonly WorkedDocument[], e
     if (!found || x.open === null) continue;
     try {
       const read = await readDocument(found.w, x.documentId, 'boardNotes', BOARD_READ);
-      out.push({ place: x.open, name: found.name, ...read });
+      out.push({ key: keyOf(x), place: x.open, name: found.name, ...read });
     } catch (e) {
       wlog.warn('a board wasn’t read for the notes; they’re written without it', { ...ctx, workspaceId: x.workspaceId, documentId: x.documentId, err: e });
     }

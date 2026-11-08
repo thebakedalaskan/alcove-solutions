@@ -18,6 +18,7 @@ import { correctedSince, speakersOf, type Correcting } from '~/features/notes/li
 import { noteAsText, peopleLine, receivedLine } from '~/features/notes/meta';
 import { AskBar, ChapterList, Recipients, Section, Transcript, roomAnchor, type Focus, type LineKinds, type ScreenRefShown, type ScreensShown } from '~/features/notes/parts';
 import { RoomSections } from '~/features/notes/rooms';
+import { NewFollowUp, NoteFollowUpReview } from '~/features/notes/NoteFollowUps';
 import { Decisions, FollowUps, Questions } from '~/features/notes/rows';
 import { ScreenMomentRow, ScreenRefChip, ScreenViewer, useScreenViewer } from '~/features/notes/screens';
 import { WorkedOn } from '~/features/notes/WorkedOn';
@@ -29,7 +30,7 @@ import { useNoteOnScreen } from '~/features/shell/notify';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { sameEmail } from '~/lib/people';
-import { q, qk, useCorrectLine, useDeleteNote, useProposeAction, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
+import { q, qk, useCorrectLine, useDeleteNote, useProposeDecision, useRewriteNotes, useUpdateAction, useUpdateDecision, useUpdateQuestion } from '~/lib/queries';
 import { noteAt } from '~/lib/time';
 
 export const Route = createFileRoute('/_app/notes/$noteId')({
@@ -164,7 +165,6 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const updateDecision = useUpdateDecision();
   const updateQuestion = useUpdateQuestion();
   const proposeDecision = useProposeDecision();
-  const proposeAction = useProposeAction();
   const correctLine = useCorrectLine();
   const rewrite = useRewriteNotes();
   const yours = useOwn(note.id);
@@ -230,11 +230,10 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   /* Whichever part of the notes it's for, what someone adds is proposed by them; what failed says why, and stays in the field. */
   const adding = (p: Promise<unknown>) => p.then(() => true, (e: unknown) => { failed(e); return false; });
   const addDecision = (r: string | undefined) => (text: string, from: string[]) => adding(proposeDecision.mutateAsync({ noteId: note.id, proposal: { text, lines: from, ...(r ? { room: r } : {}) } }));
-  const addAction = (r: string | undefined) => (text: string, from: string[]) => adding(proposeAction.mutateAsync({ noteId: note.id, proposal: { text, lines: from, ...(r ? { room: r } : {}) } }));
   const proposing = (kind: Seed['kind'], line: TranscriptLine) => setSeed({ kind, line, room: note.rooms.find((r) => r.transcript.some((l) => l.id === line.id))?.id });
   const seedFor = (kind: Seed['kind'], r: string | undefined) => (seed?.kind === kind && seed.room === r ? seed : undefined);
   const decisionForm = (r?: string | undefined) => <Propose label="Propose a decision" placeholder="What was decided" hint="Everyone with the notes sees it, as proposed by you, until someone else confirms it." busy={proposeDecision.isPending} seed={seedFor('decision', r)} onAdd={addDecision(r)} onDone={() => setSeed(null)} />;
-  const actionForm = (r?: string | undefined) => <Propose label="Add a follow-up" placeholder="What needs doing" hint="Everyone with the notes sees it. Give it to someone from its menu." busy={proposeAction.isPending} seed={seedFor('follow-up', r)} onAdd={addAction(r)} onDone={() => setSeed(null)} />;
+  const actionForm = (r?: string | undefined) => <NewFollowUp noteId={note.id} room={r} people={note.recipients.map((recipient) => recipient.person)} seed={seedFor('follow-up', r)} onDone={() => setSeed(null)} />;
   const changeDecision = (d: Decision, patch: DecisionPatch) => updateDecision.mutate({ noteId: note.id, decisionId: d.id, patch }, { onError: failed });
   const changeQuestion = (x: Question, patch: QuestionPatch) => updateQuestion.mutate({ noteId: note.id, questionId: x.id, patch }, { onError: failed });
   // The organizer corrects any line; anyone else who has the notes, the words of their own lines (the server's rule too).
@@ -265,7 +264,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
   const tryAgain = mine ? <Button size="sm" className="nd-retry" loading={rewrite.isPending} onClick={writeAgain}>Try writing them again</Button> : null;
   // The boards open in the call: the main room's with the call's notes, each room's in its section.
   const boards = note.workedOn.filter((w) => w.kind === 'board');
-  const rooms = note.rooms.length > 0 ? <RoomSections rooms={note.rooms} boards={boards} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={ready ? proposing : undefined} settle={settle} tryAgain={tryAgain} marks={yours.lines} open={room} at={at} /> : null;
+  const rooms = note.rooms.length > 0 ? <RoomSections noteId={note.id} rooms={note.rooms} boards={boards} me={me} writing={!ready || note.writingAgain} correct={correct} fromLine={ready ? proposing : undefined} settle={settle} tryAgain={tryAgain} marks={yours.lines} open={room} at={at} /> : null;
   /** Keeps an answer in your own notes, with what it comes from: nothing else keeps one. */
   const keep = (a: Answer) => yours.own.add.mutateAsync({
     kind: 'answer', question: a.q, answer: a.text,
@@ -379,6 +378,11 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
                 {!live && progress && <Steps steps={progress.steps} />}
               </section>
             )}
+            {!(ready && written) && (note.actions.length > 0 || ready) && <Section title="Follow-ups" kind="follow" id="follow-ups">
+              <FollowUps actions={said} me={me} reader={reader} people={note.recipients.map((r) => r.person)} onToggle={toggle} onChange={changeAction} onSeek={seek} shown={onScreen} />
+              {ready && actionForm()}
+            </Section>}
+            <NoteFollowUpReview noteId={note.id} suggestions={note.suggestions} actions={note.actions} people={note.recipients.map((r) => r.person)} reader={reader} me={me} onSeek={seek} shown={onScreen} />
             {/* Until there's a summary, the boards come after how the notes stand. */}
             {!(ready && written) && boardSection}
             {/* What was worked on, under what was decided and what's to do, whether or not the notes are written yet. */}

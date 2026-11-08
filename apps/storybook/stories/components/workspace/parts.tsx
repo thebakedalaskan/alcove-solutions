@@ -10,7 +10,7 @@
  */
 import type { Person } from '@alcove/api';
 import {
-  Avatar, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsMovePicker,
+  Avatar, Button, FollowUpEditor, type FollowUpValues, Icon, WsDoc, WsDocBy, WsDocHead, WsDocMenu, WsEmpty, WsFade, WsFollowBar, WsFollowUps, WsHistory, WsList, WsListHead, WsMovePicker,
   WsNewMenu, WsNotesPage, WsPage, WsPersonCard, WsRenameRow, WsRow, WsRowMenu, WsScroll, WsSection, WsShareSheet,
   WsSpacePicker, WsSwitchSheet, WsTail, WsTemplates, WsTranscript, cn, wsToast,
   type IconName, type WsDecision, type WsFace, type WsFolderChoice, type WsFollowing, type WsFollowUp, type WsPop, type WsPoint, type WsSaid,
@@ -565,17 +565,23 @@ export function NotesLive({ nothingYet = false, put = 'Launch plan' }: { nothing
 export function FollowUpsLive({ mine: startMine = false, rows: startRows = FOLLOW_UPS }: { mine?: boolean | undefined; rows?: WsFollowUp[] | undefined }) {
   const [mine, setMine] = useState(startMine);
   const [rows, setRows] = useState(startRows);
-  const [draft, setDraft] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState<FollowUpValues>({ text: '', owner: null, due: null });
   const mineOnly = rows.filter((r) => r.person === ART);
   const add = () => {
-    const text = draft.trim();
+    const text = draft.text.trim();
     if (!text) return;
-    setRows((now) => [...now, { id: `f-${now.length + 1}`, text, done: false, person: ART, name: 'Art', due: 'No date', source: 'Added by you' }]);
-    setDraft('');
+    const person = [ART, KOFI, PRIYA].find((p) => p.email === draft.owner);
+    setRows((now) => [...now, { id: `f-${now.length + 1}`, text, done: false, person: person ?? { name: 'Nobody yet' }, name: person ? first(person) : 'Nobody yet', due: draft.due ?? 'No date', source: 'Added by you' }]);
+    setDraft({ text: '', owner: null, due: null });
+    setAdding(false);
   };
   return (
     <WsFollowUps mine={mine} onMine={setMine} everyoneCount={rows.length} mineCount={mineOnly.length} rows={mine ? mineOnly : rows}
-      onTick={(id) => setRows((now) => now.map((r) => (r.id === id ? { ...r, done: !r.done } : r)))} draft={draft} onDraft={setDraft} onAdd={add} />
+      onTick={(id) => setRows((now) => now.map((r) => (r.id === id ? { ...r, done: !r.done } : r)))}>
+      {adding ? <FollowUpEditor value={draft} people={[ART, KOFI, PRIYA]} onChange={setDraft} onSave={add} onCancel={() => setAdding(false)} saveLabel="Add" />
+        : <Button variant="quiet" size="sm" icon="plus" onClick={() => setAdding(true)}>Add a follow-up</Button>}
+    </WsFollowUps>
   );
 }
 

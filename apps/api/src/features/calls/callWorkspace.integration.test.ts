@@ -875,7 +875,11 @@ describe('the call’s follow-ups', () => {
     const jamie = await guest(host, c);
     await host.transcribe(speech('Kofi will book the press briefing by Friday.', 0, 0), host.ticket.identity);
     const reading = host.watchNotes();
-    await settle(host, (x) => (x.liveNotes.notes?.next.length ?? 0) > 0);
+    const proposed = await settle(host, (x) => x.liveNotes.suggestions.length > 0);
+    expect(proposed.liveNotes.notes?.next).toEqual([]);
+    const press = proposed.liveNotes.suggestions[0];
+    if (!press) throw new Error('The conversation did not suggest the press briefing.');
+    await host.reviewFollowUp({ id: press.id, revision: press.revision, decision: 'accept' });
     reading();
 
     // Written in a document in this call, with a person and a date. A to-do without both isn't a follow-up.

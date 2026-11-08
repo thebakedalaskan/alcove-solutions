@@ -66,7 +66,7 @@ export class ScriptedRecording extends Snapshots<RoomRecordingState> implements 
       excerpt: 'The cold store alarm stays on paper until Friday. The handover stays in Portuguese.',
       summary: 'A walk round the floor: the cold store alarm is the sensor, not the door, so a paper log runs until Friday. The new racking goes into loading bay two on Monday, and the handover stays in Portuguese for the night shift.',
       said: s.transcript.map((l) => ({ at: `${Math.floor(l.at / 60)}:${String(Math.floor(l.at % 60)).padStart(2, '0')}`, text: l.text })),
-      actions: [{ id: `${s.noteId}-a1`, text: 'Check the paper log against the sensor’s record', owner: me(), due: 'Friday' }]
+      suggestions: [{ id: `${s.noteId}-a1`, text: 'Check the paper log against the sensor’s record', owner: me(), due: 'Friday' }]
     };
     const who = me();
     w.notes = w.notes.map((n) => (n.id === s.noteId ? writeNote({ ...spec, status: 'pending' }, who) : n));

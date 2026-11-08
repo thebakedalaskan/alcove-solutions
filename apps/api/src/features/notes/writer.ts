@@ -34,6 +34,7 @@ import { personOf } from '../account/portraits';
 import * as screens from '../recordings/screens';
 import { standing } from './series';
 import { verificationKey } from '../recordings/transcripts';
+import { mergeActionProposals } from './follow-up-proposals';
 import { boardsToRead, type BoardRead } from './worked-on';
 
 const wlog = log.child({ component: 'writer' });
@@ -103,11 +104,11 @@ function keepTouched<T extends Item>(was: T[], fresh: T[]): T[] {
 }
 /** A part of the notes written again: its decisions, questions and follow-ups, each list kept as people settled it. Any part that has them is merged the same way. */
 const keepSettled = (was: Settled, fresh: Settled): Settled =>
-  ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: keepTouched(was.actions, fresh.actions) });
+  ({ decisions: keepTouched(was.decisions, fresh.decisions), questions: keepTouched(was.questions, fresh.questions), actions: mergeActionProposals(was.actions, fresh.actions) });
 
 /** The boards a part of the call's notes read: the ones open for everyone in it (`main`, or a breakout room's ID). */
 const boardsIn = (read: readonly BoardRead[]) => (place: string): BriefBoard[] =>
-  read.filter((x) => x.place === place).map((x, i) => ({ name: x.name, text: x.text, followUps: x.followUps.map((f) => ({ id: `${i}:${f.id}`, text: f.text })) }));
+  read.filter((x) => x.place === place).map((x) => ({ name: x.name, text: x.text, followUps: x.followUps.map((f) => ({ id: `${x.key}:${f.id}`, text: f.text })) }));
 
 /**
  * Each breakout room's notes, written from what was said in that room alone, and the boards open in it, in the same verified path as the call's:
