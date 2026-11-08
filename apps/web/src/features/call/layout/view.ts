@@ -19,7 +19,7 @@ import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right', autoFloat: false };
+export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right', autoFloat: true };
 export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], workspace: { open: false, document: null } };
 /** The people as tiles beside what's open, and the workspace with its list. */
 export const DEFAULT_PANELS: CallPanels = { people: 'tiles', list: true };

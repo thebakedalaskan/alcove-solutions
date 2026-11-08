@@ -45,23 +45,34 @@ These are documented API capabilities, not a claim that every version/platform h
 outside this desktop feature. An ordinary popup does not provide the same always-on-top guarantee; normal meeting
 controls remain available when Document PiP is absent or blocked.
 
-Automatic opening starts off and is remembered in the browser's per-account call-view preferences. Its stored field has
-a default so previously saved preferences retain their mode, self-view and corner. App preference and browser permission
-are separate. The browser triggers `enterpictureinpicture`; arbitrary `blur` or `visibilitychange` does not open a window.
+Automatic opening starts on and is remembered in the browser's per-account call-view preferences. Previously saved
+preferences without `autoFloat` take the enabled default while retaining their mode, self-view and corner. A saved
+`autoFloat: false` remains off. This changes only browser-local preferences; no database migration or sealed-record
+upgrade is needed. App preference and browser permission are separate: Chrome may ask for permission on the first tab
+switch. The browser triggers `enterpictureinpicture`; arbitrary `blur` or `visibilitychange` does not open a window.
 Visibility is used for returning an automatically opened presentation, not for gaining permission to open one.
 
-The conferencing eligibility path requires existing active camera or microphone capture and browser permission. Listen-only
-calls cannot rely on that path; manual opening remains available. No new `getUserMedia` or `getDisplayMedia` request is made
-for eligibility. The PiP action owns only its own handler: existing shared-video play/pause handlers and media metadata
-continue to belong to playback. Modern action details call the reason `enterPictureInPictureReason`, with `useraction`
-and `contentoccluded`; older browsers may omit it. Failed or denied automatic opening must not repeatedly prompt or take focus.
+Chrome's conferencing eligibility path requires an HTTPS origin, existing live camera or microphone capture and browser
+permission. A muted microphone whose capture track is still live remains eligible; the app must not confuse mute with
+stopped capture. A call with no live capture uses manual opening. HTTP localhost supports manual Document PiP but does not
+qualify for Chrome's automatic path, and View explains that limitation. No new `getUserMedia` or `getDisplayMedia` request
+is made for eligibility. The PiP action owns only its own handler: existing shared-video play/pause handlers and media
+metadata continue to belong to playback. Modern action details call the reason `enterPictureInPictureReason`, with
+`useraction` and `contentoccluded`; older browsers may omit it. Failed or denied automatic opening must not repeatedly
+prompt or take focus.
+
+Switching tabs and minimizing Chrome are different browser triggers. Chrome's current native behavior does not guarantee
+opening a closed PiP window on minimization or when another desktop app takes focus. Open the floating call manually
+before minimizing when needed; an already-open window can remain over other apps. Do not add a blur-triggered request to
+work around the browser's permission and user-gesture rules.
 
 Sources: [Document PiP](https://developer.chrome.com/docs/web-platform/document-picture-in-picture),
 [conferencing automatic PiP](https://developer.chrome.com/blog/automatic-picture-in-picture),
 [Firefox 151](https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Releases/151#apis),
 [Document PiP compatibility](https://raw.githubusercontent.com/mdn/browser-compat-data/main/api/DocumentPictureInPicture.json),
 [Media Session compatibility](https://raw.githubusercontent.com/mdn/browser-compat-data/main/api/MediaSession.json),
-[Media Session action details](https://www.w3.org/TR/mediasession/#the-mediasessionactiondetails-dictionary).
+[Media Session action details](https://www.w3.org/TR/mediasession/#the-mediasessionactiondetails-dictionary),
+[Chromium automatic PiP eligibility and window visibility](https://raw.githubusercontent.com/chromium/chromium/main/chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.cc).
 
 ## Privacy and verification
 

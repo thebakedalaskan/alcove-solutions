@@ -13,7 +13,7 @@ interface FloatingWindowState {
   pending: boolean;
   error: string | null;
   mainVisible: boolean;
-  autoStatus: 'off' | 'ready' | 'devices' | 'unavailable';
+  autoStatus: 'off' | 'ready' | 'devices' | 'insecure' | 'unavailable';
 }
 
 /* This action belongs to the active call only. Playback owns its other Media Session actions and metadata. */
@@ -78,15 +78,20 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
     this.unregister();
     if (!auto) { this.set({ autoStatus: 'off' }); return; }
     if (!this.supported || !('mediaSession' in navigator)) { this.set({ autoStatus: 'unavailable' }); return; }
+    // Chrome's native automatic-PiP policy requires HTTPS or file, even where localhost supports manual PiP.
+    if (location.protocol !== 'https:' && location.protocol !== 'file:') { this.set({ autoStatus: 'insecure' }); return; }
     if (!eligible || !active) { this.set({ autoStatus: 'devices' }); return; }
     try {
       navigator.mediaSession.setActionHandler('enterpictureinpicture', (details) => {
+        const reason = details.enterPictureInPictureReason === 'useraction' ? 'useraction' : details.enterPictureInPictureReason === 'contentoccluded' ? 'contentoccluded' : 'unspecified';
+        flog.info('browser requested floating call', { reason, owned: nativeOwner === this, active: this.active, auto: this.auto, eligible: this.eligible });
         if (nativeOwner !== this || !this.running || !this.active || !this.auto || !this.eligible) return;
         // Only the browser invokes this. Older browsers supply no reason, so treat those requests as automatic.
-        void this.open(details.enterPictureInPictureReason === 'useraction' ? 'manual' : 'auto');
+        void this.open(reason === 'useraction' ? 'manual' : 'auto');
       });
       nativeOwner = this;
       this.set({ autoStatus: 'ready' });
+      flog.debug('automatic floating call action registered');
     } catch (e) {
       flog.debug('automatic floating call unavailable', { err: e });
       this.set({ autoStatus: 'unavailable' });
@@ -95,7 +100,7 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
   private unregister() {
     if (nativeOwner !== this) return;
     nativeOwner = null;
-    try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); }
+    try { navigator.mediaSession.setActionHandler('enterpictureinpicture', null); flog.debug('automatic floating call action unregistered'); }
     catch (e) { flog.debug('floating call action already unavailable', { err: e }); }
   }
 
@@ -119,8 +124,8 @@ class FloatingWindow implements LiveStore<FloatingWindowState> {
         if (generation === this.generation) this.set({ pending: false, origin: null });
         return;
       }
-      // A user may have returned to the original meeting while the browser was opening an automatic window.
-      if (origin === 'auto' && mainVisible()) { target.close(); this.set({ pending: false, origin: null }); return; }
+      // A real return event cancels even a pending request through close()/generation above. Do not recheck current
+      // visibility here: Chrome can invoke its authorized callback before the old tab's visibility event arrives.
       const shut = () => {
         if (this.state.target !== target) return;
         if (this.state.origin === 'auto') this.dismissedAuto = true;

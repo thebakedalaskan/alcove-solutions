@@ -339,15 +339,19 @@ owns no call session, audio or camera. Its pictures are made-up preview content.
 **Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
 a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
 call, refuse leaving or changing the raised hand, and block devices. **Journeys / 6 Floating call / 6.22 Open a floating
-call** plays up to this same hand-off. Open the preview
+call** shows the automatic-opening preference and plays up to this same hand-off. Automatic opening starts enabled
+unless this browser already saved an off choice. Open the preview
 as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
 Storybook does not replace that API, force support, or claim a synthetic `userEvent` verified native behavior.
 
 Use the top-level preview to manually open, close, reopen and return; switch microphone, camera and hand; try Leave and
 Stay; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture
 ownership, capture output privacy, leave failure recovery and browser-driven automatic opening. The scripted room cannot
-establish any of those. Unsupported browsers retain normal call controls. The compact Chat badge counts new messages;
-recipient-specific mentions depend on #107.
+establish any of those. Verify automatic opening on the HTTPS app with browser permission and an already-allowed live
+microphone or camera; a muted live microphone remains eligible. HTTP localhost is suitable for manual PiP only. Verify
+tab switching separately from minimizing Chrome; open manually before minimizing when needed. Unsupported browsers
+retain normal call controls. The compact Chat badge counts new messages, including unread mentions; exact-message
+navigation and reading remain in the full call.
 
 ## Extend the stand-in
 

@@ -15,7 +15,7 @@ const meta = {
   ...pages,
   parameters: {
     ...pages.parameters,
-    docs: { description: { component: 'Open the preview as its own browser tab, then press Open floating call with a real click. Storybook does not replace Document Picture-in-Picture or claim to verify native window or automatic-opening behavior.' } }
+    docs: { description: { component: 'View shows automatic opening enabled by default, unless this browser already saved an off choice. Open the preview as its own browser tab, then press Open floating call with a real click. The scripted media cannot establish native capture eligibility; automatic opening needs verification in the HTTPS app with an already-allowed live device, which can stay muted. Storybook does not replace Document Picture-in-Picture or claim native automatic-opening coverage.' } }
   }
 } satisfies Meta<PageArgs>;
 export default meta;
@@ -23,7 +23,7 @@ export default meta;
 const REVIEWERS = [{ who: PRIYA }, { who: KOFI }, { who: AIKO }];
 const ready = { play: press('Your view') };
 
-/** View exposes manual opening, the opt-in preference and the browser's actual support state. */
+/** View exposes manual opening, the default-enabled automatic preference and the browser's actual support state. */
 export const ReadyToOpen = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY }
