@@ -576,7 +576,7 @@ organizer lets them in, and video, audio and chat are encrypted end to end betwe
 **6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
 movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
 microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
-in the call; **Return to meeting** brings the meeting forward. **Leave** follows the call's usual confirmation and
+in the call; **Return to call** brings the meeting forward. **Leave** follows the call's usual confirmation and
 recording-save flow, and a failure keeps the call open with an explanation.
 
 Hands, people asking to enter (for the host), and new chat have compact indicators that return to the full meeting.

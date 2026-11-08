@@ -35,4 +35,7 @@ Follow root/scoped rules: feature ownership, strict TypeScript, no assertions/an
 
 ## Progress
 
-- 2026-11-08: design based on issue and current main f365c0fc; isolated branch codex/floating-call created. No code implemented yet.
+- 2026-11-08: design based on issue and main f365c0fc; isolated branch codex/floating-call created.
+- Task 1 implemented: call-owned native window, shared controls and inline departure, room-scoped attention, defaulted local auto preference, no second media/capture owner. Hand acknowledgement and failed-departure liveness received real integration regressions with observed red/green results.
+- Task 2 implemented: 27 compact states, 10 real-call scenarios, journey 6.22 and product/engineering documentation. Native Chrome 156/macOS 27.2 evidence and unexercised combinations are recorded in `docs/engineering/floating-call.md`. Affected baseline: 89 passed; host-control/departure regressions: 15 passed. Full repository check remains in progress at this checkpoint; final typecheck/build tasks and policy guards passed.
+- Task 3 underway: independent review has no remaining source findings; signed commit e6b62e37 pushed and PR #181 opened. Required CI, merge and deployment remain to be verified. The #107-dependent mention criterion stays open.

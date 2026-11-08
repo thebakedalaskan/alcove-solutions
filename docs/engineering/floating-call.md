@@ -75,3 +75,24 @@ Release verification records actual platform/version and results for manual open
 permission, tab/window/app switches, resizing, repeated close/open, return focus, device errors, host mute, room changes,
 screen sharing, reconnect, removal, failed Leave and normal termination. Check one participant identity, one audio playback
 endpoint per track and one capture owner. Distinguish unexercised combinations from passes.
+
+### Verified on 8 November 2026
+
+Native Chrome 156 on macOS 27.2, using the real local API, Postgres, object store and LiveKit, with made-up participants:
+
+- Two participants remained two when the floating window opened; raised-hand changes reached the other participant.
+- Incoming hands and chat produced compact counts without message bodies. Chat's attention action returned to the full
+  meeting and opened Chat. The originating View menu closed when the window opened.
+- Repeated manual opening, Return, native child-window close, Leave's inline question and Stay were exercised. Native
+  close retained the call and device/hand choices; Stay restored focus to Leave inside the child.
+- Camera/microphone permission denial produced compact device feedback. Devices and notes stayed off throughout this run.
+- Stopping the isolated API made Leave fail visibly inside the still-open child. After the API restarted, Stay and a
+  confirmed raised-hand action worked. Normal ending closed the child and reached the other participant.
+- The automatic-opening preference survived reload and re-entry. With no active capture it explained eligibility while
+  retaining the manual action. Component previews were checked in both themes at 280 × 380 and 400 × 420.
+
+This run does **not** verify successful live camera/microphone capture, audible output/recording, browser-triggered automatic
+opening or its permission prompt, native resizing, screen-capture inclusion/exclusion, share arbitration across rooms,
+or Edge/Firefox/Safari/Windows behavior. Their capability descriptions and source/integration coverage are separate from
+this native-browser evidence. The regression flow for a failed HTTP departure separately verifies continued incoming MLS
+chat, hand refresh and a successful retry over real services; it does not establish browser recorder flush/rollback.
