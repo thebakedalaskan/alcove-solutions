@@ -36,3 +36,4 @@ export * from './components/noteBoard';
 export * from './components/follow-ups';
 export * from './components/flow';
 export * from './components/backgrounds';
+export * from './components/attention';

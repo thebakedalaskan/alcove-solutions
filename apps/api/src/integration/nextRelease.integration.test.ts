@@ -140,7 +140,7 @@ describe('what the next release stores', () => {
     });
 
     // Something done in the call that this release serves: it reads the call and saves it.
-    expect((await action(art, host, { type: 'hand', up: true })).status).toBe(200);
+    expect((await action(art, host, { type: 'hand', up: true, place: 'main' })).status).toBe(200);
     expect((await settle(host, (x) => x.participants.some((p) => p.isMe && p.hand))).breakouts.open?.rooms.length).toBe(2);
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
     // Whether a room's board is kept yet is this release's to decide as it saves, so only what the next release wrote is compared.
@@ -174,7 +174,7 @@ describe('what the next release stores', () => {
       workspace: { ...s.workspace, worked: [...s.workspace.worked.map((w) => strip(w, 'open')), { workspaceId: open?.workspaceId, documentId: open?.documentId, kind: 'board', by: [] }] }
     });
 
-    expect((await action(art, host, { type: 'hand', up: true })).status).toBe(200);
+    expect((await action(art, host, { type: 'hand', up: true, place: 'main' })).status).toBe(200);
     expect((await settle(host, (x) => x.participants.some((p) => p.isMe && p.hand))).board.open?.documentId).toBe(open?.documentId);
     const after = Kept.parse((await storedCall(art.ownerId, host.ticket.callId)).state);
     expect(after.board).toMatchObject({ open: { main: { timer: null, vote: null } }, rooms: [], landing: null, ideas: {} });

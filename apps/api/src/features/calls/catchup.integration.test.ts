@@ -442,7 +442,7 @@ describe('catching up during a call', () => {
     const version = async () => Number((await h.pool.query('SELECT version FROM calls WHERE call_id = $1', [host.ticket.callId])).rows[0]?.version);
     const rows = async () => Number((await h.pool.query(`SELECT (SELECT count(*) FROM operations) + (SELECT count(*) FROM transcript_translations) + (SELECT count(*) FROM transcript_clips) AS n`)).rows[0]?.n);
     const [v0, r0] = [await version(), await rows()];
-    const seen = { ...host.getSnapshot(), elapsed: 0 };
+    const seen = host.getSnapshot();
 
     const caught = await kofi.catchUp({ kind: 'all' });
     expect(caught.decided[0]?.text).toContain('CANARY-CATCHUP-LINE');
@@ -455,7 +455,10 @@ describe('catching up during a call', () => {
     expect(await version()).toBe(v0);
     expect(await rows()).toBe(r0);
     await host.refresh();
-    expect({ ...host.getSnapshot(), elapsed: 0 }).toEqual(seen);
+    const now = host.getSnapshot();
+    expect(Date.parse(now.attention.serverNow)).toBeGreaterThanOrEqual(Date.parse(seen.attention.serverNow));
+    // Reading advances the server clock as well as elapsed time; every other field stays exactly as it was.
+    expect({ ...now, elapsed: 0, attention: { ...now.attention, serverNow: seen.attention.serverNow } }).toEqual({ ...seen, elapsed: 0 });
     // No receipt, no row, no object and no log line holds the question or the answer.
     const dump = String((await h.pool.query(`SELECT string_agg(t, ' ') AS all FROM (
       SELECT row_to_json(x)::text AS t FROM operations x UNION ALL SELECT row_to_json(x)::text FROM calls x UNION ALL

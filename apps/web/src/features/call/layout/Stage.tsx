@@ -35,6 +35,7 @@ export interface StageParticipant {
   volume: number | null;
   /** In the call, but not yet in this browser's encrypted group, so none of their media plays here yet. */
   connecting: boolean;
+  signal?: ReactNode;
 }
 /**
  * What a tile shows of the workspace, by connection: Follow, Following, who's writing, and who was just tagged. On a phone,
@@ -500,7 +501,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
             } : undefined}
             initial={opens ? { ...box(opens.from), opacity: 1, scale: 1 } : { ...here, opacity: 0, scale: 0.97 }} animate={{ ...here, opacity: 1, scale: dragging && !corner ? 1.03 : 1 }}
             transition={instant || dragging || growing ? { duration: 0 } : { ...pace, opacity: UI, scale: UI }}>
-            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
+            <CallTile person={p.person} name={name(p)} label={p.person.name} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} signal={p.signal} className={cn(p.isMe && 'is-me', pin && 'is-pinned', spot && 'is-spot', following && 'is-followed', together.lit === p.id && 'is-lit')}
               chrome={(
                 <>
                   {!corner && (
@@ -646,7 +647,7 @@ function RoomsStage({ people, rooms, w, h, reduce }: { people: StageParticipant[
         if (!p || !r) return null;
         return (
           <motion.div key={id} className="ic-slot" initial={{ ...box(r), opacity: 0 }} animate={{ ...box(r), opacity: 1 }} transition={reduce ? { duration: 0 } : GLIDE}>
-            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting}>
+            <CallTile person={p.person} name={p.isMe ? <>{callName(p.person)} <span className="you">(you)</span></> : callName(p.person)} speaking={p.speaking} muted={!p.mic} hand={p.hand} connecting={p.connecting} signal={p.signal}>
               {p.video ? <FeedVideo feed={p.video} /> : undefined}
             </CallTile>
           </motion.div>

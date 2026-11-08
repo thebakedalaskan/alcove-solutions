@@ -1,3 +1,4 @@
+import { DEFAULT_SOUND_PREFERENCES } from '@alcove/api';
 /*
  * The demo world: everything the stand-in API serves, in the contract's own types. A scenario (src/api/scenarios.ts) makes
  * one for each story, which the story can change as it's clicked through: confirming a decision changes the note here, and
@@ -127,6 +128,7 @@ export const session = (over: Partial<Session> = {}): Session => ({
 });
 
 export const PREFS: Preferences = {
+  sounds: DEFAULT_SOUND_PREFERENCES,
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: { beforeCall: 1, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: true, tagged: true },
   pinned: [], groups: []

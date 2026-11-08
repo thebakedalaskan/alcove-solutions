@@ -6,7 +6,7 @@ import { EmptyState } from './empty';
 import { Icon } from './icon';
 import { Avatar } from './people';
 
-export type FloatingAttention = 'hands' | 'waiting' | 'chat';
+export type FloatingAttention = 'hands' | 'questions' | 'waiting' | 'chat';
 export interface FloatingDevice { on: boolean; pending: boolean; problem: string | null }
 export interface FloatingCallProps {
   title: string;
@@ -20,7 +20,7 @@ export interface FloatingCallProps {
   hand: boolean;
   handPending?: boolean | undefined;
   busy: boolean;
-  attention: { hands: number; waiting: number; chat: number };
+  attention: { hands: number; questions: number; waiting: number; chat: number };
   error?: string | null | undefined;
   soundBlocked?: boolean | undefined;
   onSound?: (() => void) | undefined;
@@ -36,6 +36,7 @@ export interface FloatingCallProps {
 
 const ATTENTION = [
   { kind: 'hands', icon: 'hand', word: 'Hands' },
+  { kind: 'questions', icon: 'ask', word: 'Q&A' },
   { kind: 'waiting', icon: 'addUser', word: 'Asking to join' },
   { kind: 'chat', icon: 'chat', word: 'Chat' }
 ] as const;

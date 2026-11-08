@@ -3,7 +3,7 @@
  * tests only). Each test signs in through the API like the web app does. Leakage checks plant
  * canaries and confirm they never reach database rows, stored objects or logs in plaintext.
  */
-import { AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
+import { DEFAULT_SOUND_PREFERENCES, AlcoveApiError, OPERATION_HEADER, REQUEST_ID_HEADER, firstName, type AlcoveApi, type AnswerPart, type AudioPiece, type CallSession, type CallState, type NoteProgress, type TranscriptClip } from '@alcove/api';
 import { createHttpApi, type ClientEvent } from '@alcove/api-http';
 import { z } from 'zod';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
@@ -245,6 +245,7 @@ describe('signing in', () => {
     const { api, fetch } = await account();
     const patchRaw = async (body: unknown) => (await fetch(`${h.baseUrl}/v1/account/preferences`, { method: 'PATCH', headers: { 'content-type': 'application/json', origin: ORIGIN }, body: JSON.stringify(body) })).status;
     const defaults = {
+      sounds: DEFAULT_SOUND_PREFERENCES,
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: { beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true },
       pinned: [], groups: []
@@ -256,8 +257,15 @@ describe('signing in', () => {
     });
     expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
+    const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false };
+    expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
+    expect((await api.account.preferences()).sounds).toEqual(sounds);
+    const other = await account();
+    expect((await other.api.account.preferences()).sounds).toEqual(DEFAULT_SOUND_PREFERENCES);
+    expect(await patchRaw({ sounds: { ...sounds, volume: 2 } })).toBe(400);
     const grouped = await api.account.updatePreferences({ groups: [{ id: 'g1', name: 'Design', emails: ['sam@example.com'] }] });
     expect(grouped.groups).toHaveLength(1);
+    expect(grouped.sounds).toEqual(sounds);
     expect(await patchRaw({ notesLanguage: 'xx' })).toBe(400);
     expect(await patchRaw({ pinned: ['a', 'a'] })).toBe(400);
     expect(await api.account.preferences()).toEqual(grouped);
@@ -1532,7 +1540,7 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     // Someone without the call's pass can't do anything in it.
     const b = await account();
     expect(await act(b, s.callId, { type: 'spotlight', participantId: null })).toBe(401);
-    expect(await act(b, s.callId, { type: 'hand', up: true })).toBe(401);
+    expect(await act(b, s.callId, { type: 'hand', up: true, place: 'main' })).toBe(401);
     expect(await act(b, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } })).toBe(401);
     // A guest let in raises their own hand, which everyone sees; spotlight and rooms stay the organizer's.
     const guestTab = h.browser();
@@ -1540,12 +1548,12 @@ describe('in the call: hands, spotlight, breakout rooms and captions', () => {
     await settle(call, (x) => x.waiting.some((w) => w.id === guest.ticket.identity));
     await call.admit(guest.ticket.identity);
     for (let i = 0; i < 100 && guest.crypto.getSnapshot().status !== 'in'; i++) await new Promise((r) => setTimeout(r, 30));
-    expect(await act(guestTab, s.callId, { type: 'hand', up: true }, guest.ticket.pass)).toBe(200);
+    expect(await act(guestTab, s.callId, { type: 'hand', up: true, place: 'main' }, guest.ticket.pass)).toBe(200);
     expect((await settle(call, (x) => x.participants.some((p) => p.id === guest.ticket.identity && p.hand))).participants.find((p) => p.id === guest.ticket.identity)?.hand).toBe(true);
     expect(await act(guestTab, s.callId, { type: 'spotlight', participantId: guest.ticket.identity }, guest.ticket.pass)).toBe(403);
     expect(await act(guestTab, s.callId, { type: 'rooms-open', rooms: [{ name: 'A', emails: [] }, { name: 'B', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } }, guest.ticket.pass)).toBe(403);
     await call.leave();
-    expect(await act(a, s.callId, { type: 'hand', up: false }, call.ticket.pass)).toBe(409);
+    expect(await act(a, s.callId, { type: 'hand', up: false, place: 'main' }, call.ticket.pass)).toBe(409);
   });
 
   it('opens breakout rooms for invited people only, messages them, brings them back, and puts the rooms in the notes', async () => {
@@ -2893,7 +2901,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
@@ -3455,6 +3463,12 @@ describe('privacy at rest', () => {
     const refusals: [string, string][] = [['canary-theirs-event', 'forbidden'], ['canary-allday-event', 'not-found'], ['canary-missing-event', 'not-found']];
     for (const [id, refusal] of refusals) expect(code(await g.api.calendar.adopt(id).catch((e: unknown) => e))).toBe(refusal);
 
+    // A live question stays present for the sweep: ending a call physically deletes its attention record.
+    const attentionCall = await c.api.calls.join((await c.api.calls.startNow({ notes: 'off' })).code, { mic: false, cam: false });
+    await until(async () => attentionCall.crypto.getSnapshot().status === 'in', 'the live question author in the call’s group');
+    await attentionCall.postQuestion('CanaryAttentionQuestion01', 'CANARY-LIVEQUESTION who reviews the private launch?');
+    expect(attentionCall.getSnapshot().attention.questions[0]?.text).toContain('CANARY-LIVEQUESTION');
+
     // Every table there is, so a table added later is read here without anyone remembering to list it.
     const everyTable = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")).rows.map((r) => r.table_name);
     expect(everyTable).toEqual(expect.arrayContaining(['workspaces', 'workspace_members', 'workspace_authors', 'documents', 'document_access', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'owners', 'items', 'revisions', 'operations']));
@@ -3477,7 +3491,7 @@ describe('privacy at rest', () => {
       'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday', 'CANARY-WSIDEA', 'pricing tiers', 'CANARY-BOARDPIC-NAME',
       'CANARY-BOARDPIC-BYTES', 'CANARY-BOARDCALL', 'CANARY-BOARDGUEST', 'CANARY-IDEA', 'repaint the lobby', 'CANARY-SORTED',
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
-      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame
+      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame, 'CANARY-LIVEQUESTION', 'private launch'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
     // An answer is one short word, so it has a check of its own, in the only rows that hold one.

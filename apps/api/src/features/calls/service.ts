@@ -24,6 +24,7 @@ import { addFollowUp, editFollowUp, reviewFollowUp, tickFollowUp } from './insig
 import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { changeCapture } from './recording';
 import { nudge } from './notifications';
+import { changeAttention, isAttentionAction } from './attention';
 import { readChat } from './chat-read';
 
 const clog = log.child({ component: 'calls' });
@@ -71,8 +72,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     if (!anyone(a)) stillHosting(v, state, ctx);
     if (a.type === 'read-chat') {
       s = await readChat(v, c, callId, s, a.messages);
-    } else if (a.type === 'hand') {
-      s = withPerson(s, v.pass.identity, (j) => ({ ...j, hand: a.up }));
+    } else if (isAttentionAction(a)) {
+      await changeAttention(v, c, callId, s, a);
     } else if (a.type === 'others-point') {
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
       const off = s.othersPointOff.filter((p) => p !== v.pass.person);

@@ -44,7 +44,7 @@ const meta = {
     title: 'Launch review', picture: speakerPicture, person: PRIYA, label: 'Priya', connection: 'connected',
     mic: { on: true, pending: false, problem: null }, cam: { on: false, pending: false, problem: null },
     hand: false, handPending: false, busy: false, soundBlocked: false,
-    attention: { hands: 0, waiting: 0, chat: 0 }, error: null,
+    attention: { hands: 0, questions: 0, waiting: 0, chat: 0 }, error: null,
     onMic: did('Microphone'), onCam: did('Camera'), onHand: did('Hand'), onLeave: did('Leave'), onReturn: did('Return'),
     onAttention: did('Open attention in the call'), onSound: did('Enable sound')
   },
@@ -87,8 +87,10 @@ export const Connecting: Story = { args: { connection: 'connecting', picture: nu
 /** A transient reconnect keeps the picture and the call open. */
 export const Reconnecting: Story = { args: { connection: 'reconnecting' } };
 /** Only counts appear: personal notes and message bodies never enter the compact component. */
-export const Attention: Story = { args: { attention: { hands: 2, waiting: 1, chat: 3 } } };
-export const ManyWaiting: Story = { name: 'Many waiting', args: { attention: { hands: 12, waiting: 12, chat: 120 } } };
+export const Attention: Story = { args: { attention: { hands: 2, questions: 3, waiting: 1, chat: 3 } } };
+/** Q&A has a separate persistent count and returns to its own full-call tab. */
+export const Questions: Story = { args: { attention: { hands: 0, questions: 2, waiting: 0, chat: 0 } } };
+export const ManyWaiting: Story = { name: 'Many waiting', args: { attention: { hands: 12, questions: 12, waiting: 12, chat: 120 } } };
 export const SoundBlocked: Story = { name: 'Sound blocked', args: { soundBlocked: true } };
 export const Leaving: Story = { args: { busy: true } };
 export const DepartureFailed: Story = { name: 'Departure failed', args: { error: 'Couldn’t leave the call. Try again.' } };
@@ -100,7 +102,7 @@ export const ConfirmationPending: Story = { name: 'Confirmation pending', args: 
 export const Ended: Story = { args: { connection: 'ended', picture: null } };
 /** A resized native window can be narrower than a phone. */
 export const Narrow: Story = {
-  args: { picture: sharedPicture, label: 'Priya’s screen', attention: { hands: 2, waiting: 1, chat: 3 } },
+  args: { picture: sharedPicture, label: 'Priya’s screen', attention: { hands: 2, questions: 3, waiting: 1, chat: 3 } },
   render: (args) => <Box width={280} height={380}><FloatingCall {...args} /></Box>
 };
 export const Wide: Story = { render: (args) => <Box width="min(640px, 100%)" height={440}><FloatingCall {...args} /></Box> };

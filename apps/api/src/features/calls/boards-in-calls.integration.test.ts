@@ -123,7 +123,7 @@ const soon = <T,>(p: Promise<T>, what: string, ms = 5_000): Promise<T> => Promis
 /** Everything the call told this person, as text: what a name would be found in. */
 const said = (s: CallState) => JSON.stringify(s);
 /** An action as a browser sends it, whatever the client would make of it. */
-const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
+const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(typeof a === 'object' && a !== null && 'type' in a && a.type === 'hand' ? { ...a, place: call.getSnapshot().attention.place } : a) });
 /** The API's log lines since `from`, parsed. */
 const LogLine = z.object({ level: z.number(), msg: z.string() }).passthrough();
 const linesSince = (from: number) => h.logs.slice(from).flatMap((l) => { const r = LogLine.safeParse(JSON.parse(l)); return r.success ? [r.data] : []; });
@@ -1874,8 +1874,16 @@ describe('boards in breakout rooms', () => {
       action(r.art, r.host, close), action(r.art, r.host, close), action(r.kofi, r.k, { type: 'hand', up: true }), action(r.priya, r.p, { type: 'hand', up: true }),
       reconcile(h.deps).then(() => ({ status: 200 }))
     ]);
-    expect(asked.map((x) => x.status)).toEqual([200, 200, 200, 200, 200]);
-    await settle(r.host, (s) => s.breakouts.open === null);
+    expect([asked[0]?.status, asked[1]?.status, asked[4]?.status]).toEqual([200, 200, 200]);
+    for (const response of asked.slice(2, 4)) {
+      if (!('json' in response)) throw new Error('Missing hand response');
+      if (response.status === 409) {
+        const body: unknown = await response.json();
+        expect(body).toMatchObject({ code: 'conflict', message: 'You moved to another room. Try again from there.' });
+      } else expect(response.status).toBe(200);
+    }
+    // A raise may win before closure, or be refused for its old room afterwards. Neither becomes a main-room raise.
+    expect((await settle(r.host, (s) => s.breakouts.open === null)).attention.hands).toEqual([]);
     const landed = async () => (await mainBoard(r))?.board.frames.filter((f) => f.title === 'One' || f.title === 'Two') ?? [];
     await until(async () => (await landed()).length === 2, 'both rooms’ boards to land');
     // Asking again, and upkeep again, change nothing.

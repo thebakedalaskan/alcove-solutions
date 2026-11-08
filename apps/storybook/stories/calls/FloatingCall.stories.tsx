@@ -45,12 +45,12 @@ export const Reconnects = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: { here: REVIEWERS, cues: at(20, { do: 'reconnect', seconds: 15 }) }
 }, ready);
-/** The compact view receives counts; opening Chat, hands or the waiting room returns to the full call. */
+/** The compact view receives counts; opening Chat, hands, Q&A or the waiting room returns to the full call. */
 export const AttentionArrives = inCall({
   scenario: 'call-soon', call: REVIEW,
   script: {
     here: REVIEWERS,
-    cues: [...at(20, raisesHand(KOFI)), ...at(25, chats(AIKO, 'The launch plan is ready for review.')), ...at(30, knocks(DIEGO))]
+    cues: [...at(20, raisesHand(KOFI)), ...at(22, { do: 'question', who: PRIYA, text: 'Which team reviews the launch checklist?' }), ...at(25, chats(AIKO, 'The launch plan is ready for review.')), ...at(30, knocks(DIEGO))]
   }
 }, ready);
 /** End of the underlying call closes the native presentation; closing its window alone never leaves. */

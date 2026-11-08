@@ -295,3 +295,7 @@
   .set-gs { grid-template-columns: minmax(0, 1fr); row-gap: 16px; }
   .set-eves { gap: 12px; }
 }
+
+/* Playback volume keeps the same focused control in Settings and the call sound sheet. */
+.set-sound-volume { accent-color: var(--sun); width: min(180px, 100%); min-width: 90px; }
+.set-sound-volume:focus-visible { outline: 2px solid var(--horizon); outline-offset: 4px; border-radius: var(--radius-sm); }

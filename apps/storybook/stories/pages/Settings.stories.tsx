@@ -98,3 +98,10 @@ export const AgentDisconnectRefused = page('/settings#agents', 'agents-connected
     });
   }
 });
+
+/** Sounds remain available when browser notifications are blocked. */
+export const Sounds = page('/settings#sounds', 'busy', { parameters: { opening: { browser: { notifications: 'denied' } } } });
+export const SoundsNight = page('/settings#sounds', 'busy', { globals: { theme: 'dark' } });
+export const SoundsPhone = phone(Sounds);
+export const QuietSounds = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, quiet: true } }; }) });
+export const SoundsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, enabled: false } }; }) });

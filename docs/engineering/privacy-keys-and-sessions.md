@@ -44,7 +44,7 @@ nobody can sign in as someone who uses Alcove with Google and read the notes giv
 | `Kwrap` | `HKDF(Kowner, salt=ownerId, "alcove/owner-wrap/v1")` | Derived per request; wraps revision and recording keys |
 | `Krecord` | 32 random bytes per item revision | `revisions.key_envelope`, wrapped under `Kwrap` with scope `revision:<id>` |
 | `Krec` | 32 random bytes per recording | `recordings.key_envelope`, wrapped under `Kwrap` with scope `recording:<id>`; seals the recording's audio pieces and its shared-screen frames |
-| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
+| State keys | `HKDF(Kowner, salt=ownerId, "alcove/state/v1/<scope>")`, scopes `document-clients:<id>` (who each Yjs client in a document belongs to, as keyed hashes), `document-deletes:<id>` (a keyed hash of what each row of its log deletes, so the same deletes again cost nothing), `call:<id>` (call state), `call-attention:<id>` (ordered hands, explicit questions, votes, feedback and audience-bound notification cues), `call-mls:<id>` (the call's MLS log, sealed again), `call-seat:<id>` (each person's seat in the call, a MAC of their random per-call `person`, never stored), `call-move:<id>` (moves to other devices in a call), `call-notes:<id>` (the call's shared live notes), `ring:<meetingId>` (rings in a call), `meeting-answers:<meetingId>` (what people invited to a call answered), `job:<noteId>` (notes jobs), `transcript:<noteId>` (live transcript clips and caption translations, and the keyed tags that find them) and `screen:<noteId>` (what's known about each shared-screen frame, and the keyed tags that find them), `note-additions:<noteId>` (what people added to the shared notes). Under the author's own `Kowner`, never the organizer's: `personal:<noteId>` (their own notes on a note), `presenter-notes:<documentId>` (what they kept beside a whole document or board with an earlier release, which nothing opens now), `presenter-frame-notes:<boardId>` (what they keep beside each frame of a board, and the keyed hash that says which frame) and `promotion:<noteId>` (the seal on a preview of adding to the shared notes); and, under a workspace's root, `workspace` (its name and tree, who its people and shares are, and carets and presence on their way between instances), `workspace-person` (what someone's known by in it, a keyed hash of how access knows them), `document:<id>` (what a document or board holds) and `media:<id>` (a file: what's said about it, and its pieces) | Derived per request, or per job in the notes worker |
 | Operation keys | `HKDF(Kowner, salt=ownerId, "alcove/operation-commit/v1")` and `"…/operation-result/v1"` | Derived per request |
 | Index key | `HKDF(KMASTER, "alcove/index/v1")` | Derived per use; keys the [blind indexes](#blind-indexes) |
 | Sign-in attempt key | `HKDF(KMASTER, "alcove/sign-in-attempt/v1")` | Derived per use; seals the [Google sign-in attempt](#google-sign-in-and-calendar-access) a browser carries to Google and back |
@@ -75,6 +75,7 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `screen-frame` | `Krec` | recording, frame, object (the JPEG of a shared screen) |
 | `screen-frame-info` | state key `screen:<noteId>` | note, frame (whose share, when, its size, what was read on it) |
 | `call-state` | state key `call:<id>` | call |
+| `call-attention` | state key `call-attention:<id>` | call (hands, question text/authors/votes, feedback, original room audiences and cues) |
 | `call-mls` | state key `call-mls:<id>` | call, place in the call's log, entry kind, and the part of the call's group it belongs to |
 | `call-move` | state key `call-move:<id>` | call, move |
 | `call-notes` | state key `call-notes:<id>` | call, part of the call (`main`, or a breakout room's random ID), view (`all`, or a digest of the lines it can't read) |
@@ -332,6 +333,34 @@ purpose `invite`.
   again, the rows come back, without the answers that went with them.
 - **A call offering times** can be settled by anyone with its link, with no account (`POST /v1/calls/:code/pick`):
   the link is what decides, as it is for the card. The first pick wins, under the call's lock.
+
+### Attention during a call
+
+Explicit Q&A, its votes and pinned question, and feedback are visible only in their room to the people present when
+submitted. Moving into a room later gives no access to earlier questions, counts, pins or feedback; the same check runs
+under the call lock for votes and moderation. Every attention mutation names the room the sender was viewing, so a delayed
+submission is refused after a move. A signed-in account has one vote per question across its devices; an unsigned guest
+has one vote per stable call person. The principal is fixed in the sealed participant record when joining, so omitting
+a cookie, signing out or sending another account's cookie cannot create another vote or change authorship. Reloads and device
+moves preserve that principal. Older active calls without it use their sealed account address or guest person consistently,
+including when another browser joins that account during the upgrade. Host powers do not open another room's questions. Pinning an authorized question replaces the room's previous pin, and
+unpinning clears the room's pin, without revealing questions outside the host's original audience. Raised hands
+are different: the host sees every room's queue, so someone in a breakout room can ask the host for help, and can lower one
+entry by its ID or clear all hands. Everyone else sees their room's hands. Reloads and device moves keep queue position;
+intentional departure, removal and moving rooms clear the hand.
+
+`call_attention` holds one sealed record per call, scoped by its organizer and call IDs. Its new `call-attention` header and
+key bind it to that exact owner and call. Questions are at most 1,000 characters, with 200 per call, 200 votes per question,
+200 hands and 200 live feedback entries. Feedback lasts 15 seconds on the server clock and clears on departure or room
+change. At most 64 typed cues from the last minute are retained; admissions are host-only, and hand cues also reach the host
+across rooms. Other cues retain their original room audience. A waiting browser renews its sealed admission heartbeat at
+most every 15 seconds; 90 seconds without it expires the request, including for a delayed MLS approval under the call lock.
+
+All attention is live-only: ending the call deletes its record in the same transaction, and deleting the meeting or account
+cascades it. No Q&A is copied into notes, receipts or logs. Migration `0018_call_attention.sql` only adds the table. Older
+sealed call records still open: admission heartbeats default to zero, using the original join time until renewed, and old
+raised-hand flags become queue entries on the next save, in the old participant order (the earlier release kept no raise
+time). Stable entry IDs avoid changes between reads during that conversion; subsequent saves omit the replaced flags.
 
 ## Who can read a note
 

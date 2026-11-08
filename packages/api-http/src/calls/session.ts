@@ -168,10 +168,15 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private again = false;
   private fetching: Promise<void> | null = null;
   private fetchAgain = false;
+  /** A monotonic deadline: log-only chat activity must not postpone recovery of a lost call-state nudge. */
+  private nextStateRead = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Checks in a row while not in the call's group, so the first come quickly and the rest settle to the usual pace. */
   private waits = 0;
   private closed = false;
+  /** A deliberate departure must follow any return already sent, and never start another meanwhile. */
+  private departures = 0;
+  private returning: Promise<void> | null = null;
   /** When this connection may next ask to come back in, after being taken out while it was away. */
   private backAfter = 0;
   /** How many things here are showing the live notes, the next time this browser says so, and whether it's saying so now. */
@@ -223,11 +228,11 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.emit('debug', 'left a part of the call’s group', { why, room: place !== MAIN_PLACE });
   }
 
-  /**
-   * The server's state, minus notices this screen has dismissed. Confirmed chat reads only grow for this seat:
-   * a GET already in flight when a read succeeds must not bring its mention back while that response arrives.
-   */
+  /** The server's state, minus dismissed notices. Confirmed chat reads only grow for this seat. */
   private take(s: CallState) {
+    // Mutation replies and background reads can cross. A late reply never restores an older queue, vote or room.
+    if (s.revision < this.state.revision) return;
+    if (s.revision === this.state.revision && Date.parse(s.attention.serverNow) < Date.parse(this.state.attention.serverNow)) return;
     this.apply({ ...s, chatRead: [...new Set([...this.state.chatRead, ...s.chatRead])], notices: s.notices.filter((n) => !this.hidden.has(n.id)) });
   }
   private notify(text: string) { this.set({ ...this.state, notices: [...this.state.notices, { id: b64u(randomBytes(8)), kind: 'info', text }] }); }
@@ -239,9 +244,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private fetchState(): Promise<void> {
     if (this.closed) return Promise.resolve();
     if (this.fetching) { this.fetchAgain = true; return this.fetching; }
+    this.nextStateRead = performance.now() + this.timing.pollMs * 4;
     this.fetching = (async () => {
       try {
-        do { this.fetchAgain = false; this.take(await this.t.get(this.state.callId)); } while (this.fetchAgain && !this.closed);
+        do {
+          this.fetchAgain = false;
+          this.take(await this.t.get(this.state.callId));
+          this.nextStateRead = performance.now() + this.timing.pollMs * 4;
+        } while (this.fetchAgain && !this.closed);
       } finally { this.fetching = null; }
     })();
     return this.fetching;
@@ -325,7 +335,12 @@ export class HttpCall extends Live<CallState> implements CallSession {
     if (this.running) { this.again = true; return this.running; }
     this.running = (async () => {
       try {
-        do { this.again = false; await this.step(); } while (this.again && !this.closed);
+        do {
+          this.again = false;
+          await this.step();
+          const status = this.crypto.getSnapshot().status;
+          if (!this.closed && status !== 'denied' && status !== 'removed' && status !== 'away' && status !== 'failed' && performance.now() >= this.nextStateRead) await this.fetchState();
+        } while (this.again && !this.closed);
       } catch (e) {
         this.emit('warn', 'call keys not in step', { code: e instanceof MlsError ? 'mls' : errorCode(e) });
       } finally {
@@ -347,9 +362,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const quick = Math.min(this.timing.pollMs, WAIT_FIRST_MS * 2 ** (this.waits - 1)) * (0.8 + Math.random() * 0.4);
     this.timer = setTimeout(() => {
       void this.sync();
-      // Losing a document or a workspace says nothing to the call, so while something's presented, playing or open as a board, the call is read as well.
-      const { present, play } = this.state.workspace;
-      if (present || play || this.state.board.open) this.fetchState().catch((e: unknown) => this.emit('debug', 'call not read', { code: errorCode(e) }));
+      // sync checks the independent state deadline even if chat keeps restarting this keys timer.
     }, st === 'in' ? this.timing.pollMs * 4 : st === 'waiting' ? quick : this.timing.pollMs);
     unref(this.timer);
   }
@@ -391,7 +404,11 @@ export class HttpCall extends Live<CallState> implements CallSession {
     // go with it (below), so nothing heard in one part is ever taken for something said in the other.
     // What was said in the part it's leaving goes off the screen at once: the call's state for the new part follows.
     const moved = log.place !== this.place;
-    if (moved) { this.place = log.place; this.missedHere = false; this.set({ ...this.state, transcript: [] }); }
+    if (moved) {
+      this.place = log.place;
+      this.missedHere = false;
+      this.set({ ...this.state, transcript: [], attention: { ...this.state.attention, place: log.place, hands: [], questions: [], signals: [], cues: [] } });
+    }
     // Anyone but whoever hosts is in one group at a time: one the API no longer counts them in (they were sent elsewhere, or its room closed) is done with.
     if (!this.hosting) for (const place of [...this.groups.keys()]) if (place !== log.group) await this.drop(place, 'moved');
     // To be added to a group (a new generation, or another part of the call) without a key package left: a fresh one.
@@ -473,18 +490,23 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private async comeBack(log: CallMls): Promise<void> {
     // A closed call never comes back by itself, whatever a check it sent before closing says: its page let go (left,
     // moved or went away), and a slow answer mustn't bring it back in with nobody there.
-    if (this.closed) return;
+    if (this.closed || this.departures > 0) return;
     const now = Date.now();
     if (now < this.backAfter) return;
     this.backAfter = now + BACK_WAIT_MS;
     for (const place of [...this.groups.keys()]) await this.drop(place, 'removed');
+    if (this.closed || this.departures > 0) return;
     this.patch({ status: 'joining' });
+    const returning = this.t.back(this.state.callId, { generation: log.generation });
+    this.returning = returning;
     try {
-      await this.t.back(this.state.callId, { generation: log.generation });
+      await returning;
       this.emit('info', 'back in the call after its connection dropped', { generation: log.generation });
     } catch (e) {
       if (errorCode(e) !== 'conflict') throw e;
       this.emit('debug', 'not back in yet', { code: 'conflict' });
+    } finally {
+      this.returning = null;
     }
   }
 
@@ -751,7 +773,21 @@ export class HttpCall extends Live<CallState> implements CallSession {
       return null;
     }
   };
-  admit = async (identity: string) => { this.approved.add(identity); await this.sync(); };
+  admit = async (identity: string) => {
+    await this.fetchState();
+    if (!this.state.isHost) throw new AlcoveApiError('forbidden', 'Only the person hosting can let someone in.');
+    // An old notification is harmless: its identity is never re-used for a new request.
+    if (!this.state.waiting.some((w) => w.id === identity)) return;
+    this.approved.add(identity);
+    try {
+      await this.sync();
+      await this.fetchState();
+      if (this.state.waiting.some((w) => w.id === identity)) throw new AlcoveApiError('unavailable', 'They haven’t been let in yet. Try again.');
+    } finally {
+      // A failed press must not silently approve a future retry of the keys loop.
+      this.approved.delete(identity);
+    }
+  };
   deny = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'deny', identity })); };
   ring = async (emails: string[]) => { this.take(await this.t.act(this.state.callId, { type: 'ring', emails })); };
   setNotes = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'notes', on })); };
@@ -802,7 +838,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
-  setHand = async (up: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'hand', up })); };
+  setHand = (up: boolean) => this.space({ type: 'hand', up, place: this.state.attention.place });
+  lowerHand = (entryId: string) => this.space({ type: 'hand-lower', entryId, place: this.state.attention.place });
+  clearHands = () => this.space({ type: 'hands-clear', place: this.state.attention.place });
+  postQuestion = (id: string, text: string) => this.space({ type: 'question-post', id, text, place: this.state.attention.place });
+  voteQuestion = (id: string, on: boolean) => this.space({ type: 'question-vote', id, on, place: this.state.attention.place });
+  resolveQuestion: CallSession['resolveQuestion'] = (id, status) => this.space({ type: 'question-resolve', id, status, place: this.state.attention.place });
+  pinQuestion = (id: string | null) => this.space({ type: 'question-pin', id, place: this.state.attention.place });
+  setFeedback: CallSession['setFeedback'] = (kind) => this.space({ type: 'feedback', kind, place: this.state.attention.place });
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
@@ -871,17 +914,25 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * takes this browser hosting as the call last said and the server agreeing: one that has only just been made host
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
-  leave = async () => {
-    const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
-    // A refused or failed departure is still a live call: polling, keys and capture can carry on until a retry.
-    this.close();
-    this.set({ ...this.state, phase: 'ended' });
-    return r;
+  leave = () => {
+    const end = this.state.isHost;
+    return this.depart(() => this.t.leave(this.state.callId, { end, onPurpose: true }));
   };
   /** Whoever hosts leaves, and the call goes on with `to` hosting until the organizer is back. */
-  handOff = async (to: string) => {
-    await this.t.handOff(this.state.callId, to);
-    this.close();
-    this.set({ ...this.state, phase: 'ended' });
-  };
+  handOff = (to: string) => this.depart(() => this.t.handOff(this.state.callId, to));
+  /** Keep ordinary polling alive until departure succeeds, without mistaking the deliberate exit for a dropped connection. */
+  private async depart<T>(send: () => Promise<T>): Promise<T> {
+    this.departures++;
+    try {
+      // A return already on the wire finishes first: it must not arrive after the departure and put us back in.
+      await this.returning?.catch((e: unknown) => this.emit('debug', 'return finished before leaving', { code: errorCode(e) }));
+      const result = await send();
+      this.close();
+      this.set({ ...this.state, phase: 'ended' });
+      return result;
+    } finally {
+      // A refused or failed departure is still a live call: keys, chat and recovery carry on until a retry.
+      this.departures--;
+    }
+  }
 }
