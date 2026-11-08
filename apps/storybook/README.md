@@ -339,8 +339,8 @@ owns no call session, audio or camera. Its pictures are made-up preview content.
 **Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
 a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
 call, refuse leaving or changing the raised hand, and block devices. **Journeys / 6 Floating call / 6.22 Open a floating
-call** shows the automatic-opening preference and plays up to this same hand-off. Automatic opening starts enabled
-unless this browser already saved an off choice. Open the preview
+call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
+Alcove preference or explanatory control in View. Open the preview
 as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
 Storybook does not replace that API, force support, or claim a synthetic `userEvent` verified native behavior.
 

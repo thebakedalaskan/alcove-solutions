@@ -17,7 +17,7 @@ export interface ViewChoicesProps {
   /** On a phone what's open fills the screen under a row of arches, so there's nothing to choose beside it. */
   phone: boolean;
   onMode: (m: CallViewMode) => void; onPeople: (m: CallPeopleMode) => void; onSelf: (s: SelfView) => void; onReset: () => void;
-  /** The active call's floating-window choice and browser-local preference. */
+  /** The active call's manual floating-window action. */
   floating?: ((close: () => void) => ReactNode) | undefined;
   onDone?: (() => void) | undefined;
 }

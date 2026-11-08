@@ -1292,7 +1292,7 @@ export function InCall({ session }: { session: CallSession }) {
   useFocusBack(looks);
   const pointing = usePointing(shares, (id) => screensShown.includes(id), looks.popped);
   const popOut = usePopOut(looks.looks);
-  const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended', layout.prefs.autoFloat,
+  const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended',
     media.micTrack()?.readyState === 'live' || media.camSource()?.readyState === 'live');
   useEffect(() => { if (floating.error) toast(floating.error, { icon: 'pip' }); }, [floating.error, toast]);
   // Selecting Chat in the main call does not read it while that tab is hidden, unfocused or covered by focus view.
@@ -1703,15 +1703,6 @@ export function InCall({ session }: { session: CallSession }) {
       <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || !!ended} aria-busy={floating.pending} onClick={() => { void floating.owner.open(); close(); }}>
         <Icon name="pip" size={17} /><span className="t">{floating.pending ? 'Opening floating call…' : floating.target ? 'Return to floating call' : 'Open floating call'}</span>
       </button>
-      {floating.supported ? <>
-        <label><input type="checkbox" checked={layout.prefs.autoFloat} onChange={(e) => layout.setAutoFloat(e.currentTarget.checked)} />Open automatically when I leave this tab</label>
-        <p>{layout.prefs.autoFloat && floating.autoStatus === 'unavailable' ? 'This browser can’t open the call automatically. Use Open floating call.'
-          : layout.prefs.autoFloat && floating.autoStatus === 'insecure' ? 'This address doesn’t support automatic opening. Open the floating call yourself.'
-            : layout.prefs.autoFloat && floating.autoStatus === 'devices' ? 'Automatic opening needs a microphone or camera already allowed in this call. It can stay muted. You can still open the floating call yourself.'
-              : layout.prefs.autoFloat ? 'When you switch tabs, your browser may ask to allow automatic opening. A muted microphone can stay muted.'
-                : 'Open the floating call yourself, or turn on automatic opening when you switch tabs.'}</p>
-        <p>If your browser blocks automatic opening, use Open floating call. Open it yourself before minimizing Chrome. Keep the original call tab open.</p>
-      </> : <p>This browser can’t open a floating call. Your call controls stay here.</p>}
       {floating.error && <p role="alert">{floating.error}</p>}
     </div>
   };
