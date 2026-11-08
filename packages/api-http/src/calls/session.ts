@@ -903,7 +903,10 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * takes this browser hosting as the call last said and the server agreeing: one that has only just been made host
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
-  leave = () => this.depart(() => this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true }));
+  leave = () => {
+    const end = this.state.isHost;
+    return this.depart(() => this.t.leave(this.state.callId, { end, onPurpose: true }));
+  };
   /** Whoever hosts leaves, and the call goes on with `to` hosting until the organizer is back. */
   handOff = (to: string) => this.depart(() => this.t.handOff(this.state.callId, to));
   /** Keep ordinary polling alive until departure succeeds, without mistaking the deliberate exit for a dropped connection. */
