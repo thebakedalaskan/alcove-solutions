@@ -10,7 +10,7 @@ import { DisconnectReason, EncryptionType, TrackKind, TrackSource } from '@livek
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
-import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
+import { ORIGIN, cookieFetch, startHarness, type Harness } from '../../testing/harness';
 import { connect, deleteRoomDirectly, disposeLiveKit, participantsDirectly, signWebhook, tokenDirectly, type TestParticipant } from '../../testing/livekit';
 
 // Calls here use real WebRTC through LiveKit, which a busy CI runner can be slow to set up. Every step waits at most
@@ -1455,6 +1455,34 @@ describe('keeping in step', () => {
 const mutedAt = (viewer: TestParticipant, identity: string) => [...(viewer.room.remoteParticipants.get(identity)?.trackPublications.values() ?? [])].map((t) => t.muted);
 
 describe('host controls', () => {
+  it('confirms hand changes before resolving and rejects them once the person is out of the call', async () => {
+    const org = await account();
+    const invited = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    const personRoom = await joinRoom(person);
+
+    await person.setHand(true);
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).toBe(true);
+    expect((await settle(host, (s) => s.participants.some((p) => p.id === person.ticket.identity && p.hand))).participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(true);
+
+    await person.setHand(false);
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).toBe(false);
+    expect((await settle(host, (s) => s.participants.some((p) => p.id === person.ticket.identity && !p.hand))).participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(false);
+
+    await host.remove(person.ticket.identity);
+    expect(await personRoom.disconnectReason()).toBe(DisconnectReason.PARTICIPANT_REMOVED);
+    await expect(person.setHand(true)).rejects.toMatchObject({ code: 'forbidden' });
+    expect(person.getSnapshot().participants.find((p) => p.isMe)?.hand).not.toBe(true);
+    expect(host.getSnapshot().participants.some((p) => p.id === person.ticket.identity)).toBe(false);
+
+    await host.leave();
+    await expect(host.setHand(true)).rejects.toMatchObject({ code: 'conflict' });
+    expect(host.getSnapshot().participants.find((p) => p.isMe)?.hand).not.toBe(true);
+  });
+
   it('lets the organizer mute, remove and lock, and nobody else', async () => {
     const org = await account();
     const invitedEmail = unique('invited');
@@ -1583,6 +1611,45 @@ async function hook(event: string, roomName: string, identity?: string) {
 }
 
 describe('ending', () => {
+  it('keeps up with the call after leaving fails, and can leave again', async () => {
+    const realFetch = cookieFetch(ORIGIN);
+    let failLeave = false;
+    const connection: typeof fetch = (input, init) => {
+      if (failLeave && new URL(String(input)).pathname.endsWith('/leave')) {
+        failLeave = false;
+        return Promise.reject(new TypeError('The connection dropped while leaving.'));
+      }
+      return realFetch(input, init);
+    };
+    const org = await account(unique('organizer'), { fetch: connection });
+    const invited = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    const personRoom = await joinRoom(person);
+
+    failLeave = true;
+    await expect(host.leave()).rejects.toMatchObject({ code: 'network' });
+    expect(host.getSnapshot().phase).toBe('in-call');
+    expect((await org.api.calls.card(c)).ended).toBe(false);
+
+    // Chat must keep arriving through the session's own polling, without a reload or an explicit refresh.
+    await person.sendChat('The call is still here.');
+    await waitFor(() => chatOf(host).includes('The call is still here.'), 'chat after leaving failed');
+    await person.sendChat('Ready when you are.');
+    await waitFor(() => chatOf(host).includes('Ready when you are.'), 'the next chat after leaving failed');
+    await person.setHand(true);
+    // The browser refreshes this state when its room receives a nudge.
+    await host.refresh({ call: true, log: false });
+    expect(host.getSnapshot().participants.find((p) => p.id === person.ticket.identity)?.hand).toBe(true);
+
+    await host.leave();
+    expect(host.getSnapshot().phase).toBe('ended');
+    expect(await personRoom.disconnectReason()).toBe(DisconnectReason.ROOM_DELETED);
+    expect((await org.api.calls.card(c)).ended).toBe(true);
+  });
+
   it('ends the call for everyone when the organizer leaves, and runs the normal ending', async () => {
     const org = await account();
     const invitedEmail = unique('invited');

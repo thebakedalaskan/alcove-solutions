@@ -786,7 +786,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   remove = async (identity: string) => { this.take(await this.t.act(this.state.callId, { type: 'remove', identity })); await this.sync(); };
   lock = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'lock', on })); };
   stopRing = async (ringId: string) => { this.take(await this.t.act(this.state.callId, { type: 'stop-ring', ringId })); };
-  setHand = (up: boolean) => this.act({ type: 'hand', up });
+  setHand = async (up: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'hand', up })); };
   letOthersPoint = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'others-point', on })); };
   setPointing = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'pointing', on })); };
   setSpotlight = (participantId: string | null) => this.act({ type: 'spotlight', participantId });
@@ -856,8 +856,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
   leave = async () => {
-    this.close();
     const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
+    // A refused or failed departure is still a live call: polling, keys and capture can carry on until a retry.
+    this.close();
     this.set({ ...this.state, phase: 'ended' });
     return r;
   };

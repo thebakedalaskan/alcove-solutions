@@ -169,8 +169,8 @@ export interface CallSession extends LiveStore<CallState> {
   shareFrame(frame: ScreenFrame): Promise<ScreenFrameReceipt>;
   /** The presenter's own browser: one of its shares ended, so what it showed last stops there in the notes. */
   shareEnded(share: string): Promise<void>;
-  /** Raises or lowers your hand; everyone in the call sees it. */
-  setHand(up: boolean): void;
+  /** Raises or lowers your hand; resolves once confirmed by the server, then everyone in the call sees it. */
+  setHand(up: boolean): Promise<void>;
   /** Whether others may point at and mark what you share; everyone sees it. Resolves once the server has it. */
   letOthersPoint(on: boolean): Promise<void>;
   /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */

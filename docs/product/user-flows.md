@@ -571,6 +571,24 @@ Calls are for groups: invited people join with their accounts, anyone else with 
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
 ([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
+### Floating call
+
+**6.22 Keep the call in view.** On a supported desktop browser, **Open floating call** in **View** opens a small,
+movable and resizable window over other apps. It shows the speaker or a selected live shared screen, with the same
+microphone, camera and raised-hand state as the meeting. Its controls act on this call. Closing the window keeps you
+in the call; **Return to meeting** brings the meeting forward. **Leave** follows the call's usual confirmation and
+recording-save flow, and a failure keeps the call open with an explanation.
+
+Hands, people asking to enter (for the host), and new chat have compact indicators that return to the full meeting.
+The window shows no personal notes or message text. A chat count means new messages, not @mentions: the dedicated
+call-mention indicator depends on [#107](https://github.com/thebakedalaskan/the-privacy-suite/issues/107).
+
+Automatic opening is an optional preference for this browser. It starts off, and the browser still decides whether
+it can open the window when you move away. The call never requests camera, microphone or screen access just to enable
+automatic opening. Manual opening remains available where supported. Unsupported browsers keep the normal call controls.
+
+See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
+
 ### The call's workspace
 
 1. **Workspace**, at the top right, or **W**, opens the workspace on your stage, just for you: nobody else's screen changes,

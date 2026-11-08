@@ -194,7 +194,7 @@ page is designed, how to make a design canvas from the kit in `docs/design/canva
   links), `IconButton`, `ProviderButton`, `NotesSign`, `Chip`, `GroupChip`, `SealedBadge` and `SealedButton`
   (the badge that opens what was checked), `Notice`, `useToast` (a toast, from the `ToastProvider` at the app's root),
   `Avatar` and `Faces` (the arch), `GhostArch` (an empty arch where a person will be), `PickList` (people to find and press
-  in a popover: one, or several with ticks), `CallTile`, `CallDock` with `DockButton` (its `word` is said beside the icon,
+  in a popover: one, or several with ticks), `CallTile`, `FloatingCall` (the compact call's picture, controls and attention, with no media ownership), `CallDock` with `DockButton` (its `word` is said beside the icon,
   for Share, the one control the dock names), `CallTopGroup`, `CallTopButton` and `CallTopRule` (the top right's group, its
   buttons and hairlines), `CallMoreGrid` and `CallMoreTile` (More's grid on a phone), `CallFrame` (one frame for a screen, a
   board or the workspace, with its bar), `PresentedTile` (something presented that isn't on your stage, with Join),
