@@ -56,15 +56,17 @@ function makeOutput(): Output | null {
 async function bounded(action: Promise<unknown>): Promise<boolean> {
   return Promise.race([action.then(() => true, (e: unknown) => { alog.debug('sound output stayed unavailable', { err: e }); return false; }), new Promise<boolean>((resolve) => { setTimeout(() => resolve(false), 200); })]);
 }
+/** Called synchronously from a control's trusted gesture, including controls portalled into a child window. */
+export function unlockAudioOutput(): void {
+  try {
+    const out = makeOutput();
+    if (!out) return;
+    void bounded(Promise.all([out.context.resume(), out.audio?.play()]));
+  } catch (e) { alog.debug('sound output could not open', { err: e }); }
+}
 export function readyAudioOutput(): () => void {
   readyOwners++;
-  const ready = () => {
-    try {
-      const out = makeOutput();
-      if (!out) return;
-      void bounded(Promise.all([out.context.resume(), out.audio?.play()]));
-    } catch (e) { alog.debug('sound output could not open', { err: e }); }
-  };
+  const ready = () => unlockAudioOutput();
   addEventListener('pointerdown', ready, { capture: true });
   addEventListener('keydown', ready, { capture: true });
   return () => {

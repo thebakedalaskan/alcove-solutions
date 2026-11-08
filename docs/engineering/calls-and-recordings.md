@@ -2288,6 +2288,12 @@ the coordinates). Your own share has none of this: you have the original.
   into a breakout room; a 6K share held still at 4K; phone and wide stages, keyboard only and reduced motion; and memory
   over ten minutes of a share that changed every frame, which stayed flat once 30 pictures were kept.
 
+## Floating call
+
+The running call can expose a compact Document Picture-in-Picture presentation with the same controls and media ownership.
+Its lifecycle, automatic-opening capability, attention scope and verification requirements are documented in
+[Floating call](floating-call.md). Call-chat mention indicators remain dependent on #107; generic unread Chat is labelled as such.
+
 ## Room recordings
 
 `POST /v1/recordings` creates a private note (`kind: room`, nobody invited) and a recording. In the app, Record

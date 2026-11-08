@@ -1268,3 +1268,43 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
   .ic-side.is-sheet[data-view="attention"] { position: absolute; top: 0; bottom: 0; }
   .ic-scrim.is-attention { position: absolute; }
 }
+
+/* A call in Document Picture-in-Picture. Its controls and feedback stay in this document. */
+.ac-floating { position: relative; inset: auto; width: 100%; height: 100%; min-height: 220px; display: flex; flex-direction: column; overflow: auto; background: var(--stage); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); }
+.ac-floating-head { display: flex; flex: none; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.ac-floating-head > b { flex: 1; min-width: 0; font-weight: 600; }
+.ac-floating-head > .ac-i { color: var(--stage-ink-2); flex: none; }
+.ac-floating-head button { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--radius-sm); padding: 6px var(--space-2); color: var(--stage-ink); background: var(--stage-raised); font-size: 12px; }
+.ac-floating button:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ac-floating-picture { position: relative; flex: 1 1 180px; min-height: 100px; display: grid; place-items: center; overflow: hidden; background: var(--stage-tile); }
+.ac-floating-picture > video { width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.ac-floating-picture > video.is-self { transform: scaleX(-1); }
+.ac-floating-picture.is-arch { padding: var(--space-5) var(--space-3) 44px; }
+.ac-floating-picture .ac-empty { padding: var(--space-2); gap: var(--space-1); font-size: 12px; }
+.ac-floating-picture .ac-empty > svg { height: 44px; width: 44px; }
+.ac-floating-label { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-2); width: fit-content; max-width: calc(100% - 24px); background: var(--stage); border-radius: var(--radius-xs); padding: 3px 7px; color: var(--stage-ink); font-size: 12px; }
+.ac-floating-connection { position: absolute; top: var(--space-2); left: var(--space-2); display: flex; align-items: center; gap: var(--space-2); border-radius: var(--radius-pill); padding: 5px 9px; background: var(--stage); color: var(--stage-ink-2); }
+.ac-floating-attention { display: flex; flex: none; flex-wrap: wrap; justify-content: center; gap: var(--space-1); padding: var(--space-1) var(--space-2) 0; }
+.ac-floating-attention:empty { display: none; }
+.ac-floating-attention button { display: inline-flex; align-items: center; gap: 5px; border-radius: var(--radius-pill); padding: 5px 8px; background: var(--stage-raised); color: var(--stage-ink); font-size: 12px; }
+.ac-floating-attention b { min-width: 16px; font-variant-numeric: tabular-nums; color: var(--sun-text); }
+.ac-floating-foot { flex: none; display: flex; justify-content: center; padding: var(--space-2); }
+.ac-floating-foot .ac-dock { position: static; transform: none; gap: var(--space-1); padding: 5px; }
+.ac-floating-foot .ac-dock-btn { width: 36px; height: 36px; }
+.ac-floating-foot .ac-dock-leave { min-height: 36px; }
+.ac-floating-feedback { flex: none; display: grid; gap: var(--space-1); padding: 0 var(--space-3) var(--space-2); color: var(--caution); font-size: 12px; }
+.ac-floating-feedback p { display: flex; align-items: center; gap: 5px; margin: 0; overflow-wrap: anywhere; }
+.ac-floating-feedback button { display: flex; align-items: center; gap: var(--space-2); width: fit-content; color: var(--stage-ink); padding: 5px 0; text-decoration: underline; text-underline-offset: 3px; }
+.ac-floating-question { flex: 1; min-height: 0; overflow: auto; }
+.ac-floating-question .ic-leave { width: auto; max-height: none; padding: var(--space-4); border: 0; background: var(--stage); border-radius: 0; }
+.ac-floating-question .ic-leave .in { width: auto; }
+.ac-floating-question .ic-leave .ac-display-s { font-size: 25px; }
+.ac-floating-question .ic-leave .acts { flex-direction: column; align-items: stretch; }
+.ac-floating-question .ic-leave .next-host .who { flex-wrap: wrap; }
+.ic-vfloat { display: grid; gap: var(--space-2); padding: var(--space-2) 0 0; }
+.ic-vfloat label { display: flex; align-items: flex-start; gap: var(--space-2); font-size: 13px; color: var(--ink); }
+.ic-vfloat input { margin-top: 3px; accent-color: var(--sun); }
+.ic-vfloat p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+
+.ic-floating-root { position: fixed; inset: 0; }
+.ac-floating-question .ic-leave .in { padding: 0; }

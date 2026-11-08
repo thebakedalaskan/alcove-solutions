@@ -896,8 +896,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * is refused instead (it said "leave", not "end"), and one that has just stopped hosting simply leaves.
    */
   leave = async () => {
-    this.close();
     const r = await this.t.leave(this.state.callId, { end: this.state.isHost, onPurpose: true });
+    // A refused or failed departure is still a live call: polling, keys and capture can carry on until a retry.
+    this.close();
     this.set({ ...this.state, phase: 'ended' });
     return r;
   };
