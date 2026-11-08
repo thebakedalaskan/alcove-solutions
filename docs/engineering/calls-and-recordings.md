@@ -2573,3 +2573,7 @@ never touches the encrypted recording.
   10 seconds after LiveKit notices), nothing is captured; the notes don't mark that stretch as a gap yet.
 - **A room committed by one of its own members**, so that whoever hosts holds a breakout room's keys only while in it
   (Zoom's model): each group's committer would be one of its own people, rather than the host's browser for all.
+
+## Call sounds
+
+Short call cues, their audience, output isolation and preference upgrades are documented in [Call sounds](call-sounds.md).

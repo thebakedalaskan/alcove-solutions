@@ -30,6 +30,7 @@ import { hereIn, knownIn, knownUntil, personFor, speakersIn, type Viewer } from 
 import { afterClosing, keepRoomBoards, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { stillHosting } from './permissions';
 import { nudge } from './notifications';
+import { leaveAttention } from './attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -140,6 +141,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       // What the call kept of its workspace goes with it: what was worked on goes into its note, if it has one, and nowhere else.
       await save(o, c, callId, { ...s, workspace: NO_SPACE, board: NO_BOARDS });
       // The MLS log only matters while the call runs, and nobody is rung into a call that's over.
+      await exec(c, 'DELETE FROM call_attention WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await exec(c, 'DELETE FROM call_mls WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
       await rings.clear(o, c, row.meeting_item_id);
       // Who's invited lasts as long as the call does. Its note has its own list.
@@ -244,6 +246,7 @@ export async function handOff(v: Viewer, callId: string, to: string | null, onPu
       throw new ConflictError(to === null ? 'Nobody else here can host. End the call for everyone instead.' : 'They can’t host right now. Choose someone else, or end the call.',
         { context: { ...ctx, why: 'not eligible', chosen: to !== null } });
     }
+    if (onPurpose) await leaveAttention(o, c, callId, from);
     const organizer = (await me(o, c)).name;
     const { state: after, generation } = await newGeneration(o, c, row, onPurpose ? space.leftForGood(s, from.person, from.identity, space.ending(o, callId)) : s, { host: next, joining: false, gone: [from.identity] }, { change: { kind: 'left', from, to: next }, organizer });
     clog.info('host handed off and left', { ...ctx, generation, segment: after.notes.segment, notes: after.notes.status });
@@ -267,6 +270,7 @@ export async function departed(o: Owner, callId: string, identity: string, at = 
     const j = held.state.people.find((x) => x.identity === identity && x.role !== 'host' && x.identity !== held.state.host);
     const state = j && onPurpose ? space.leftForGood(held.state, j.person, identity, space.ending(o, callId)) : held.state;
     if (row.state !== 'live' || !j) return null;
+    if (onPurpose) await leaveAttention(o, c, callId, j);
     if (j.status !== 'in' && j.status !== 'waiting') {
       // LiveKit's word that they'd gone got here first.
       if (state !== held.state) await save(o, c, callId, state);

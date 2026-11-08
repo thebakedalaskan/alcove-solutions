@@ -333,7 +333,7 @@ function withFields(p: Preferences, from: Patch<Preferences>, take: (k: keyof Pr
   const f = <K extends keyof Preferences>(k: K): Preferences[K] => (take(k) ? from[k] ?? p[k] : p[k]);
   return {
     notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
-    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups')
+    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), sounds: f('sounds'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups')
   };
 }
 const prefsWrite = (qc: QueryClient) => {

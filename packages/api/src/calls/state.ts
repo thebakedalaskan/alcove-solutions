@@ -10,6 +10,7 @@ import { LiveNotesSchema } from './catchup';
 import { CallCodeSchema } from './entry';
 import { RungSchema } from './rings';
 import { NotesChoicesSchema, NotesSettingSchema } from './settings';
+import { CallAttentionSchema } from './attention';
 import { CallWorkspaceSchema } from './workspace';
 /* ---------- group calls: who's in the call comes from the API; mic, camera and screen are LiveKit's tracks ---------- */
 
@@ -196,7 +197,7 @@ export const CallParticipantSchema = z.object({
   seat: z.string(),
   /** `isOrganizer`: the organizer's connection. Who hosts now is `CallState.host`. */
   person: PersonSchema, isMe: z.boolean(), isOrganizer: z.boolean(),
-  /** A raised hand, which everyone sees. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
+  /** A raised hand visible in your room, or to the host across rooms. (Mic, camera and screen are LiveKit's tracks, not the server's.) */
   hand: z.boolean(),
   /**
    * Whether others may point at and mark what they share: their own choice, kept across their reconnections, on until
@@ -288,6 +289,8 @@ export type CallHost = z.infer<typeof CallHostSchema>;
 
 
 export const CallStateSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  attention: CallAttentionSchema,
   callId: IDSchema,
   meetingId: IDSchema,
   code: z.string(),

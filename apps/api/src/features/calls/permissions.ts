@@ -3,6 +3,7 @@ import { ConflictError } from '../../errors';
 import * as space from './workspace';
 import * as boards from './boards';
 import { type Viewer } from './participants';
+import { anyonesAttention } from './attention';
 import { type Stored } from './state';
 
 /* ---------- during the call: the organizer's controls, and what anyone in it can do ---------- */
@@ -13,7 +14,7 @@ import { type Stored } from './state';
  * organizer's own besides, checked by the API).
  */
 export const anyone = (a: CallAction): boolean =>
-  a.type === 'hand' || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'board-ideas-done' || space.anyonesAction(a) ||
+  anyonesAttention(a) || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'board-ideas-done' || space.anyonesAction(a) ||
   boards.isBoardAction(a) || boards.isRunAction(a);
 
 /**

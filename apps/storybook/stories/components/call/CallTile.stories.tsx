@@ -3,7 +3,7 @@
  * their own colour, or their arch. Whoever speaks gets the speak ring and a level meter, a muted mic shows its mark, a
  * raised hand a gold ring, and someone whose media hasn't reached this browser yet says Connecting.
  */
-import { CallTile } from '@alcove/ui';
+import { CallSignal, CallTile } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { Box, onStage } from '../../../src/component';
 import { INES, KOFI, PRIYA } from '../../../src/world/people';
@@ -28,3 +28,5 @@ export const HandRaised: Story = { name: 'Hand raised', args: { person: KOFI, na
 export const Connecting: Story = { args: { connecting: true } };
 /** Someone without a portrait: their arch, with their initial. */
 export const Arch: Story = { args: { person: INES, name: 'Ines Moreau' } };
+/** Quiet feedback shares the tile without replacing its hand or microphone state. */
+export const QuietSignal: Story = { args: { signal: <CallSignal className="ac-tile-signal" icon="pace" label="Slow down" /> } };

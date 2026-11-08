@@ -148,7 +148,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   };
 
   /** What whoever hosts may do while standing in for the organizer: keep the call running, but not change its notes or rooms' plan. */
-  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable']);
+  const HOST_ACTIONS: ReadonlySet<CallAction['type']> = new Set(['deny', 'mute', 'remove', 'lock', 'spotlight', 'rooms-close', 'unavailable', 'hand-lower', 'hands-clear', 'question-resolve', 'question-pin']);
 
   app.get('/v1/live/calls/:id', async (c) => c.json(await callsService.state(c.get('viewer'), c.req.param('id'))));
 

@@ -13,6 +13,7 @@ import { BreakoutState, Joined, placesOf, relocate } from './places';
 import { keepRooms } from './scribes';
 import * as screens from '../recordings/screens';
 import { log } from '../../log';
+import { syncAttention } from './attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -96,6 +97,7 @@ export const Stored = z.preprocess(withHost, z.object({
 export type Stored = z.infer<typeof Stored>;
 
 export const Row = z.object({
+  version: z.coerce.number().int().nonnegative(), attention_ciphertext: bytea.nullable(),
   call_id: z.string(), meeting_item_id: z.string(), state: z.enum(['live', 'ended']), started_at: timestamp, ended_at: timestamp.nullable(), state_ciphertext: bytea,
   room_name: z.string().nullable(), host_identity: z.string().nullable(), host_joined_at: timestamp.nullable(), host_left_at: timestamp.nullable(), locked: z.boolean(),
   mls_generation: z.coerce.number().int(), mls_epoch: z.coerce.number().int(), mls_seq: z.coerce.number().int()
@@ -103,7 +105,7 @@ export const Row = z.object({
 
 export type Row = z.infer<typeof Row>;
 
-const COLUMNS = 'call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_joined_at, host_left_at, locked, mls_generation, mls_epoch, mls_seq';
+const COLUMNS = 'version, (SELECT ciphertext FROM call_attention WHERE call_attention.owner_id = calls.owner_id AND call_attention.call_id = calls.call_id) AS attention_ciphertext, call_id, meeting_item_id, state, started_at, ended_at, state_ciphertext, room_name, host_identity, host_joined_at, host_left_at, locked, mls_generation, mls_epoch, mls_seq';
 
 export const key = (o: Owner, callId: string) => stateKey(o.root, o.ownerId, `call:${callId}`);
 
@@ -124,7 +126,9 @@ export async function load(o: Owner, db: Db, callId: string, lock: boolean | 'sh
  * saved, before each room's record.
  */
 export async function save(o: Owner, db: Db, callId: string, s: Stored): Promise<Stored> {
+  const before = await load(o, db, callId);
   const tidy = space.tidied(s, space.ending(o, callId));
+  if (before.row.state === 'live') await syncAttention(o, db, callId, before.state, tidy);
   // A board open in any part of the call goes into the note, for that part's notes to read, whether or not anyone changes it.
   const kept = keepRooms({ ...tidy, workspace: withOpenBoards(tidy.workspace, tidy.board.open) }, Date.now());
   await exec(db, 'UPDATE calls SET state_ciphertext = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, sealJson(key(o, callId), header(o, callId), toJson(kept))]);

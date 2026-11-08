@@ -24,6 +24,7 @@ import { addFollowUp, tickFollowUp } from './insights';
 import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBoards } from './room-boards';
 import { changeCapture } from './recording';
 import { nudge } from './notifications';
+import { changeAttention, isAttentionAction } from './attention';
 
 const clog = log.child({ component: 'calls' });
 
@@ -68,8 +69,8 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     const ctx = { callId, action: a.type };
     // Under the call's row lock: a stand-in's last click as the organizer takes the call back is refused, not carried out.
     if (!anyone(a)) stillHosting(v, state, ctx);
-    if (a.type === 'hand') {
-      s = withPerson(s, v.pass.identity, (j) => ({ ...j, hand: a.up }));
+    if (isAttentionAction(a)) {
+      await changeAttention(v, c, callId, s, a);
     } else if (a.type === 'others-point') {
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.
       const off = s.othersPointOff.filter((p) => p !== v.pass.person);

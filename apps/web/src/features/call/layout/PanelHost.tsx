@@ -111,7 +111,7 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
   }, [view, onPhone]);
   /** Tab and Shift+Tab go round what's in the phone's sheet, never out to the call behind it. */
   const keepKeys = (e: ReactKeyboardEvent<HTMLElement>) => {
-    if (e.key !== 'Tab' || !onPhone) return;
+    if (e.key !== 'Tab' || !onPhone || side?.view === 'attention') return;
     const all = [...e.currentTarget.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]')]
       .filter((el) => el.getClientRects().length > 0 && el.closest('[inert]') === null);
     const first = all[0];
@@ -121,6 +121,22 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
     if (e.shiftKey && (at === first || at === e.currentTarget)) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
   };
+  // Attention is a partial phone sheet: keep its controls and the visible call dock in one keyboard loop.
+  useEffect(() => {
+    if (!onPhone || view !== 'attention') return;
+    const loop = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || document.querySelector('[data-radix-popper-content-wrapper], [role="dialog"]')) return;
+      const panel = sheet.current;
+      const dock = panel?.closest('.ic-call')?.querySelector('.ic-dockbar');
+      if (!panel || !dock) return;
+      const controls = [panel, dock].flatMap((root) => [...root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]')]).filter((el) => el.getClientRects().length > 0);
+      const first = controls[0]; const last = controls.at(-1);
+      if (first && last && e.shiftKey && (document.activeElement === first || document.activeElement === panel)) { e.preventDefault(); last.focus(); }
+      else if (first && last && !e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', loop);
+    return () => document.removeEventListener('keydown', loop);
+  }, [onPhone, view]);
   const away = reduce ? { opacity: 0 } : side?.phone ? { y: '100%' } : { x: sideBox.w + 40 };
   const here = side?.phone ? { opacity: 1, y: 0 } : { ...at(sideBox), opacity: 1, x: 0 };
   return (
@@ -130,7 +146,7 @@ export function PanelHost({ area, size, tiles, frames, side, swap }: {
       {swap && <div className="ic-swapbar">{swap}</div>}
       <AnimatePresence>
         {measured.current && (side?.phone || side?.over) && (
-          <motion.div key={side.phone ? 'scrim' : 'dim'} className={cn('ic-scrim', !side.phone && 'is-over')} aria-hidden="true" onClick={side.onClose}
+          <motion.div key={side.phone ? 'scrim' : 'dim'} className={cn('ic-scrim', side.view === 'attention' && 'is-attention', !side.phone && 'is-over')} aria-hidden="true" onClick={side.onClose}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={reduce ? { duration: 0 } : { duration: 0.24 }} />
         )}
         {measured.current && side && (

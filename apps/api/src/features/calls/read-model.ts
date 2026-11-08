@@ -10,13 +10,14 @@ import * as capture from './capture';
 import { MeetingManifest } from '../meetings/service';
 import { getItem } from '../../vault';
 import { standIns } from './hosting';
-import { groupOf, placeOf, type Room } from './places';
+import { admissionFresh, groupOf, placeOf, type Room } from './places';
 import * as rings from './rings';
 import { scribeOf } from './scribes';
 import * as transcripts from '../recordings/transcripts';
 import { hostAway, load, secondsIn, settle, type Row, type Stored } from './state';
 import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, speakersIn, type Viewer } from './participants';
 import { NO_NOTES, boardFor, notesFor } from './insights';
+import { attentionFor, openAttention } from './attention';
 import { stopLost } from './workspace-state';
 
 /**
@@ -52,14 +53,14 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const organizer = await me(o);
   const end = row.ended_at ?? new Date();
   const base = {
-    callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
+    revision: row.version, callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost, role: v.role
+    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {
     return {
-      ...base, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      ...base, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
       host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, notices: []
     };
   }
@@ -77,6 +78,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const seats = seatKey(o, callId);
   const mine = s.notes.asks.find((a) => a.person === v.pass.person);
   const who = hostOf(rooms, v, organizer, row.state === 'live');
+  const attention = attentionFor(v, callId, rooms, openAttention(o, callId, row.attention_ciphertext, { ciphertext: row.state_ciphertext, state: rooms }), organizer, end.getTime());
   // Who's asking to see the workspace, from whoever is in the call now: for the organizer, as they see everyone.
   const asks: CallWorkspaceAsk[] = !v.isOrganizer ? [] : rooms.workspace.asks.flatMap((a) => {
     const j = here.findLast((p) => p.person === a.person);
@@ -85,14 +87,14 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const { shown: workspace, lost } = await space.shownTo({ v, callId, meeting: meeting.manifest, s: rooms, place: where, chosenBy: who.organizer, asks });
   if (lost.present.length || lost.space.length || lost.play.length) await stopLost(o, callId, lost);
   return {
-    ...base,
+    ...base, attention,
     participants: here.map((j) => ({
       id: j.identity, seat: seatOf(seats, j), person: forViewer(v, personFor(j, j.identity, j.name, organizer), j.identity), isMe: j.identity === v.pass.identity,
-      isOrganizer: j.role === 'host', hand: j.hand, othersPoint: !s.othersPointOff.includes(j.person)
+      isOrganizer: j.role === 'host', hand: attention.hands.some((h) => h.participantId === j.identity), othersPoint: !s.othersPointOff.includes(j.person)
     })),
     spotlight: s.spotlight && here.some((j) => j.identity === s.spotlight) ? s.spotlight : null,
     breakouts: breakoutsOf(rooms, v, organizer),
-    waiting: v.isHost ? s.people.filter((j) => j.status === 'waiting' && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
+    waiting: v.isHost && s.host === v.pass.identity ? s.people.filter((j) => j.status === 'waiting' && admissionFresh(j) && j.admit === 'ask' && j.keysFor === row.mls_generation).map((j) => ({ id: j.identity, person: personFor(j, j.identity, j.name, organizer) })) : [],
     ringing: v.isOrganizer ? await rings.rungIn(o, db, row.meeting_item_id, here.flatMap((j) => (j.email ? [j.email.toLowerCase()] : []))) : [],
     // Connections on their way out of their group (the host's browser takes them out), shown as who they are.
     leaving: row.state === 'live' ? s.people.filter((j) => j.status === 'left' && groupOf(s, j) !== null && j.role !== 'host').map((j) => ({

@@ -10,6 +10,7 @@ import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-ro
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { arrival } from '~/features/onboarding/store';
 import { AgentsPart } from '~/features/agents/Settings';
+import { SoundsPart } from '~/features/settings/Sounds';
 import { DevicesPart } from '~/features/settings/Devices';
 import { AppearancePart, CalendarPart, NotesPart, NotificationsPart, PlanPart, ProfilePart, RecordingPart, Unloaded } from '~/features/settings/parts';
 import { PrivacyPart } from '~/features/settings/Privacy';
@@ -35,6 +36,7 @@ const PARTS: readonly Part[] = [
   { id: 'calendar', label: 'Calendar', needs: 'prefs' },
   { id: 'devices', label: 'Devices' },
   { id: 'agents', label: 'Agents' },
+  { id: 'sounds', label: 'Sounds', needs: 'prefs' },
   { id: 'notifications', label: 'Notifications', needs: 'prefs' },
   { id: 'appearance', label: 'Appearance' },
   { id: 'plan', label: 'Plan and credits', needs: 'credits' },
@@ -194,6 +196,7 @@ function Settings() {
             ) : prefs.isError && <Unloaded id="notes" title="Notes, recording, calendar and notifications" busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, 'notes')} />}
             <DevicesPart />
             <AgentsPart />
+            {prefs.data && <SoundsPart prefs={prefs.data} />}
             {prefs.data && <NotificationsPart prefs={prefs.data} />}
             <AppearancePart />
             {credits.data ? <PlanPart credits={credits.data} /> : credits.isError && <Unloaded id="plan" title="Plan and credits" busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, 'plan')} />}

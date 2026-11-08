@@ -307,7 +307,7 @@ export const standIn: AlcoveApi = {
       w.prefs = {
         notesDefault: patch.notesDefault ?? p.notesDefault, notesLanguage: patch.notesLanguage ?? p.notesLanguage, summaryLength: patch.summaryLength ?? p.summaryLength,
         addToCalendar: patch.addToCalendar ?? p.addToCalendar, showOtherMeetings: patch.showOtherMeetings ?? p.showOtherMeetings, recordOffline: patch.recordOffline ?? p.recordOffline,
-        notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups
+        sounds: patch.sounds ?? p.sounds, notifications: patch.notifications ?? p.notifications, pinned: patch.pinned ?? p.pinned, groups: patch.groups ?? p.groups
       };
       return w.prefs;
     }),

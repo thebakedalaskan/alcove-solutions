@@ -206,7 +206,7 @@ async function seedTree(workspaceId: string, n: number, parent: string | null = 
 /** Connections waiting on a row's lock now, everyone's. */
 const waitingOnLocks = () => count("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
 /** An action as a browser sends it, whatever the client would make of it. */
-const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(a) });
+const action = (who: Browser, call: CallSession, a: unknown) => who.fetch(`${h.baseUrl}/v1/live/calls/${call.ticket.callId}/actions`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-alcove-call': call.ticket.pass }, body: JSON.stringify(typeof a === 'object' && a !== null && 'type' in a && a.type === 'hand' ? { ...a, place: call.getSnapshot().attention.place } : a) });
 
 describe('which workspace a call uses', () => {
   it('settles the first time anyone opens it: a new home made for the call, with everyone invited in it, once, however many open it at once', async () => {
