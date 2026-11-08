@@ -170,6 +170,7 @@ export type CallFollowUp = z.infer<typeof CallFollowUpSchema>;
 /** The call's follow-ups as you may read them. "Mine" is yours to filter. */
 export const CallFollowUpsSchema = z.object({
   items: z.array(CallFollowUpSchema),
+  suggestions: z.array(LiveFollowUpSchema),
   /** What the notes are doing where you are: anything but `on`, and what's here comes from documents, or from before. */
   notes: z.enum(['on', 'paused', 'off'])
 });

@@ -122,13 +122,15 @@ export const FolderFollowUpsPhone = phone(FolderFollowUps);
 export const FolderTranscript = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, { play: openPage('Transcript') });
 export const FolderTranscriptPhone = phone(FolderTranscript);
 
-/** A follow-up nobody said, added by hand: yours, for everyone who gets the notes. */
+/** A follow-up nobody said, added by hand with an optional owner and date, for everyone who gets the notes. */
 export const AddFollowUp = inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, ...TALK } }, {
   play: async (c) => {
     await openPage('Follow-ups')(c);
-    await c.step('Write one nobody said, and press Enter. It’s yours, ticked like the rest', async () => {
-      const field = await c.canvas.findByRole('textbox', { name: 'Add a follow-up' }, { timeout: 8000 });
-      await c.userEvent.type(field, 'Book the room for the launch retro{Enter}');
+    await c.step('Add one nobody said, with a date and nobody assigned yet', async () => {
+      await c.userEvent.click(await c.canvas.findByRole('button', { name: 'Add a follow-up' }, { timeout: 8000 }));
+      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'What needs doing' }), 'Book the room for the launch retro');
+      await c.userEvent.type(await c.canvas.findByRole('textbox', { name: 'Due' }), 'Friday');
+      await c.userEvent.click(c.canvas.getByRole('button', { name: 'Add' }));
     });
   }
 });

@@ -1,13 +1,14 @@
 /**
  * What the notes propose and what people agree to (docs: Notes and inference › Decisions and follow-ups), end to end: the
  * real API over HTTP via @alcove/api-http, real Postgres, the object store and the fake NEAR AI. Decisions move only as
- * far as each person's grants let them, with who and when; a follow-up is a suggestion until the person it's for says
- * so; every entry shows what backs it for whoever reads it now; and what people settled survives the notes being
+ * far as each person's grants let them, with who and when; adding a follow-up doesn't claim its owner's consent, which
+ * they give separately; every entry shows what backs it for whoever reads it now; and what people settled survives the notes being
  * written again.
  */
 import { AlcoveApiError, DEFAULT_NOTES_CHOICES, type ActionPatch, type AlcoveApi, type DecisionPatch, type Note, type NoteEvidenceMoment, type TranscriptClip } from '@alcove/api';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { speechWav } from '../../testing/fake-near';
+import { acceptNoteSuggestions } from '../../testing/follow-ups';
 import { startHarness, type Harness } from '../../testing/harness';
 
 vi.setConfig({ testTimeout: 60_000 });
@@ -38,6 +39,7 @@ async function held(org: Account, words: string, guests: string[] = []): Promise
   await call.transcribe(speech(words), call.ticket.identity);
   const noteId = (await call.leave())?.pendingNoteId ?? '';
   await written(org.api, noteId);
+  await acceptNoteSuggestions(org.api, noteId);
   return noteId;
 }
 /** Schedules a call set not to keep its transcript, and joins it as its organizer. */
@@ -304,13 +306,13 @@ describe('follow-ups', () => {
     const [kofi, priya] = [await account(kofiEmail), await account(priyaEmail)];
     const note = await org.api.notes.get(noteId);
     const id = note.actions[0]?.id ?? '';
-    // The model replied that this was taken on and done: the notes only ever suggest.
-    expect(note.actions).toMatchObject([{ takenOn: false, done: false, changes: [], owner: { person: { email: kofiEmail } }, due: 'Wednesday' }]);
+    // The organizer accepted the task through held(); the model cannot claim the assignee's consent or completion.
+    expect(note.actions).toMatchObject([{ takenOn: false, done: false, changes: [{ what: 'accepted', by: { email: org.email } }], owner: { person: { email: kofiEmail } }, due: 'Wednesday' }]);
 
     // Nobody can say yes for him, the organizer included; only Kofi can, and that's what it says from then on.
     for (const reader of [org, priya]) expect(await outcome(reader.api.notes.updateAction(noteId, id, takeOn(note.actions[0])))).toBe('forbidden');
     expect((await kofi.api.notes.inbox()).followUps).toMatchObject([{ id, takenOn: false, role: 'invited' }]);
-    expect(action(await kofi.api.notes.updateAction(noteId, id, takeOn(note.actions[0])), id)).toMatchObject({ takenOn: true, changes: [{ what: 'took-on', by: { email: kofiEmail } }] });
+    expect(action(await kofi.api.notes.updateAction(noteId, id, takeOn(note.actions[0])), id)).toMatchObject({ takenOn: true, changes: [{ what: 'accepted', by: { email: org.email } }, { what: 'took-on', by: { email: kofiEmail } }] });
     expect((await kofi.api.notes.inbox()).followUps).toMatchObject([{ id, takenOn: true }]);
 
     // What someone took on, nobody else changes: only they or the organizer can.
@@ -395,9 +397,11 @@ describe('follow-ups', () => {
     expect(added.actions).toMatchObject([{ text: 'Email the press', takenOn: false, due: 'Friday', owner: { person: { email: priyaEmail } }, lines: [line], changes: [{ what: 'proposed', by: { email: kofiEmail } }] }]);
     expect((await priya.api.notes.inbox()).followUps).toMatchObject([{ text: 'Email the press', takenOn: false }]);
     expect(await outcome(kofi.api.notes.updateAction(noteId, added.actions[0]?.id ?? '', takeOn(added.actions[0])))).toBe('forbidden');
-    // For yourself it's taken on from the start.
+    // Adding a task for yourself still doesn't take it on: that agreement is a separate action.
     const mine = await priya.api.notes.proposeAction(noteId, { text: 'Update the page', owner: priyaEmail });
-    expect(mine.actions.find((a) => a.text === 'Update the page')).toMatchObject({ takenOn: true });
+    const own = mine.actions.find((a) => a.text === 'Update the page');
+    expect(own).toMatchObject({ review: 'accepted', takenOn: false, owner: { person: { email: priyaEmail } } });
+    expect(action(await priya.api.notes.updateAction(noteId, own?.id ?? '', takeOn(own)), own?.id ?? '')).toMatchObject({ takenOn: true });
     // For nobody, it's anyone's, and the same words again add nothing.
     const free = await kofi.api.notes.proposeAction(noteId, { text: 'Order the cake' });
     expect(free.actions.find((a) => a.text === 'Order the cake')?.owner).toBeUndefined();
@@ -564,6 +568,7 @@ describe('the record, read back', () => {
       ['reworded', 'invited', 'We agreed to drop the beta.', 'The beta ends.'], ['confirmed', 'organizer', undefined, undefined], ['superseded', 'organizer', undefined, undefined]
     ]);
     expect(history(action(last, a))).toEqual([
+      ['accepted', 'organizer', undefined, undefined],
       ['took-on', 'invited', undefined, undefined], ['due', 'invited', 'Wednesday', 'Friday'], ['reworded', 'invited', 'Send the screens by Wednesday', 'Send the final screens'],
       ['took-on', 'organizer', 'Kofi', org.session.user.name], ['done', 'organizer', undefined, undefined]
     ]);
@@ -643,13 +648,15 @@ describe('the record, read back', () => {
     expect(settled(again)).toEqual(settled(before));
     // Told what's settled, the model repeated it anyway: nothing came back twice, and Priya isn't offered what she turned down.
     expect(again.decisions).toHaveLength(4);
-    expect(again.actions.map((a) => a.text).sort()).toEqual(['Book the room by Friday', 'Order the big cake', 'Send the screens by Wednesday', 'Tell the press']);
+    expect(again.actions.map((a) => a.text).sort()).toEqual(['Book the room by Friday', 'Order the cake', 'Send the screens by Wednesday', 'Tell the press']);
     expect(again.actions.find((a) => a.text.startsWith('Book'))?.owner).toBeUndefined();
     expect(h.near.prompts.at(-1)).toContain('Follow-up (nobody has it): Book the room by Friday');
-    // What nobody touched was written afresh, from the corrected line, and it's still only a suggestion.
-    const fresh = again.actions.find((a) => a.text === 'Order the big cake');
+    // A corrected line proposes a change; the task already accepted by a person keeps its words and identity.
+    const fresh = again.suggestions.find((a) => a.text === 'Order the big cake');
     expect(fresh).toMatchObject({ takenOn: false, changes: [], evidence: { flags: [] } });
     expect(fresh?.id).not.toBe(cake);
+    expect(fresh?.changeOf).toBe(cake);
+    expect(again.actions.find((a) => a.id === cake)?.text).toBe('Order the cake');
     // The inbox reads the same: what was acknowledged stays so, what was answered stays answered.
     expect((await kofi.api.notes.inbox()).followUps).toMatchObject([{ id: screens, takenOn: true }]);
     expect((await priya.api.notes.inbox()).followUps).toEqual([]);
@@ -680,7 +687,7 @@ describe('the record, read back', () => {
     const again = await org.api.notes.get(noteId);
     // Nothing the call said was lost to them: the model words decisions afresh, as it does when it's told what's settled.
     expect(again.decisions.map((d) => d.text).sort()).toEqual(['Agreed to ship on Monday', 'Agreed: move the beta to March.', 'Move the launch', 'Move the launch to March', 'the']);
-    expect(again.actions.map((a) => a.text).sort()).toEqual(['Book room', 'Book the room', 'Send screens by Wednesday', 'Tell the board about the end of the beta', 'Tell the team about the end of the beta', 'the']);
+    expect(again.actions.map((a) => a.text).sort()).toEqual(['Book room', 'Book the room', 'Send screens by Wednesday', 'Send the screens by Wednesday', 'Tell the board about the end of the beta', 'Tell the team about the end of the beta', 'the']);
   });
 });
 
@@ -737,12 +744,16 @@ describe('guests', () => {
     await host.transcribe(speech('We agreed to order a cake. // Sam will order the cake by Friday.'), host.ticket.identity);
     const noteId = (await host.leave())?.pendingNoteId ?? '';
     await written(org.api, noteId);
+    await acceptNoteSuggestions(org.api, noteId);
     const note = await org.api.notes.get(noteId);
     const [d, a] = [note.decisions[0]?.id ?? '', note.actions[0]?.id ?? ''];
 
     // The notes can name them, but a guest has no account, so it stays a name nobody can answer to.
     expect(note.actions[0]).toMatchObject({ owner: { name: 'Sam' }, takenOn: false });
     expect(note.actions[0]?.owner?.person).toBeUndefined();
+    // Adding the task records the organizer's review, without agreeing to it for the guest.
+    const reviewHistory = note.actions[0]?.changes;
+    expect(who(note.actions[0])).toEqual([[org.email, 'accepted']]);
     // The notes go to people invited, so someone who only had the link can't reach any of it.
     const attempts = [
       () => visitor.api.notes.get(noteId), () => visitor.api.notes.updateDecision(noteId, d, confirm(note.decisions[0]?.text)), () => visitor.api.notes.updateAction(noteId, a, takeOn(note.actions[0])),
@@ -753,7 +764,7 @@ describe('guests', () => {
     const later = await account(at('sam'));
     expect(await outcome(later.api.notes.updateAction(noteId, a, takeOn(note.actions[0])))).toBe('not-found');
     expect(await outcome(org.api.notes.updateAction(noteId, a, { owner: later.email }))).toBe('invalid');
-    expect(action(await org.api.notes.get(noteId), a)?.changes).toEqual([]);
+    expect(action(await org.api.notes.get(noteId), a)?.changes).toEqual(reviewHistory);
   });
 });
 
@@ -839,7 +850,9 @@ describe('notes that couldn’t be written', () => {
     // is told it's settled, as for anything added before notes are first written, so it doesn't list it again; told that,
     // like a model can, it words what it does list another way.
     await org.api.notes.proposeDecision(noteId, { text: 'Monday it is.' });
-    await org.api.notes.proposeAction(noteId, { text: 'Tell the team', owner: org.email });
+    const added = (await org.api.notes.proposeAction(noteId, { text: 'Tell the team', owner: org.email })).actions.find((a) => a.text === 'Tell the team');
+    expect(added).toMatchObject({ review: 'accepted', takenOn: false });
+    await org.api.notes.updateAction(noteId, added?.id ?? '', takeOn(added));
     const asked = h.near.prompts.length;
     await org.api.notes.rewrite(noteId);
     await written(org.api, noteId);

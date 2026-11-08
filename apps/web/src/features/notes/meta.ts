@@ -1,4 +1,4 @@
-import { firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
+import { isAcceptedFollowUp, firstName, type ActionItem, type Note, type NoteSummary, type Person, type Received, type Recipient } from '@alcove/api';
 import { sameEmail, someNames } from '~/lib/people';
 import { noteWhen } from '~/lib/time';
 
@@ -38,8 +38,8 @@ export function noteAsText(n: Note): string {
   // What people said wasn't decided stays out; what nobody has confirmed yet, or no longer holds, says so.
   const decided = n.decisions.filter((d) => d.state !== 'rejected');
   const open = n.questions.filter((x) => x.state === 'open');
-  const said = n.actions.filter((a) => a.from === null);
-  const fromBoards = n.actions.filter((a) => a.from === 'board');
+  const said = n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === null);
+  const fromBoards = n.actions.filter((a) => isAcceptedFollowUp(a) && a.from === 'board');
   const line = (a: ActionItem) => `- ${a.text}${about(a) ? ` (${about(a)})` : ''}`;
   return [
     n.title, noteWhen(n.startedAt, n.duration), '', n.summary,

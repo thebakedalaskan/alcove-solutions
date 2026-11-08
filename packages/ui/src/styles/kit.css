@@ -509,3 +509,24 @@
 .ac-bgpick-x.ac-icon-btn { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; background: var(--surface-raised); color: var(--ink-2); box-shadow: var(--shadow-1); opacity: 0; transition: opacity var(--duration-1); }
 .ac-bgpick-cell:hover .ac-bgpick-x, .ac-bgpick-cell:focus-within .ac-bgpick-x { opacity: 1; }
 @media (hover: none) { .ac-bgpick-x.ac-icon-btn { opacity: 1; } }
+
+/* Follow-ups: edits and an optional, fixed batch of suggestions. */
+.ac-follow-edit { width: 100%; min-width: 0; padding: var(--space-3) 0; }
+.ac-follow-fields { display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-3) 0; }
+.ac-follow-fields > * { flex: 1; min-width: 130px; }
+.ac-follow-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.ac-follow-review { margin-top: var(--space-4); min-width: 0; }
+.ac-follow-batch { border-top: 1px solid var(--line); }
+.ac-follow-head { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; color: var(--ink-2); }
+.ac-follow-head h3 { flex: 1; min-width: 0; font: 600 14px/1.4 var(--font-sans); margin: 0; }
+.ac-follow-head > .ac-icon-btn { flex: none; }
+.ac-follow-proposal { padding: var(--space-3) 0; border-top: 1px solid var(--line); min-width: 0; }
+.ac-follow-words p { font: 500 14px/1.5 var(--font-sans); margin: 0; overflow-wrap: anywhere; }
+.ac-follow-words small, .ac-follow-before > span, .ac-follow-label, .ac-follow-status, .ac-follow-waiting { font: 400 12.5px/1.5 var(--font-sans); color: var(--ink-2); }
+.ac-follow-words small { display: block; margin-top: var(--space-1); }
+.ac-follow-before { padding-left: var(--space-3); border-left: 2px solid var(--line-control); margin-bottom: var(--space-3); }
+.ac-follow-label { display: block; margin-bottom: var(--space-1); }
+.ac-follow-proposal > .ac-follow-buttons { margin-top: var(--space-2); }
+.ac-follow-status, .ac-follow-waiting { margin: 0; }
+.ac-follow-waiting { padding: var(--space-3) 0; border-top: 1px solid var(--line); }
+.ac-follow-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-top: var(--space-1); }

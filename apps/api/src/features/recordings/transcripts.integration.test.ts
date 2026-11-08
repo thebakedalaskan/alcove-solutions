@@ -334,7 +334,8 @@ describe('a transcript that says what it isn’t sure of', () => {
     // other words; what nobody had touched is written again from the corrected words.
     expect(note.decisions.map((d) => [d.text, d.state])).toEqual([['Launch on the 18th, after the security review.', 'confirmed'], ['We decided to hire a designer.', 'confirmed']]);
     expect(note.decisions[0]).toEqual(confirmed);
-    expect(note.actions).toEqual([expect.objectContaining({ text: 'Send the screens by Friday', due: 'Friday', takenOn: false, done: false, changes: [] })]);
+    expect(note.actions).toEqual([]);
+    expect(note.suggestions).toEqual([expect.objectContaining({ text: 'Send the screens by Friday', due: 'Friday', takenOn: false, done: false, changes: [] })]);
     expect(note.questions.map((x) => [x.text, x.state])).toEqual([['Can we test it on staging first?', 'open']]);
     expect(note.summary).toBe('Heard 4 lines. It ended on: Can we test it on staging first?');
     // Written again, not charged again, and the notes model's verification isn't listed twice.

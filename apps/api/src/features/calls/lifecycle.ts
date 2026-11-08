@@ -148,7 +148,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
       await dropInvites(o, c, [row.meeting_item_id]);
       if (s.notes.recordingId) await setRecordingState(o, c, s.notes.recordingId, 'stopped');
       // The live notes end with the call: what was ticked and what people added go into the note, and the notes at the end take over.
-      const { ticked, added } = await liveNotes.finish(o, c, callId);
+      const { ticked, added, kept: keptFollowUps } = await liveNotes.finish(o, c, callId);
       if (s.notes.noteId) {
         // Ending while the host's browser is out of the call (it never came back): nothing was captured since it left.
         const gone = row.host_left_at && s.notes.status === 'on' ? tenthsIn(row.started_at, row.host_left_at.getTime()) : null;
@@ -174,7 +174,7 @@ async function endCall(o: Owner, callId: string, unless?: (r: Row) => boolean): 
           id: r.id, name: r.name, people: peopleOf(r.seen), from: recorded(h.from), to: recorded(h.to),
           gaps: capture.roomGaps(s.notes.history, offline, r.pauses, h.from, row.started_at, h.to, h.to)
         })));
-        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked, worked, added.map((a) => ({ room: a.room, action: liveNotes.toNote(a, recorded(a.said)) })));
+        audio = await finishRecording(o, c, s.notes.noteId, duration, held, speakerOf, gaps, shown, rooms, ticked, worked, [...keptFollowUps.map((a) => ({ ...a, action: { ...a.action, ...(a.action.at === undefined ? {} : { at: recorded(a.action.at) }) } })), ...added.map((a) => ({ room: a.room, action: liveNotes.toNote(a, recorded(a.said)) }))]);
       }
       await updateManifest(o, c, row.meeting_item_id, (m) => ({ ...m, status: 'ended', duration, ...(s.notes.noteId ? { noteId: s.notes.noteId } : {}) }));
     }

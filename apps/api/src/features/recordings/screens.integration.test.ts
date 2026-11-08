@@ -432,7 +432,9 @@ describe('shared screens in the notes', () => {
     const pending = await org.api.notes.get(noteId);
     expect(pending.screens.map((m) => [m.id, m.legible])).toEqual([[chart.id, 'unread'], [slide.id, 'unread'], [blur.id, 'unread']]);
     await written(org.api, noteId);
-    const note = await org.api.notes.get(noteId);
+    const proposal = (await org.api.notes.get(noteId)).suggestions[0];
+    if (!proposal) throw new Error('expected a screen-linked follow-up proposal');
+    const note = await org.api.notes.reviewAction(noteId, { id: proposal.id, revision: proposal.revision, decision: 'accept' });
     const [a, b, u] = note.screens;
     if (!a || !b || !u) throw new Error('expected three screen moments');
 

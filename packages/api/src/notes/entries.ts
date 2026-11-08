@@ -1,5 +1,6 @@
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
+import { FollowUpReviewFields } from './follow-ups';
 import { ScreenRefSchema } from './screens';
 import { ChangerSchema, ChangeSchema, LineDoubtSchema, SpeakerSchema } from './transcript';
 /**
@@ -68,6 +69,11 @@ export type Question = z.infer<typeof QuestionSchema>;
  */
 export const ActionItemSchema = z.object({
   id: IDSchema, text: z.string(),
+  ...FollowUpReviewFields,
+  /** Stable origin of an inferred board action; sealed with the note. */
+  sourceId: z.string().nullable().default(null),
+  /** Changes only with authoritative source corrections, never with model wording. */
+  sourceVersion: z.string().default(''),
   /** Who it's for: suggested by the notes, or given to them by someone with the notes. Absent when nobody said, or they said it isn't theirs. */
   owner: SpeakerSchema.optional(),
   /** The owner acknowledged it: they said they'll do it. The notes only suggest; nobody but the owner can take it on for them. */

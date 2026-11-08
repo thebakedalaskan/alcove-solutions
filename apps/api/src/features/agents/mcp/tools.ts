@@ -93,8 +93,8 @@ export function buildServer(d: Deps, principal: AgentPrincipal, pending: Set<Pro
     async q => { await notes.proposeDecision(o, q.noteId, q.proposal); return { ok: true, noteId: q.noteId }; });
   register('update_decision', 'notes:write', 'Confirm, reject, reopen, reword or dispute a decision within your current permissions. Returns only an acknowledgment.', AgentDecisionPatchSchema, WRITE,
     async q => { await notes.updateDecision(o, q.noteId, q.decisionId, q.patch); return { ok: true, noteId: q.noteId }; });
-  register('propose_action', 'notes:write', 'Propose a follow-up. Repeating the same proposal adds nothing. Returns only an acknowledgment.', AgentActionProposalSchema, WRITE,
-    async q => { await notes.proposeAction(o, q.noteId, q.proposal); return { ok: true, noteId: q.noteId }; });
+  register('propose_action', 'notes:write', 'Suggest a follow-up for human review. It enters the checklist only after someone accepts it in Alcove. Repeating the same proposal adds nothing. Returns only an acknowledgment.', AgentActionProposalSchema, WRITE,
+    async q => { await notes.suggestAction(o, q.noteId, q.proposal); return { ok: true, noteId: q.noteId }; });
   register('update_action', 'notes:write', 'Take on, assign, date, reword or tick a follow-up within your current permissions. Returns only an acknowledgment.', AgentActionPatchSchema, WRITE,
     async q => { await notes.updateAction(o, q.noteId, q.actionId, q.patch); return { ok: true, noteId: q.noteId }; });
   register('update_question', 'notes:write', 'Mark a question answered, reopen it or reword it. Returns only an acknowledgment.', AgentQuestionPatchSchema, WRITE,

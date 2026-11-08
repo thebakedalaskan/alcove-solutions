@@ -14,7 +14,7 @@ import { type Stored } from './state';
  * organizer's own besides, checked by the API).
  */
 export const anyone = (a: CallAction): boolean =>
-  a.type === 'read-chat' || anyonesAttention(a) || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'board-ideas-done' || space.anyonesAction(a) ||
+  a.type === 'read-chat' || anyonesAttention(a) || a.type === 'request-notes' || a.type === 'others-point' || a.type === 'follow-up' || a.type === 'follow-up-add' || a.type === 'follow-up-edit' || a.type === 'follow-up-review' || a.type === 'board-ideas-done' || space.anyonesAction(a) ||
   boards.isBoardAction(a) || boards.isRunAction(a);
 
 /**

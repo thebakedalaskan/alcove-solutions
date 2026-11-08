@@ -577,6 +577,8 @@ button.nd-lt:hover { color: var(--ink); }
 /* Wide: what was said moves beside what was decided, so a moment never takes the note away. */
 @media (min-width: 1720px) {
   .nd-main { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-rows: 1fr auto; column-gap: 56px; align-items: start; }
+  /* Either column can finish last: both keep its controls above Ask's floating suggestions. */
+  .nd-main:has(> .nd-askdock) > .nd-read { padding-bottom: 60px; }
   .nd-said .nd-s:first-child { margin-top: 0; }
   .nd-askdock, .nd-end-mark { grid-column: 1 / -1; }
 }

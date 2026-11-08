@@ -139,7 +139,7 @@ function onTheNote(name: string, people: readonly Person[], room: string | null,
 function retroRoom(id: string, name: string, people: readonly Person[], spec: Pick<NoteSpec, 'summary' | 'said' | 'actions'>): NoteRoom {
   const n = writeNote({ ...spec, id: `${RETRO_NOTE}-${id}`, title: name, startedAt: RETRO_AT, minutes: 45, organizer: ART, excerpt: '' });
   return {
-    id, name, people: people.map((p) => ({ name: p.name, person: p })), from: 12 * 60, to: 22 * 60, summary: n.summary, decisions: n.decisions, questions: n.questions, actions: n.actions,
+    id, name, people: people.map((p) => ({ name: p.name, person: p })), from: 12 * 60, to: 22 * 60, summary: n.summary, decisions: n.decisions, questions: n.questions, actions: n.actions, suggestions: n.suggestions,
     chapters: n.chapters, gaps: [], transcript: (n.transcript ?? []).map((l) => ({ ...l, room: { id, name } }))
   };
 }

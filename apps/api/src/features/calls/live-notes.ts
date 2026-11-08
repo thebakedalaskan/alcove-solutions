@@ -13,20 +13,17 @@
  *   read the newest, and a person keeps one row of their own, however often they come and go.
  * - A refresh is claimed under the row's lock and runs with no lock held, however long the notes model takes. What it
  *   wrote is merged in under the lock again, so a tick made meanwhile is kept.
- * - A follow-up keeps its ID because the notes model says so: each refresh is told the follow-ups so far, by label, and
- *   says which each one it lists is, in any words and any language. An ID it wasn't told is something new, one it used
- *   twice stays with the first, and what's ticked stays whatever it says.
- * - A refresh that reads less than the last one did (rooms closing takes what the people who stayed said out of it) isn't
- *   told the follow-ups so far, whose words may come from what it no longer reads, and what's ticked stops showing. Its
- *   tick still goes to the note.
- * - When the call ends, what was ticked goes into the note (`ticked` in its manifest), and the rows go. The notes model,
- *   writing the notes, is told what was ticked and says which follow-up each one is (`doneInNotes`).
- * - Someone who gets the notes can add a follow-up nobody said (`add`). It's kept beside what the notes model wrote, not in
- *   it, as there may be no notes yet, and everyone who gets the notes reads it, in their words, whatever the model says. The
- *   model is told it as it's told the rest, so it can say it heard the same thing, and it stops showing where what's ticked
- *   does. It's its adder's in the note, as if they'd proposed it there (`toNote`).
+ * - Inference adds proposals beside the accepted checklist. Known labels identify existing tasks; a different wording,
+ *   owner or date is a proposed change, never an automatic edit. Review compares the proposal revision and its exact
+ *   target under the row lock. Accepted and dismissed receipts stay with their source evidence.
+ * - When a view reads less than before, previous tasks, proposals and manual additions stop showing permanently in
+ *   that row. Nothing hidden participates in matching, so it cannot return through a proposed change's target.
+ * - Ending the call transfers actual tasks, pending proposals and review receipts to the note before the final writer
+ *   runs. The checklist and pending review therefore survive inference failures and rewriting saved notes.
+ * - Manual additions stay in people's exact words, with a validated invited owner or nobody, and an optional date.
+ *   Adding a task never says its owner took responsibility for it.
  */
-import { CatchUpReadSchema, ChangerSchema, EvidenceSchema, MAIN_PLACE, SpeakerSchema, type ActionItem, type AddedFollowUp, type CatchUpRead, type LiveFollowUp, type LiveNotes, type Speaker, type TranscriptLine } from '@alcove/api';
+import { MAX_FOLLOW_UP_PROPOSALS, type Person, ACCEPTED_FOLLOW_UP, FollowUpReviewFields, isAcceptedFollowUp, isPendingFollowUp, type FollowUpPatch, type FollowUpReview, type FollowUpTarget, PersonSchema, CatchUpReadSchema, ChangerSchema, EvidenceSchema, MAIN_PLACE, SpeakerSchema, type ActionItem, type AddedFollowUp, type CatchUpRead, type LiveFollowUp, type LiveNotes, type Speaker, type TranscriptLine } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { b64u, id128, openJson, sealJson, sha, stateKey, toJson, utf8 } from '../../crypto';
@@ -48,7 +45,7 @@ const LEASE_SECONDS = 150;
 const NOT_UPDATED = 'The notes couldn’t be updated just now. Alcove tries again on its own.';
 
 /** A point in the notes, as a catch-up gives it. */
-const Point = z.object({ text: z.string(), owner: z.string().optional(), due: z.string().optional(), evidence: z.array(EvidenceSchema) });
+const Point = z.object({ ownerPerson: PersonSchema.nullable().default(null), text: z.string(), owner: z.string().optional(), due: z.string().optional(), evidence: z.array(EvidenceSchema) });
 type Point = z.infer<typeof Point>;
 /** Who ticked a follow-up and when, as a note's changes say it. A call's pass has no account behind it for someone invited, so theirs goes by address, as `isBy` allows. */
 const Tick = z.object({ by: ChangerSchema, at: z.string() });
@@ -57,7 +54,7 @@ type Tick = z.infer<typeof Tick>;
  * `tick`: null until someone ticks it. `shown`: false once the notes stopped reading what a ticked one may have been
  * written from. Then it isn't shown or told to the model again, and only its tick is left, for the note.
  */
-const FollowUp = Point.extend({ id: z.string(), tick: Tick.nullable(), shown: z.boolean() });
+const FollowUp = Point.extend({ id: z.string(), tick: Tick.nullable(), shown: z.boolean(), ...FollowUpReviewFields });
 type FollowUp = z.infer<typeof FollowUp>;
 const Written = z.object({
   summary: z.string(), decided: z.array(Point), proposed: z.array(Point), open: z.array(Point), next: z.array(FollowUp), read: CatchUpReadSchema,
@@ -71,7 +68,7 @@ type Written = z.infer<typeof Written>;
  * A follow-up someone added: its words, who it's for, who added it and when (`at`, as a note's changes say it, and `said`,
  * seconds since the call started). `tick` and `shown` are as on one the notes wrote.
  */
-const Added = Tick.extend({ id: z.string(), text: z.string(), owner: SpeakerSchema, said: z.number(), tick: Tick.nullable(), shown: z.boolean() });
+const Added = Tick.extend({ id: z.string(), text: z.string(), owner: SpeakerSchema.nullable(), due: z.string().nullable().default(null), takenOn: z.boolean().default(true), said: z.number(), tick: Tick.nullable(), shown: z.boolean(), ...FollowUpReviewFields });
 type Added = z.infer<typeof Added>;
 /** The record: the notes, null until they're written, whether the latest refresh didn't work, and what people added. Rows written before people could add have none. */
 const Stored = z.object({ notes: Written.nullable(), failed: z.boolean(), added: z.array(Added).default([]) });
@@ -153,15 +150,20 @@ export async function find(o: Owner, db: Db, callId: string, place: string, r: R
   return { view: here.some((x) => x.view === ALL && x.notes_ciphertext) ? null : ALL, own: null, stored: null, added, writing: false, failed: false };
 }
 
-const plain = ({ text, owner, due, evidence }: Point) => ({ text, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
+const plain = ({ text, owner, ownerPerson, due, evidence }: Point) => ({ text, ownerPerson, ...(owner === undefined ? {} : { owner }), ...(due === undefined ? {} : { due }), evidence });
 
 /** The notes as they're shown. `capturing`: refreshes can run here now, so that the last one failed is worth saying. */
 export function shownTo(found: Found, capturing: boolean): LiveNotes {
   const n = found.stored?.notes ?? null;
-  const added = found.added.filter((a) => a.shown).map((a): AddedFollowUp => ({ text: a.text, owner: a.owner.name, evidence: [], id: a.id, done: a.tick !== null, at: a.said }));
-  const out = { added, writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
+  const added = found.added.filter((a) => a.shown && isAcceptedFollowUp(a)).map((a): AddedFollowUp => ({
+    text: a.text, ...(a.owner ? { owner: a.owner.name } : {}), ...(a.due ? { due: a.due } : {}), ownerPerson: a.owner?.person ?? null,
+    evidence: [], id: a.id, done: a.tick !== null, at: a.said, review: a.review, revision: a.revision, changeOf: a.changeOf, target: a.target, reviewed: a.reviewed
+  }));
+  const live = (f: FollowUp): LiveFollowUp => ({ ...plain(f), id: f.id, done: f.tick !== null, review: f.review, revision: f.revision, changeOf: f.changeOf, target: f.target, reviewed: f.reviewed });
+  const suggestions = (n?.next ?? []).filter((f) => f.shown && isPendingFollowUp(f)).map(live);
+  const out = { added, suggestions, writing: found.writing, error: capturing && found.failed ? NOT_UPDATED : null };
   if (!n) return { ...out, notes: null };
-  const next = n.next.filter((f) => f.shown).map((f): LiveFollowUp => ({ ...plain(f), id: f.id, done: f.tick !== null }));
+  const next = n.next.filter((f) => f.shown && isAcceptedFollowUp(f)).map(live);
   return { ...out, notes: { summary: n.summary, decided: n.decided.map(plain), proposed: n.proposed.map(plain), open: n.open.map(plain), next, read: n.read } };
 }
 
@@ -222,8 +224,8 @@ function readsOn(c: Claim, lines: Pick<Read, 'id'>[]): boolean {
  * for a refresh that reads less than they did: their words may come from any line that was read then, which aren't for it to see.
  */
 export const knownTo = (c: Claim, lines: Pick<Read, 'id'>[]): Known[] => (!readsOn(c, lines) ? [] : [
-  ...c.next.filter((f) => f.shown).map(({ id, text, owner }) => ({ id, text, ...(owner === undefined ? {} : { owner }) })),
-  ...c.added.filter((a) => a.shown).map(({ id, text, owner }) => ({ id, text, owner: owner.name }))
+  ...c.next.filter((f) => f.shown && (f.review !== 'accepted' || f.changeOf === null)).map(({ id, text, owner }) => ({ id, text, ...(owner === undefined ? {} : { owner }) })),
+  ...c.added.filter((a) => a.shown).map(({ id, text, owner }) => ({ id, text, owner: owner?.name }))
 ]);
 
 /** What a refresh read and wrote, before it's merged with what's kept, and what it left out. `same` on a follow-up is the one the notes model says it is. */
@@ -240,8 +242,8 @@ function readersOf(lines: Pick<Read, 'readers'>[]): { readers?: string[] } {
   return first ? { readers: first.filter((x) => rest.every((l) => l.includes(x))) } : {};
 }
 /** What a refresh wrote from `lines`, leaving out `barred`: each point with the moments behind it. */
-export function runOf(sorted: Sorted, lines: Read[], barred: Read[], read: CatchUpRead): Run {
-  const point = ({ refs, same: _same, ...x }: Cited): Point => ({ ...x, evidence: evidenceOf(refs, lines) });
+export function runOf(sorted: Sorted, lines: Read[], barred: Read[], read: CatchUpRead, ownerOf: (name: string) => Person | null): Run {
+  const point = ({ refs, same: _same, ...x }: Cited): Point => ({ ownerPerson: x.owner ? ownerOf(x.owner) : null, ...x, evidence: evidenceOf(refs, lines) });
   return {
     notes: {
       summary: sorted.summary, decided: sorted.decided.map(point), proposed: sorted.proposed.map(point), open: sorted.open.map(point), read, heard: digestOf(lines),
@@ -253,18 +255,40 @@ export function runOf(sorted: Sorted, lines: Read[], barred: Read[], read: Catch
 }
 
 const saidAt = (f: Point) => f.evidence[0]?.said ?? 0;
-/**
- * The follow-ups after a refresh. Each it listed has the ID, and the tick, of the one the notes model says it is, in its
- * new words, and anything else is new. One it no longer lists goes, unless it's ticked: then it stays, and shows as long
- * as the notes read everything they read when it was written (`whole`), since nobody may read more than these notes do.
- * One it says is what someone added isn't listed twice: that stays, in their words.
- */
+/** A target snapshot binds review to exactly what the person saw of the actual task. */
+const targetOf = (f: FollowUp | Added): FollowUpTarget => ({
+  id: f.id, revision: f.revision, text: f.text,
+  owner: 'ownerPerson' in f ? f.ownerPerson?.email ?? null : f.owner?.person?.email ?? null,
+  due: f.due ?? null
+});
+const sameValues = (a: { text: string; owner?: string | undefined; ownerPerson?: Person | null | undefined; due?: string | null | undefined }, b: { text: string; owner?: string | undefined; ownerPerson?: Person | null | undefined; due?: string | null | undefined }) =>
+  a.text === b.text && (a.ownerPerson?.email ?? a.owner ?? null) === (b.ownerPerson?.email ?? b.owner ?? null) && (a.due ?? null) === (b.due ?? null);
+const evidenceKey = (f: Point) => f.evidence.map((e) => e.lineId).sort().join(' ');
 function nextOf(was: FollowUp[], run: Run, whole: boolean, added: Added[]): FollowUp[] {
-  const byId = new Map(was.map((f) => [f.id, f]));
-  const listed = run.next.filter(({ same }) => !added.some((a) => a.id === same)).map(({ same, ...f }): FollowUp => { const w = same === undefined ? undefined : byId.get(same); return { ...f, id: w?.id ?? id128(), tick: w?.tick ?? null, shown: true }; });
-  const carried = new Set(listed.map((f) => f.id));
-  const left = was.filter((f) => f.tick !== null && !carried.has(f.id)).map((f) => ({ ...f, shown: f.shown && whole }));
-  return [...left, ...listed].sort((a, b) => saidAt(a) - saidAt(b));
+  const kept = was.map((f) => ({ ...f, shown: f.shown && whole }));
+  const readable = whole ? was.filter((f) => f.shown) : [];
+  const manualTasks = whole ? added.filter((f) => f.shown) : [];
+  for (const { same, ...f } of run.next) {
+    const named = same ? readable.find((x) => x.id === same) : undefined;
+    const manual = same ? manualTasks.find((x) => x.id === same) : undefined;
+    const values = readable.filter((x) => sameValues(x, f));
+    const exact = values.length === 1 ? values[0] : undefined;
+    const evidence = evidenceKey(f);
+    const sources = evidence ? readable.filter((x) => evidenceKey(x) === evidence) : [];
+    const identities = new Set(sources.map((x) => x.changeOf ?? x.id));
+    const oneCandidate = evidence && run.next.filter((x) => evidenceKey(x) === evidence).length === 1;
+    const source = identities.size === 1 && oneCandidate ? sources.find(isAcceptedFollowUp) ?? sources[0] : undefined;
+    const previous = named ?? (manual ? undefined : exact ?? source);
+    if (previous && !isAcceptedFollowUp(previous)) continue;
+    const target = previous ?? manual;
+    const comparable = manual ? { text: manual.text, ...(manual.owner ? { owner: manual.owner.name, ownerPerson: manual.owner.person ?? null } : {}), due: manual.due } : previous;
+    if (comparable && sameValues(f, comparable)) continue;
+    if (kept.some((x) => x.shown && isPendingFollowUp(x) && sameValues(x, f))) continue;
+    const base = target ? targetOf(target) : null;
+    if (kept.filter((x) => !isAcceptedFollowUp(x)).length >= MAX_FOLLOW_UP_PROPOSALS) continue;
+    kept.push({ ...f, id: id128(), revision: id128(), review: 'suggested', changeOf: base?.id ?? null, target: base, reviewed: null, tick: null, shown: true });
+  }
+  return kept.sort((a, b) => saidAt(a) - saidAt(b));
 }
 
 const Held = z.object({ lease_until: timestamp.nullable(), notes_ciphertext: bytea.nullable(), lines_ciphertext: bytea.nullable() });
@@ -335,7 +359,7 @@ export async function tick(o: Owner, c: Db, callId: string, place: string, id: s
   const row = await held(c, o, callId, place, ALL);
   const s = opened(o, callId, place, ALL, row?.notes_ciphertext);
   const f = s?.notes?.next.find((x) => x.id === id) ?? s?.added.find((x) => x.id === id);
-  if (!s || !f?.shown || !mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That follow-up', { callId, room: place !== MAIN_PLACE });
+  if (!s || !f?.shown || !isAcceptedFollowUp(f) || !mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That follow-up', { callId, room: place !== MAIN_PLACE });
   if ((f.tick !== null) === done) return;
   const change = <T extends { id: string; tick: Tick | null }>(x: T): T => (x.id === id ? { ...x, tick: done ? { by, at: new Date().toISOString() } : null } : x);
   await saveAll(o, c, callId, place, { ...s, notes: s.notes && { ...s.notes, next: s.notes.next.map(change) }, added: s.added.map(change) });
@@ -344,7 +368,7 @@ export async function tick(o: Owner, c: Db, callId: string, place: string, id: s
 /** The most follow-ups people can add in a part of the call. */
 const MOST_ADDED = 40;
 /** A follow-up someone's adding: what they typed, who it's for, who they are, and when, in seconds since the call started. */
-export interface Adding { text: string; owner: Speaker; by: Tick['by']; said: number }
+export interface Adding { text: string; owner: Speaker | null; due: string | null; takenOn: boolean; by: Tick['by']; said: number }
 /**
  * Adds a follow-up nobody said to what a part of the call shares, in the caller's transaction, written or not: there may be no
  * notes yet. Only by someone who may read all of what's there, and the same words again add nothing, so a retry is safe.
@@ -355,9 +379,64 @@ export async function add(o: Owner, c: Db, callId: string, place: string, a: Add
   const s = opened(o, callId, place, ALL, row?.notes_ciphertext) ?? { notes: null, failed: false, added: [] };
   const ctx = { callId, room: place !== MAIN_PLACE };
   if (!mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw new ForbiddenError('You can add follow-ups here once you can read all of the notes.', { context: ctx });
-  if (s.added.some((x) => x.shown && x.text === a.text)) return;
-  if (s.added.length >= MOST_ADDED) throw new ConflictError('There are too many follow-ups here to add another.', { context: ctx });
-  await saveAll(o, c, callId, place, { ...s, added: [...s.added, { ...a, id: id128(), at: new Date().toISOString(), tick: null, shown: true }] });
+  if (s.added.some((x) => x.shown && x.text === a.text) || s.notes?.next.some((x) => x.shown && isAcceptedFollowUp(x) && x.text === a.text)) return;
+  if (s.added.length >= MOST_ADDED || s.added.length + (s.notes?.next.filter(isAcceptedFollowUp).length ?? 0) >= 60) throw new ConflictError('There are too many follow-ups here to add another.', { context: ctx });
+  await saveAll(o, c, callId, place, { ...s, added: [...s.added, { ...ACCEPTED_FOLLOW_UP, ...a, id: id128(), revision: id128(), at: new Date().toISOString(), tick: null, shown: true }] });
+}
+
+
+/** Applies an explicit review under the shared row lock. Resolved proposals remain as receipts and source exclusions. */
+export async function review(o: Owner, c: Db, callId: string, place: string, decision: FollowUpReview, r: Reader, by: Tick['by']): Promise<void> {
+  const row = await held(c, o, callId, place, ALL);
+  const s = opened(o, callId, place, ALL, row?.notes_ciphertext);
+  const proposal = s?.notes?.next.find((x) => x.id === decision.id);
+  if (!s?.notes || !proposal?.shown || !mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That suggestion', { callId });
+  if (proposal.revision !== decision.revision) throw new ConflictError('This suggestion changed. Review it again.', { context: { callId } });
+  const review = decision.decision === 'accept' ? 'accepted' : 'dismissed';
+  if (proposal.review !== 'suggested') {
+    if (proposal.review === review) return;
+    throw new ConflictError('Someone already reviewed this suggestion.', { context: { callId } });
+  }
+  if (review === 'accepted' && proposal.changeOf === null && s.notes.next.filter(isAcceptedFollowUp).length + s.added.length >= 60) throw new ConflictError('This part of the call has as many follow-ups as it can keep.', { context: { callId } });
+  let next = s.notes.next;
+  let added = s.added;
+  if (review === 'accepted' && proposal.changeOf !== null) {
+    const target = next.find((x) => x.id === proposal.changeOf && isAcceptedFollowUp(x)) ?? added.find((x) => x.id === proposal.changeOf);
+    if (!target || JSON.stringify(targetOf(target)) !== JSON.stringify(proposal.target)) throw new ConflictError('The task changed. Review a new suggestion for it.', { context: { callId } });
+    const assigned = targetOf(target).owner;
+    const mine = assigned !== null && assigned === by.email;
+    if ('takenOn' in target && target.takenOn && !mine && by.as !== 'organizer') throw new ForbiddenError('Only the organizer or the person who took this on can change it.', { context: { callId } });
+    if (assigned !== null && assigned !== proposal.ownerPerson?.email && !mine && by.as !== 'organizer') throw new ForbiddenError('Only the organizer or the person it’s for can change its owner.', { context: { callId } });
+    const values = { evidence: proposal.evidence, text: proposal.text, ownerPerson: proposal.ownerPerson, ...(proposal.owner ? { owner: proposal.owner } : {}), ...(proposal.due ? { due: proposal.due } : {}), revision: id128() };
+    next = next.map((x) => x.id === target.id ? { ...x, owner: undefined, due: undefined, ...values } : x);
+    added = added.map((x) => x.id === target.id ? { ...x, text: proposal.text, owner: proposal.ownerPerson ? { name: proposal.ownerPerson.name, person: proposal.ownerPerson } : proposal.owner ? { name: proposal.owner } : null, due: proposal.due ?? null, takenOn: x.takenOn && mine && x.owner?.person?.email === proposal.ownerPerson?.email, revision: values.revision } : x);
+  }
+  next = next.map((x) => x.id === proposal.id ? { ...x, review, reviewed: { by, at: new Date().toISOString(), decision: decision.decision } } : x);
+  await saveAll(o, c, callId, place, { ...s, notes: { ...s.notes, next }, added });
+}
+/** Manual changes never rewrite the proposal behind a reviewer's open batch. */
+export async function edit(o: Owner, c: Db, callId: string, place: string, id: string, patch: FollowUpPatch, owner: Speaker | null | undefined, r: Reader, by: Tick['by']): Promise<void> {
+  const row = await held(c, o, callId, place, ALL);
+  const s = opened(o, callId, place, ALL, row?.notes_ciphertext);
+  const target = s?.notes?.next.find((x) => x.id === id && isAcceptedFollowUp(x)) ?? s?.added.find((x) => x.id === id);
+  if (!s || !target?.shown || !mayChange(r, s, linesOf(o, callId, place, ALL, row?.lines_ciphertext))) throw notFound('That follow-up', { callId });
+  const assigned = targetOf(target).owner;
+  const mine = assigned !== null && assigned === by.email;
+  if ('takenOn' in target && target.takenOn && !mine && by.as !== 'organizer') throw new ForbiddenError('Only the organizer or the person who took this on can change it.', { context: { callId } });
+  if (patch.owner !== undefined && assigned !== null && !mine && by.as !== 'organizer') throw new ForbiddenError('Only the organizer or the person it’s for can change its owner.', { context: { callId } });
+  const { id: _id, ...seen } = targetOf(target);
+  if (JSON.stringify(seen) !== JSON.stringify(patch.seen)) throw new ConflictError('The task changed. Open it again.', { context: { callId } });
+  const revision = id128();
+  const next = s.notes?.next.map((x) => {
+    if (x.id !== id) return x;
+    const { owner: oldOwner, due: oldDue, ...rest } = x;
+    const who = owner === undefined ? x.ownerPerson : owner?.person ?? null;
+    const name = owner === undefined ? oldOwner : owner?.name;
+    const due = patch.due === undefined ? oldDue : patch.due;
+    return { ...rest, text: patch.text ?? x.text, ownerPerson: who, ...(name ? { owner: name } : {}), ...(due ? { due } : {}), revision };
+  });
+  const added = s.added.map((x) => x.id === id ? { ...x, text: patch.text ?? x.text, owner: owner === undefined ? x.owner : owner, due: patch.due === undefined ? x.due : patch.due, takenOn: x.takenOn && mine && (owner === undefined || owner?.person?.email === x.owner?.person?.email), revision } : x);
+  await saveAll(o, c, callId, place, { ...s, notes: s.notes && { ...s.notes, next: next ?? [] }, added });
 }
 
 /* ---------- into the note ---------- */
@@ -373,15 +452,19 @@ export type Ticked = z.infer<typeof Ticked>;
 const Ending = z.object({ place: z.string(), notes_ciphertext: bytea.nullable() });
 /** Something someone added, on its way into the note: the breakout room it was added in, null for the main room. */
 export type AddedIn = Added & { room: string | null };
-/** The call is ending, in the caller's transaction, which holds the call's row: what was ticked and what was added, for the note, and every row goes. */
-export async function finish(o: Owner, c: Db, callId: string): Promise<{ ticked: Ticked[]; added: AddedIn[] }> {
+export type KeptIn = { room: string | null; action: ActionItem };
+/** End the live store under the call lock, transferring tasks and review state before deleting its rows. */
+export async function finish(o: Owner, c: Db, callId: string): Promise<{ ticked: Ticked[]; added: AddedIn[]; kept: KeptIn[] }> {
   const found = await rows(c, Ending, `SELECT place, notes_ciphertext FROM call_notes WHERE owner_id = $1 AND call_id = $2 AND view = '${ALL}' FOR UPDATE`, [o.ownerId, callId]);
   await exec(c, 'DELETE FROM call_notes WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId]);
   const parts = found.map((r) => ({ room: r.place === MAIN_PLACE ? null : r.place, s: opened(o, callId, r.place, ALL, r.notes_ciphertext) }));
   return {
-    ticked: parts.flatMap(({ room, s }) => (s?.notes?.next ?? []).flatMap((f): Ticked[] => (f.tick ? [{
-      ...f.tick, id: f.id, text: f.text, ...(f.owner === undefined ? {} : { owner: f.owner }), ...(f.due === undefined ? {} : { due: f.due }), lines: f.evidence.map((e) => e.lineId), room
-    }] : []))),
+    kept: parts.flatMap(({ room, s }) => (s?.notes?.next ?? []).map((f): KeptIn => ({ room, action: {
+      id: f.id, text: f.text, ...(f.owner ? { owner: { name: f.owner, ...(f.ownerPerson ? { person: f.ownerPerson } : {}) } } : {}),
+      ...(f.due ? { due: f.due } : {}), takenOn: false, ...(f.evidence[0] ? { at: f.evidence[0].said } : {}), done: f.tick !== null, lines: f.evidence.map((e) => e.lineId), against: [],
+      changes: [...(f.reviewed ? [{ by: f.reviewed.by, at: f.reviewed.at, what: f.reviewed.decision === 'accept' ? 'accepted' as const : 'dismissed' as const }] : []), ...(f.tick ? [{ ...f.tick, what: 'done' as const }] : [])], from: null, sourceId: null, sourceVersion: '', review: f.review, changeOf: f.changeOf, revision: f.revision, target: f.target, reviewed: f.reviewed
+    } }))),
+    ticked: [],
     added: parts.flatMap(({ room, s }) => (s?.added ?? []).map((a) => ({ ...a, room })))
   };
 }
@@ -392,7 +475,7 @@ export async function finish(o: Owner, c: Db, callId: string): Promise<{ ticked:
  * not to list it again (`settledOf`).
  */
 export const toNote = (a: Added, at: number): ActionItem => ({
-  id: a.id, text: a.text, owner: a.owner, takenOn: true, at, done: a.tick !== null, lines: [], against: [],
+  ...ACCEPTED_FOLLOW_UP, id: a.id, revision: a.revision, text: a.text, ...(a.owner ? { owner: a.owner } : {}), ...(a.due ? { due: a.due } : {}), takenOn: a.takenOn, at, done: a.tick !== null, lines: [], against: [],
   changes: [{ by: a.by, at: a.at, what: 'proposed' }, ...(a.tick ? [{ ...a.tick, what: 'done' as const }] : [])], from: null
 });
 
@@ -405,16 +488,16 @@ export function doneInNotes(actions: ActionItem[], ticks: Ticked[], said: Readon
   if (!ticks.length) return actions;
   const change = (t: Ticked): ActionItem['changes'][number] => ({ by: t.by, at: t.at, what: 'done' });
   const found = new Set<string>();
-  const written = actions.map((a) => {
+  const written = actions.map((a): ActionItem => {
     const t = ticks.find((x) => x.id === said.get(a.id));
     if (!t) return a;
     found.add(t.id);
-    return a.done ? a : { ...a, done: true, changes: [...a.changes, change(t)] };
+    return a.done ? a : { ...a, review: 'accepted', done: true, changes: [...a.changes, change(t)] };
   });
   const added = ticks.filter((t) => !found.has(t.id)).map((t): ActionItem => {
     const behind = lines.filter((l) => t.lines.includes(l.id));
     const at = behind[0]?.at;
-    return { id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), lines: behind.map((l) => l.id), against: [], done: true, changes: [change(t)], from: null };
+    return { ...ACCEPTED_FOLLOW_UP, id: id128(), text: t.text, ...(t.owner ? { owner: { name: t.owner } } : {}), takenOn: false, ...(t.due ? { due: t.due } : {}), ...(at === undefined ? {} : { at }), lines: behind.map((l) => l.id), against: [], done: true, changes: [change(t)], from: null };
   });
   return added.length ? [...written, ...added].sort((a, b) => (a.at ?? Number.POSITIVE_INFINITY) - (b.at ?? Number.POSITIVE_INFINITY)) : written;
 }

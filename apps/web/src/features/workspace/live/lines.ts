@@ -1,5 +1,5 @@
 /* Reading the call for its live pages and what a document takes from it. Nothing here keeps anything. */
-import { firstName, notesAreOn, type CallState, type Person, type TranscriptLine } from '@alcove/api';
+import { firstName, isAcceptedFollowUp, notesAreOn, type CallState, type Person, type TranscriptLine } from '@alcove/api';
 import { captureHere } from '~/lib/capture';
 import { hm } from '~/lib/time';
 import type { LiveLine, MomentLine } from '../editor/types';
@@ -65,8 +65,8 @@ export function liveLinesOf(s: CallState, ids: PersonIds): { decided: LiveLine[]
   const n = s.liveNotes.notes;
   const moment = (seconds: number) => new Date(Date.parse(s.startedAt) + seconds * 1000).toISOString();
   const said = [
-    ...(n?.next ?? []).map((f) => ({ ...f, when: f.evidence[0]?.said ?? 0 })),
-    ...s.liveNotes.added.map((f) => ({ ...f, when: f.at }))
+    ...(n?.next ?? []).filter(isAcceptedFollowUp).map((f) => ({ ...f, when: f.evidence[0]?.said ?? 0 })),
+    ...s.liveNotes.added.filter(isAcceptedFollowUp).map((f) => ({ ...f, when: f.at }))
   ].sort((a, b) => a.when - b.when);
   const owners = said.map((f) => { const who = personNamed(s, f.owner); return { who, named: who && asNamed(who, ids) }; });
   if (owners.some((o) => o.who !== undefined && o.named === undefined)) return null;

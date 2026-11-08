@@ -107,6 +107,8 @@ export interface FakeNear {
    * line's follow-up, so one can take another's, or two can claim one. null goes back to knowing its own.
    */
   identify(line: string, as: string | null): void;
+  /** Gives distinct follow-ups from one transcript line, retaining its evidence for each. */
+  splitActions(line: string, actions: string[] | null): void;
   close(): Promise<void>;
 }
 
@@ -269,7 +271,7 @@ const labelledIn = (prompt: string, letter: string): { label: string; text: stri
 });
 
 /** What the stand-in remembers between requests: how to word what it hears, every way it has worded it, and what it's been told to say each one is. */
-interface Memory { reworded: Map<string, string>; worded: Map<string, Set<string>>; identified: Map<string, string> }
+interface Memory { reworded: Map<string, string>; worded: Map<string, Set<string>>; identified: Map<string, string>; split: Map<string, string[]> }
 
 function notesReply(system: string, user: string, images: Buffer[], memory: Memory): unknown {
   const { reworded, worded, identified } = memory;
@@ -337,6 +339,7 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
     const selection = /<selection-([A-Za-z0-9_-]+)>\n([\s\S]*)\n<\/selection-\1>/.exec(user)?.[2] ?? '';
     return user.includes('"items"') ? { items: selection.split(/\s*;\s*/) } : { text: `Shorter: ${selection}` };
   }
+  const actionsHeard = heard.flatMap((h) => memory.split.get(h.text)?.map((text) => ({ ...h, text })) ?? [h]);
   if (system.startsWith('You help someone catch up')) {
     // Points at each line by its number and, as a model can, also at lines that aren't there, with one point it
     // can't back with any line it was sent: what Alcove shows must come only from lines that were read.
@@ -348,7 +351,7 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
       decided: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(cited), { text: 'Everyone agreed to double the budget.', lines: [nowhere] }],
       proposed: heard.filter((h) => /\b(should|let's|what if|propose)\b/i.test(h.text)).map(cited),
       open: heard.filter((h) => h.text.trim().endsWith('?')).map(cited),
-      next: heard.filter((h) => /\bwill\b|ます。$/i.test(h.text)).map((h) => ({
+      next: actionsHeard.filter((h) => /\bwill\b|ます。$/i.test(h.text)).map((h) => ({
         ...cited(h), ...(known.length ? { id: which(h.text, known, 'F') } : {}), text: remembered(h.text, reworded.get(h.text) ?? h.text), owner: /^(\w+) will\b/.exec(h.text)?.[1] ?? null, due: /\bby (\w+day)\b/i.exec(h.text)?.[1] ?? null
       }))
     };
@@ -371,6 +374,7 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
      */
     const nowhere = heard.length + 7;
     const ticks = labelledIn(user, 'T');
+    const existing = labelledIn(user, 'F');
     /*
      * Each sticky in a board's Actions frame is a follow-up, labelled with the sticky it is, with whoever the sticky names
      * first ("Kofi: ..."). One that says "forgotten" is left out, as a model can leave one out.
@@ -391,12 +395,12 @@ function notesReply(system: string, user: string, images: Buffer[], memory: Memo
       summary: `Heard ${heard.length} lines.${boards ? ` Read ${boards} ${boards === 1 ? 'board' : 'boards'}.` : ''} It ended on: ${heard.at(-1)?.text ?? ''}`,
       decisions: [...heard.filter((h) => /\b(agreed|decided)\b/i.test(h.text)).map(decided), ...unbacked],
       questions: heard.filter((h) => h.text.trim().endsWith('?')).map((h) => ({ ...item(h), ...refs(h) })),
-      actions: [...heard.flatMap((h) => {
+      actions: [...actionsHeard.flatMap((h) => {
         const m = /^(\w+) will (.+?)\.?$/.exec(h.text);
-        const told = { ...(ticks.length ? { ticked: which(h.text, ticks, 'T') } : {}), takenOn: true, done: true, changes: [{ what: 'took-on' }] };
-        if (!m) return /ます。$/.test(h.text) ? [{ text: reworded.get(h.text) ?? h.text, owner: null, due: null, at: h.at, ...onScreen(h), ...refs(h), ...told }] : [];
+        const told = { ...(existing.length ? { id: which(h.text, existing, 'F') } : {}), ...(ticks.length ? { ticked: which(h.text, ticks, 'T') } : {}), takenOn: true, done: true, changes: [{ what: 'took-on' }] };
+        if (!m) return /ます。$/.test(h.text) ? [{ text: remembered(h.text, reworded.get(h.text) ?? h.text), owner: null, due: null, at: h.at, ...onScreen(h), ...refs(h), ...told }] : [];
         const rest = m[2] ?? '';
-        return [{ text: reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), ...told }];
+        return [{ text: remembered(h.text, reworded.get(h.text) ?? rest.charAt(0).toUpperCase() + rest.slice(1)), owner: m[1] ?? null, due: /\bby (\w+day)\b/i.exec(rest)?.[1] ?? null, at: h.at, ...onScreen(h), ...refs(h), ...told }];
       }), ...onBoards],
       chapters: heard.filter((_, i) => i % 2 === 0).map((h, i) => ({ at: h.at, title: `Part ${i + 1}`, summary: h.text })),
       suggestedQuestions: ['What did we decide?', 'Who is doing what?', 'What happens next?'],
@@ -560,7 +564,7 @@ export async function startFakeNear(): Promise<FakeNear> {
   let slow = 0;
   let slowOnly: string | undefined;
   let holding: (() => Promise<void>) | null = null;
-  const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map() };
+  const memory: Memory = { reworded: new Map(), worded: new Map(), identified: new Map(), split: new Map() };
   let tampered: { how: Tamper; of: 'model' | 'gateway' } | null = null;
   let ohttpIds = 1;
   const lie = (of: 'model' | 'gateway') => (tampered?.of === of ? tampered.how : undefined);
@@ -771,6 +775,7 @@ export async function startFakeNear(): Promise<FakeNear> {
     slowNext(ms, only) { slow = ms; slowOnly = only; },
     holdNext(then) { holding = then; },
     reword(line, text) { if (text === null) memory.reworded.delete(line); else memory.reworded.set(line, text); },
+    splitActions(line, actions) { if (actions === null) memory.split.delete(line); else memory.split.set(line, actions); },
     identify(line, as) { if (as === null) memory.identified.delete(line); else memory.identified.set(line, as); },
     close: () => new Promise<void>((r) => server.close(() => r()))
   };

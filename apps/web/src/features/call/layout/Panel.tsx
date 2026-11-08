@@ -6,8 +6,8 @@
  * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { clock, errorMessage, firstName, notesAreOn, type CallAsker, type CallChatMessage, type CallChatMention, type CallReaction, type CallState, type CatchUpItem, type LiveFollowUp, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Check, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
+import { clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallChatMention, type CallReaction, type CallState, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -15,11 +15,13 @@ import { rungWords } from '~/features/calls/ringing/RingWords';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
 import { captureHere } from '~/lib/capture';
+import { useLive } from '~/lib/live';
 import { callName, listNames, sameEmail } from '~/lib/people';
 import { hm } from '~/lib/time';
 import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '../notes/Capture';
 import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
+import { CallFollowUps } from '../notes/FollowUps';
 import type { NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
 import { ChatComposer, MentionText, useReadMentions, type ChatDraft, type MentionPerson } from './ChatMentions';
@@ -98,28 +100,6 @@ function DecidedRows({ items, times, onSeek, put }: { items: CatchUpItem[]; time
   );
 }
 
-/** What people said they'd do. `onTick`: done for everyone in this part of the call; absent for a guest, who doesn't get the notes, and in notes written for what someone may read of it. */
-function FollowUpRows({ items, times, onSeek, onTick, put }: { items: LiveFollowUp[]; times: CallTimes; onSeek: (e: TranscriptMoment) => void; onTick: ((id: string, done: boolean) => void) | undefined; put: LivePut | null | undefined }) {
-  return (
-    <>
-      {items.map((it) => (
-        <motion.div key={it.id} className={cn('ic-nr', it.done && 'is-done')} layout="position" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-          {onTick ? <Check checked={it.done} onChange={(on) => onTick(it.id, on)} label={`Mark done: ${it.text}`} />
-            : it.done ? <span className="mk"><Icon name="check" size={12} /></span>
-              : it.owner ? <span className="mk av"><Avatar person={{ name: it.owner }} size={18} /></span> : <span className="mk" />}
-          <div>
-            <span className="nr-text">{it.text}</span>
-            {(it.owner || it.due) && (
-              <div className="meta">{it.owner && firstName(it.owner)}{it.due && <span className="nr-due"><Icon name="cal" size={11} />{it.due}</span>}</div>
-            )}
-          </div>
-          {it.evidence.length ? <Moments evidence={it.evidence.slice(0, 1)} times={times} onOpen={onSeek} /> : <span />}
-          {put && <WsPutArrow verb="Add to" target={put.target} onPut={() => put.followUp(it)} />}
-        </motion.div>
-      ))}
-    </>
-  );
-}
 
 function Summary({ text }: { text: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
@@ -164,7 +144,8 @@ function NotesMenu({ state, controls }: { state: CallState; controls: CaptureCon
   );
 }
 
-export function NotesView({ state, getting, problems, controls, carried, yours, put, onSeek, onTick }: {
+export function NotesView({ session, state, getting, problems, controls, carried, yours, put, onSeek }: {
+  session: CallSession;
   state: CallState;
   /** Who gets the notes, as far as you can tell: everyone invited, for the organizer. */
   getting: Person[];
@@ -177,7 +158,7 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
   yours?: ReactNode;
   /** Sends a line into the document you were last in, while the workspace has one you can edit. */
   put?: LivePut | null | undefined;
-  onSeek: (e: TranscriptMoment) => void; onTick: (id: string, done: boolean) => void;
+  onSeek: (e: TranscriptMoment) => void;
 }) {
   // What the organizer's controls change is the call's. What's said about capture is where you are, as the top bar's
   // sign says: in a breakout room, the room can be heard while the main room can't, and the other way round.
@@ -193,9 +174,10 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
   const organizer = organizerName(state);
   const live = state.liveNotes;
   const n = live.notes;
+  const written = useLive(session.followUps);
+  useEffect(() => session.watchFollowUps(), [session]);
   /* What people added comes first in nothing: it's listed among what was said, and there may be no notes for it to go with yet. */
-  const followUps: LiveFollowUp[] = [...(n?.next ?? []), ...live.added];
-  const any = n !== null || live.added.length > 0;
+  const any = n !== null || live.added.length > 0 || live.suggestions.length > 0 || (written?.items.length ?? 0) > 0;
   const held = state.breakouts.held;
   const ask = asking
     ? <Button size="sm" variant="quiet" onClick={() => controls.ask(false)}>Take it back</Button>
@@ -248,8 +230,8 @@ export function NotesView({ state, getting, problems, controls, carried, yours, 
           <div className="ic-nb">
             <div><div className="ic-sh"><span className="ac-eyebrow">Decided</span><span className="n">{n?.decided.length ?? 0}</span></div>
               {n?.decided.length ? <DecidedRows items={n.decided} times={callTimes(state.startedAt)} onSeek={onSeek} put={put} /> : <p className="ic-quiet">Nothing decided yet.</p>}</div>
-            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span><span className="n">{followUps.length}</span></div>
-              {followUps.length ? <FollowUpRows items={followUps} times={callTimes(state.startedAt)} onSeek={onSeek} onTick={state.role === 'guest' || n?.read.whileHere ? undefined : onTick} put={put} /> : <p className="ic-quiet">No follow-ups yet.</p>}</div>
+            <div><div className="ic-sh"><span className="ac-eyebrow">Follow-ups</span></div>
+              <CallFollowUps key={state.capture.room?.id ?? 'main'} session={session} compact put={put} onSeek={onSeek} people={getting} /></div>
             {held.length > 0 && (
               <div><div className="ic-sh"><span className="ac-eyebrow">From the rooms</span><span className="n">{held.reduce((k, h) => k + h.rooms.length, 0)}</span></div>
                 {held.map((h) => (

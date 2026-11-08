@@ -319,7 +319,11 @@ export const NotesAsYouTalk: PageStory = {
     await step('As people talk, what’s decided and the follow-ups fill in, read from the transcript', async () => {
       await within(await notesPanel()).findByText(/Every empty list gets one line and the empty arch/, {}, LATER);
     });
-    await step('Anyone who gets the notes can tick a follow-up, and it’s done for everyone', async () => {
+    await step('AI follow-ups wait under a quiet suggestion count. Add the copy task before ticking it', async () => {
+      await userEvent.click(await within(await notesPanel()).findByRole('button', { name: /suggestions? from the call/ }, LATER));
+      const proposals = await within(await notesPanel()).findByRole('region', { name: 'Suggestions from the call' }, SOON);
+      const add = within(proposals).getAllByRole('button', { name: 'Add' })[0];
+      if (add) await userEvent.click(add);
       await userEvent.click(await within(await notesPanel()).findByRole('checkbox', { name: /Write the copy for each empty state/ }, LATER));
     });
     await step('The transcript, each line a moment after it’s said', async () => {

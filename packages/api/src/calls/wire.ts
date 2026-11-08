@@ -1,3 +1,4 @@
+import { FollowUpCreateSchema, FollowUpPatchSchema, FollowUpReviewSchema } from '../notes/follow-ups';
 import { isTimeZone } from '../meetings/schema';
 import { AskBodySchema } from '../notes/wire';
 import { IDSchema } from '../shared/ids';
@@ -43,7 +44,9 @@ const CallStepSchema = z.discriminatedUnion('type', [
   /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */
   z.object({ type: z.literal('follow-up'), id: z.string().min(1).max(64), done: z.boolean() }),
   /** Anyone in the call who gets the notes: adds a follow-up nobody said to the part of the call they're in, in their own words, for themselves. Shared and ticked like the rest, and it goes into the note. */
-  z.object({ type: z.literal('follow-up-add'), text: oneLine(300) }),
+  z.object({ type: z.literal('follow-up-add'), input: FollowUpCreateSchema }),
+  z.object({ type: z.literal('follow-up-edit'), id: IDSchema, patch: FollowUpPatchSchema }),
+  z.object({ type: z.literal('follow-up-review'), review: FollowUpReviewSchema }),
   /** The organizer: whether anyone may point at and mark shared screens in this call. On until they turn it off. */
   z.object({ type: z.literal('pointing'), on: z.boolean() }),
   /**

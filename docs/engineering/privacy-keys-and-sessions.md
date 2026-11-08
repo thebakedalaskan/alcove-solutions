@@ -470,6 +470,14 @@ one row per person: `(owner_id, note_item_id, email_index, role)`.
   only for items of notes the reader has, so what a later call did shows only to someone with both notes now
   ([Notes and inference › Series](notes-and-inference.md#series)). Personal material never comes into any of it: only a
   note's own decisions, questions, follow-ups, summary and transcript are read, the call's and its breakout rooms'.
+- **Reviewing follow-ups.** Model-generated tasks and changes are pending suggestions, separate from the accepted checklist.
+  Review decisions, proposal revisions, change targets and suppression evidence stay inside existing sealed call-notes records
+  and note manifests, with the same owner/location headers. No readable review data goes to columns, object names, URLs or logs.
+  A review checks the caller's existing access and mutation rights and compares the proposal revision and target under the lock.
+  It cannot widen a guest's transcript view, expose a private document, or consent to responsibility on another person's behalf.
+  Accepted tasks and review outcomes survive call end and notes written again. Previous-release stored tasks open as accepted
+  through defaulted metadata; there is no database reset, SQL migration or changed record header. Physical deletion removes
+  the containing records and revisions as before.
 - **Removing.** Deleting your own note deletes it for everyone ([Deletion](#deletion)). Removing someone
   else's note deletes your own `note_access` row, which also takes you off the list of who has it, and your own
   notes on it; sharing with you again gives the note back, and nothing else. Deleting your account does both, for

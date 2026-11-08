@@ -932,14 +932,14 @@ as a catch-up on the whole of a part of the call gives them (`apps/api/src/featu
 says when they're refreshed and for whom). So inference runs once a refresh instead of once per browser, a reload finds
 them there, and ticking a follow-up is done for everyone. The notes model only ever reads, for someone, lines they may
 read, as catching up always has. The notes everyone gets are still written when the call ends, from the transcript, by
-the notes worker: live notes only hand on what was ticked.
+the notes worker. Accepted tasks, pending suggestions and review decisions are handed on before writing begins, so review survives a writing failure.
 
 - **The contract.** `CallState.liveNotes` (`LiveNotes`) comes with the call: `notes` (a `CatchUp` whose `next` are
-  `LiveFollowUp`s, each with an `id` and `done`; null until there are any for you), `added` (what people added by hand,
+  `LiveFollowUp`s from the accepted checklist, each with an `id`, `revision` and `done`; null until there are any notes for you), `suggestions` (pending proposals), `added` (what people added by hand,
   [Adding a follow-up](#adding-a-follow-up)), `writing`, and `error`, saying the latest refresh of them didn't work.
   `read.whileHere` says they were written from only part of what was said there. `CallSession.watchNotes()` says this
   browser is showing them until the function it returns is called, `CallSession.tickFollowUp(id, done)` ticks one, and
-  `CallSession.addFollowUp(text)` adds one.
+  `CallSession.addFollowUp({ text, owner, due })` adds one. `owner` is an invited account email or null; `updateFollowUp(id, patch)` edits a task against its seen revision and values. `reviewFollowUp({ id, revision, decision })` accepts or dismisses a proposal.
 - **Where they're kept.** In `call_notes`, a row for each view of each part of the call (`main`, or a breakout room's
   random ID), sealed as a `call-notes` record under the state key `call-notes:<callId>`, whose header binds the owner, the
   call, the part and the view. Beside it, as a `call-notes-lines` record, the lines it read, by ID and when each was said,
@@ -1012,82 +1012,35 @@ the notes worker: live notes only hand on what was ticked.
 
 ### Follow-ups keep their IDs
 
-A follow-up's ID is random, made the first time it's listed, and stays with it because the notes model says so. Telling
-one item from another by its words failed on paraphrase, on "both of those", on short items and in most scripts, so the
-server doesn't try. Each refresh is told the follow-ups so far, one to a line, by a short label as lines are (`F3 (Kofi)
-Send the deck`; the ID itself never goes to the model, as a long one copied wrong would read as something new). Each item
-in `next` says which one it is in `id`, or null for something new, however it's worded now and in whatever language. The
-first refresh has nothing to tell it, and a catch-up for someone asking is never told.
+Accepted follow-ups are independent of inference output. They keep their IDs, completion and people's words when a refresh omits or rewords them. The model receives known items by short label, and can propose a change to an accepted item; it never applies the change itself. A pending proposal has a random ID and revision, proposed words/owner/date, evidence, and an optional target snapshot for a change. Pending proposals stay stable while reviewed, and later candidates are separate arrivals.
 
-The server takes its word, within limits:
+Internally follow-ups keep `review` (`accepted`, `suggested`, `dismissed`), `changeOf`, `revision`, a target snapshot and the sealed review actor/time. Board proposals retain their opaque source ID; an authoritative transcript correction changes a source-version fingerprint, so a stale pending proposal gets a new revision while ordinary model paraphrase leaves it alone. An accepted row with no change target is an actual task. An accepted change proposal is a resolved review receipt; its target is the actual task. Public `LiveNotes.notes.next`, `CallFollowUps.items` and `Note.actions` contain actual tasks only; their separate `suggestions` lists contain pending proposals. Dismissed proposals and resolved change receipts stay sealed for reconciliation and are not exposed as tasks.
 
-- A label it wasn't given is something new, and so is a label it already used: that stays with the first.
-- What's ticked stays whatever the reply says. One it doesn't list is kept in its words from before, and one it lists as
-  something new shows beside what it wrote, still ticked.
-- One nobody ticked that it no longer lists goes. If it comes back it's something new.
-- An `id` that isn't a string is a reply in the wrong shape, and the refresh failed.
+### Reviewing a follow-up
 
-Follow-ups are listed in the order they were said. How often the model gets this wrong is logged with each refresh, as
-`known`, `same` and `strays`: how many it was told, how many it recognised, and how many labels it gave that weren't its to
-give.
+`CallSession.reviewFollowUp({ id, revision, decision: 'accept' | 'dismiss' })` is explicit. Accepting a new suggestion promotes that same task ID. Accepting a change compares the accepted target with the proposal's base snapshot under the lock, applies only the values reviewed, and retains the target ID. A stale revision, an opposing decision or a target changed meanwhile is a conflict. Repeating the same resolved review is safe.
 
-### Ticking a follow-up
+Review does not mean “I'll do it”. The saved note retains the separate `takenOn` responsibility consent and its existing permissions. People edit an accepted task through the normal change boundary; a model refresh cannot silently change it. Review outcomes and source evidence suppress suggestions already handled when the same conversation is read again. Document and partial-transcript access checks continue to apply before any known text reaches inference.
 
-`{type: "follow-up", id, done}` (60 a minute per person) ticks a follow-up, or takes the tick back, for everyone reading
-those notes, and nudges the room like any change to the call. It's for anyone in the call who gets the notes, the
-organizer and everyone on the invite, as `mayChangeAction` has it for a follow-up nobody has taken on, which nothing is
-until the notes are written: a guest with the link gets `403 forbidden`. Who ticked it goes into the note's changes with
-how they had the note (`as`), and for the organizer their account: a call's pass has none behind it for someone invited,
-who's known by address. Only the notes everyone shares can be ticked, by someone who may read all of them, in the part of the
-call they're in: an ID from another room or call, from notes for a narrower view, or a made-up one is `404 not-found`. It
-holds the call's row, so it comes before the call ends or is refused (`409 conflict`). A tick is kept under the notes' row
-with who made it and when, and a refresh saves around it, so one made while the notes were being written isn't lost.
+The app captures a fixed batch when Review opens. It shows Add / Dismiss for a new task and Apply change / Dismiss with before/after values for an amendment. New arrivals wait behind a count. If somebody else resolves or changes a proposal, the row stays in place and says so, rather than moving the next action under the reviewer.
 
-### Adding a follow-up
+### Ticking and adding a follow-up
 
-`{type: "follow-up-add", text}`, sharing the 60 a minute of ticking, adds a follow-up nobody said to the part of the call
-someone is in, in their words (one line, at most 300 characters, at most 40 in a part of the call), for themselves. It's for
-whoever can tick there: anyone who gets the notes, reading the notes everyone shares. A guest with the link gets `403
-forbidden`, and so does someone on a narrower view, who can't tick either. It needs a note for it to go in, so a call that
-has never had notes on answers `409 conflict`. Once one exists it works however notes stand, paused and off too: it reaches no AI.
-The same words again add nothing, so a retry is safe.
+`{type: 'follow-up', id, done}` completes or reopens an actual task. Suggestions must be accepted first; dismissal is not completion. Existing invited-reader, room and transcript-view checks apply to adding, editing, ticking and review. An ID from another call/room is not found, restricted guests cannot mutate the shared checklist, and a call ended during a change is a conflict.
 
-- **Where it's kept.** Beside the notes, in the same sealed record of the `all` row (`added`), not among `next`: there may be
-  no notes yet, and these aren't the notes model's. A record from before this reads as having none. The row is made if there
-  isn't one, with no notes in it, and everything else about it stays as for a row nobody has refreshed.
-- **Who reads it.** `added`, with the call, for people who get the notes and may read everyone's: a guest with the link is
-  sent none, whatever they were there for, as the note doesn't go to them. `GET .../follow-ups` lists them as `from: 'added'`.
-- **Ticking** is the same `{type: "follow-up", id, done}`.
-- **The notes model** is told them with the follow-ups so far, by label, and can say something it heard is one of them. Then
-  it's left out of `next`, and what was added stays in its adder's words. It can't change or drop one: what it says about one
-  goes no further than that, as for what's ticked. Nothing else about it reaches the model.
-- **What reads less.** As for what's ticked, and for the same reason: someone may have put anything they'd heard into it. A
-  refresh that reads less than the last one did isn't told them, and they stop showing for good. They still go to the note.
+`addFollowUp({ text, owner, due })` adds an actual task directly, with an explicit invited owner or nobody and an optional date. Adding never records “I'll do it”, even when the person typing chooses themselves; responsibility is accepted separately. Manual additions are kept separately from model output and survive notes being off or paused once the call has a note to keep them in. Editing compares the current revision and values against what the person saw; it does not overwrite a concurrent edit.
 
 ### Into the note
 
-What people added goes in as it stands when the call ends, whatever happens to the notes: a follow-up in that part of the
-note, the call's or a breakout room's, as if its adder had proposed it there. It's for them and taken on, its first change is
-`proposed` (with `done` after, if it was ticked), and it has no lines behind it, so it's flagged as having nothing to back it,
-as any proposal is. `at` is where it was added, as seconds into the recording. So it stays through every writing of the
-notes (`keepSettled`), and the notes model is told it's settled, the first time too, and doesn't list it again.
+Ending the call hands accepted tasks, pending proposals and review receipts to the note's sealed manifest in the same transaction that ends the call, before live rows are deleted. Accepted IDs and exact words remain actual tasks. Pending proposals remain available to review, also while inference is unavailable. Dismissal evidence goes with them, so reprocessing the same conversation does not recreate what people dismissed.
 
-When the call ends, in the transaction that ends it, every ticked follow-up goes into the note's sealed manifest
-(`ticked`: its ID, words, owner and due date, the lines behind it, the breakout room it was in, who ticked it and when),
-and the `call_notes` rows go. Writing the notes then works as a refresh does. The notes model is told what was ticked in
-the part it's writing, the call's or a room's, by label (`T1 (Kofi) Send the deck`), and each action it writes says which
-it is in `ticked`, or null, however it's worded and in whatever language the notes are in. A label it wasn't given is
-nothing, and one it already used stays with the first.
+Fresh actions inferred while writing notes, including board actions, are suggestions until someone accepts them. The writer reconciles them with the existing sealed actions and review outcomes instead of rebuilding the checklist. Notes written again preserve accepted tasks, pending proposals and dismissals. Main-room and breakout-room sections have separate suggestion lists and use the same review boundary: `api.notes.reviewAction(noteId, review)` returns the updated note. Actual-only projections drive open counts, inbox and series carry-over.
 
-- A written follow-up that's a tick is marked done (`doneInNotes`), with a `done` change saying who ticked it and when, as
-  if they'd ticked it in the note.
-- A tick nothing was said to be is added to that part's follow-ups as it was said, done, at the moment of the lines behind
-  it, since someone said it was done and the notes shouldn't lose that. So a follow-up the notes left out is there anyway,
-  and one the model didn't recognise shows twice, its wording open and the tick's done: marking the wrong one done would
-  be worse.
+Proposal and review-receipt admission is bounded to 200 records per part. Inference stops adding proposals at that ceiling; explicit agent proposals get a conflict. This budget is separate from the actual-task limit, so dismissing suggestions cannot stop somebody adding a manual task. Accepted tasks and dismissal receipts are never evicted to admit more model output.
 
-A part of the notes that couldn't be written keeps its ticks waiting in `ticked`, and they're done when the organizer has
-them written after all. Writing the notes again keeps them done, as anything with a change is kept (`keepSettled`).
+### Stored-record upgrade
+
+There is no SQL schema change or new record header. Defaulted metadata on existing sealed follow-up records opens previous-release actions as accepted (`changeOf` and target null, revision empty); newly inferred rows explicitly select suggested and receive a revision. Existing stored notes keep their tasks. Existing keys, seals, ownership scopes and physical deletion remain unchanged. Wire consumers, HTTP client and Storybook move to the new shape together.
 
 ### Follow-ups from documents
 
@@ -1163,11 +1116,11 @@ read the boards open in the main room; a room's notes read the boards open in th
 notes read the boards again, as they are then.
 
 **What comes of it.** The boards go to the notes model after the transcript (see [Prompts](#prompts)), and the stickies in their
-Actions frames become follow-ups like any other, `ActionItem`s with `from: 'board'`: the model words them and names an owner
+Actions frames become suggested follow-ups, `ActionItem`s with `from: 'board'`: the model words them and names an owner
 when the transcript or the sticky says who, and one it leaves out is still there, as the board has it, for nobody yet. They
 come on top of the follow-ups the notes keep from what was said (20, or 10 when asking again), so a full board never crowds
-those out. Owners, taking on, ticking, the inbox and a series carrying what's still open all work as for any follow-up. The
-note shows them under "Follow-ups from the board", and what backs them is the board, so they're never flagged as backed by
+those out. They wait in the suggestion review; only accepted board actions enter the checklist, inbox and series.
+Taking on responsibility and ticking then work as for any actual follow-up. The note shows accepted ones under "Follow-ups from the board", and what backs them is the board, so they're never flagged as backed by
 nothing said. Older notes' follow-ups read `from: null`.
 
 **What the note says of each board** (`Note.workedOn`, for each reader as for documents): its name now, the workspace's name
@@ -1977,10 +1930,8 @@ What goes with each choice:
   a call of many guests all watching costs a run each every half a minute, as it did when every browser asked for itself.
 - **Live notes aren't refreshed for the last words.** Once notes are off or paused nothing more is read, so what was said
   in the last half minute before stays out of the live notes until they're back on. It's in the transcript and the note.
-- **A follow-up's identity is the notes model's word.** Live, and into the note, it says which is which, and the server
-  can only check that the label is one it was given ([Follow-ups keep their IDs](#follow-ups-keep-their-ids)). A model that
-  doesn't recognise something shows it twice, the tick safe beside it; one that says the wrong label moves the tick to the
-  wrong item, which nothing here can tell. How often it strays is logged, and hasn't been measured against the real model.
+- **Matching a new suggestion is still imperfect.** The model may miss an existing task or propose the wrong change target.
+  People review the proposed result before it affects the checklist; accepted values and completion never move because of inference alone.
 - **Catching up on what was shown.** Screen moments in catch-up need frames read during the call; shared
   screens are read for the notes after it, so a catch-up's evidence is transcript moments only. `Evidence` is the
   hook: screen moments join it as a kind of their own.

@@ -465,8 +465,9 @@ time, slides in on the right.
   notes, just for you), the bookmark (**Mark this moment**, **B**) and **×**, over the tabs **Notes**, **Transcript** and
   **Ask**. While notes are on, the Notes tab has what's been decided, the follow-ups (who and when, as said), **From the
   rooms** once breakout rooms have been held, and a summary, read from the transcript as the call goes, the same for
-  everyone in that part of the call; each time opens the transcript at that moment. Anyone who gets the notes can tick a
-  follow-up, and it's done for everyone and in the notes at the end. A guest with the link gets notes written only from what
+  everyone in that part of the call; each time opens the transcript at that moment. The checklist contains accepted
+  tasks; a quiet count opens suggestions to Add, Apply change or Dismiss. Review stays available in the final note. Anyone
+  permitted to change a task can tick it, and it is done for everyone and in the notes at the end. A guest with the link gets notes written only from what
   was said while they were here, and can't tick them. The **⋯** beside the notes sign, at the top of the Notes tab, has the
   organizer's **Pause notes**, **Resume notes** and **Turn notes off** (or **Turn notes on**), or anyone else's **Ask for
   notes**. The notes everyone gets are written when the call ends.
@@ -698,11 +699,16 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    that moment. **Transcript** is the whole call so far, with who's talking at the end, and finds any word. Notes and Transcript
    open on your side, beside the document, from the button on their row, and **Open**, at the top of the Notes panel, goes the
    other way.
-   - **Follow-ups** are what the notes heard, what people added, and the to-dos with a person and a date in the documents worked on
-     in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone and ticks the line in
-     its document, and where it came from opens that line. **Add a follow-up** adds one of your own, which anyone can tick and which
-     goes into the note. A guest with the link reads what's written for them and doesn't tick or add. With notes off they come from
-     documents alone, and say so.
+   - **Follow-ups** is a stable shared checklist: what people added or accepted, and the to-dos with a person and a date in the
+     documents worked on in this call, each for whoever can open it, as **Everyone** or **Mine**. Ticking one is done for everyone
+     and ticks the line in its document; its source opens that line. **Add a follow-up** lets someone write the task, choose who it
+     is for or leave it unassigned, and set a date. Tasks can be edited without the notes model changing their words underneath.
+     A quiet count offers **suggestions from the call**. **Review** opens a fixed batch below the list: **Add** or **Dismiss** a new
+     task, or **Apply change** or **Dismiss** proposed changes to an existing task, with the old and new values shown. New arrivals
+     wait behind a separate count. A suggestion resolved by someone else says so; stale words cannot silently be accepted. Adding
+     a task does not mean its owner has said “I'll do it”. Pending suggestions are not unfinished tasks. The same review remains
+     available in the notes after the call, without holding up leaving. A guest with the link reads only what is written for them
+     and cannot add, edit or review for the group. Notes off stops new suggestions; existing tasks stay.
    - **Sending to a document:** the arrow on a line sends it to the document you were last in, if you can edit it: something decided
      as a line, a follow-up as a checklist line tagged with who and when, which is then the same follow-up, and a line of the
      transcript as a quote with who said it and when. It lands where you can see it, or a toast says where it went and **Go there**
@@ -952,6 +958,14 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
    above): "You're in Comms for 5 min.", the organizer's message for a moment in the line over the call ("Art to all rooms:
    Two minutes left"), **Ask for help** on the hand, and "Art joined your room".
 
+### Reviewing follow-ups
+
+Storybook journeys **6.23–6.25** show the review alongside the call:
+
+- **6.23 Review suggestions in the call:** open Follow-ups, review a suggested task, and add it to the shared checklist.
+- **6.24 Keep a fixed review batch:** new suggestions arrive while review is open and wait behind a count, leaving the current controls in place.
+- **6.25 A follow-up changes during review:** another person's change makes the proposal stale; the reviewer sees what happened instead of overwriting it.
+
 ## 7. End the call and get the notes
 
 1. **Leave › End the call** (with others in the call, **End call for everyone**) sends the last audio and
@@ -1106,6 +1120,10 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
   menu lists every change: who did what, when, and what the words were.
 - **Propose a decision** and **Add a follow-up** add what the notes missed, in your words, to the call's notes or a
   breakout room's section, and the plus on a transcript line starts one from what was said there.
+- **Suggestions from the call** stay separate from the Follow-ups checklist until someone accepts them. **Review** shows a fixed
+  batch, with **Add** / **Dismiss** for a suggested task and **Apply change** / **Dismiss** for a proposed change to a task already
+  there. Later suggestions wait behind a count. Accepted tasks retain their words and identity when notes are written again;
+  dismissed suggestions do not return from the same source material. **I'll do it** remains a separate acceptance of responsibility.
 - Beside a call's notes is the series it's in: **Every Tuesday** when the last three calls in it were a week apart,
   otherwise **In a series**, with the series' other calls (the newest three, with the start of each summary), how much
   is still open across them and, for the organizer, the next call with **Change**; **All** opens the series page. When
@@ -1128,6 +1146,12 @@ See [Floating call](../engineering/floating-call.md) for browser capabilities an
   calls and says how many older ones aren't shown. The organizer also sees the next call, with **Join** and
   **Change this call**, or **Schedule next week’s call**. When the series follows a recurring Google event
   and Google Calendar isn't connected any more, it says so and offers **Connect Google Calendar**.
+
+Storybook journeys **8.44–8.46** continue the same review after the call:
+
+- **8.44 Review suggestions after the call:** accept or dismiss pending suggestions in the note, keeping the checklist separate.
+- **8.45 Apply a proposed change:** review the previous and proposed values before changing an existing task.
+- **8.46 Review a stale suggestion:** a concurrent review or task change is explained in place; unseen words are never silently accepted.
 
 ## 9. Record in the room
 
@@ -1593,8 +1617,8 @@ breakout rooms · 10 min**, or **2 of 3 breakout rooms · 10 min** when a room h
 the room's name, what came of it and who was there (**One owner for launch comms. Priya and Theo were here.**), and one click
 opens it. A screen reader hears a room's card by the room's name, then what came of it and who can open it. On a phone the
 rooms' cards stack. Every picture is in your theme, as the board's own page is: dark in dark mode.
-The stickies in the call's board's **Actions** frame come back as follow-ups, under **Follow-ups from the board**, right after
-the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
+The stickies in the call's board's **Actions** frame come back as suggestions to review. Once accepted they appear under
+**Follow-ups from the board**, right after the boards: with owners, taking on, ticking and the rest, as any follow-up has. The notes read a board, along with what was
 said, only when everyone the notes went to can open it, because one summary goes to all of them; a board someone couldn't open
 says **Not everyone invited can open it, so the summary leaves it out.**, and only to people who can open it. A room's board's
 follow-ups are in that room's section of the notes, and the room's line says it had a board. The next call in a series brings

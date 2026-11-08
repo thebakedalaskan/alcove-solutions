@@ -10,7 +10,7 @@
  */
 import {
   RING_SECONDS, type CallFeedbackKind, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
-  type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
+  type CaptureState, type LiveFollowUp, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
 import type { Screen } from '../media/screens';
@@ -19,6 +19,7 @@ import { current, me } from './state';
 
 /** Something said in the call: by someone in it, or by you (heard through your microphone, while it's on). */
 export interface Line {
+  id?: string | undefined;
   who: Person | 'me';
   text: string;
   /** What the live notes take as decided from it. */
@@ -178,6 +179,8 @@ export interface CallScript {
   cues?: readonly Cue[] | undefined;
   /** How the people you ring answer, by address: after how long, and what. Anyone else comes in after a few seconds. */
   answers?: Readonly<Record<string, { after: number; reply: RingReply | 'missed' }>> | undefined;
+  /** Actual tasks and pending proposals already present when the story opens. */
+  followUps?: readonly LiveFollowUp[] | undefined;
   /** What the live notes sum up, once anything has been said. */
   summary?: string | undefined;
   /** The call's workspace as you come in: what's been brought to the call, and where people are in it. */

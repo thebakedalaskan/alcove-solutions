@@ -237,7 +237,10 @@ says while you wait. The scripted call plays the server's side; the scripted roo
 LiveKit's, and the call screen drives it exactly as it drives LiveKit's room. Your own microphone, camera and screen are
 the browser's made-up ones (`src/browser.ts`): mute, switch a device or share, and the room publishes it. Everyone else's
 camera stays off, so people show in their arches; what they share is drawn. While notes are on, what's said reaches the
-transcript as it's said, and the live notes are written again a few seconds later.
+transcript as it's said, and the live notes are written again a few seconds later. Inferred follow-ups enter a separate
+suggestion list; Add or Apply change makes them actual tasks, and Dismiss keeps the same evidence from returning. Manual
+additions choose an owner and date, and adding a task does not say its owner has taken responsibility. The same proposals
+survive ending the call and appear under the saved note's actual checklist.
 
 ```tsx
 const meta = { title: 'Calls/Sharing', ...pages } satisfies Meta<PageArgs>;
@@ -388,3 +391,12 @@ Agent connection previews live under **Components / Settings**, **Pages / Connec
 stories. **Journeys / 14 Agent access** shows creating a personal token, disconnecting a connection, and signing in to
 review an OAuth request. The last journey stops at the external-client hand-off. Tokens and request pointers in these
 stories are made-up preview values that cannot connect to a real Alcove account.
+
+## Follow-up review
+
+`src/world/follow-ups.ts` supplies one actual task, a new suggestion and a proposed change, reused before and after the call.
+`Calls/Notes/Review in workspace` and `Pages/A note/Reviewing follow-up proposals` open the real app's review, with phone and
+theme variants beside them. `Journeys/6 Follow-up proposals` (6.23–6.25) plays adding and dismissing, an incoming proposal
+waiting behind a fixed batch, and a changed actual task refusing a stale amendment. Notes' journeys 8.44–8.46 show the same
+review after the call and keep “I'll do it” as a separate choice. The shared editor and review controls have their own
+stories in `Components/Notes and transcript`.

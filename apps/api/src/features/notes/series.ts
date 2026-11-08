@@ -1,3 +1,4 @@
+import { isAcceptedFollowUp } from '@alcove/api';
 /*
  * Series (docs: notes-and-inference › Series): calls that follow on from each other, and what
  * carries over between them. A series is a random ID in its organizer's meetings, sealed with the
@@ -156,7 +157,7 @@ export async function read(o: Owner, seriesId: string): Promise<Series | null> {
         if (q.state === 'open') questions.push(carried);
         else if ((lastAt(q, 'answered') ?? '') >= since) answered.push(carried);
       }
-      for (const a of part.actions) if (!a.done || (lastAt(a, 'done') ?? '') >= since) actions.push({ ...a, ...from, later, stale: !a.done && stale });
+      for (const a of part.actions.filter(isAcceptedFollowUp)) if (!a.done || (lastAt(a, 'done') ?? '') >= since) actions.push({ ...a, ...from, later, stale: !a.done && stale });
     }
   });
   const notes = sources.map((s): SeriesNote => {
@@ -227,7 +228,7 @@ function settledText(p: Pick<NoteManifest, 'decisions' | 'questions' | 'actions'
   return [
     ...section('Decided', p.decisions.filter((d) => d.state !== 'rejected').map((d) => `- ${mark(d.at)}${oneLine(d.text)} (${STATE[d.state]})`)),
     ...section('Still open', p.questions.filter((q) => q.state === 'open').map((q) => `- ${mark(q.at)}${oneLine(q.text)}`)),
-    ...section('Follow-ups', p.actions.map((a) => {
+    ...section('Follow-ups', p.actions.filter(isAcceptedFollowUp).map((a) => {
       const who = a.owner ? `${oneLine(a.owner.name)}${a.takenOn ? ', took it on' : ', suggested'}` : 'nobody yet';
       return `- ${mark(a.at)}${oneLine(a.text)} (${[who, a.due ? `due ${oneLine(a.due)}` : '', a.done ? 'done' : 'not done'].filter(Boolean).join('; ')})`;
     }))
