@@ -2315,7 +2315,7 @@ describe('a live call comes first', () => {
 });
 
 describe('reading the call', () => {
-  const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional() });
+  const LogLine = z.object({ msg: z.string(), requestId: z.string().optional(), sql: z.string().optional(), method: z.string().optional(), path: z.string().optional() });
   /** The statements one read of the call ran, from its log lines: what it cost, in what it did. */
   async function statementsOf(who: Browser, call: CallSession): Promise<string[]> {
     const requestId = `read-${id128()}`;
@@ -2346,10 +2346,20 @@ describe('reading the call', () => {
     // Everyone in it: the first read at a version may open the tree, and no read after it does, whoever's reading.
     await statementsOf(art, host);
     for (let i = 0; i < 3; i++) for (const [who, call] of [[art, host], [priya, p]] as const) expect(opensTree(await statementsOf(who, call))).toBe(0);
-    // A change to the tree is opened once more, for everyone, and what they're told follows it.
+    // Include background recovery reads: one can open the new version before either measured request begins.
+    const from = h.logs.length;
     await art.api.workspaces.items.rename(id, plan, 'Plan, renamed');
-    expect(opensTree(await statementsOf(art, host)) + opensTree(await statementsOf(priya, p))).toBe(1);
+    await until(() => host.getSnapshot().workspace.documents.some((x) => x.name === 'Plan, renamed'), 'the organizer’s background read to see the renamed document');
+    expect(opensTree(await statementsOf(art, host)) + opensTree(await statementsOf(priya, p))).toBe(0);
     expect((await space(p)).documents.map((x) => x.name)).toEqual(['Plan, renamed']);
+    // Exactly one tree open across every call-state read at this version, including automatic recovery. The rename
+    // itself opens the tree to change it, so only GETs of this call count toward the shared read cache’s cost.
+    const statements = h.logs.slice(from).flatMap((l) => {
+      const r = LogLine.safeParse(JSON.parse(l));
+      return r.success && r.data.method === 'GET' && r.data.path === `/v1/live/calls/${host.ticket.callId}`
+        && (r.data.msg === 'query' || r.data.msg === 'slow query') && r.data.sql ? [r.data.sql] : [];
+    });
+    expect(opensTree(statements)).toBe(1);
     // Someone who can open nothing: nothing of it is opened for them, and a read costs the same whether or not something they
     // can't open is being presented and played, so how long it takes says nothing about it either.
     const quiet = await statementsOf(jamie, jamie.call);
