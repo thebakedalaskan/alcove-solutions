@@ -301,6 +301,14 @@ order, and nothing a message carries can stop it: anything unreadable is skipped
   posts into a room they're not in. The sender comes from MLS (the message's sender leaf and signature), not from
   the text. A message that can't be sent after a few tries, or whose sender moved before it went out, is taken
   back, and the sender is told. Messages are at most 4,000 characters.
+- **Chat mentions** are selected MLS identities and UTF-16 spans inside that same encrypted payload. The sender and
+  recipient validate the spans and the destination's MLS membership; a mention never grants access to a room. Older
+  encrypted messages without `mentions` open as an empty list. `read-chat` carries only opaque `generation:seq` message
+  IDs, stored in the existing sealed call state by the checked person's seat (the organizer has one stable seat).
+  Only that viewer receives their `chatRead` list. Waiting/removed callers cannot write receipts, and message IDs must
+  belong to this owner's call log. Older sealed call records default missing `chatRead` to `{}`; no migration or
+  encryption-header change is needed. Receipts live as long as the call, so handled mentions cannot reappear after an
+  arbitrary receipt limit.
 - **Reactions** are a second kind of payload inside the same MLS application message as chat, so the API sees
   nothing new: the same relay, the same sender check, and the same rate limit as a chat message. A reaction names a
   message by its place in the log, `generation:seq`, and an emoji (one of eight, by name; the wire never carries a
@@ -1783,11 +1791,23 @@ steps (`ShareMenu.tsx`); and the call's keys (`KeysSheet.tsx`, from `session/use
   a message goes ("Message Design") while rooms are open. It's off until the browser holds its part's keys (and
   while it's moving), takes up to 4,000 characters, says when there was chat here it can't read, and gives back a
   message that couldn't be sent.
+  Typing @ offers current room members by stable identity, with keyboard selection and clear recipient chips. Chat
+  highlights selected names and offers Open mention for the first unread addressed message. Only an addressed span
+  actually visible in a focused, visible Chat panel writes a read receipt; opening a background tab's panel does not.
   Under a message, `Reactions` shows each emoji with how many used it, yours marked; pressing one adds yours or takes
   it back, and its tooltip lists who reacted. Hovering a message (or focusing it) shows `ReactionAdd`. Your own
   message can't be reacted to until it has gone out (`sending`). If a reaction can't be sent it's reverted and the toast
   says "Your reaction wasn't sent. Try again." The stand-in call in Storybook folds reactions the same way (`react`).
 - **Spotlight** goes through the server and can name anyone in the call. It leads on everyone's stage.
+- **Tab attention** (`features/shell/TabAttention.tsx`) needs no OS notification permission: authorized unread document
+  and chat mentions use a horizon circle, and the current host's pending admissions use a rose square with priority.
+  Counts over nine show +. The Alcove mark stays unchanged underneath. Each call publishes bounded generic counts
+  to sibling tabs, without content or join tokens; a live browser lock keeps a background tab's projection valid when
+  its timers are throttled, and abandoned publishers expire. Current call authorization, account changes and sign-out
+  clear projections. Document notices are read through account-keyed queries in every tab; a read in another tab
+  invalidates them, and periodic background reads reconcile other devices and permissions. Focus alone never handles
+  admission. The root renders a still PNG from the design-system icon and restores the original favicon on clear.
+  Optional chat notifications follow Tagged in Settings and always use a generic title and body, without previews.
 - **The shell** (`layout/`) has fixed places, each with one job, and nothing in it is dragged, torn off or rearranged:
   what's open is always in the middle, and your side always on the right.
   - *The top bar* (`TopBar.tsx`). On the left, the title, the clock, the notes sign, the shield, Reconnecting, and, when two
@@ -2292,7 +2312,9 @@ the coordinates). Your own share has none of this: you have the original.
 
 The running call can expose a compact Document Picture-in-Picture presentation with the same controls and media ownership.
 Its lifecycle, automatic-opening capability, attention scope and verification requirements are documented in
-[Floating call](floating-call.md). Call-chat mention indicators remain dependent on #107; generic unread Chat is labelled as such.
+[Floating call](floating-call.md). The compact view shows a generic Chat attention count, including unread room-chat mentions,
+and returns to the full call for exact-message navigation and reading. The full call's mention indicators use the person's
+read receipts from the sealed call state.
 
 ## Room recordings
 

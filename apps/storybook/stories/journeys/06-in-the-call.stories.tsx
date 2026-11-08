@@ -409,7 +409,7 @@ const attentionReview = () => inCall({
 });
 const openAttention = async ({ userEvent }: Context) => { await userEvent.click(await screen.findByRole('button', { name: /^Attention,/ }, LATER)); };
 export const HandQueue: PageStory = {
-  ...attentionReview(), name: '6.13 Take turns with the hand queue',
+  ...attentionReview(), name: '6.14 Take turns with the hand queue',
   play: async (c) => {
     await c.step('Open Attention; the queue shows hands in the order raised', async () => { await openAttention(c); await screen.findByText('In order raised', {}, SOON); });
     await c.step('Raise your own hand; the confirmed queue includes you', async () => { await c.userEvent.click(await within(await screen.findByRole('complementary', { name: 'Attention' }, SOON)).findByRole('button', { name: 'Raise your hand' }, SOON)); await screen.findByRole('button', { name: 'Lower yours' }, SOON); });
@@ -419,7 +419,7 @@ export const HandQueue: PageStory = {
 };
 export const HandQueuePhone = phone(HandQueue);
 export const SharedQuestions: PageStory = {
-  ...attentionReview(), name: '6.14 Ask, vote and resolve shared questions',
+  ...attentionReview(), name: '6.15 Ask, vote and resolve shared questions',
   play: async (c) => {
     await openAttention(c);
     await c.step('Q&A is shared with this room; Notes’ Ask stays private', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Q&A/ }, SOON)); });
@@ -431,7 +431,7 @@ export const SharedQuestions: PageStory = {
 };
 export const SharedQuestionsPhone = phone(SharedQuestions);
 export const QuietFeedback: PageStory = {
-  ...attentionReview(), name: '6.15 Signal quietly, then clear it',
+  ...attentionReview(), name: '6.16 Signal quietly, then clear it',
   play: async (c) => {
     await openAttention(c);
     await c.step('Open Signals, then ask everyone in this room to slow down', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: 'Signals' }, SOON)); await c.userEvent.click(await screen.findByRole('button', { name: 'Slow down' }, SOON)); });
@@ -440,7 +440,7 @@ export const QuietFeedback: PageStory = {
 };
 export const QuietFeedbackPhone = phone(QuietFeedback);
 export const WaitingAttention: PageStory = {
-  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: at(.2, knocks(DIEGO)) } }), name: '6.16 Let someone in from Attention',
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: at(.2, knocks(DIEGO)) } }), name: '6.17 Let someone in from Attention',
   play: async (c) => {
     await openAttention(c);
     await c.step('The host’s Waiting tab shows the current request', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Waiting/ }, SOON)); });
@@ -448,3 +448,28 @@ export const WaitingAttention: PageStory = {
   }
 };
 export const WaitingAttentionPhone = phone(WaitingAttention);
+
+export const MentionSomeone: PageStory = {
+  name: '6.13 Mention someone in chat',
+  ...launchReview({ cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }),
+  play: async (c) => {
+    const { userEvent, step } = c;
+    await step('Aiko mentions you. Chat says there is something unread while you carry on in the call', async () => {
+      await dock();
+      await screen.findByRole('button', { name: /^Chat, / }, LATER);
+    });
+    await step('Open Chat and read the message addressed to you. Reading it clears its mention attention', async () => {
+      await reach('Chat')(c);
+      await screen.findByText('@Art Vandelay', {}, SOON);
+    });
+    await step('Type @ and choose Priya with the keyboard. Only people who can read this room are offered', async () => {
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }, SOON), '@Pri');
+      await userEvent.keyboard('{ArrowDown}{ArrowUp}{Enter}');
+    });
+    await step('Send the message. The selected person stays highlighted in the sent message', async () => {
+      await userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }, SOON), 'I’ll review it now.');
+      await userEvent.click(await screen.findByRole('button', { name: 'Send to everyone' }, SOON));
+      await screen.findByText(`@${PRIYA.name}`, {}, SOON);
+    });
+  }
+};

@@ -25,10 +25,11 @@ A late browser-window request cannot revive a departed call.
 
 The compact view shows hands, open Q&A, host-only admission requests and a count labelled Chat for new messages. Each
 count returns to its matching full-call panel. Shared controls unlock the existing sound output synchronously from
-their user gesture; microphone confirmation still waits for the actual device transition. It does not show
-message bodies or personal notes. Call-chat @mentions and their read state are not implemented here: that acceptance
-criterion in [#109](https://github.com/thebakedalaskan/the-privacy-suite/issues/109) depends on
-[#107](https://github.com/thebakedalaskan/the-privacy-suite/issues/107). Workspace document tags are a separate feature.
+their user gesture; microphone confirmation still waits for the actual device transition. It does not show message
+bodies or personal notes. The full call supports individual @mentions in room chat, an unread-mention indicator and
+navigation to the exact message; viewing that message updates the person's read state. Those receipts are kept in the
+sealed call state across refreshes and reconnects. The compact window uses the generic Chat count, including unread
+mentions, and leaves exact-message navigation and reading to the full call. Workspace document tags remain a separate feature.
 
 ## Browser capability and automatic opening
 

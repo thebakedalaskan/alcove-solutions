@@ -263,14 +263,15 @@ export type MentionNotice = z.infer<typeof MentionNoticeSchema>;
 
 /**
  * One line of a workspace's stream. `tree` comes first and then whenever it changes for you, whole. `presence`: everyone
- * here that you can know of, whole, whenever that changes. `mention`: someone tagged you, as it happens, and on opening,
- * anything you haven't seen. `access`: your role changed, just before the `tree` that shows it. `ping`: it's still there.
+ * here that you can know of, whole, whenever that changes. `mentions`: the tags you haven't seen, whole, on opening and
+ * whenever they change, including when another window reads one. `access`: your role changed, just before the `tree`
+ * that shows it. `ping`: it's still there.
  * `closed`: you can't open this workspace any more, so it ends and stays ended. A stream that just ends is to be opened again.
  */
 export const WorkspaceLiveEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('tree'), tree: WorkspaceTreeSchema }),
   z.object({ type: z.literal('presence'), here: z.array(WorkspaceHereSchema) }),
-  z.object({ type: z.literal('mention'), mention: WorkspaceMentionSchema }),
+  z.object({ type: z.literal('mentions'), mentions: z.array(WorkspaceMentionSchema) }),
   z.object({ type: z.literal('access'), role: WorkspaceRoleSchema.nullable() }),
   z.object({ type: z.literal('ping') }),
   z.object({ type: z.literal('closed') })

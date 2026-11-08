@@ -14,6 +14,8 @@ import { CallPlaceSchema } from './state';
 import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
 /** One state change in a call, sent as POST /calls/:id/actions. The server answers with the new CallState. */
 const CallStepSchema = z.discriminatedUnion('type', [
+  /** Opaque encrypted-log IDs this person has read; never chat text or another person's read state. */
+  z.object({ type: z.literal('read-chat'), messages: z.array(z.string().min(1).max(128).regex(/^\d+:\d+$/)).max(200) }),
   z.object({ type: z.literal('notes'), on: z.boolean() }),
   /** The organizer holds every kind of capture, while notes are on, until they resume. */
   z.object({ type: z.literal('pause') }),

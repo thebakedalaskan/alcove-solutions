@@ -25,6 +25,7 @@ import { ROOMS_ON_NEW_BOARD, afterClosing, landRooms, syncBoardSeats, syncRoomBo
 import { changeCapture } from './recording';
 import { nudge } from './notifications';
 import { changeAttention, isAttentionAction } from './attention';
+import { readChat } from './chat-read';
 
 const clog = log.child({ component: 'calls' });
 
@@ -69,7 +70,9 @@ export async function act(v: Viewer, callId: string, a: CallAction): Promise<Cal
     const ctx = { callId, action: a.type };
     // Under the call's row lock: a stand-in's last click as the organizer takes the call back is refused, not carried out.
     if (!anyone(a)) stillHosting(v, state, ctx);
-    if (isAttentionAction(a)) {
+    if (a.type === 'read-chat') {
+      s = await readChat(v, c, callId, s, a.messages);
+    } else if (isAttentionAction(a)) {
       await changeAttention(v, c, callId, s, a);
     } else if (a.type === 'others-point') {
       // Someone's own choice about what they share, by person, so it holds when they come back on another connection.

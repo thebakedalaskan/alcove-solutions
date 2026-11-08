@@ -10,7 +10,7 @@
  * and its timer and vote.
  */
 import {
-  type CallAttention, type CallFeedbackKind, type CallQuestionStatus, AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
+  type CallAttention, type CallFeedbackKind, type CallQuestionStatus, AlcoveApiError, MAX_CALL_IDEAS, RING_SECONDS, notesAreOn, reactionTarget, withReaction, type BreakoutPlan, type CallPage, type CallAnswer, type CallChatMention, CallChatTextSchema, type CallCrypto, type CallEndResult, type CallMoment, type CallMoveOut, type CallParticipant, type CallRole,
   type CallReaction, type CallSession, type CallState, type CallTicket, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart,
   type CatchUp, type CatchUpRange, type CatchUpWindow, type AudioPiece, type LineAudio, type Meeting, type MoveMedia, type MoveOutState, type Person, type PersonalApi,
   type RingReply, type RoomCapture, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, type TranscriptLine
@@ -122,7 +122,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       revision: 0, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: new Date().toISOString() },
       callId, meetingId: meeting.id, code: meeting.code, title: meeting.title, startedAt, elapsed: since, phase: 'in-call', participants: organizes ? [me] : [], locked: false, pointing: true,
       spotlight: null, breakouts: { open: null, held: [] }, capture: captureOf(mode, mode === 'off' ? null : startedAt, meeting.organizer.name),
-      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [],
+      notes: { everOn: mode !== 'off', noteId: mode !== 'off' ? noteId : null, recording: { segment: 0, pieces: 0, seconds: mode === 'on' ? since : 0 } }, waiting: [], ringing: [], leaving: [], chatRead: [],
       host: { id: organizes ? me.id : null, standIn: false, organizer: meeting.organizer, next: [] }, generation: 1, transcript: [],
       liveNotes: { notes: null, added: [], writing: false, error: null }, notices: mode === 'on' && !since ? [{ id: nextId('notice'), text: 'Notes are on. Everyone here can see that.', kind: 'notes' }] : [],
       isOrganizer: organizes, isHost: organizes, role: arrival.role,
@@ -189,7 +189,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
       case 'chat': {
         const p = this.find(b.who);
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
+        const mentions = b.tagged.flatMap((who): CallChatMention[] => {
+          const target = who === 'me' ? this.me : this.find(who);
+          if (!target || !this.crypto.getSnapshot().members.includes(target.id)) return [];
+          const name = `@${target.person.name}`;
+          const start = b.text.indexOf(name);
+          return start < 0 ? [] : [{ identity: target.id, start, end: start + name.length }];
+        });
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
         return;
       }
       case 'react': {
@@ -896,8 +903,17 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ serverUrl: this.ticket.serverUrl, roomName: this.ticket.roomName, identity: this.ticket.identity, token: 'storybook' });
   }
   refresh(): Promise<void> { return Promise.resolve(); }
-  sendChat(text: string): Promise<void> {
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
+  sendChat(text: string, mentions: readonly CallChatMention[] = []): Promise<void> {
+    const leading = text.length - text.trimStart().length;
+    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), at: this.getSnapshot().elapsed });
+    const now = this.crypto.getSnapshot();
+    if (!parsed.success || parsed.data.mentions.some((m) => !now.members.includes(m.identity))) return Promise.reject(new AlcoveApiError('invalid', 'Choose people who are in this part of the call.'));
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, at: parsed.data.at, place: c.place, sending: false, reactions: [] }] }));
+    return Promise.resolve();
+  }
+  readChat(ids: readonly string[]): Promise<void> {
+    const readable = this.crypto.getSnapshot().chat.filter((m) => ids.includes(m.id)).map((m) => m.id);
+    this.change((s) => ({ ...s, chatRead: [...new Set([...s.chatRead, ...readable])].slice(-200) }));
     return Promise.resolve();
   }
   /** Yours on a message, on or off: the same rules as the real call's. */

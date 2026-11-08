@@ -13,6 +13,7 @@ import { overlayOpen, typing, withMod } from '~/lib/keys';
 import { useLive, useMedia } from '~/lib/live';
 import { log } from '~/lib/log';
 import { q, qk } from '~/lib/queries';
+import { announceMentionsRead } from '~/features/shell/attentionChannel';
 import { useTreeActions } from './actions';
 import { BoardPane } from './BoardPane';
 import { useLaidOver } from './changes';
@@ -137,7 +138,11 @@ function useTagToasts(store: WorkspaceLive, waiting: readonly WorkspaceMention[]
     const next = waiting.find((m) => tree.all.has(m.document));
     const item = next && tree.all.get(next.document);
     if (!next || !item) return;
-    void store.seen(next.id).then(() => qc.invalidateQueries({ queryKey: qk.mentions }));
+    void store.seen(next.id).then(() => {
+      const owner = qc.getQueryData(q.session().queryKey)?.ownerId;
+      if (owner) announceMentionsRead(owner);
+      return qc.invalidateQueries({ queryKey: qk.mentions });
+    }).catch((e: unknown) => wlog.warn('mention read state not saved', { err: e }));
     /* Already on that line, from a notification say: there's nothing to tell. */
     if (at.kind === 'document' && at.id === next.document && at.block === next.block) { setTurn((n) => n + 1); return; }
     busy.current = true;

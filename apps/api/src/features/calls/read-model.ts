@@ -19,6 +19,7 @@ import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, spe
 import { NO_NOTES, boardFor, notesFor } from './insights';
 import { attentionFor, openAttention } from './attention';
 import { stopLost } from './workspace-state';
+import { chatReadFor } from './chat-read';
 
 /**
  * Rooms as the call shows them: the people sent to each, and who's in each now, by identity (the organizer too, in
@@ -55,7 +56,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   const base = {
     revision: row.version, callId, meetingId: row.meeting_item_id, code: meeting.manifest.code, title: meeting.manifest.title, startedAt: row.started_at.toISOString(),
     elapsed: Math.max(0, Math.round((end.getTime() - row.started_at.getTime()) / 1000)), phase: row.state === 'live' ? 'in-call' as const : 'ended' as const,
-    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role
+    locked: row.locked, pointing: s.pointing, generation: row.mls_generation, isOrganizer: v.isOrganizer, isHost: v.isHost && s.host === v.pass.identity, role: v.role,
+    chatRead: chatReadFor(v, s)
   };
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {

@@ -495,6 +495,12 @@ time, slides in on the right.
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its
   tooltip names who reacted, and after about 40 characters says how many more ("Aiko, Maya, Kofi +2"). You can react
   once your own message has gone out. If a reaction doesn't send, it's taken back and a toast says so.
+- **Mentioning someone in chat.** Type **@** and search the people who can read this room. Their address, or a guest's
+  identity, distinguishes people with the same name. Use the arrow keys and **Enter**, or press their row, to select them.
+  Selected people appear beside the composer and stay highlighted in the sent message; changing the tagged words removes
+  that selection. An unread mention counts in Chat and in the browser tab. **Open mention** goes to the exact message;
+  seeing that message in a visible, focused Chat panel marks it read across your open clients. Drafts, failed sends and
+  self-mentions do not add unread attention. Mentioning someone never adds them to a room.
 - **Waiting for people.** Everyone the organizer rings waits on the stage in an empty arch that ripples, then shows
   their answer (**In 5 minutes**, **Not this time**), and opens into their tile when they arrive, while the others make
   room. Someone who says no or doesn't answer stays a moment with **Ring again**, then gives the room back, and stays
@@ -571,7 +577,7 @@ Calls are for groups: invited people join with their accounts, anyone else with 
 organizer lets them in, and video, audio and chat are encrypted end to end between the people in the call
 ([Calls and recordings › Group calls](../engineering/calls-and-recordings.md#group-calls)).
 
-### Shared attention (journeys 6.13–6.16)
+### Shared attention (journeys 6.14–6.17)
 
 **Attention** stays reachable beside a shared screen, document or board, while the people are hidden, and in focus.
 Its hands and open-question counts are for the room you are in. A host also sees the current count waiting to join.
@@ -579,21 +585,21 @@ On a phone the same control opens a sheet. Opening it changes only your own view
 Requests already outstanding appear after joining or reconnecting without replaying their sounds. New requests update
 counts and a polite screen-reader announcement without moving focus.
 
-13. **Take turns with the hand queue.** Hands lists people in server order. **Raise your hand** and **Lower yours**
+14. **Take turns with the hand queue.** Hands lists people in server order. **Raise your hand** and **Lower yours**
     change only your own hand after confirmation. The current host can **Lower** one request or **Lower all**.
     Each raise has its own identity, so an old lower cannot remove a newer raise. The queue remains visible after a
     reconnect or moving to another device. Existing room-help indicators remain on the host's room overview.
-14. **Ask, vote and resolve shared questions.** Q&A is for questions to everyone in this room, separate from Chat and
+15. **Ask, vote and resolve shared questions.** Q&A is for questions to everyone in this room, separate from Chat and
     the private AI **Ask** tab under Notes. Type a question, then **Post question**. It shows its author, text and votes;
     **Vote** switches to **Voted**, and pressing it again removes your vote. One identity has one vote. **Most votes**,
     **Newest** and **Refresh order** apply a new order deliberately; arriving votes leave the reading order in place.
     The host can **Pin question**, **Mark question answered** or **Dismiss question**. Resolved questions leave the open
     count and lose their pin; **Show resolved questions** reveals their answered or dismissed state. Questions remain
     with their original room audience when rooms close. Another room's questions never become main-room questions.
-15. **Signal quietly, then clear it.** Signals offers **Can’t hear you**, **Slow down**, **Yes**, **No** and **Need a break**.
+16. **Signal quietly, then clear it.** Signals offers **Can’t hear you**, **Slow down**, **Yes**, **No** and **Need a break**.
     One active signal appears beside your tile. Press the same choice to clear it; it also expires after a moment or clears
     when you leave or change rooms. The current host and presenter can see counts by kind for their room. Signals are visual.
-16. **Let someone in from Attention.** The host's **Waiting** tab shows the same current requests and **Let in** / turn-away
+17. **Let someone in from Attention.** The host's **Waiting** tab shows the same current requests and **Let in** / turn-away
     controls as People. A withdrawn, resolved or expired request disappears. A stale press never claims that someone joined.
 
 **Sounds.** Successful microphone on/off transitions and fresh joins, departures, hands, questions and host admissions
@@ -611,8 +617,8 @@ in the call; **Return to call** brings the meeting forward. **Leave** follows th
 recording-save flow, and a failure keeps the call open with an explanation.
 
 Hands, open Q&A, people asking to enter (for the host), and new chat have compact indicators that return to their matching Attention tab or Chat in the full meeting. The compact and full meeting controls share one confirmed action owner and the same speaker cues.
-The window shows no personal notes or message text. A chat count means new messages, not @mentions: the dedicated
-call-mention indicator depends on [#107](https://github.com/thebakedalaskan/the-privacy-suite/issues/107).
+The window shows no personal notes or message text. Its Chat count includes unread mentions; opening Chat returns to
+the full call, where **Open mention** finds the exact message and reading it clears its mention attention.
 
 Automatic opening is an optional preference for this browser. It starts off, and the browser still decides whether
 it can open the window when you move away. The call never requests camera, microphone or screen access just to enable

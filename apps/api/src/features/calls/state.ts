@@ -87,6 +87,8 @@ export const Stored = z.preprocess(withHost, z.object({
   othersPointOff: z.array(z.string()),
   /** Where in this generation's log each part of the call last had chat, so people who come in later know there was chat they can't read. */
   chatAt: z.record(z.string(), z.number()),
+  /** This person's opaque chat message IDs, sealed with call state and kept across their reconnections. */
+  chatRead: z.record(z.string(), z.array(z.string())).default({}),
   notices: z.array(Notice),
   /** What's going on in the workspace the call uses: who's asking to see it, what's being presented and played, and what's been worked on. */
   workspace: CallSpace.default(NO_SPACE),

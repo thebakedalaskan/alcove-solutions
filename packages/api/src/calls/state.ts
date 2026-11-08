@@ -320,6 +320,8 @@ export const CallStateSchema = z.object({
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
   waiting: z.array(CallAskerSchema),
+  /** Encrypted chat message IDs read by this person; empty until admitted. */
+  chatRead: z.array(z.string()),
   /** People the organizer rang who aren't in the call, and how each answered; empty for everyone else. */
   ringing: z.array(RungSchema),
   /**
