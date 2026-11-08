@@ -40,7 +40,7 @@ stories/components/       one file per @alcove/ui component, a story per state, 
 stories/pages/            one file per page, a story per state
 stories/calls/            the call: the lobby and waiting, ringing, the call itself and every moment of its canvas (`TheCall`, with the
                           plays it shares in `plays.ts`), how a presentation ends (a reload, a room, closed, replaced, a share
-                          stopped), notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
+                          stopped), floating calls at the native browser hand-off, notes, sharing, rooms with what's open beside them, its workspace, a board (closed for
                           everyone, moved to Trash), leaving
 stories/board/            the board: its surface in each place it shows, its states, and who else is on it
 stories/journeys/         one file per section of docs/product/user-flows.md, and per part of one with steps of its own
@@ -324,6 +324,27 @@ export const Voting = inCall({
   script: { here: REVIEWERS, board: RETRO, cues: [...at(1, opensBoard(PRIYA, 'retro')), ...at(12, startsVote(PRIYA, 'Could improve', 3))] }
 });
 ```
+
+### Floating calls and the browser hand-off
+
+**Components / In a call / FloatingCall** renders the real compact presentation: a speaker's drawn camera picture, a
+drawn share or an arch, device pending and failure states, reconnecting, attention counts, the call's real leave question,
+departure pending and failure states, narrow and wide
+windows, and both themes. Its buttons update the story's controls and say what was pressed in Actions. The component
+owns no call session, audio or camera. Its pictures are made-up preview content.
+
+**Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
+a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
+call, refuse leaving or changing the raised hand, and block devices. **Journeys / 6 Floating call / 6.22 Open a floating
+call** plays up to this same hand-off. Open the preview
+as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
+Storybook does not replace that API, force support, or claim a synthetic `userEvent` verified native behavior.
+
+Use the top-level preview to manually open, close, reopen and return; switch microphone, camera and hand; try Leave and
+Stay; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture
+ownership, capture output privacy, leave failure recovery and browser-driven automatic opening. The scripted room cannot
+establish any of those. Unsupported browsers retain normal call controls. The compact Chat badge counts new messages;
+recipient-specific mentions depend on #107.
 
 ## Extend the stand-in
 

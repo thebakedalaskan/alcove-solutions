@@ -19,7 +19,7 @@ import { log } from '~/lib/log';
 
 const vlog = log.child({ component: 'call-view' });
 
-export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right' };
+export const DEFAULT_PREFS: CallViewPrefs = { mode: 'auto', self: 'grid', corner: 'bottom-right', autoFloat: false };
 export const EMPTY_LAYOUT: CallLayout = { pins: [], order: [], arrived: [], big: [], workspace: { open: false, document: null } };
 /** The people as tiles beside what's open, and the workspace with its list. */
 export const DEFAULT_PANELS: CallPanels = { people: 'tiles', list: true };
@@ -120,6 +120,7 @@ export function useCallView(callId: string, account: string | null | undefined) 
     setMode: (mode: CallViewMode) => updatePrefs((p) => ({ ...p, mode })),
     setSelf: (self: SelfView) => updatePrefs((p) => ({ ...p, self })),
     setCorner: (corner: StageCorner) => updatePrefs((p) => ({ ...p, corner })),
+    setAutoFloat: (autoFloat: boolean) => updatePrefs((p) => ({ ...p, autoFloat })),
     /**
      * Pins someone (by seat), or unpins them. With every pin taken, the oldest pin of someone who isn't in the call
      * (`here`: the seats in the call now) makes room. False when all of them are here.
