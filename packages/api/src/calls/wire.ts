@@ -8,6 +8,7 @@ import { BoardNewSchema, BoardObjectIdSchema, BoardSavedSchema, BoardTimerMinute
 import { CaptionLanguageSchema } from './captions';
 import { CaptureDevicePartSchema } from './capture';
 import { CatchUpRangeSchema } from './catchup';
+import { CallFeedbackKindSchema, CallQuestionStatusSchema } from './attention';
 import { RingReplySchema } from './rings';
 import { CallPlaceSchema } from './state';
 import { PlayMediaSchema, PlayPositionSchema, PresentSectionSchema, PresentStartSchema } from './workspace';
@@ -28,8 +29,15 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
   /** The organizer has shared screens read for the notes, or stops it. Only while notes are on or paused; turning notes off stops it too. */
   z.object({ type: z.literal('screens'), on: z.boolean() }),
-  /** Anyone in the call: a raised hand, which everyone sees. */
-  z.object({ type: z.literal('hand'), up: z.boolean() }),
+  /** Anyone in the call: a raised hand for their room and the host. Every attention action binds its expected room. */
+  z.object({ type: z.literal('hand'), place: CallPlaceSchema, up: z.boolean() }),
+  z.object({ type: z.literal('hand-lower'), place: CallPlaceSchema, entryId: IDSchema.min(1).max(64) }),
+  z.object({ type: z.literal('hands-clear'), place: CallPlaceSchema }),
+  z.object({ type: z.literal('question-post'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), text: oneLine(1000) }),
+  z.object({ type: z.literal('question-vote'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), on: z.boolean() }),
+  z.object({ type: z.literal('question-resolve'), place: CallPlaceSchema, id: IDSchema.min(1).max(64), status: CallQuestionStatusSchema }),
+  z.object({ type: z.literal('question-pin'), place: CallPlaceSchema, id: IDSchema.min(1).max(64).nullable() }),
+  z.object({ type: z.literal('feedback'), place: CallPlaceSchema, kind: CallFeedbackKindSchema.nullable() }),
   /** Anyone in the call: whether others may point at and mark what they share. On until they turn it off. */
   z.object({ type: z.literal('others-point'), on: z.boolean() }),
   /** Anyone in the call who gets the notes: ticks a follow-up of the live notes of the part of the call they're in, or takes the tick back. Done for everyone there. */

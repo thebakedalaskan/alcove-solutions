@@ -9,7 +9,7 @@
  * story opened. Everyone in a script is from the demo world, and everything they say is made up.
  */
 import {
-  RING_SECONDS, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
+  RING_SECONDS, type CallFeedbackKind, type BoardTemplate, type BoardTimerMinutes, type BoardVotesEach, type BreakoutBoard, type CallCard, type CallReaction, type CallPage, type CaptureMode, type CapturePart,
   type CaptureState, type IncomingRing, type Meeting, type Person, type RingReply
 } from '@alcove/api';
 import type * as Y from 'yjs';
@@ -69,6 +69,8 @@ export type Beat =
   | { do: 'say'; line: Line }
   | { do: 'mic'; who: Person; on: boolean }
   | { do: 'hand'; who: Person; up: boolean }
+  | { do: 'question'; who: Person; text: string; votes?: number }
+  | { do: 'feedback'; who: Person; kind: CallFeedbackKind | null }
   | { do: 'share'; who: Person; screen: Screen }
   | { do: 'stop-sharing'; who: Person }
   | { do: 'chat'; who: Person; text: string; tagged: readonly (Person | 'me')[] }

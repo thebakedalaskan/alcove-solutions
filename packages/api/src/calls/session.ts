@@ -1,3 +1,4 @@
+import { type CallFeedbackKind, type CallQuestionStatus } from './attention';
 import { type PersonalApi } from '../notes/personal';
 import { type SeriesAnswerPart } from '../notes/series';
 import { type AudioPiece, type ScreenFrame, type ScreenFrameReceipt, type TranscriptClip } from '../recordings/capture';
@@ -198,8 +199,22 @@ export interface CallSession extends LiveStore<CallState> {
   shareFrame(frame: ScreenFrame): Promise<ScreenFrameReceipt>;
   /** The presenter's own browser: one of its shares ended, so what it showed last stops there in the notes. */
   shareEnded(share: string): Promise<void>;
-  /** Raises or lowers your hand; resolves once confirmed by the server, then everyone in the call sees it. */
+  /** Raises or lowers your hand for your room and the host. Resolves once confirmed. */
   setHand(up: boolean): Promise<void>;
+  /** Host only: lowers this exact queued entry, so an older click cannot lower a new raise. */
+  lowerHand(entryId: string): Promise<void>;
+  /** Host only: clears raised hands across all rooms. */
+  clearHands(): Promise<void>;
+  /** Posts explicit Q&A for the people here now; reuse the ID to retry the same words. */
+  postQuestion(id: string, text: string): Promise<void>;
+  /** One vote per signed-in account, or per guest call person, within the original audience. */
+  voteQuestion(id: string, on: boolean): Promise<void>;
+  /** Host only, and only for a question in their original audience. */
+  resolveQuestion(id: string, status: CallQuestionStatus): Promise<void>;
+  /** Host only: pins an accessible open question, replacing the room's pin; null clears it. */
+  pinQuestion(id: string | null): Promise<void>;
+  /** Room-only feedback for 15 seconds on the server clock; null clears yours. */
+  setFeedback(kind: CallFeedbackKind | null): Promise<void>;
   /** Whether others may point at and mark what you share; everyone sees it. Resolves once the server has it. */
   letOthersPoint(on: boolean): Promise<void>;
   /** Organizer only: whether anyone may point at and mark shared screens in this call. Resolves once the server has it. */

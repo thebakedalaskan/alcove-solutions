@@ -247,11 +247,11 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   - **The dock** holds what you do in the call: the microphone and camera with their arrows, a hairline, Share, Raise your
     hand, More, a hairline, Leave, and in focus Show everything. Share is the one control it names in words.
   - **The top right** holds what's only yours: View, then one group of Board, Workspace, a hairline, Notes, Chat, a
-    hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
+    Attention with the hand and open-question counts, a hairline, and the faces with the count, which open People. Each is lit while what it opens is open.
 - **Your side** is one panel at a time, on the right, at a fixed width (368px, or 340px in a window under 1200px), and the
   stage gives way as it slides in; where that would leave the stage under 480px (a window under 864px), it slides in over
   the stage, which dims behind it, and toasts keep clear of its foot wherever it is: Notes (with the tabs Notes, Transcript
-  and Ask, and Yours at the foot of Notes), Chat, People, Your notes beside a presented board, and the rooms. It takes your
+  and Ask, and Yours at the foot of Notes), Chat, Attention, People, Your notes beside a presented board, and the rooms. It takes your
   theme, as a board's sheet does unless it's a night board; the stage, the dock, the workspace and screens stay night.
 - **The frame.** A screen, a board and the workspace each sit in one frame with one bar. On the left, the presenter's face
   (or the kind's icon while nobody presents), the name as a menu of the kind's own commands, and a line that says whose it
@@ -264,9 +264,10 @@ circles, and whoever speaks gets the `speak` ring. The camera appears only here 
   or for everyone in the same menu.
 - **A tile only while it's presented.** Something presented that isn't on your stage is a tile first among the people (a
   screen live, a board drawn small, the workspace with where its presenter is), with who's presenting it and Join.
+- **Attention** opens Hands, Q&A, Signals and, for the host, Waiting in your side. The ordered hand queue and explicit shared questions are separate from private AI Ask. Votes do not reorder a question under someone reading; Most votes, Newest and Refresh order apply an order deliberately. Quiet signals sit beside tiles and expire without sound. The host’s Waiting view reuses People’s current admission controls.
 - **Focus** fills the window with what's in the frame. The bars slide off, the people stand on the horizon, and the dock
-  keeps the microphone, camera, Show everything and Leave.
-- **On a phone** (under 600px), the top is the title, the notes sign, Chat and the faces; the dock is the microphone,
+  keeps the microphone, camera, Show everything and Leave. Attention’s counts remain at the top right and open the panel without changing what is presented.
+- **On a phone** (under 600px), the top is the title, the notes sign, compact Attention counts, Chat and the faces; the dock is the microphone,
   camera, Share, More and Leave; what's open fills the screen under a row of arches; More starts with a grid of Board,
   Workspace, Notes, Chat and People; and your side and Close's question are sheets.
 

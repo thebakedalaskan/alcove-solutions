@@ -96,7 +96,7 @@ export function useCallShortcuts(current: CallShortcuts, workspace: { find: () =
       if (k !== 'm' && k !== 'v' && k !== 'c' && !(k === 'b' && keys.current.canMark)) return;
       // The key is a shortcut here, not a character for whatever gets focus next.
       e.preventDefault();
-      if (k === 'm') keys.current.pressMic();
+      if (k === 'm' && !e.repeat) keys.current.pressMic();
       if (k === 'v') keys.current.pressCam();
       if (k === 'c') keys.current.chat();
       if (k === 'b') keys.current.mark();

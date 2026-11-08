@@ -7,7 +7,7 @@
  * in More.
  */
 import { clock, type Person } from '@alcove/api';
-import { BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
+import { AttentionButton, BoardPicker, CallTopButton, CallTopGroup, CallTopRule, Dots, Faces, Icon, Popover, Tooltip, cn, type BoardPickerProps } from '@alcove/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState, type ReactNode } from 'react';
 import { q, trustLine } from '~/lib/queries';
@@ -31,7 +31,7 @@ export interface TopSide { view: SideView | null; toggle: (v: SideView) => void;
 const BOARD_TIP = 'Open a board, just for you · O';
 const WORKSPACE_TIP = 'Open the workspace, just for you · W';
 
-export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, phone, board, workspace, side }: {
+export function TopBar({ title, elapsed, sign, swap, view, people, asking, reconnecting, screens, phone, board, workspace, side, attention }: {
   title: string; elapsed: number;
   /** The notes sign: what the call captures, the same for everyone. */
   sign: ReactNode;
@@ -50,6 +50,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
   board: TopBoard;
   workspace: TopWorkspace;
   side: TopSide;
+  attention: { hands: number; questions: number; onPress: () => void };
 }) {
   const peopleOpen = side.view === 'people';
   const chatOpen = side.view === 'chat';
@@ -75,7 +76,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
         <span className="ttl">{title}</span>
         <div className="nz">{sign}</div>
         {reconnecting && <span className="ic-recon" role="status"><Dots />Reconnecting</span>}
-        <div className="end">{chat}{faces}</div>
+        <div className="end"><AttentionButton hands={attention.hands} questions={attention.questions} waiting={asking} on={side.view === 'attention'} onClick={attention.onPress} compact />{chat}{faces}</div>
       </header>
     );
   }
@@ -107,6 +108,7 @@ export function TopBar({ title, elapsed, sign, swap, view, people, asking, recon
             <CallTopButton icon="notesPen" word="Notes" label="Notes" on={notesOpen} data-side="notes" onClick={() => side.toggle('notes')} />
           </Tooltip>
           {chat}
+          <AttentionButton hands={attention.hands} questions={attention.questions} waiting={asking} on={side.view === 'attention'} onClick={attention.onPress} />
           <CallTopRule />
           {faces}
         </CallTopGroup>

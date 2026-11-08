@@ -399,6 +399,56 @@ export const CatchUp: PageStory = {
   }
 };
 
+/* ---------- shared attention, distinct from private AI Ask ---------- */
+const attentionReview = () => inCall({
+  scenario: 'busy', call: LAUNCH_REVIEW,
+  script: {
+    here: [{ who: PRIYA, hand: true }, { who: KOFI, hand: true }, { who: AIKO }],
+    cues: [...at(.2, { do: 'question', who: PRIYA, text: 'Which teams are included in the first launch?', votes: 3 }), ...at(.3, { do: 'feedback', who: AIKO, kind: 'slow-down' })]
+  }
+});
+const openAttention = async ({ userEvent }: Context) => { await userEvent.click(await screen.findByRole('button', { name: /^Attention,/ }, LATER)); };
+export const HandQueue: PageStory = {
+  ...attentionReview(), name: '6.14 Take turns with the hand queue',
+  play: async (c) => {
+    await c.step('Open Attention; the queue shows hands in the order raised', async () => { await openAttention(c); await screen.findByText('In order raised', {}, SOON); });
+    await c.step('Raise your own hand; the confirmed queue includes you', async () => { await c.userEvent.click(await within(await screen.findByRole('complementary', { name: 'Attention' }, SOON)).findByRole('button', { name: 'Raise your hand' }, SOON)); await screen.findByRole('button', { name: 'Lower yours' }, SOON); });
+    await c.step('Lower your hand without changing anyone else’s place', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Lower yours' }, SOON)); });
+    await c.step('As host, clear the queue after everyone has had a turn', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Lower all' }, SOON)); await screen.findByText('No hands raised', {}, SOON); });
+  }
+};
+export const HandQueuePhone = phone(HandQueue);
+export const SharedQuestions: PageStory = {
+  ...attentionReview(), name: '6.15 Ask, vote and resolve shared questions',
+  play: async (c) => {
+    await openAttention(c);
+    await c.step('Q&A is shared with this room; Notes’ Ask stays private', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Q&A/ }, SOON)); });
+    await c.step('Post a question with an explicit send', async () => { await c.userEvent.type(await screen.findByRole('textbox', { name: 'Post a question to everyone in this room' }, SOON), 'Who will follow up after the first rollout?'); await c.userEvent.click(await screen.findByRole('button', { name: 'Post question' }, SOON)); await screen.findByText('Who will follow up after the first rollout?', {}, SOON); });
+    await c.step('Vote for Priya’s question; the current reading order stays put', async () => { await c.userEvent.click(await screen.findByRole('button', { name: /^Vote for question from Priya/ }, SOON)); });
+    await c.step('As host, pin a question and then mark it answered', async () => { const [pin] = await screen.findAllByRole('button', { name: 'Pin question' }, SOON); if (pin) await c.userEvent.click(pin); const [answer] = await screen.findAllByRole('button', { name: 'Mark question answered' }, SOON); if (answer) await c.userEvent.click(answer); });
+    await c.step('See the resolved question and its answered state', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Show resolved questions' }, SOON)); await screen.findByText('Answered', {}, SOON); });
+  }
+};
+export const SharedQuestionsPhone = phone(SharedQuestions);
+export const QuietFeedback: PageStory = {
+  ...attentionReview(), name: '6.16 Signal quietly, then clear it',
+  play: async (c) => {
+    await openAttention(c);
+    await c.step('Open Signals, then ask everyone in this room to slow down', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: 'Signals' }, SOON)); await c.userEvent.click(await screen.findByRole('button', { name: 'Slow down' }, SOON)); });
+    await c.step('Press the same signal again to clear it; otherwise it expires', async () => { await screen.findByText('Signal sent to this room', {}, SOON); await c.userEvent.click(await screen.findByRole('button', { name: 'Slow down' }, SOON)); });
+  }
+};
+export const QuietFeedbackPhone = phone(QuietFeedback);
+export const WaitingAttention: PageStory = {
+  ...inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: REVIEWERS, cues: at(.2, knocks(DIEGO)) } }), name: '6.17 Let someone in from Attention',
+  play: async (c) => {
+    await openAttention(c);
+    await c.step('The host’s Waiting tab shows the current request', async () => { await c.userEvent.click(await screen.findByRole('tab', { name: /^Waiting/ }, SOON)); });
+    await c.step('Let Diego in; resolved requests leave the list', async () => { await c.userEvent.click(await screen.findByRole('button', { name: 'Let in' }, SOON)); });
+  }
+};
+export const WaitingAttentionPhone = phone(WaitingAttention);
+
 export const MentionSomeone: PageStory = {
   name: '6.13 Mention someone in chat',
   ...launchReview({ cues: at(2, chats(AIKO, '@Art Vandelay, can you review the launch checklist?', ['me'])) }),

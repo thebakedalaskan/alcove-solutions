@@ -20,13 +20,13 @@ export const OpenFloatingCall: PageStory = {
     scenario: 'call-soon', call: REVIEW,
     script: {
       here: [{ who: PRIYA }, { who: KOFI }, { who: AIKO }],
-      cues: [...at(30, raisesHand(KOFI)), ...at(35, chats(AIKO, 'The launch plan is ready for review.')), ...at(40, knocks(DIEGO))]
+      cues: [...at(30, raisesHand(KOFI)), ...at(33, { do: 'question', who: PRIYA, text: 'Which team reviews the launch checklist?' }), ...at(35, chats(AIKO, 'The launch plan is ready for review.')), ...at(40, knocks(DIEGO))]
     }
   }, { globals: LAPTOP }),
   parameters: {
     docs: {
       description: {
-        story: 'Browser hand-off: open this preview as its own tab and click Open floating call. Try the microphone, camera, hand and Leave, then Stay in the call; return, close and reopen the window. The raised hand, new chat and waiting person arrive after 30, 35 and 40 seconds. Automatic opening, native close, focus, capture privacy and audio ownership need manual browser verification.'
+        story: 'Browser hand-off: open this preview as its own tab and click Open floating call. Try the microphone, camera, hand and Leave, then Stay in the call; return, close and reopen the window. The raised hand, question, new chat and waiting person arrive after 30, 33, 35 and 40 seconds. Automatic opening, native close, focus, capture privacy and audio ownership need manual browser verification.'
       }
     }
   },

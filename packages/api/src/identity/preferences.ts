@@ -1,3 +1,4 @@
+import { DEFAULT_SOUND_PREFERENCES, SoundPreferencesSchema } from './sounds';
 import { NotesSettingSchema } from '../calls/settings';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
@@ -66,6 +67,8 @@ export const PreferencesSchema = z.object({
   /** Keep recording on this device when the connection drops, and upload afterwards. */
   recordOffline: z.boolean(),
   notifications: NotificationPrefsSchema,
+  /** Older sealed profiles acquire these defaults when opened. */
+  sounds: SoundPreferencesSchema.default(DEFAULT_SOUND_PREFERENCES),
   /** Pinned note IDs, in the order they were pinned. */
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
   groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')

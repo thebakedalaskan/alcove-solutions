@@ -485,3 +485,15 @@ export const FirstDay: PageStory = {
     });
   }
 };
+
+/** Sound preferences save independently of notification permissions. */
+export const ChooseSounds: PageStory = {
+  name: '11.20 Choose call sounds',
+  ...page('/settings#sounds', 'busy'),
+  play: async ({ userEvent, step }) => {
+    await step('Choose quiet mode and preview the microphone confirmation', async () => {
+      await userEvent.click(await screen.findByRole('switch', { name: 'Quiet mode' }, LATER));
+      await userEvent.click(await screen.findByRole('button', { name: 'Preview sound' }, LATER));
+    });
+  }
+};

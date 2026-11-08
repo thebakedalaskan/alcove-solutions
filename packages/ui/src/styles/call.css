@@ -1231,6 +1231,63 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
   body:has(.ic-slot.is-horizon):has(.ic-side:not(.is-sheet)):has(.ic-framebox:not(.is-away) [data-pager]) .ac-toasts.on-stage { bottom: 152px; }
 }
 
+/* Attention remains reachable beside any stage content and in focus. */
+.ac-attention-button { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3); border: 1px solid var(--line-control); border-radius: var(--radius-pill); color: var(--stage-ink); background: var(--stage-raised); font-size: 13px; flex-shrink: 0; }
+.ac-attention-button:hover, .ac-attention-button.is-on { background: var(--sun-soft); }
+.ac-attention-counts { display: inline-flex; gap: 5px; align-items: center; color: var(--stage-ink-2); font-variant-numeric: tabular-nums; }
+.ac-attention-counts b { color: var(--stage-ink); font-weight: 500; }
+.ac-attention-button.is-compact { padding-inline: var(--space-2); gap: 5px; }
+.ac-attention-section { padding: var(--space-4); }
+.ac-attention-section > .head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+.ac-attention-section h3 { font-size: 14px; font-weight: 600; margin: 0; }
+.ac-attention-hand { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+.ac-attention-hand > .number { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 16px; }
+.ac-attention-hand > .person { min-width: 0; flex: 1; font-size: 14px; }
+.ac-attention-hand small { display: block; color: var(--ink-2); font-size: 12px; }
+.ac-attention-question { padding: var(--space-4) 0; border-bottom: 1px solid var(--line); scroll-margin-block: var(--space-4); }
+.ac-attention-question.is-pinned { border-inline-start: 2px solid var(--horizon); padding-inline-start: var(--space-3); }
+.ac-attention-question > .by { display: flex; gap: var(--space-2); align-items: center; font-size: 12px; }
+.ac-attention-question .by b { flex: 1; min-width: 0; }
+.ac-attention-question .state { color: var(--ink-2); display: inline-flex; align-items: center; gap: 4px; }
+.ac-attention-question p { overflow-wrap: anywhere; white-space: pre-wrap; font-size: 14px; line-height: 1.5; margin: var(--space-3) 0; }
+.ac-attention-question .actions { display: flex; align-items: center; justify-content: space-between; }
+.ac-attention-question .host-actions { display: flex; gap: 2px; }
+.ac-attention-vote { display: inline-flex; align-items: center; gap: 5px; padding: 5px var(--space-2); border: 1px solid var(--line-control); border-radius: var(--radius-sm); color: var(--ink-2); font-size: 12px; }
+.ac-attention-vote[aria-pressed=true] { color: var(--sun-text); background: var(--sun-soft); }
+.ac-attention-vote:disabled { opacity: .6; }
+.ac-call-signals { display: flex; flex-direction: column; gap: var(--space-2); }
+.ac-call-signals > button { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line-control); border-radius: var(--radius-sm); font-size: 14px; text-align: left; }
+.ac-call-signals > button[aria-pressed=true] { background: var(--sun-soft); color: var(--sun-text); }
+.ac-call-signals > button .ac-i:last-child:not(:first-child) { margin-left: auto; }
+.ac-call-signal { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
+.ac-call-signal b { font-variant-numeric: tabular-nums; }
+.ac-tile-signal { position: absolute; left: var(--space-3); top: var(--space-3); z-index: 2; padding: 5px var(--space-2); border-radius: var(--radius-pill); color: var(--stage-ink); background: var(--stage-raised); max-width: calc(100% - 24px); }
+.ac-tile-signal > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ic-attention-tabs { flex-shrink: 0; }
+.ic-attention-scroll { overflow-y: auto; min-height: 0; flex: 1; overflow-anchor: auto; }
+.ic-attention-body { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.ic-attention-compose { padding: var(--space-3) var(--space-4); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--space-2); }
+.ic-attention-compose label { font-size: 13px; font-weight: 600; }
+.ic-attention-compose textarea { resize: vertical; width: 100%; min-height: 72px; max-height: 180px; padding: var(--space-2); border: 1px solid var(--line-control); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; }
+.ic-attention-compose .foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: 12px; color: var(--ink-2); }
+.ic-attention-sort { display: flex; gap: var(--space-2); align-items: center; padding-bottom: var(--space-3); font-size: 12px; color: var(--ink-2); }
+.ic-attention-sort button { text-decoration: underline; }
+.ic-attention-hands { margin: 0; padding: 0; list-style: none; }
+.ic-attention-mine { margin-bottom: var(--space-3); }
+.ic-attention-summary { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
+.ic-attention-focus { position: absolute; z-index: 45; top: var(--space-3); right: var(--space-3); }
+.ic-call.is-focus > .ic-attention-focus { pointer-events: auto; }
+@media (max-width: 599px) { .ic-top.is-phone .ttl { min-width: 0; flex: 1; } .ic-top.is-phone .end { gap: 3px; } .ac-attention-button.is-compact .ac-attention-counts { gap: 3px; } }
+.ic-sounds { width: 360px; max-height: min(680px, calc(100dvh - 140px)); overflow-y: auto; overscroll-behavior: contain; }
+.ic-attention-sound-head { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2); }
+.ic-attention-sound-head button { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
+.ic-attention-sound-head b { font-size: 14px; }
+.ac-attention-section h3 { font-family: inherit; }
+@media (max-width: 599px) {
+  .ic-side.is-sheet[data-view="attention"] { position: absolute; top: 0; bottom: 0; }
+  .ic-scrim.is-attention { position: absolute; }
+}
+
 /* A call in Document Picture-in-Picture. Its controls and feedback stay in this document. */
 .ac-floating { position: relative; inset: auto; width: 100%; height: 100%; min-height: 220px; display: flex; flex-direction: column; overflow: auto; background: var(--stage); color: var(--stage-ink); font: 500 13px/1.4 var(--font-sans); }
 .ac-floating-head { display: flex; flex: none; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }

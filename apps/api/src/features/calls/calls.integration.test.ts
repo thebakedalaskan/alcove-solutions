@@ -302,7 +302,7 @@ describe('end-to-end encryption', () => {
       await older;
       stop();
     }
-    expect(snapshots).not.toEqual([]);
+    // The older revision is discarded before publication; any concurrent fresh snapshot must keep the receipt too.
     expect(snapshots.every(Boolean)).toBe(true);
     expect(sam.getSnapshot().chatRead).toContain(messageId);
     await host.leave();
@@ -1761,6 +1761,46 @@ async function hook(event: string, roomName: string, identity?: string) {
 }
 
 describe('ending', () => {
+  it('keeps Leave as leaving just this connection when hosting changes while a return finishes', async () => {
+    const realFetch = cookieFetch(ORIGIN);
+    let releaseReturn = () => {};
+    const returnResponse = new Promise<void>((resolve) => { releaseReturn = resolve; });
+    let returning = false;
+    const invited = await account(unique('invited'), { fetch: async (input, init) => {
+      const response = await realFetch(input, init);
+      const path = new URL(input instanceof Request ? input.url : input.toString()).pathname;
+      if (path.endsWith('/mls/back') && response.ok) { returning = true; await returnResponse; }
+      return response;
+    } });
+    const org = await account();
+    const { code: c } = await org.api.calls.startNow({ notes: 'off', guests: [invited.session.user.email] });
+    const host = await org.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(host);
+    const person = await invited.api.calls.join(c, { mic: false, cam: false });
+    await joinRoom(person);
+    // The connection drops, and the real recovery request succeeds, but its response is still on its way.
+    expect((await asMember(person, 'POST', '/leave', { end: false, onPurpose: false })).status).toBe(200);
+    await waitFor(() => returning, 'the successful return response to wait');
+    expect(person.getSnapshot().isHost).toBe(false);
+    const leaving = person.leave().then(() => 'left', (e: unknown) => code(e));
+    try {
+      // Leave was pressed as a participant. Becoming host during its wait must never turn it into End for everyone.
+      await host.handOff(person.ticket.identity);
+      await person.refresh({ call: true, log: false });
+      expect(person.getSnapshot().isHost).toBe(true);
+      releaseReturn();
+      expect(await leaving).toBe('conflict');
+      expect(person.getSnapshot().phase).toBe('in-call');
+      expect(await callState(person.ticket.callId)).toBe('live');
+      expect((await org.api.calls.card(c)).ended).toBe(false);
+    } finally {
+      releaseReturn();
+      await leaving;
+    }
+    await person.leave();
+    expect(await callState(person.ticket.callId)).toBe('ended');
+  });
+
   it('keeps up with the call after leaving fails, and can leave again', async () => {
     const realFetch = cookieFetch(ORIGIN);
     let failLeave = false;

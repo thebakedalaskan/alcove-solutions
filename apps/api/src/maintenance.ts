@@ -20,6 +20,7 @@ import { deleteQueued } from './features/recordings/audio';
 import { sweep as sweepAgents } from './features/agents/service';
 import { reconcile } from './features/calls/lifecycle';
 import { sweep as sweepLiveNotes } from './features/calls/live-notes';
+import { sweep as sweepAttention } from './features/calls/attention';
 import { pruneUploadDays, sweepUploads } from './features/workspaces/media';
 import { sweep as sweepMoves } from './features/calls/moves';
 import { sweep as sweepRings } from './features/calls/rings';
@@ -57,6 +58,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const moves = await sweepMoves(d);
   const rings = await sweepRings(d);
   const liveNotes = await sweepLiveNotes(d);
+  const attention = await sweepAttention(d);
   // Neither stops the other, or what comes next time: each logs what went wrong and says it did nothing.
   const quietly = (what: string, sweep: () => Promise<number>) => sweep().catch((e: unknown) => { mlog.warn('workspace upkeep failed', { what, err: e }); return 0; });
   const trash = await quietly('trash', () => sweepTrash(d, opts.trashAgeMs, started));
@@ -64,5 +66,5 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, trash, seats, uploads, uploadDays, mentions };
+  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
 }

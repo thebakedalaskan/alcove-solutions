@@ -23,12 +23,13 @@ stop tracks, flush capture or leave the room. Explicit Leave uses the existing c
 flow. Reconnect preserves the compact view; termination, removal, device displacement and main-view teardown close it.
 A late browser-window request cannot revive a departed call.
 
-The compact view shows hands, host-only admission requests and a count labelled Chat for new messages. It does not show
-message bodies or personal notes. Its Chat attention action returns to the full call and opens Chat. The full call supports
-individual @mentions in room chat, an unread-mention indicator and navigation to the exact message; viewing that message
-updates the person's read state. Those receipts are kept in the sealed call state across refreshes and reconnects. The compact
-window uses the generic Chat count, including unread mentions, and leaves exact-message navigation and reading to the full call.
-Workspace document tags remain a separate feature.
+The compact view shows hands, open Q&A, host-only admission requests and a count labelled Chat for new messages. Each
+count returns to its matching full-call panel. Shared controls unlock the existing sound output synchronously from
+their user gesture; microphone confirmation still waits for the actual device transition. It does not show message
+bodies or personal notes. The full call supports individual @mentions in room chat, an unread-mention indicator and
+navigation to the exact message; viewing that message updates the person's read state. Those receipts are kept in the
+sealed call state across refreshes and reconnects. The compact window uses the generic Chat count, including unread
+mentions, and leaves exact-message navigation and reading to the full call. Workspace document tags remain a separate feature.
 
 ## Browser capability and automatic opening
 
