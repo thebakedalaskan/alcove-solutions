@@ -288,6 +288,11 @@ export const CallHostSchema = z.object({
 
 export type CallHost = z.infer<typeof CallHostSchema>;
 
+/** A share going on in the call: its ID, whose it is (participant ID), and whether the presenter said it goes in the notes. */
+export const CallShareSchema = z.object({ id: IDSchema, participant: z.string(), keep: z.boolean() });
+
+export type CallShare = z.infer<typeof CallShareSchema>;
+
 
 export const CallStateSchema = z.object({
   revision: z.number().int().nonnegative(),
@@ -317,6 +322,8 @@ export const CallStateSchema = z.object({
     /** True once notes have been on at any point, so the call produces a note. */
     everOn: z.boolean(),
     noteId: IDSchema.nullable(),
+    /** Server clock start of the current recording segment, including host handoffs. Null before notes begin. */
+    segmentStartedAt: ISODateSchema.nullable().default(null),
     recording: RecordingProgressSchema
   }),
   /** People asking to join, for whoever hosts to let in or turn away; empty for everyone else. */
@@ -348,6 +355,11 @@ export const CallStateSchema = z.object({
   board: CallBoardSchema,
   timerSequence: CallTimerSequenceSchema.nullable().default(null),
   notices: z.array(CallNoticeSchema),
+  /**
+   * The shares going on now that the server knows of, by whose they are (a participant ID; each person shares one
+   * screen at a time), and whether each is kept for the notes: only those say they're read for the notes.
+   */
+  shares: z.array(CallShareSchema),
   /** Only the organizer can turn notes on or off, pause and resume them. */
   isOrganizer: z.boolean(),
   /** You host now (the organizer, or standing in for them): you let people in, mute, remove and lock, and can end the call. */
@@ -360,6 +372,11 @@ export const CallStateSchema = z.object({
 });
 
 export type CallState = z.infer<typeof CallStateSchema>;
+
+/** What the server answers when a share starts: its ID, whether it's kept for the notes, and the call as it is now. */
+export const ShareStartedSchema = z.object({ share: IDSchema, keep: z.boolean(), state: CallStateSchema });
+
+export type ShareStarted = z.infer<typeof ShareStartedSchema>;
 
 
 export const CallEndResultSchema = z.object({

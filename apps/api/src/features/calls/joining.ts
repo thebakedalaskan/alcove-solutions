@@ -21,6 +21,7 @@ import * as rings from './rings';
 import { log } from '../../log';
 import { header, hostHere, key, liveCall, load, notice, save, sharesEnd, tenthsIn, type Row, Stored, withPerson } from './state';
 import { anonymousCapture, view } from './read-model';
+import * as models from '../notes/models';
 import { HOST_GRACE_MS, departed, newGeneration, reconcile } from './lifecycle';
 import { syncBoardSeats } from './room-boards';
 import { nudge } from './notifications';
@@ -55,7 +56,7 @@ export async function card(d: Deps, code: string, owner?: Owner | undefined): Pr
   const live = await liveCall(organizer, d.pool, meeting.itemId);
   // What the call captures now, and who hosts it, from the row just read.
   const s = live ? openJson(key(organizer, live.call_id), header(organizer, live.call_id), live.state_ciphertext, Stored) : null;
-  const now = live && s ? anonymousCapture(s, live) : null;
+  const now = live && s ? anonymousCapture(s, live, await models.isPrivate(organizer.cfg, s.notes.model)) : null;
   const host = await profile(organizer);
   const asker = owner ? await profile(owner) : undefined;
   const role = roleOf(owner, asker?.email, organizer, meeting.manifest);
@@ -236,13 +237,17 @@ async function hostJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Join
       const roomName = `r_${id128()}`;
       let s: Stored = {
         host: joined.identity, moving: null, people: [{ ...joined, hosting: [{ from: joined.since, to: null }] }], spotlight: null, breakouts: { open: null, held: [] }, removed: [], pointing: true, othersPointOff: [], chatAt: {}, chatRead: {}, timerSequence: null, notices: [], workspace: NO_SPACE, board: NO_BOARDS,
-        notes: { status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screens: { on: false, history: [], ended: [] } }
+        notes: {
+          status: 'off', everOn: false, noteId: null, recordingId: null, segment: 0, segmentFrom: 0, history: [], asks: [], unavailable: [], offline: [], screenHistory: [],
+          frameCapture: null, model: (await profile(o, c)).preferences.model
+        },
+        shares: []
       };
       await exec(c, `INSERT INTO calls (owner_id, call_id, meeting_item_id, state, started_at, version, state_ciphertext, room_name, host_identity, host_joined_at) VALUES ($1,$2,$3,'live',now(),0,$4,$5,$6,now())`,
         [o.ownerId, callId, meeting.itemId, sealJson(key(o, callId), header(o, callId), toJson(s)), roomName, joined.identity]);
       if (meeting.manifest.notes === 'on') {
         s = await startNotes(o, c, s, meeting, 0, 'schedule');
-        s = notice(s, s.notes.screens.on ? 'Notes are on, and what anyone shares is read for them. Everyone here can see that.' : 'Notes are on. Everyone here can see that.');
+        s = notice(s, 'Notes are on. Everyone here can see that.');
       }
       await save(o, c, callId, s);
       const started = await updateManifest(o, c, meeting.itemId, (m) => ({ ...m, status: 'live' }));
@@ -310,7 +315,7 @@ async function guestJoin(o: Owner, meeting: Loaded<MeetingManifest>, joined: Joi
     let s: Stored = { ...state, people: [...state.people, me], spotlight: before && state.spotlight === before.identity ? me.identity : state.spotlight };
     // An old connection still in never said it went (its page crashed, or its goodbye hasn't come): its stay ends when it
     // was last heard from, not now, so the time between isn't counted as theirs for a guest coming back to read.
-    if (before) s = sharesEnd(withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? knownUntil(live.call_id, j, Date.now()) : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
+    if (before) s = await sharesEnd(o, c, withPerson(s, before.identity, (j) => ({ ...j, status: 'left', replaced: true, left: j.status === 'in' ? knownUntil(live.call_id, j, Date.now()) : j.left })), before.status === 'in' ? [before.identity] : [], tenthsIn(live.started_at));
     const seq = live.mls_seq + 1;
     await appendMls(o, c, live.call_id, { seq, generation: live.mls_generation, epoch: live.mls_epoch, grp: null }, 'keypackage', me.identity, keyPackage);
     await exec(c, 'UPDATE calls SET mls_seq = $3, version = version + 1 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, live.call_id, seq]);

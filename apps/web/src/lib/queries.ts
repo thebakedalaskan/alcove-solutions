@@ -66,7 +66,8 @@ export const qk = {
   presenterFrameNotes: (id: string, boardId: string) => ['workspaces', id, 'presenter-notes', boardId, 'frames'] as const,
   workspaceItem: (id: string, itemId: string) => ['workspaces', id, 'items', itemId] as const,
   workspaceTree: (id: string) => ['workspaces', id, 'tree'] as const,
-  boardsToBring: ['workspaces', 'boards'] as const
+  boardsToBring: ['workspaces', 'boards'] as const,
+  visionModels: ['models', 'vision'] as const
 };
 
 /** A saved board someone could bring to a call: where it is, what it's called, whose it is, and when it was last changed. */
@@ -661,7 +662,24 @@ export function useTakeBack(noteId: string) {
 /** The organizer has the notes written again from the transcript as it is now; the note answers pending until they are. */
 export function useRewriteNotes() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (noteId: string) => api.notes.rewrite(noteId), onSuccess: (n) => changed(qc, n) });
+  return useMutation({
+    mutationFn: (v: { noteId: string; model?: string | null | undefined }) => api.notes.rewrite(v.noteId, { model: v.model }),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/** Stops writing the notes again: they stay as they were. */
+export function useCancelRewrite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => api.notes.cancelRewrite(noteId),
+    onSuccess: (n) => changed(qc, n)
+  });
+}
+/**
+ * The models to choose from for a call's notes or as your default, and the default one. They change rarely.
+ */
+export function useAiModels(enabled = true) {
+  return useQuery({ queryKey: qk.visionModels, queryFn: () => api.models.list(), staleTime: 10 * 60_000, enabled });
 }
 /**
  * Shares a note with people, by address, and with one of your groups, under its name (everyone it reaches sees that

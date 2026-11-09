@@ -79,7 +79,7 @@ export const NotesTabs = ({ tab, onTab }: { tab: NotesTab; onTab: (t: NotesTab) 
   <Tabs className="ic-ntabs" label="Notes, the transcript or Ask" value={tab} onChange={onTab} options={NOTES_TABS} />
 );
 
-const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed' | 'lock'; children: ReactNode; end?: ReactNode; wrap?: boolean }) => (
+const Foot = ({ icon = 'sealed', children, end, wrap = false }: { icon?: 'sealed' | 'lock' | 'shieldOff'; children: ReactNode; end?: ReactNode; wrap?: boolean }) => (
   <div className={cn('ic-nf', wrap && 'is-wrap')}><Icon name={icon} size={15} /><span className="lbl">{children}</span>{end && <span className="end">{end}</span>}</div>
 );
 
@@ -253,7 +253,7 @@ export function NotesView({ session, state, getting, problems, controls, carried
         )}
         {yours}
       </div>
-      <Foot wrap end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>Confidential compute · everyone invited gets the notes</Foot>
+      <Foot wrap icon={state.capture.modelPrivate ? 'sealed' : 'shieldOff'} end={getting.length ? <span title={`Notes go to ${listNames(getting)}`}><Faces people={getting} size={18} max={3} /></span> : undefined}>{state.capture.modelPrivate ? 'Confidential compute' : 'Unencrypted AI model'} · everyone with the notes</Foot>
     </>
   );
 }
@@ -284,7 +284,7 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
           </EmptyState>
         )}
       </div>
-      <Foot wrap>{state.capture.room ? 'Confidential compute · this room’s section of the notes' : 'Confidential compute · everyone invited gets the notes'}</Foot>
+      <Foot wrap icon={state.capture.modelPrivate ? 'sealed' : 'shieldOff'}>{state.capture.modelPrivate ? 'Confidential compute' : 'Unencrypted AI model'} · {state.capture.room ? 'this room’s section of the notes' : 'everyone invited gets it'}</Foot>
     </>
   );
 }

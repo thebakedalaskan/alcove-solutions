@@ -5,7 +5,7 @@
  * from what was said while notes were on, and point only at lines that were really said.
  */
 import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpItem, type CatchUpRange, type CatchUpRead, type CatchUpWindow, type Evidence, type SeriesAnswerPart, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, Segmented, TimeChip, cn } from '@alcove/ui';
+import { Avatar, Button, Dots, EmptyState, Icon, Notice, Popover, Scope, Segmented, TimeChip, Unencrypted, cn } from '@alcove/ui';
 import { motion, useReducedMotion } from 'motion/react';
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { NotesApart, SourceLink } from '~/features/notes/parts';
@@ -315,12 +315,14 @@ function EarlierAnswer({ parts }: { parts: SeriesAnswerPart[] }) {
 const SUGGESTED = ['What did we decide?', 'Who’s doing what?'];
 const SUGGESTED_EARLIER = ['Why did we choose this?', 'What’s still open?'];
 
-export function AskView({ asks, ready, paused, startedAt, range, window: w, catching, draft, earlier, scope, onScope, onRange, onWindow, onAsk, onAskEarlier, onCatchUp, onOpen, onLive, keeping }: {
+export function AskView({ asks, ready, paused, modelPrivate, startedAt, range, window: w, catching, draft, earlier, scope, onScope, onRange, onWindow, onAsk, onAskEarlier, onCatchUp, onOpen, onLive, keeping }: {
   asks: Asked[];
   /** There's a transcript to ask about. */
   ready: boolean;
   /** Notes are paused: nothing goes to the AI, questions included. */
   paused: boolean;
+  /** The call's AI model runs in a secure enclave. When it doesn't, questions go to a model Alcove can't guarantee is private. */
+  modelPrivate: boolean;
   /** When the call started, which places its times of day. */
   startedAt: string;
   /** What questions and catch-ups read. */
@@ -357,7 +359,8 @@ export function AskView({ asks, ready, paused, startedAt, range, window: w, catc
     <>
       {catching && <LiveBar onLive={onLive}><Icon name="history" size={14} />Catching up · only you</LiveBar>}
       <div className="ic-scroll ic-pad">
-        <Notice icon="lock"><b>Only you see this.</b> {backwards ? 'Answers come from the earlier calls you have notes from, written in confidential compute. Nothing is kept.' : `Answers come from what’s been said in this call, nothing else. ${keeping ? 'Nothing is kept unless you keep it.' : 'Nothing is kept.'}`}</Notice>
+        <Notice icon="lock"><b>Only you see this.</b> {backwards ? 'Answers come from the earlier calls you have notes from, Nothing is kept.' : `Answers come from what’s been said in this call, nothing else. ${keeping ? 'Nothing is kept unless you keep it.' : 'Nothing is kept.'}`}</Notice>
+        {!modelPrivate && <Notice tone="caution" icon="shieldOff"><b>Not in a secure enclave.</b> Questions go to an AI model Alcove can’t guarantee keeps them private. <Unencrypted compact /></Notice>}
         <div className="ic-qa">
           {!asks.length && paused && <EmptyState title="Notes are paused" className="ic-empty">Nothing goes to the AI, questions included, until they resume.</EmptyState>}
           {!asks.length && !paused && !backwards && !ready && <EmptyState title="Nothing to ask about yet" className="ic-empty">Turn notes on and talk for a bit. Answers come from what’s been transcribed.</EmptyState>}

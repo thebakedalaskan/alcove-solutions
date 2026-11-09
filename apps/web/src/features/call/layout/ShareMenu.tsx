@@ -1,13 +1,13 @@
 /*
  * Share, in the dock (docs: Calls and recordings › Presenting): everything you can show everyone, one step at a time in one
  * popover, so no window opens over another. First, what to share, with Stop sharing while you present something. Your screen
- * goes on to its own step (a tab, a window or your whole screen, and its sound where this browser can share it) before the
- * browser's own picker; A board goes on to the board picker, which presents what you pick straight away; the workspace is
+ * goes on to its own step (a tab, a window or your whole screen, its sound where this browser can share it, and while notes
+ * are on or paused whether it goes in them, asked again each time) before the browser's own picker; A board goes on to the board picker, which presents what you pick straight away; the workspace is
  * presented at once. Stop sharing stops your screen at once, and on a board or the workspace asks Close's question as its own
  * step, so it's asked wherever what you present is: on your stage, a tile, or out of sight. On a phone it's a sheet, and a
  * screen can't be shared there.
  */
-import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, ShareStopStep, cn, type BoardPickerProps } from '@alcove/ui';
+import { BoardPicker, DockButton, Popover, ShareKinds, ShareScreenStep, ShareStopStep, cn, type BoardPickerProps, type ShareKeep } from '@alcove/ui';
 import { useEffect, useRef, useState } from 'react';
 import type { ShareChoice, ShareSurface } from '~/features/call/media/media';
 import { SHARE_PROBLEMS, canShareScreen, canShareTabSound, type ShareProblem } from '~/features/call/screen-sharing/share';
@@ -36,7 +36,7 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
     full: string | null;
     /** Your screen: its step, unless this browser can't share or enough people already are, which a toast says. */
     onPick: () => void;
-    /** Whether what you share is read for the notes. */
+    /** Notes are on, or paused, so you're asked whether what you share goes in them; null asks nothing (notes off, a breakout room, or the organizer keeps screens out). */
     read: 'on' | 'paused' | null;
     /** Why the last try didn't start, or null. */
     trouble: ShareTrouble | null;
@@ -53,6 +53,13 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
 }) {
   const [kind, setKind] = useState<ShareSurface>('browser');
   const [sound, setSound] = useState(true);
+  // Whether this share goes in the notes: asked again each time Your screen opens.
+  const [keep, setKeep] = useState<ShareKeep>('unanswered');
+  const [stepSeen, setStepSeen] = useState(step);
+  if (step !== stepSeen) {
+    setStepSeen(step);
+    if (step === 'shareScreen') setKeep('unanswered');
+  }
   // Your computer wouldn't let the browser share a window or the whole screen: a tab always can, so the choice turns to one.
   const [troubleSeen, setTroubleSeen] = useState(screen.trouble);
   if (screen.trouble !== troubleSeen) {
@@ -80,8 +87,8 @@ export function ShareMenu({ step, onStep, phone, presenting, screen, board, work
   }, [step]);
   const body = step === 'shareScreen' ? (
     <ShareScreenStep surface={kind} onSurface={setKind} sound={soundLabel ? { label: soundLabel, on: sound, onChange: setSound } : null}
-      read={screen.read} trouble={screen.trouble ? SHARE_PROBLEMS[screen.trouble] : null} changing={screen.changing}
-      onBack={screen.onBack} onShare={() => screen.onShare({ surface: kind, audio: soundLabel !== null && sound })} />
+      read={screen.read} keep={keep} onKeep={setKeep} trouble={screen.trouble ? SHARE_PROBLEMS[screen.trouble] : null} changing={screen.changing}
+      onBack={screen.onBack} onShare={() => screen.onShare({ surface: kind, audio: soundLabel !== null && sound, notes: screen.read !== null && keep === 'yes' })} />
   ) : step === 'shareBoard' && 'picker' in board ? (
     <BoardPicker step={{ onBack: () => onStep('share') }} {...board.picker} />
   ) : step === 'shareStop' && presenting?.asks ? (

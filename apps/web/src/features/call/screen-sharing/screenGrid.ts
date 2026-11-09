@@ -1,7 +1,6 @@
 /*
- * A shared screen on a small grey grid: cheap to compare, and blind to a moving cursor. The notes' frames of your own
- * share (frames.ts) and the earlier pictures of someone else's share you can step back through (shareLook.ts) both tell
- * whether a screen changed by it, each by its own measure.
+ * A shared screen on a small grey grid: cheap to compare, and blind to a moving cursor. The earlier pictures of someone
+ * else's share you can step back through (shareLook.ts) tell whether a screen changed by it.
  */
 
 export const GRID_W = 48;

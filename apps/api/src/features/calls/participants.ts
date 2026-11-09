@@ -63,19 +63,20 @@ export const knownUntil = (callId: string, j: Pick<Joined, 'identity' | 'since'>
 
 /**
  * Who a call pass belongs to, for this request. A removed person's pass stops working, and once the call is over only
- * the organizer can read it. The organizer's powers go with the organizer's current connection only; host powers with
+ * the organizer can read it (`afterEnd`: but anyone can still send their shared screen's last piece, which appendScreen
+ * checks, and answers with no more than that the call has ended). The organizer's powers go with the organizer's current connection only; host powers with
  * the connection that hosts (the organizer's, or someone's standing in for them). Either only together with the same
  * account's session (`session` opens it, only when it's needed): the organizer's own, or for someone standing in, an
  * account with the invited address they joined with.
  */
-export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<Owner | undefined>): Promise<Viewer> {
+export async function viewerOf(d: Deps, pass: CallPass, session: () => Promise<Owner | undefined>, afterEnd = false): Promise<Viewer> {
   const organizer = await openOwner(d, pass.ownerId, undefined);
   const { row, state: s } = await load(organizer, organizer.pool, pass.callId);
   const signedIn = pass.role === 'host' || s.host === pass.identity ? await session() : undefined;
   const theOrganizer = pass.role === 'host' && signedIn?.ownerId === pass.ownerId;
   const ctx = { callId: pass.callId, role: pass.role };
   if (s.removed.includes(pass.person)) throw new ForbiddenError('The host removed you from this call.', { context: ctx });
-  if (row.state !== 'live' && !theOrganizer) throw new ConflictError('This call has ended.', { context: ctx });
+  if (row.state !== 'live' && !theOrganizer && !afterEnd) throw new ConflictError('This call has ended.', { context: ctx });
   const mine = s.people.find((j) => j.identity === pass.identity);
   // The organizer's current connection: the one of theirs that's in the call (joining again leaves the others).
   const isOrganizer = theOrganizer && mine?.role === 'host' && mine.status === 'in';

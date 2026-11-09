@@ -3,7 +3,7 @@
  * who has it; what was found in it; then the summary, decisions and follow-ups, which can be settled here.
  */
 import { errorCode, errorMessage, firstName, isBy, mayChangeAction, mayDecide, type ActionItem, type Decision, type DecisionPatch, type Note, type NoteDecision, type NoteReader, type NoteSummary, type Person } from '@alcove/api';
-import { Avatar, Button, Check, Chip, Dots, Faces, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, SealedBadge, buttonClass, cn, useToast } from '@alcove/ui';
+import { Avatar, Button, Check, Chip, Dots, Faces, GoneArch, Icon, IconButton, NotesSign, Notice, Popover, SealedBadge, Unencrypted, buttonClass, cn, useToast } from '@alcove/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
@@ -14,7 +14,8 @@ import { decisionLine, notDecided } from '~/features/notes/parts';
 import { PinNote, ShareNote } from '~/features/notes/share';
 import { weeklyLabel } from '~/features/series/cards';
 import { sameEmail, spokenName } from '~/lib/people';
-import { q, useDeleteNote, usePendingActions, useUpdateAction, useUpdateDecision } from '~/lib/queries';
+import { isUnencrypted, unencryptedLine } from '~/lib/aiModels';
+import { q, useAiModels, useDeleteNote, usePendingActions, useUpdateAction, useUpdateDecision } from '~/lib/queries';
 import { daysFromToday, hm, hoursAndMinutes, noteDay, shortDay } from '~/lib/time';
 import { capital, plural } from '~/lib/words';
 import { MomentChip, byTime, howOf, noSummary, othersIn, type Said } from './parts';
@@ -212,6 +213,7 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
   const toast = useToast();
   const decide = useUpdateDecision();
   const act = useUpdateAction();
+  const models = useAiModels();
   const pending = usePendingActions();
   const reader = useNoteReader()(note.received?.role ?? 'organizer');
   /* What you said here wasn't decided stays in place, saying so, with Undo, until you pick another note. */
@@ -228,8 +230,10 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
 
   if (note.status !== 'ready') {
     const kept = note.kept.recording ? 'The audio is saved and encrypted.' : 'The call has ended.';
-    const writing = `The notes are being written in confidential compute${note.kind === 'room' ? '' : ', and everyone invited gets them'}.`;
-    return <p className="nt-pv-wait"><Icon name="lock" size={16} /><span>{note.status === 'recording' ? 'Still recording. The notes are written in confidential compute once it stops.' : `${kept} ${writing}`}</span></p>;
+    const open = isUnencrypted(models.data, note.model);
+    const where = open ? 'by an unencrypted AI model' : 'in confidential compute';
+    const writing = `The notes are being written ${where}${note.kind === 'room' ? '' : ', and everyone invited gets them'}.`;
+    return <p className="nt-pv-wait"><Icon name="lock" size={16} /><span>{note.status === 'recording' ? `Still recording. The notes are written ${where} once it stops.` : `${kept} ${writing}`}</span></p>;
   }
   if (!note.summary.trim()) {
     return note.transcript?.length
@@ -252,7 +256,9 @@ function Written({ note, me, short }: { note: Note; me: string | undefined; shor
           {more(note.actions.length - FOLLOW_UPS, note.actions.length - FOLLOW_UPS === 1 ? 'follow-up' : 'follow-ups')}
         </section>
       )}
-      <SealedBadge inline title={sealedLine(note)} className="nt-pv-f" />
+      {note.unencrypted.length > 0
+        ? <p className="nt-pv-f flex flex-wrap items-center gap-2 text-caution"><span>{unencryptedLine(note.unencrypted, models.data)}</span><Unencrypted compact /></p>
+        : <SealedBadge inline title={sealedLine(note)} className="nt-pv-f" />}
     </>
   );
 }

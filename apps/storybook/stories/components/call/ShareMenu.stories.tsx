@@ -8,7 +8,7 @@
  */
 import {
   BoardPickerThumb, BoardPicker, CallDock, cn, DockButton, DockLeave, DockSeparator, Popover, ShareKinds, ShareScreenStep, ShareStepHead, ShareStopStep, type BoardPickerAccess, type BoardPickerInCall,
-  type ShareSurfaceKind
+  type ShareKeep, type ShareSurfaceKind
 } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState, type ComponentProps, type ReactNode } from 'react';
@@ -64,6 +64,7 @@ function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble
   const [step, setStep] = useState<Step>(start);
   const [surface, setSurface] = useState<ShareSurfaceKind>('browser');
   const [sound, setSound] = useState(true);
+  const [keep, setKeep] = useState<ShareKeep>('unanswered');
   const back = () => { did('Back to Share')(); setStep('kinds'); };
   const b = kinds.board;
   const toBoard = 'onPress' in b ? b.onPress : null;
@@ -74,7 +75,7 @@ function ShareFlow({ kinds, start = 'kinds', phone = false, read = 'on', trouble
       {step === 'screen' ? (
         <ShareScreenStep surface={surface} onSurface={(s) => { did('surface')(s); setSurface(s); }}
           sound={soundSays ? { label: soundSays, on: sound, onChange: (on) => { did('sound')(on); setSound(on); } } : null}
-          read={read} trouble={trouble} changing={changing} onBack={back} onShare={did('Share')} />
+          read={read} keep={keep} onKeep={(k) => { did('keep')(k); setKeep(k); }} trouble={trouble} changing={changing} onBack={back} onShare={did('Share')} />
       ) : step === 'board' ? (
         <BoardPicker step={{ onBack: back }} recents={TEAM} inCall={inCall} blocked={blocked} access={access}
           onTemplate={did('onTemplate')} onRecent={did('onRecent')} />

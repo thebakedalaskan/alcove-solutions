@@ -1,5 +1,6 @@
 import { DEFAULT_SOUND_PREFERENCES, SoundPreferencesInputSchema, SoundPreferencesSchema } from './sounds';
 import { NotesSettingSchema } from '../calls/settings';
+import { ModelIdSchema } from '../notes/models';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 /** Languages notes can be written in. `call` writes them in the language the call was spoken in. */
@@ -108,12 +109,14 @@ export const PreferencesSchema = z.object({
   sounds: SoundPreferencesSchema.default(DEFAULT_SOUND_PREFERENCES),
   /** Pinned note IDs, in the order they were pinned. */
   pinned: z.array(IDSchema).max(MAX_PINS).refine(allUnique, 'Pins must be unique'),
-  groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique')
+  groups: z.array(GroupSchema).max(MAX_GROUPS).refine((g) => allUnique(g.map((x) => x.id)), 'Group IDs must be unique'),
+  /** The model that does the AI work for calls you organize, by its ID in `models.list()`. Null means the default model. */
+  model: ModelIdSchema.nullable().default(null)
 });
 
 export type Preferences = z.infer<typeof PreferencesSchema>;
 /** Flat leaves are optional; an included notification or sound group is complete, with no input defaults. */
-export const PreferencesPatchSchema = PreferencesSchema.partial().extend({
+export const PreferencesPatchSchema = PreferencesSchema.extend({ model: ModelIdSchema.nullable() }).partial().extend({
   notifications: NotificationPrefsInputSchema.optional(), sounds: SoundPreferencesInputSchema.optional()
 });
 

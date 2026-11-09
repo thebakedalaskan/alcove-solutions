@@ -25,6 +25,11 @@ export interface NotesApi {
   /** URL of one shared-screen frame of a note (a `ScreenMoment`'s image), for a signed-in browser that has the note. */
   screenUrl(id: ID, frameId: ID): string;
   /**
+   * URL that streams one segment of a kept share's video (a `ScreenShare`'s, in `segment`) to a signed-in browser that
+   * has the note, with ranges, so replay can seek.
+   */
+  screenVideoUrl(id: ID, share: ID, segment: number): string;
+  /**
    * Adds a decision the notes didn't hear, proposed by you, in your exact words. Anyone who has the notes can. Sending
    * the same words again adds nothing.
    */
@@ -53,9 +58,16 @@ export interface NotesApi {
   correctLine(noteId: ID, lineId: ID, patch: LinePatch): Promise<Note>;
   /**
    * Writes the notes again from the transcript as it is now, corrections included. The organizer's alone. The
-   * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are.
+   * decisions, open questions and follow-ups someone has already confirmed or changed stay as they are. With
+   * `model` (an ID from `models.list()`, or null for the default model), the notes are written again with it.
    */
-  rewrite(noteId: ID): Promise<Note>;
+  rewrite(noteId: ID, o?: { model?: string | null | undefined }): Promise<Note>;
+  /**
+   * Stops the notes being written again, the organizer's alone: they stay as they were, with the AI model they had.
+   * Anything already being written is thrown away. With nothing being written again, nothing changes. The first
+   * notes for a call can't be stopped (`conflict`).
+   */
+  cancelRewrite(noteId: ID): Promise<Note>;
   /** Answers a question about one written note from its transcript, or from the notes once that's deleted, citing moments in it and the shared screens it read. */
   ask(noteId: ID, question: string): AsyncIterable<AnswerPart>;
   /**

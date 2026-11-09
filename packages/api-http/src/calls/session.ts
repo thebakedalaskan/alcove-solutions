@@ -7,7 +7,7 @@ import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
 import { groupName, MlsError, MlsGroup, MlsKeys } from './mls';
 import { HttpMoveOut } from './moves';
-import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type ScreenFrame, type ScreenFrameReceipt, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
+import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview, AlcoveApiError, type AudioPiece, type ScreenPiece, type ShareStarted, type BoardCheck, type BoardOpen, type BoardTimerMinutes, type BoardVotesEach, type BreakoutPlan, CALL_CHAT_MAX, CALL_DATA_OVERHEAD, CALL_VOID_KEY_INDEX, type CallAction, type CallAnswer, type CallChatMention, type CallChatPayload, CallChatTextSchema, type CallCrypto, CallEndResultSchema, type CallFollowUps, type CallMediaKeys, type CallMls, type CallMoment, type CallMoveOut, type CallReaction, type CallSession, type CallState, type CallTicket, type CallWorkspaceSwitch, type CaptionLanguage, type CaptionTranslation, type CaptureDevicePart, type CatchUp, type CatchUpRange, type CatchUpWindow, type DocFollowUpTick, type DocumentRole, errorCode, isTimeZone, type LineAudio, LIVE_TRANSCRIPT_LINES, MAIN_PLACE, type MoveMedia, type MoveOut, type PersonalApi, type PresentStart, reactionTarget, type SeriesAnswerPart, type TranscriptClip, withReaction } from '@alcove/api';
 import { type KeyPackage } from 'ts-mls';
 import { z } from 'zod';
 
@@ -32,8 +32,9 @@ interface CallTransport {
   act(id: string, a: CallAction): Promise<CallState>;
   audio(id: string, p: AudioPiece): Promise<CallState>;
   transcribe(id: string, c: TranscriptClip, speaker: string): Promise<CallState>;
-  frame(id: string, f: ScreenFrame): Promise<ScreenFrameReceipt>;
-  shareEnded(id: string, share: string): Promise<void>;
+  startShare(id: string, notes: boolean): Promise<ShareStarted>;
+  screen(id: string, p: ScreenPiece): Promise<CallState>;
+  shareEnded(id: string, share: string): Promise<CallState>;
   /** Says this browser is looking at the live notes. True when that refreshed them. */
   watchNotes(id: string): Promise<boolean>;
   watchIdeas(id: string): Promise<boolean>;
@@ -901,7 +902,6 @@ export class HttpCall extends Live<CallState> implements CallSession {
   requestNotes = async (up: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'request-notes', up })); };
   declineNotes = async (requestId: string) => { this.take(await this.t.act(this.state.callId, { type: 'decline-notes', requestId })); };
   setUnavailable = async (parts: CaptureDevicePart[]) => { this.take(await this.t.act(this.state.callId, { type: 'unavailable', parts })); };
-  setScreens = async (on: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'screens', on })); };
   tickFollowUp = async (id: string, done: boolean) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up', id, done })); };
   addFollowUp = async (input: FollowUpCreate) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-add', input })); };
   updateFollowUp = async (id: string, patch: FollowUpPatch) => { this.take(await this.t.act(this.state.callId, { type: 'follow-up-edit', id, patch })); };
@@ -934,8 +934,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
   endVote = () => this.space({ type: 'board-vote', step: 'end' });
   clearVote = () => this.space({ type: 'board-vote', step: 'done' });
   tickDocumentFollowUp = async (tick: DocFollowUpTick) => { this.followUps.set(await this.t.tickDocument(this.state.callId, tick)); };
-  shareFrame = (f: ScreenFrame) => this.t.frame(this.state.callId, f);
-  shareEnded = (share: string) => this.t.shareEnded(this.state.callId, share);
+  setModel = async (model: string | null) => { this.take(await this.t.act(this.state.callId, { type: 'model', model })); };
+  startShare = async (o: { notes: boolean }) => {
+    const r = await this.t.startShare(this.state.callId, o.notes);
+    this.take(r.state);
+    return { share: r.share, keep: r.keep };
+  };
+  appendScreen = async (piece: ScreenPiece) => { this.take(await this.t.screen(this.state.callId, piece)); };
+  shareEnded = async (share: string) => { this.take(await this.t.shareEnded(this.state.callId, share)); };
   mute = async (identity: string, trackSid: string) => { this.take(await this.t.act(this.state.callId, { type: 'mute', identity, trackSid })); };
   stopShare = async (seat: string) => { this.take(await this.t.act(this.state.callId, { type: 'share-stop', seat })); };
   /** They're disconnected at once; the host's browser then takes them out of their group, so the keys move on without them. */

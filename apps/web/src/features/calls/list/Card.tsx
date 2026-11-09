@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useCopyLink } from '~/features/call/session/links';
 import { log } from '~/lib/log';
 import { callName, sameEmail } from '~/lib/people';
+import { useMyModelUnencrypted } from '~/lib/aiModels';
 import { q, useAnswerCall, useCancelCall, usePendingRsvp, useScheduleCall, useUpdateCall } from '~/lib/queries';
 import { hm, shortDay, timeZone } from '~/lib/time';
 import { useTimes } from '../scheduling/availability';
@@ -331,15 +332,16 @@ function MoveCards({ times, current, chosen, onPick }: { times: ReturnType<typeo
 }
 
 function ChangeNotes({ m, scopeBar, fail, told, saving, onSave }: Change) {
+  const unencrypted = useMyModelUnencrypted();
   const [notes, setNotes] = useState<NotesSetting>(m.notes);
   const [choices, setChoices] = useState<NotesChoices>(m.choices);
-  const sameChoices = (['keepTranscript', 'keepRecording', 'readScreens'] as const).every((k) => choices[k] === m.choices[k]);
+  const sameChoices = (['keepTranscript', 'keepRecording', 'allowScreens'] as const).every((k) => choices[k] === m.choices[k]);
   const changed = notes !== m.notes || !sameChoices;
   return (
     <>
       <FlowBody>
         <h2>Notes</h2>
-        <div className="cf-rows" style={{ borderTop: 0 }}><NotesSwitches notes={notes} choices={choices} onNotes={setNotes} onChoices={setChoices} /></div>
+        <div className="cf-rows" style={{ borderTop: 0 }}><NotesSwitches modelPrivate={!unencrypted} notes={notes} choices={choices} onNotes={setNotes} onChoices={setChoices} /></div>
       </FlowBody>
       {scopeBar}
       {fail}

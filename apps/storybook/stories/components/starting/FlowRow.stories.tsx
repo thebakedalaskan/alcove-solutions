@@ -27,7 +27,7 @@ const rows: Decorator = (Story) => (
 /** The Notes row and what it opens in place: whether the call writes notes, and what they keep. Its words follow the switches. */
 function NotesRow({ row, onPress }: { row: ComponentProps<typeof FlowRow>; onPress: () => void }) {
   const [notes, setNotes] = useState<NotesSetting>('on');
-  const [choices, setChoices] = useState<NotesChoices>({ keepTranscript: true, keepRecording: true, readScreens: true });
+  const [choices, setChoices] = useState<NotesChoices>({ keepTranscript: true, keepRecording: true, allowScreens: true });
   const title = notes === 'off' ? 'No notes' : choices.keepTranscript ? 'Notes and transcript' : 'Notes only';
   return (
     <>

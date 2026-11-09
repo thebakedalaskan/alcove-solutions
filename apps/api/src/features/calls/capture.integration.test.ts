@@ -357,7 +357,8 @@ describe('what a call captures', () => {
     for (const g of note.gaps) expect(Date.parse(g.to ?? '') - Date.parse(g.from)).toBeGreaterThanOrEqual(1000);
     expect(note.transcript?.map((l) => [l.at, l.text])).toEqual([[0, 'We agreed to move the launch.'], [4.9, 'Kofi will send the screens.'], [6, 'Back to pricing.']]);
     // The notes model read where nothing was captured, and wrote nothing about it.
-    const prompt = h.near.prompts.at(-1) ?? '';
+    // (The full summary was asked for after.)
+    const prompt = h.near.prompts[h.near.instructions.findLastIndex((x) => x.startsWith('You write the notes'))] ?? '';
     expect(prompt).toContain('[00:04] ');
     expect(prompt).toContain('-- at 00:05 notes were paused for less than a minute: nothing said then was recorded --\nL3 [00:06] ');
     expect(prompt).toContain('-- at 00:10 notes were off for less than a minute: nothing said then was recorded --');
@@ -417,7 +418,7 @@ describe('what a call captures', () => {
     const card = await anyone.calls.card(c);
     expect(card.capture).toEqual({
       mode: 'paused', recording: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, transcript: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } },
-      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null, away: false
+      ai: { mode: 'paused', since: expect.any(String), by: { kind: 'organizer' } }, screen: { mode: 'off', since: null, by: null }, gaps: [], requests: [], asked: null, room: null, away: false, model: null, modelPrivate: true, allowScreens: false
     });
     // Someone asking to join sees the same, and nobody in the call or anything said in it.
     const waiting = await h.browser().api.calls.join(c, { mic: true, cam: false, name: 'Lee' });

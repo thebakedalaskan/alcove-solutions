@@ -1172,9 +1172,16 @@ describe('breakout rooms, each with its own keys', () => {
     expect(forRoom('Design')[0]).not.toMatch(/CANARY-ROOMTALK|bank|Welcome back|Two rooms/);
     expect(forRoom('Support')).toHaveLength(1);
     expect(forRoom('Support')[0]).not.toMatch(/blue buttons|icons|links|Welcome back|Two rooms/);
-    const forCall = prompts.filter((x) => x.includes('Welcome back, everyone.'));
+    const instructions = h.near.instructions.slice(before);
+    const forCall = prompts.filter((x, i) => x.includes('Welcome back, everyone.') && instructions[i]?.startsWith('You write the notes'));
     expect(forCall).toHaveLength(1);
     expect(forCall[0]).not.toMatch(/CANARY-ROOMTALK|bank|blue buttons|icons|links/);
+    // The call's full summary is written from its own lines and what each room's notes said, never a room's lines.
+    const summary = prompts.filter((x, i) => instructions[i]?.startsWith('You write the full summary') && x.includes('Welcome back, everyone.'));
+    expect(summary).toHaveLength(1);
+    expect(summary[0]).toContain('Heard 3 lines. It ended on: Should links be green?');
+    expect(summary[0]).toContain('Heard 2 lines. It ended on: Ade will call the bank on Monday.');
+    expect(summary[0]).not.toContain('CANARY-ROOMTALK');
 
     // Everyone the notes go to reads every room's section, whichever room they were in.
     for (const who of [kofi, ade]) {

@@ -14,7 +14,8 @@ import { admissionFresh, groupOf, placeOf, type Room } from './places';
 import * as rings from './rings';
 import { scribeOf } from './scribes';
 import * as transcripts from '../recordings/transcripts';
-import { hostAway, load, secondsIn, settle, type Row, type Stored } from './state';
+import { hostAway, load, screensOf, secondsIn, settle, type Row, type Stored } from './state';
+import * as models from '../notes/models';
 import { forViewer, invitedIn, mayRead, personFor, roomsIn, seatKey, seatOf, speakersIn, type Viewer } from './participants';
 import { NO_NOTES, boardFor, notesFor } from './insights';
 import { attentionFor, openAttention } from './attention';
@@ -62,8 +63,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
   // Someone still waiting to be let in learns what's captured, and nothing else: nobody's name, nothing that was said.
   if (!v.inCall) {
     return {
-      ...base, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row), notes: { everOn: false, noteId: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
-      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timerSequence: null, notices: []
+      ...base, attention: { place: 'main', hands: [], questions: [], signals: [], cues: [], latest: 0, serverNow: end.toISOString() }, participants: [], waiting: [], ringing: [], leaving: [], spotlight: null, breakouts: { open: null, held: [] }, capture: anonymousCapture(s, row, await models.isPrivate(o.cfg, s.notes.model)), notes: { everOn: false, noteId: null, segmentStartedAt: null, recording: { segment: 0, pieces: 0, seconds: 0 } },
+      host: { id: null, standIn: false, organizer: { id: 'organizer', name: '', email: '' }, next: [] }, transcript: [], liveNotes: NO_NOTES, workspace: PRIVATE, board: boards.NO_BOARD, timerSequence: null, notices: [], shares: []
     };
   }
   const rooms = settle(s, row, end.getTime());
@@ -106,7 +107,7 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
     host: who,
     capture: {
       ...capture.stateFor({
-        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, away: hostAway(row), screens: s.notes.screens,
+        status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: organizer.name, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: s.notes.model, modelPrivate: await models.isPrivate(o.cfg, s.notes.model), allowScreens: meeting.manifest.choices.allowScreens,
         gaps: capture.gapsOf(s.notes.history, s.notes.offline, row.started_at, segs, row.ended_at ? secondsIn(row.started_at, row.ended_at.getTime()) : undefined),
         // Open asks, from whoever is in the call now: everyone sees them, like raised hands.
         requests: s.notes.asks.flatMap((a) => {
@@ -121,7 +122,8 @@ export async function view(v: Viewer, db: Db, callId: string): Promise<CallState
         room: { id: roomHere.id, from: open.from, pauses: roomHere.pauses, scribe: scribeOf(rooms, roomHere.id) }, now: secondsIn(row.started_at, end.getTime())
       }) : null
     },
-    notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
+    shares: row.state === 'live' ? s.shares.filter((x) => x.until === null).map((x) => ({ id: x.id, participant: x.identity, keep: x.keep })) : [],
+    notes: { everOn: s.notes.everOn, noteId: s.notes.noteId, segmentStartedAt: s.notes.everOn ? new Date(row.started_at.getTime() + s.notes.segmentFrom * 1000).toISOString() : null, recording: { segment: s.notes.segment, pieces: segs.reduce((n, g) => n + g.pieces, 0), seconds: segs.reduce((n, g) => n + g.seconds, 0) } },
     // Lines stay inside their segment once it's over, so what was said before a pause is shown before it.
     transcript: transcripts.spoken(transcripts.placed(heard, segs, s.notes.status === 'on' ? s.notes.segment : undefined), speakersIn(rooms, organizer, v), roomsIn(rooms)),
     liveNotes: await notesFor(v, db, row, rooms, viewing, where, invited),
@@ -151,7 +153,10 @@ function hostOf(s: Stored, v: Viewer, organizer: Person, live: boolean): CallHos
   };
 }
 
-/** What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no asks. */
-export function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'host_identity' | 'host_left_at'>) {
-  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: s.notes.screens, gaps: [], requests: [], asked: null });
+/**
+ * What's captured, for someone who isn't in the call (asking to join, or reading the call's card): no names, no gaps, no
+ * asks, and not which model, only whether it's private, so they know before they come in.
+ */
+export function anonymousCapture(s: Stored, row: Pick<Row, 'started_at' | 'state' | 'host_identity' | 'host_left_at'>, modelPrivate: boolean) {
+  return capture.stateFor({ status: s.notes.status, history: s.notes.history, startedAt: row.started_at, organizer: null, unavailable: s.notes.unavailable, away: hostAway(row), screens: screensOf(s), model: null, modelPrivate, allowScreens: false, gaps: [], requests: [], asked: null });
 }

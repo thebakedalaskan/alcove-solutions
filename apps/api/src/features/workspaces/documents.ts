@@ -39,7 +39,9 @@ import {
 } from './access';
 import { workedOn as workedOnInCall } from '../calls/room-boards';
 import { mayAskInCall, maySortInCall } from '../calls/insights';
+import { profile } from '../account/account';
 import { editSelection, themesOf } from '../notes/drafting';
+import { resolveModel } from '../notes/models';
 import { MAX_NESTING, SERVER_CAPS, bringsNew, browserCaps, clientsOf, inspect, isTooMuch, refusalGiven, type Block, type Inspected, type KnownClient } from './document-firewall';
 import { docEdits, docReads, type ArgsOf, type OpTable, type ResultOf } from './document-ops';
 import type { ContentKind } from './document-text';
@@ -942,15 +944,17 @@ export async function searchText(d: Deps, reader: Reader, workspaceId: string, a
 }
 
 /**
- * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the notes model and nowhere
+ * The format bar's Make this shorter and Turn this into a checklist. What's selected goes to the chosen model and nowhere
  * else, like catching up: nothing is kept, and nobody's credits pay for it. In a call it waits while notes are paused, as
  * everything that reaches the AI does. Whoever lost the document while the model wrote isn't sent what came back.
  */
 export async function askAlcove(d: Deps, reader: Reader, workspaceId: string, documentId: string, body: DocAskBody): Promise<DocAskPart[]> {
   requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
-  if (reader.seat) await mayAskInCall(reader.seat.viewer);
+  // In a call, the model chosen for it; otherwise the asker's own choice, or the default for a guest.
+  const via = reader.seat ? await mayAskInCall(reader.seat.viewer)
+    : await resolveModel(d.cfg, reader.account ? (await profile(reader.account.owner)).preferences.model : null);
   const t0 = performance.now();
-  const parts = await editSelection(d.cfg, body.action, body.text);
+  const parts = await editSelection(d.cfg, body.action, body.text, via);
   requireDocument(reader, await workspaceFor(d, reader, workspaceId), documentId, 'edit');
   dlog.info('selection edited', { workspaceId, documentId, action: body.action, chars: body.text.length, parts: parts.length, ms: Math.round(performance.now() - t0) });
   return parts;

@@ -8,13 +8,18 @@
  * pinned to a number of pieces, because a browser holds a URL to the length it first said: while a call is recording,
  * reading further is a new URL. The note draws all this as its horizon (CallLine.tsx). Where it's got to changes several
  * times a second, so what shows it reads `pos` through `usePlayerAt`, and the rest of the page isn't drawn again for it.
+ *
+ * Shares kept for the notes play above it, in step (`Replay`). The audio is the clock: the recording's timeline is the audio
+ * segments one after another, which is the timeline the server places shares on, so `pos` is a share's time too. A muted
+ * video follows it.
  */
-import { errorCode, type AudioSegment } from '@alcove/api';
-import { useToast } from '@alcove/ui';
+import { errorCode, type AudioSegment, type ScreenShare, type ScreenShareSegment } from '@alcove/api';
+import { Icon, ReplayScrub, ScreenReplay, useToast } from '@alcove/ui';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { api } from '~/lib/api';
 import { log } from '~/lib/log';
 import { useRecheckNote } from '~/lib/queries';
+import { position } from '~/lib/time';
 
 const plog = log.child({ component: 'player' });
 
@@ -282,4 +287,72 @@ export function usePlayer(noteId: string, segments: AudioSegment[], live: boolea
   }, [more, seek, sync]);
   const { total } = plan;
   return useMemo(() => ({ total, playing, busy, toggle, seek, pos, subscribe }), [total, playing, busy, toggle, seek, pos, subscribe]);
+}
+
+/** How far the video may drift from the audio before it's put back in step, in seconds. */
+const DRIFT = 0.3;
+
+/** The part of a share's video that covers a moment of the recording, if any. */
+const segmentAt = (s: ScreenShare, t: number): ScreenShareSegment | undefined => s.segments.find((g) => g.at <= t && t < g.until);
+
+/**
+ * The shared screen to show with the audio: the shares going on at `pos`, and of those the one picked, or else the
+ * one that started last. A muted video follows the audio: it plays and pauses with it, jumps when it seeks or moves
+ * to another segment, and is put back in step when it drifts more than `DRIFT`.
+ */
+function useReplay(noteId: string, shares: ScreenShare[], player: PlayerState) {
+  const { playing, busy } = player;
+  const pos = usePlayerAt(player, (p) => p);
+  const video = useRef<HTMLVideoElement | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const active = shares.filter((s) => s.at <= pos && pos < s.until && segmentAt(s, pos));
+  const latest = active.reduce<ScreenShare | undefined>((a, s) => (!a || s.at >= a.at ? s : a), undefined);
+  const share = active.find((s) => s.id === picked) ?? latest;
+  const seg = share ? segmentAt(share, pos) : undefined;
+  const src = share && seg ? api.notes.screenVideoUrl(noteId, share.id, seg.segment) : null;
+  const want = useRef({ pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null });
+  want.current = { pos, playing: playing && !busy, at: seg?.at ?? 0, on: src !== null };
+
+  const follow = useCallback(() => {
+    const v = video.current;
+    if (!v) return;
+    const w = want.current;
+    if (!w.on) { if (!v.paused) v.pause(); return; }
+    if (v.readyState < HTMLMediaElement.HAVE_METADATA) return;
+    const target = Math.max(0, w.pos - w.at);
+    if (Math.abs(v.currentTime - target) > DRIFT) v.currentTime = target;
+    if (w.playing && v.paused) v.play().catch((e: unknown) => plog.debug('shared screen could not play', { err: e }));
+    if (!w.playing && !v.paused) v.pause();
+  }, []);
+  // Every tick of the audio clock, a seek, play or pause, or another share or segment.
+  useEffect(follow, [follow, pos, playing, busy, src]);
+
+  const label = share?.label ?? '';
+  const element = (
+    <video ref={video} src={src ?? undefined} muted playsInline preload="metadata" aria-label={label ? `Shared screen: ${label}` : 'Shared screen'}
+      onLoadedMetadata={follow} onError={() => plog.warn('shared screen could not load', { share: share?.id, segment: seg?.segment })} />
+  );
+  return {
+    element, nothing: src === null, current: share?.id ?? null,
+    shares: active.map((s) => ({ id: s.id, label: s.label })), pick: setPicked
+  };
+}
+
+/** The shared screens that went with the recording, drawn in step with it; nothing where none was going on. */
+export function Replay({ noteId, shares, player }: { noteId: string; shares: ScreenShare[]; player: PlayerState }) {
+  const r = useReplay(noteId, shares, player);
+  const { total, playing, toggle, seek } = player;
+  const pos = usePlayerAt(player, (p) => p);
+  const marks = useMemo(() => shares.map((s) => ({ at: s.at, until: s.until })), [shares]);
+  // Full screen hides the player below, so play, the time and a scrub bar go along the replay's foot. Scrubbing
+  // while paused moves the picture without starting the audio.
+  const controls = (
+    <>
+      <button type="button" className="play" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}><Icon name={playing ? 'pause' : 'play'} size={18} /></button>
+      <span>{position(pos)}</span>
+      <ReplayScrub pos={pos} total={total} format={position} marks={marks} onSeek={(t) => seek(t, playing)} />
+      <span>{position(total)}</span>
+    </>
+  );
+  return <ScreenReplay video={r.element} nothing={r.nothing} shares={r.shares} current={r.current} onPick={r.pick} controls={controls} playing={playing} />;
 }

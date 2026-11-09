@@ -9,7 +9,7 @@ import { useReducedMotion } from 'motion/react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Avatar, Faces, type AvatarPerson } from './people';
-import { IconButton, Kbd, Segmented, Switch } from './primitives';
+import { IconButton, Kbd, Segmented, Switch, Unencrypted } from './primitives';
 
 /* ---------- what's on every view ---------- */
 
@@ -268,7 +268,9 @@ export function SwitchLine({ title, sub, control }: { title: ReactNode; sub?: Re
 /* ---------- what a call keeps, and which calls ---------- */
 
 /** Whether a call writes notes, and what they keep. Off, nothing else matters. */
-export function NotesSwitches({ notes, choices, onNotes, onChoices }: { notes: NotesSetting; choices: NotesChoices; onNotes: (n: NotesSetting) => void; onChoices: (c: NotesChoices) => void }) {
+export function NotesSwitches({ notes, choices, modelPrivate = true, onNotes, onChoices }: {
+  /** The organizer's AI model runs in a secure enclave. When it doesn't, the note under the switches says so. */
+  modelPrivate?: boolean | undefined; notes: NotesSetting; choices: NotesChoices; onNotes: (n: NotesSetting) => void; onChoices: (c: NotesChoices) => void }) {
   const on = notes === 'on';
   return (
     <>
@@ -280,9 +282,11 @@ export function NotesSwitches({ notes, choices, onNotes, onChoices }: { notes: N
             control={<Switch checked={choices.keepTranscript} label="Keep the transcript" onChange={(keepTranscript) => onChoices({ ...choices, keepTranscript })} />} />
           <SwitchLine title="Keep the recording" sub={choices.keepRecording ? 'Play back any moment from the notes' : 'Deleted when the call ends'}
             control={<Switch checked={choices.keepRecording} label="Keep the recording" onChange={(keepRecording) => onChoices({ ...choices, keepRecording })} />} />
-          <SwitchLine title="Read shared screens" sub="Slides and demos go into the notes"
-            control={<Switch checked={choices.readScreens} label="Read shared screens" onChange={(readScreens) => onChoices({ ...choices, readScreens })} />} />
-          <p className="cf-sealed"><Icon name="sealed" size={14} />Written in confidential compute. Alcove can’t read them.</p>
+          <SwitchLine title="Read shared screens" sub="Whoever shares is asked whether it goes in the notes"
+            control={<Switch checked={choices.allowScreens} label="Read shared screens" onChange={(allowScreens) => onChoices({ ...choices, allowScreens })} />} />
+          {modelPrivate
+            ? <p className="cf-sealed"><Icon name="sealed" size={14} />Written in confidential compute. Alcove can’t read them.</p>
+            : <p className="cf-sealed"><Icon name="shieldOff" size={14} />Written by an AI model outside a secure enclave. <Unencrypted compact /></p>}
         </>
       )}
     </>

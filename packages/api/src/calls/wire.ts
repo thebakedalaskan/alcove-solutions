@@ -1,5 +1,6 @@
 import { FollowUpCreateSchema, FollowUpPatchSchema, FollowUpReviewSchema } from '../notes/follow-ups';
 import { isTimeZone } from '../meetings/schema';
+import { ModelIdSchema } from '../notes/models';
 import { AskBodySchema } from '../notes/wire';
 import { IDSchema } from '../shared/ids';
 import { oneLine } from '../shared/validation';
@@ -28,8 +29,8 @@ const CallStepSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('decline-notes'), requestId: z.string().min(1).max(64) }),
   /** The host's browser says what it can't capture now (none, when it can again): everyone sees it, so nobody is told they're captured when they aren't. */
   z.object({ type: z.literal('unavailable'), parts: z.array(CaptureDevicePartSchema).max(2) }),
-  /** The organizer has shared screens read for the notes, or stops it. Only while notes are on or paused; turning notes off stops it too. */
-  z.object({ type: z.literal('screens'), on: z.boolean() }),
+  /** The organizer chooses the model for the notes (an ID from models.list()), or the default model (null). */
+  z.object({ type: z.literal('model'), model: ModelIdSchema.nullable() }),
   /** Anyone in the call: a raised hand for their room and the host. Every attention action binds its expected room. */
   z.object({ type: z.literal('hand'), place: CallPlaceSchema, up: z.boolean() }),
   z.object({ type: z.literal('hand-lower'), place: CallPlaceSchema, entryId: IDSchema.min(1).max(64) }),
@@ -222,11 +223,11 @@ export const CallHandOffBodySchema = z.object({ to: CallIdentity });
 /** `onPurpose`: someone chose to go, and isn't a page going away that may come back: what they started stops with them. */
 export const CallLeaveBodySchema = z.object({ end: z.boolean().default(true), onPurpose: z.boolean().default(false) });
 
-/** A share: the LiveKit track ID of someone's shared screen, as LiveKit names tracks. */
+/** A share: the LiveKit track ID of someone's shared screen, as LiveKit names tracks. Pointers and marks say which share they're on by it. */
 export const ShareIdSchema = z.string().regex(/^TR_[A-Za-z0-9]{2,64}$/);
 
-/** The presenter's browser says one of its shares ended, so the last frame's stretch ends there too. */
-export const ShareEndedBodySchema = z.object({ share: ShareIdSchema });
+/** A presenter starting a share: whether it goes in the notes. Refused with notes when they're off. */
+export const ShareStartBodySchema = z.object({ notes: z.boolean() });
 
 /** Answering a ring. */
 export const RingAnswerBodySchema = z.object({ reply: RingReplySchema });

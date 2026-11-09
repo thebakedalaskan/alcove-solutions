@@ -105,7 +105,7 @@ type Pop = 'mic' | 'cam' | 'cap' | 'more' | 'devices' | 'sounds' | 'quality' | '
 /** Time left in the rooms, as the rooms show it: 4:12. */
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 /** Whether what someone starts sharing is read for the notes: now, once notes resume, or not. */
-const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (mode === 'on' || mode === 'paused' ? mode : undefined);
+const screenRead = (mode: CaptureMode): 'on' | 'paused' | undefined => (notesAreOn(mode) ? 'on' : mode === 'paused' ? 'paused' : undefined);
 /** Takes away the toast that said why this tab left the call: it isn't true any more once the tab joins again. */
 let leftToast: (() => void) | null = null;
 
@@ -254,7 +254,7 @@ export function InCall({ session }: { session: CallSession }) {
   const { uploadError, heardProblem, pausing, discardDisplaced } = capture;
 
   const myShare = roomView.people[self]?.screenSid ?? null;
-  const { frameProblem, sharingInRoom, screensOn } = useScreenCapture({ session, state, screen: m.screen, myShare });
+  const { screenProblem, sharingInRoom, keptMine, keptOf, startMine } = useScreenCapture({ session, state, media, screen: m.screen, departing: leaving || ended !== null });
 
   /* What the call says happened ("Notes are on…") arrives once, as a toast. Joining shows only the latest: the rest is history. */
   const shown = useRef<Set<string> | null>(null);
@@ -432,7 +432,7 @@ export function InCall({ session }: { session: CallSession }) {
   const closedFor = (owner: string, mine: boolean): 'call' | 'presenter' | null => (!state.pointing ? 'call' : mine || othersPointAt(owner) ? null : 'presenter');
   const shares: StageShare[] = [
     ...(m.screen ? [{
-      id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null,
+      id: meId, feed: { stream: m.screen }, presenter: me?.person ?? SOMEONE, mine: true, label: `You’re sharing ${m.screenLabel ?? 'your screen'}`, name: 'Your screen', sound: null, kept: keptMine,
       point: myShare ? { sid: myShare, closed: closedFor(meId, true) } : null
     }] : []),
     ...others.flatMap((p): StageShare[] => {
@@ -445,7 +445,7 @@ export function InCall({ session }: { session: CallSession }) {
         muted: !on,
         toggle: () => { room.muteShare(sid, on); toast(on ? `${who}’s share is muted for you` : `${who}’s share plays its sound again`, { icon: on ? 'speakerOff' : 'speaker' }); }
       } : null;
-      return [{ id: p.id, feed: { room, sid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound, point: { sid, closed: closedFor(p.id, false) } }];
+      return [{ id: p.id, feed: { room, sid }, presenter: p.person, mine: false, label: `${who} is sharing`, name: `${who}’s screen`, sound, kept: keptOf(p.id), point: { sid, closed: closedFor(p.id, false) } }];
     })
   ];
   /*
@@ -626,6 +626,7 @@ export function InCall({ session }: { session: CallSession }) {
         return;
       }
       sayIt(wsToast.screenOn(r.surface === 'browser' ? 'tab' : r.surface === 'window' ? 'window' : 'screen'));
+      void startMine(c.notes);
       // The sound asked for didn't come (only asked where the browser can share it): its picker's switch was off, or
       // the computer wouldn't share it.
       if (r.sound !== 'left-out') return;
@@ -754,7 +755,7 @@ export function InCall({ session }: { session: CallSession }) {
 
   /* ---------- captions: the live transcript's newest line, in your language if you chose one ---------- */
   const caption = useCaptions(session, state.transcript, lang, cc && live);
-  const langMenu = <CaptionLanguageMenu language={lang} onPick={(code) => {
+  const langMenu = <CaptionLanguageMenu language={lang} modelPrivate={state.capture.modelPrivate} onPick={(code) => {
     setLang(code); setPop(null);
     const info = CAPTION_LANGUAGES.find((x) => x.code === code);
     toast(code ? `Captions in ${info?.english ?? code} for you` : 'Captions as they’re spoken', { icon: 'translate' });
@@ -1131,7 +1132,7 @@ export function InCall({ session }: { session: CallSession }) {
   const privacyLine = [
     open ? 'Each room has its own encryption keys, so video, audio and chat reach only the people in the same room.'
       : on || mode === 'paused' ? 'Video, audio and chat are encrypted end to end.' : 'Video, audio and chat are encrypted end to end between the people here.',
-    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, written in confidential compute.${open ? ' What’s said in each breakout room goes into them as that room’s own section; what’s shared there doesn’t.' : ''}`
+    on ? `While notes are on, ${state.capture.screen.mode === 'on' ? 'what everyone says and what anyone shares on screen go' : 'what everyone says also goes'} to the notes, ${state.capture.modelPrivate ? 'written in confidential compute' : 'written by an AI model outside a secure enclave, so Alcove can’t guarantee it stays private'}.${open ? ' What’s said in each breakout room goes into them as that room’s own section; what’s shared there doesn’t.' : ''}`
       : mode === 'paused' ? 'Notes are paused, so nothing goes to the notes.' : ''
   ].filter(Boolean).join(' ');
 
@@ -1406,13 +1407,13 @@ export function InCall({ session }: { session: CallSession }) {
   /* Notes: its tabs, and your own notes at the foot of the notes. */
   const notesTabBody = (t: NotesTab) => {
     switch (t) {
-      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={[uploadError, heardProblem, frameProblem].filter((x): x is string => !!x)} put={put}
+      case 'notes': return <NotesView session={session} state={state} getting={getting} problems={[uploadError, heardProblem, screenProblem].filter((x): x is string => !!x)} put={put}
         controls={controls} carried={carried && <FromLastTime s={carried} me={account.data?.user.email} open={!state.liveNotes.notes} />} onSeek={cu.open}
         yours={own.enabled ? <Yours own={own} state={state} me={me?.person.email} shown={yoursShown} onOpen={cu.open} /> : undefined} />;
       case 'transcript': return cu.moment
         ? <MomentView moment={cu.moment} startedAt={state.startedAt} me={me?.person.email} onLive={cu.backToLive} />
         : <TranscriptView state={state} me={me?.person.email} onMark={own.enabled ? own.mark : undefined} put={put} />;
-      case 'ask': return <AskView asks={cu.asks} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
+      case 'ask': return <AskView asks={cu.asks} modelPrivate={state.capture.modelPrivate} ready={state.notes.everOn && state.transcript.length > 0 && capHere.mode !== 'paused'} paused={capHere.mode === 'paused'} startedAt={state.startedAt} range={cu.range} window={cu.window}
         catching={cu.catching} draft={askDraft.current} earlier={earlierNotes.length ? earlierNotes : null} scope={cu.scope} onScope={cu.setScope} onRange={cu.setRange} onWindow={cu.refreshWindow} onAsk={cu.ask}
         onAskEarlier={(question) => cu.askEarlier(question, earlierNotes)} onCatchUp={() => cu.catchUp(cu.range)} onOpen={cu.open} onLive={cu.backToLive} keeping={own.enabled ? own : undefined} />;
     }
@@ -1642,7 +1643,7 @@ export function InCall({ session }: { session: CallSession }) {
   /* Your own screen, as its bar says it goes out: what kind of thing, and its sound. */
   const surfaceWords = m.screenSurface === 'browser' ? 'a tab' : m.screenSurface === 'window' ? 'a window' : m.screenSurface === 'monitor' ? 'your whole screen' : 'your screen';
   /** What you share is read for the notes: your bar says so, as its menu does. */
-  const myShareRead = published && screensOn && !sharingInRoom;
+  const myShareRead = published && keptMine;
   const myShareMeta = published ? `You’re presenting · ${surfaceWords}${withSound ? ' with sound' : ''}${myShareRead ? ' · Read for the notes' : ''}` : 'Starting to share…';
   const copyLinkOf = (link: string | undefined) => (link ? () => { void navigator.clipboard.writeText(link).then(() => sayIt(wsToast.linkCopied()), failed); } : undefined);
   const wsLink = space.id ? `${location.origin}/drive/${encodeURIComponent(space.id)}` : undefined;
@@ -1675,7 +1676,7 @@ export function InCall({ session }: { session: CallSession }) {
           };
           return (
             <FrameBox key={id} id={id} box={box} shown focused={focusOn}>
-              <Frame bar={bar} meta={s.mine ? myShareMeta : undefined} onStop={s.mine ? () => closeThing(id) : undefined}>
+              <Frame bar={bar} meta={s.mine ? myShareMeta : s.kept ? 'Read for the notes' : undefined} onStop={s.mine ? () => closeThing(id) : undefined}>
                 <ShareInFrame share={s} look={look} looks={looks.looks} popped={isPopped} marks={marks} me={me?.person ?? SOMEONE} whoIs={personOf} pointing={pointing} onPopOut={pop} />
               </Frame>
             </FrameBox>
@@ -1781,7 +1782,7 @@ export function InCall({ session }: { session: CallSession }) {
   const leaveQuestion = (
     <LeaveSheet inline={leaveInFloating && floating.target !== null} open={(hosting && leaveOpen) || !!ended} onOpenChange={(o) => { setLeaveOpen(o); if (!o) guard.stay(); }} title={state.title} elapsed={state.elapsed}
         organizer={organizer} standingInFor={state.host.standIn && hosting ? state.host.organizer.name : null} next={nextHosts}
-        notes={state.notes.everOn} others={others.length}
+        notes={state.notes.everOn} modelPrivate={state.capture.modelPrivate} others={others.length}
         getting={invited} leaving={leaving} ended={ended} onEnd={() => void end(true)} onHandOff={(to) => void handOff(to)} onRead={(id) => void away({ noteId: id })} onHome={() => void away(null)} />
   );
 
@@ -1845,7 +1846,7 @@ export function InCall({ session }: { session: CallSession }) {
         <TopBar title={state.title} elapsed={state.elapsed} people={stagePeople.map((p) => p.person)} phone={phone}
           timer={presenterTimer.sequence || hosting ? <CallTimerButton time={presenterTimer.time} label={presenterTimer.segment?.label ?? 'Plan this call'} status={presenterTimer.status} tone={presenterTimer.tone} compact={phone} on={side.view === 'timer'} onClick={() => flipSide('timer')} /> : null}
           sign={<CaptureButton state={state} role={session.ticket.role} getting={getting} controls={controls} pausing={pausing} onOpenNotes={() => openSide('notes')} />}
-          asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'}
+          asking={hosting ? state.waiting.length : 0} reconnecting={down || (crypto.status === 'joining' && !leaving)} screens={state.capture.screen.mode !== 'off'} modelPrivate={state.capture.modelPrivate}
           swap={!phone && swap}
           view={<ViewMenu {...viewChoices} />}
           board={{
@@ -1901,7 +1902,7 @@ export function InCall({ session }: { session: CallSession }) {
                 onStop: (everyone) => { setPop(null); if (isScreen(myThing.id)) stopShare(); else closeFor(myThing.id, everyone); }
               } : null}
               screen={{
-                full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom ? null : screenRead(state.capture.screen.mode) ?? null, trouble: shareTrouble,
+                full: full ? fullText : null, onPick: () => pickShare(), read: sharingInRoom || !state.capture.allowScreens ? null : screenRead(state.capture.mode) ?? null, trouble: shareTrouble,
                 changing: !!m.screen, onShare: share, onBack: () => { setShareTrouble(null); setPop('share'); }
               }}
               board={!canStartBoard ? { why: 'Guests can’t start a board here.' } : othersWhy ? { why: othersWhy } : { picker: sharePicker.picker, onPick: loadBoard }}

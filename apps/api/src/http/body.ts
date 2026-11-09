@@ -1,11 +1,11 @@
-import { AUDIO_HEADERS, CallIdentity, FRAME_HEADERS, MAX_AUDIO_PIECE_BYTES, MAX_FRAME_AGE_MS, MAX_FRAME_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, ShareIdSchema } from '@alcove/api';
+import { AUDIO_HEADERS, CallIdentity, MAX_AUDIO_PIECE_BYTES, MAX_TRANSCRIPT_CLIP_BYTES, MAX_TRANSCRIPT_CLIP_MS, MAX_VIDEO_PIECE_BYTES, VIDEO_HEADERS } from '@alcove/api';
 import { type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import { z } from 'zod';
 import { ValidationError } from '../errors';
 import * as audioMod from '../features/recordings/audio';
-import * as callsRecording from '../features/calls/recording';
-import { jpegSize } from '../features/recordings/screens';
+import { videoType } from '../features/recordings/ffmpeg';
+import * as screens from '../features/recordings/screens';
 import type { Clip } from '../features/recordings/transcripts';
 
 export const AUDIO_TYPES = new Set(['audio/webm', 'audio/mp4', 'audio/ogg']);
@@ -46,26 +46,32 @@ export async function piece(c: Context): Promise<audioMod.Piece> {
   return { segment: num(AUDIO_HEADERS.segment), seq: num(AUDIO_HEADERS.seq), atMs: num(AUDIO_HEADERS.at), durationMs: num(AUDIO_HEADERS.duration), mimeType, bytes };
 }
 
+/** Reads a raw piece of a shared screen's video and its position headers (the share is in the path). */
+export async function videoPiece(c: Context): Promise<screens.Piece> {
+  const num = (name: string) => position(c, name);
+  const mimeType = c.req.header('content-type') ?? '';
+  if (!videoType(mimeType) || mimeType.length > 200) throw new ValidationError('A shared screen’s video must be WebM or MP4.');
+  if (Number(c.req.header('content-length') ?? 0) > MAX_VIDEO_PIECE_BYTES) throw new ValidationError('That piece of video is empty or too large.');
+  const bytes = new Uint8Array(await c.req.arrayBuffer());
+  if (!bytes.length || bytes.length > MAX_VIDEO_PIECE_BYTES) throw new ValidationError('That piece of video is empty or too large.', { context: { bytes: bytes.length } });
+  return { segment: num(VIDEO_HEADERS.segment), seq: num(VIDEO_HEADERS.seq), atMs: num(VIDEO_HEADERS.at), durationMs: num(VIDEO_HEADERS.duration), mimeType, bytes };
+}
+
 /**
- * Reads a frame of a shared screen: a JPEG of at most MAX_FRAME_BYTES (refused from its declared size before the body
- * is read), between 64 and 4096 pixels on each side, which share it's from and how long ago it was taken.
+ * An HTTP Range header, as one range of bytes of a shared screen's video: null without one, 'bad' for one this API
+ * doesn't serve (more than one range, or not bytes). `bytes=-N` is the last N bytes.
  */
-export async function frame(c: Context): Promise<callsRecording.FrameUpload> {
-  if ((c.req.header('content-type') ?? '').toLowerCase().split(';')[0]?.trim() !== 'image/jpeg') throw new ValidationError('A frame must be a JPEG image.');
-  const declared = Number(c.req.header('content-length') ?? 0);
-  if (declared > MAX_FRAME_BYTES) throw new ValidationError('That frame is too large.', { context: { bytes: declared } });
-  const share = ShareIdSchema.safeParse(c.req.header(FRAME_HEADERS.share));
-  if (!share.success) throw new ValidationError('Say which shared screen the frame is from.', { context: { header: FRAME_HEADERS.share } });
-  const age = z.coerce.number().int().min(0).safeParse(c.req.header(FRAME_HEADERS.age) ?? '0');
-  if (!age.success) throw new ValidationError('Say how long ago the frame was taken.', { context: { header: FRAME_HEADERS.age } });
-  // When it was taken, on this server's clock: measured as the request arrives, before its image is read.
-  const takenAt = Date.now() - Math.min(age.data, MAX_FRAME_AGE_MS);
-  const jpeg = new Uint8Array(await c.req.arrayBuffer());
-  if (!jpeg.length || jpeg.length > MAX_FRAME_BYTES) throw new ValidationError('That frame is empty or too large.', { context: { bytes: jpeg.length } });
-  const size = jpegSize(jpeg);
-  if (!size) throw new ValidationError('A frame must be a JPEG image.', { context: { bytes: jpeg.length } });
-  if (Math.min(size.width, size.height) < 64 || Math.max(size.width, size.height) > 4096) throw new ValidationError('That frame is too small or too large.', { context: { width: size.width, height: size.height } });
-  return { share: share.data, takenAt, jpeg, ...size };
+export function videoByteRange(h: string | undefined): screens.ByteRange | null | 'bad' {
+  if (h === undefined) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(h.trim());
+  if (!m) return 'bad';
+  const [, a = '', b = ''] = m;
+  if (a === '' && b === '') return 'bad';
+  if (a === '') return { start: null, end: Number(b) };
+  const start = Number(a);
+  const end = b === '' ? null : Number(b);
+  if (!Number.isSafeInteger(start) || (end !== null && (!Number.isSafeInteger(end) || end < start))) return 'bad';
+  return { start, end };
 }
 
 /** True for the WAV the live transcript takes: uncompressed 16-bit PCM, one channel, 16 kHz. */

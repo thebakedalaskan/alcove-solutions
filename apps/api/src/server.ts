@@ -30,7 +30,7 @@ const app = createApp(deps, stopping.signal);
 
 const mlog = log.child({ component: 'maintenance' });
 const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_000)
-  .then((r) => (r.sessions || r.retried || r.orphans || r.receipts || r.notes ? mlog.info('maintenance done', r) : mlog.debug('maintenance done', r)))
+  .then((r) => (r.sessions || r.retried || r.orphans || r.receipts || r.videos || r.notes ? mlog.info('maintenance done', r) : mlog.debug('maintenance done', r)))
   .catch((e: unknown) => mlog.error('maintenance failed', { err: e }));
 void upkeep();
 const timer = setInterval(() => void upkeep(), 5 * 60_000);

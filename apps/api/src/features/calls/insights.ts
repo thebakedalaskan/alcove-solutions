@@ -1,6 +1,7 @@
 import { firstName, type Speaker } from '@alcove/api';
 import { CAPTION_LANGUAGES, MAIN_PLACE, MAX_CALL_IDEAS, type CallAction, type CallBoard, type CallBoardIdea, type CallAnswer, type CallMoment, type CaptionLanguage, type CaptionTranslation, type CaptureGap, type CatchUp, type CatchUpRange, type CatchUpWindow, type Changer, type LiveNotes, type Person, type CallFollowUps, type DocFollowUpTick, type SeriesAnswerPart } from '@alcove/api';
 import type { Owner } from '../../context';
+import type { ChatModel } from '../../inference';
 import { id128 } from '../../crypto';
 import { exec, tx, type Db } from '../../db';
 import { AuthError, ConflictError, ForbiddenError, notFound } from '../../errors';
@@ -10,6 +11,8 @@ import * as space from './workspace';
 import * as boards from './boards';
 import * as catchup from './catchup';
 import * as drafting from '../notes/drafting';
+import * as models from '../notes/models';
+import { recordUnencryptedUse } from '../notes/service';
 import * as liveNotes from './live-notes';
 import * as personal from '../notes/personal';
 import { personOf, portraitFor } from '../account/portraits';
@@ -55,9 +58,10 @@ export async function tickDocumentFollowUp(v: Viewer, callId: string, t: DocFoll
 
 /**
  * Asking about a selection needs in a call what catching up does: everything that reaches the AI from a call waits while
- * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing.
+ * notes, or the room someone's in, are paused, and a call whose notes have never been on sends it nothing. Says which
+ * model the call's AI goes to.
  */
-export async function mayAskInCall(v: Viewer): Promise<void> {
+export async function mayAskInCall(v: Viewer): Promise<ChatModel> {
   const { row, state } = await load(v.organizer, v.organizer.pool, v.pass.callId);
   const s = settle(state, row);
   const mine = s.people.find((j) => j.identity === v.pass.identity);
@@ -65,6 +69,10 @@ export async function mayAskInCall(v: Viewer): Promise<void> {
   const call = capturing(row, s, mine ? placeOf(s, mine) : MAIN_PLACE);
   capture.mayReachAi(call, 'ask', ctx);
   if (!call.noteId) throw new ConflictError('Notes aren’t on in this call, so nothing goes to the AI from it.', { context: ctx });
+  // What's asked in a call goes to the model chosen for it.
+  const via = await models.resolveModel(v.organizer.cfg, s.notes.model);
+  await recordUnencryptedUse(v.organizer, call.noteId, via);
+  return via;
 }
 
 /**
@@ -99,7 +107,9 @@ export async function translate(v: Viewer, callId: string, language: CaptionLang
   const missing = wanted.filter((l) => !have.has(l.id));
   if (missing.length) {
     const t0 = performance.now();
-    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language);
+    const via = await models.resolveModel(o.cfg, s.notes.model);
+    await recordUnencryptedUse(o, into.noteId, via);
+    const fresh = await drafting.translate(o.cfg, missing.map((l) => ({ id: l.id, text: l.text })), CAPTION_LANGUAGES.find((x) => x.code === language)?.english ?? language, via);
     await transcripts.keepTranslations(o, into, language, [...fresh].map(([lineId, text]) => ({ lineId, text })));
     for (const [id, text] of fresh) have.set(id, text);
     clog.info('captions translated', { ...ctx, found: wanted.length, cached: wanted.length - missing.length, translated: fresh.size, ms: Math.round(performance.now() - t0) });
@@ -158,11 +168,13 @@ async function soFarIn(o: Owner, row: Row, s: Stored, into: { noteId: string; re
   // Lines stay inside their segment once it's over, so what was said before a pause is read before it.
   const all = transcripts.placed(await transcripts.lines(o, o.pool, into.noteId, keep), segs, s.notes.status === 'on' ? s.notes.segment : undefined)
     .map((l) => ({ ...l, said: said(l) }));
+  // The model the organizer chose for this call reads it, for catching up, questions and the live notes alike.
+  const via = await models.resolveModel(o.cfg, s.notes.model);
   const brief = (ls: transcripts.HeardLine[], gaps: CaptureGap[]): drafting.Brief => ({
     title: meeting.manifest.title, kind: 'call', organizer: person, people: meeting.manifest.guests.map((e) => personOf(e)),
-    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true
+    seconds: window.now, lines: transcripts.spoken(ls, speakersIn(s, person), roomsIn(s)), gaps, live: true, via
   });
-  return { all, window, missed: missedIn(row, s, window, place), person, brief };
+  return { all, window, missed: missedIn(row, s, window, place), person, brief, disclose: () => recordUnencryptedUse(o, into.noteId, via) };
 }
 
 /**
@@ -197,12 +209,13 @@ async function stillIn(v: Viewer, callId: string, what: 'catch-up' | 'ask'): Pro
 
 /** Where a stretch of the call has got to, from the live transcript: for the person asking alone, from what they may read. */
 export async function catchUp(v: Viewer, callId: string, range: CatchUpRange): Promise<CatchUp> {
-  const { all, window, missed, brief } = await sofar(v, callId, 'catch-up');
+  const { all, window, missed, brief, disclose } = await sofar(v, callId, 'catch-up');
   const { lines, read } = catchup.readOf(all, range, window, missed, { callId, what: 'catch-up' });
   const ctx = { callId, range: range.kind, lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, whileHere: read.whileHere };
   // Nothing said, nothing sent: an empty stretch never reaches the notes model.
   if (!lines.length) { clog.info('caught up on a stretch with nothing said', ctx); return { summary: '', decided: [], proposed: [], open: [], next: [], read }; }
   const t0 = performance.now();
+  await disclose();
   const sorted = await drafting.catchUp(v.organizer.cfg, brief(lines, read.gaps), catchup.describe(range, read.whileHere));
   await stillIn(v, callId, 'catch-up');
   const cite = (xs: drafting.Cited[]) => xs.map(({ refs, ...x }) => ({ ...x, evidence: catchup.evidenceOf(refs, lines) }));
@@ -213,12 +226,13 @@ export async function catchUp(v: Viewer, callId: string, range: CatchUpRange): P
 
 /** Answers a question from a stretch of the call's live transcript, for the person asking alone, with the moments it comes from. */
 export async function askSoFar(v: Viewer, callId: string, question: string, range: CatchUpRange): Promise<CallAnswer> {
-  const { all, window, missed, person, brief } = await sofar(v, callId, 'ask');
+  const { all, window, missed, person, brief, disclose } = await sofar(v, callId, 'ask');
   const { lines, read } = catchup.readOf(all, range, window, missed, { callId, what: 'ask' });
   const ctx = { callId, range: range.kind, lines: lines.length, whileHere: read.whileHere };
   if (!lines.length) { clog.info('question about a stretch with nothing said', ctx); return { text: '', evidence: [], read }; }
   const asker: Person = v.isOrganizer ? person : { id: v.pass.identity, name: v.pass.name, email: '' };
   const t0 = performance.now();
+  await disclose();
   const a = await drafting.answerSoFar(v.organizer.cfg, brief(lines, read.gaps), asker, question, catchup.describe(range, read.whileHere));
   await stillIn(v, callId, 'ask');
   clog.info('question answered during a call', { ...ctx, cites: a.refs.length, cut: a.cut?.count ?? 0, ms: Math.round(performance.now() - t0) });
@@ -336,6 +350,7 @@ export async function watchNotes(v: Viewer, callId: string): Promise<boolean> {
     await nudge(o, row.room_name, callId, { call: true, log: false });
     const t0 = performance.now();
     const known = liveNotes.knownTo(claim, lines);
+    await part.disclose();
     const sorted = await drafting.catchUp(o.cfg, part.brief(lines, read.gaps), catchup.describe(whole, barred.length > 0), { followUps: FOLLOW_UPS_READ, known });
     const done = {
       lines: lines.length, gaps: read.gaps.length, missed: read.missed.length, uncited: sorted.uncited, known: known.length, same: sorted.next.filter((f) => f.same).length, strays: sorted.strays,
@@ -487,6 +502,7 @@ export async function watchIdeas(v: Viewer, callId: string): Promise<boolean> {
     const t0 = performance.now();
     const frames = await boards.framesOf(o, open);
     const brief = part.brief(lines, read.gaps);
+    await part.disclose();
     const found = await drafting.ideasFrom(o.cfg, brief, frames, kept?.list.map((i) => i.text) ?? []);
     const seen = lines.map((l) => ({ ...(l.when === undefined ? {} : { when: l.when }), ...(l.readers ? { readers: l.readers } : {}) }));
     const ideas = found.flatMap((f): StoredIdea[] => {

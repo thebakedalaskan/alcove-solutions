@@ -2,7 +2,8 @@ import { PersonSchema, PortraitStyleSchema } from '../identity/people';
 import { IDSchema, ISODateSchema } from '../shared/ids';
 import { z } from '../shared/zod';
 import { ActionItemSchema, DecisionSchema, NoteActionSchema, NoteDecisionSchema, NoteQuestionSchema, QuestionSchema } from './entries';
-import { ScreenMomentSchema, ScreenRefSchema } from './screens';
+import { ModelIdSchema, UnencryptedUseSchema } from './models';
+import { ScreenMomentSchema, ScreenRefSchema, ScreenShareSchema } from './screens';
 import { RecipientRoleSchema, SpeakerSchema, TranscriptLineSchema } from './transcript';
 /** A part of the call: where it starts, a few words, a sentence, and what was on a shared screen through it, when something was. */
 export const ChapterSchema = z.object({ at: z.number(), title: z.string(), summary: z.string(), screen: ScreenRefSchema.optional() });
@@ -74,8 +75,8 @@ export type Received = z.infer<typeof ReceivedSchema>;
 export const InferenceEvidenceSchema = z.object({
   /** The model as NEAR AI names it, e.g. "z-ai/glm-5.3-flash". */
   model: z.string(),
-  /** What it did for the note: transcribed the speech, or wrote the notes. */
-  task: z.enum(['transcript', 'notes']),
+  /** What it did for the note: transcribed the speech, wrote the notes, or read the shared screens. Records written before screens were read hold only the first two. */
+  task: z.enum(['transcript', 'notes', 'screens']),
   /** When Alcove checked the evidence, before sending anything to the key it vouches for. */
   verifiedAt: ISODateSchema,
   /** The model's attested signing key (Ed25519, hex). It signs the OHTTP key requests are sealed to. */
@@ -220,6 +221,8 @@ export type NoteWorkedOn = z.infer<typeof NoteWorkedOnSchema>;
 export const NoteSchema = NoteSummarySchema.extend({
   recipients: z.array(RecipientSchema),
   summary: z.string(),
+  /** The full summary: the meeting's topics in order, what was said and concluded on each, and the key screens shown. Longer for a longer meeting; empty until notes are written with it. */
+  details: z.string(),
   decisions: z.array(NoteDecisionSchema),
   /** What the call asked and didn't settle. */
   questions: z.array(NoteQuestionSchema),
@@ -228,8 +231,14 @@ export const NoteSchema = NoteSummarySchema.extend({
   chapters: z.array(ChapterSchema),
   /** The stretches of the call with nothing captured, oldest first. Room recordings have none. */
   gaps: z.array(CaptureGapSchema),
-  /** What was on shared screens while screen notes were on, oldest first, each with the stretch of the transcript it belongs to. */
+  /** What was on shared screens kept for the notes, oldest first, each with the stretch of the transcript it belongs to. */
   screens: z.array(ScreenMomentSchema),
+  /** The shares kept for the notes, oldest first, with their video for replay. Empty for notes without any, which play audio alone. */
+  shares: z.array(ScreenShareSchema).default([]),
+  /** The model that wrote these notes (an ID from `models.list()`), or null for the default model. */
+  model: ModelIdSchema.nullable().default(null),
+  /** Every time a model that isn't in a secure enclave was sent something for these notes. */
+  unencrypted: z.array(UnencryptedUseSchema).default([]),
   /**
    * What was said while notes were on. Null while the recording is still going. Without `kept.transcript` it's empty
    * once the notes are written, and until then for everyone but the organizer.

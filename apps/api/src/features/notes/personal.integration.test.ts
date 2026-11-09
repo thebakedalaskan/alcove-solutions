@@ -5,13 +5,14 @@
  * when a note goes or someone loses it, and that none of it reaches a row, a log line or a model in the clear. The real
  * API over HTTP via @alcove/api-http, real Postgres, the object store, the local LiveKit server and main's fake NEAR AI.
  */
-import { AlcoveApiError, MAX_KEPT_ANSWER, MAX_KEPT_QUESTION, MAX_PERSONAL_ENTRIES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type ScreenFrame, type TranscriptClip } from '@alcove/api';
+import { AlcoveApiError, MAX_KEPT_ANSWER, MAX_KEPT_QUESTION, MAX_PERSONAL_ENTRIES, type AlcoveApi, type AudioPiece, type CallSession, type CallState, type PersonalEntry, type PersonalNotes, type ScreenPiece, type TranscriptClip } from '@alcove/api';
 import { createHttpApi } from '@alcove/api-http';
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { screenJpeg, speechWav } from '../../testing/fake-near';
+import { speechWav } from '../../testing/fake-near';
 import { ORIGIN, startHarness, type Harness } from '../../testing/harness';
-import { connect, disposeLiveKit, type TestParticipant } from '../../testing/livekit';
+import { disposeLiveKit, presentScreen, stopPresenting, type TestParticipant } from '../../testing/livekit';
+import { cut, recordedWebm } from '../../testing/video';
 
 // Calls set up MLS groups and LiveKit rooms, which a busy runner can be slow to do: every wait says what it waited for.
 vi.setConfig({ testTimeout: 90_000 });
@@ -20,7 +21,7 @@ let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
 afterAll(async () => { await h?.close(); await disposeLiveKit(); });
 const open: TestParticipant[] = [];
-afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); h.closeCalls(); });
+afterEach(async () => { await Promise.all(open.splice(0).map((p) => p.disconnect().catch(() => undefined))); await stopPresenting(); h.closeCalls(); });
 
 const code = (e: unknown) => (e instanceof AlcoveApiError ? e.code : 'not-an-api-error');
 const fails = (p: Promise<unknown>) => p.then(() => 'succeeded', (e: unknown) => code(e));
@@ -267,25 +268,26 @@ describe('bookmarks', () => {
     const lena = await account(unique('lena'));
     const { org, host, calls: [lenaCall] } = await callWith(lena);
     if (!lenaCall) throw new Error('nobody in the call');
-    await host.transcribe(speech('Look at the chart.', 0, 0), host.ticket.identity);
+    // Said as the chart is pointed at, so the screen is one the notes keep.
+    await host.transcribe(speech('As you can see the chart.', 0, 0), host.ticket.identity);
     await settle(host, (s) => s.transcript.length >= 1);
-    await host.setScreens(true);
     await inGroup(lenaCall);
-    const room = await connect(await lenaCall.room(), { sending: lenaCall.crypto });
-    open.push(room);
-    const { screen } = await room.publishScreen(false);
-    for (let i = 0; i < 300 && !(await h.deps.livekit.screenShares(room.room.name ?? '')).some((x) => x.sid === screen); i++) await sleep(50);
-    const frame: ScreenFrame = { data: new Blob([screenJpeg({ title: 'Q3 sign-ups', lines: ['Q3 sign-ups by week'] }, 1280, 720, 'one')], { type: 'image/jpeg' }), share: screen, takenAt: Date.now() };
-    await lenaCall.shareFrame(frame);
+    await presentScreen(lenaCall, h.deps.livekit);
+    const { share } = await lenaCall.startShare({ notes: true });
+    for (const [i, data] of cut(await recordedWebm(10), 2).entries()) {
+      await lenaCall.appendScreen({ data: new Blob([data]), share, segment: 0, seq: i, at: i * 5, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' } satisfies ScreenPiece);
+    }
+    await lenaCall.shareEnded(share);
     const noteId = noteIdOf(await host.leave());
     await written(org.api, noteId);
     const note = await lena.api.notes.get(noteId);
-    const frameId = only(note.screens).id;
+    const frameId = note.screens[0]?.id ?? '';
+    expect(frameId).not.toBe('');
     const lineId = only(note.transcript ?? []).id;
 
     const mine = lena.api.notes.personal(noteId);
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ reach: 'open', moment: { screen: { id: frameId, title: 'Q3 sign-ups' } } });
-    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ reach: 'open', moment: { line: { id: lineId, text: 'Look at the chart.' } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: 'The chart', point: { kind: 'screen', frameId } })))).toMatchObject({ reach: 'open', moment: { screen: { id: frameId } } });
+    expect(bookmark(last(await mine.add({ kind: 'bookmark', label: '', point: { kind: 'line', lineId } })))).toMatchObject({ reach: 'open', moment: { line: { id: lineId, text: 'As you can see the chart.' } } });
 
     // Another note's line or screen, or something that isn't there, is not found here. Without a call there's no "now".
     const other = await writtenNote('Something else entirely.');

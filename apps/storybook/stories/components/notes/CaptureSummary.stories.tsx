@@ -18,10 +18,10 @@ interface Parts { recording?: CaptureMode; transcript?: CaptureMode; ai?: Captur
 function captured(mode: CaptureMode, p: Parts = {}, away = false): CaptureState {
   return {
     mode, recording: part(p.recording ?? mode), transcript: part(p.transcript ?? mode), ai: part(p.ai ?? (mode === 'unavailable' ? 'on' : mode)),
-    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away
+    screen: part(p.screen ?? 'off'), gaps: [], requests: [], asked: null, room: null, away, model: null, modelPrivate: true, allowScreens: true
   };
 }
-const KEEPS_ALL: NotesChoices = { keepTranscript: true, keepRecording: true, readScreens: false };
+const KEEPS_ALL: NotesChoices = { keepTranscript: true, keepRecording: true, allowScreens: false };
 
 const meta = {
   title: 'Components/Notes and transcript/CaptureSummary',
@@ -46,6 +46,8 @@ export const BeforeItStarts: Story = { name: 'Before it starts' };
 /** The call hasn't started, and it isn't set to have notes. */
 export const BeforeItStartsNotesOff: Story = { name: 'Before it starts, notes off', args: { notes: 'off' } };
 export const NotesOn: Story = { name: 'Notes on', args: { capture: captured('on') } };
+/** Notes on, with an AI model outside a secure enclave: the line about confidential compute says so instead. */
+export const UnencryptedModel: Story = { name: 'Unencrypted AI model', args: { capture: { ...captured('on'), modelPrivate: false } } };
 /** Notes on, and the organizer has shared screens read for them too. */
 export const ScreensRead: Story = { name: 'Screens read', args: { capture: captured('on', { screen: 'on' }) } };
 /** Notes on, but the browser taking them can't record right now: what's said is still transcribed. */
@@ -63,7 +65,7 @@ export const AwayWithAScreenShared: Story = { name: 'Away, with a screen shared'
 /** The call started without notes: nothing to keep, so nothing more is said. */
 export const Off: Story = { args: { capture: captured('off') } };
 /** The call doesn't keep the transcript or the recording: said before anyone decides to join. */
-export const KeepsLess: Story = { name: 'Keeps less', args: { capture: captured('on'), choices: { keepTranscript: false, keepRecording: false, readScreens: false } } };
+export const KeepsLess: Story = { name: 'Keeps less', args: { capture: captured('on'), choices: { keepTranscript: false, keepRecording: false, allowScreens: false } } };
 /** Who gets the notes, said for someone invited. */
 export const YoureInvited: Story = { name: 'You’re invited', args: { capture: captured('on'), who: 'You’re invited, so you get them.' } };
 /** Who gets the notes, said for someone asking to join. */

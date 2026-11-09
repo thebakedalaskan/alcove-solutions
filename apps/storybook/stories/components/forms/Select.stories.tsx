@@ -5,7 +5,7 @@
  * keeps its own open state, so every story here starts closed: press it to open the list. `placeholder` shows when
  * nothing is chosen, and `stage` is for the night recorder and the call.
  */
-import { CryptoMark, ICON_NAMES, Select, type SelectOption } from '@alcove/ui';
+import { CryptoMark, ICON_NAMES, Select, Unencrypted, type SelectOption } from '@alcove/ui';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import { did, onStage } from '../../../src/component';
@@ -37,6 +37,14 @@ const ROOM_INPUTS: SelectOption<string>[] = [
   { value: 'interface-2', label: 'Audio interface, input 2', icon: 'mic' }
 ];
 
+/** AI models: the default is noted, and two aren't in a secure enclave. */
+const MODELS: SelectOption<string>[] = [
+  { value: 'enclave', label: 'Vandelay Private 70B', note: '(default)' },
+  { value: 'fast', label: 'Vandelay Private 8B' },
+  { value: 'open-a', label: 'Open Model A', tag: <Unencrypted compact /> },
+  { value: 'open-b', label: 'Open Model B with a very long name that has to be cut', tag: <Unencrypted compact /> }
+];
+
 const values = (options: SelectOption<string>[]) => options.map((o) => o.value);
 
 const meta = {
@@ -66,6 +74,18 @@ export const ALongList: Story = {
   name: 'A long list',
   args: { label: 'Microphone', icon: 'mic', value: 'room-front', options: ROOM_INPUTS },
   argTypes: { value: { control: 'select', options: values(ROOM_INPUTS) } }
+};
+/** A note after the first option's name, and a badge on the two that aren't in an enclave. Pressing a badge still picks the option. */
+export const WithNotesAndTags: Story = {
+  name: 'With notes and tags',
+  args: { label: 'Model', value: 'enclave', options: MODELS },
+  argTypes: { value: { control: 'select', options: values(MODELS) } }
+};
+/** An unencrypted choice shows its badge on the button too. */
+export const TaggedChoice: Story = {
+  name: 'Tagged choice',
+  args: { label: 'Model', value: 'open-a', options: MODELS },
+  argTypes: { value: { control: 'select', options: values(MODELS) } }
 };
 /** Nothing chosen yet: the placeholder says what's used meanwhile. */
 export const Placeholder: Story = {

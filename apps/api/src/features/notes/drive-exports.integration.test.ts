@@ -465,7 +465,7 @@ describe('automatic Google Drive call exports', () => {
 
   it('keeps unretained transcripts and recordings out of Drive even when their formats were selected', async () => {
     const b = await connected();
-    const meeting = await b.api.meetings.create({ title: 'Notes only', startsAt: new Date().toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: { keepTranscript: false, keepRecording: false, readScreens: false } });
+    const meeting = await b.api.meetings.create({ title: 'Notes only', startsAt: new Date().toISOString(), durationMinutes: 30, guests: [], notes: 'on', choices: { keepTranscript: false, keepRecording: false, allowScreens: false } });
     const call = await b.api.calls.join(meeting.code, { mic: true, cam: false });
     await call.appendAudio({ data: new Blob(['UNRETAINED-AUDIO']), segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'audio/webm' });
     await call.transcribe(speech('Mira will send the notes.'), call.ticket.identity);

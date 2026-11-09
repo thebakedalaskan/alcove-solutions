@@ -2,7 +2,7 @@
  * What a call captures (docs: Calls and recordings › What's captured): how its sealed state keeps it, the one gate
  * every capturing path goes through, the stretches with nothing captured, and the capture state as each person
  * sees it, in the call and in each breakout room. Only the organizer changes it (calls.ts): notes on and off, pause
- * and resume, shared screens read for the notes, and pausing one room.
+ * and resume, the model that reads shared screens, and pausing one room. Presenters say whether their shares go in the notes.
  */
 import {
   CaptureDevicePartSchema, type AudioSegment, type CaptureActor, type CaptureDevicePart, type CaptureGap, type CaptureMode, type CapturePart, type CaptureState, type NotesRequest,
@@ -39,22 +39,20 @@ export const OfflineStretch = z.object({ from: z.number(), to: z.number(), segme
 export type OfflineStretch = z.infer<typeof OfflineStretch>;
 
 /**
- * Shared screens read for the notes, or stopped, `at` seconds into the call (to a tenth), while the recording was in
- * `segment`: the organizer's choice, or (`by`) the call's schedule, with notes starting. Turning notes off stops it too,
- * at the same moment, and so does the notes having kept as many frames as they can.
+ * A share kept for the notes started going with none before (`on`), or the last one stopped, `at` seconds into the call
+ * (to a tenth), while the recording was in `segment`. Turning notes off stops every one, at the same moment.
  */
-export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int(), by: CaptureChange.shape.by.default('organizer') });
+export const ScreenChange = z.object({ at: z.number(), on: z.boolean(), segment: z.number().int() });
 export type ScreenChange = z.infer<typeof ScreenChange>;
 
 /** The paths that capture something, or send what was captured to the AI. */
 export type CapturePath = 'audio' | 'speech' | 'screen' | 'captions' | 'catch-up' | 'ask' | 'live-notes' | 'ideas' | 'sort';
 /**
- * What the gate needs to know about a call, in the part of it something was captured in: whether it's live, notes, the
- * note and recording, and whether shared screens are read (`screens`). `status` is that part's (a breakout room's is
- * the call's, held while the organizer has paused the room), and `room` says the room's own pause is what holds it. For
- * a frame, `inRoom` says whoever shares it was in a breakout room when it was taken, which stays out.
+ * What the gate needs to know about a call, in the part of it something was captured in: whether it's live, notes, and
+ * the note and recording. `status` is that part's (a breakout room's is the call's, held while the organizer has paused
+ * the room), and `room` says the room's own pause is what holds it.
  */
-export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null; screens: boolean; inRoom?: boolean | undefined; room?: boolean | undefined }
+export interface Capturing { live: boolean; status: CaptureStatus; noteId: string | null; recordingId: string | null; room?: boolean | undefined }
 
 /** One change to a breakout room's own capture, in seconds since the call started: the organizer pausing it, or carrying on there. */
 export const RoomPause = z.object({ at: z.number(), paused: z.boolean() });
@@ -64,20 +62,18 @@ export const roomStatus = (call: CaptureStatus, pauses: RoomPause[]): CaptureSta
 
 /**
  * The capture gate: whether `path` may capture into this call, or send its transcript to the AI, right now. Every
- * such path asks here first (calls.ts: audio pieces, speech clips, shared-screen frames, captions, catch-up, questions
- * and refreshing the live notes). Audio, speech and frames need notes on, and so does a refresh, which nobody asked for
- * by name: what's kept is read, and nothing new goes to the AI by itself once the organizer has turned notes off.
- * Frames also need shared screens read, and never come from a breakout room. Captions, catch-up and questions need
- * notes to have been on. While notes are paused nothing goes anywhere. Whatever arrives once capture is paused or off
- * is refused (409), whoever sends it; what got through here before stays. Returns the note and recording to capture into.
+ * such path asks here first (calls.ts: audio pieces, speech clips, shared-screen video, captions, catch-up, questions
+ * and refreshing the live notes). Audio, speech and screen video need notes on (whose share is kept is calls.ts's to
+ * check), and so does a refresh, which nobody asked for by name: what's kept is read, and nothing new goes to the AI by
+ * itself once the organizer has turned notes off. Captions, catch-up and questions need notes to have been on. While
+ * notes are paused nothing goes anywhere. Whatever arrives once capture is paused or off is refused (409), whoever
+ * sends it; what got through here before stays. Returns the note and recording to capture into.
  */
 export function mayCapture(call: Capturing, path: CapturePath, context: Record<string, string | number | null>): { noteId: string; recordingId: string } {
-  const ctx = { ...context, path, notes: call.status, screens: call.screens ? 'on' : 'off' };
+  const ctx = { ...context, path, notes: call.status };
   mayReachAi(call, path, ctx);
   const captures = path === 'audio' || path === 'speech' || path === 'screen' || path === 'live-notes' || path === 'ideas';
   if (captures && call.status !== 'on') throw new ConflictError('Notes aren’t on right now.', { context: ctx });
-  if (path === 'screen' && !call.screens) throw new ConflictError('Shared screens aren’t read for the notes right now.', { context: ctx });
-  if (path === 'screen' && call.inRoom) throw new ConflictError('What’s shared in a breakout room stays in the room. It isn’t read for the notes.', { context: ctx });
   if (!call.noteId || !call.recordingId) throw new ConflictError('Notes haven’t been on in this call, so nothing has been transcribed.', { context: ctx });
   return { noteId: call.noteId, recordingId: call.recordingId };
 }
@@ -166,12 +162,13 @@ function modes(status: CaptureStatus, everOn: boolean): Record<Part, CaptureMode
  * The capture state for one person. Each part says when it last changed and who changed it: `organizer` names them,
  * for people in the call; people asking to join get no name, no gaps and no asks. A part the host's browser says
  * it can't do is unavailable while notes are on, and so is everything when it can do neither, or while that
- * browser is out of the call (`away`). Shared screens are read
- * only once the organizer says so (`screens`), and then follow notes: on, paused with them, or off.
+ * browser is out of the call (`away`). Shared screens are on while a share kept for the notes is going (`screens.live`),
+ * paused with notes. `model` is the organizer's choice of model for the notes (`modelPrivate`: it runs in a secure enclave), and `allowScreens` whether shares
+ * may go in the notes at all.
  */
 export function stateFor(c: {
   status: CaptureStatus; history: CaptureChange[]; startedAt: Date; organizer: string | null; unavailable: CaptureDevicePart[]; away: boolean;
-  screens: { on: boolean; history: ScreenChange[] };
+  screens: { live: boolean; history: ScreenChange[] }; model: string | null; modelPrivate: boolean; allowScreens: boolean;
   gaps: CaptureGap[]; requests: NotesRequest[]; asked: CaptureState['asked'];
 }): CaptureState {
   const when = (at: number) => new Date(c.startedAt.getTime() + at * 1000).toISOString();
@@ -194,7 +191,7 @@ export function stateFor(c: {
   return {
     mode: cant.has('recording') && cant.has('transcript') ? 'unavailable' : c.status,
     recording: part('recording'), transcript: part('transcript'), ai: part('ai'), screen: screenPart(c, when, actor),
-    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away
+    gaps: c.gaps, requests: c.requests, asked: c.asked, room: null, away: c.away, model: c.model, modelPrivate: c.modelPrivate, allowScreens: c.allowScreens
   };
 }
 
@@ -296,15 +293,15 @@ export function roomStateFor(c: {
 }
 
 /**
- * Shared screens as people see them: off until the organizer turns them on (and off again when they, or notes, are
- * turned off); while on, they're on or paused with notes. The presenters' own browsers send frames, so the organizer's
- * browser not being able to record or listen doesn't change it. When and who is whichever change last made a
- * difference: the organizer's choice about screens, or notes being paused, resumed or turned off.
+ * Shared screens as people see them: on while a share kept for the notes is going, paused with notes, off otherwise.
+ * Presenters' own browsers record them, so the organizer's browser not being able to record or listen doesn't change
+ * it. When and who is whichever change last made a difference: a kept share starting or the last one stopping (said
+ * by nobody: each presenter chooses for their own), or notes being paused, resumed or turned off.
  */
-function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screens: { on: boolean; history: ScreenChange[] } }, when: (at: number) => string, actor: (by: CaptureChange['by']) => CaptureActor): CapturePart {
+function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screens: { live: boolean; history: ScreenChange[] } }, when: (at: number) => string, actor: (by: CaptureChange['by']) => CaptureActor): CapturePart {
   const events = [
     ...c.history.map((h) => ({ at: h.at, by: h.by, status: h.status, on: undefined })),
-    ...c.screens.history.map((s) => ({ at: s.at, by: s.by, status: undefined, on: s.on }))
+    ...c.screens.history.map((s) => ({ at: s.at, by: null, status: undefined, on: s.on }))
   ].sort((a, b) => a.at - b.at);
   let status: CaptureStatus = 'off';
   let on = false;
@@ -316,8 +313,5 @@ function screenPart(c: { status: CaptureStatus; history: CaptureChange[]; screen
     const now: CaptureMode = on ? status : 'off';
     if (now !== mode) { mode = now; last = e; }
   }
-  // A choice the organizer made that changed nothing yet still says who made it (screens off while notes were off).
-  const latest = c.screens.history.at(-1);
-  if (!last && latest) return { mode: 'off', since: when(latest.at), by: actor(latest.by) };
-  return { mode: c.screens.on ? c.status : 'off', since: last ? when(last.at) : null, by: last ? actor(last.by) : null };
+  return { mode: c.screens.live ? c.status : 'off', since: last ? when(last.at) : null, by: last?.by ? actor(last.by) : null };
 }

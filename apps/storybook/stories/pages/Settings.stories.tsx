@@ -5,7 +5,7 @@ import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
 import { withTopUp } from '../../src/world/payments';
 import { withDriveReconnect } from '../../src/world/drive-exports';
-import { keptHere, noCalendar, sharedDemo, troubled } from './changes';
+import { keptHere, noCalendar, sharedDemo, troubled, unencryptedDefault } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
 export default meta;
@@ -22,6 +22,8 @@ export const Busy = page('/settings', 'busy');
 export const BusyPhone = phone(Busy);
 export const FirstDay = page('/settings', 'first-day');
 export const OnTheirOwn = page('/settings', 'on-their-own');
+/** An AI model that isn't in a secure enclave is the default: Unencrypted shows beside it, and in the list. */
+export const UnencryptedModel = page('/settings#notes', 'busy', { beforeEach: changing(unencryptedDefault) });
 export const Lots = page('/settings', 'lots');
 /** Opened at the minutes, from the side panel. */
 export const Minutes = page('/settings#plan', 'busy');

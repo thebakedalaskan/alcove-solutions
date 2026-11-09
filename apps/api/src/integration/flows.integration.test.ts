@@ -16,13 +16,15 @@ import { cookieName } from '../sessions';
 import { startFakeDstack } from '../testing/fake-dstack';
 import { acceptNoteSuggestions } from '../testing/follow-ups';
 import { PNG, type GoogleUser, type Spoil } from '../testing/fake-google';
-import { screenJpeg, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
+import { NOTES_MODEL, speechWav, startFakeNear, type Tamper } from '../testing/fake-near';
 import { ORIGIN, cookieFetch, startHarness, type Browser, type Harness } from '../testing/harness';
+import { disposeLiveKit, presentScreen, stopPresenting } from '../testing/livekit';
+import { cut, pictureJpeg, recordedWebm } from '../testing/video';
 
 let h: Harness;
 beforeAll(async () => { h = await startHarness(); });
-afterAll(async () => { await h?.close(); });
-afterEach(() => h.closeCalls());
+afterAll(async () => { await h?.close(); await disposeLiveKit(); });
+afterEach(async () => { await stopPresenting(); h.closeCalls(); });
 
 function audioBytes(marker: string): Uint8Array<ArrayBuffer> {
   const src = Buffer.concat([Buffer.from(marker), randomBytes(4096)]);
@@ -248,7 +250,7 @@ describe('signing in', () => {
       sounds: DEFAULT_SOUND_PREFERENCES,
       notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
       notifications: DEFAULT_NOTIFICATION_PREFERENCES,
-      pinned: [], groups: []
+      pinned: [], groups: [], model: null
     };
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
@@ -1076,6 +1078,34 @@ describe('calls with notes', () => {
     });
   });
 
+  it('puts a screen its presenter shares into the notes: recorded in pieces, replayed with the audio, and read where it was talked about', async () => {
+    const { api, fetch: own } = await account();
+    const call = await api.calls.join((await api.calls.startNow({ notes: 'on' })).code, { mic: true, cam: false });
+    for (let seq = 0; seq < 4; seq++) await call.appendAudio(piece(audioBytes(`talk-${seq}`), 0, seq));
+    // They say yes to "Include this share in the notes?", and their browser sends the share's video every five seconds.
+    await presentScreen(call, h.deps.livekit);
+    const shared = await call.startShare({ notes: true });
+    expect(shared.keep).toBe(true);
+    expect(call.getSnapshot()).toMatchObject({ shares: [{ id: shared.share, keep: true }], capture: { screen: { mode: 'on' } } });
+    const video = cut(await recordedWebm(20, { size: '320x180' }), 4);
+    for (const [seq, data] of video.entries()) {
+      await call.appendScreen({ data: new Blob([data]), share: shared.share, segment: 0, seq, at: seq * 5, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' });
+    }
+    await call.transcribe(speech('Let me share my screen. // As you can see the chart, sales doubled.', 0, 3), call.ticket.identity);
+    await call.shareEnded(shared.share);
+    const noteId = (await ended(call)).pendingNoteId ?? '';
+    await written(api, noteId);
+
+    const note = await api.notes.get(noteId);
+    expect(note.shares).toEqual([expect.objectContaining({ id: shared.share, at: 0, until: 20, segments: [{ segment: 0, at: 0, until: 20 }] })]);
+    const replay = await own(api.notes.screenVideoUrl(noteId, shared.share, 0), { headers: { range: 'bytes=0-99' } });
+    expect([replay.status, replay.headers.get('content-type'), (await replay.arrayBuffer()).byteLength]).toEqual([206, 'video/webm', 100]);
+    // The frame of the share as it began only gives context, so isn't in the notes; the one talked about is, beside its line.
+    const lines = note.transcript ?? [];
+    expect(note.screens.map((m) => [m.share, m.at, m.line])).toEqual([[shared.share, 5, lines[1]?.id]]);
+    expect(note.screens.find((m) => m.cue === 'As you can see the chart, sales doubled.')).toMatchObject({ at: 5, relevance: 'key' });
+  });
+
   it('joins a call without notes and leaves no note behind', async () => {
     const { api } = await account();
     const call = await api.calls.join((await api.calls.startNow({ notes: 'off' })).code, { mic: true, cam: false });
@@ -1172,7 +1202,7 @@ describe('live transcript and written notes', () => {
     const checked = { verifiedAt: expect.any(String), tdx: { status: 'UpToDate', quote: expect.stringMatching(/^[0-9a-f]{64}$/) }, os: 'dstack-nvidia-0.5.12', gpu: { count: 8, arch: 'HOPPER' }, gateway: { status: 'UpToDate', os: 'dstack-0.5.12', compose: measured.gateway } };
     expect(note.inference).toEqual([
       { model: 'openai/whisper-large-v3', task: 'transcript', key: h.near.keys().transcript, compose: measured.transcript, ...checked },
-      { model: 'z-ai/glm-5.3-flash', task: 'notes', key: h.near.keys().notes, compose: measured.notes, ...checked }
+      { model: NOTES_MODEL, task: 'notes', key: h.near.keys().notes, compose: measured.notes, ...checked }
     ]);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
     // The notes model was sent the transcript with names, not anyone's address.
@@ -1812,7 +1842,8 @@ describe('verified private inference', () => {
       await dueNow(own.session.ownerId);
       await maintain(own.deps);
       expect(await own.api.notes.get(pendingNoteId)).toMatchObject({ status: 'ready', summary: 'Heard 1 lines. It ended on: We agreed to wait for an answer.' });
-      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions').map((c) => c.encryption)).toEqual(['ohttp', 'ohttp', 'ohttp', 'ohttp', 'ohttp']);
+      // Four refused, then the notes, then the full summary.
+      expect(own.near.calls.filter((c) => c.path === '/v1/chat/completions').map((c) => c.encryption)).toEqual(['ohttp', 'ohttp', 'ohttp', 'ohttp', 'ohttp', 'ohttp']);
     } finally {
       await own.close();
     }
@@ -1846,7 +1877,8 @@ describe('verified private inference', () => {
         const note = await own.api.notes.get(pendingNoteId);
         expect(note).toMatchObject({ status: 'ready', summary: 'Heard 1 lines. It ended on: We agreed to wait for NVIDIA.' });
         expect(note.inference.map((x) => [x.task, x.key])).toEqual([['transcript', own.near.keys().transcript], ['notes', back.keys().notes]]);
-        expect(back.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/chat/completions', 'ohttp']]);
+        // The notes, then the full summary.
+        expect(back.calls.map((c) => [c.path, c.encryption])).toEqual([['/v1/chat/completions', 'ohttp'], ['/v1/chat/completions', 'ohttp']]);
       } finally {
         await back.close();
       }
@@ -1881,7 +1913,7 @@ describe('verified private inference', () => {
       const sent = own.near.received.length;
       from = h.logs.length;
       expect(code(await asked(own.api, pendingNoteId, 'Is this sent twice?').catch((e: unknown) => e))).toBe('unavailable');
-      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'z-ai/glm-5.3-flash', changed: false });
+      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: NOTES_MODEL, changed: false });
       expect(own.near.received.slice(sent).filter((r) => r.path === '/direct/glm/ohttp')).toHaveLength(1);
       own.near.tamper(null);
 
@@ -1893,7 +1925,7 @@ describe('verified private inference', () => {
       from = h.logs.length;
       const e = await asked(own.api, pendingNoteId, 'Is this sent to the new key?').catch((x: unknown) => x);
       expect([code(e), said(e)]).toEqual(['unavailable', 'NEAR AI’s private model changed, and its new evidence didn’t check out, so the request wasn’t sent again. Try again in a moment.']);
-      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'tdx-quote' });
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: NOTES_MODEL, code: 'tdx-quote' });
       expect(logsSince(from).some((l) => l.msg === 'model key not accepted; verified again')).toBe(false);
       expect(own.near.received.slice(before).filter((r) => r.path === '/direct/glm/ohttp')).toHaveLength(1);
       own.near.tamper(null);
@@ -1924,7 +1956,7 @@ describe('verified private inference', () => {
       own.near.rotate('notes');
       from = h.logs.length;
       expect((await asked(own.api, pendingNoteId, 'What changed?'))[0]).toEqual({ type: 'text', text: 'From the call: Before the key changed.' });
-      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: 'z-ai/glm-5.3-flash', changed: true });
+      expect(logsSince(from).find((l) => l.msg === 'model key not accepted; verified again')).toMatchObject({ model: NOTES_MODEL, changed: true });
 
       // A verification holds only while NVIDIA's verdict does. After it, the next question checks again, and is refused if it doesn't check out.
       own.near.verdictLifetime(2);
@@ -1935,7 +1967,7 @@ describe('verified private inference', () => {
       own.near.tamper('quote');
       from = h.logs.length;
       expect(code(await asked(own.api, pendingNoteId, 'What changed?').catch((e: unknown) => e))).toBe('unavailable');
-      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: 'z-ai/glm-5.3-flash', code: 'tdx-quote' });
+      expect(logsSince(from).find((l) => l.msg === 'model evidence refused')).toMatchObject({ model: NOTES_MODEL, code: 'tdx-quote' });
       expect(own.near.calls).toHaveLength(sent);
     } finally {
       await own.close();
@@ -2158,7 +2190,7 @@ describe('asking your notes', () => {
     ]);
     // It went once, to the notes model, sealed to the key its verified evidence vouches for, at its own endpoint...
     const across = h.near.calls.slice(sent);
-    expect(across).toEqual([{ path: '/v1/chat/completions', model: 'z-ai/glm-5.3-flash', bytes: expect.any(Number), encryption: 'ohttp', key: h.near.keys().notes }]);
+    expect(across).toEqual([{ path: '/v1/chat/completions', model: NOTES_MODEL, bytes: expect.any(Number), encryption: 'ohttp', key: h.near.keys().notes }]);
     const prompt = h.near.prompts.at(-1) ?? '';
     // ...the way asking about one note goes.
     expect((await asked(me.api, planning, 'When is the launch?'))[0]).toEqual({ type: 'text', text: 'From the call: We agreed to move the launch to the 18th.' });
@@ -2869,6 +2901,10 @@ describe('deleting an account', () => {
     const live = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [kofi.session.user.email] })).code, { mic: true, cam: false });
     await live.appendAudio(piece(audioBytes('leaving-live'), 0, 0));
     await live.transcribe(speech('We are still talking.', 0, 0), live.ticket.identity);
+    // She shares her screen into the notes, and her browser has sent a piece of its video.
+    await presentScreen(live, h.deps.livekit);
+    const sharing = await live.startShare({ notes: true });
+    await live.appendScreen({ data: new Blob([audioBytes('leaving-screen')]), share: sharing.share, segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' });
     expect(await live.translate(live.getSnapshot().transcript.map((l) => l.id), 'de')).toHaveLength(1);
     // Its shared live notes, which she was reading.
     const reading = live.watchNotes();
@@ -2932,24 +2968,28 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
-      'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations', 'workspace_authors',
-      'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes',
+      'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'deposits', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts',
+      'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access',
+      'note_access', 'note_additions', 'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings',
+      'revisions', 'screen_frames', 'screen_pieces', 'screen_shares', 'screen_videos', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations',
+      'workspace_authors', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions',
+      'workspaces'
     ]);
     const counts = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await h.pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${t} WHERE owner_id = $1`, [ownerId])).rows[0]?.n ?? -1] as const)));
     const before = await counts();
-    // Shared screens need someone sharing in a LiveKit room: deleting an account's frames is in screens.integration.test.ts.
+    // Frames and joined video come from a real video once the notes are written: deleting them with a note is in screens.integration.test.ts.
     // A workspace is an owner of its own, so an account has no rows there under its own ID: workspaces.integration.test.ts deletes those, and media.integration.test.ts what's in them.
     // OAuth codes and retry receipts have account-deletion coverage in the agents and MCP flows.
-    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
+    const notAnAccounts = new Set(['agent_codes', 'agent_operations', 'object_gc', 'screen_frames', 'screen_videos', 'workspaces', 'workspace_members', 'workspace_authors', 'workspace_mentions', 'documents', 'document_access', 'document_clients', 'document_updates', 'document_snapshots', 'document_version_parts', 'document_versions', 'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses']);
     for (const t of tables) if (!notAnAccounts.has(t)) expect(before[t], t).toBeGreaterThan(0);
     expect((await h.pool.query<{ kind: string }>('SELECT DISTINCT kind FROM items WHERE owner_id = $1 ORDER BY kind', [ownerId])).rows.map((r) => r.kind)).toEqual(['connection', 'meeting', 'note', 'profile']);
     const [identity] = (await h.pool.query<{ email_index: Buffer }>('SELECT email_index FROM identities WHERE owner_id = $1', [ownerId])).rows;
     if (!identity) throw new Error('Lena has no sign-in identity');
     const givenToHer = async () => (await h.pool.query<{ n: number }>('SELECT count(*)::int AS n FROM note_access WHERE email_index = $1', [identity.email_index])).rows[0]?.n;
     expect(await givenToHer()).toBe(2);
-    const objects = (await h.pool.query<{ object_id: string }>('SELECT object_id FROM recording_pieces WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id);
-    expect(objects).toHaveLength(3);
+    const objects = (await h.pool.query<{ object_id: string }>('SELECT object_id FROM recording_pieces WHERE owner_id = $1 UNION ALL SELECT object_id FROM screen_pieces WHERE owner_id = $1', [ownerId])).rows.map((r) => r.object_id);
+    expect(objects).toHaveLength(4);
 
     // Her call next week is on her Google calendar, and she has never asked Google to revoke anything.
     expect(h.google.calendar(lena.sub).map((e) => e.summary)).toEqual(['Next week']);
@@ -2979,7 +3019,7 @@ describe('deleting an account', () => {
     expect(h.google.calls.slice(googleCalls).filter((c) => c.method === 'DELETE')).toEqual([{ method: 'DELETE', path: expect.stringContaining('/events/'), sendUpdates: 'all' }]);
     expect(h.google.revocations()).toEqual(expect.arrayContaining(lenaToken));
     expect(lenaToken.filter((t) => h.google.honours(t))).toEqual([]);
-    expect(logLines().find((l) => l.msg === 'account deleted' && l['ownerId'] === ownerId)).toMatchObject({ calendarCancelled: 1, calendarKept: 0, calendarNotCancelled: 0, objects: 3 });
+    expect(logLines().find((l) => l.msg === 'account deleted' && l['ownerId'] === ownerId)).toMatchObject({ calendarCancelled: 1, calendarKept: 0, calendarNotCancelled: 0, objects: 4 });
 
     // She's signed out in every browser, and her call is gone with her: its LiveKit room is closed, which takes everyone out.
     expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(0);
@@ -3195,6 +3235,7 @@ describe('the shared demo account', () => {
 });
 
 describe('privacy at rest', () => {
+  // It touches every kind of stored record, a shared screen published in the call's room among them: it takes a while.
   it('keeps names, emails, titles, guests, chat, groups and audio out of rows, objects and logs in any encoding', async () => {
     // Watch the wire for the session cookies a browser receives, so the logs can be checked for them too.
     const secrets: string[] = [];
@@ -3233,6 +3274,10 @@ describe('privacy at rest', () => {
     await call.setTimerSequence({ expectedRevision: null, segments: timerPreset.segments });
     await call.controlTimer({ expectedRevision: 0, action: 'start' });
     await call.appendAudio(piece(audioBytes('CANARY-AUDIO-RAW'), 0, 0));
+    // Canary Person shares their screen for the notes: its video (titled with a canary) is sealed, and so is their name.
+    await presentScreen(call, h.deps.livekit);
+    const shared = await call.startShare({ notes: true });
+    await call.appendScreen({ data: new Blob([await recordedWebm(5, { size: '320x180', title: 'CANARY-VIDEO deck' })]), share: shared.share, segment: 0, seq: 0, at: 0, durationMs: 5000, mimeType: 'video/webm;codecs=vp8' });
     await call.transcribe(speech('CANARY-SPEECH the merger closes on Friday.', 0, 0), call.ticket.identity);
     expect(call.getSnapshot().transcript.map((l) => l.text)).toEqual(['CANARY-SPEECH the merger closes on Friday.']);
     // The call's shared live notes are sealed rows too, and so is who ticked what.
@@ -3277,6 +3322,9 @@ describe('privacy at rest', () => {
     await call.askSoFar('What closes on Friday? CANARY-ASKED', { kind: 'all' });
     await call.catchUpWindow();
     await call.moment(call.getSnapshot().transcript[0]?.id ?? '');
+    // What's said about the shared screen picks a frame of it, and goes with it, sealed, to the model that reads it.
+    await call.transcribe(speech('CANARY-CUE as you can see the chart.', 0, 2, 2000), call.ticket.identity);
+    await call.shareEnded(shared.share);
     const translations = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM transcript_translations x`)).rows[0]?.all ?? '');
     expect(translations).not.toBe('');
     const callRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM calls x`)).rows[0]?.all ?? '');
@@ -3300,6 +3348,8 @@ describe('privacy at rest', () => {
     await written(c.api, ended?.pendingNoteId ?? '');
     const settledNote = await c.api.notes.get(ended?.pendingNoteId ?? '');
     expect(settledNote.rooms.map((r) => r.transcript.map((l) => l.text))).toEqual([['CANARY-ROOMTALK the merger moves to Monday.'], []]);
+    expect(settledNote.shares.map((x) => x.label)).toEqual(['Canary Person’s screen']);
+    expect(settledNote.screens.find((m) => m.cue === 'CANARY-CUE as you can see the chart.')).toMatchObject({ at: 2, relevance: 'key' });
     const own = (await c.api.notes.personal(ended?.pendingNoteId ?? '').add({ kind: 'answer', question: 'CANARY-OWN-ASKED who signs?', answer: 'CANARY-OWN-ANSWER Priya signs.', points: [] })).entries[0];
     const addition = await c.api.notes.previewAddition(ended?.pendingNoteId ?? '', own?.id ?? '');
     expect(addition.text).toBe('CANARY-OWN-WORDS for nobody else');
@@ -3373,7 +3423,7 @@ describe('privacy at rest', () => {
     // A file in it: its name and its bytes are sealed, and the URL it's read from reaches no log, whether that read works or not.
     const fileBytes = new TextEncoder().encode('CANARY-MEDIA-BYTES of a picture nobody else may see');
     // With a preview beside it, sealed too: a small JPEG whose words say what's in the picture.
-    const previewBytes = screenJpeg(null, 320, 180, 'CANARY-MEDIA-PREVIEW of the same picture');
+    const previewBytes = pictureJpeg(320, 180, 'CANARY-MEDIA-PREVIEW of the same picture');
     const file = await c.api.workspaces.media.upload(space.id, spaceDoc.id, new File([fileBytes], 'CANARY-MEDIA-NAME.png', { type: 'image/png' }), { preview: new Blob([previewBytes], { type: 'image/jpeg' }) });
     const previewUrl = await c.api.workspaces.media.preview(space.id, spaceDoc.id, file.id);
     expect(previewUrl).not.toBeNull();
@@ -3536,7 +3586,8 @@ describe('privacy at rest', () => {
       'CANARY-WSFRAME', 'CANARY-WSSTICKY', 'CANARY-WSCELL', 'sign by Friday', 'CANARY-WSIDEA', 'pricing tiers', 'CANARY-BOARDPIC-NAME',
       'CANARY-BOARDPIC-BYTES', 'CANARY-BOARDCALL', 'CANARY-BOARDGUEST', 'CANARY-IDEA', 'repaint the lobby', 'CANARY-SORTED',
       'CANARY-BOARDACTION', 'order the doors', 'CANARY-ROOMNAME', 'CANARY-ROOMSTICKY', 'owns the merger', 'canary-roomie', 'CANARY-VOTEFRAME', 'CANARY-VOTESTICKY', voteFrame, voteSticky,
-      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame, 'CANARY-LIVEQUESTION', 'private launch',
+      'CANARY-NOTEDFRAME', 'CANARY-FRAMENOTE', 'thank the support team', notedFrame,
+      'CANARY-CUE', 'as you can see the chart', 'CANARY-VIDEO', 'Person’s screen', 'CANARY-LIVEQUESTION', 'private launch',
       'canary-deposit-address', 'Credits added', 'canary-intent-hash'
     ];
     for (const canary of canaries) for (const enc of encodings(canary)) expect(rowsText.includes(enc), `${canary} as ${enc}`).toBe(false);
@@ -3564,6 +3615,8 @@ describe('privacy at rest', () => {
     expect(h.near.prompts.some((p) => p.includes('CANARY-SPEECH'))).toBe(true);
     expect(h.near.prompts.some((p) => p.includes('CANARY-ROOMTALK'))).toBe(true);
     expect(h.near.prompts.some((p) => p.includes('<board>') && p.includes('CANARY-BOARDACTION'))).toBe(true);
+    expect(h.near.prompts.some((p) => p.includes('Cue: CANARY-CUE as you can see the chart.'))).toBe(true);
+    expect(h.near.prompts.some((p) => p.includes('Share 1: Canary Person’s screen'))).toBe(true);
     const wire = Buffer.concat(h.near.received.map((r) => r.body));
     for (const canary of [...canaries, 'What closes on Friday']) for (const enc of encodings(canary)) expect(wire.includes(Buffer.from(enc)), `${canary} as ${enc} on the wire to NEAR AI`).toBe(false);
     expect(h.near.calls.filter((x) => x.encryption === 'none')).toEqual([]);
@@ -3585,7 +3638,7 @@ describe('privacy at rest', () => {
       expect(logText.includes(t), 'a refresh token in logs').toBe(false);
     }
     expect(logText).not.toContain(m.code);
-  });
+  }, 90_000);
 });
 
 describe('confidential computing', () => {

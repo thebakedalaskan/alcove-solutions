@@ -1,10 +1,10 @@
 import { registerLiveTimerRoutes } from './timer-routes';
 import { registerDirectMessageRoutes } from './direct-message-routes';
-import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_FRAME_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareEndedBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
+import { AskSoFarBodySchema, CallActionSchema, CallCommitBodySchema, CallJoinBodySchema, CallKeyPackageBodySchema, CallBackBodySchema, CallMessageBodySchema, CatchUpBodySchema, TranslateBodySchema, MAX_VIDEO_PIECE_BYTES, HEARD_HEADERS, CallHandOffBodySchema, CallLeaveBodySchema, DocFollowUpTickSchema, PickTimeBodySchema, SeriesAskBodySchema, PersonalEditSchema, PersonalInputSchema, ShareStartBodySchema, MoveByClaimBodySchema, MoveClaimBodySchema, MoveConfirmBodySchema, MoveReadyBodySchema, MoveStartBodySchema, type CallAction } from '@alcove/api';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { Owner } from '../../context';
-import { AuthError, ConflictError, ForbiddenError, ValidationError } from '../../errors';
+import { AuthError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../errors';
 import { addLogContext } from '../../log';
 import { CALL_PASS_HEADER, readPass } from '../../callPass';
 import * as callsParticipants from './participants';
@@ -21,14 +21,15 @@ import * as moves from './moves';
 import * as personal from '../notes/personal';
 import * as series from '../notes/series';
 import { clientAddress, type Env } from '../../http/context';
-import { AUDIO_TYPES, agoOf, body, capped, clip, frame, piece, speakerOf } from '../../http/body';
+import { AUDIO_TYPES, ID128, agoOf, body, capped, clip, piece, speakerOf, videoPiece } from '../../http/body';
+import { VIDEO } from '../../http/middleware';
 import type { HttpRuntime } from '../../http/runtime';
 
 
 
 export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   const { d } = runtime;
-  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, frameLimiter, shareEndLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
+  const { cardLimiter, pickLimiter, carryLimiter, callLimiter, moveOpenLimiter, moveSecretChangeLimiter, moveCheckLimiter, moveSecretCheckLimiter, spaceLimiter, followUpsLimiter, followUpLimiter, askNotesLimiter, othersPointLimiter, ringLimiter, askSpaceLimiter, chatLimiter, rejoinLimiter, moveLimiter, voiceLimiter, speechLimiter, videoLimiter, shareLimiter, askLimiter, notesWatchLimiter, ideasWatchLimiter, momentLimiter, personalLimiter, captionLimiter } = runtime.limits;
   const { optionalOwner, signedIn } = runtime.context;
 
   /* LiveKit's webhooks: outside /v1 (no Origin, no session); trusted only by their signature. */
@@ -110,7 +111,9 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
     // opened only for them.
     addLogContext({ callId: pass.callId, role: pass.role });
     let session: Promise<Owner | undefined> | undefined;
-    c.set('viewer', await callsParticipants.viewerOf(d, pass, () => { session ??= optionalOwner(c); return session; }));
+    // A presenter's last piece of their shared screen can arrive just after the call ends (callsRecording.appendScreen).
+    const lastPiece = c.req.method === 'POST' && VIDEO.test(c.req.path);
+    c.set('viewer', await callsParticipants.viewerOf(d, pass, () => { session ??= optionalOwner(c); return session; }, lastPiece));
     await next();
   };
 
@@ -125,7 +128,7 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.use('/v1/live/calls/:id/mls/keypackages', capped(32 * 1024));
 
-  app.use('/v1/live/calls/:id/frames', capped(MAX_FRAME_BYTES));
+  app.use('/v1/live/calls/:id/shares/:share/video', capped(MAX_VIDEO_PIECE_BYTES + 1024));
 
   /*
    * What only the organizer may do (what the notes capture, and planning breakout rooms), and what whoever hosts may do
@@ -278,21 +281,30 @@ export function registerCallRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   /*
-   * Shared screens: a frame of someone's own share, from their own browser, while screen notes are on. Anyone let in
-   * can be the one sharing; whose share it is, and that it's a screen, is checked with LiveKit.
+   * Shared screens: anyone let in can share, and says whether each share goes in the notes; while one that does is
+   * going, their own browser sends its video in pieces. Only their own share, checked by the call.
    */
-  app.post('/v1/live/calls/:id/frames', async (c) => {
+  app.post('/v1/live/calls/:id/shares', async (c) => {
     const v = c.get('viewer');
-    callsParticipants.requireIn(v, 'screen');
-    frameLimiter(v.pass.identity, 'frames');
-    return c.json(await callsRecording.shareFrame(v, c.req.param('id'), await frame(c)));
+    shareLimiter(v.pass.identity, 'share');
+    return c.json(await callsRecording.startShare(v, c.req.param('id'), (await body(c, ShareStartBodySchema)).notes));
   });
 
-  app.post('/v1/live/calls/:id/frames/ended', async (c) => {
+  app.post('/v1/live/calls/:id/shares/:share/video', async (c) => {
     const v = c.get('viewer');
-    shareEndLimiter(v.pass.identity, 'share-ended');
-    await callsRecording.shareEnded(v, c.req.param('id'), (await body(c, ShareEndedBodySchema)).share);
-    return c.json({ ended: true });
+    // Not only while they're in: someone who just left still sends their share's last piece, which the call checks.
+    videoLimiter(v.pass.identity, 'screen-video');
+    const share = c.req.param('share');
+    if (!ID128.test(share)) throw new NotFoundError('That share doesn’t exist.');
+    return c.json(await callsRecording.appendScreen(v, c.req.param('id'), share, await videoPiece(c)));
+  });
+
+  app.post('/v1/live/calls/:id/shares/:share/ended', async (c) => {
+    const v = c.get('viewer');
+    shareLimiter(v.pass.identity, 'share-ended');
+    const share = c.req.param('share');
+    if (!ID128.test(share)) throw new NotFoundError('That share doesn’t exist.');
+    return c.json(await callsRecording.shareEnded(v, c.req.param('id'), share));
   });
 
   /*

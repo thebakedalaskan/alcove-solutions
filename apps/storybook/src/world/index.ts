@@ -136,7 +136,7 @@ export const PREFS: Preferences = {
   sounds: DEFAULT_SOUND_PREFERENCES,
   notesDefault: 'on', notesLanguage: 'call', summaryLength: 'short', addToCalendar: true, showOtherMeetings: true, recordOffline: true,
   notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, enabled: true, beforeCall: 1, followUpDue: true },
-  pinned: [], groups: []
+  pinned: [], groups: [], model: null
 };
 
 /** Ten hours of notes this month: 3 h 34 min used, 6 h 26 min left, as the side panel and Settings say on the canvas. */

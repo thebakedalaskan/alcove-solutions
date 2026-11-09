@@ -7,7 +7,7 @@
  */
 import type { CaptureGap, Chapter, NoteAction, NoteDecision } from '@alcove/api';
 import { Icon, Spinner, cn } from '@alcove/ui';
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { gapLabel } from '~/lib/capture';
 import { position } from '~/lib/time';
 import { usePlayerAt, type PlayerState } from './Player';
@@ -25,6 +25,28 @@ export const marksOf = (decisions: NoteDecision[], actions: NoteAction[]): Mark[
   ...decisions.flatMap((d): Mark[] => (d.at === undefined || d.state === 'rejected' ? [] : [{ id: d.id, kind: 'decide', open: d.state !== 'confirmed', at: d.at, text: d.text }])),
   ...actions.flatMap((a): Mark[] => (a.at === undefined ? [] : [{ id: a.id, kind: 'follow', open: !a.takenOn, at: a.at, text: a.text }]))
 ];
+
+/** A mark as drawn: `nudge` for a follow-up set beside the decision it shares a moment with. */
+interface Placed extends Mark { nudge?: boolean }
+
+/** The line has room for so many: up to `max`, decisions first, none closer than `gap` of the line to another, except a follow-up beside the decision it shares a moment with, nudged to its side. The rest are in the notes. */
+function fewMarks(marks: Mark[], span: number, max = 10, gap = 0.03): Placed[] {
+  const byTime = (a: Mark, b: Mark) => a.at - b.at;
+  const first = [...marks.filter((m) => m.kind === 'decide').sort(byTime), ...marks.filter((m) => m.kind === 'follow').sort(byTime)];
+  const shown: Placed[] = [];
+  const paired = new Set<string>();
+  for (const m of first) {
+    if (shown.length >= max) break;
+    const near = shown.filter((s) => Math.abs(s.at - m.at) < gap * span);
+    const [only] = near;
+    if (near.length === 0) shown.push(m);
+    else if (m.kind === 'follow' && near.length === 1 && only?.kind === 'decide' && !paired.has(only.id)) {
+      paired.add(only.id);
+      shown.push({ ...m, nudge: true });
+    }
+  }
+  return shown.sort(byTime);
+}
 
 /** The glints, which only change as the sun passes one. */
 const Wave = memo(function Wave({ glints, lit }: { glints: Glint[]; lit: number }) {
@@ -50,13 +72,13 @@ function ChapterMark({ c, span, next, on, onGo }: { c: Chapter; span: number; ne
 }
 
 /** What was decided or is to do, on the line where it was said, saying what it is when pointed at. */
-function MarkDot({ m, i, span, onGo }: { m: Mark; i: number; span: number; onGo: ((at: number) => void) | undefined }) {
+function MarkDot({ m, i, span, onScrub }: { m: Placed; i: number; span: number; onScrub: ((at: number) => void) | undefined }) {
   const x = share(m.at, span);
   const inner = <><i /><span className="nd-tip"><b>{KIND[m.kind]}</b><small className="ac-time">{position(m.at)}</small><span>{m.text}</span></span></>;
-  const cls = cn('nd-m', `is-${m.kind}`, m.open && 'is-open', x < 0.12 && 'is-l', x > 0.86 && 'is-r');
+  const cls = cn('nd-m', `is-${m.kind}`, m.open && 'is-open', m.nudge && 'is-nudged', x < 0.12 && 'is-l', x > 0.86 && 'is-r');
   const style = { '--x': percent(x), '--i': i };
-  return onGo
-    ? <button type="button" className={cls} style={style} aria-label={`${KIND[m.kind]} at ${position(m.at)}: ${m.text}`} onClick={() => onGo(m.at)}>{inner}</button>
+  return onScrub
+    ? <button type="button" className={cls} style={style} aria-label={`${KIND[m.kind]} at ${position(m.at)}: ${m.text}`} onClick={() => onScrub(m.at)}>{inner}</button>
     : <span className={cls} style={style}>{inner}</span>;
 }
 
@@ -117,16 +139,16 @@ export interface CallLineProps {
   still?: boolean | undefined;
   /** The marks have just arrived: the notes were written while the page was open. */
   fresh?: boolean | undefined;
-  /** Goes to a moment, when there's anything to go to. */
-  onGo?: ((at: number) => void) | undefined;
-  /** Goes to a chapter, which may be more than a moment: a breakout room's. */
+  /** Moves the recording along the line, from the line itself or a mark on it, which leaves the page where it is: only the sun moves. */
+  onScrub?: ((at: number) => void) | undefined;
+  /** Goes to a chapter, which may be a breakout room's section rather than a moment. */
   onChapter?: ((c: Chapter) => void) | undefined;
   /** Under the line: that the call kept no recording. */
   children?: ReactNode;
 }
 
 /** The call on the horizon: the player when there's a recording, and the chapters and marks whether or not. */
-export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0, edge, still = false, fresh = false, onGo, onChapter, children }: CallLineProps) {
+export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0, edge, still = false, fresh = false, onScrub, onChapter, children }: CallLineProps) {
   const hasAudio = player.total > 0;
   const live = edge !== undefined;
   const end = edge ?? span;
@@ -138,18 +160,19 @@ export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0
     // Space and Enter press a button at no place on it: `keys` is what moves the sun from the keyboard.
     if (e.detail === 0) return;
     const r = e.currentTarget.getBoundingClientRect();
-    onGo?.(((e.clientX - r.left) / r.width) * end);
+    onScrub?.(((e.clientX - r.left) / r.width) * end);
   };
   const keys = (e: KeyboardEvent<HTMLElement>) => {
     const to = e.key === 'ArrowRight' ? Math.min(end, pos + 10) : e.key === 'ArrowLeft' ? Math.max(0, pos - 10) : e.key === 'Home' ? 0 : e.key === 'End' ? end : undefined;
     if (to === undefined) return;
     e.preventDefault();
-    onGo?.(to);
+    onScrub?.(to);
   };
   const p = share(pos, span);
   const current = Math.max(0, chapters.findLastIndex((c) => c.at <= pos));
+  const shown = useMemo(() => fewMarks(marks, span), [marks, span]);
   return (
-    <LineStrip className={cn(!hasAudio && 'is-silent', !onGo && 'is-fixed', still && 'is-still', live && 'is-live', fresh && 'is-fresh')} label={live ? 'The call so far' : 'The call'}>
+    <LineStrip className={cn(!hasAudio && 'is-silent', !onScrub && 'is-fixed', still && 'is-still', live && 'is-live', fresh && 'is-fresh')} label={live ? 'The call so far' : 'The call'}>
       <div className="nd-hz-in" style={{ '--p': percent(p), '--edge': percent(share(end, span)) }}>
         {hasAudio && <button type="button" className="nd-play" aria-label={player.playing ? 'Pause' : 'Play'} title={player.playing ? 'Pause' : 'Play'} aria-busy={player.busy} onClick={player.toggle}>{player.busy ? <Spinner /> : <Icon name={player.playing ? 'pause' : 'play'} size={16} />}</button>}
         {hasAudio && <span className="nd-now">{position(pos)}</span>}
@@ -162,7 +185,7 @@ export function CallLine({ player, span, chapters, marks, gaps, glints, here = 0
           {glints.length > 0 && <Wave glints={glints} lit={live ? 100 : Math.round(p * 300) / 3} />}
           {chapters.map((c, i) => <ChapterMark key={`${c.at}-${c.title}`} c={c} span={span} next={chapters[i + 1]?.at ?? span} on={i === current} onGo={onChapter} />)}
           {gaps.map((g) => <GapMark key={`${g.kind}-${g.from}`} g={g} span={span} />)}
-          {marks.map((m, i) => <MarkDot key={m.id} m={m} i={i} span={span} onGo={onGo} />)}
+          {shown.map((m, i) => <MarkDot key={m.id} m={m} i={i} span={span} onScrub={onScrub} />)}
           {live && <i className="nd-edge" />}
           {hasAudio && <><i className="nd-sun" /><span ref={ghost.ghost} className="nd-ghost" aria-hidden="true"><b ref={ghost.label} /></span></>}
         </div>

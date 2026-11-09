@@ -80,7 +80,7 @@ describe('the call’s link, before joining', () => {
     const stranger = await account();
     expect(await anyone.calls.card(c)).toEqual({
       title: expect.any(String), organizerName: org.session.user.name, startsAt: expect.any(String), hostHere: false, standIn: null, locked: false, notes: 'off', capture: null, ended: false,
-      choices: { keepTranscript: true, keepRecording: true, readScreens: false }, joinMuted: false, offer: null, you: 'guest', signInForNotes: ['google', 'microsoft', 'sso']
+      choices: { keepTranscript: true, keepRecording: true, allowScreens: true }, joinMuted: false, offer: null, you: 'guest', signInForNotes: ['google', 'microsoft', 'sso']
     });
     expect((await invited.api.calls.card(c)).you).toBe('invited');
     // The organizer signed in with a demo stand-in, so another demo account may have the notes when let in.

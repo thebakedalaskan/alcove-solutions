@@ -13,7 +13,8 @@ import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
 import { useLive } from '~/lib/live';
-import { calendarConnectUrl, q, useCancelTopUp, useDisconnectCalendar } from '~/lib/queries';
+import { calendarConnectUrl, q, useCancelTopUp, useDisconnectCalendar, useAiModels } from '~/lib/queries';
+import { modelOf, modelOptions, modelValue } from '~/lib/aiModels';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
 import { plural, sizeLabel } from '~/lib/words';
 import { Setting, SwitchSetting, useSave, useSaved } from './save';
@@ -59,6 +60,7 @@ const LANGUAGES: SelectOption<NotesLanguage>[] = [
 
 export function NotesPart({ prefs }: { prefs: Preferences }) {
   const save = useSave();
+  const models = useAiModels();
   return (
     <SettingsPart id="notes" title="Notes">
       <Setting wide label="Notes for new calls" help="You can still choose for each call when you schedule it."
@@ -70,6 +72,9 @@ export function NotesPart({ prefs }: { prefs: Preferences }) {
       <Setting wide label="Summary" saying="Saved for new notes"
         control={<Segmented<SummaryLength> label="Summary length" value={prefs.summaryLength} onChange={(v) => save('Summary', { summaryLength: v })}
           options={[{ value: 'short', label: 'Short' }, { value: 'detailed', label: 'Detailed' }]} />} />
+      <Setting wide label="AI model" help="Writes your notes, reads shared screens and answers questions. Private models run in a secure enclave. You can change it for a call or a note."
+        control={<Select<string> label="AI model" value={modelValue(prefs.model)} options={modelOptions(models.data, prefs.model)}
+          align="end" onChange={(v) => save('AI model', { model: modelOf(v) })} />} />
     </SettingsPart>
   );
 }

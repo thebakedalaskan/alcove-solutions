@@ -43,7 +43,7 @@ export function Answered({ answer, lost, notes, me, saidOf, onClose, onAgain, on
             </div>
           )}
         </>
-      ) : <p className="nt-ans-r"><Dots />Reading your notes in confidential compute</p>}
+      ) : <p className="nt-ans-r"><Dots />Reading your notes</p>}
       <IconButton icon="x" size={16} label="Close the answer" className="nt-ans-x" onClick={onClose} />
     </section>
   );

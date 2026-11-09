@@ -30,7 +30,7 @@ const NO_RECEIPT = [
   /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
   /^\/v1\/notes\/search$/, /^\/v1\/notes\/(?:[^/]+\/)?ask$/, /^\/v1\/series\/[^/]+\/ask$/, /^\/v1\/live\/calls\/[^/]+\/(?:catch-up|ask|series\/ask|translate|notes\/watch)$/,
-  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/,
+  /^\/v1\/(?:live\/calls|recordings)\/[^/]+\/(?:audio|transcribe)$/, /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/,
   /^\/v1\/notes\/[^/]+\/(?:(?:decisions|questions|actions|lines)(?:\/[^/]+)?|revisits\/[^/]+|share|rewrite)$/, /^\/v1\/meetings\/[^/]+\/answer$/, /^\/v1\/account$/, /^\/v1\/rings\/[^/]+\/answer$/,
   /^\/v1\/notes\/[^/]+\/(?:personal(?:\/[^/]+(?:\/(?:preview|add))?)?|additions\/[^/]+)$/
 ];

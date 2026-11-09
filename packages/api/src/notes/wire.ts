@@ -1,5 +1,6 @@
 import { isTimeZone } from '../meetings/schema';
 import { oneLine } from '../shared/validation';
+import { ModelIdSchema } from './models';
 import { z } from '../shared/zod';
 /**
  * Sharing notes: up to 50 addresses, and the group's name when they're one of the sharer's groups
@@ -13,6 +14,9 @@ export const ShareInputSchema = z.object({
 
 /** Asking about a call: the question travels in the body. */
 export const AskBodySchema = z.object({ question: z.string().trim().min(1).max(500) });
+
+/** Writing the notes again: optionally with another model (an ID from `models.list()`, or null for the default model). */
+export const RewriteBodySchema = z.object({ model: ModelIdSchema.nullable().optional() });
 
 
 /** Saying the notes got a later call wrong, or taking that back. */

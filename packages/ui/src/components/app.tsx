@@ -2,7 +2,7 @@
  * The app's building blocks: cards, navigation, the palette's line, fields, notes and transcript lines, Show more, the
  * mic level, and what a transcript isn't sure of.
  */
-import { forwardRef, useId, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, useState, type CSSProperties, type InputHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { Icon, type IconName } from './icon';
 import { Tooltip } from './overlay';
@@ -122,6 +122,26 @@ export function ShowMore({ all, more, onToggle, className }: { all: boolean; mor
       <button type="button" className="lk quiet" aria-expanded={all} onClick={onToggle}>
         {all ? 'Show fewer' : `Show ${more} more`}<Icon name={all ? 'up' : 'down'} size={15} />
       </button>
+    </div>
+  );
+}
+
+/**
+ * More prose under a short passage, behind a quiet text button: the note's full summary under its short one. Closed
+ * until pressed (`defaultOpen` starts it open). What's inside is kept out of reach of the keyboard and screen readers
+ * while it's closed. The button is named by `label`.
+ */
+export function ReadMore({ label, children, defaultOpen = false, className }: { label: string; children: ReactNode; defaultOpen?: boolean | undefined; className?: string | undefined }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = useId();
+  return (
+    <div className={cn('ac-readmore', open && 'is-open', className)}>
+      <button type="button" className="ac-readmore-b" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        {label}<Icon name="down" size={15} className="ac-readmore-i" />
+      </button>
+      <div className="ac-readmore-r">
+        <div id={id} className="ac-readmore-in" inert={!open}>{children}</div>
+      </div>
     </div>
   );
 }

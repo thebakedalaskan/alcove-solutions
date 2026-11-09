@@ -629,6 +629,24 @@ export const CorrectALine: PageStory = {
     await step('Done, and what people settled stayed. Corrected says who, when and what was heard', async () => {
       await screen.findByRole('button', { name: /^Written in confidential compute/ }, LATER);
     });
+    await step('More › Write the notes again asks in a small window, with the AI model to write them', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'More' }));
+      await userEvent.click(await screen.findByRole('button', { name: /^Write the notes again/ }, SOON));
+      await screen.findByRole('dialog', { name: 'Write the notes again' }, SOON);
+    });
+    await step('Cancel leaves the notes as they are', async () => {
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Write the notes again' })).getByRole('button', { name: 'Cancel' }));
+    });
+    await step('Write them again, and the organizer can stop it', async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'More' }));
+      await userEvent.click(await screen.findByRole('button', { name: /^Write the notes again/ }, SOON));
+      await userEvent.click(within(await screen.findByRole('dialog', { name: 'Write the notes again' })).getByRole('button', { name: 'Write the notes again' }));
+      await screen.findAllByText(/being written again/i, {}, SOON);
+      await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }, SOON));
+    });
+    await step('Stopped. The notes are as they were', async () => {
+      await screen.findByText('Stopped. The notes are as they were.', {}, SOON);
+    });
   }
 };
 

@@ -22,6 +22,11 @@ export function exampleNote(me: Person): Note {
     recipients: [{ person: me, role: 'organizer' }, { person: theo, role: 'invited' }, { person: priya, role: 'invited' }, { person: kofi, role: 'invited' }],
     groupShares: [],
     summary: 'Sign-ups are back up since Tuesday’s fix, so the launch moves to the 18th. Kofi sends the new screens by Wednesday.',
+    details: [
+      'The call opened with sign-ups, which dropped last week after the pricing change and have recovered since Tuesday’s fix. Theo walked through the numbers: daily sign-ups are back to where they were before the drop, and nothing in the funnel looks different from the weeks before it.',
+      'With sign-ups steady, the team went through the launch date. Theo asked whether a week was enough for the onboarding flag to settle, and Priya said it was, as long as support has the help article first. Everyone agreed to move the launch to the 18th.',
+      'Priya asked whether to tell the press before the 18th, and the call ended without an answer. Kofi will send the new screens by Wednesday so Vandelay Industries’ partners have them ahead of the launch.'
+    ].join('\n\n'),
     decisions: [{
       id: 'launch', text: 'The launch moves to the 18th.', at: 612, state: 'confirmed', lines: ['l1'], against: [], disputes: [], evidence: said('l1', 612, theo, 'Then the 18th it is. Everyone good with that?'),
       changes: [{ by: { id: null, name: theo.name, email: theo.email, as: 'invited' }, at: started.toISOString(), what: 'confirmed' }]
@@ -39,7 +44,7 @@ export function exampleNote(me: Person): Note {
       { at: 510, title: 'The launch date', summary: 'Moves to the 18th.' },
       { at: 960, title: 'New screens', summary: 'Kofi, by Wednesday.' }
     ],
-    screens: [], transcript: [], rooms: [], additions: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], kept: { transcript: true, recording: true }, inference: [],
+    screens: [], shares: [], model: null, unencrypted: [], transcript: [], rooms: [], additions: [], writtenAt: started.toISOString(), writingAgain: false, audio: [], kept: { transcript: true, recording: true }, inference: [],
     workedOn: [],
     suggestedQuestions: ['What did we decide?', 'What do I need to do?', 'Draft a follow-up']
   };

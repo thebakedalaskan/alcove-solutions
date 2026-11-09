@@ -9,7 +9,7 @@ import { MlsKeys, newIdentity } from './mls';
 import { HttpMoveIn, type MoveInTransport } from './moves';
 import { HttpRings } from './rings';
 import { HttpCall } from './session';
-import { type AlcoveApi, AlcoveApiError, AUDIO_HEADERS, BoardCheckSchema, CALL_PASS_HEADER, CallAnswerSchema, CallCardSchema, CallEndResultSchema, CallFollowUpsSchema, CallMlsSchema, CallMomentSchema, CallRoomTokenSchema, type CallSession, type CallState, CallStateSchema, type CallTicket, CallTicketSchema, CallWorkspaceSwitchSchema, CaptionTranslationSchema, CatchUpSchema, CatchUpWindowSchema, FRAME_HEADERS, HEARD_HEADERS, IdeasWatchedSchema, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema, NotesWatchedSchema, RingsSnapshotSchema, ScreenFrameReceiptSchema, SeriesAnswerPartSchema, SeriesSchema, type TranscriptClip } from '@alcove/api';
+import { type AlcoveApi, AlcoveApiError, AUDIO_HEADERS, BoardCheckSchema, CALL_PASS_HEADER, CallAnswerSchema, CallCardSchema, CallEndResultSchema, CallFollowUpsSchema, CallMlsSchema, CallMomentSchema, CallRoomTokenSchema, type CallSession, type CallState, CallStateSchema, type CallTicket, CallTicketSchema, ShareStartedSchema, VIDEO_HEADERS, CallWorkspaceSwitchSchema, CaptionTranslationSchema, CatchUpSchema, CatchUpWindowSchema, HEARD_HEADERS, IdeasWatchedSchema, MoveClaimSchema, MoveCodeSchema, MoveInSchema, MoveOutSchema, NotesWatchedSchema, RingsSnapshotSchema, SeriesAnswerPartSchema, SeriesSchema, type TranscriptClip } from '@alcove/api';
 import { z } from 'zod';
 export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi, 'calls' | 'rings'> {
   const { emit, ndjson, parse, req, send } = t;
@@ -51,11 +51,13 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
       act: (id, a) => req(CallStateSchema, 'POST', `${live(id)}/actions`, a, p),
       audio: async (id, piece) => parse(CallStateSchema, await audio(`${live(id)}/audio`, piece, p), 'call state'),
       transcribe: async (id, c, speaker) => parse(CallStateSchema, await clip(`${live(id)}/transcribe`, c, { ...p, [AUDIO_HEADERS.speaker]: speaker, [AUDIO_HEADERS.ago]: ago(c) }), 'call state'),
-      // A frame of this browser's own share: JPEG bytes, which share, and how long ago it was taken.
-      frame: async (id, f) => parse(ScreenFrameReceiptSchema, await (await send('POST', `${live(id)}/frames`, f.data, {
-        ...p, 'content-type': 'image/jpeg', [FRAME_HEADERS.share]: f.share, [FRAME_HEADERS.age]: String(Math.max(0, Math.round(Date.now() - f.takenAt)))
-      })).json(), 'frame receipt'),
-      shareEnded: async (id, share) => { await req(z.object({ ended: z.literal(true) }), 'POST', `${live(id)}/frames/ended`, { share }, p); },
+      startShare: (id, notes) => req(ShareStartedSchema, 'POST', `${live(id)}/shares`, { notes }, p),
+      // A piece of this browser's own kept share: video bytes, placed by the headers; the share is in the path.
+      screen: async (id, piece) => parse(CallStateSchema, await (await send('POST', `${live(id)}/shares/${encodeURIComponent(piece.share)}/video`, piece.data, {
+        ...p, 'content-type': piece.mimeType, [VIDEO_HEADERS.segment]: String(piece.segment), [VIDEO_HEADERS.seq]: String(piece.seq),
+        [VIDEO_HEADERS.at]: String(Math.round(piece.at * 1000)), [VIDEO_HEADERS.duration]: String(Math.round(piece.durationMs))
+      })).json(), 'call state'),
+      shareEnded: (id, share) => req(CallStateSchema, 'POST', `${live(id)}/shares/${encodeURIComponent(share)}/ended`, {}, p),
       watchNotes: async (id) => (await req(NotesWatchedSchema, 'POST', `${live(id)}/notes/watch`, {}, p)).refreshed,
       watchIdeas: async (id) => (await req(IdeasWatchedSchema, 'POST', `${live(id)}/ideas/watch`, {}, p)).found,
       followUps: (id) => req(CallFollowUpsSchema, 'GET', `${live(id)}/follow-ups`, undefined, p),

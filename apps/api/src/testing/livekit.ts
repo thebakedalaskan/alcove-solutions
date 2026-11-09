@@ -3,7 +3,7 @@
  * exactly as a browser would, encrypting media with the call's MLS-derived key as a browser does, and observe
  * media and data from the other side.
  */
-import { CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallCrypto, type LiveStore } from '@alcove/api';
+import { CALL_TOPIC, CALL_VOID_KEY_INDEX, CallNudgeSchema, type CallCrypto, type CallSession, type LiveStore } from '@alcove/api';
 import {
   AudioFrame, AudioSource, AudioStream, DisconnectReason, EncryptionType, KeyProvider, LocalAudioTrack, LocalVideoTrack, Room, RoomEvent, TrackKind,
   TrackPublishOptions, TrackSource, VideoBufferType, VideoFrame, VideoSource, dispose, type RemoteTrack
@@ -12,7 +12,7 @@ import { KeyDerivationFunction } from '@livekit/rtc-ffi-bindings';
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Config } from '../config';
-import { apiUrl } from '../livekit';
+import { apiUrl, type LiveKit } from '../livekit';
 
 const RATE = 48_000;
 const FRAME = 480; // 10 ms
@@ -225,6 +225,29 @@ export async function connect(join: RoomJoin, keys?: Keys): Promise<TestParticip
       await room.disconnect();
     }
   };
+}
+
+const presenting: TestParticipant[] = [];
+/**
+ * Shares a screen in a call's room the way a presenter's browser does, once they're in the call's group: joins the room
+ * with the token the call gives, publishes a picture, and waits until LiveKit's server lists it, which is what the API
+ * checks a share's video against. stopPresenting disconnects every one of them.
+ */
+export async function presentScreen(call: CallSession, livekit: Pick<LiveKit, 'screenShares'>): Promise<TestParticipant> {
+  await waitFor(() => call.crypto.getSnapshot().status === 'in' && call.crypto.getSnapshot().media !== null, `${call.ticket.role} in the call’s group`);
+  const p = await connect(await call.room(), { sending: call.crypto });
+  presenting.push(p);
+  const { screen } = await p.publishScreen(false);
+  const room = p.room.name ?? '';
+  for (let i = 0; i < 300; i++) {
+    if ((await livekit.screenShares(room)).some((x) => x.sid === screen)) return p;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('timed out waiting for LiveKit to list the share');
+}
+/** Disconnects everyone presentScreen connected. */
+export async function stopPresenting(): Promise<void> {
+  await Promise.all(presenting.splice(0).map((p) => p.disconnect().catch(() => undefined)));
 }
 
 /** Releases the native LiveKit runtime. Call once, after every room has disconnected. */

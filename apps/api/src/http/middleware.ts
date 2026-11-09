@@ -1,4 +1,4 @@
-import { AUDIO_HEADERS, DOC_UPDATE_TYPE, FRAME_HEADERS, MEDIA_PIECE_BYTES, HEARD_HEADERS, OPERATION_HEADER, REQUEST_ID_HEADER } from '@alcove/api';
+import { AUDIO_HEADERS, DOC_UPDATE_TYPE, MEDIA_PIECE_BYTES, HEARD_HEADERS, OPERATION_HEADER, REQUEST_ID_HEADER, VIDEO_HEADERS } from '@alcove/api';
 import type { HttpBindings } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -23,8 +23,8 @@ const QUIET = new Set(['/health', '/healthz', '/v1/rings']);
 
 export const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
 
-/** The one route that takes an image: a frame of someone's own shared screen. */
-const FRAMES = /^\/v1\/live\/calls\/[^/]+\/frames$/;
+/** The one route that takes video: a piece of someone's own shared screen, kept for the notes. */
+export const VIDEO = /^\/v1\/live\/calls\/[^/]+\/shares\/[^/]+\/video$/;
 
 /** What holds a document's content, as it is: a paste can be megabytes, and it has a limit of its own. */
 const DOC_UPDATES = /^\/v1\/workspaces\/[^/]+\/documents\/[^/]+\/(?:updates|adopt)$/;
@@ -83,11 +83,11 @@ export function registerMiddleware(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   // Only the web app's own origin may call the API with credentials (matters when they're on different subdomains).
-  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER, ...Object.values(HEARD_HEADERS)], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS), ...Object.values(FRAME_HEADERS)], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], maxAge: 600 }));
+  app.use('*', cors({ origin: d.cfg.WEB_ORIGIN, credentials: true, exposeHeaders: [REQUEST_ID_HEADER, ...Object.values(HEARD_HEADERS)], allowHeaders: ['content-type', OPERATION_HEADER, REQUEST_ID_HEADER, CALL_PASS_HEADER, ...Object.values(AUDIO_HEADERS), ...Object.values(VIDEO_HEADERS)], allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], maxAge: 600 }));
 
   /* State changes only from the app itself: its Origin, and a JSON or audio body. This blocks blind
      cross-site POSTs from sibling ports/subdomains that SameSite=Strict still allows. */
-  // Pieces of a file (4 MiB) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
+  // Pieces of a file and of a shared screen's video (4 MiB each) are the largest bodies; call commits and chat have their own, tighter caps below. A document's updates can be as big as a document, and are capped where they arrive.
   const anyBody = capped(MEDIA_PIECE_BYTES);
 
   app.use('/v1/*', (c, next) => (DOC_UPDATES.test(c.req.path) ? next() : anyBody(c, next)));
@@ -98,10 +98,11 @@ export function registerMiddleware(app: Hono<Env>, runtime: HttpRuntime): void {
     if (origin !== d.cfg.WEB_ORIGIN) throw new ForbiddenError('Requests must come from the Alcove app.', { context: { origin: origin ?? 'none' } });
     const type = (c.req.header('content-type') ?? '').toLowerCase();
     const hasBody = c.req.header('content-length') !== '0' && c.req.header('content-length') !== undefined;
-    const image = type.startsWith('image/jpeg') && (FRAMES.test(c.req.path) || MEDIA_PREVIEW.test(c.req.path));
+    const image = type.startsWith('image/jpeg') && MEDIA_PREVIEW.test(c.req.path);
+    const video = type.startsWith('video/') && VIDEO.test(c.req.path);
     const update = type.startsWith(DOC_UPDATE_TYPE) && DOC_UPDATES.test(c.req.path);
     const fileBytes = type.startsWith('application/octet-stream') && MEDIA_PIECES.test(c.req.path);
-    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !update && !fileBytes) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
+    if (hasBody && !type.startsWith('application/json') && !type.startsWith('audio/') && !image && !video && !update && !fileBytes) throw new ValidationError('Unsupported content type.', { context: { contentType: type.slice(0, 60) } });
     return next();
   });
 

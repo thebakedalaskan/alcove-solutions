@@ -9,7 +9,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useArgs } from 'storybook/preview-api';
 import { ModalFrame, did } from '../../../src/component';
 
-const KEEP_ALL: NotesChoices = { keepTranscript: true, keepRecording: true, readScreens: true };
+const KEEP_ALL: NotesChoices = { keepTranscript: true, keepRecording: true, allowScreens: true };
 
 const meta = {
   title: 'Components/Starting a call/NotesSwitches',
@@ -43,7 +43,9 @@ export const On: Story = {};
 /** Off: nothing is recorded, so the other switches go. */
 export const Off: Story = { args: { notes: 'off' } };
 /** On, keeping only the notes: the transcript and the recording are deleted once they've done their job. */
-export const KeepingOnlyTheNotes: Story = { name: 'Keeping only the notes', args: { choices: { keepTranscript: false, keepRecording: false, readScreens: false } } };
+export const KeepingOnlyTheNotes: Story = { name: 'Keeping only the notes', args: { choices: { keepTranscript: false, keepRecording: false, allowScreens: false } } };
+/** The organizer's AI model runs outside a secure enclave: the line under the switches says so. */
+export const UnencryptedModel: Story = { name: 'Unencrypted AI model', args: { modelPrivate: false } };
 /** Under the Notes row in Details, the last step of scheduling, where it opens in place. */
 export const InDetails: Story = {
   name: 'Under its row in Details',

@@ -419,7 +419,7 @@ describe('what backs an entry', () => {
     const entry = (starts: string) => note.decisions.find((d) => d.text.startsWith(starts));
 
     // Told how many of each the notes keep, so a busy call's reply isn't cut off on entries that would be dropped.
-    expect(h.near.instructions.at(-1)).toMatch(/decisions: .*At most 12: .*\nquestions: .*At most 12: .*\nactions: .*at most 20: /);
+    expect(h.near.instructions.findLast((x) => x.startsWith('You write the notes'))).toMatch(/decisions: .*At most 12: .*\nquestions: .*At most 12: .*\nactions: .*at most 20: /);
     // The lines it was sent, and none the model made up: only what was really said comes back, with who said it.
     expect(said(entry('We agreed')?.evidence.moments ?? [])).toEqual([['We agreed to drop the beta.', false], ['No, the beta stays until March.', true]]);
     expect(entry('We agreed')).toMatchObject({ lines: [lineId(note, 'We agreed')], against: [lineId(note, 'No, the beta')] });
@@ -650,7 +650,7 @@ describe('the record, read back', () => {
     expect(again.decisions).toHaveLength(4);
     expect(again.actions.map((a) => a.text).sort()).toEqual(['Book the room by Friday', 'Order the cake', 'Send the screens by Wednesday', 'Tell the press']);
     expect(again.actions.find((a) => a.text.startsWith('Book'))?.owner).toBeUndefined();
-    expect(h.near.prompts.at(-1)).toContain('Follow-up (nobody has it): Book the room by Friday');
+    expect(h.near.prompts[h.near.instructions.findLastIndex((x) => x.startsWith('You write the notes'))]).toContain('Follow-up (nobody has it): Book the room by Friday');
     // A corrected line proposes a change; the task already accepted by a person keeps its words and identity.
     const fresh = again.suggestions.find((a) => a.text === 'Order the big cake');
     expect(fresh).toMatchObject({ takenOn: false, changes: [], evidence: { flags: [] } });
