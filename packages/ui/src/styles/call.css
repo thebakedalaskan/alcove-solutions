@@ -1321,7 +1321,7 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ac-floating-question .ic-leave .acts { flex-direction: column; align-items: stretch; }
 .ac-floating-question .ic-leave .next-host .who { flex-wrap: wrap; }
 .ic-vfloat { display: grid; gap: var(--space-2); padding: var(--space-2) 0 0; }
-.ic-vfloat p { margin: 0; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
+.ic-vfloat p { margin: 0; padding: 0 10px; font-size: 12px; line-height: 1.4; color: var(--ink-2); }
 
 .ic-floating-root { position: fixed; inset: 0; }
 .ac-floating-question .ic-leave .in { padding: 0; }

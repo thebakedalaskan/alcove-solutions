@@ -40,6 +40,7 @@ function openingOf(ctx: StoryContext): Partial<Opening> {
     ...(typeof b['online'] === 'boolean' ? { online: b['online'] } : {}),
     ...(b['devices'] === 'granted' || b['devices'] === 'prompt' || b['devices'] === 'denied' ? { devices: b['devices'] } : {}),
     ...(b['notifications'] === 'granted' || b['notifications'] === 'denied' || b['notifications'] === 'default' ? { notifications: b['notifications'] } : {}),
+    ...(b['floatingWindow'] === 'native' || b['floatingWindow'] === 'unsupported' || b['floatingWindow'] === 'blocked' ? { floatingWindow: b['floatingWindow'] } : {}),
     ...(offlineIn(ctx) ? { online: false } : {})
   };
   return {
