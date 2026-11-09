@@ -253,11 +253,11 @@ describe('signing in', () => {
     expect(await api.account.preferences()).toEqual(defaults);
     const patched = await api.account.updatePreferences({
       summaryLength: 'detailed',
-      notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, beforeCall: 1 }
+      notifications: { ...DEFAULT_NOTIFICATION_PREFERENCES, replyAlerts: false, beforeCall: 1 }
     });
-    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, beforeCall: 1 } });
+    expect(patched).toEqual({ ...defaults, summaryLength: 'detailed', notifications: { ...defaults.notifications, replyAlerts: false, beforeCall: 1 } });
     expect(await api.account.preferences()).toEqual(patched);
-    const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false };
+    const sounds = { ...DEFAULT_SOUND_PREFERENCES, enabled: false, quiet: true, volume: 0.25, hands: false, replies: false };
     expect((await api.account.updatePreferences({ sounds })).sounds).toEqual(sounds);
     expect((await api.account.preferences()).sounds).toEqual(sounds);
     const other = await account();

@@ -1,6 +1,6 @@
 import {
   AlcoveApiError, DirectTextSchema, type DirectEnvelope, type DirectKeyAnnouncement, type DirectMessage,
-  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, errorCode, fromBase64Url
+  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, type CallChatThread, errorCode, fromBase64Url
 } from '@alcove/api';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box } from '../transport/live';
@@ -12,6 +12,14 @@ const utf8 = new TextEncoder();
 /** The two original connections and both authenticated public keys are part of the AEAD domain. */
 const bound = (call: string, m: Pick<DirectEnvelope, 'id' | 'from' | 'to' | 'generation' | 'place' | 'fromKey' | 'toKey'>) =>
   utf8.encode(JSON.stringify(['alcove/private-message/v1', call, m.generation, m.place, m.id, m.from, m.to, m.fromKey, m.toKey]));
+
+/** A parent never grants access to another audience, room or generation. Pending/failed parents have no stable reply target. */
+function availableParent(messages: readonly DirectMessage[], thread: CallChatThread, audience: Pick<DirectMessage, 'from' | 'to' | 'place' | 'generation'>): boolean {
+  const parent = messages.find((message) => message.id === thread.replyTo && message.place === audience.place && message.generation === audience.generation
+    && ((message.from === audience.from && message.to === audience.to) || (message.from === audience.to && message.to === audience.from))
+    && (message.state === 'sent' || message.state === 'delivered'));
+  return !!parent && (parent.thread?.root ?? parent.id) === thread.root;
+}
 
 /** Owns one ephemeral private key, authenticated peers, original encrypted retries and only this session's history. */
 export class DirectMessages extends Box<DirectMessagesState> implements DirectMessagesApi {
@@ -85,13 +93,14 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
       return await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new Uint8Array(aad) }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     } finally { secret.fill(0); }
   }
-  send = async (to: string, text: string): Promise<void> => {
-    const parsed = DirectTextSchema.safeParse({ text });
+  send = async (to: string, text: string, thread: CallChatThread | null = null): Promise<void> => {
+    const parsed = DirectTextSchema.safeParse({ text, thread });
     if (!parsed.success) throw new AlcoveApiError('invalid', 'Write a message of up to 4,000 characters.');
     const toKey = this.trusted.get(to);
     if (!this.getSnapshot().ready || !this.getSnapshot().peers.includes(to) || !toKey) throw new AlcoveApiError('conflict', 'This person is unavailable in this room.');
     const sendScope = { scope: this.scopeRevision, peer: this.peerRevisions.get(to) ?? 0 };
     const { place, generation } = this.context;
+    if (parsed.data.thread && !availableParent(this.getSnapshot().messages, parsed.data.thread, { from: this.identity, to, place, generation })) throw new AlcoveApiError('not-found', 'That private conversation isn’t available in this room.');
     const fromKey = await this.publicKey;
     const id = b64u(randomBytes(16));
     const base = { id, to, place, generation, fromKey, toKey };
@@ -101,7 +110,7 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
     if (this.closed) return;
     this.envelopes.set(id, { ...base, nonce: b64u(nonce), ciphertext });
     this.sendScopes.set(id, sendScope);
-    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { ...base, from: this.identity, text: parsed.data.text, at: 0, order: 0, state: 'sending', error: null }] });
+    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { ...base, from: this.identity, text: parsed.data.text, thread: parsed.data.thread, at: 0, order: 0, state: 'sending', error: null }] });
     await this.retry(id);
   };
   retry = async (id: string): Promise<void> => {
@@ -166,7 +175,8 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
             const payload = DirectTextSchema.safeParse(raw);
             if (this.closed || scope !== this.context) return;
             if (!payload.success) { this.refused('ciphertext'); continue; }
-            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.data.text, at: envelope.at, order: envelope.order, state: 'delivered', error: null };
+            if (payload.data.thread && !availableParent(this.getSnapshot().messages, payload.data.thread, envelope)) { this.refused('binding'); continue; }
+            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.data.text, thread: payload.data.thread, at: envelope.at, order: envelope.order, state: 'delivered', error: null };
             this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, message].sort((a, b) => a.order - b.order), unread: this.readIds.has(message.id) ? this.getSnapshot().unread : [...this.getSnapshot().unread, message.id] });
           } catch { this.refused('ciphertext'); }
         }

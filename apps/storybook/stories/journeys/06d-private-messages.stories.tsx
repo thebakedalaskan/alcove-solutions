@@ -12,11 +12,11 @@ export const KeepEveryAudienceSeparate = inCall({ scenario: 'busy', call: LAUNCH
   await c.step('Keep a draft for the room', async () => { await c.userEvent.type(await screen.findByRole('combobox', { name: 'Message everyone' }), 'The agenda is ready.'); });
   await c.step('Choose Priya explicitly and write only to her', async () => {
     await chooseAudience(c, new RegExp(`^${PRIYA.name} · Private`));
-    await c.userEvent.type(await screen.findByRole('textbox', { name: `Message only ${PRIYA.name}` }), 'Two minutes left.');
+    await c.userEvent.type(await screen.findByRole('combobox', { name: `Message only ${PRIYA.name}` }), 'Two minutes left.');
   });
   await c.step('Kofi has a different draft and recipient', async () => {
     await chooseAudience(c, new RegExp(`^${KOFI.name} · Private`));
-    await c.userEvent.type(await screen.findByRole('textbox', { name: `Message only ${KOFI.name}` }), 'Could you take the next question?');
+    await c.userEvent.type(await screen.findByRole('combobox', { name: `Message only ${KOFI.name}` }), 'Could you take the next question?');
   });
   await c.step('Return to Priya’s draft, with its private audience still beside Send', async () => {
     await chooseAudience(c, new RegExp(`^${PRIYA.name} · Private`));

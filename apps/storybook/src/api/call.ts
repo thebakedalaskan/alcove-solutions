@@ -95,6 +95,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   private watching = 0;
   private notesFor = -1;
   private writing = false;
+  private chatFailures = 0;
   /** Until when you're saying a line, so your microphone murmurs as a voice does, and until when each of them is. */
   private voiceUntil = 0;
   private speakingUntil = new Map<string, number>();
@@ -149,7 +150,12 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     const here: Present[] = [...(script.here ?? [])];
     if (!organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
     for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing });
-    for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => { const from = this.find(message.from); if (from) this.direct.receive(from.id, message.text); });
+    for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => {
+      const from = this.find(message.from);
+      const parent = message.replyTo ? this.direct.getSnapshot().messages.find((m) => m.text === message.replyTo) : null;
+      if (message.replyTo && !parent) return;
+      if (from) this.direct.receive(from.id, message.text, parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null);
+    });
     // You come in after them, unless you organized it (or you're asking to be let in).
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
     // What was said before you came, spread over the time the call has been going.
@@ -196,8 +202,13 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       case 'feedback': { const p = this.find(b.who); if (p) this.feedbackFor(p, b.kind); return; }
       case 'share': this.them(b.who, (t) => ({ ...t, screen: b.screen })); return;
       case 'stop-sharing': this.them(b.who, (t) => ({ ...t, screen: null })); return;
-      case 'chat': {
+      case 'unavailable-chat': this.crypto.update((c) => ({ ...c, chat: c.chat.filter((m) => m.text !== b.text) })); return;
+      case 'chat':
+      case 'reply': {
         const p = this.find(b.who);
+        const parent = b.do === 'reply' ? this.crypto.getSnapshot().chat.findLast((m) => m.text === b.to && m.place === this.crypto.getSnapshot().place) : null;
+        if (b.do === 'reply' && !parent) return;
+        const thread = parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null;
         const mentions = b.tagged.flatMap((who): CallChatMention[] => {
           const target = who === 'me' ? this.me : this.find(who);
           if (!target || !this.crypto.getSnapshot().members.includes(target.id)) return [];
@@ -205,7 +216,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
           const start = b.text.indexOf(name);
           return start < 0 ? [] : [{ identity: target.id, start, end: start + name.length }];
         });
-        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, at: this.getSnapshot().elapsed, place: c.place, sending: false, reactions: [] }] }));
+        if (p) this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: p.id, isMe: false, text: b.text, mentions, thread, at: this.getSnapshot().elapsed, place: c.place, sending: false, failed: false, reactions: [] }] }));
         return;
       }
       case 'react': {
@@ -914,12 +925,24 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve({ serverUrl: this.ticket.serverUrl, roomName: this.ticket.roomName, identity: this.ticket.identity, token: 'storybook' });
   }
   refresh(): Promise<void> { return Promise.resolve(); }
-  sendChat(text: string, mentions: readonly CallChatMention[] = []): Promise<void> {
+  sendChat(text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null): Promise<void> {
     const leading = text.length - text.trimStart().length;
-    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), at: this.getSnapshot().elapsed });
+    const parsed = CallChatTextSchema.safeParse({ text: text.trim(), mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.getSnapshot().elapsed });
     const now = this.crypto.getSnapshot();
     if (!parsed.success || parsed.data.mentions.some((m) => !now.members.includes(m.identity))) return Promise.reject(new AlcoveApiError('invalid', 'Choose people who are in this part of the call.'));
-    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, at: parsed.data.at, place: c.place, sending: false, reactions: [] }] }));
+    if (parsed.data.thread) {
+      const target = now.chat.find((m) => m.id === parsed.data.thread?.replyTo && m.place === now.place && !m.failed && !m.sending);
+      if (!target || (target.thread?.root ?? target.id) !== parsed.data.thread.root) return Promise.reject(new AlcoveApiError('not-found', 'That conversation isn’t available in this room.'));
+    }
+    const failed = this.chatFailures < (this.script.chatFailures ?? 0);
+    if (failed) this.chatFailures++;
+    this.crypto.update((c) => ({ ...c, chat: [...c.chat, { id: nextId('chat'), from: this.me.id, isMe: true, text: parsed.data.text, mentions: parsed.data.mentions, thread: parsed.data.thread, at: parsed.data.at, place: c.place, sending: false, failed, reactions: [] }] }));
+    return Promise.resolve();
+  }
+  retryChat(messageId: string): Promise<void> {
+    const message = this.crypto.getSnapshot().chat.find((m) => m.id === messageId && m.failed);
+    if (!message || message.place !== this.crypto.getSnapshot().place) return Promise.reject(new AlcoveApiError('conflict', 'Return to the original conversation before retrying this message.'));
+    this.crypto.update((c) => ({ ...c, chat: c.chat.map((m) => m.id === messageId ? { ...m, failed: false } : m) }));
     return Promise.resolve();
   }
   readChat(ids: readonly string[]): Promise<void> {

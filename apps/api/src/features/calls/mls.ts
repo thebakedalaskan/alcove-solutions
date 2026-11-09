@@ -1,4 +1,4 @@
-import { CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type CallMls, type CallMlsGroup, type CallMlsItem } from '@alcove/api';
+import { CallBackBodySchema, CallCommitBodySchema, CallKeyPackageBodySchema, CallMessageBodySchema, MAIN_PLACE, type CallMessageReceipt, type CallMls, type CallMlsGroup, type CallMlsItem } from '@alcove/api';
 import { z } from 'zod';
 import type { Deps, Owner } from '../../context';
 import { exec, rows, tx } from '../../db';
@@ -49,23 +49,22 @@ export async function mlsSync(v: Viewer, callId: string, after: number): Promise
   const quiet: CallMls = { generation: gen, admission, committer: committerOf(s), place, group, groups: [], items: [], earlierChat: false, keys: false, latest: after, more: false };
   if (admission !== 'in' || row.state !== 'live' || !mine) return quiet;
   const keys = needsKeys(s, gen, mine);
-  let from = after;
+  const from = after;
   let found: z.infer<typeof MlsRow>[];
   if (hosting) {
     found = await rows(o.pool, MlsRow,
       `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5
-         AND (kind = 'commit' OR (kind = 'message' AND grp = $6 AND seq > $7)) ORDER BY seq LIMIT ${MLS_PAGE}`,
-      [o.ownerId, callId, gen, from, row.mls_seq, place, mine.placedSeq]);
+         AND (kind = 'commit' OR (kind = 'message' AND ((grp = $6 AND seq > $7) OR party = $8))) ORDER BY seq LIMIT ${MLS_PAGE}`,
+      [o.ownerId, callId, gen, from, row.mls_seq, place, mine.placedSeq, v.pass.identity]);
   } else {
-    // In no group yet (or between two): nothing to read until the welcome comes; fresh keys first, if there are none to add them with.
-    if (group === null) return { ...quiet, keys };
-    from = Math.max(after, mine.from - 1);
     // Chat only from since they last came into this part of the call: someone moved out and straight back before their
-    // removal was committed doesn't get what was said while they were away.
+    // removal was committed doesn't get what was said while they were away. Own previously submitted ciphertexts are
+    // returned for exact-connection confirmation even between groups; they never grant another room's history.
     found = await rows(o.pool, MlsRow,
-      `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5 AND grp = $6
-         AND (kind = 'commit' OR (kind = 'welcome' AND party = $7) OR (kind = 'message' AND $8 AND seq > $9)) ORDER BY seq LIMIT ${MLS_PAGE}`,
-      [o.ownerId, callId, gen, from, row.mls_seq, group, v.pass.identity, place === group, mine.placedSeq]);
+      `SELECT seq, kind, party, grp, epoch, body_ciphertext FROM call_mls WHERE owner_id = $1 AND call_id = $2 AND generation = $3 AND seq > $4 AND seq <= $5
+         AND ((grp = $6 AND seq >= $8 AND (kind = 'commit' OR (kind = 'welcome' AND party = $7) OR (kind = 'message' AND $9 AND seq > $10)))
+           OR (kind = 'message' AND party = $7)) ORDER BY seq LIMIT ${MLS_PAGE}`,
+      [o.ownerId, callId, gen, from, row.mls_seq, group, v.pass.identity, mine.from, place === group, mine.placedSeq]);
   }
   const items: CallMlsItem[] = [];
   for (const r of found) if (r.grp !== null && r.kind !== 'keypackage') items.push({ kind: r.kind, seq: r.seq, group: r.grp, epoch: r.epoch, body: openMls(o, callId, r) });
@@ -201,11 +200,11 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
  * Chat, as an MLS message from someone in the group of the part of the call they're in: stored as it came, and
  * relayed to everyone in that group. Nobody chats into another part of the call, whoever hosts included.
  */
-export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>, chat = true): Promise<void> {
+export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>, chat = true): Promise<CallMessageReceipt> {
   requireIn(v, 'chat');
   const o = v.organizer;
   const ctx = { callId, epoch: b.epoch, room: b.group !== MAIN_PLACE };
-  const { room, closed } = await tx(o.pool, async (c) => {
+  const { room, closed, receipt } = await tx(o.pool, async (c) => {
     const { row, state } = await load(o, c, callId, true);
     if (row.state !== 'live') throw new ConflictError('This call has ended.', { context: ctx });
     const s = settle(state, row);
@@ -215,13 +214,14 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
     const epoch = epochIn(row.mls_epoch, s, b.group);
     if (epoch === undefined || b.generation !== row.mls_generation || b.epoch > epoch) throw new ConflictError('The call’s keys have moved on. Catch up and try again.', { context: { ...ctx, current: epoch ?? null }, level: 'info' });
     const seq = row.mls_seq + 1;
-    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'message', null, b.message);
+    await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'message', v.pass.identity, b.message);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
-    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, chat ? { ...s, chatAt: { ...s.chatAt, [b.group]: seq } } : s)).closed };
+    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, chat ? { ...s, chatAt: { ...s.chatAt, [b.group]: seq } } : s)).closed, receipt: { sent: true as const, generation: row.mls_generation, seq } };
   });
   // Sizes only: what was said is in the MLS message, which nobody here can read.
   clog.debug('chat relayed', { ...ctx, bytes: b.message.length });
   await afterClosing({ organizer: o, callId }, closed, () => nudge(o, room, callId, { call: closed, log: true }));
+  return receipt;
 }
 
 /**

@@ -9,7 +9,7 @@
  * - Rooms: setting up breakout rooms and watching them.
  * - Mine: a presenter's own notes beside what they present.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type SetStateAction } from 'react';
 
 export type SideView = 'notes' | 'chat' | 'people' | 'rooms' | 'mine' | 'attention' | 'timer';
 /** The Notes view's tabs. */
@@ -42,8 +42,34 @@ export function useSide(opts: { phone: boolean }): { view: SideView | null; open
 
 /** What's typed in Chat or Ask and not sent yet. It's kept above the side, so moving to another view and back keeps it. */
 export interface Draft { text: string }
+const draftStates = new WeakMap<Draft, { revision: number; snapshot: { text: string; revision: number }; listeners: Set<() => void> }>();
+function draftState(draft: Draft) {
+  const existing = draftStates.get(draft);
+  if (existing) return existing;
+  const created = { revision: 0, snapshot: { text: draft.text, revision: 0 }, listeners: new Set<() => void>() };
+  draftStates.set(draft, created);
+  return created;
+}
+/** Follows the draft across view unmounts, so an old rejection cannot replace a newer edit. */
+export const draftRevision = (draft: Draft) => draftState(draft).revision;
 export function useDraft(draft: Draft) {
-  const [text, setText] = useState(draft.text);
-  useEffect(() => { draft.text = text; }, [draft, text]);
-  return [text, setText] as const;
+  const subscribe = useCallback((listener: () => void) => {
+    const state = draftState(draft);
+    state.listeners.add(listener);
+    return () => { state.listeners.delete(listener); };
+  }, [draft]);
+  const snapshot = useCallback(() => {
+    const state = draftState(draft);
+    if (state.snapshot.text !== draft.text) state.snapshot = { text: draft.text, revision: state.revision };
+    return state.snapshot;
+  }, [draft]);
+  const current = useSyncExternalStore(subscribe, snapshot, snapshot);
+  const setText = useCallback((value: SetStateAction<string>) => {
+    draft.text = typeof value === 'function' ? value(draft.text) : value;
+    const state = draftState(draft);
+    state.revision++;
+    state.snapshot = { text: draft.text, revision: state.revision };
+    for (const listener of state.listeners) listener();
+  }, [draft]);
+  return [current.text, setText] as const;
 }

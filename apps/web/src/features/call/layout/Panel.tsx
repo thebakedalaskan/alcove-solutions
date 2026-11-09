@@ -6,11 +6,11 @@
  * live notes, which come with the call (CallState.liveNotes), so ticking a follow-up is done for everyone there. Chat is
  * end-to-end encrypted in the browsers (CallSession.crypto); the server only relays it.
  */
-import { clock, errorMessage, notesAreOn, type CallAsker, type CallChatMessage, type CallChatMention, type CallReaction, type CallState, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
-import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, ReactionAdd, Reactions, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName, type ReactionShown } from '@alcove/ui';
+import { clock, errorMessage, notesAreOn, type CallAsker, type CallState, type CatchUpItem, type CallSession, type Person, type Rung, type TranscriptMoment } from '@alcove/api';
+import { Avatar, Button, CaptureSign, Dots, EmptyState, Faces, Icon, IconButton, Notice, Popover, Scope, Switch, Tabs, VolumeControl, WsPutArrow, cn, useToast, type IconName } from '@alcove/ui';
 import type { StageTogether } from './Stage';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { rungWords } from '~/features/calls/ringing/RingWords';
 import { lineClock } from '~/features/workspace/live/lines';
 import type { LivePut } from '~/features/workspace/live/types';
@@ -24,7 +24,6 @@ import { CallLines } from '../notes/LiveLines';
 import { CallFollowUps } from '../notes/FollowUps';
 import type { NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
-import { ChatComposer, MentionText, useReadMentions, type ChatDraft, type MentionPerson } from './ChatMentions';
 
 const UI = { duration: 0.24, ease: [0.22, 0.8, 0.24, 1] } as const;
 
@@ -298,87 +297,6 @@ export function TranscriptView({ state, me, onMark, put }: { state: CallState; m
  * can't be read here, which the view says. Hovering a message (or reaching it with the keyboard) offers a reaction;
  * pressing one under it adds yours, or takes it back.
  */
-export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, mentionPeople, unreadMentionIds = [], onReadMentions, onSend, onReact }: {
-  chat: CallChatMessage[];
-  /** There was chat in this part of the call while you weren't in it. */
-  missed: boolean;
-  /** This browser holds the keys of the part of the call it's in, so it can send. */
-  ready: boolean;
-  /** On the way to another part of the call: chat is off until it's there. */
-  moving: boolean;
-  /** Where a message goes, while breakout rooms are open: the room's name, or "the main room". Null when rooms aren't open. */
-  here: string | null;
-  /** A part of the call's name, for marking where the conversation moved: "Design", "the main room". */
-  placeName: (place: string) => string;
-  who: (id: string) => Person;
-  /** The part of the call you're in: only its messages can be reacted to, since only its group reads a reaction. */
-  place: string;
-  /** Your identity in the call, to mark your own reactions. */
-  me: string;
-  draft: ChatDraft;
-  mentionPeople: readonly MentionPerson[];
-  unreadMentionIds?: readonly string[] | undefined;
-  onReadMentions?: ((ids: readonly string[]) => void) | undefined;
-  onSend: (text: string, mentions?: readonly CallChatMention[]) => Promise<void>;
-  onReact: (messageId: string, reaction: CallReaction, on: boolean) => Promise<void>;
-}) {
-  const toast = useToast();
-  const end = useRef<HTMLDivElement>(null);
-  const scroll = useRef<HTMLDivElement>(null);
-  useReadMentions(scroll, unreadMentionIds, onReadMentions);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [chat.length]);
-  const openMention = () => {
-    const first = unreadMentionIds[0];
-    if (!first) return;
-    const message = document.getElementById(`chat-message-${first}`);
-    (message?.querySelector('.ic-mention.is-me') ?? message)?.scrollIntoView({ block: 'center' });
-    message?.focus({ preventScroll: true });
-  };
-  const react = (id: string) => (r: CallReaction, on: boolean) => { void onReact(id, r, on).catch((e: unknown) => toast(errorMessage(e), { icon: 'x' })); };
-  const shown = (c: CallChatMessage): ReactionShown[] =>
-    c.reactions.map((r) => ({ name: r.reaction, names: r.by.map((id) => (id === me ? 'You' : callName(who(id)))), mine: r.by.includes(me) }));
-  // Marks only matter once the conversation has been in more than one part of the call.
-  const marked = new Set(chat.map((c) => c.place)).size > 1;
-  const to = here ?? 'everyone';
-  return (
-    <>
-      {!!unreadMentionIds.length && <div className="ic-mention-unread" role="status"><Icon name="chat" size={16} /><span>{unreadMentionIds.length} unread {unreadMentionIds.length === 1 ? 'mention' : 'mentions'}</span><Button variant="quiet" size="sm" onClick={openMention}>Open mention</Button></div>}
-      <div ref={scroll} className="ic-scroll ic-pad">
-        {missed && <Notice icon="lock" className="ic-missed">Messages sent here before you came aren’t shown. Only people who were here then can read them.</Notice>}
-        {chat.length ? (
-          <div className="ic-chat">
-            {chat.map((c, i) => {
-              const from = who(c.from);
-              const moved = marked && chat[i - 1]?.place !== c.place;
-              const reactions = shown(c);
-              const canReact = ready && !c.sending && c.place === place;
-              return (
-                <Fragment key={c.id}>
-                  {moved && <div className="ic-chatplace"><span className="ac-eyebrow">In {placeName(c.place)}</span></div>}
-                  <motion.div id={`chat-message-${c.id}`} data-chat-message={c.id} tabIndex={-1} className={cn('ic-msg', unreadMentionIds.includes(c.id) && 'has-unread-mention')} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={UI}>
-                    <Avatar person={from} size={28} />
-                    <div>
-                      <div className="meta"><b>{c.isMe ? `${callName(from)} (you)` : callName(from)}</b><span className="ac-time">{clock(c.at)}</span></div><p><MentionText text={c.text} mentions={c.mentions} me={me} /></p>
-                      <Reactions reactions={reactions} onToggle={react(c.id)} canReact={canReact} />
-                    </div>
-                    {canReact && !reactions.length && <div className="ic-msg-acts"><ReactionAdd mine={reactions.filter((r) => r.mine).map((r) => r.name)} onPick={react(c.id)} /></div>}
-                  </motion.div>
-                </Fragment>
-              );
-            })}
-          </div>
-        ) : !missed && (
-          <EmptyState title="No messages yet" className="ic-empty">
-            {here ? `Messages are encrypted end to end. Only people in ${here} can read them.` : 'Messages are encrypted end to end. Only people in the call can read them.'}
-          </EmptyState>
-        )}
-        <div ref={end} />
-      </div>
-      <ChatComposer draft={draft} people={mentionPeople} ready={ready} moving={moving} to={to} onSend={onSend} />
-    </>
-  );
-}
-
 /* ---------- people ---------- */
 
 /**
