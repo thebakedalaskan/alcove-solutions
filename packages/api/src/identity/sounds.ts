@@ -10,6 +10,7 @@ export const SoundPreferencesSchema = z.object({
   hands: z.boolean().default(true),
   questions: z.boolean().default(true),
   messages: z.boolean().default(true),
+  replies: z.boolean().default(true),
   admissions: z.boolean().default(true),
   timers: z.boolean().default(true),
   ringing: z.boolean().default(true)

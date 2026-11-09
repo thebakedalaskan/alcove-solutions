@@ -17,6 +17,7 @@ import { type CallEndResult, type CallState, type CallTicket } from './state';
 import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
 import { CallIdentity } from './wire';
 import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
+import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
 
 /** One selected person in a chat line, at UTF-16 offsets including the @ and their displayed name. */
 export const CallChatMentionSchema = z.object({ identity: CallIdentity, start: z.number().int().nonnegative(), end: z.number().int().positive() });
@@ -26,7 +27,7 @@ export type CallChatMention = z.infer<typeof CallChatMentionSchema>;
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
  * yours that isn't in the log yet, so nobody can react to it.
  */
-export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; at: number; place: string; sending: boolean; reactions: CallChatReaction[] }
+export interface CallChatMessage { id: string; from: string; isMe: boolean; text: string; mentions: CallChatMention[]; thread: CallChatThread | null; at: number; place: string; sending: boolean; failed: boolean; reactions: CallChatReaction[] }
 
 /** The emoji someone can react to a chat message with, by name: the wire never carries a glyph. */
 export const CallReactionSchema = z.enum(['thumbs-up', 'thumbs-down', 'heart', 'smile', 'laugh', 'wow', 'sad', 'party']);
@@ -44,7 +45,7 @@ export const CALL_CHAT_MAX = 4000;
  * Existing encrypted chat has no mentions field and opens with no selected recipients.
  */
 export const CallChatTextSchema = z.object({
-  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), at: z.number()
+  text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), thread: CallChatThreadSchema.nullable().default(null), at: z.number()
 }).refine(({ text, mentions }) => {
   let until = 0;
   for (const m of [...mentions].sort((a, b) => a.start - b.start)) {
@@ -155,7 +156,9 @@ export interface CallSession extends LiveStore<CallState> {
   /** Fetches the call and its MLS log again (other people's chat, notes changes, transcript lines and keys arrive this way), or only what a nudge says changed. */
   refresh(what?: { call: boolean; log: boolean } | undefined): Promise<void>;
   /** Encrypted in this browser for everyone in the group of the part of the call you're in. Nobody who comes later can read it. */
-  sendChat(text: string, mentions?: readonly CallChatMention[]): Promise<void>;
+  sendChat(text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null): Promise<void>;
+  /** Retry the same failed encrypted message in its original conversation, never as a new room message. */
+  retryChat(messageId: string): Promise<void>;
   /** Mark readable chat messages as read for this person's seat, shared with their other clients. */
   readChat(ids: readonly string[]): Promise<void>;
   /**

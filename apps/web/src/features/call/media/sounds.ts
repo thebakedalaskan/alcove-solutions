@@ -1,10 +1,11 @@
 /** Fresh attention events only. Snapshot baselines are reset on join, reconnect, generation and room changes. */
-import type { CallSession, CallState, DirectMessagesState } from '@alcove/api';
+import type { CallSession, CallState, CallCrypto, DirectMessagesState } from '@alcove/api';
 import { useEffect, useRef } from 'react';
 import { playSound, readyAudioOutput, stopSounds } from '~/lib/audio-output';
+import { unreadThreadReplies } from '../session/replyAlerts';
 import { useSoundPreferences } from '~/lib/sound-preferences';
 
-export function useCallSounds({ call, state, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
+export function useCallSounds({ call, state, chat, direct, speakerId, connected, presenting }: { call: CallSession; state: CallState; chat: CallCrypto; direct: DirectMessagesState; speakerId: string | null; connected: boolean; presenting: boolean }) {
   const { prefs, ready } = useSoundPreferences();
   // Presenting comes from actual local screen shares or CallPresent.mine, never inferred from someone else's content.
   const moderatesAttention = state.isHost || presenting;
@@ -16,6 +17,7 @@ export function useCallSounds({ call, state, direct, speakerId, connected, prese
   current.current = { prefs: audiblePrefs, speakerId };
   const baseline = useRef<{ scope: string; latest: number; serverNow: number } | null>(null);
   const privateBaseline = useRef<{ scope: string; ids: Set<string> } | null>(null);
+  const replyBaseline = useRef<{ scope: string; at: number; ids: Set<string> } | null>(null);
   const privateReady = useRef(direct.ready);
   privateReady.current = direct.ready;
   const scope = `${state.callId}:${state.generation}:${state.attention.place}`;
@@ -39,12 +41,22 @@ export function useCallSounds({ call, state, direct, speakerId, connected, prese
     if (!previous || previous.scope !== scope || !connected || !direct.ready || state.phase !== 'in-call') return;
     for (const message of direct.messages) {
       if (message.to !== call.ticket.identity || previous.ids.has(message.id) || state.elapsed - message.at > 5 || message.place !== state.attention.place) continue;
-      playSound({ owner: owner.current, cue: 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
+      playSound({ owner: owner.current, cue: message.thread ? 'reply' : 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
         const current = playback();
         return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && privateReady.current } };
       } });
     }
   }, [direct, connected, scope, state.phase]);
+  useEffect(() => {
+    const ids = new Set(unreadThreadReplies(state, chat, call.ticket.identity));
+    const previous = replyBaseline.current;
+    replyBaseline.current = connected && chat.status === 'in' ? { scope, at: Date.now(), ids: new Set(chat.chat.filter((m) => !m.isMe && !m.sending && !m.failed).map((m) => m.id)) } : null;
+    if (!previous || previous.scope !== scope || Date.now() - previous.at > 12_000 || !connected || chat.status !== 'in') return;
+    for (const message of chat.chat) {
+      if (!ids.has(message.id) || !chat.members.includes(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
+      playSound({ owner: owner.current, cue: 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: playback });
+    }
+  }, [chat, state, connected, scope, call]);
   useEffect(() => {
     const previous = baseline.current;
     const now = Date.parse(state.attention.serverNow);

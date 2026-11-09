@@ -1,4 +1,4 @@
-import { AlcoveApiError, type CallCrypto, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
+import { AlcoveApiError, type CallChatThread, type CallCrypto, type CallState, type CallTicket, type DirectMessagesApi, type DirectMessagesState, type LiveStore } from '@alcove/api';
 import { Pushed } from './live';
 import { nextId } from './state';
 
@@ -23,25 +23,32 @@ export class ScriptedDirectMessages extends Pushed<DirectMessagesState> implemen
     const timer = setTimeout(() => { this.pendingTimers.delete(timer); fn(); }, 500);
     this.pendingTimers.add(timer);
   }
-  send = async (to: string, text: string): Promise<void> => {
+  private hasParent(thread: CallChatThread, peer: string): boolean {
+    const parent = this.getSnapshot().messages.find((m) => m.id === thread.replyTo && m.place === this.crypto.getSnapshot().place && m.generation === this.call.getSnapshot().generation
+      && ((m.from === peer && m.to === this.ticket.identity) || (m.to === peer && m.from === this.ticket.identity)) && (m.state === 'sent' || m.state === 'delivered'));
+    return !!parent && (parent.thread?.root ?? parent.id) === thread.root;
+  }
+  send = async (to: string, text: string, thread: CallChatThread | null = null): Promise<void> => {
     if (!this.getSnapshot().peers.includes(to)) throw new AlcoveApiError('conflict', 'This person is unavailable in this room.');
     const id = nextId('private');
     const c = this.crypto.getSnapshot();
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text, place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
+    if (thread && !this.hasParent(thread, to)) throw new AlcoveApiError('not-found', 'That private conversation isn’t available in this room.');
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from: this.ticket.identity, to, text, thread, place: c.place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'sending', error: null }] }));
     await this.retry(id);
   };
   retry = async (id: string): Promise<void> => {
     const m = this.getSnapshot().messages.find((m) => m.id === id);
     if (!m) return;
-    const failed = this.fail || m.place !== this.crypto.getSnapshot().place || !this.getSnapshot().peers.includes(m.to);
+    const failed = this.fail || m.place !== this.crypto.getSnapshot().place || m.generation !== this.call.getSnapshot().generation || !this.getSnapshot().peers.includes(m.to);
     this.fail = false;
     this.update((s) => ({ ...s, messages: s.messages.map((m) => m.id === id ? { ...m, state: 'sending', error: null } : m) }));
     this.later(() => this.update((s) => ({ ...s, messages: s.messages.map((m) => m.id === id ? { ...m, state: failed ? 'failed' : 'delivered', error: failed ? 'This message wasn’t confirmed. Retry sends it only to the same person.' : null } : m) })));
   };
-  receive(from: string, text: string): void {
+  receive(from: string, text: string, thread: CallChatThread | null = null): void {
     if (!this.getSnapshot().peers.includes(from)) return;
+    if (thread && !this.hasParent(thread, from)) return;
     const id = nextId('private');
-    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text, place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
+    this.update((s) => ({ ...s, messages: [...s.messages, { id, from, to: this.ticket.identity, text, thread, place: this.crypto.getSnapshot().place, generation: this.call.getSnapshot().generation, at: this.call.getSnapshot().elapsed, order: s.messages.length + 1, state: 'delivered', error: null }], unread: [...s.unread, id] }));
   }
   read = (ids: readonly string[]): void => { this.update((s) => ({ ...s, unread: s.unread.filter((id) => !ids.includes(id)) })); };
   override close(): void {

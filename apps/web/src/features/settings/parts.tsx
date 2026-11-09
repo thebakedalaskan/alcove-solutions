@@ -142,14 +142,7 @@ const remindOf = (m: NotificationPrefs['beforeCall']): Remind => (m === 1 ? '1' 
 const minutesOf = (r: Remind): NotificationPrefs['beforeCall'] => (r === '1' ? 1 : r === '5' ? 5 : 0);
 type Alert = Exclude<keyof NotificationPrefs, 'beforeCall'>;
 /** The notifications with one of them turned on or off: they're saved together. */
-const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPrefs => ({
-  beforeCall: n.beforeCall,
-  notesReady: a === 'notesReady' ? on : n.notesReady,
-  sharedWithYou: a === 'sharedWithYou' ? on : n.sharedWithYou,
-  notesRequested: a === 'notesRequested' ? on : n.notesRequested,
-  followUpDue: a === 'followUpDue' ? on : n.followUpDue,
-  tagged: a === 'tagged' ? on : n.tagged
-});
+const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPrefs => ({ ...n, [a]: on });
 
 /** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
 function BrowserNotifications({ permission }: { permission: NotifyPermission }) {
