@@ -12,6 +12,7 @@ rings use the same output and preference gates. Each phrase lasts about 0.3–1.
 | Person joins/leaves | People already in the affected room, from the server's original audience. |
 | Hand raised | The current host and people currently presenting in the same room, within the server-filtered cue audience. Only the host may also hear a hand asking for help from another room. Other peers keep the persistent visual queue. Lowering, clearing and reconnecting do not chime. |
 | New question | The current host or a current presenter, only when already in that question’s permitted room audience. Other peers keep persistent question visuals. Hosting or presenting never grants access to questions outside that audience. Votes, pinning and resolving do not chime. |
+| Private message | Only the intended recipient, for a newly authenticated private envelope. Reconnect history does not chime and no content or sender preview is exposed. The private-message category, master volume and quiet mode apply. |
 | Request to join | The current host, once for that admission request. |
 | Board timer | The browser that saw the timer running, when it expires. |
 | Incoming call | The person being rung, once per ring. |

@@ -175,7 +175,9 @@ export interface StageBoard {
   find: (p: StageParticipant) => PersonMenu['board'];
 }
 
-export function Stage({ staged, frame, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onPeopleMode, onMorePeople, board = null }: {
+export function Stage({ staged, frame, phone, people, waiting, presented, spotlight, view, organizer, together, bar, caption, rooms, onSpotlight, onPin, onSelf, onCustom, volumes, onPeopleMode, onMorePeople, board = null, privatePeers = [], onPrivateMessage }: {
+  privatePeers?: readonly string[] | undefined;
+  onPrivateMessage?: ((identity: string) => void) | undefined;
   /** What it shows (`useStagePlan`). */
   staged: StagePlan;
   /** People working together in the workspace, by connection. */
@@ -417,6 +419,7 @@ export function Stage({ staged, frame, phone, people, waiting, presented, spotli
     const at = g ? g.indexOf(p.id) : -1;
     const spot = spotlight === p.id;
     return {
+      privateMessage: !p.isMe && privatePeers.includes(p.id) && onPrivateMessage ? () => onPrivateMessage(p.id) : undefined,
       pinned: corner ? undefined : { on: pinned.has(p.id), toggle: () => onPin(p) },
       spotlight: organizer ? { on: spot, toggle: () => onSpotlight(spot ? null : p.id) } : undefined,
       ...(g && g.length > 1 ? { earlier: at > 0 ? () => moveBy(p.id, -1) : null, later: at < g.length - 1 ? () => moveBy(p.id, 1) : null } : {}),

@@ -7,11 +7,12 @@ import { useSoundPreferences } from '~/lib/sound-preferences';
 import { readPrefs } from '~/features/call/media/devices';
 import { Setting, SwitchSetting, useSave } from './save';
 
-const categories: readonly { key: keyof Pick<SoundPreferences, 'mic' | 'people' | 'hands' | 'questions' | 'admissions' | 'timers' | 'ringing'>; label: string; cue: SoundCue; help?: string }[] = [
+const categories: readonly { key: keyof Pick<SoundPreferences, 'mic' | 'people' | 'hands' | 'questions' | 'messages' | 'admissions' | 'timers' | 'ringing'>; label: string; cue: SoundCue; help?: string }[] = [
   { key: 'mic', label: 'Microphone on and off', cue: 'mic-on' },
   { key: 'people', label: 'People joining and leaving', cue: 'join' },
   { key: 'hands', label: 'Raised hands', cue: 'hand', help: 'When you host or present. Hosts also hear requests for help from other rooms.' },
   { key: 'questions', label: 'New questions', cue: 'question', help: 'When you host or present, for questions in your room.' },
+  { key: 'messages', label: 'Private messages', cue: 'message', help: 'A quiet cue without message previews.' },
   { key: 'admissions', label: 'Requests to join when I host', cue: 'admission' },
   { key: 'timers', label: 'Board timers', cue: 'timer' },
   { key: 'ringing', label: 'Incoming calls', cue: 'ring' }
@@ -20,6 +21,7 @@ const previews = [
   { value: 'mic-on', label: 'Microphone on' }, { value: 'mic-off', label: 'Microphone off' },
   { value: 'join', label: 'Person joins' }, { value: 'leave', label: 'Person leaves' },
   { value: 'hand', label: 'Raised hand' }, { value: 'question', label: 'New question' },
+  { value: 'message', label: 'Private message' },
   { value: 'admission', label: 'Request to join' }, { value: 'timer', label: 'Board timer' }, { value: 'ring', label: 'Incoming call' }
 ] satisfies { value: SoundCue; label: string }[];
 function SoundPreview({ prefs, speakerId }: { prefs: SoundPreferences; speakerId: string | null }) {

@@ -61,6 +61,7 @@ export { MAX_FOLLOW_UP_PROPOSALS, ACCEPTED_FOLLOW_UP, FollowUpReviewFields, Foll
 export { CallFeedbackKindSchema, CallQuestionStatusSchema, CallHandSchema, CallQuestionSchema, CallFeedbackSchema, CallAttentionCueSchema, CallAttentionSchema, type CallFeedbackKind, type CallQuestionStatus, type CallHand, type CallQuestion, type CallFeedback, type CallAttentionCue, type CallAttention } from './calls/attention';
 
 export { DEFAULT_SOUND_PREFERENCES, type SoundPreferences, SoundPreferencesSchema, SoundReceiptsSchema } from './identity/sounds';
+export { DIRECT_MESSAGE_MAX, DirectPublicKeySchema, DirectKeyAnnouncementSchema, type DirectKeyAnnouncement, DirectTextSchema, DirectSendSchema, type DirectSend, DirectEnvelopeSchema, type DirectEnvelope, DirectSyncSchema, type DirectSync, DirectAckSchema, type DirectMessage, type DirectMessagesState, type DirectMessagesApi } from './calls/direct-messages';
 export * from './identity/attention';
 
 export { CallTimerSegmentSchema, type CallTimerSegment, CallTimerSequenceSchema, type CallTimerSequence, CallTimerSequenceInputSchema, type CallTimerSequenceInput, CallTimerControlSchema, type CallTimerControl, CallTimerPresetInputSchema, type CallTimerPresetInput, CallTimerPresetUpdateSchema, type CallTimerPresetUpdate, CallTimerPresetSchema, type CallTimerPreset, CallTimerCuePreferenceSchema, type CallTimerPresetsApi } from './calls/timers';
