@@ -57,3 +57,10 @@ draft revisions. Its combined tree passes15/15 optimistic flows,7 package typech
 only merge conflict was the timing manifest; both thread-suite entries and the optimistic-suite entry are preserved.
 Once the identical #87 squash lands, record actual main ancestry without changing this reviewed tree; actual-head CI
 remains the final integration gate.
+
+Actual main87 da2cbf9b was verified tree-identical to0558df2b and recorded as ancestry without changing the reviewed source.
+Final review reproduced whole-group sound/notification projection masking another client's confirmed leaves. Commands now
+name those leaves explicitly; grouped dispatch reads a fresh authoritative base and rechecks the actual original session
+before sending the unchanged full wire group. The unsafe optimistic-base variant also reproduced resurrection of a failed
+earlier switch. Both regressions pass with nested repeats and post-read session replacement:19/19 real-client cases, fresh
+7 typechecks,3 builds and all guards. Independent source review covers this final concrete leaf owner before PR release.

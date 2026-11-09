@@ -1,6 +1,6 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
 import type { AgentDecisionInput, AgentTokenInput, CallTimerPresetInput, CallTimerPresetUpdate, DriveExportInput, FollowUpReview } from '@alcove/api';
-import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
+import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionProposal, type ChangeScope, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type PromoteBody, type QuestionPatch, type RingReply, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import { forgetAccount } from '~/features/record/offline';
@@ -15,7 +15,7 @@ import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
-import { answerCallOptions, preferenceOptions, readMeeting, readPreferences, readWorkspaces, readNote, readInbox, refreshChangedNote, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions } from './queryWrites';
+import { answerCallOptions, preferenceOptions, readMeeting, readPreferences, readWorkspaces, readNote, readInbox, refreshChangedNote, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from './queryWrites';
 
 export const qk = {
   drive: ['google-drive'] as const,
@@ -346,7 +346,7 @@ export function useDeleteAccount(onDeleted: () => void) {
 }
 /** Reversible preference fields show at once; the same query owner reconciles serial writes and current reads. */
 export function usePreferences() {
-  return useMutation(preferenceOptions(api, useQueryClient(), qk, (p: Patch<Preferences>) => p));
+  return useMutation(preferenceOptions(api, useQueryClient(), qk, (p: PreferenceChange) => p));
 }
 /** Pinning is a preference change too, in the same ordered queue as Settings and groups. */
 export function usePins() {

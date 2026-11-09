@@ -28,7 +28,7 @@ export function useReplyAlertPreference() {
   const enabled = session.data ? prefs.data?.notifications.replyAlerts ?? true : guest;
   const update = (on: boolean) => {
     if (!ready) return;
-    if (session.data && prefs.data) write.mutate({ notifications: { ...prefs.data.notifications, replyAlerts: on } }, { onError: () => toast('Reply alerts couldn’t be saved.', { icon: 'x' }) });
+    if (session.data && prefs.data) write.mutate({ notifications: { replyAlerts: on } }, { onError: () => toast('Reply alerts couldn’t be saved.', { icon: 'x' }) });
     else {
       setGuest(on);
       try { localStorage.setItem(GUEST, JSON.stringify(on)); dispatchEvent(new Event('alcove-reply-alerts')); }

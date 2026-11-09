@@ -10,6 +10,12 @@ interface AnswerKeys extends AccountKeys { meeting: (id: string) => QueryKey; up
 interface PreferenceKeys extends AccountKeys { prefs: QueryKey }
 interface WorkspaceKeys extends AccountKeys { workspaces: QueryKey }
 interface ActionKeys extends AccountKeys { note: (id: string) => QueryKey; inbox: QueryKey; allSeries: QueryKey }
+/** Controls name their intended leaves; the HTTP boundary still receives complete validated groups. */
+type FlatPreferences = Omit<Preferences, 'sounds' | 'notifications'>;
+export type PreferenceChange = Patch<FlatPreferences> & {
+  sounds?: Partial<Preferences['sounds']> | undefined;
+  notifications?: Partial<Preferences['notifications']> | undefined;
+};
 type Put<T> = (current: T) => T;
 interface Entry<T> { id: number; pending: boolean; put: Put<T>; copy: (current: T, from: T) => T }
 
@@ -63,7 +69,7 @@ class Projection<T> {
   }
 }
 
-interface Account { valid: () => boolean; run: <T>(resource: string, work: () => Promise<T>) => Promise<T> }
+interface Account { valid: () => boolean; check: () => Promise<void>; run: <T>(resource: string, work: () => Promise<T>) => Promise<T> }
 const accounts = new WeakMap<QueryClient, Account>();
 /** A cleared/replaced session query revokes its work even when the same account signs in again. */
 function account(api: AlcoveApi, client: QueryClient, keys: AccountKeys): Account {
@@ -83,7 +89,7 @@ function account(api: AlcoveApi, client: QueryClient, keys: AccountKeys): Accoun
     if (!valid() || now?.ownerId !== session?.ownerId || now?.createdAt !== session?.createdAt) throw refused();
   };
   const tails = new Map<string, Promise<void>>();
-  const owned: Account = { valid, run: async <T,>(resource: string, work: () => Promise<T>): Promise<T> => {
+  const owned: Account = { valid, check, run: async <T,>(resource: string, work: () => Promise<T>): Promise<T> => {
     const before = tails.get(resource);
     let release = () => {};
     const tail = new Promise<void>((resolve) => { release = resolve; });
@@ -123,7 +129,7 @@ interface DecisionInput { noteId: string; decisionId: string; patch: DecisionPat
 function newCommands() {
   return {
     answers: dispatches<AnswerInput, { account: Account; input: AnswerInput }>(),
-    preferences: dispatches<object, { account: Account; fields: Patch<Preferences> }>(),
+    preferences: dispatches<object, { account: Account; fields: PreferenceChange }>(),
     spaces: dispatches<NameInput, { account: Account; input: NameInput }>(),
     actions: dispatches<ActionInput, { owner: Account; input: ActionInput }>(),
     decisions: dispatches<DecisionInput, { owner: Account; input: DecisionInput }>()
@@ -208,18 +214,38 @@ export function answerCallOptions(api: AlcoveApi, client: QueryClient, keys: Ans
 }
 
 /** Each request touches just its explicit fields; later commands always project over older answers. */
-function withFields(p: Preferences, from: Patch<Preferences>, fields: Patch<Preferences>): Preferences {
-  const f = <K extends keyof Preferences>(k: K): Preferences[K] => fields[k] !== undefined ? from[k] ?? p[k] : p[k];
+function withFields(p: Preferences, from: PreferenceChange, fields: PreferenceChange): Preferences {
+  const flatFrom: Patch<FlatPreferences> = from;
+  const flatFields: Patch<FlatPreferences> = fields;
+  const f = <K extends keyof FlatPreferences>(k: K): FlatPreferences[K] => flatFields[k] !== undefined ? flatFrom[k] ?? p[k] : p[k];
+  const sound = <K extends keyof Preferences['sounds']>(k: K): Preferences['sounds'][K] => fields.sounds?.[k] !== undefined ? from.sounds?.[k] ?? p.sounds[k] : p.sounds[k];
+  const notify = <K extends keyof Preferences['notifications']>(k: K): Preferences['notifications'][K] => fields.notifications?.[k] !== undefined ? from.notifications?.[k] ?? p.notifications[k] : p.notifications[k];
   return {
     notesDefault: f('notesDefault'), notesLanguage: f('notesLanguage'), summaryLength: f('summaryLength'), addToCalendar: f('addToCalendar'),
-    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), sounds: f('sounds'), notifications: f('notifications'), pinned: f('pinned'), groups: f('groups')
+    showOtherMeetings: f('showOtherMeetings'), recordOffline: f('recordOffline'), pinned: f('pinned'), groups: f('groups'),
+    sounds: { enabled: sound('enabled'), volume: sound('volume'), quiet: sound('quiet'), mic: sound('mic'), people: sound('people'), hands: sound('hands'), questions: sound('questions'), messages: sound('messages'), replies: sound('replies'), admissions: sound('admissions'), timers: sound('timers'), ringing: sound('ringing') },
+    notifications: { replyAlerts: notify('replyAlerts'), beforeCall: notify('beforeCall'), notesReady: notify('notesReady'), sharedWithYou: notify('sharedWithYou'), notesRequested: notify('notesRequested'), followUpDue: notify('followUpDue'), tagged: notify('tagged') }
   };
 }
-export function preferenceOptions<V extends object>(api: AlcoveApi, client: QueryClient, keys: PreferenceKeys, patch: (v: V) => Patch<Preferences>) {
+export const withPreferenceChange = (current: Preferences, change: PreferenceChange): Preferences => withFields(current, change, change);
+export function preferenceOptions<V extends object>(api: AlcoveApi, client: QueryClient, keys: PreferenceKeys, patch: (v: V) => PreferenceChange) {
   const dispatch = commands(client).preferences;
   return mutationOptions({
     mutationKey: ['prefs', 'write'], ...interactiveWrites,
-    mutationFn: (v: V) => { const { account, fields } = dispatch.take(v); return account.run('preferences', () => api.account.updatePreferences(fields)); },
+    mutationFn: (v: V) => {
+      const { account, fields } = dispatch.take(v);
+      return account.run('preferences', async () => {
+        const { sounds, notifications, ...flat } = fields;
+        if (sounds === undefined && notifications === undefined) return api.account.updatePreferences(flat);
+        // The existing wire replaces whole groups. A failed earlier command must not become their baseline.
+        const current = await api.account.preferences();
+        await account.check();
+        return api.account.updatePreferences({ ...flat,
+          ...(sounds === undefined ? {} : { sounds: { ...current.sounds, ...sounds } }),
+          ...(notifications === undefined ? {} : { notifications: { ...current.notifications, ...notifications } })
+        });
+      });
+    },
     onMutate: async (v) => {
       const owned = preferenceWrite(api, client, keys);
       const fields = structuredClone(patch(v));

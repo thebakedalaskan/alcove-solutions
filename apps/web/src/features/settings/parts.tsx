@@ -141,8 +141,6 @@ type Remind = '1' | '5' | 'off';
 const remindOf = (m: NotificationPrefs['beforeCall']): Remind => (m === 1 ? '1' : m === 5 ? '5' : 'off');
 const minutesOf = (r: Remind): NotificationPrefs['beforeCall'] => (r === '1' ? 1 : r === '5' ? 5 : 0);
 type Alert = Exclude<keyof NotificationPrefs, 'beforeCall'>;
-/** The notifications with one of them turned on or off: they're saved together. */
-const withAlert = (n: NotificationPrefs, a: Alert, on: boolean): NotificationPrefs => ({ ...n, [a]: on });
 
 /** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
 function BrowserNotifications({ permission }: { permission: NotifyPermission }) {
@@ -173,14 +171,14 @@ export function NotificationsPart({ prefs }: { prefs: Preferences }) {
   const off = permission !== 'granted';
   const n = prefs.notifications;
   const alert = (a: Alert, name: string, help?: string | undefined) => (
-    <SwitchSetting label={name} help={help} checked={n[a]} disabled={off} onChange={(on) => save(name, (now) => ({ notifications: withAlert(now.notifications, a, on) }))} />
+    <SwitchSetting label={name} help={help} checked={n[a]} disabled={off} onChange={(on) => save(name, { notifications: { [a]: on } })} />
   );
   return (
     <SettingsPart id="notifications" title="Notifications">
       <BrowserNotifications permission={permission} />
       <Setting wide off={off} label="Before a call starts" help="For calls you organize."
         control={<Segmented<Remind> label="Remind me before a call" value={remindOf(n.beforeCall)} disabled={off}
-          onChange={(r) => save('Before a call starts', (now) => ({ notifications: { ...now.notifications, beforeCall: minutesOf(r) } }))}
+          onChange={(r) => save('Before a call starts', { notifications: { beforeCall: minutesOf(r) } })}
           options={[{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }]} />} />
       {alert('notesReady', 'When notes are ready')}
       {alert('sharedWithYou', 'When someone shares notes with you')}

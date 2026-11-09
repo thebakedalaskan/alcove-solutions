@@ -2,11 +2,12 @@
  * Settings save as each control changes. The change shows at once; once it's kept, the row says Saved for a moment,
  * just left of the control (and screen readers hear it). A change the server refuses goes back, and a toast says why.
  */
-import { errorMessage, type Patch, type Preferences } from '@alcove/api';
+import { errorMessage, type Preferences } from '@alcove/api';
 import { SettingRow, Switch, useToast, type SettingRowProps } from '@alcove/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { q, usePreferences } from '~/lib/queries';
+import { withPreferenceChange, type PreferenceChange } from '~/lib/queryWrites';
 
 const SAVED_MS = 2200;
 
@@ -51,12 +52,12 @@ export function useSave() {
   const write = usePreferences();
   const toast = useToast();
   const { begin, end, rows } = useContext(Saved);
-  return (name: string, change: Patch<Preferences> | ((now: Preferences) => Patch<Preferences>)) => {
+  return (name: string, change: PreferenceChange | ((now: Preferences) => PreferenceChange)) => {
     const now = qc.getQueryData(q.prefs().queryKey);
     if (!now) return;
     const patch = typeof change === 'function' ? change(now) : change;
     // The choice already made, picked again: nothing to save.
-    if (JSON.stringify({ ...now, ...patch }) === JSON.stringify(now) && rows.get(name)?.state !== 'failed') return;
+    if (JSON.stringify(withPreferenceChange(now, patch)) === JSON.stringify(withPreferenceChange(now, {})) && rows.get(name)?.state !== 'failed') return;
     const ticket = begin(name);
     write.mutateAsync(patch).then(() => end(name, ticket, true), (e: unknown) => {
       if (end(name, ticket, false)) toast(errorMessage(e), { icon: 'x' });

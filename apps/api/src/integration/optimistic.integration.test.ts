@@ -2,7 +2,7 @@
 import { errorCode, OPERATION_HEADER, type Inbox, type Meeting, type Note, type Patch, type Preferences, type WorkspaceSummary } from '@alcove/api';
 import { MutationObserver, onlineManager, QueryClient } from '@tanstack/query-core';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { answerCallOptions, interactiveWrites, preferenceOptions, readMeeting, readNote, readPreferences, readWorkspaces, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions } from '../../../web/src/lib/queryWrites';
+import { answerCallOptions, interactiveWrites, preferenceOptions, readMeeting, readNote, readPreferences, readWorkspaces, renameWorkspaceOptions, updateActionOptions, updateDecisionOptions, type PreferenceChange } from '../../../web/src/lib/queryWrites';
 import { TreeChanges } from '../../../web/src/features/workspace/changes';
 import { speechWav } from '../testing/fake-near';
 import { startHarness, type Browser, type Harness } from '../testing/harness';
@@ -22,7 +22,7 @@ const keys = {
   inbox: ['notes', 'inbox'] as const, allSeries: ['series'] as const
 };
 const queryClient = () => new QueryClient({ defaultOptions: { mutations: interactiveWrites, queries: { retry: false } } });
-const patch = (v: Patch<Preferences>) => v;
+const patch = (v: PreferenceChange) => v;
 /** Hold one actual HTTP request or acknowledgement. Other requests and responses still use the real server. */
 function hold(browser: Browser, method: string, ending: string, mode: 'before' | 'dispatch' | 'after' | 'lost') {
   let claimed = false;
@@ -122,6 +122,130 @@ describe('immediate query actions through the real API', () => {
       expect(await browser.api.account.preferences()).toMatchObject({ summaryLength: 'detailed', recordOffline: !initial.recordOffline });
       expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject({ summaryLength: 'detailed', recordOffline: !initial.recordOffline });
     } finally { delayed.release(); await first; client.clear(); }
+  });
+
+  it('preserves another client’s confirmed switches within pending sound and notification groups', async () => {
+    const browser = h.browser();
+    const other = h.browser();
+    const address = email();
+    const signed = await browser.api.auth.signIn('sso', { email: address });
+    await other.api.auth.signIn('sso', { email: address });
+    const initial = await browser.api.account.preferences();
+    const held = hold(browser, 'PATCH', '/account/preferences', 'after');
+    const client = queryClient();
+    client.setQueryData(keys.session, signed.session);
+    client.setQueryData(keys.prefs, initial);
+    const older = new MutationObserver(client, preferenceOptions(held.api, client, keys, patch)).mutate({
+      sounds: { hands: !initial.sounds.hands },
+      notifications: { tagged: !initial.notifications.tagged }
+    });
+    try {
+      await until(held.reached, 'the committed grouped-preference acknowledgement');
+      const current = await other.api.account.preferences();
+      await other.api.account.updatePreferences({
+        sounds: { ...current.sounds, questions: !initial.sounds.questions },
+        notifications: { ...current.notifications, notesReady: !initial.notifications.notesReady }
+      });
+      await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(browser.api, client) });
+      const pending = client.getQueryData<Preferences>(keys.prefs);
+      held.release();
+      await older;
+      const settled = client.getQueryData<Preferences>(keys.prefs);
+      const persisted = await browser.api.account.preferences();
+      expect(persisted).toMatchObject({ sounds: { hands: !initial.sounds.hands, questions: !initial.sounds.questions }, notifications: { tagged: !initial.notifications.tagged, notesReady: !initial.notifications.notesReady } });
+      expect(pending).toMatchObject({ sounds: { questions: !initial.sounds.questions }, notifications: { notesReady: !initial.notifications.notesReady } });
+      expect(settled).toMatchObject({ sounds: { questions: !initial.sounds.questions }, notifications: { notesReady: !initial.notifications.notesReady } });
+    } finally { held.release(); await older; client.clear(); }
+  });
+
+  it('does not resurrect a failed earlier switch when another grouped switch was queued behind it', async () => {
+    const browser = h.browser();
+    const signed = await browser.api.auth.signIn('sso', { email: email() });
+    const initial = await browser.api.account.preferences();
+    const refused = hold(browser, 'PATCH', '/account/preferences', 'before');
+    const client = queryClient();
+    client.setQueryData(keys.session, signed.session);
+    client.setQueryData(keys.prefs, initial);
+    const options = preferenceOptions(refused.api, client, keys, patch);
+    const first = new MutationObserver(client, options).mutate({ sounds: { hands: !initial.sounds.hands }, notifications: { tagged: !initial.notifications.tagged } }).catch(errorCode);
+    let last: Promise<Preferences> | undefined;
+    try {
+      await until(refused.reached, 'the first grouped request before server receipt');
+      last = new MutationObserver(client, options).mutate({ sounds: { questions: !initial.sounds.questions }, notifications: { notesReady: !initial.notifications.notesReady } });
+      await until(() => client.isMutating() === 2 && client.getQueryData<Preferences>(keys.prefs)?.sounds.questions === !initial.sounds.questions, 'the queued independent switches');
+      refused.release();
+      expect(await first).toBe('network');
+      await last;
+      const expected = { sounds: { hands: initial.sounds.hands, questions: !initial.sounds.questions }, notifications: { tagged: initial.notifications.tagged, notesReady: !initial.notifications.notesReady } };
+      expect(await browser.api.account.preferences()).toMatchObject(expected);
+      expect(client.getQueryData<Preferences>(keys.prefs)).toMatchObject(expected);
+    } finally { refused.release(); await first; await last; client.clear(); }
+  });
+
+  it('owns repeated grouped leaves by command identity and keeps another client’s switch through A to B to A', async () => {
+    const browser = h.browser();
+    const other = h.browser();
+    const address = email();
+    const signed = await browser.api.auth.signIn('sso', { email: address });
+    await other.api.auth.signIn('sso', { email: address });
+    const initial = await browser.api.account.preferences();
+    const held = hold(browser, 'PATCH', '/account/preferences', 'lost');
+    const client = queryClient();
+    client.setQueryData(keys.session, signed.session);
+    client.setQueryData(keys.prefs, initial);
+    const options = preferenceOptions(held.api, client, keys, patch);
+    const input: PreferenceChange = { sounds: { hands: !initial.sounds.hands } };
+    const first = new MutationObserver(client, options).mutate(input).catch(errorCode);
+    let middle: Promise<Preferences> | undefined;
+    let last: Promise<Preferences> | undefined;
+    try {
+      await until(held.reached, 'the first committed grouped acknowledgement');
+      if (input.sounds) input.sounds.hands = initial.sounds.hands;
+      middle = new MutationObserver(client, options).mutate(input);
+      await until(() => client.isMutating() === 2 && client.getQueryData<Preferences>(keys.prefs)?.sounds.hands === initial.sounds.hands, 'the repeated middle switch');
+      if (input.sounds) input.sounds.hands = !initial.sounds.hands;
+      last = new MutationObserver(client, options).mutate(input);
+      await until(() => client.isMutating() === 3 && client.getQueryData<Preferences>(keys.prefs)?.sounds.hands === !initial.sounds.hands, 'the repeated last switch');
+      if (input.sounds) input.sounds.hands = initial.sounds.hands;
+      const current = await other.api.account.preferences();
+      await other.api.account.updatePreferences({ sounds: { ...current.sounds, questions: !initial.sounds.questions } });
+      await client.fetchQuery({ queryKey: keys.prefs, queryFn: () => readPreferences(browser.api, client) });
+      expect(client.getQueryData<Preferences>(keys.prefs)?.sounds).toMatchObject({ hands: !initial.sounds.hands, questions: !initial.sounds.questions });
+      held.release();
+      expect(await first).toBe('network');
+      await Promise.all([middle, last]);
+      expect((await browser.api.account.preferences()).sounds).toMatchObject({ hands: !initial.sounds.hands, questions: !initial.sounds.questions });
+      expect(client.getQueryData<Preferences>(keys.prefs)?.sounds).toMatchObject({ hands: !initial.sounds.hands, questions: !initial.sounds.questions });
+    } finally { held.release(); await first; await middle; await last; client.clear(); }
+  });
+
+  it('rechecks the actual original session after grouped materialization and refuses a replacement cookie session', async () => {
+    const browser = h.browser();
+    const address = email();
+    const signed = await browser.api.auth.signIn('sso', { email: address });
+    const initial = await browser.api.account.preferences();
+    let writes = 0;
+    const counted = h.browser({ fetch: (input, init) => {
+      if (init?.method === 'PATCH' && String(input).endsWith('/account/preferences')) writes++;
+      return browser.fetch(input, init);
+    } });
+    const held = hold(counted, 'GET', '/account/preferences', 'after');
+    const client = queryClient();
+    client.setQueryData(keys.session, signed.session);
+    client.setQueryData(keys.prefs, initial);
+    const pending = new MutationObserver(client, preferenceOptions(held.api, client, keys, patch)).mutate({ sounds: { hands: !initial.sounds.hands } }).catch(errorCode);
+    try {
+      await until(held.reached, 'the grouped authoritative read before PATCH');
+      await browser.api.auth.signOut();
+      const replacement = await browser.api.auth.signIn('sso', { email: address });
+      expect(replacement.session.createdAt).not.toBe(signed.session.createdAt);
+      // The local query deliberately still names the old session: only the extra actual-session check can refuse this.
+      held.release();
+      expect(await pending).toBe('forbidden');
+      expect(writes).toBe(0);
+      expect((await browser.api.account.preferences()).sounds).toEqual(initial.sounds);
+      expect(client.getQueryData<Preferences>(keys.prefs)?.sounds).toEqual(initial.sounds);
+    } finally { held.release(); await pending; client.clear(); }
   });
 
   it('rolls two refused preference writes back to confirmed data and permits a deliberate retry', async () => {
