@@ -1,5 +1,5 @@
 /* Query keys, fetchers and mutations. Screens read data through these, never through `api` directly. */
-import type { CallTimerPresetInput, CallTimerPresetUpdate, AgentDecisionInput, AgentTokenInput, FollowUpReview } from '@alcove/api';
+import type { AgentDecisionInput, AgentTokenInput, CallTimerPresetInput, CallTimerPresetUpdate, DriveExportInput, FollowUpReview } from '@alcove/api';
 import { AlcoveApiError, MAX_SORT_STICKIES, MAX_SORT_STICKY, SORT_TOO_FEW, SORT_TOO_MANY, errorCode, type ActionPatch, type ActionProposal, type ChangeScope, type DecisionPatch, type DecisionProposal, type DemoProvider, type DocumentRole, type Group, type PresenterFrameNotes, type InstantCallInput, type ISODate, type ItemInput, type ItemPlace, type LinePatch, type MeetingInput, type MentionBody, type NoteKind, type NotesSetting, type Patch, type PersonalInput, type PersonalNotes, type Preferences, type PromoteBody, type QuestionPatch, type RingReply, type Rsvp, type Series, type ShareTarget, type WorkspaceRole, type WorkspaceSummary } from '@alcove/api';
 import { queryOptions, replaceEqualDeep, useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
@@ -17,6 +17,10 @@ import { weekOn } from './time';
 import { openGoogleSignIn, waitForGoogleReturn } from './googleSignIn';
 
 export const qk = {
+  drive: ['google-drive'] as const,
+  driveFolders: ['google-drive', 'folders'] as const,
+  driveJobs: ['google-drive', 'jobs'] as const,
+  driveNote: (id: string) => ['google-drive', 'note', id] as const,
   timerPresets: ['calls', 'timer-presets'] as const,
   agents: ['agents'] as const,
   agentAuthorization: (id: string, ownerId: string) => ['agent-authorization', id, ownerId] as const,
@@ -96,6 +100,10 @@ export function trustLine(t: Trust | undefined): string {
 }
 
 export const q = {
+  drive: () => queryOptions({ queryKey: qk.drive, queryFn: () => api.drive.get(), retry: false }),
+  driveFolders: () => queryOptions({ queryKey: qk.driveFolders, queryFn: () => api.drive.folders(), staleTime: 0, retry: false }),
+  driveJobs: () => queryOptions({ queryKey: qk.driveJobs, queryFn: () => api.drive.jobs(), refetchInterval: 10_000, retry: false }),
+  driveNote: (id: string) => queryOptions({ queryKey: qk.driveNote(id), queryFn: () => api.drive.forNote(id), refetchInterval: 10_000, retry: false }),
   timerPresets: () => queryOptions({ queryKey: qk.timerPresets, queryFn: () => api.calls.timerPresets.list() }),
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
@@ -825,6 +833,39 @@ export function useRevokeAgent() {
 }
 export function useAgentDecision(requestId: string) {
   return useMutation({ gcTime: 0, mutationFn: (decision: AgentDecisionInput) => api.agents.decide(requestId, decision) });
+}
+
+/** Drive credentials stay on the server; the browser receives only a one-time consent destination. */
+export function useConnectDrive() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.drive.connect() });
+}
+export function usePickDriveFolder() {
+  return useMutation({ gcTime: 0, mutationFn: () => api.drive.pickFolder() });
+}
+export function useDisconnectDrive() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: () => api.drive.disconnect(), onSuccess: async (settings) => {
+    qc.setQueryData(qk.drive, settings);
+    await qc.invalidateQueries({ queryKey: qk.drive });
+  } });
+}
+export function useUpdateDrive() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: DriveExportInput) => api.drive.update(input), onSuccess: async (settings) => {
+    qc.setQueryData(qk.drive, settings);
+    await qc.invalidateQueries({ queryKey: qk.drive });
+  } });
+}
+export function useDriveNote(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (input: DriveExportInput | null) => api.drive.setForNote(noteId, input), onSuccess: async (choice) => {
+    qc.setQueryData(qk.driveNote(noteId), choice);
+    await qc.invalidateQueries({ queryKey: qk.driveJobs });
+  } });
+}
+export function useRetryDriveExport() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.drive.retry(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.drive }) });
 }
 
 /** Reusable timer agendas are owner-scoped; loading one copies its segments into the live call. */

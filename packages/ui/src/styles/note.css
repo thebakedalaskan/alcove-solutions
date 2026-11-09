@@ -672,3 +672,31 @@ button.nd-lt:hover { color: var(--ink); }
   .nd .hm-moment::after { content: ""; position: absolute; inset: -9px -2px; }
   .nd-more.ac-icon-btn::after, .nd-tool.ac-icon-btn::after { content: ""; position: absolute; inset: -6px; }
 }
+
+/* A call's own Drive choice sits with its recipients, using the same export kit as Settings. */
+.nd-drive { padding: 20px 0; border-top: 1px solid var(--line); color: var(--ink); }
+.nd-drive > h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 13px; font: 600 14px/20px var(--font-sans); }
+.nd-drive > h2 .ac-i { color: var(--horizon); }
+.nd-drive-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 10px; font: 400 13px/19px var(--font-sans); }
+.nd-drive-info, .nd-drive-default > p, .nd-drive-refused > p { margin: 0 0 10px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.nd-drive-info a, .nd-drive-default > a { display: inline-flex; align-items: center; gap: 4px; color: var(--horizon); font: 500 13px/20px var(--font-sans); }
+.nd-drive-default { padding-bottom: 14px; }
+.nd-drive-default > a { margin-top: 9px; }
+.nd-drive-custom { padding-bottom: 7px; }
+.nd-drive-custom > .ac-drive-formats { grid-template-columns: minmax(0, 1fr); gap: 5px; margin-top: 10px; }
+.nd-drive-custom .ac-drive-format { padding: 10px; }
+.nd-drive .ac-drive-job { gap: 6px; }
+.nd-drive .ac-drive-job-date { display: none; }
+.nd-drive .ac-drive-job-mark { width: 20px; }
+.nd-drive .ac-drive-empty.ac-empty { padding-inline: 0; }
+.nd-drive .ac-drive-empty.ac-empty p { font-size: 12px; line-height: 18px; }
+.nd-drive-about { margin-top: 10px; }
+.nd-drive-about summary { display: flex; align-items: center; gap: 5px; width: fit-content; list-style: none; cursor: pointer; color: var(--ink-2); font: 400 12px/20px var(--font-sans); }
+.nd-drive-about summary::-webkit-details-marker { display: none; }
+.nd-drive-about[open] summary { margin-bottom: 10px; }
+.nd-drive-about[open] summary .ac-i { transform: rotate(180deg); }
+.nd-drive-about .ac-drive-disclosure { font-size: 12px; line-height: 18px; gap: 7px; }
+.nd-drive-wait { display: flex; align-items: center; gap: 8px; font: 400 13px/20px var(--font-sans); color: var(--ink-2); }
+.nd-drive-refused p { color: var(--caution); }
+
+.nd-drive-saving { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--ink-2); font: 400 12px/18px var(--font-sans); }

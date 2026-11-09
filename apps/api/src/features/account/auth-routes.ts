@@ -32,6 +32,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   });
 
   app.post('/v1/auth/sign-in', async (c) => {
+    deleteCookie(c, secure ? '__Host-alcove_drive' : 'alcove_drive', { path: '/', secure });
     limiter(clientAddress(c), 'sign-in');
     const r = await account.demoSignIn(d, await body(c, SignInBodySchema));
     startSession(c, r.sessionId);
@@ -44,6 +45,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   };
 
   app.get('/v1/auth/google', async (c) => {
+    deleteCookie(c, secure ? '__Host-alcove_drive' : 'alcove_drive', { path: '/', secure });
     const parsedPopup = GoogleSignInPopupIdSchema.safeParse(c.req.query('popup'));
     const popup = parsedPopup.success ? parsedPopup.data : undefined;
     if (!allowed(c)) return c.redirect(backToWelcome('busy', popup), 302);

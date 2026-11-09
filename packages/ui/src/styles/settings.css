@@ -299,3 +299,36 @@
 /* Playback volume keeps the same focused control in Settings and the call sound sheet. */
 .set-sound-volume { accent-color: var(--sun); width: min(180px, 100%); min-width: 90px; }
 .set-sound-volume:focus-visible { outline: 2px solid var(--horizon); outline-offset: 4px; border-radius: var(--radius-sm); }
+
+.set-drive-destination { display: flex; justify-content: space-between; align-items: center; width: 100%; min-width: 0; gap: 12px; padding: 9px 11px; border: 1px solid var(--line-control); border-radius: var(--radius-md); background: transparent; color: var(--ink); cursor: pointer; }
+.set-drive-destination:hover { background: var(--surface-raised); }
+.set-drive-destination:disabled { opacity: .5; cursor: default; }
+.set-drive-destination:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.set-drive-change { font: 500 13px/20px var(--font-sans); color: var(--horizon); flex: none; }
+.set-drive-formats-row { padding-bottom: 12px; }
+.set-part > .ac-drive-formats { margin-bottom: 10px; }
+.set-drive-disclosure { margin-top: 15px; }
+.set-drive-history { margin-top: 28px; }
+.set-drive-history h3 { margin: 0 0 9px; font: 600 14px/20px var(--font-sans); color: var(--ink); }
+.set-drive-wait { display: flex; align-items: center; justify-content: center; gap: 9px; padding: 25px 12px; font: 400 14px/20px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker.ac-modal { width: min(560px, calc(100vw - 32px)); padding: 0; overflow: hidden; }
+.set-drive-picker-head { display: flex; align-items: center; gap: 12px; padding: 24px 24px 18px; }
+.set-drive-picker-head > div { flex: 1; min-width: 0; }
+.set-drive-picker-head h2 { margin: 0; font: 600 18px/25px var(--font-sans); color: var(--ink); }
+.set-drive-picker-head p { margin: 4px 0 0; font: 400 13px/19px var(--font-sans); color: var(--ink-2); }
+.set-drive-picker-icon { display: grid; place-items: center; width: 44px; height: 44px; flex: none; background: var(--horizon-soft); border-radius: var(--radius-lg); color: var(--horizon); }
+.set-drive-folders { max-height: min(420px, 48vh); overflow: auto; padding: 0 24px; }
+.set-drive-folders ul { padding: 0; margin: 0; list-style: none; }
+.set-drive-folder { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 2px; border: 0; border-top: 1px solid var(--line); color: var(--ink-2); background: transparent; text-align: left; cursor: pointer; }
+.set-drive-folder > .ac-drive-location { flex: 1; }
+.set-drive-folder:hover { color: var(--horizon); }
+.set-drive-folder:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius-sm); }
+.set-drive-folder:disabled { opacity: .5; cursor: default; }
+.set-drive-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px 24px; border-top: 1px solid var(--line); }
+.set-drive-picker-foot p { margin: 0; font: 400 12px/18px var(--font-sans); color: var(--ink-2); text-wrap: pretty; }
+.set-drive-picker-foot .ac-btn { flex: none; }
+.set-drive-problem { display: flex; align-items: start; gap: 7px; padding: 10px 24px; color: var(--caution); font: 400 13px/20px var(--font-sans); }
+.set-drive-problem .ac-i { flex: none; margin-top: 2px; }
+@media (max-width: 620px) { .set-drive-picker-head { padding: 20px 18px 16px; gap: 9px; } .set-drive-folders { padding-inline: 18px; } .set-drive-picker-foot { padding: 16px 18px 20px; flex-wrap: wrap; } .set-drive-picker-foot .ac-btn { width: 100%; } }
+
+.set-drive-history-help { margin: 0 0 12px; color: var(--ink-2); font: 400 13px/20px var(--font-sans); text-wrap: pretty; }

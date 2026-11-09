@@ -27,6 +27,7 @@ import { sweep as sweepRings } from './features/calls/rings';
 import { sweepMentions } from './features/workspaces/mentions';
 import { sweepSeats, sweepTrash } from './features/workspaces/service';
 import { work } from './features/notes/writer';
+import { work as exportToDrive } from './features/notes/drive-worker';
 import { sweepSessions } from './sessions';
 
 const mlog = log.child({ component: 'maintenance' });
@@ -55,6 +56,7 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   }
   const notes = await work(d);
   const calls = await reconcile(d);
+  const driveExports = await exportToDrive(d);
   const moves = await sweepMoves(d);
   const rings = await sweepRings(d);
   const liveNotes = await sweepLiveNotes(d);
@@ -66,5 +68,5 @@ export async function maintain(d: Deps, opts: { orphanAgeMs?: number; trashAgeMs
   const uploads = await quietly('uploads', () => sweepUploads(d, opts.uploadAgeMs, started));
   const uploadDays = await quietly('upload days', () => pruneUploadDays(d));
   const mentions = await quietly('mentions', () => sweepMentions(d));
-  return { sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
+  return { driveExports, sessions, agents, receipts, retried, orphans, notes, calls, moves, rings, liveNotes, attention, trash, seats, uploads, uploadDays, mentions };
 }

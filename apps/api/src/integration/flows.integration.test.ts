@@ -426,7 +426,15 @@ describe('signing in with Google', () => {
       scope: 'openid email profile https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.events.freebusy', access_type: 'offline', code_challenge_method: 'S256'
     });
     for (const k of ['state', 'nonce', 'code_challenge']) expect(to.searchParams.get(k)).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(start.headers.get('set-cookie')).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    const cookies = start.headers.getSetCookie();
+    const googleAttempt = cookies.find((header) => header.startsWith('__Host-alcove_google='));
+    if (!googleAttempt) throw new Error('Google sign-in did not set its attempt cookie.');
+    expect(googleAttempt).toMatch(/^__Host-alcove_google=[^;]+;.*HttpOnly.*SameSite=Lax/i);
+    expect(cookieAttributes(googleAttempt)).toMatchObject({ secure: true, httpOnly: true, pathRoot: true, removed: false });
+    // Starting a sign-in cancels a pending Drive consent before another Alcove account can use this browser.
+    const clearedDriveAttempt = cookies.find((header) => header.startsWith('__Host-alcove_drive='));
+    if (!clearedDriveAttempt) throw new Error('Google sign-in did not clear pending Drive consent.');
+    expect(cookieAttributes(clearedDriveAttempt)).toMatchObject({ secure: true, pathRoot: true, removed: true });
 
     // Someone invites Bram to a call with notes before they've ever used Alcove.
     const bram: GoogleUser = { sub: '104412233445566778899', email: 'Bram.Kay@Example.com', name: 'Bram Kay', picture: `${h.google.issuer}/photo/bram-1` };
@@ -2839,6 +2847,7 @@ describe('deleting an account', () => {
     // scheduled, on her calendar; her own pins and a group.
     const ended = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [guest.session.user.email] })).code, { mic: true, cam: false });
     await ended.appendAudio(piece(audioBytes('leaving-call'), 0, 0));
+    await ended.transcribe(speech('We agreed to send the checklist on Friday.', 0, 0), ended.ticket.identity);
     const callNote = (await ended.leave())?.pendingNoteId ?? '';
     await written(b.api, callNote);
     await guest.api.account.updatePreferences({ pinned: [callNote] });
@@ -2898,11 +2907,22 @@ describe('deleting an account', () => {
 
     // Her named agent goes with the account, too, including its hashed credential.
     await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    // Her independent Drive credentials, explicit call choice and queued export go with her as well.
+    const driveFolder = `leaving_${ownerId}`;
+    h.google.drive.folder(lena.sub, { id: driveFolder, name: 'Leaving call exports' });
+    h.google.drive.pick(lena.sub, driveFolder);
+    h.google.next(lena);
+    const driveConsent = await fetch((await b.api.drive.connect()).url, { redirect: 'manual' });
+    const driveCallback = driveConsent.headers.get('location');
+    if (!driveCallback) throw new Error('Drive consent did not return to Alcove.');
+    await b.fetch(driveCallback, { redirect: 'manual' });
+    await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     await b.api.calls.timerPresets.create({ name: 'Lena’s agenda', segments: [{ id: 'opening', label: 'Opening', durationSeconds: 60, presenter: null }] });
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);

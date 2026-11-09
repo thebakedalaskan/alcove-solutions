@@ -25,6 +25,7 @@ import type { HttpRuntime } from './runtime';
  */
 // Timer presets keep no receipt: deleting one must remove every stored copy of its names and segments.
 const NO_RECEIPT = [
+  /^\/v1\/drive(?:\/.*)?$/,
   /^\/v1\/timer-presets(?:\/[^/]+)?$/,
   /^\/v1\/agents\/tokens$/, /^\/v1\/agents\/authorization\/[^/]+$/,
   /^\/v1\/calendar\/busy$/,
