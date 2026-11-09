@@ -1,13 +1,13 @@
 import {
   AlcoveApiError, DirectTextSchema, type DirectEnvelope, type DirectKeyAnnouncement, type DirectMessage,
-  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, type CallChatThread, errorCode, fromBase64Url
+  type DirectMessagesApi, type DirectMessagesState, type DirectSend, type DirectSync, type CallChatThread, type CallChatMention, errorCode, fromBase64Url
 } from '@alcove/api';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box } from '../transport/live';
 
 export interface DirectTransport { sync(ids: string[], after: number): Promise<DirectSync>; send(body: DirectSend): Promise<DirectEnvelope> }
 interface Context { generation: number; place: string; members: string[]; ready: boolean }
-const EMPTY: DirectMessagesState = { ready: false, peers: [], messages: [], unread: [] };
+const EMPTY: DirectMessagesState = { ready: false, peers: [], messages: [], unread: [], unreadMentions: [] };
 const utf8 = new TextEncoder();
 /** The two original connections and both authenticated public keys are part of the AEAD domain. */
 const bound = (call: string, m: Pick<DirectEnvelope, 'id' | 'from' | 'to' | 'generation' | 'place' | 'fromKey' | 'toKey'>) =>
@@ -45,6 +45,13 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
     super(EMPTY);
     this.keys = crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
     this.publicKey = this.keys.then(async (keys) => b64u(new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey))));
+  }
+  override set(next: DirectMessagesState): void {
+    const unread = new Set(next.unread);
+    const peers = new Set(next.peers);
+    const unreadMentions = next.ready ? next.messages.filter((message) => message.to === this.identity && message.state === 'delivered' && unread.has(message.id)
+      && message.place === this.context.place && message.generation === this.context.generation && peers.has(message.from) && message.mentions.some((mention) => mention.identity === this.identity)).map((message) => message.id) : [];
+    super.set({ ...next, unreadMentions });
   }
   contextChanged(next: Context): void {
     const changed = next.generation !== this.context.generation || next.place !== this.context.place;
@@ -93,9 +100,11 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
       return await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: new Uint8Array(aad) }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
     } finally { secret.fill(0); }
   }
-  send = async (to: string, text: string, thread: CallChatThread | null = null): Promise<void> => {
-    const parsed = DirectTextSchema.safeParse({ text, thread });
+  send = async (to: string, text: string, mentions: readonly CallChatMention[] = [], thread: CallChatThread | null = null): Promise<void> => {
+    const leading = text.length - text.trimStart().length;
+    const parsed = DirectTextSchema.safeParse({ text: text.trim(), thread, mentions: mentions.map((mention) => ({ ...mention, start: mention.start - leading, end: mention.end - leading })) });
     if (!parsed.success) throw new AlcoveApiError('invalid', 'Write a message of up to 4,000 characters.');
+    if (parsed.data.mentions.some((mention) => mention.identity !== this.identity && mention.identity !== to)) throw new AlcoveApiError('invalid', 'Only the two people in this private conversation can be mentioned.');
     const toKey = this.trusted.get(to);
     if (!this.getSnapshot().ready || !this.getSnapshot().peers.includes(to) || !toKey) throw new AlcoveApiError('conflict', 'This person is unavailable in this room.');
     const sendScope = { scope: this.scopeRevision, peer: this.peerRevisions.get(to) ?? 0 };
@@ -110,7 +119,7 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
     if (this.closed) return;
     this.envelopes.set(id, { ...base, nonce: b64u(nonce), ciphertext });
     this.sendScopes.set(id, sendScope);
-    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { ...base, from: this.identity, text: parsed.data.text, thread: parsed.data.thread, at: 0, order: 0, state: 'sending', error: null }] });
+    this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, { ...base, from: this.identity, text: parsed.data.text, thread: parsed.data.thread, mentions: parsed.data.mentions, at: 0, order: 0, state: 'sending', error: null }] });
     await this.retry(id);
   };
   retry = async (id: string): Promise<void> => {
@@ -175,8 +184,9 @@ export class DirectMessages extends Box<DirectMessagesState> implements DirectMe
             const payload = DirectTextSchema.safeParse(raw);
             if (this.closed || scope !== this.context) return;
             if (!payload.success) { this.refused('ciphertext'); continue; }
+            if (payload.data.mentions.some((mention) => mention.identity !== envelope.from && mention.identity !== envelope.to)) { this.refused('binding'); continue; }
             if (payload.data.thread && !availableParent(this.getSnapshot().messages, payload.data.thread, envelope)) { this.refused('binding'); continue; }
-            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.data.text, thread: payload.data.thread, at: envelope.at, order: envelope.order, state: 'delivered', error: null };
+            const message: DirectMessage = { id: envelope.id, from: envelope.from, to: envelope.to, place: envelope.place, generation: envelope.generation, text: payload.data.text, thread: payload.data.thread, mentions: payload.data.mentions, at: envelope.at, order: envelope.order, state: 'delivered', error: null };
             this.set({ ...this.getSnapshot(), messages: [...this.getSnapshot().messages, message].sort((a, b) => a.order - b.order), unread: this.readIds.has(message.id) ? this.getSnapshot().unread : [...this.getSnapshot().unread, message.id] });
           } catch { this.refused('ciphertext'); }
         }

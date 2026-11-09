@@ -4,13 +4,14 @@ import { type LiveStore } from '../shared/live';
 import { CallIdentity } from './wire';
 import { CallPlaceSchema } from './state';
 import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
+import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
 
 /** Uncompressed P-256 public key. Private keys never leave the active browser session. */
 export const DirectPublicKeySchema = z.string().regex(/^B[A-Za-z0-9_-]{86}$/);
 export const DirectKeyAnnouncementSchema = z.object({ key: DirectPublicKeySchema, generation: z.number().int().nonnegative(), place: CallPlaceSchema });
 export type DirectKeyAnnouncement = z.infer<typeof DirectKeyAnnouncementSchema>;
 export const DIRECT_MESSAGE_MAX = 4000;
-export const DirectTextSchema = z.object({ text: z.string().trim().min(1).max(DIRECT_MESSAGE_MAX), thread: CallChatThreadSchema.nullable().default(null) });
+export const DirectTextSchema = z.object({ text: z.string().trim().min(1).max(DIRECT_MESSAGE_MAX), thread: CallChatThreadSchema.nullable().default(null), mentions: z.array(CallChatMentionSchema).max(50).default([]) }).refine(validChatMentions, 'Chat mentions must mark separate names in the message.');
 export const DirectSendSchema = z.object({
   id: IDSchema, to: CallIdentity, place: CallPlaceSchema, generation: z.number().int().nonnegative(),
   fromKey: DirectPublicKeySchema, toKey: DirectPublicKeySchema,
@@ -26,11 +27,12 @@ export interface DirectMessage {
   id: string; from: string; to: string; place: string; generation: number; text: string; at: number; order: number;
   state: 'sending' | 'sent' | 'delivered' | 'failed'; error: string | null;
   thread: CallChatThread | null;
+  mentions: CallChatMention[];
 }
-export interface DirectMessagesState { ready: boolean; peers: string[]; messages: DirectMessage[]; unread: string[] }
+export interface DirectMessagesState { ready: boolean; peers: string[]; messages: DirectMessage[]; unread: string[]; unreadMentions: string[] }
 export interface DirectMessagesApi extends LiveStore<DirectMessagesState> {
   /** An exact current connection, never a display name or a replacement participant. */
-  send(to: string, text: string, thread?: CallChatThread | null): Promise<void>;
+  send(to: string, text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null): Promise<void>;
   /** Reuses the original envelope and ID. It never changes its audience. */
   retry(id: string): Promise<void>;
   read(ids: readonly string[]): void;

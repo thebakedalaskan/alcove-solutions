@@ -15,13 +15,10 @@ import { type CallAnswer, type CallMoment, type CatchUp, type CatchUpRange, type
 import { type CallMoveOut, type MoveMedia } from './moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
 import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
-import { CallIdentity } from './wire';
+import { CallChatMentionSchema, validChatMentions, type CallChatMention } from './chat-mentions';
 import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
 import { CallChatThreadSchema, type CallChatThread } from './chat-threads';
 
-/** One selected person in a chat line, at UTF-16 offsets including the @ and their displayed name. */
-export const CallChatMentionSchema = z.object({ identity: CallIdentity, start: z.number().int().nonnegative(), end: z.number().int().positive() });
-export type CallChatMention = z.infer<typeof CallChatMentionSchema>;
 /**
  * A chat message, decrypted in this browser. `from` is the sender's identity, as MLS vouches for it; `place` is the
  * part of the call it was sent in (`main`, or a breakout room's ID), whose group alone could read it. `sending`: one of
@@ -46,14 +43,7 @@ export const CALL_CHAT_MAX = 4000;
  */
 export const CallChatTextSchema = z.object({
   text: z.string().min(1).max(CALL_CHAT_MAX), mentions: z.array(CallChatMentionSchema).max(50).default([]), thread: CallChatThreadSchema.nullable().default(null), at: z.number()
-}).refine(({ text, mentions }) => {
-  let until = 0;
-  for (const m of [...mentions].sort((a, b) => a.start - b.start)) {
-    if (m.start < until || m.end <= m.start + 1 || m.end > text.length || text[m.start] !== '@' || /\s$/u.test(text.slice(m.start, m.end))) return false;
-    until = m.end;
-  }
-  return true;
-}, 'Chat mentions must mark separate names in the message.');
+}).refine(validChatMentions, 'Chat mentions must mark separate names in the message.');
 
 /** The application payload, parsed only after authenticated decryption. */
 export const CallChatPayloadSchema = z.union([

@@ -152,7 +152,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
       const from = this.find(message.from);
       const parent = message.replyTo ? this.direct.getSnapshot().messages.find((m) => m.text === message.replyTo) : null;
       if (message.replyTo && !parent) return;
-      if (from) this.direct.receive(from.id, message.text, parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null);
+      if (from) this.direct.receive(from.id, message.text, [], parent ? { root: parent.thread?.root ?? parent.id, replyTo: parent.id } : null);
     });
     // You come in after them, unless you organized it (or you're asking to be let in).
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
