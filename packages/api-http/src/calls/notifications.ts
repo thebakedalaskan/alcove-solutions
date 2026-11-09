@@ -58,6 +58,8 @@ export class CallNotifications extends Box<CallNotificationState> {
     }
     const following = new Set(crypt.chat.filter((message) => message.from === this.identity && !message.sending && !message.failed && message.place === crypt.place).map((message) => message.thread?.root ?? message.id));
     const direct = this.direct.getSnapshot();
+    const unreadPrivate = new Set(direct.unread);
+    const privatePeers = new Set(direct.peers);
     if (!direct.ready) { this.privateAuthorized = false; this.freshPrivate.clear(); }
     // Observe every confirmed incoming ID before relevance/preferences can change. Joining a thread cannot create a fresh reply.
     for (const message of crypt.chat) if (!message.sending && !message.failed && !message.isMe && message.place === crypt.place) {
@@ -74,7 +76,7 @@ export class CallNotifications extends Box<CallNotificationState> {
       if (!this.observed.has(id)) {
         const at = Date.parse(state.startedAt) + message.at * 1000;
         this.observed.set(id, at);
-        if (this.baseline && this.privateAuthorized && now - at <= FRESH_MS && direct.unread.includes(message.id) && direct.peers.includes(message.from)) this.freshPrivate.add(message.id);
+        if (this.baseline && this.privateAuthorized && now - at <= FRESH_MS && unreadPrivate.has(message.id) && privatePeers.has(message.from)) this.freshPrivate.add(message.id);
       }
     }
     this.baseline = true;
@@ -105,7 +107,7 @@ export class CallNotifications extends Box<CallNotificationState> {
     }
     if (direct.ready) for (const message of direct.messages) {
       if (message.to !== this.identity || message.from === this.identity || message.place !== crypt.place || message.generation !== state.generation
-        || !direct.unread.includes(message.id) || !direct.peers.includes(message.from)) { this.freshPrivate.delete(message.id); continue; }
+        || !unreadPrivate.has(message.id) || !privatePeers.has(message.from)) { this.freshPrivate.delete(message.id); continue; }
       put('privateMessages', { type: 'private', peer: message.from, message: message.id, root: message.thread?.root ?? null }, `private:${message.id}`, Date.parse(state.startedAt) + message.at * 1000, Date.parse(state.startedAt) + message.at * 1000 + FRESH_MS, this.freshPrivate.has(message.id));
     }
     const unread = new Set(state.chatRead);

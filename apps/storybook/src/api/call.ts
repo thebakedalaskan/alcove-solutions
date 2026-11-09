@@ -117,7 +117,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   constructor(private readonly meeting: Meeting, arrival: Arrival) {
     const script = scriptFor(meeting.code) ?? defaultScript(meeting);
-    const callId = `${nextId('call')}-${crypto.randomUUID()}`;
+    const callId = script.notificationId ?? `${nextId('call')}-${crypto.randomUUID()}`;
     const noteId = nextId('note');
     const since = script.since ?? 0;
     const startedAt = new Date(Date.now() - since * 1000).toISOString();

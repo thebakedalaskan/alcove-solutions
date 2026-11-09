@@ -5,7 +5,7 @@
  * of these reach.
  */
 import {
-  DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
+  ISODateSchema, DriveExportChoiceSchema, DriveExportJobSchema, DriveFolderSchema, DriveSettingsSchema, FILE_TYPE, CalendarSchema, CreditBalanceSchema, DocumentLibrarySchema, IncomingRingSchema, MeetingSchema, NoteSchema, PersonalEntrySchema, PreferencesSchema,
   MentionNoticeSchema, SessionSchema, ShareEntrySchema, TeamSchema, WorkspaceMediaSchema, WorkspaceSummarySchema, WorkspaceTreeSchema, type DocumentLibrary, type DocumentRole,
   type Group, type ItemCall, type MentionNotice, type NoteRoom, type NoteWorkedOn, type Person, type ShareEntry, type WorkspaceItem, type WorkspaceRole
 } from '@alcove/api';
@@ -452,7 +452,7 @@ const THEME = 'alcove-theme';
 /** What this browser remembers, as the scenario has it: nothing else from an earlier story (but the theme the toolbar chose). */
 function remember(o: Opening, w: World): void {
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith('alcove') && k !== THEME && k !== 'alcove:log') localStorage.removeItem(k);
+    if (!o.browser.sharedNotificationBrowser) for (const k of Object.keys(localStorage)) if (k.startsWith('alcove') && k !== THEME && k !== 'alcove:log') localStorage.removeItem(k);
     sessionStorage.clear();
     const owner = w.session?.ownerId ?? ME_ID;
     if (o.tourSeen) localStorage.setItem(`alcove.tour.${owner}`, JSON.stringify({ seenAt: iso(-30, 9, 0) }));
@@ -481,7 +481,19 @@ export function begin(name: ScenarioName, over: Partial<Opening> = {}): Scenario
   forgetKeptHere();
   const { world, opening } = SCENARIOS[name].make();
   const o: Opening = { ...QUIET, ...opening, ...over, browser: { ...opening.browser, ...over.browser } };
-  setClock(o.now);
+  if (o.browser.sharedNotificationBrowser) {
+    // A real browser shares one wall clock. These explicit two-tab scenes must share their demo-clock anchor too.
+    const wall = performance.timeOrigin + performance.now();
+    let anchor = wall;
+    try {
+      const raw = localStorage.getItem('alcove.storybook.notification-clock');
+      const stored = ISODateSchema.safeParse(raw);
+      const previous = stored.success ? Date.parse(stored.data) : NaN;
+      if (Number.isFinite(previous) && wall >= previous && wall - previous < 3_600_000) anchor = previous;
+      else localStorage.setItem('alcove.storybook.notification-clock', new Date(wall).toISOString());
+    } catch { /* Native delivery still works; this scene needs writable storage to coordinate two tabs. */ }
+    setClock(new Date(o.now.getTime() + wall - anchor));
+  } else setClock(o.now);
   openBrowser(o.browser);
   remember(o, world);
   serve(checked(world), o);

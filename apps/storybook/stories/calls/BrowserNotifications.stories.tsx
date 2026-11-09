@@ -48,3 +48,8 @@ export const UnsupportedPhone = phone(Unsupported);
 export const DeliveryRefused = preview({ parameters: { opening: { browser: { notifications: 'granted', notificationTransport: 'failed' } } }, play: async (c) => { await Enabled.play?.(c); } });
 /** Real browser permission and OS delivery. Enable explicitly, then switch tabs before the scripted activity starts. */
 export const NativeBrowser = preview({ render: ({ path }) => <><App key={path} path={path} /><NotificationReport /></>, parameters: { opening: { browser: { notificationTransport: 'native' } } }, play: controls });
+
+/** Open this same scene in two tabs. It shares only opaque browser state and stable scripted event IDs, never real media. */
+export const NativeTwoTabs = inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { ...script, notificationId: 'storybook-notification-two-tabs-v2' },
+  then: () => { const world = current(); world.prefs.notifications = { ...world.prefs.notifications, enabled: false, privateMessages: true, replies: true, chatMentions: true, hands: true, questions: true, admissions: true, timers: true }; }
+}, { render: ({ path }) => <><App key={path} path={path} /><NotificationReport /></>, parameters: { opening: { browser: { notificationTransport: 'native', sharedNotificationBrowser: true } } }, play: controls });

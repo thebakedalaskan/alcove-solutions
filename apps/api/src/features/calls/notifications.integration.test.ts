@@ -199,7 +199,7 @@ describe('authorized browser notification candidates', () => {
     const host = await organizer.api.calls.join(code, { cam: false, mic: false });
     const first = await north.api.calls.join(code, { cam: false, mic: false });
     const second = await south.api.calls.join(code, { cam: false, mic: false });
-    await until(() => first.direct.getSnapshot().peers.includes(second.ticket.identity), 'original audience');
+    await until(() => first.direct.getSnapshot().ready && second.direct.getSnapshot().ready && first.direct.getSnapshot().peers.includes(second.ticket.identity) && second.direct.getSnapshot().peers.includes(first.ticket.identity), 'both original authenticated peers');
     await second.direct.send(first.ticket.identity, 'CANARY-PRIVATE-OLD-ROOM');
     await until(() => candidates(first).some((candidate) => candidate.category === 'privateMessages'), 'original private unread');
     host.openRooms({ rooms: [{ name: 'North', emails: [a.session.user.email] }, { name: 'South', emails: [b.session.user.email] }], minutes: 10, board: { mode: 'none', template: 'blank' } });

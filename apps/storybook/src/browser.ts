@@ -22,10 +22,12 @@ export interface BrowserSetup {
   answer: NotificationPermission;
   /** Native permission/OS checks are explicit stories; all camera/microphone tracks stay synthetic. */
   notificationTransport: 'scripted' | 'native' | 'unsupported' | 'failed';
+  /** Only the explicit two-tab scene shares opaque receipt/revocation/presence state between its windows. */
+  sharedNotificationBrowser: boolean;
   /** Native floating windows by default; failure stories never open a window. */
   floatingWindow: 'native' | 'unsupported' | 'blocked';
 }
-export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted', notificationTransport: 'scripted', floatingWindow: 'native' };
+export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted', notificationTransport: 'scripted', sharedNotificationBrowser: false, floatingWindow: 'native' };
 
 const state: BrowserSetup = { ...DEFAULT_BROWSER };
 const NativeNotification = window.Notification;
