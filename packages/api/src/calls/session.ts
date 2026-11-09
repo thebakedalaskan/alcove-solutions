@@ -17,6 +17,7 @@ import { type CallMoveOut, type MoveMedia } from './moves';
 import { type CallEndResult, type CallState, type CallTicket } from './state';
 import { type CallFollowUps, type CallWorkspaceSwitch, type DocFollowUpTick, type PresentStart } from './workspace';
 import { CallIdentity } from './wire';
+import { DirectKeyAnnouncementSchema, type DirectMessagesApi } from './direct-messages';
 
 /** One selected person in a chat line, at UTF-16 offsets including the @ and their displayed name. */
 export const CallChatMentionSchema = z.object({ identity: CallIdentity, start: z.number().int().nonnegative(), end: z.number().int().positive() });
@@ -56,6 +57,7 @@ export const CallChatTextSchema = z.object({
 
 /** The application payload, parsed only after authenticated decryption. */
 export const CallChatPayloadSchema = z.union([
+  z.object({ directKey: DirectKeyAnnouncementSchema, at: z.number() }),
   CallChatTextSchema,
   z.object({ react: z.object({ target: z.string().min(1).max(64), reaction: CallReactionSchema, on: z.boolean() }), at: z.number() })
 ]);
@@ -138,6 +140,8 @@ export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; min
 export interface CallSession extends LiveStore<CallState> {
   /** Content-free candidates from this exact connection’s current authorized snapshots. */
   readonly notifications: CallNotificationsApi;
+  /** Recipient-only encrypted messages, kept apart from room chat and every shared capture surface. */
+  readonly direct: DirectMessagesApi;
   setTimerSequence(input: CallTimerSequenceInput): Promise<void>;
   controlTimer(input: CallTimerControl): Promise<void>;
   /** Who you are in the call, and this person's pass for the call's requests. */

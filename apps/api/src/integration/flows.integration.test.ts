@@ -2877,6 +2877,11 @@ describe('deleting an account', () => {
     // A chat line in it goes into the call's end-to-end encrypted log, and its LiveKit room is open.
     await until(async () => live.crypto.getSnapshot().status === 'in', 'her browser to be in the call’s group');
     await live.sendChat('Still here.');
+    const privateGuest = await h.browser().api.calls.join(live.getSnapshot().code, { mic: false, cam: false, name: 'Mara' });
+    await settle(live, (s) => s.waiting.some((p) => p.id === privateGuest.ticket.identity));
+    await live.admit(privateGuest.ticket.identity);
+    await until(async () => live.direct.getSnapshot().peers.includes(privateGuest.ticket.identity), 'the private guest’s authenticated key');
+    await live.direct.send(privateGuest.ticket.identity, 'Keep the checklist between us.');
     expect((await h.deps.livekit.existingRooms([live.ticket.roomName])).size).toBe(1);
     // She's moving that call to her phone, whose link nobody has opened yet, and ringing Kofi into it.
     const moving = await live.startMove({ mic: true, cam: false });
@@ -2922,7 +2927,7 @@ describe('deleting an account', () => {
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_private_messages', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'timer_presets', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);
@@ -3251,6 +3256,11 @@ describe('privacy at rest', () => {
     await invitee.api.auth.signIn('sso', { email: scribeEmail });
     const scribe = await invitee.api.calls.join(started.code, { mic: true, cam: false });
     await until(async () => scribe.crypto.getSnapshot().status === 'in', 'the invitee in the call’s group');
+    await until(async () => call.direct.getSnapshot().peers.includes(scribe.ticket.identity), 'the private canary recipient’s authenticated key');
+    await call.direct.send(scribe.ticket.identity, 'CANARY-PRIVATE-MESSAGE only these two connections');
+    await until(async () => scribe.direct.getSnapshot().messages.length === 1, 'the private canary to arrive');
+    const privateRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_private_messages x`)).rows[0]?.all ?? '');
+    expect(privateRows).not.toBe('');
     call.openRooms({ rooms: [{ name: 'CANARY-BREAKOUT one', emails: [scribeEmail] }, { name: 'CANARY-BREAKOUT two', emails: [] }], minutes: 5, board: { mode: 'none', template: 'blank' } });
     await settle(call, (x) => x.breakouts.open !== null);
     await settle(scribe, (x) => x.capture.room?.scribe === scribe.ticket.identity);
@@ -3277,7 +3287,7 @@ describe('privacy at rest', () => {
     await call.ring(['canary-rung@canary.example']);
     const ringRows = String((await h.pool.query(`SELECT string_agg(row_to_json(x)::text, ' ') AS all FROM call_rings x`)).rows[0]?.all ?? '');
     expect(ringRows).not.toBe('');
-    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows}`;
+    const live = `${liveClips} ${translations} ${callRows} ${moveRows} ${ringRows} ${liveNoteRows} ${privateRows}`;
     // Their own notes on the call, sealed under their own keys, and something added from them to the shared notes.
     await call.personal.add({ kind: 'note', text: 'CANARY-OWN-WORDS for nobody else' });
     await call.personal.add({ kind: 'bookmark', label: 'CANARY-OWN-MARK', point: null });
@@ -3502,7 +3512,7 @@ describe('privacy at rest', () => {
     // bytea renders as hex; our records embed base64url; check every encoding a plaintext bug could produce.
     const encodings = (s: string) => [s, Buffer.from(s).toString('hex'), Buffer.from(s).toString('base64').slice(0, 12), Buffer.from(s).toString('base64url').slice(0, 12)];
     const canaries = [
-      'CANARY-TIMER-PRESET', 'CANARY-TIMER-SEGMENT', 'CANARY-TIMER-PRESENTER', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
+      'CANARY-PRIVATE-MESSAGE', 'CANARY-TIMER-PRESET', 'CANARY-TIMER-SEGMENT', 'CANARY-TIMER-PRESENTER', 'canary-person', 'Canary Person', 'CANARY-TITLE', 'CANARY-EDIT', 'canary-guest', 'CANARY-CHAT', 'CANARY-AUDIO', 'CANARY-ROOM', 'CANARY-SEARCH', 'CANARY-PEOPLE', 'CANARY-SPEECH', 'merger closes',
       'CANARY-BREAKOUT', 'CANARY-BROADCAST', 'CANARY-GROUP', 'canary-member', 'CANARY-ASKED', 'canary-rung', 'CANARY-ROOMTALK', 'merger moves', 'canary-scribe', 'CANARY-LIVENOTE',
       'Welcome credits', 'Art Vandelay', 'vandelay', 'Weekly with Theo', 'lumen.health',
       'canary-google-sub', 'canary.googler', 'Canary Googler', 'canary-photo', 'CANARY-GCAL', 'canary-gcal',

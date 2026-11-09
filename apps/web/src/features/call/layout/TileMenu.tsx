@@ -11,6 +11,7 @@ import { callName } from '~/lib/people';
 
 /** What a person's menu offers. A choice left out isn't offered on this tile. */
 export interface PersonMenu {
+  privateMessage?: (() => void) | undefined;
   pinned?: { on: boolean; toggle: () => void } | undefined;
   spotlight?: { on: boolean; toggle: () => void } | undefined;
   earlier?: (() => void) | null | undefined;
@@ -51,7 +52,7 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
   const press = useSettledPress([
     ...(board ? ['go-to', 'follow-on-board'] : []), ...(following ? ['follow'] : []), ...(pinned ? ['pin'] : []), ...(moves ? ['earlier', 'later'] : []),
     ...(size ? ['size'] : []), ...(self ? [...SELF.map((s) => `self-${s.where}`), ...(self.where === 'hidden' ? ['self-hint'] : [])] : []),
-    ...(volume ? ['volume'] : []), ...(organizer && spotlight ? ['spotlight'] : [])
+    ...(volume ? ['volume'] : []), ...(menu.privateMessage ? ['private-message'] : []), ...(organizer && spotlight ? ['spotlight'] : [])
   ].join('\n'), open);
   const pick = (f: () => void) => press(() => { onOpenChange(false); f(); });
   return (
@@ -59,6 +60,7 @@ export function TileMenu({ who, me, open, onOpenChange, organizer, menu }: {
       anchor={<button type="button" tabIndex={-1} className={cn('ic-more', open && 'is-on')} aria-label={`Options for ${name}`} aria-haspopup="menu"><Icon name="more" size={16} /></button>}>
       <div className="mh"><Avatar person={who} size={22} /><b>{name}</b></div>
       <p className="scope">Only your view changes</p>
+      {menu.privateMessage && <Item key="private-message" icon="lock" label={`Message ${callName(who)} privately`} onPick={pick(menu.privateMessage)} />}
       {board && (
         <>
           <Item key="go-to" icon="locate" label={`Go to ${callName(who)}`} onPick={pick(board.goTo)} />

@@ -30,6 +30,7 @@ import { personAt } from '../world/people';
 import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
+import { ScriptedDirectMessages } from './direct-messages';
 import { captureOf, defaultScript, linkState, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
 import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, shareWith, tagYou, trashItem, treeOf } from './workspaces';
@@ -70,6 +71,7 @@ type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section
 
 
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
+  readonly direct: ScriptedDirectMessages;
   readonly ticket: CallTicket;
   readonly notifications = new Pushed<CallNotificationState>({ ready: true, candidates: [] });
   readonly crypto: Crypto;
@@ -140,12 +142,14 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.ticket = { callId, serverUrl: 'wss://livekit.storybook.invalid', roomName: `room-${callId}`, identity: me.id, role: arrival.role, pass: `${callId}.storybook` };
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
     this.personal = personalFor(noteId);
+    this.direct = new ScriptedDirectMessages(this, this.crypto, this.ticket, script.privateSendFails);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
 
     // Whoever's here already, the organizer first when it isn't you.
     const here: Present[] = [...(script.here ?? [])];
     if (!organizes && !here.some((p) => p.organizer)) here.unshift({ who: meeting.organizer, organizer: true });
     for (const p of here) this.join(p.who, { organizer: p.organizer, guest: p.guest, mic: p.mic, hand: p.hand, sharing: p.sharing });
+    for (const message of script.privateMessages ?? []) this.after((message.after ?? 2) * 1000, () => { const from = this.find(message.from); if (from) this.direct.receive(from.id, message.text); });
     // You come in after them, unless you organized it (or you're asking to be let in).
     if (!organizes && !arrival.asking) this.change((s) => ({ ...s, participants: [...s.participants, me] }));
     // What was said before you came, spread over the time the call has been going.
@@ -1725,6 +1729,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   }
   close(): void {
     this.notifications.set({ ready: false, candidates: [] });
+    this.direct.close();
     this.halt();
     this.crypto.close();
     this.livekit.close();

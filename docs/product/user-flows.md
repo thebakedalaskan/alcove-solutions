@@ -491,6 +491,7 @@ time, slides in on the right.
   hands, pins and spotlight, who is asking to join, who is ringing and how they answered, and who is invited and not
   here (the organizer can ring anyone in the last two); for the organizer, **Breakout rooms**, which opens the rooms on
   their side.
+- **Private messages (journey 6.30).** Choose someone in **Chat audience**, or **Message privately** on their tile. The composer always says **Only you and [name]**. Each person and room chat keep separate drafts. Private replies have times, unread counts and sending, sent, delivered or failed states; **Retry privately** keeps the original recipient and message. A departed recipient or different room makes that conversation unavailable. Only the original pair can read it, including admitted guests. Private messages never enter the shared chat, recording, transcript, AI notes or shared exports, and history ends with the call. Unread indicators and optional sound do not open over shared work or take focus; notifications show no private preview.
 - **Reacting to chat.** Hover a message (or tab to it) to show **Add reaction**; it opens a picker of eight emoji
   (thumbs up, thumbs down, heart, smile, laughing, surprised, sad, celebrate). Each emoji someone used sits under
   the message with how many, and yours is marked. Press one to add yours, or press yours again to take it back. Its

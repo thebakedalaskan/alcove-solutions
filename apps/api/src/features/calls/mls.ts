@@ -201,7 +201,7 @@ export async function mlsCommit(v: Viewer, callId: string, b: z.infer<typeof Cal
  * Chat, as an MLS message from someone in the group of the part of the call they're in: stored as it came, and
  * relayed to everyone in that group. Nobody chats into another part of the call, whoever hosts included.
  */
-export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>): Promise<void> {
+export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof CallMessageBodySchema>, chat = true): Promise<void> {
   requireIn(v, 'chat');
   const o = v.organizer;
   const ctx = { callId, epoch: b.epoch, room: b.group !== MAIN_PLACE };
@@ -217,7 +217,7 @@ export async function mlsMessage(v: Viewer, callId: string, b: z.infer<typeof Ca
     const seq = row.mls_seq + 1;
     await appendMls(o, c, callId, { seq, generation: row.mls_generation, epoch: b.epoch, grp: b.group }, 'message', null, b.message);
     await exec(c, 'UPDATE calls SET mls_seq = $3 WHERE owner_id = $1 AND call_id = $2', [o.ownerId, callId, seq]);
-    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, { ...s, chatAt: { ...s.chatAt, [b.group]: seq } })).closed };
+    return { room: row.room_name, closed: (await saveSettled(o, c, callId, state, chat ? { ...s, chatAt: { ...s.chatAt, [b.group]: seq } } : s)).closed };
   });
   // Sizes only: what was said is in the MLS message, which nobody here can read.
   clog.debug('chat relayed', { ...ctx, bytes: b.message.length });

@@ -1,5 +1,7 @@
 import { CallNotifications } from './notifications';
 import { type CallTimerControl, type CallTimerSequenceInput } from '@alcove/api';
+import { type DirectKeyAnnouncement, type DirectSend, type DirectEnvelope, type DirectSync } from '@alcove/api';
+import { DirectMessages } from './direct-messages';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
 import { type ClientEvent } from '../transport/options';
@@ -21,6 +23,9 @@ function hereZone(): { timeZone?: string } {
 
 /* ---------- live call: server is the source of truth; the client keeps the clock ticking ---------- */
 interface CallTransport {
+  directKey(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
+  directSend(id: string, body: DirectSend): Promise<DirectEnvelope>;
+  directSync(id: string, ids: string[], after: number): Promise<DirectSync>;
   setTimerSequence(id: string, input: CallTimerSequenceInput): Promise<CallState>;
   controlTimer(id: string, input: CallTimerControl): Promise<CallState>;
   get(id: string): Promise<CallState>;
@@ -141,6 +146,9 @@ const held = (group: MlsGroup, welcome = -1): Held => ({ group, epochs: [], send
 
 export class HttpCall extends Live<CallState> implements CallSession {
   readonly notifications: CallNotifications;
+  readonly direct: DirectMessages;
+  private directAnnouncement: { announcement: DirectKeyAnnouncement; message: string; epoch: number } | null = null;
+  private directAnnouncements = new Set<string>();
   readonly crypto = new Box<CallCrypto>({ status: 'joining', place: MAIN_PLACE, members: [], everyone: [], media: null, chat: [], missedChat: false });
   private hidden = new Set<string>();
   /** How far this browser has read the call's MLS log. */
@@ -209,6 +217,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.hosting = initial.isHost;
     this.personal = t.personal(initial.callId);
     this.notifications = new CallNotifications(ticket.identity, this, this.crypto);
+    this.direct = new DirectMessages(initial.callId, ticket.identity, { send: (body) => t.directSend(initial.callId, body), sync: (ids, after) => t.directSync(initial.callId, ids, after) }, (why) => this.emit('debug', 'private envelope refused', { why }));
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
@@ -258,7 +267,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
           this.take(await this.t.get(this.state.callId));
           this.nextStateRead = performance.now() + this.timing.pollMs * 4;
         } while (this.fetchAgain && !this.closed);
-      } catch (error) { this.notifications.suspend(); throw error; }
+      } catch (error) { this.notifications.suspend(); this.direct.authorizationLost(); throw error; }
       finally { this.fetching = null; }
     })();
     return this.fetching;
@@ -351,6 +360,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
         } while (this.again && !this.closed);
       } catch (e) {
         this.notifications.suspend();
+        this.direct.authorizationLost();
         this.emit('warn', 'call keys not in step', { code: e instanceof MlsError ? 'mls' : errorCode(e) });
       } finally {
         this.running = null;
@@ -378,6 +388,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
   /** Out of the call (turned away, removed, this call went on elsewhere, or someone else hosts while this organizer's connection was away) or out of step: stop keeping up. */
   private out(status: 'denied' | 'removed' | 'away' | 'failed', why: string) {
     this.notifications.suspend();
+    if (status !== 'failed') this.direct.close();
+    else this.direct.contextChanged({ generation: this.generation, place: this.place, members: [], ready: false });
     for (const h of this.groups.values()) if (h.switchTimer) clearTimeout(h.switchTimer);
     this.media = null;
     this.patch({ status, media: null });
@@ -487,6 +499,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const status: CallCrypto['status'] = inPlace ? 'in' : log.admission === 'waiting' ? 'waiting' : this.lastIn !== null && this.lastIn !== this.place ? 'moving' : 'joining';
     const everyone = [...new Set([...this.groups.values()].flatMap((h) => h.group.members()))];
     this.publish({ status, members: inPlace ? this.groups.get(this.place)?.group.members() ?? [] : [], everyone, missedChat: this.missedHere });
+    this.direct.contextChanged({ generation: this.generation, place: this.place, members: this.groups.get(this.place)?.group.members() ?? [], ready: status === 'in' });
+    await this.announceDirectKey();
+    await this.direct.sync();
     // Let in (or into a new part of the call): who's in it and what's been said there is this browser's to see now. Someone new asking: the host sees them.
     if ((status === 'in' && was !== 'in') || newAsk || moved) await this.fetchState();
   }
@@ -522,6 +537,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
 
   /** Chat from the log, in order, from the part of the call this browser is in. The sender's own message takes its place there, so everyone sees chat in the same order. */
   private async read(seq: number, place: string, body: string, generation: number): Promise<void> {
+    if (this.directAnnouncements.delete(body)) return;
     const id = `${generation}:${seq}`;
     const local = this.sent.get(body);
     if (local !== undefined) {
@@ -535,7 +551,10 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const h = this.groups.get(place);
     if (!h || place !== this.place) return;
     const m = await h.group.decrypt(body);
-    if (m.kind === 'chat') {
+    if (m.kind === 'direct-key') {
+      this.direct.contextChanged({ generation, place: this.place, members: h.group.members(), ready: this.inPlace });
+      this.direct.acceptKey(m.from, m.announcement);
+    } else if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
       this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, at: m.at, place, sending: false, reactions: [] }] });
     } else if (m.kind === 'react') {
@@ -545,6 +564,29 @@ export class HttpCall extends Live<CallState> implements CallSession {
     } else if (m.kind === 'before') {
       this.missedHere = true;
     } else this.emit('debug', 'a chat message couldn’t be read', { seq });
+  }
+
+  /** MLS authenticates each ephemeral DM key. Its relay never counts as room chat. */
+  private async announceDirectKey(): Promise<void> {
+    const h = this.groups.get(this.place);
+    if (!h || !this.inPlace) return;
+    if (this.directAnnouncement && (this.directAnnouncement.announcement.generation !== this.generation || this.directAnnouncement.announcement.place !== this.place)) this.directAnnouncement = null;
+    if (!this.directAnnouncement) {
+      const announcement = await this.direct.announcement();
+      if (!announcement) return;
+      this.directAnnouncement = { announcement, ...(await h.group.encrypt({ directKey: announcement, at: this.state.elapsed })) };
+    }
+    const pending = this.directAnnouncement;
+    this.directAnnouncements.add(pending.message);
+    try {
+      await this.t.directKey(this.state.callId, { generation: pending.announcement.generation, group: pending.announcement.place, epoch: pending.epoch, message: pending.message });
+      this.direct.announced(pending.announcement);
+      this.directAnnouncement = null;
+      this.again = true;
+    } catch (e) {
+      if (errorCode(e) === 'conflict') { this.directAnnouncements.delete(pending.message); this.directAnnouncement = null; }
+      this.emit('debug', 'private message key announcement delayed', { code: errorCode(e) });
+    }
   }
 
   /**
@@ -900,6 +942,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
   askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
     this.notifications.close();
+    this.direct.close();
+    this.directAnnouncement = null;
+    this.directAnnouncements.clear();
     this.closed = true;
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
