@@ -62,17 +62,18 @@ Application Load Balancer for production custom domains. See
 The static build emits `dist/client/index.html` through TanStack's SPA prerender output path `/index`.
 Pages' native SPA fallback serves the shell for client routes while matching existing assets directly;
 the deployment includes no catch-all `_redirects` or top-level `404.html`. The shell is the root route
-alone, so every address hydrates it and then renders its own route. An address no other route takes
+alone, so app addresses hydrate it and then render their own routes. An address no other route takes
 matches the catch-all `routes/$.tsx` (Nothing here, with the Drive offered), not a not-found component on
 the root route, which would render where the shell has none and fail hydration (React error #418).
+The public privacy policy is prerendered as `privacy.html` so it can be read without JavaScript.
 Manage the www-to-apex redirect as a Cloudflare zone Single Redirect. See
 [Cloudflare's SPA serving behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/).
 
 **Opening offline.** A service worker, `apps/web/public/sw.js`, keeps the build in the browser, so the app's
 files load without a connection once the browser has opened Alcove online. The web app's `build` script ends with
-`apps/web/scripts/precache.mjs`, which writes the list of every file in `dist/client` (all but `_headers`)
-into `dist/client/sw.js`, with a version hashed from their contents. Nobody maintains the list by hand, and
-the script refuses a build it has already written into. The app registers the worker from its root route
+`apps/web/scripts/precache.mjs`, which writes the shell and asset list into `dist/client/sw.js`. The worker does
+not precache extra prerendered documents or on-demand camera assets. The version is hashed from the build's
+contents. Nobody maintains the list by hand, and the script refuses a build it has already written into. The app registers the worker from its root route
 once the page has loaded, in production builds only (`apps/web/src/lib/serviceWorker.ts`), and logs a failed
 registration or install as a warning.
 

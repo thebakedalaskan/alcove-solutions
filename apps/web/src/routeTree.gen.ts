@@ -14,6 +14,7 @@ import { Route as SplatRouteImport } from './routes/$'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as MoveRouteImport } from './routes/move'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ReadyRouteImport } from './routes/ready'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as AppHomeRouteImport } from './routes/_app/home'
@@ -54,6 +55,11 @@ const ConnectRoute = ConnectRouteImport.update({
 const MoveRoute = MoveRouteImport.update({
   id: '/move',
   path: '/move',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReadyRoute = ReadyRouteImport.update({
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
+  '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/$': typeof SplatRoute
   '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
+  '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/home': typeof AppHomeRoute
@@ -197,6 +205,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/connect': typeof ConnectRoute
   '/move': typeof MoveRoute
+  '/privacy': typeof PrivacyRoute
   '/ready': typeof ReadyRoute
   '/welcome': typeof WelcomeRoute
   '/_app/home': typeof AppHomeRoute
@@ -222,6 +231,7 @@ export interface FileRouteTypes {
     | '/$'
     | '/connect'
     | '/move'
+    | '/privacy'
     | '/ready'
     | '/welcome'
     | '/home'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/$'
     | '/connect'
     | '/move'
+    | '/privacy'
     | '/ready'
     | '/welcome'
     | '/home'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/connect'
     | '/move'
+    | '/privacy'
     | '/ready'
     | '/welcome'
     | '/_app/home'
@@ -293,6 +305,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   ConnectRoute: typeof ConnectRoute
   MoveRoute: typeof MoveRoute
+  PrivacyRoute: typeof PrivacyRoute
   ReadyRoute: typeof ReadyRoute
   WelcomeRoute: typeof WelcomeRoute
   CallCodeRoute: typeof CallCodeRoute
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       path: '/move'
       fullPath: '/move'
       preLoaderRoute: typeof MoveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ready': {
@@ -506,6 +526,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   ConnectRoute: ConnectRoute,
   MoveRoute: MoveRoute,
+  PrivacyRoute: PrivacyRoute,
   ReadyRoute: ReadyRoute,
   WelcomeRoute: WelcomeRoute,
   CallCodeRoute: CallCodeRoute,

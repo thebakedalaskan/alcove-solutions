@@ -50,9 +50,12 @@ export default defineConfig({
   plugins: [
     mediapipe(),
     tailwindcss(),
-    // SPA mode: every screen is behind sign-in and talks to the API from the browser.
-    // The shell is prerendered as index.html, so Cloudflare Pages serves it for every route.
-    tanstackStart({ spa: { enabled: true, prerender: { outputPath: '/index' } } }),
+    // Cloudflare Pages serves the SPA shell for app routes. The public policy is also readable without JavaScript.
+    tanstackStart({
+      spa: { enabled: true, prerender: { outputPath: '/index' } },
+      prerender: { autoStaticPathsDiscovery: false, crawlLinks: false, failOnError: true },
+      pages: [{ path: '/privacy', prerender: { enabled: true, outputPath: '/privacy', autoSubfolderIndex: false } }]
+    }),
     viteReact()
   ]
 });

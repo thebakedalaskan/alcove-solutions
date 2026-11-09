@@ -14,7 +14,7 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    finding a time with your team; your agent using Alcove; recording in the room without a connection; and what Alcove
    can see. Each scene plays while it's on screen, and shows a still with reduced motion. Choose **Continue with
    Google**, **Continue with Microsoft** or **Use single sign-on**, at the top or the bottom of the page; single sign-on
-   asks for a work email in place.
+   asks for a work email in place. The footer links to the public **Privacy policy**, available without signing in.
 2. **Google** opens its account chooser and consent screen in a popup, keeping Alcove open. It also asks for the calendar (events
    only); unticking it still signs in. Alcove says **Waiting for Google…**, with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
@@ -1465,7 +1465,8 @@ the page still works. Journey **11.23** shows Detailed → Short → Detailed wh
 - **Agents**: named, revocable connections with explicit permissions, expiry and last use. **Create a token** and
   **Disconnect** are described in flow 14.
 - **Privacy**: what Alcove knows beside what it can't read, then confidential compute: the time the hardware was
-  verified when this browser could check it, or where your audio is opened and your notes are written.
+  verified when this browser could check it, or where your audio is opened and your notes are written. The
+  **Privacy policy** explains how Alcove uses account and service data and how to disconnect Google services.
 
 **Delete account** opens one step where it is (never a window over the page): the row becomes the question, **Delete
 your account for good?**, and what goes sits beside what stays. What goes: the notes you made, with their audio, for
