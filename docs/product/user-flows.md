@@ -1734,3 +1734,13 @@ what happened and leaves the existing settings in place.
 
 Storybook’s journeys use **15.1–15.6** above. The account, folders and file links in the preview are made-up; real Google
 consent and the provider’s own folder-selection page require manual verification with a supported Google account.
+
+### 11.24 Add credits
+
+Open **Settings → Plan and credits → Add credits**, choose an amount of credits, then a token and network.
+**Get an address** opens the amount to send, its QR code and one payment address. Send only the stated token on that
+network. A short payment shows what arrived and how much remains; send the remainder before the address expires.
+After expiry it asks for no more money and waits for the payment or refund to settle. Credits appear in the balance
+once settlement is confirmed. Open and recent top-ups stay in Settings with **Open**, including cancelled, failed and
+held payments and their support reference. A waiting payment can be cancelled; a payment already sent still counts
+when it settles. Deleting an account warns when one of its payment addresses could still receive money.

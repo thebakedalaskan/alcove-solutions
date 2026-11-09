@@ -183,11 +183,12 @@ export async function deleteAccount(o: Owner): Promise<void> {
   }
   const calendar = await withdrawCalls(o);
   const gone = await tx(o.pool, async (c) => {
-    // Calls, then recordings, then the account: the order ending a call or a recording takes them in, so
-    // one ending at the same moment finishes first, or waits for this, instead of deadlocking. A second
-    // deletion at the same time waits here, and then finds nothing left.
+    // Calls, then recordings, then top-ups, then the account: the order ending a call or a recording, or
+    // crediting a top-up, takes them in, so one at the same moment finishes first, or waits for this, instead
+    // of deadlocking. A second deletion at the same time waits here, and then finds nothing left.
     await exec(c, 'SELECT 1 FROM calls WHERE owner_id = $1 FOR UPDATE', [o.ownerId]);
     await exec(c, 'SELECT 1 FROM recordings WHERE owner_id = $1 FOR UPDATE', [o.ownerId]);
+    await exec(c, 'SELECT 1 FROM deposits WHERE owner_id = $1 FOR UPDATE', [o.ownerId]);
     if (!(await exec(c, 'SELECT 1 FROM owners WHERE owner_id = $1 FOR UPDATE', [o.ownerId]))) return undefined;
     const [p] = await listItems(o, c, 'profile', Profile);
     if (!p) throw new NotFoundError('Your profile is missing.', { context: { ownerId: o.ownerId } });

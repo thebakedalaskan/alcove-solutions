@@ -1,9 +1,10 @@
 import { motion, useReducedMotion } from 'motion/react';
-import { forwardRef, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useEffect, useId, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../cn';
 import { ProviderMark } from './brand';
 import { Icon, type IconName } from './icon';
 import { CheckDraw, EASE } from './motion';
+import { Tooltip } from './overlay';
 
 /* ---------- Button ---------- */
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet';
@@ -140,6 +141,29 @@ export function RequestRef({ id, className }: { id: string; className?: string |
       onClick={() => { void navigator.clipboard?.writeText(id).then(() => setCopied(true), () => undefined); }}>
       <span>Ref</span><code>{id}</code><Icon name={copied ? 'check' : 'copy'} size={13} />
     </button>
+  );
+}
+
+/**
+ * A long value to copy exactly, such as an address to pay to: shown whole in mono over up to two lines, with a copy
+ * button beside it. `label` says what the value is ("Address"), for screen readers.
+ */
+export function CopyField({ value, label, className }: { value: string; label: string; className?: string | undefined }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+  const tip = copied ? 'Copied' : 'Copy';
+  return (
+    <div className={cn('ac-copy-field', className)} role="group" aria-label={label}>
+      <code className="ac-clamp-2">{value}</code>
+      <Tooltip label={tip}>
+        <IconButton icon={copied ? 'check' : 'copy'} label={tip} title={undefined}
+          onClick={() => { void navigator.clipboard?.writeText(value).then(() => setCopied(true), () => undefined); }} />
+      </Tooltip>
+    </div>
   );
 }
 

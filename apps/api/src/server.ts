@@ -3,6 +3,7 @@ import { createApp } from './app';
 import { loadConfig } from './config';
 import { createPool } from './db';
 import { inference } from './inference';
+import { startWatching } from './features/billing/deposits';
 import { createDocPool } from './live/docPool';
 import { createHub } from './live/hub';
 import { configureLogging, flushLogs, log } from './log';
@@ -34,6 +35,7 @@ const upkeep = () => mlog.timed('maintenance run', {}, () => maintain(deps), 30_
 void upkeep();
 const timer = setInterval(() => void upkeep(), 5 * 60_000);
 timer.unref();
+const stopWatchingDeposits = startWatching(deps);
 
 const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_HOST }, (info) => {
   slog.info('listening', { url: `http://${cfg.API_HOST}:${info.port}`, inference: inference(cfg).configured ? 'configured' : 'not configured' });
@@ -42,6 +44,7 @@ const server = serve({ fetch: app.fetch, port: cfg.API_PORT, hostname: cfg.API_H
 function shutdown(signal: string) {
   slog.info('shutting down', { signal });
   clearInterval(timer);
+  stopWatchingDeposits();
   stopping.abort();
   // Live streams go first: they'd hold the server open, and their browsers open them again on another instance.
   void Promise.all([deps.hub.close(), deps.docs.close()]).finally(() => server.close(() => { void pool.end().finally(() => { slog.info('stopped'); flushLogs(); process.exit(0); }); }));

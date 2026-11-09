@@ -1,5 +1,5 @@
 import { type HttpTransport } from '../transport/http';
-import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema } from '@alcove/api';
+import { type AlcoveApi, AttestationSchema, CreditBalanceSchema, PersonSuggestionSchema, PreferencesSchema, SessionSchema, SignInResultSchema, TeamSchema, TopUpRoutesSchema, TopUpSchema } from '@alcove/api';
 import { z } from 'zod';
 
 export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'account' | 'people' | 'credits' | 'trust'> {
@@ -28,7 +28,12 @@ export function createAccountApi(t: HttpTransport): Pick<AlcoveApi, 'auth' | 'ac
       inviteToTeam: (emails) => req(TeamSchema, 'POST', '/team/invites', { emails })
     },
     credits: {
-      balance: () => req(CreditBalanceSchema, 'GET', '/credits')
+      balance: () => req(CreditBalanceSchema, 'GET', '/credits'),
+      routes: () => req(TopUpRoutesSchema, 'GET', '/credits/routes'),
+      startTopUp: (routeId, credits) => req(TopUpSchema, 'POST', '/credits/top-ups', { routeId, credits }),
+      topUp: (id) => req(TopUpSchema, 'GET', `/credits/top-ups/${encodeURIComponent(id)}`),
+      cancelTopUp: (id) => req(TopUpSchema, 'POST', `/credits/top-ups/${encodeURIComponent(id)}/cancel`),
+      topUps: () => req(z.array(TopUpSchema), 'GET', '/credits/top-ups')
     },
     trust: {
       attestation: (nonce) => req(AttestationSchema, 'GET', `/attestation?nonce=${encodeURIComponent(nonce)}`)

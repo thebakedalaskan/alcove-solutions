@@ -6,6 +6,8 @@
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { screen, waitFor, within } from 'storybook/test';
+import { current } from '../../src/api/state';
+import { receiveTopUp } from '../../src/world/payments';
 import { standIn } from '../../src/api/standin';
 import { openBrowser, setOnline } from '../../src/browser';
 import { session } from '../../src/world';
@@ -526,3 +528,43 @@ export const RapidRepeatedChoices: PageStory = {
   }
 };
 export const RapidRepeatedChoicesPhoneNight: PageStory = { ...RapidRepeatedChoices, globals: { viewport: { value: 'phone' }, theme: 'dark' } };
+
+
+/** The provider's side is scripted; no real wallet, payment or clipboard permission is needed. */
+export const AddCredits: PageStory = {
+  name: '11.24 Add credits',
+  ...page('/settings#plan', 'payments'),
+  play: async ({ userEvent, step }) => {
+    const sheet = () => screen.findByRole('dialog', { name: 'Add credits' }, SOON);
+    await step('Open Add credits and choose USDC on Base', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Add credits' }, LATER));
+      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Token:/ }));
+      const tokens = await screen.findByRole('listbox', { name: 'Token' }, SOON);
+      await userEvent.click(within(tokens).getByRole('option', { name: 'USDC' }));
+      await userEvent.click(within(await sheet()).getByRole('button', { name: /^Network:/ }));
+      const networks = await screen.findByRole('listbox', { name: 'Network' }, SOON);
+      await userEvent.click(within(networks).getByRole('option', { name: 'Base' }));
+    });
+    await step('Get an address for 10,000 credits. The sheet waits for the payment', async () => {
+      await userEvent.click(within(await sheet()).getByRole('button', { name: 'Get an address' }));
+      await within(await sheet()).findByText('Waiting for payment', {}, SOON);
+    });
+    await step('The provider sees 3.5 of 10 USDC: the same address can take the rest', async () => {
+      const w = current();
+      const t = w.payments.topUps[0];
+      if (t) receiveTopUp(w, t.id, 'short');
+      await within(await sheet()).findByText('Less than asked arrived', {}, LATER);
+    });
+    await step('The rest arrives and the provider settles: the balance catches up', async () => {
+      const w = current();
+      const t = w.payments.topUps[0];
+      if (t) receiveTopUp(w, t.id, 'credited');
+      await within(await sheet()).findByText('Credits added', {}, LATER);
+      await userEvent.click(within(await sheet()).getByRole('button', { name: 'Done' }));
+    });
+    await step('Reopen the completed payment from its row', async () => {
+      await userEvent.click(within(await part('Plan and credits')).getByRole('button', { name: 'Open' }));
+      await within(await sheet()).findByText('Credits added', {}, SOON);
+    });
+  }
+};

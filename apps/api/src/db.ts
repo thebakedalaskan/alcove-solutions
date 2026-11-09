@@ -52,8 +52,10 @@ export type Db = pg.Pool | pg.PoolClient;
  * connection longer than this, so whatever does go wrong comes back as an error.
  */
 const CONNECTION_WAIT_MS = 10_000;
+/** The longest one statement may run, lock waits included. */
+export const STATEMENT_TIMEOUT_MS = 15_000;
 export function createPool(url: string): pg.Pool {
-  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: 15_000, connectionTimeoutMillis: CONNECTION_WAIT_MS });
+  const pool = new pg.Pool({ connectionString: url, max: 10, statement_timeout: STATEMENT_TIMEOUT_MS, connectionTimeoutMillis: CONNECTION_WAIT_MS });
   pool.on('error', (e) => dblog.error('idle database client failed', { err: e }));
   pool.on('acquire', (c) => { c.on('error', lent); });
   pool.on('release', (_e, c) => { c.off('error', lent); });

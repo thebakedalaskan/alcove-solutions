@@ -96,6 +96,7 @@ Product, then the follow-ups from the retro board's Actions frame.
 | `signed-out` | Nobody signed in on this browser: the welcome page; Microsoft or single sign-on signs Art in to the busy afternoon |
 | `unsaved` | The busy afternoon after Alcove wouldn't take some of Art's edits: the pricing copy's last edits, more interview notes than a document holds, and a line in the handbook he can only read now |
 | `drive-connected` | Art has a separate Google Drive connection, authorized personal and shared-drive folders, and exports in pending, uploading, uploaded and failed states |
+| `payments` | Credit top-ups are available, with token/network choices; every deposit address is a made-up invalid preview |
 | `agents-connected` | Art has a read-only Workspace assistant connected through OAuth and an unused Scheduling assistant personal token; Settings shows their scopes, expiry and last use |
 | `first-sign-in` | Nobody signed in, and no account yet: signing in makes Art's account on screen, his first day, and Home's tour |
 
@@ -439,3 +440,13 @@ available for manual checks of the same behavior.
 Browser notifications (#88): Calls/Browser notifications shows explicit opt-in, enabled/blocked/unsupported/refused delivery and phone/light variants on the real controls. Journey 6.33 chooses categories without changing sound or local reply alerts. Native browser is a manual development-origin permission/OS story: Enable explicitly, then switch tabs before the 20–65 second scripted activity. Its separate report observes the actual browser constructor's show/error/close events and the content-free call projection. All media is synthetic. Close/disable alerts when finished. These are demonstrations, never browser tests.
 
 Native two tabs is the explicit browser-receipt scene: open it twice, enable once and background both before20seconds. It preserves opaque browser state and shares one demo-clock anchor, like real tabs share a wall clock. Stable event IDs demonstrate cross-tab/reload deduplication; reopening the same scene does not replay those IDs. Native browser uses a new call ID for a fresh delivery demonstration. The report can start/stop the exact application service worker on this development origin; Stop unregisters it and closes its test alerts. Open delivered alert invokes the native notification's actual click callback for routing checks; this is distinct from an OS notification-centre click.
+
+
+Credit top-ups live under **Pages / Settings / Payments**, **Add credits picker** and **Payment…**: waiting, arriving,
+short, short after the address expired, credited, held, failed, cancelled and expired, plus the deletion warnings.
+Phone and night variants show the picker and waiting address, and the expired-short phone at night. The default scenarios
+keep payments unavailable. **Journeys / 11 Settings / 11.24 Add credits** chooses a token and network, opens a top-up,
+receives a scripted short payment, completes it and reopens the completed payment. The stand-in supports starting,
+reading and cancelling top-ups; receipt changes come from the story's made-up provider side. These scenes send no money.
+**Components / Icons and marks / CryptoMark**, **Forms / CopyField**, and **Forms / Select / Network marks** and
+**Token marks** show the shared controls.
