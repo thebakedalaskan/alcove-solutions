@@ -13,6 +13,10 @@ import { ME_ID } from '../../src/world/people';
 
 /** These parts of Alcove go wrong while the story is open (src/api/trouble.ts). */
 export const troubled = (troubles: Troubles) => (w: World): void => { w.trouble = { ...w.trouble, ...troubles }; };
+/** Own accepted follow-ups are ready for the reversible completion control in Home and the note preview. */
+export const takenOn = (w: World): void => {
+  for (const note of w.notes) for (const action of note.actions) if (action.owner?.person?.email === w.session?.user.email) action.takenOn = true;
+};
 
 /**
  * The standup twice in one day: a first run at 8:00 that ended early, with no notes, and a home of its own, before the one

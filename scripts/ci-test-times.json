@@ -412,5 +412,11 @@
    "the live stream": 15.7,
    "guests in a call": 2.3
   }
+ },
+ "src/integration/optimistic.integration.test.ts": {
+  "seconds": 11.5,
+  "groups": {
+   "immediate query actions through the real API": 11.5
+  }
  }
 }

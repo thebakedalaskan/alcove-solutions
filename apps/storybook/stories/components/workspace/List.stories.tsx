@@ -69,6 +69,10 @@ const meta = {
   parameters: { layout: 'padded' }
 } satisfies Meta<typeof WsList>;
 export default meta;
+export const NameSaving: StoryObj<typeof WsListHead> = { render: () => <ListBox height={120}><WsList head={<WsListHead name="Launch planning" saveState="saving" picker={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox> };
+export const NameFailed: StoryObj<typeof WsListHead> = { render: () => <ListBox height={120}><WsList head={<WsListHead name="Product" saveState="failed" picker={{ open: false, onOpenChange: did('onOpenChange'), content: null }} />} /></ListBox> };
+export const NameSavingNight: StoryObj<typeof WsListHead> = { ...NameSaving, globals: { theme: 'dark' } };
+export const NameFailedNight: StoryObj<typeof WsListHead> = { ...NameFailed, globals: { theme: 'dark' } };
 type Story = StoryObj<typeof meta>;
 
 /* ---------- the list ---------- */
