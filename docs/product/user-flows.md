@@ -658,6 +658,10 @@ enable automatic opening. **View** retains **Open floating call** when manual op
 switching tabs are different browser behaviors; an already-open floating window can remain over other apps.
 Unsupported browsers keep the normal call controls.
 
+When this browser can’t float a call, View keeps the unavailable action with an explanation linked to it for assistive
+technology. If the browser refuses an opening, View stays open with permission guidance and the manual action available
+to try again. Nothing retries by itself, and the call keeps running in this tab.
+
 See [Floating call](../engineering/floating-call.md) for browser capabilities and verification coverage.
 
 ### The call's workspace

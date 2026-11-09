@@ -45,6 +45,11 @@ These are documented API capabilities, not a claim that every version/platform h
 outside this desktop feature. An ordinary popup does not provide the same always-on-top guarantee; normal meeting
 controls remain available when Document PiP is absent or blocked.
 
+View shows a visible unsupported-browser explanation connected to the unavailable action with `aria-describedby`.
+A refused manual opening keeps View open, announces the failure and explains how to check the site's picture-in-picture
+permission before trying the same action again. View closes only once the floating window exists, so a refused keyboard
+action does not lose its recovery controls or focus. Neither failure retries an opening automatically.
+
 Automatic opening is the normal call behavior where the browser permits it. There is no Alcove automatic-opening
 preference or explanatory control in View: the browser owns its permission and may ask when the person first switches
 tabs. View retains the manual opening action and any opening failure. The browser triggers `enterpictureinpicture`;
@@ -88,6 +93,10 @@ Storybook shows compact states and the real call entry point. Manual Document Pi
 and a top-level document; an iframe journey or simulated click cannot establish native-browser coverage. API integration tests exercise
 actual multi-client control states and rejection, admission, host controls, reconnect, handoff and departure. They do not
 prove browser capture flushing or window focus.
+
+The story browser normally returns the real Document PiP API unchanged. Explicit unsupported/refused scenarios instead
+hide that capability or reject opening without creating a window. Their light/dark, wide/phone states and refusal/retry
+journey demonstrate accessible fallback and continued calling; they do not claim native permission or capture coverage.
 
 Release verification records actual platform/version and results for manual opening/refusal, browser automatic-PiP
 permission, tab/window/app switches, resizing, repeated close/open, return focus, device errors, host mute, room changes,

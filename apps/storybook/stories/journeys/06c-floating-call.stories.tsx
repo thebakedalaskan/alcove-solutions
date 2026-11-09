@@ -1,12 +1,13 @@
 /*
  * The floating call's real entry, then a browser hand-off. Only a person clicking in a top-level document can supply
  * the gesture Document PiP requires, so this journey deliberately stops before requesting a native window. There is
- * no replacement browser API, second session or automated native-window claim here.
+ * no successful replacement window, second session or automated native-window claim here. The refusal journey uses
+ * the story browser's explicit blocked state to show recovery without opening a window.
  */
 import type { Meta } from '@storybook/react-vite';
-import { screen } from 'storybook/test';
+import { screen, within } from 'storybook/test';
 import { at, chats, knocks, raisesHand } from '../../src/api/script';
-import { inCall } from '../../src/call';
+import { inCall, light, phone } from '../../src/call';
 import { pages, type PageArgs, type PageStory } from '../../src/page';
 import { AIKO, DIEGO, KOFI, PRIYA, REVIEW } from '../calls/talk';
 import { LAPTOP, LATER, SOON } from './play';
@@ -40,3 +41,31 @@ export const OpenFloatingCall: PageStory = {
     });
   }
 };
+
+export const OpeningRefused: PageStory = {
+  name: '6.22 Keep calling when floating is blocked',
+  ...inCall({
+    scenario: 'call-soon', call: REVIEW, script: { here: [{ who: PRIYA }, { who: KOFI }], notes: 'off' }, you: { mic: false, cam: false }
+  }, { parameters: { opening: { browser: { floatingWindow: 'blocked' } } } }),
+  play: async ({ userEvent, step, canvas }) => {
+    await step('Open View from the call controls', async () => {
+      await screen.findByRole('toolbar', { name: 'Call controls' }, LATER);
+      const view = canvas.queryByRole('button', { name: 'Your view' });
+      if (view) await userEvent.click(view);
+      else {
+        await userEvent.click(await canvas.findByRole('button', { name: /^More:/ }, SOON));
+        await userEvent.click(await screen.findByRole('button', { name: 'Your view' }, SOON));
+      }
+    });
+    await step('A blocked opening leaves the call and View available', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Open floating call' }, SOON));
+      await within(await screen.findByRole('dialog', { name: 'Your view' }, SOON)).findByText(/Check this site’s picture-in-picture permission/, {}, SOON);
+    });
+    await step('Retry only when explicitly pressed; a second refusal keeps the same recovery path', async () => {
+      await userEvent.click(await screen.findByRole('button', { name: 'Open floating call' }, SOON));
+    });
+  }
+};
+export const OpeningRefusedLight = light(OpeningRefused);
+export const OpeningRefusedPhone = phone(OpeningRefused);
+export const OpeningRefusedPhoneLight = light(OpeningRefusedPhone);
