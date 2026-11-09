@@ -10,7 +10,7 @@ import {
   CircleDot, Settings, BadgeCheck, UserCheck, CircleCheck, Compass, EyeOff, Keyboard, PictureInPicture2, Presentation, RotateCw, Volume1,
   VolumeX, TriangleAlert, SlidersHorizontal, SkipForward, PictureInPicture, Scan, StepBack, StepForward, ZoomIn, ZoomOut, Bell, BellOff, CircleUserRound,
   Coins, Palette, MapPin, MousePointer2, MousePointer2Off, Undo2, Eraser, HardDrive, CloudOff, Upload, AtSign, Bold, BuildingComplex, CloudUpload, CodeXml,
-  CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
+  CornerUpLeft, CornerDownRight, Download, FilePlus, Film, Folder, FolderInput, FolderOpen, FolderPlus, Folders, Heading1, Heading2, Heading3, Highlighter, Image,
   ImageOff, ImagePlus, Info, Italic, Lightbulb, Link2, List, ListChecks, ListCollapse, ListOrdered, ListTodo, LocateFixed, Megaphone, MessageSquareText, Minus,
   Moon, Navigation, PanelRight, Paperclip, Pilcrow, Quote, SquareCheckBig, Strikethrough, Sun, Table, TextAlignStart, TextQuote, Type, CalendarClock, StickyNote, Hourglass, PhoneCall,
   CircleOff, Droplets, BellRing, Bot, Coffee, Ear, Gauge, Headphones, SmilePlus, Layers
@@ -19,7 +19,7 @@ import { cn } from '../cn';
 
 /* One icon family: Lucide, 1.8 stroke, round caps and joins, sized by the caller. Filled glyphs say so. */
 const ICONS = {
-  shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight,
+  shapes: Shapes, line: MoveUpRight, frame: Frame, square: Square, circle: Circle, diamond: Diamond, elbow: CornerDownRight, reply: CornerUpLeft,
   spline: Spline, textSize: ALargeSmall, group: Group, vote: Vote, redo: Redo2, map: MapIcon,
   workflow: Workflow, commentBubble: MessageCircle, layoutTemplate: LayoutTemplate, waveform: AudioWaveform,
   chevronLeft: ChevronLeft, bringToFront: BringToFront, sendToBack: SendToBack,

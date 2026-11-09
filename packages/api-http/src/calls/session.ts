@@ -1,4 +1,4 @@
-import { type CallTimerControl, type CallTimerSequenceInput } from '@alcove/api';
+import { type CallTimerControl, type CallTimerSequenceInput, type CallMessageReceipt, type CallChatMessage } from '@alcove/api';
 import { type DirectKeyAnnouncement, type DirectSend, type DirectEnvelope, type DirectSync } from '@alcove/api';
 import { DirectMessages } from './direct-messages';
 import { b64u, randomBytes } from '../transport/ids';
@@ -53,7 +53,7 @@ interface CallTransport {
   handOff(id: string, to: string): Promise<void>;
   mls(id: string, after: number): Promise<CallMls>;
   commit(id: string, c: { generation: number; group: string; epoch: number; commit: string; welcome?: string; added: string[]; removed: string[] }): Promise<{ epoch: number }>;
-  message(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<void>;
+  message(id: string, m: { generation: number; group: string; epoch: number; message: string }): Promise<CallMessageReceipt>;
   keyPackage(id: string, k: { generation: number; keyPackage: string }): Promise<void>;
   back(id: string, k: { generation: number }): Promise<void>;
   room(id: string): Promise<{ token: string }>;
@@ -61,6 +61,22 @@ interface CallTransport {
   moveCurrent(id: string): Promise<MoveOut | null>;
   moveConfirm(id: string, media: MoveMedia): Promise<void>;
   moveCancel(id: string): Promise<void>;
+}
+
+/** The original destination and sealed bytes stay together across ambiguous delivery and explicit retry. */
+interface PendingChat { local: string; payload: CallChatPayload; place: string; generation: number; tries: number; sealed: { message: string; epoch: number; generation: number } | null }
+
+/** Confirmed log positions sort chronologically; stable sort leaves local drafts in their authored order at the end. */
+function orderedChat(chat: CallChatMessage[]): CallChatMessage[] {
+  const position = (id: string) => {
+    const match = /^(\d+):(\d+)$/.exec(id);
+    const generation = match?.[1]; const seq = match?.[2];
+    return generation === undefined || seq === undefined ? null : { generation: Number(generation), seq: Number(seq) };
+  };
+  return chat.sort((a, b) => {
+    const first = position(a.id); const second = position(b.id);
+    return first && second ? first.generation - second.generation || first.seq - second.seq : first ? -1 : second ? 1 : 0;
+  });
 }
 
 
@@ -172,7 +188,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
    * Chat and reactions waiting to go out (encrypted in the sync loop, so nothing else touches the keys meanwhile), and
    * what was sent, by body, until it shows up in the log. Each goes to the part of the call it was written in, or not at all.
    */
-  private outbox: { local: string; payload: CallChatPayload; place: string; tries: number; sealed: { message: string; epoch: number; generation: number } | null }[] = [];
+  private outbox: PendingChat[] = [];
+  private failedSends = new Map<string, PendingChat>();
   private sent = new Map<string, string>();
   private media: CallMediaKeys | null = null;
   private running: Promise<void> | null = null;
@@ -533,15 +550,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   private async read(seq: number, place: string, body: string, generation: number): Promise<void> {
     if (this.directAnnouncements.delete(body)) return;
     const id = `${generation}:${seq}`;
-    const local = this.sent.get(body);
-    if (local !== undefined) {
-      this.sent.delete(body);
-      const s = this.crypto.getSnapshot();
-      const mine = s.chat.find((m) => m.id === local);
-      if (mine) this.patch({ chat: [...s.chat.filter((m) => m.id !== local), { ...mine, id, sending: false }] });
-      // A reaction of this browser's own is already shown.
-      return;
-    }
+    if (this.confirmChat(body, id, true)) return;
     const h = this.groups.get(place);
     if (!h || place !== this.place) return;
     const m = await h.group.decrypt(body);
@@ -550,7 +559,16 @@ export class HttpCall extends Live<CallState> implements CallSession {
       this.direct.acceptKey(m.from, m.announcement);
     } else if (m.kind === 'chat') {
       const s = this.crypto.getSnapshot();
-      this.patch({ chat: [...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, at: m.at, place, sending: false, reactions: [] }] });
+      if (m.thread) {
+        const parent = s.chat.find((message) => message.id === m.thread?.replyTo);
+        const root = s.chat.find((message) => message.id === m.thread?.root);
+        if ((parent && (parent.place !== place || (parent.thread?.root ?? parent.id) !== m.thread.root))
+          || (root && (root.place !== place || root.thread !== null))) {
+          this.emit('debug', 'a reply had an unavailable conversation', { seq });
+          return;
+        }
+      }
+      this.patch({ chat: orderedChat([...s.chat, { id, from: m.from, isMe: m.from === this.ticket.identity, text: m.text, mentions: m.mentions, thread: m.thread, at: m.at, place, sending: false, failed: false, reactions: [] }]) });
     } else if (m.kind === 'react') {
       // Only to a message of the part of the call it was sent in: one this browser never had (sent before it came in), or
       // one from another part, changes nothing here.
@@ -558,6 +576,19 @@ export class HttpCall extends Live<CallState> implements CallSession {
     } else if (m.kind === 'before') {
       this.missedHere = true;
     } else this.emit('debug', 'a chat message couldn’t be read', { seq });
+  }
+
+  /** Own ciphertext confirmation never decrypts or displays another room's history. */
+  private confirmChat(body: string, id: string, fromLog = false): boolean {
+    const local = this.sent.get(body);
+    if (local === undefined) return false;
+    if (fromLog) this.sent.delete(body);
+    const s = this.crypto.getSnapshot();
+    const mine = s.chat.find((m) => m.id === local || m.id === id);
+    this.failedSends.delete(local);
+    this.outbox = this.outbox.filter((m) => m.local !== local);
+    if (mine) this.patch({ chat: orderedChat([...s.chat.filter((m) => m.id !== local && m.id !== id), { ...mine, id, sending: false, failed: false }]) });
+    return true;
   }
 
   /** MLS authenticates each ephemeral DM key. Its relay never counts as room chat. */
@@ -653,6 +684,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const id = this.state.callId;
     while (this.outbox[0]) {
       const m = this.outbox[0];
+      if (m.generation !== this.generation) { this.unsend(m.local); continue; }
       const h = this.groups.get(m.place);
       if (m.place !== this.place || !h || !this.inPlace) {
         // Still on the way into the part of the call it was written in: it waits. Moved on since: it's taken back.
@@ -660,14 +692,14 @@ export class HttpCall extends Live<CallState> implements CallSession {
         this.unsend(m.local);
         continue;
       }
-      if (!m.sealed || m.sealed.generation !== this.generation) {
+      if (!m.sealed) {
         try { m.sealed = { ...(await h.group.encrypt(m.payload)), generation: this.generation }; }
         catch { this.unsend(m.local); continue; }
       }
       this.sent.set(m.sealed.message, m.local);
       try {
-        await this.t.message(id, { generation: m.sealed.generation, group: m.place, epoch: m.sealed.epoch, message: m.sealed.message });
-        this.outbox.shift();
+        const receipt = await this.t.message(id, { generation: m.sealed.generation, group: m.place, epoch: m.sealed.epoch, message: m.sealed.message });
+        this.confirmChat(m.sealed.message, `${receipt.generation}:${receipt.seq}`);
         // Read the log again straight away: the message takes its place there, among everyone else's.
         this.again = true;
       } catch (e) {
@@ -675,7 +707,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
         m.tries += 1;
         // The keys moved on under it: encrypted again next time. Lost on the way: the same message is sent again (others read it once).
         if (code === 'conflict') { this.sent.delete(m.sealed.message); m.sealed = null; }
-        if (m.tries >= 3 || code === 'invalid' || code === 'forbidden') { if (m.sealed) this.sent.delete(m.sealed.message); this.unsend(m.local); continue; }
+        if (m.tries >= 3 || code === 'invalid' || code === 'forbidden') { this.unsend(m.local); continue; }
         return;
       }
     }
@@ -685,12 +717,15 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.outbox = this.outbox.filter((o) => o.local !== local);
     const s = this.crypto.getSnapshot();
     if (m && 'react' in m.payload) {
+      if (m.sealed) this.sent.delete(m.sealed.message);
       const r = m.payload.react;
       this.patch({ chat: withReaction(s.chat, r.target, m.place, r.reaction, this.ticket.identity, !r.on) });
       this.notify('Your reaction wasn’t sent. Try again.');
       return;
     }
-    this.patch({ chat: s.chat.filter((c) => c.id !== local) });
+    if (!m || !('text' in m.payload)) return;
+    this.failedSends.set(local, m);
+    this.patch({ chat: s.chat.map((c) => c.id === local ? { ...c, sending: false, failed: true } : c) });
     this.notify('Your message wasn’t sent. Try again.');
   }
 
@@ -759,22 +794,37 @@ export class HttpCall extends Live<CallState> implements CallSession {
   }
   /** Room changes move people's keys: this browser reads the log straight away rather than waiting to be nudged. */
   private actAndSync(a: CallAction) { this.act(a, () => { void this.sync(); }); }
-  sendChat = async (text: string, mentions: readonly CallChatMention[] = []) => {
+  sendChat = async (text: string, mentions: readonly CallChatMention[] = [], thread: import('@alcove/api').CallChatThread | null = null) => {
     const t = text.trim();
     if (!t) return;
+    if (this.closed) throw new AlcoveApiError('forbidden', 'This call has ended.');
     if (t.length > CALL_CHAT_MAX) throw new AlcoveApiError('invalid', `Messages can be up to ${CALL_CHAT_MAX} characters.`);
     const status = this.crypto.getSnapshot().status;
     if (status === 'moving') throw new AlcoveApiError('conflict', 'You’re moving to another room. Send it once you’re there.');
     if (status !== 'in') throw new AlcoveApiError('forbidden', 'Wait until the host lets you in.');
     const leading = text.length - text.trimStart().length;
-    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), at: this.state.elapsed });
+    const checked = CallChatTextSchema.safeParse({ text: t, mentions: mentions.map((m) => ({ ...m, start: m.start - leading, end: m.end - leading })), thread, at: this.state.elapsed });
     const members = new Set(this.groups.get(this.place)?.group.members() ?? []);
     if (!checked.success || checked.data.mentions.some((m) => !members.has(m.identity))) throw new AlcoveApiError('invalid', 'Choose people who are in this part of the call.');
+    if (checked.data.thread) {
+      const target = this.crypto.getSnapshot().chat.find((m) => m.id === checked.data.thread?.replyTo && m.place === this.place && !m.sending && !m.failed);
+      if (!target || (target.thread?.root ?? target.id) !== checked.data.thread.root) throw new AlcoveApiError('not-found', 'That conversation isn’t available in this room.');
+    }
     const payload = checked.data;
     const local = `me:${b64u(randomBytes(6))}`;
     const s = this.crypto.getSnapshot();
-    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, at: payload.at, place: this.place, sending: true, reactions: [] }] });
-    this.outbox.push({ local, payload, place: this.place, tries: 0, sealed: null });
+    this.patch({ chat: [...s.chat, { id: local, from: this.ticket.identity, isMe: true, text: payload.text, mentions: payload.mentions, thread: payload.thread, at: payload.at, place: this.place, sending: true, failed: false, reactions: [] }] });
+    this.outbox.push({ local, payload, place: this.place, generation: this.generation, tries: 0, sealed: null });
+    await this.sync();
+  };
+  retryChat = async (messageId: string) => {
+    const pending = this.failedSends.get(messageId);
+    const current = this.crypto.getSnapshot();
+    if (this.closed || !pending || current.status !== 'in' || pending.place !== current.place || pending.generation !== this.generation) throw new AlcoveApiError('conflict', 'Return to the original conversation before retrying this message.');
+    this.failedSends.delete(messageId);
+    pending.tries = 0;
+    this.patch({ chat: current.chat.map((m) => m.id === messageId ? { ...m, sending: true, failed: false } : m) });
+    this.outbox.push(pending);
     await this.sync();
   };
   readChat = async (ids: readonly string[]) => {
@@ -787,7 +837,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     const mine = target.reactions.find((r) => r.reaction === reaction)?.by.includes(this.ticket.identity) ?? false;
     if (mine === on) return;
     this.patch({ chat: withReaction(s.chat, messageId, this.place, reaction, this.ticket.identity, on) });
-    this.outbox.push({ local: `react:${b64u(randomBytes(6))}`, payload: { react: { target: messageId, reaction, on }, at: this.state.elapsed }, place: this.place, tries: 0, sealed: null });
+    this.outbox.push({ local: `react:${b64u(randomBytes(6))}`, payload: { react: { target: messageId, reaction, on }, at: this.state.elapsed }, place: this.place, generation: this.generation, tries: 0, sealed: null });
     await this.sync();
   };
   /** Data keys, one per media key (each sender's, each epoch), made once. */
@@ -939,6 +989,9 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.directAnnouncement = null;
     this.directAnnouncements.clear();
     this.closed = true;
+    this.outbox = [];
+    this.failedSends.clear();
+    this.sent.clear();
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;

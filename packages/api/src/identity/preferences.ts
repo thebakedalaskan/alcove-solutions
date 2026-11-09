@@ -16,6 +16,8 @@ export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
 
 
 export const NotificationPrefsSchema = z.object({
+  /** Local reply toasts are independent of operating-system notification permission. */
+  replyAlerts: z.boolean().default(true),
   /** Minutes before a call to remind: 0 is off. */
   beforeCall: z.union([z.literal(0), z.literal(1), z.literal(5)]),
   notesReady: z.boolean(),

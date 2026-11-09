@@ -631,6 +631,25 @@
 .ic-msg p { margin: 2px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
 .ic-msg.has-unread-mention { box-shadow: inset 2px 0 var(--horizon); }
 .ic-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ic-msg-content { min-width: 0; }
+.ic-chat-read-end { display: block; width: 1px; height: 1px; }
+.ic-msg.is-failed { box-shadow: inset 2px 0 var(--caution); }
+.ic-message-state { display: block; margin-top: 4px; color: var(--ink-2); font-size: 12px; }
+.ic-message-failed { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-top: 4px; color: var(--caution); font-size: 12px; }
+.ic-message-failed .ac-btn { color: var(--caution); }
+.ic-thread-open { display: inline-flex; align-items: center; gap: 6px; padding: 5px 0; color: var(--horizon); font-size: 12px; }
+.ic-thread-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.ic-thread-open b { font-weight: 600; color: var(--horizon); }
+.ic-thread-head { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--line); }
+.ic-thread-head > div { min-width: 0; display: grid; gap: 2px; }
+.ic-thread-head b { font-size: 14px; font-weight: 600; }
+.ic-thread-head small { font-size: 12px; color: var(--ink-2); }
+.ic-thread-original { padding-bottom: var(--space-4); margin-bottom: var(--space-4); border-bottom: 1px solid var(--line); }
+.ic-reply-context, .ic-replying { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink-2); font-size: 12px; }
+.ic-reply-context { margin-top: 5px; }
+.ic-reply-context > svg, .ic-replying > svg { flex: none; }
+.ic-replying { flex: none; padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); background: var(--surface); }
+.ic-replying > span { flex: 1; }
 .ic-mention { padding: 1px 3px; border-radius: var(--radius-xs); color: var(--horizon); background: var(--horizon-soft); font-weight: 600; }
 .ic-mention.is-me { text-decoration: underline; text-underline-offset: 3px; }
 .ic-mention-unread { flex: none; display: flex; gap: 8px; align-items: center; padding: 6px 16px; border-bottom: 1px solid var(--line); color: var(--horizon); font-size: 13px; }
@@ -1334,23 +1353,6 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ac-private-heading b { font-size: 15px; color: var(--ink); }
 .ac-private-heading span { display: flex; align-items: center; gap: var(--space-1); font-size: 12px; color: var(--ink-2); }
 .ac-private-history { margin: 0 0 var(--space-5); color: var(--ink-2); font-size: 12px; line-height: 1.5; text-align: center; }
-.ac-private-messages { display: grid; gap: var(--space-5); }
-.ac-private-message { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: var(--space-2); }
-.ac-private-message.is-mine { grid-template-columns: minmax(0, 1fr) 28px; }
-.ac-private-message.is-mine > .ac-avatar { grid-column: 2; grid-row: 1; }
-.ac-private-message.is-mine > .ac-private-message-body { grid-column: 1; grid-row: 1; }
-.ac-private-message-body { min-width: 0; }
-.ac-private-message-meta { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-1); color: var(--ink-2); font-size: 11.5px; }
-.ac-private-message-meta b { color: var(--ink); font-weight: 600; }
-.ac-private-message-meta time { font-variant-numeric: tabular-nums; }
-.ac-private-message-body > p { margin: 0; padding: var(--space-3); border-radius: var(--radius-md); background: var(--sunk); color: var(--ink); font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.ac-private-message.is-mine .ac-private-message-body > p { background: var(--horizon-soft); }
-.ac-private-message.has-failed .ac-private-message-body > p { box-shadow: inset 0 0 0 1px var(--caution); }
-.ac-private-message-state { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); color: var(--ink-2); font-size: 11px; }
-.ac-private-message-error { display: block; margin-top: var(--space-1); color: var(--caution); font-size: 12px; line-height: 1.5; }
-.ac-private-composer { flex: none; padding: var(--space-3) var(--space-4) var(--space-4); border-top: 1px solid var(--line); background: var(--surface); }
 .ac-private-audience { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--ink-2); font-size: 12px; font-weight: 600; }
 .ac-private-audience span { overflow-wrap: anywhere; }
-.ac-private-composer-row { display: flex; gap: var(--space-2); align-items: center; }
-.ac-private-composer-row .ac-input { min-width: 0; flex: 1; }
-.ac-private-unavailable { margin: 0 0 var(--space-2); font-size: 12px; line-height: 1.5; color: var(--caution); }
+.ic-private-audience { padding: var(--space-2) var(--space-4); flex-shrink: 0; border-top: 1px solid var(--line); }

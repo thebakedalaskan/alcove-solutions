@@ -1,3 +1,4 @@
+import { CallMessageReceiptSchema } from '@alcove/api';
 import { CallTimerPresetSchema } from '@alcove/api';
 import { DirectEnvelopeSchema, DirectSyncSchema } from '@alcove/api';
 import { createPersonalApi } from '../notes/personal';
@@ -78,7 +79,7 @@ export function createCallsApi(t: HttpTransport, o: HttpOptions): Pick<AlcoveApi
       handOff: async (id, to) => { await req(z.object({ left: z.literal(true) }), 'POST', `${live(id)}/hand-off`, { to }, p); },
       mls: (id, after) => req(CallMlsSchema, 'GET', `${live(id)}/mls?after=${after}`, undefined, p),
       commit: (id, c) => req(z.object({ epoch: z.number() }), 'POST', `${live(id)}/mls/commits`, c, p),
-      message: async (id, m) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/messages`, m, p); },
+      message: (id, m) => req(CallMessageReceiptSchema, 'POST', `${live(id)}/mls/messages`, m, p),
       keyPackage: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/keypackages`, k, p); },
       back: async (id, k) => { await req(z.object({ sent: z.literal(true) }), 'POST', `${live(id)}/mls/back`, k, p); },
       room: (id) => req(CallRoomTokenSchema, 'GET', `${live(id)}/room`, undefined, p),
