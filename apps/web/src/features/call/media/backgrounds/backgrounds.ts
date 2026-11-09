@@ -277,8 +277,8 @@ async function prepare(file: File): Promise<Blob> {
 
 const isAccepted = (type: string) => BACKGROUND_TYPES.some((t) => t === type);
 
-/** Keeps the picture in `file` for `owner`, sealed, and gives it back ready to show. */
-export async function keepPicture(owner: string, file: File): Promise<KeptPicture> {
+/** Keeps a picture, or atomically replaces one after the new picture is prepared and sealed. A failure leaves the old one. */
+export async function keepPicture(owner: string, file: File, replace?: string): Promise<KeptPicture> {
   // Capture synchronously: opening IndexedDB itself can outlast sign-out followed by sign-in in another tab.
   const account = accountGeneration(owner);
   if (!canKeepBackgrounds()) throw new AlcoveApiError('unavailable', 'This browser can’t keep pictures, so you can’t add your own here.');
@@ -289,10 +289,12 @@ export async function keepPicture(owner: string, file: File): Promise<KeptPictur
   requireAccess(owner, account);
   if (!snapshot) throw backgroundsChanged();
   const revision = snapshot.generation;
-  if (snapshot.rows.length >= MAX_BACKGROUNDS) throw new AlcoveApiError('conflict', `You can keep ${MAX_BACKGROUNDS} pictures. Remove one to add another.`);
+  if (replace && !snapshot.rows.some((row) => { const r = KeptBackgroundSchema.safeParse(row); return r.success && r.data.id === replace; })) throw backgroundsChanged();
+  if (!replace && snapshot.rows.length >= MAX_BACKGROUNDS) throw new AlcoveApiError('conflict', `You can keep ${MAX_BACKGROUNDS} pictures. Remove one to add another.`);
   const jpeg = await prepare(file);
   requireAccess(owner, account);
-  const id = crypto.randomUUID();
+  const id = replace ?? crypto.randomUUID();
+  const nextRevision = replace ? crypto.randomUUID() : revision;
   const at = Date.now();
   const bytes = await jpeg.arrayBuffer();
   const src = await asDataUrl(jpeg);
@@ -312,14 +314,19 @@ export async function keepPicture(owner: string, file: File): Promise<KeptPictur
       ]);
       if (!allowed || !mayAccess(owner, account)) return 'revoked';
       if (current !== revision) return 'changed';
-      if (Number(count) >= MAX_BACKGROUNDS) return 'full';
+      if (!replace && Number(count) >= MAX_BACKGROUNDS) return 'full';
       // Another first upload chose the key while this one was being sealed. Re-seal with that key, keeping this revision.
       if (!hadKey && storedKey instanceof CryptoKey) return 'retry';
       if (hadKey && !(storedKey instanceof CryptoKey)) return 'changed';
       // A newly made key and its first image commit together, so failures cannot leave an empty database's key behind.
       if (!hadKey) tx.objectStore(KEYS).put(key, KEYS);
+      if (replace) {
+        // A different revision revokes in-flight reads of the old picture, including ones in other tabs.
+        tx.objectStore(KEYS).put(nextRevision, GENERATION);
+        opened.clear();
+      }
       store.put(kept);
-      opened.set(openedKey(owner, id), { generation: revision, src });
+      opened.set(openedKey(owner, id), { generation: nextRevision, src });
       return 'kept';
     });
     requireAccess(owner, account);
@@ -330,7 +337,7 @@ export async function keepPicture(owner: string, file: File): Promise<KeptPictur
     requireAccess(owner, account);
     if (!snapshot || snapshot.generation !== revision) throw backgroundsChanged();
   }
-  blog.info('background kept', { bytes: jpeg.size });
+  blog.info('background kept', { bytes: jpeg.size, replaced: replace !== undefined });
   changed();
   return { id, src };
 }

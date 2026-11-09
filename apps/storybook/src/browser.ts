@@ -6,6 +6,7 @@
  *   - a camera, a microphone and a screen to share that are never real: getUserMedia and getDisplayMedia hand back drawn
  *     and synthesised tracks, enumerateDevices lists made-up devices, and the browser says they're allowed (or not)
  *   - notifications that go nowhere: Notification asks and shows, and what it showed is kept in `shown`
+ *   - floating calls use native Document PiP unless a story explicitly shows an unsupported or refused opening
  *   - no service worker: the app's registration never happens, so nothing is cached between stories
  *   - a page that goes when the story does: recorders and audio it started stop when the next story opens
  */
@@ -19,10 +20,19 @@ export interface BrowserSetup {
   /** What the browser allows for notifications now, and what it answers when Alcove asks. */
   notifications: NotificationPermission;
   answer: NotificationPermission;
+  /** Native floating windows by default; failure stories never open a window. */
+  floatingWindow: 'native' | 'unsupported' | 'blocked';
 }
-export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted' };
+export const DEFAULT_BROWSER: BrowserSetup = { online: true, devices: 'granted', notifications: 'default', answer: 'granted', floatingWindow: 'native' };
 
 const state: BrowserSetup = { ...DEFAULT_BROWSER };
+const nativePictureInPicture = window.documentPictureInPicture;
+/** Only a refusal is scripted. A successful window always belongs to the real browser. */
+class BlockedPictureInPicture extends EventTarget implements DocumentPictureInPicture {
+  readonly window = null;
+  requestWindow(): Promise<Window> { return Promise.reject(new DOMException('Picture-in-picture is blocked for this story.', 'NotAllowedError')); }
+}
+const blockedPictureInPicture = new BlockedPictureInPicture();
 /** The notifications shown since the story started, oldest first. */
 export const shown: { title: string; body: string }[] = [];
 
@@ -140,10 +150,21 @@ function drawn(width: number, height: number, draw: (g: CanvasRenderingContext2D
   const track = canvas.captureStream(8).getVideoTracks()[0];
   if (!track) throw new DOMException('The camera didn’t start.', 'NotReadableError');
   const timer = setInterval(() => draw(g, (performance.now() - started) / 1000), 250);
-  track.addEventListener('ended', () => clearInterval(timer));
-  const stop = track.stop.bind(track);
-  track.stop = () => { clearInterval(timer); stop(); };
-  return as(track, device);
+  // A real camera source lives while any clone does. LocalMedia clones before stopping the raw published track when
+  // an effect is chosen, so stopping that original must not freeze the synthetic camera feeding the processor.
+  const tracks = new Set<MediaStreamTrack>();
+  const keep = (t: MediaStreamTrack): MediaStreamTrack => {
+    if (t.readyState !== 'live') return as(t, device);
+    tracks.add(t);
+    const retire = () => { tracks.delete(t); if (tracks.size === 0) clearInterval(timer); };
+    const stop = t.stop.bind(t);
+    const clone = t.clone.bind(t);
+    t.stop = () => { stop(); retire(); };
+    t.clone = () => keep(clone());
+    t.addEventListener('ended', retire, { once: true });
+    return as(t, device);
+  };
+  return keep(track);
 }
 
 /* A camera looking at a dim room, the light shifting a little: never anyone's face. */
@@ -264,6 +285,7 @@ export function installBrowser(): void {
   if (installed) return;
   installed = true;
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => state.online });
+  Object.defineProperty(window, 'documentPictureInPicture', { configurable: true, get: () => state.floatingWindow === 'unsupported' ? undefined : state.floatingWindow === 'blocked' ? blockedPictureInPicture : nativePictureInPicture });
 
   const media = navigator.mediaDevices;
   media.getUserMedia = getUserMedia;

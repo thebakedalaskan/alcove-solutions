@@ -339,11 +339,15 @@ owns no call session, audio or camera. Its pictures are made-up preview content.
 
 **Calls / Floating call** starts the real call on the scripted room, with View open and **Open floating call** ready for
 a person to press. The other scenarios change shares, reconnect, receive a hand, chat and someone asking to join, end the
-call, refuse leaving or changing the raised hand, and block devices. **Journeys / 6 Floating call / 6.22 Open a floating
+call, refuse leaving or changing the raised hand, and block devices. Unsupported and Opening blocked show View's visible,
+described fallback and its permission guidance with a manual retry, in light/dark and wide/phone variants. A blocked
+opening keeps View open and leaves the call running. **Journeys / 6 Floating call / 6.22 Open a floating
 call** plays up to this same hand-off. Automatic opening follows the browser's native permission, without a separate
 Alcove preference or explanatory control in View. Open the preview
 as its own tab before clicking: Document Picture-in-Picture requires a top-level document and a real browser gesture.
-Storybook does not replace that API, force support, or claim a synthetic `userEvent` verified native behavior.
+Native-opening scenarios return the browser's real API unchanged. Explicit unsupported/refused scenarios only hide the
+capability or reject a request; they never create a replacement window. **6.22 Keep calling when floating is blocked**
+plays refusal and explicit retry. None claims a synthetic `userEvent` verified native behavior.
 
 Use the top-level preview to manually open, close, reopen and return; switch microphone, camera and hand; try Leave and
 Stay as a host; try the participant scenarios to leave with one press; and resize the window. Use the actual app with a second participant for native focus, one-session/audio/capture

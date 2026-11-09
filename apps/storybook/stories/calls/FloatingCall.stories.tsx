@@ -1,12 +1,12 @@
 /*
  * The real call ready to open its native floating window. Storybook's call and media remain scripted; Document PiP
- * stays the browser's own API. Open the preview as its own tab and press Open floating call yourself: a synthetic
- * userEvent in the Storybook iframe cannot supply the top-level trusted gesture that the browser requires.
+ * stays the browser's own API except in explicit unsupported/refused failure scenarios. Open the preview as its own
+ * tab and press Open floating call yourself: a synthetic userEvent cannot establish native opening behavior.
  */
 import { AlcoveApiError } from '@alcove/api';
 import type { Meta } from '@storybook/react-vite';
 import { at, chats, knocks, raisesHand, shares, stopsSharing } from '../../src/api/script';
-import { inCall, light, phone, press } from '../../src/call';
+import { MORE, inCall, light, phone, press } from '../../src/call';
 import { pages, type PageArgs } from '../../src/page';
 import { AIKO, CHECK_IN, CHECKLIST, DIEGO, KOFI, PRIYA, REVIEW, REVIEW_SUMMARY, REVIEW_TALK } from './talk';
 
@@ -29,6 +29,21 @@ export const ReadyToOpen = inCall({
   script: { here: REVIEWERS, talk: { lines: REVIEW_TALK }, summary: REVIEW_SUMMARY }
 }, ready);
 export const ReadyToOpenLight = light(ReadyToOpen);
+/** The unavailable action explains why, without changing the active call or requesting devices. */
+export const Unsupported = inCall({
+  scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' }, you: { mic: false, cam: false }
+}, { ...ready, parameters: { opening: { browser: { floatingWindow: 'unsupported' } } } });
+export const UnsupportedLight = light(Unsupported);
+export const UnsupportedPhone = phone({ ...Unsupported, play: press(MORE, { then: ['Your view'] }) });
+export const UnsupportedPhoneLight = light(UnsupportedPhone);
+
+/** A refusal keeps View open with its explanation and the same manual action available to retry. */
+export const OpeningBlocked = inCall({
+  scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS, notes: 'off' }, you: { mic: false, cam: false }
+}, { play: press('Your view', { then: ['Open floating call'] }), parameters: { opening: { browser: { floatingWindow: 'blocked' } } } });
+export const OpeningBlockedLight = light(OpeningBlocked);
+export const OpeningBlockedPhone = phone({ ...OpeningBlocked, play: press(MORE, { then: ['Your view', 'Open floating call'] }) });
+export const OpeningBlockedPhoneLight = light(OpeningBlockedPhone);
 /** On a phone, normal call controls remain available whether the browser supports floating calls or not. */
 export const OnAPhone = phone(inCall({ scenario: 'call-soon', call: REVIEW, script: { here: REVIEWERS } }));
 

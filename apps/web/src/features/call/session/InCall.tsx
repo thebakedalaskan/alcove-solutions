@@ -21,7 +21,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { stateOf } from '~/features/call/media/access';
 import { accessAsk, bringAndPresent, presentingWhy, useBoardPicker } from '~/features/call/boards/BoardPicker';
 import type { BoardPager } from '~/features/board/CallBoard';
@@ -1337,7 +1337,8 @@ export function InCall({ session }: { session: CallSession }) {
   const popOut = usePopOut(looks.looks);
   const floating = useFloatingWindow(looks.looks, live && ended === null && !outOfGroup && !over.current && roomView.connection !== 'ended',
     media.micTrack()?.readyState === 'live' || media.camSource()?.readyState === 'live');
-  useEffect(() => { if (floating.error) toast(floating.error, { icon: 'pip' }); }, [floating.error, toast]);
+  const floatingHelp = useId();
+  useEffect(() => { if (floating.error) toast('Floating call didn’t open. Check View for help.', { icon: 'pip' }); }, [floating.error, toast]);
   // Selecting Chat in the main call does not read it while that tab is hidden, unfocused or covered by focus view.
   useEffect(() => {
     if (floating.mainVisible && side.view === 'chat' && privateAudience === null && !focusOn && !leaveOpen && !ended && !moving.open && !keysOpen && pop === null && seenChat.count !== theirChat) setSeenChat({ part: crypto.place, count: theirChat });
@@ -1747,10 +1748,13 @@ export function InCall({ session }: { session: CallSession }) {
     mode: layout.prefs.mode, people: panels.people, self: layout.prefs.self, custom, phone,
     onMode: (m: typeof layout.prefs.mode) => { if (!roomsHold()) layout.setMode(m); }, onPeople: setPeopleMode, onSelf: (where: SelfView) => { if (!roomsHold()) setSelf(where); }, onReset: resetView,
     floating: (close: () => void) => <div className="ic-vfloat">
-      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || !!ended} aria-busy={floating.pending} onClick={() => { void floating.owner.open(); close(); }}>
+      <button type="button" className="mi" disabled={!floating.supported || floating.pending || !live || !!ended} aria-busy={floating.pending}
+        aria-describedby={!floating.supported || floating.error ? floatingHelp : undefined}
+        onClick={() => { void floating.owner.open().then(() => { if (floating.owner.getSnapshot().target) close(); }); }}>
         <Icon name="pip" size={17} /><span className="t">{floating.pending ? 'Opening floating call…' : floating.target ? 'Return to floating call' : 'Open floating call'}</span>
       </button>
-      {floating.error && <p role="alert">{floating.error}</p>}
+      {!floating.supported ? <p id={floatingHelp}>Floating calls aren’t available in this browser. Keep using the call in this tab.</p>
+        : floating.error && <p id={floatingHelp} role="alert">{floating.error}</p>}
     </div>
   };
   const leaveQuestion = (
