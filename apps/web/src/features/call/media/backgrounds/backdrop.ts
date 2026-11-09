@@ -7,6 +7,10 @@
  */
 import type { ProcessorWrapper } from '@livekit/track-processors';
 import type { Look, Matte, MatteOptions } from './matte';
+import type { BackgroundQuality } from './frameBudget';
+import { log } from '~/lib/log';
+
+const blog = log.child({ component: 'backdrop' });
 
 export type { Look } from './matte';
 type Processor = ProcessorWrapper<MatteOptions, Matte>;
@@ -14,8 +18,19 @@ type Processor = ProcessorWrapper<MatteOptions, Matte>;
 let support: Promise<boolean> | null = null;
 /** Whether this browser can do it: WebGL2, and a way to make a video track from frames. Asked once per page. */
 export function canBackdrop(): Promise<boolean> {
-  support ??= Promise.all([import('@livekit/track-processors'), import('./matte')])
-    .then(([lk, m]) => lk.ProcessorWrapper.isSupported && m.Matte.isSupported, () => false);
+  if (support) return support;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error('Camera effects took too long to load.')), 15_000);
+  });
+  const checking = Promise.race([Promise.all([import('@livekit/track-processors'), import('./matte')]), deadline])
+    .then(([lk, m]) => lk.ProcessorWrapper.isSupported && m.Matte.isSupported)
+    .catch((e: unknown) => {
+      if (support === checking) support = null;
+      blog.warn('camera effect support could not be checked', { err: e });
+      return false;
+    }).finally(() => clearTimeout(timer));
+  support = checking;
   return support;
 }
 
@@ -31,8 +46,10 @@ export class Backdrop {
   private pending: Promise<void> = Promise.resolve();
   private stopped = false;
   private stopping: Promise<void> | null = null;
+  private deadline: ReturnType<typeof setTimeout> | undefined;
+  private cancelWait: (() => void) | null = null;
 
-  constructor(private readonly onFailure: (camera: MediaStreamTrack, error: unknown) => void) {}
+  constructor(private readonly onFailure: (camera: MediaStreamTrack, error: unknown) => void, private readonly onQuality: (quality: BackgroundQuality) => void) {}
 
   /** The track it makes from `camera` with `look` behind: from the same processor while the camera's the same. */
   show(camera: MediaStreamTrack, look: Look): Promise<MediaStreamTrack> {
@@ -42,11 +59,12 @@ export class Backdrop {
   }
 
   private async draw(camera: MediaStreamTrack, look: Look): Promise<MediaStreamTrack> {
-    const [{ ProcessorWrapper }, { Matte }, { Track }] = await Promise.all([import('@livekit/track-processors'), import('./matte'), import('livekit-client')]);
     if (this.stopped) throw new Error('The background was stopped.');
     try {
+      const [{ ProcessorWrapper }, { Matte }, { Track }] = await this.wait(Promise.all([import('@livekit/track-processors'), import('./matte'), import('livekit-client')]));
+      if (this.stopped) throw new Error('The background was stopped.');
       if (this.active && this.source === camera) {
-        await this.active.processor.updateTransformerOptions({ look });
+        await this.wait(this.active.processor.updateTransformerOptions({ look }));
       } else {
         await this.release();
         if (this.stopped) throw new Error('The background was stopped.');
@@ -58,11 +76,16 @@ export class Backdrop {
           active.error = error;
           // Initialization failures are returned by show(). A running failure must turn the camera off at once.
           if (active.ready) this.onFailure(camera, error);
-        });
+        }, this.onQuality);
         const processor = new ProcessorWrapper<MatteOptions, Matte>(matte, 'alcove-backdrop');
         this.active = { processor, failed: false, error: null, ready: false };
         this.source = camera;
-        await processor.init({ kind: Track.Kind.Video, track: camera, element });
+        const initializing = processor.init({ kind: Track.Kind.Video, track: camera, element });
+        // The wrapper cannot cancel initialization. If it settles after Off/a timeout, clean up the exact old processor.
+        void initializing.finally(async () => {
+          if (this.stopped || this.active?.processor !== processor) await this.dispose(processor);
+        }).catch((e: unknown) => blog.warn('background initialization or late cleanup failed', { err: e }));
+        await this.wait(initializing);
       }
       const active = this.active;
       if (this.stopped) throw new Error('The background was stopped.');
@@ -79,6 +102,19 @@ export class Backdrop {
     }
   }
 
+  /** Off and a stalled download both release the media queue immediately; late model/bitmap work has its own disposal fence. */
+  private wait<T>(work: Promise<T>): Promise<T> {
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      this.cancelWait = () => reject(new Error('The background was stopped.'));
+      this.deadline = setTimeout(() => reject(new Error('The background took too long to prepare.')), 15_000);
+    });
+    return Promise.race([work, interrupted]).finally(() => {
+      clearTimeout(this.deadline);
+      this.deadline = undefined;
+      this.cancelWait = null;
+    });
+  }
+
   /** The camera's size changed: the next `show` starts over from it, since what it draws is sized when it starts. */
   resized(): void { this.source = null; }
 
@@ -86,10 +122,13 @@ export class Backdrop {
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.stopped = true;
+    this.cancelWait?.();
     this.active?.processor.processedTrack?.stop();
     this.detach();
+    // Mark the transformer closed even during asynchronous model/image setup: any late result is disposed immediately.
+    const closing = this.active?.processor.transformer.destroy();
     // Wrapper.destroy() ignores its initializing state. Keep ownership until init/update settles, then destroy.
-    this.stopping = this.pending.then(() => this.release());
+    this.stopping = Promise.all([closing, this.pending]).then(() => this.release());
     return this.stopping;
   }
 
@@ -105,7 +144,10 @@ export class Backdrop {
     this.active = null;
     this.source = null;
     if (!active) return;
-    const p = active.processor;
+    await this.dispose(active.processor);
+  }
+
+  private async dispose(p: Processor): Promise<void> {
     try {
       await p.destroy();
     } finally {

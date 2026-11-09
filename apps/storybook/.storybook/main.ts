@@ -9,12 +9,16 @@
  * get the stand-in. Nothing in apps/web or packages/* knows Storybook exists.
  */
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import type { StorybookConfig } from '@storybook/react-vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { mergeConfig, type Plugin } from 'vite';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
+// The actual local camera effect runs on the synthetic devices too, using the exact app model/WASM from this origin.
+const cameraWasm = join(dirname(createRequire(here('../../web/package.json')).resolve('@mediapipe/tasks-vision')), 'wasm');
 
 /** The app's modules Storybook replaces, by the file they are, and what replaces each. */
 const STAND_INS = new Map([
@@ -41,7 +45,7 @@ const config: StorybookConfig = {
   stories: ['../stories/**/*.stories.tsx'],
   // The app's public files at the paths it asks for them: the speech worklet, its icon. Its service worker is there too, and
   // the preview stops the app registering it.
-  staticDirs: ['../../web/public'],
+  staticDirs: ['../../web/public', { from: cameraWasm, to: '/mediapipe/wasm' }],
   core: { disableTelemetry: true, disableWhatsNewNotifications: true },
   typescript: { reactDocgen: false },
   viteFinal: (vite) => mergeConfig(vite, {
