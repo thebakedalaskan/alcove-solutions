@@ -14,7 +14,7 @@
  * build has none, and shows them from the page. Clicking one brings a window forward, and that window goes to the
  * call's join page, the note, Notes or Home itself, so leaving a call or a recording still asks first (public/sw.js).
  */
-import { WorkerMessageSchema, firstName, notesAreOn, type CallState, type Meeting, type MentionNotice, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
+import { DEFAULT_NOTIFICATION_PREFERENCES, WorkerMessageSchema, firstName, notesAreOn, type CallState, type Meeting, type MentionNotice, type NoteStatus, type NotificationOpen, type NotificationPrefs, type OpenAction } from '@alcove/api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -269,7 +269,7 @@ const tagAlert = (m: MentionNotice): Alert => ({
   open: { to: 'document', workspaceId: m.workspaceId, documentId: m.document, block: m.block }
 });
 
-const NONE: NotificationPrefs = { beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false, tagged: false };
+const NONE: NotificationPrefs = { ...DEFAULT_NOTIFICATION_PREFERENCES, beforeCall: 0, notesReady: false, sharedWithYou: false, notesRequested: false, followUpDue: false, tagged: false };
 /** A tab that notifies can sit hidden for days with nothing else reading: what it depends on it reads by itself. */
 const KEEP_READING = { refetchInterval: NOTES_MS, refetchIntervalInBackground: true };
 

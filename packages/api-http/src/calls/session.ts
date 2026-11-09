@@ -1,3 +1,4 @@
+import { CallNotifications } from './notifications';
 import { type CallTimerControl, type CallTimerSequenceInput } from '@alcove/api';
 import { b64u, randomBytes } from '../transport/ids';
 import { Box, Live, unref } from '../transport/live';
@@ -139,6 +140,7 @@ const held = (group: MlsGroup, welcome = -1): Held => ({ group, epochs: [], send
 
 
 export class HttpCall extends Live<CallState> implements CallSession {
+  readonly notifications: CallNotifications;
   readonly crypto = new Box<CallCrypto>({ status: 'joining', place: MAIN_PLACE, members: [], everyone: [], media: null, chat: [], missedChat: false });
   private hidden = new Set<string>();
   /** How far this browser has read the call's MLS log. */
@@ -206,6 +208,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.generation = initial.generation;
     this.hosting = initial.isHost;
     this.personal = t.personal(initial.callId);
+    this.notifications = new CallNotifications(ticket.identity, this, this.crypto);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
@@ -255,7 +258,8 @@ export class HttpCall extends Live<CallState> implements CallSession {
           this.take(await this.t.get(this.state.callId));
           this.nextStateRead = performance.now() + this.timing.pollMs * 4;
         } while (this.fetchAgain && !this.closed);
-      } finally { this.fetching = null; }
+      } catch (error) { this.notifications.suspend(); throw error; }
+      finally { this.fetching = null; }
     })();
     return this.fetching;
   }
@@ -343,8 +347,10 @@ export class HttpCall extends Live<CallState> implements CallSession {
           await this.step();
           const status = this.crypto.getSnapshot().status;
           if (!this.closed && status !== 'denied' && status !== 'removed' && status !== 'away' && status !== 'failed' && performance.now() >= this.nextStateRead) await this.fetchState();
+          this.notifications.resume();
         } while (this.again && !this.closed);
       } catch (e) {
+        this.notifications.suspend();
         this.emit('warn', 'call keys not in step', { code: e instanceof MlsError ? 'mls' : errorCode(e) });
       } finally {
         this.running = null;
@@ -371,6 +377,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   }
   /** Out of the call (turned away, removed, this call went on elsewhere, or someone else hosts while this organizer's connection was away) or out of step: stop keeping up. */
   private out(status: 'denied' | 'removed' | 'away' | 'failed', why: string) {
+    this.notifications.suspend();
     for (const h of this.groups.values()) if (h.switchTimer) clearTimeout(h.switchTimer);
     this.media = null;
     this.patch({ status, media: null });
@@ -892,6 +899,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   hear = (note: string, line: string) => this.t.hear(this.state.callId, note, line);
   askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
+    this.notifications.close();
     this.closed = true;
     this.stopTicking();
     if (this.timer) clearTimeout(this.timer);

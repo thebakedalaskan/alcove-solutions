@@ -16,6 +16,17 @@ export type SummaryLength = z.infer<typeof SummaryLengthSchema>;
 
 
 export const NotificationPrefsSchema = z.object({
+  /** Older profiles keep their existing browser opt-in; new profiles explicitly start false. */
+  enabled: z.boolean().default(true),
+  privateMessages: z.boolean().default(false),
+  replies: z.boolean().default(false),
+  /** In-app reply feedback stays independent of OS notifications. */
+  replyAlerts: z.boolean().default(true),
+  chatMentions: z.boolean().default(false),
+  hands: z.boolean().default(false),
+  questions: z.boolean().default(false),
+  admissions: z.boolean().default(false),
+  timers: z.boolean().default(false),
   /** Minutes before a call to remind: 0 is off. */
   beforeCall: z.union([z.literal(0), z.literal(1), z.literal(5)]),
   notesReady: z.boolean(),
@@ -27,6 +38,10 @@ export const NotificationPrefsSchema = z.object({
 });
 
 export type NotificationPrefs = z.infer<typeof NotificationPrefsSchema>;
+/** New accounts and guests deliberately opt in, independently of existing browser permission. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPrefs = NotificationPrefsSchema.parse({
+  enabled: false, beforeCall: 5, notesReady: true, sharedWithYou: true, notesRequested: true, followUpDue: false, tagged: true
+});
 
 
 const allUnique = (items: string[]): boolean => new Set(items).size === items.length;
