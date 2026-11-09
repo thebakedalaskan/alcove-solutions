@@ -20,8 +20,9 @@ Each flow below is implemented in `apps/web` and exercised end to end by the int
    with **Cancel sign-in** to stop waiting,
    including when the popup was closed. On success the popup closes, the waiting tab checks its session, and the welcome
    page fades into the app. If the browser blocks popups or can't pass the result between tabs, Google opens in the current
-   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google
-   hasn't verified, too many attempts, or Google not set up on this server), the welcome screen says why.
+   tab instead. If the sign-in doesn't happen (cancelled, too slow, an email Google hasn't verified,
+   a new Google account without access, too many attempts, or Google not set up on this server),
+   the welcome screen says why.
 3. The first time, the account is created on screen, in about six seconds: an arch draws itself, dawn fills
    it and the sun rises, while what came with the account arrives a row at a time, each with a check. **Signed
    in as** the name, with the provider's mark (a key for single sign-on). **Your calendar**: how many calls are

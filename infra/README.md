@@ -181,9 +181,14 @@ URIs on a development OAuth client. Keep credentials and tester addresses out of
 
 Verify ownership of `alcove.solutions` in Search Console and set the app homepage and
 `https://alcove.solutions/privacy` in **Branding**. Meet the [production acceptance requirements](../docs/engineering/deployment-and-acceptance.md)
-before deploying identity-only sign-in. Google allows basic identity requests from accounts outside the test-user
-list even when the app is in Testing. Keep `calendar.events` declared while the previous release still requests it.
-Once that release has been replaced, new requests use `calendar.events.owned`. Existing Calendar grants still work.
+before opening sign-up. Google allows basic identity requests from accounts outside its test-user list even
+when the OAuth app is in Testing. The Cloud Run deploy sets `GOOGLE_SIGNUP_MODE=testers` and
+binds `GOOGLE_SIGNUP_TESTERS` from `alcove-google-signup-testers` when Google sign-in is enabled.
+Add the approved tester addresses to that secret, one verified email per line, before deploying. The API
+continues to admit existing Google accounts and requires a listed address for any new Google account.
+Use `GOOGLE_SIGNUP_MODE=open` only on a deployment that meets production acceptance.
+Keep `calendar.events` declared while the previous release still requests it. Once that release has been
+replaced, new requests use `calendar.events.owned`. Existing Calendar grants still work.
 
 In **Audience**, publish the external app. In **Verification Center**, submit the Calendar permissions with an
 English-language screen recording of the Google consent screen and the features it enables. Show how

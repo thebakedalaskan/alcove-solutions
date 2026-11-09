@@ -4,6 +4,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { log } from '../../log';
 import * as google from '../../google';
 import { b64u, unb64u } from '../../crypto';
+import { GoogleSignupInviteRequiredError } from '../../errors';
 import { openOwner } from '../../owners';
 import { findSession, stillOpen } from '../../sessions';
 import * as account from './account';
@@ -24,7 +25,7 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
   /* Carries the sealed sign-in attempt to Google and back. Lax, because Google's redirect back is a cross-site navigation. */
   const ATTEMPT = secure ? '__Host-alcove_google' : 'alcove_google';
 
-  const backToWelcome = (reason: google.Refusal, popup?: string) => `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ ...(popup ? { popup } : {}), signin: reason })}`;
+  const backToWelcome = (reason: google.Refusal | 'invite-only', popup?: string) => `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ ...(popup ? { popup } : {}), signin: reason })}`;
   const backToCalendar = (result: CalendarConnectResult) => `${d.cfg.WEB_ORIGIN}/settings?calendar=${result}#calendar`;
 
   /* ---------- public: the session and signing in ---------- */
@@ -103,6 +104,10 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
       const next = attempt?.next ?? (s.isNew ? '/ready' : '/home');
       return c.redirect(popup ? `${d.cfg.WEB_ORIGIN}/welcome?${new URLSearchParams({ popup, next })}` : `${d.cfg.WEB_ORIGIN}${next}`, 302);
     } catch (e) {
+      if (e instanceof GoogleSignupInviteRequiredError) {
+        rlog.info('google sign-up refused', { reason: 'invite-only' });
+        return c.redirect(backToWelcome('invite-only', popup), 302);
+      }
       rlog.error('google sign-in failed', { err: e });
       return c.redirect(attempt?.consent ? backToCalendar('failed') : backToWelcome('failed', popup), 302);
     }

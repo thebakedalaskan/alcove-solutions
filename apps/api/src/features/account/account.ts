@@ -10,7 +10,7 @@ import { blindIndex, equalBytes } from '../../crypto';
 import { bytea, exec, maybeOne, rows, timestamp, tx, type Db } from '../../db';
 import { demoDay, demoIdentity, isSharedDemo } from '../../demo';
 import type { Identity } from '../../identity';
-import { ForbiddenError, NotFoundError } from '../../errors';
+import { ForbiddenError, GoogleSignupInviteRequiredError, NotFoundError } from '../../errors';
 import { log } from '../../log';
 import { createOwner, masterKey, openOwner, ownerFrom } from '../../owners';
 import { closeSession, openSession } from '../../sessions';
@@ -115,6 +115,9 @@ export async function signIn(d: Deps, who: Identity, provider: SignInProvider): 
         await moveAddress(d, c, existing.owner_id, existing.email_index, who.email);
       }
       return { ownerId: existing.owner_id, isNew: false };
+    }
+    if (provider === 'google' && d.cfg.GOOGLE_SIGNUP_MODE === 'testers' && !d.cfg.GOOGLE_SIGNUP_TESTERS.includes(who.email)) {
+      throw new GoogleSignupInviteRequiredError();
     }
     const { ownerId, root } = await createOwner(d, c);
     await exec(c, 'INSERT INTO identities (subject_index, owner_id, email_index) VALUES ($1,$2,$3)', [subject, ownerId, email]);

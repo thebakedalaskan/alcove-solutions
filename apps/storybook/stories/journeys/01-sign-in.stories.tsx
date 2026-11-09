@@ -95,9 +95,9 @@ export const WithGoogle: PageStory = {
   name: '1.4 Continue with Google',
   ...page('/', 'signed-out'),
   play: async ({ userEvent, step }) => {
-    await step('Continue with Google. The page goes to Google, which asks which account, and for the calendar', async () => {
+    await step('Continue with Google. Google asks which account to use', async () => {
       await userEvent.click(await first(screen.findAllByRole('button', { name: 'Continue with Google' }, SOON)));
-      await first(screen.findAllByRole('button', { name: 'Opening Google…' }, SOON));
+      await first(screen.findAllByRole('button', { name: 'Waiting for Google…' }, SOON));
     });
   }
 };
@@ -125,6 +125,16 @@ export const ReadPrivacyPolicy: PageStory = {
   play: async ({ canvas, userEvent, step }) => {
     await step('Open Privacy policy from the welcome footer', async () => {
       await userEvent.click(await canvas.findByRole('link', { name: 'Privacy policy' }, SOON));
+    });
+  }
+};
+
+export const GoogleInviteOnly: PageStory = {
+  name: '1.7 Sign in while Google sign-up is invite-only',
+  ...page('/welcome?signin=invite-only', 'signed-out'),
+  play: async ({ step }) => {
+    await step('Back from Google, Alcove asks for an account with access', async () => {
+      await screen.findByText('Google sign-up is invite-only. Use a Google account with access to Alcove.', {}, SOON);
     });
   }
 };

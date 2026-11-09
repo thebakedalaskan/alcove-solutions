@@ -82,6 +82,8 @@ export const GoogleCancelled = page('/welcome?signin=cancelled', 'signed-out');
 export const GoogleTookTooLong = page('/welcome?signin=expired', 'signed-out');
 /** Google hasn't verified the account's address. */
 export const GoogleUnverified = page('/welcome?signin=unverified', 'signed-out');
+/** New Google accounts need an invitation during invite-only access. */
+export const GoogleInviteOnly = page('/welcome?signin=invite-only', 'signed-out');
 /** Google sign-in isn't set up on this server. */
 export const GoogleNotSetUp = page('/welcome?signin=unavailable', 'signed-out');
 /** The popup returns only its result; the original tab plays the account opening. */

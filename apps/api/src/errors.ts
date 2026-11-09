@@ -53,6 +53,9 @@ export class AppError extends Error {
 export class ValidationError extends AppError { constructor(m: string, o?: ErrorOptions) { super('invalid', m, o); } }
 export class AuthError extends AppError { constructor(m: string, o?: ErrorOptions) { super('unauthenticated', m, o); } }
 export class ForbiddenError extends AppError { constructor(m: string, o?: ErrorOptions) { super('forbidden', m, o); } }
+export class GoogleSignupInviteRequiredError extends ForbiddenError {
+  constructor() { super('An invitation is required to sign up with Google.', { level: 'info' }); }
+}
 export class KeyError extends AppError { constructor(m: string, o?: ErrorOptions) { super('key-unavailable', m, o); } }
 export class NotFoundError extends AppError { constructor(m: string, o?: ErrorOptions) { super('not-found', m, o); } }
 export class ConflictError extends AppError { constructor(m: string, o?: ErrorOptions) { super('conflict', m, o); } }

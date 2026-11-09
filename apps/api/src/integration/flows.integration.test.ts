@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { addObject, boardText, newId, readBoard, tableCell } from '@alcove/board';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { loadConfig } from '../config';
+import { loadConfig, loadEnv } from '../config';
 import { b64u, openJson, sealJson, signInAttemptKey, unb64u } from '../crypto';
 import { masterKey } from '../owners';
 import { cookieName } from '../sessions';
@@ -94,7 +94,7 @@ const SessionReply = z.object({ ownerId: z.string() });
  */
 async function viaGoogle(b: Browser, user: GoogleUser, o: { spoil?: Spoil; tamper?: (callback: URL) => void; deliverIn?: Browser; consent?: boolean; popup?: string; next?: '/move' } = {}): Promise<URL> {
   h.google.next(user, o.spoil);
-  let url = new URL(`${h.baseUrl}/v1/auth/google`);
+  let url = new URL(b.api.auth.signInUrl('google'));
   if (o.consent) url.searchParams.set('consent', '1');
   if (o.popup) url.searchParams.set('popup', o.popup);
   if (o.next) url.searchParams.set('next', o.next);
@@ -330,6 +330,52 @@ describe('signing in with Google', () => {
     const again = await viaGoogle(later, who, { popup: laterPopup });
     expect([again.pathname, Object.fromEntries(again.searchParams)]).toEqual(['/welcome', { popup: laterPopup, next: '/home' }]);
     expect((await later.api.auth.getSession())?.ownerId).toBe(session?.ownerId);
+  });
+
+  it('keeps new Google sign-ups invite-only without locking out existing Google accounts', async () => {
+    const existing = { sub: `before-beta-${seq++}`, email: unique('before-beta') };
+    const earlier = h.browser();
+    expect(landed(await viaGoogle(earlier, existing))).toBe('/ready');
+    const ownerId = (await earlier.api.auth.getSession())?.ownerId;
+    expect(ownerId).toBeTruthy();
+
+    const tester = { sub: `tester-${seq++}`, email: unique('tester') };
+    const { DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL } = h.deps.cfg;
+    const { GOOGLE_SIGNUP_MODE, GOOGLE_SIGNUP_TESTERS } = loadEnv(process.env, {
+      DATABASE_URL, OBJECTS_BUCKET, WEB_ORIGIN, API_URL, GOOGLE_SIGNUP_MODE: 'testers',
+      GOOGLE_SIGNUP_TESTERS: ` \r\n  ${tester.email.toUpperCase()}  \r\n`
+    });
+    const beta = await h.secondServer({ GOOGLE_SIGNUP_MODE, GOOGLE_SIGNUP_TESTERS });
+    // Both revisions share the deployed callback URL. Send its requests to the beta revision in this browser.
+    const betaBrowser = (): Browser => {
+      const jar = cookieFetch(ORIGIN);
+      const forward: typeof fetch = (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        return jar(new URL(`${url.pathname}${url.search}`, beta.baseUrl), init);
+      };
+      return { fetch: forward, api: createHttpApi({ baseUrl: beta.baseUrl, fetch: forward }) };
+    };
+    try {
+      const outsider = { sub: `outsider-${seq++}`, email: unique('outsider') };
+      const refused = betaBrowser();
+      const popup = randomUUID();
+      const end = await viaGoogle(refused, outsider, { popup });
+      expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, signin: 'invite-only' }]);
+      expect(await refused.api.auth.getSession()).toBeNull();
+      expect(landed(await viaGoogle(h.browser(), outsider))).toBe('/ready');
+
+      const unverified = betaBrowser();
+      expect(landed(await viaGoogle(unverified, { ...tester, emailVerified: false }))).toBe('/welcome?signin=unverified');
+      expect(await unverified.api.auth.getSession()).toBeNull();
+      const invited = betaBrowser();
+      expect(landed(await viaGoogle(invited, tester))).toBe('/ready');
+      expect(await invited.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: tester.email } });
+
+      const returning = betaBrowser();
+      const newEmail = unique('changed-address');
+      expect(landed(await viaGoogle(returning, { ...existing, email: newEmail }))).toBe('/home');
+      expect(await returning.api.auth.getSession()).toMatchObject({ ownerId, provider: 'google', user: { email: newEmail } });
+    } finally { await beta.close(); }
   });
 
   it('sends a popup cancellation only to the channel sealed into its matching sign-in attempt', async () => {

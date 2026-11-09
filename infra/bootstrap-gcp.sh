@@ -108,7 +108,7 @@ fi
 unset DB_PASSWORD DB_URL NORMALIZED_DB_URL ALCOVE_DB_PASSWORD
 
 echo "› Secrets (values you add once)"
-for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-livekit-api-key alcove-livekit-api-secret; do
+for s in alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
   ensure_secret "$s"
 done
 # The two server keys are generated here once and never rotated by this script: KMASTER wraps every
@@ -128,7 +128,7 @@ gcp iam service-accounts describe "alcove-api@$PROJECT_ID.iam.gserviceaccount.co
 gcp iam service-accounts describe "alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com" >/dev/null 2>&1 || gcp iam service-accounts create alcove-deploy --display-name "Alcove GitHub deploys"
 RUNTIME="alcove-api@$PROJECT_ID.iam.gserviceaccount.com"; DEPLOY="alcove-deploy@$PROJECT_ID.iam.gserviceaccount.com"
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$RUNTIME" --role roles/cloudsql.client --condition None >/dev/null
-for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-livekit-api-key alcove-livekit-api-secret; do
+for s in alcove-database-url alcove-kmaster alcove-kservice alcove-near-ai-api-key alcove-objects-access-key alcove-objects-secret-key alcove-google-client-id alcove-google-client-secret alcove-google-signup-testers alcove-livekit-api-key alcove-livekit-api-secret; do
   gcp_iam secrets add-iam-policy-binding "$s" --member "serviceAccount:$RUNTIME" --role roles/secretmanager.secretAccessor --condition None >/dev/null
 done
 gcp_iam projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$DEPLOY" --role roles/run.admin --condition None >/dev/null
@@ -167,9 +167,10 @@ LIVEKIT_URL = wss://<project>.livekit.cloud:
   printf %s "\$LIVEKIT_API_SECRET" | gcloud --project="$PROJECT_ID" secrets versions add alcove-livekit-api-secret --data-file=-
 Optional, once inference is implemented:
   printf %s "\$NEAR_AI_API_KEY" | gcloud --project="$PROJECT_ID" secrets versions add alcove-near-ai-api-key --data-file=-
-Optional Google provider credentials (enabling their binding does not implement sign-in):
+Optional Google provider credentials and the newline-separated tester roster for invite-only deployments:
   printf %s "\$GOOGLE_CLIENT_ID" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-id --data-file=-
   printf %s "\$GOOGLE_CLIENT_SECRET" | gcloud --project="$PROJECT_ID" secrets versions add alcove-google-client-secret --data-file=-
+  gcloud --project="$PROJECT_ID" secrets versions add alcove-google-signup-testers --data-file="\$GOOGLE_SIGNUP_TESTER_FILE"
 Set CLOUDFLARE_ACCOUNT_ID as a repository variable and CLOUDFLARE_API_TOKEN as a production environment secret.
 Set DEPLOY_ENABLED=true as a repository variable only after the remaining infrastructure is configured.
 OUT
