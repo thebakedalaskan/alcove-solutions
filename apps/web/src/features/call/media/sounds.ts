@@ -19,8 +19,6 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
   const baseline = useRef<{ scope: string; latest: number; serverNow: number } | null>(null);
   const privateBaseline = useRef<{ scope: string; ids: Set<string> } | null>(null);
   const replyBaseline = useRef<{ scope: string; at: number; ids: Set<string> } | null>(null);
-  const privateReady = useRef(direct.ready);
-  privateReady.current = direct.ready;
   const scope = `${state.callId}:${state.generation}:${state.attention.place}`;
   allowed.current = { connected, ready, phase: state.phase, scope };
   // Recheck live scope at playback too, including the interval before an effect cleanup runs.
@@ -44,8 +42,10 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
     for (const message of direct.messages) {
       if (message.to !== call.ticket.identity || message.state !== 'delivered' || !unread.has(message.id) || !peers.has(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5 || message.place !== state.attention.place || message.generation !== state.generation) continue;
       playSound({ owner: owner.current, cue: message.mentions.some((mention) => mention.identity === call.ticket.identity) ? 'mention' : message.thread ? 'reply' : 'message', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
-        const current = playback();
-        return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && privateReady.current } };
+        const current = playback(); const latest = call.direct.getSnapshot(); const callState = call.getSnapshot();
+        const authorized = callState.phase === 'in-call' && latest.ready && latest.unread.includes(message.id) && latest.peers.includes(message.from)
+          && call.crypto.getSnapshot().place === message.place && callState.generation === message.generation;
+        return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && authorized } };
       } });
     }
   }, [direct, connected, scope, state.phase]);
@@ -57,7 +57,12 @@ export function useCallSounds({ call, state, chat, direct, speakerId, connected,
     if (!previous || previous.scope !== scope || Date.now() - previous.at > 12_000 || !connected || chat.status !== 'in') return;
     for (const message of chat.chat) {
       if ((!ids.has(message.id) && !mentions.has(message.id)) || !chat.members.includes(message.from) || previous.ids.has(message.id) || state.elapsed - message.at > 5) continue;
-      playSound({ owner: owner.current, cue: mentions.has(message.id) ? 'mention' : 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: playback });
+      playSound({ owner: owner.current, cue: mentions.has(message.id) ? 'mention' : 'reply', key: `${state.callId}:${message.id}`, until: Date.now() + 1200, current: () => {
+        const current = playback(); const latest = call.crypto.getSnapshot(); const callState = call.getSnapshot();
+        const authorized = callState.phase === 'in-call' && callState.generation === state.generation && latest.status === 'in' && latest.place === message.place && latest.members.includes(message.from)
+          && !callState.chatRead.includes(message.id);
+        return { ...current, prefs: { ...current.prefs, enabled: current.prefs.enabled && authorized } };
+      } });
     }
   }, [chat, state, connected, scope, call]);
   useEffect(() => {
