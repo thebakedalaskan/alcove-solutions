@@ -71,7 +71,8 @@ export function registerAuthRoutes(app: Hono<Env>, runtime: HttpRuntime): void {
 
   app.get('/v1/auth/google/callback', async (c) => {
     const attempt = google.attemptFor(d, c.req.query(), getCookie(c, ATTEMPT));
-    deleteCookie(c, ATTEMPT, { path: '/', secure });
+    // A late callback from another tab must not erase the current attempt.
+    if (attempt) deleteCookie(c, ATTEMPT, { path: '/', secure });
     const popup = attempt?.popup ?? undefined;
     if (!allowed(c)) return c.redirect(attempt?.consent ? backToCalendar('failed') : backToWelcome('busy', popup), 302);
     try {

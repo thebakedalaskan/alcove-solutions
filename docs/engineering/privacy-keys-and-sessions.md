@@ -233,7 +233,7 @@ transcript or meeting. See [Agents and MCP](agents-and-mcp.md) for the complete 
   the browser can neither read nor change it. Older attempt records without a popup channel still open with a null default.
   The callback uses the sealed channel only when its `state` matches, never a channel supplied on the
   callback URL. An expired matching attempt may deliver its refusal to that channel, but cannot sign in.
-  The callback deletes the cookie whatever the outcome.
+  The callback deletes the cookie only when the state matches, so an older tab cannot erase a newer attempt.
 - **Connecting Calendar.** **Connect Google Calendar** explains how Alcove uses event details and
   availability. **Continue to Google** starts `GET /v1/auth/google?consent=1` with identity,
   `calendar.events.owned` and `calendar.events.freebusy` scopes, offline access and explicit account selection

@@ -360,6 +360,28 @@ describe('signing in with Google', () => {
     expect(await normal.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
   });
 
+  it('keeps the newest sign-in attempt when an older tab returns from Google first', async () => {
+    const b = h.browser();
+    const startInTab = async (who: GoogleUser, popup: string) => {
+      h.google.next(who);
+      const start = await b.fetch(`${h.baseUrl}/v1/auth/google?popup=${popup}`, { redirect: 'manual' });
+      const google = await fetch(start.headers.get('location') ?? '', { redirect: 'manual' });
+      return google.headers.get('location') ?? '';
+    };
+    const older = await startInTab({ sub: `first-tab-${seq++}`, email: unique('first-tab') }, randomUUID());
+    const who = { sub: `newer-tab-${seq++}`, email: unique('newer-tab') };
+    const popup = randomUUID();
+    const newer = await startInTab(who, popup);
+
+    const stale = await b.fetch(older, { redirect: 'manual' });
+    expect(stale.headers.get('location')).toBe(`${ORIGIN}/welcome?signin=expired`);
+    expect(await b.api.auth.getSession()).toBeNull();
+    const complete = await b.fetch(newer, { redirect: 'manual' });
+    const end = new URL(complete.headers.get('location') ?? '');
+    expect([end.pathname, Object.fromEntries(end.searchParams)]).toEqual(['/welcome', { popup, next: '/ready' }]);
+    expect(await b.api.auth.getSession()).toMatchObject({ provider: 'google', user: { email: who.email } });
+  });
+
   it('keeps the popup channel and a waiting move without requesting calendar access', async () => {
     const who: GoogleUser = { sub: `popup-consent-${seq++}`, email: unique('popup-consent') };
     h.google.preconsent(who.sub);
