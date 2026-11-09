@@ -168,6 +168,8 @@ export type Beat =
 export interface Cue { at: number; beat: Beat }
 
 export interface CallScript {
+  /** A stable opaque call ID only for the explicit manual cross-tab browser-receipt scene. */
+  notificationId?: string | undefined;
   privateSendFails?: boolean | undefined;
   privateMessages?: readonly { from: Person; text: string; after?: number; replyTo?: string; tagged?: readonly (Person | 'me')[] }[] | undefined;
   /** First sends fail in their original conversation, so a journey can show deliberate retry. */

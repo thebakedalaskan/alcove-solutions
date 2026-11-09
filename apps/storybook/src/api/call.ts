@@ -30,6 +30,7 @@ import type { Space } from '../world';
 import { Pushed, Snapshots } from './live';
 import { personalFor } from './personal';
 import { ScriptedDirectMessages } from './direct-messages';
+import { ScriptedNotifications } from './notifications';
 import { captureOf, defaultScript, linkState, part, scriptFor, type Beat, type CallScript, type HeardIdea, type Line, type Present, type RoomPlan } from './script';
 import { current, me as you, nextId } from './state';
 import { boardDoc, createItem, hereIn, moveItem, onTheBoard, peopleIn, removeWorkspace, restrict, shareWith, tagYou, trashItem, treeOf } from './workspaces';
@@ -72,6 +73,7 @@ type Presented = { kind: 'board'; by: CallSeat; key: string; id: string; section
 export class ScriptedCall extends Snapshots<CallState> implements CallSession {
   readonly direct: ScriptedDirectMessages;
   readonly ticket: CallTicket;
+  readonly notifications: ScriptedNotifications;
   readonly crypto: Crypto;
   readonly personal: PersonalApi;
   /** LiveKit's side: the scripted room plays it. */
@@ -115,7 +117,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
 
   constructor(private readonly meeting: Meeting, arrival: Arrival) {
     const script = scriptFor(meeting.code) ?? defaultScript(meeting);
-    const callId = nextId('call');
+    const callId = script.notificationId ?? `${nextId('call')}-${crypto.randomUUID()}`;
     const noteId = nextId('note');
     const since = script.since ?? 0;
     const startedAt = new Date(Date.now() - since * 1000).toISOString();
@@ -142,6 +144,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     this.crypto = new Crypto({ status: arrival.asking ? 'waiting' : 'in', place: 'main', members: arrival.asking ? [] : [me.id], everyone: arrival.asking ? [] : [me.id], media: null, chat: [], missedChat: false });
     this.personal = personalFor(noteId);
     this.direct = new ScriptedDirectMessages(this, this.crypto, this.ticket, script.privateSendFails);
+    this.notifications = new ScriptedNotifications(me.id, this, this.crypto, this.direct);
     this.livekit = new Pushed<RoomSide>({ people: {}, connection: 'connected', endReason: null, mutedYou: 0, sharesStopped: 0 });
 
     // Whoever's here already, the organizer first when it isn't you.
@@ -1755,6 +1758,7 @@ export class ScriptedCall extends Snapshots<CallState> implements CallSession {
     return Promise.resolve();
   }
   close(): void {
+    this.notifications.close();
     this.direct.close();
     this.halt();
     this.crypto.close();

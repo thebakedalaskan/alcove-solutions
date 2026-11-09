@@ -22,6 +22,7 @@ import { notesBrowser, organizerName, roomScribe, type CaptureControls } from '.
 import { Moments, callTimes, type CallTimes } from '../notes/CatchUp';
 import { CallLines } from '../notes/LiveLines';
 import { CallFollowUps } from '../notes/FollowUps';
+import { useActionFocus, type ActionJump } from './actionFocus';
 import type { NotesTab } from './side';
 import type { VolumeActions } from '../media/volume';
 
@@ -329,7 +330,8 @@ function PersonMenu({ p, host, volumes }: { p: PanelPerson; host: HostControls |
   );
 }
 
-export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, rooms, host, foot, volumes, together }: {
+export function PeopleView({ here, invited, asking, invites = false, ringing, canRing, onRing, onStopRing, notesAsks, rooms, host, foot, volumes, together, jump }: {
+  jump?: ActionJump | undefined;
   here: PanelPerson[]; invited: Person[];
   /** With the workspace open: where each is, and following them. */
   together?: StageTogether | undefined;
@@ -357,6 +359,7 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
 }) {
   const away = invited.filter((g) => !here.some((p) => sameEmail(p.person, g)) && !ringing.some((r) => sameEmail(r.person, g)));
   const now = Date.now();
+  const actionFocus = useActionFocus(jump);
   const roomsSaid = useId();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -366,12 +369,12 @@ export function PeopleView({ here, invited, asking, invites = false, ringing, ca
   };
   return (
     <>
-      <div className="ic-scroll ic-pad">
+      <div ref={actionFocus} className="ic-scroll ic-pad">
         {host && asking.length > 0 && (
           <>
             <div className="ac-eyebrow ic-cap-h">Asking to join · {asking.length}</div>
             {asking.map((w) => (
-              <div key={w.id} className="ic-prow is-asking">
+              <div key={w.id} data-call-action={w.id} tabIndex={-1} className="ic-prow is-asking">
                 <Avatar person={w.person} size={36} />
                 {/* Signed in: who it is, and whether letting them in adds them to the invite. A guest is only a typed name. */}
                 <div className="min-w-0"><b>{w.person.name}</b><small>{w.person.email || 'Guest, by name only'}</small><small>{w.person.email && invites ? 'Gets the notes once let in' : 'Doesn’t get the notes'}</small></div>

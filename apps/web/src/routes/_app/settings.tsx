@@ -14,7 +14,8 @@ import { AgentsPart } from '~/features/agents/Settings';
 import { DriveExportsPart } from '~/features/settings/DriveExports';
 import { SoundsPart } from '~/features/settings/Sounds';
 import { DevicesPart } from '~/features/settings/Devices';
-import { AppearancePart, CalendarPart, NotesPart, NotificationsPart, PlanPart, ProfilePart, RecordingPart, Unloaded } from '~/features/settings/parts';
+import { NotificationsPart } from '~/features/settings/Notifications';
+import { AppearancePart, CalendarPart, NotesPart, PlanPart, ProfilePart, RecordingPart, Unloaded } from '~/features/settings/parts';
 import { PrivacyPart } from '~/features/settings/Privacy';
 import { SavedProvider } from '~/features/settings/save';
 import { useSignOutStep } from '~/features/settings/SignOut';
@@ -206,7 +207,7 @@ function Settings() {
             <DevicesPart />
             <AgentsPart />
             {prefs.data && <SoundsPart prefs={prefs.data} />}
-            {prefs.data && <NotificationsPart prefs={prefs.data} />}
+            {prefs.data && <NotificationsPart />}
             <AppearancePart />
             {credits.data ? <PlanPart credits={credits.data} /> : credits.isError && <Unloaded id="plan" title="Plan and credits" busy={credits.isFetching} onRetry={() => readAgain(credits.refetch, 'plan')} />}
             <PrivacyPart session={session} />

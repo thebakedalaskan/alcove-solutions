@@ -32,7 +32,7 @@ export const NotificationsNight = page('/settings#notifications', 'busy', { glob
 export const NoCalendar = page('/settings#calendar', 'busy', { beforeEach: changing(noCalendar) });
 /** The shared demo account: a sample calendar in place of Google's. */
 export const DemoAccount = page('/settings#calendar', 'busy', { beforeEach: changing(sharedDemo) });
-/** Notifications the browser hasn't been asked about: greyed out until Turn on. */
+/** Notifications the browser hasn't been asked about: greyed out until Enable browser notifications. */
 export const NotificationsNotAsked = page('/settings#notifications', 'busy');
 /** Notifications allowed: each one can be chosen. */
 export const NotificationsOn = page('/settings#notifications', 'busy', { parameters: { opening: { browser: { notifications: 'granted' } } } });
@@ -150,4 +150,19 @@ export const GoogleDriveDisconnectAfterReturn = page('/settings?drive=connected#
       await within(drive).findByRole('button', { name: 'Connect Google Drive' }, { timeout: 8000 });
     });
   }
+});
+
+export const NotificationsUnsupported = page('/settings#notifications', 'busy', { parameters: { opening: { browser: { notificationTransport: 'unsupported' } } } });
+export const NotificationsPhone = phone(NotificationsOn);
+export const NotificationsPhoneNight = { ...phone(NotificationsOn), globals: { theme: 'dark' } };
+export const NativeBrowserPermission = page('/settings#notifications', 'first-day', { parameters: { opening: { browser: { notificationTransport: 'native' } } } });
+
+/** Change two different browser categories while the first write waits; only the first is refused. */
+export const NotificationLeafRefused = page('/settings#notifications', 'busy', {
+  parameters: { opening: { latency: 2500, browser: { notifications: 'granted', sharedNotificationBrowser: true } } },
+  beforeEach: changing((world) => {
+    let first = true;
+    world.prefs.notifications = { ...world.prefs.notifications, enabled: true, privateMessages: true, questions: false };
+    world.trouble = { ...world.trouble, 'account.updatePreferences': () => { if (!first) return null; first = false; return 'failed'; } };
+  })
 });

@@ -216,11 +216,11 @@ export const TurnOnNotifications: PageStory = {
   name: '11.11 Turn on browser notifications',
   ...page('/settings#notifications', 'busy'),
   play: async ({ userEvent, step }) => {
-    await step('The choices wait, greyed out. Click Turn on', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+    await step('The choices wait, greyed out. Click Enable browser notifications', async () => {
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
     });
     await step('The browser asks, only now. Allow', async () => {
-      await within(await row('Browser notifications')).findByText('Allowed', {}, SOON);
+      await within(await row('Browser notifications')).findByRole('switch', { name: 'Browser notifications', checked: true }, SOON);
     });
     await step('Allowed. Focus stays on the row and the choices wake up', async () => {
       await pressable('button', '5 min');
@@ -241,12 +241,12 @@ export const NotificationsBlocked: PageStory = {
   beforeEach: () => { openBrowser({ answer: 'denied' }); },
   play: async ({ userEvent, step }) => {
     await step('At the same question, Block', async () => {
-      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Turn on' }));
+      await userEvent.click(within(await row('Browser notifications')).getByRole('button', { name: 'Enable browser notifications' }));
     });
     await step('The row says where to allow them, and the choices stay as they are', async () => {
       const notifications = await row('Browser notifications');
       await within(notifications).findByText('Blocked', {}, SOON);
-      await within(notifications).findByText('Allow notifications for this site in your browser’s settings.');
+      await within(notifications).findByText(/Blocked or revoked in this browser/);
     });
   }
 };
@@ -477,7 +477,7 @@ export const FirstDay: PageStory = {
     });
     await step('Nothing asks the browser for anything until you press', async () => {
       await jump('Notifications');
-      await within(await row('Browser notifications')).findByRole('button', { name: 'Turn on' }, SOON);
+      await within(await row('Browser notifications')).findByRole('button', { name: 'Enable browser notifications' }, SOON);
     });
     await step('All of your minutes, with the sun at the end of the line', async () => {
       await jump('Plan and credits');

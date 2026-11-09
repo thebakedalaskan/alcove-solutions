@@ -1,3 +1,4 @@
+import { type CallNotificationsApi } from './notifications';
 import { type CallTimerControl, type CallTimerSequenceInput } from './timers';
 import { type FollowUpCreate, type FollowUpPatch, type FollowUpReview } from '../notes/follow-ups';
 import { type CallFeedbackKind, type CallQuestionStatus } from './attention';
@@ -128,6 +129,8 @@ export interface BreakoutPlan { rooms: { name: string; emails: string[] }[]; min
 
 
 export interface CallSession extends LiveStore<CallState> {
+  /** Content-free candidates from this exact connection’s current authorized snapshots. */
+  readonly notifications: CallNotificationsApi;
   /** Recipient-only encrypted messages, kept apart from room chat and every shared capture surface. */
   readonly direct: DirectMessagesApi;
   setTimerSequence(input: CallTimerSequenceInput): Promise<void>;

@@ -10,7 +10,8 @@ import { forgetEdits } from '~/features/workspace/keep';
 import { forgetPictures, readSessionWithPictureAccess } from '~/features/call/media/backgrounds/backgrounds';
 import { forgetPlaces } from '~/features/workspace/places';
 import { forgetWords } from '~/features/workspace/words';
-import { announceSignIn, announceSignOut } from './signedOut';
+import { accountGeneration, announceSignIn, announceSignOut } from './signedOut';
+import { announceNotificationPreferences, settleNotificationPreferences } from './notification-preference-channel';
 import { api } from './api';
 import { log } from './log';
 import { weekOn } from './time';
@@ -109,7 +110,7 @@ export const q = {
   agents: () => queryOptions({ queryKey: qk.agents, queryFn: () => api.agents.list() }),
   agentAuthorization: (id: string, ownerId: string) => queryOptions({ queryKey: qk.agentAuthorization(id, ownerId), queryFn: () => api.agents.authorization(id), retry: false, staleTime: 0 }),
   session: () => queryOptions({ queryKey: qk.session, queryFn: () => readSessionWithPictureAccess(() => api.auth.getSession()), staleTime: 60_000 }),
-  prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client) }),
+  prefs: () => queryOptions({ queryKey: qk.prefs, queryFn: ({ client }) => readPreferences(api, client), refetchInterval: 30_000, refetchIntervalInBackground: true }),
   team: () => queryOptions({ queryKey: qk.team, queryFn: () => api.people.team(), staleTime: 5 * 60_000 }),
   workspaces: () => queryOptions({ queryKey: qk.workspaces, queryFn: ({ client }) => readWorkspaces(api, client) }),
   people: (query: string) => queryOptions({ queryKey: qk.people(query), queryFn: () => api.people.search(query), staleTime: 30_000, placeholderData: (prev) => prev }),
@@ -344,9 +345,40 @@ export function useDeleteAccount(onDeleted: () => void) {
     onSuccess: async (owner) => { await forgetHere(owner, true); qc.clear(); qc.setQueryData(qk.session, null); onDeleted(); }
   });
 }
+/** Each channel hint belongs to its exact immutable query command, including after this hook re-renders. */
+const notificationWrites = new WeakMap<object, { owner: string; generation: string; nonce: string }>();
 /** Reversible preference fields show at once; the same query owner reconciles serial writes and current reads. */
 export function usePreferences() {
-  return useMutation(preferenceOptions(api, useQueryClient(), qk, (p: PreferenceChange) => p));
+  const qc = useQueryClient();
+  const options = preferenceOptions(api, qc, qk, (p: PreferenceChange) => p);
+  return useMutation({
+    ...options,
+    onMutate: async (patch, context) => {
+      const session = qc.getQueryData(q.session().queryKey);
+      const generation = session ? accountGeneration(session.ownerId) : null;
+      const owned = await options.onMutate?.(patch, context);
+      if (!owned) throw new AlcoveApiError('unauthenticated', 'Sign in again to save your preferences.');
+      const changes = owned.fields.notifications;
+      if (session && generation !== null && owned.account.valid() && accountGeneration(session.ownerId) === generation && changes && Object.keys(changes).length) {
+        notificationWrites.set(owned.entry, { owner: session.ownerId, generation, nonce: announceNotificationPreferences(session.ownerId, changes) });
+      }
+      return owned;
+    },
+    onError: (error, patch, ctx, context) => {
+      options.onError?.(error, patch, ctx, context);
+      const intent = ctx ? notificationWrites.get(ctx.entry) : undefined;
+      if (!ctx?.account.valid() || !intent || accountGeneration(intent.owner) !== intent.generation) return;
+      const current = qc.getQueryData(q.prefs().queryKey);
+      if (current) settleNotificationPreferences(intent.owner, intent.nonce, current.notifications, 'rollback');
+    },
+    onSuccess: (data, patch, ctx, context) => {
+      options.onSuccess?.(data, patch, ctx, context);
+      const intent = notificationWrites.get(ctx.entry);
+      if (!ctx.account.valid() || !intent || accountGeneration(intent.owner) !== intent.generation) return;
+      const current = qc.getQueryData(q.prefs().queryKey);
+      if (current) settleNotificationPreferences(intent.owner, intent.nonce, current.notifications, 'confirmed');
+    }
+  });
 }
 /** Pinning is a preference change too, in the same ordered queue as Settings and groups. */
 export function usePins() {

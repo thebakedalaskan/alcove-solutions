@@ -1,3 +1,4 @@
+import { CallNotifications } from './notifications';
 import { type CallTimerControl, type CallTimerSequenceInput, type CallMessageReceipt, type CallChatMessage } from '@alcove/api';
 import { type DirectKeyAnnouncement, type DirectSend, type DirectEnvelope, type DirectSync } from '@alcove/api';
 import { DirectMessages } from './direct-messages';
@@ -160,6 +161,7 @@ const held = (group: MlsGroup, welcome = -1): Held => ({ group, epochs: [], send
 
 
 export class HttpCall extends Live<CallState> implements CallSession {
+  readonly notifications: CallNotifications;
   readonly direct: DirectMessages;
   private directAnnouncement: { announcement: DirectKeyAnnouncement; message: string; epoch: number } | null = null;
   private directAnnouncements = new Set<string>();
@@ -232,6 +234,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
     this.hosting = initial.isHost;
     this.personal = t.personal(initial.callId);
     this.direct = new DirectMessages(initial.callId, ticket.identity, { send: (body) => t.directSend(initial.callId, body), sync: (ids, after) => t.directSync(initial.callId, ids, after) }, (why) => this.emit('debug', 'private envelope refused', { why }));
+    this.notifications = new CallNotifications(ticket.identity, this, this.crypto, this.direct);
   }
   /** In the group of the part of the call this browser is in. */
   private get inPlace() { return this.groups.get(this.place)?.group.inGroup ?? false; }
@@ -281,7 +284,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
           this.take(await this.t.get(this.state.callId));
           this.nextStateRead = performance.now() + this.timing.pollMs * 4;
         } while (this.fetchAgain && !this.closed);
-      } catch (error) { this.direct.authorizationLost(); throw error; }
+      } catch (error) { this.notifications.suspend(); this.direct.authorizationLost(); throw error; }
       finally { this.fetching = null; }
     })();
     return this.fetching;
@@ -370,8 +373,10 @@ export class HttpCall extends Live<CallState> implements CallSession {
           await this.step();
           const status = this.crypto.getSnapshot().status;
           if (!this.closed && status !== 'denied' && status !== 'removed' && status !== 'away' && status !== 'failed' && performance.now() >= this.nextStateRead) await this.fetchState();
+          this.notifications.resume();
         } while (this.again && !this.closed);
       } catch (e) {
+        this.notifications.suspend();
         this.direct.authorizationLost();
         this.emit('warn', 'call keys not in step', { code: e instanceof MlsError ? 'mls' : errorCode(e) });
       } finally {
@@ -399,6 +404,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   }
   /** Out of the call (turned away, removed, this call went on elsewhere, or someone else hosts while this organizer's connection was away) or out of step: stop keeping up. */
   private out(status: 'denied' | 'removed' | 'away' | 'failed', why: string) {
+    this.notifications.suspend();
     if (status !== 'failed') this.direct.close();
     else this.direct.contextChanged({ generation: this.generation, place: this.place, members: [], ready: false });
     for (const h of this.groups.values()) if (h.switchTimer) clearTimeout(h.switchTimer);
@@ -985,6 +991,7 @@ export class HttpCall extends Live<CallState> implements CallSession {
   hear = (note: string, line: string) => this.t.hear(this.state.callId, note, line);
   askEarlier = (question: string, timeZone: string) => this.t.askEarlier(this.state.callId, question, timeZone);
   close = () => {
+    this.notifications.close();
     this.direct.close();
     this.directAnnouncement = null;
     this.directAnnouncements.clear();

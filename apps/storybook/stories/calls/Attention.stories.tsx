@@ -44,5 +44,5 @@ export const Participant = inCall({ scenario: 'busy', call: CHECK_IN, script }, 
 export const NoRequests = inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { here: [{ who: PRIYA }] } }, { play: attention });
 export const ReturningConnection = inCall({ scenario: 'busy', call: LAUNCH_REVIEW, script: { ...script, cues: [...script.cues ?? [], ...at(3, { do: 'reconnect', seconds: 5 }), ...at(4, raisesHand(MAYA))] } }, { play: attention });
 
-export const SoundControls = review({ play: press(MORE, { then: ['Sounds'] }) });
+export const SoundControls = review({ play: press(MORE, { then: ['Sounds and notifications'] }) });
 export const SoundControlsPhone = phone(SoundControls);

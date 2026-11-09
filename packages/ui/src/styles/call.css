@@ -1298,13 +1298,6 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ic-call.is-focus > .ic-attention-focus { pointer-events: auto; }
 @media (max-width: 599px) { .ic-top.is-phone .ttl { min-width: 0; flex: 1; } .ic-top.is-phone .end { gap: 3px; } .ac-attention-button.is-compact .ac-attention-counts { gap: 3px; } }
 .ic-sounds { width: 360px; max-height: min(680px, calc(100dvh - 140px)); overflow-y: auto; overscroll-behavior: contain; }
-/* The sound sheet uses Settings rows within its own compact width at every viewport. */
-.ic-sounds .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); padding-inline: var(--space-1); }
-.ic-sounds .set-tx { display: block; }
-.ic-sounds .set-t { font-size: 14px; line-height: 20px; }
-.ic-sounds .set-h { margin-top: 3px; font-size: 12px; line-height: 17px; }
-.ic-sounds .set-r.is-wide { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-2); }
-.ic-sounds .set-line { flex-wrap: wrap; }
 .ic-attention-sound-head { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2); }
 .ic-attention-sound-head button { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
 .ic-attention-sound-head b { font-size: 14px; }
@@ -1363,3 +1356,17 @@ button.ic-fname:hover, .ic-fname[data-state="open"] { background: rgb(255 255 25
 .ac-private-audience { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); color: var(--ink-2); font-size: 12px; font-weight: 600; }
 .ac-private-audience span { overflow-wrap: anywhere; }
 .ic-private-audience { padding: var(--space-2) var(--space-4); flex-shrink: 0; border-top: 1px solid var(--line); }
+
+/* A validated notification focuses its exact pending action without changing the tab order. */
+.ic-prow[data-call-action]:focus, .ac-attention-hand[data-call-action]:focus, .ac-attention-question[data-call-action]:focus { outline: 2px solid var(--horizon); outline-offset: 3px; border-radius: var(--radius-sm); }
+
+/* Settings' wide page axis becomes a compact call sheet; its controls keep their own sound/browser views. */
+.ic-alert-controls { --ctl: auto; }
+.ic-alert-controls > .ac-tabs { margin: 4px 6px 12px; }
+.ic-alert-controls .set-r { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); padding-inline: var(--space-1); }
+.ic-alert-controls .set-r.is-wide { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+.ic-alert-controls .set-tx { display: block; }
+.ic-alert-controls .set-t { font-size: 14px; line-height: 20px; }
+.ic-alert-controls .set-h { margin-top: 3px; font-size: 12px; line-height: 17px; }
+.ic-alert-controls .set-line { flex-wrap: wrap; }
+.ic-alert-controls .set-r:has(.set-c .ac-btn) { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }

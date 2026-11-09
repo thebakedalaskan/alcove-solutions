@@ -3,7 +3,7 @@
  * notifications, how Alcove looks and your minutes. Devices and Privacy have their own files. Each control saves as it
  * changes (save.tsx).
  */
-import { errorMessage, type CreditBalance, type NotesLanguage, type NotesSetting, type NotificationPrefs, type Preferences, type Session, type SummaryLength } from '@alcove/api';
+import { errorMessage, type CreditBalance, type NotesLanguage, type NotesSetting, type Preferences, type Session, type SummaryLength } from '@alcove/api';
 import {
   Button, Icon, ProviderMark, Segmented, Select, SettingFact, SettingRow, SettingsPart, SunLine, ThemePreview, useTheme, useToast,
   type SelectOption, type SettingRowProps, type ThemeChoice
@@ -12,7 +12,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { uploads } from '~/features/record/uploads';
-import { askToNotify, useNotifyPermission, type NotifyPermission } from '~/features/shell/notify';
 import { useLive } from '~/lib/live';
 import { calendarConnectUrl, q, useDisconnectCalendar } from '~/lib/queries';
 import { hoursAndMinutes, timeZone } from '~/lib/time';
@@ -133,58 +132,6 @@ export function CalendarPart({ prefs }: { prefs: Preferences }) {
       <SwitchSetting label="Put calls I schedule on my calendar" help={`${google ? 'Google' : 'Your calendar'} sends everyone invited an invitation.`}
         checked={prefs.addToCalendar} onChange={(on) => save('Put calls I schedule on my calendar', { addToCalendar: on })} />
       <SwitchSetting label="Show my other meetings on Home" checked={prefs.showOtherMeetings} onChange={(on) => save('Show my other meetings on Home', { showOtherMeetings: on })} />
-    </SettingsPart>
-  );
-}
-
-type Remind = '1' | '5' | 'off';
-const remindOf = (m: NotificationPrefs['beforeCall']): Remind => (m === 1 ? '1' : m === 5 ? '5' : 'off');
-const minutesOf = (r: Remind): NotificationPrefs['beforeCall'] => (r === '1' ? 1 : r === '5' ? 5 : 0);
-type Alert = Exclude<keyof NotificationPrefs, 'beforeCall'>;
-
-/** Whether this browser shows Alcove's notifications, and the way to let it. The browser is asked only on a press. */
-function BrowserNotifications({ permission }: { permission: NotifyPermission }) {
-  const row = useRef<HTMLDivElement>(null);
-  const asked = useRef(false);
-  // Once the browser answers, the button goes: focus stays on this row rather than falling back to the page.
-  useEffect(() => {
-    if (!asked.current || permission === 'default') return;
-    asked.current = false;
-    row.current?.focus();
-  }, [permission]);
-  const ask = () => { asked.current = true; void askToNotify(); };
-  return (
-    <SettingRow ref={row} tabIndex={-1} label="Browser notifications"
-      help={permission === 'denied' ? 'Allow notifications for this site in your browser’s settings.'
-        : permission === 'unsupported' ? 'This browser can’t show them. Chrome, Edge, Firefox and Safari on a computer can.'
-          : permission === 'default' ? 'On this device, while Alcove is open in a tab. Your browser asks first.' : 'On this device, while Alcove is open in a tab.'}
-      control={permission === 'granted' ? <SettingFact icon="check" tone="yes">Allowed</SettingFact>
-        : permission === 'default' ? <Button variant="secondary" size="sm" icon="bell" onClick={ask}>Turn on</Button>
-          : permission === 'denied' ? <SettingFact icon="bellOff" tone="no">Blocked</SettingFact> : <SettingFact icon="bellOff">Not available</SettingFact>} />
-  );
-}
-
-export function NotificationsPart({ prefs }: { prefs: Preferences }) {
-  const save = useSave();
-  const permission = useNotifyPermission();
-  // The choices stay as they're saved, greyed out until the browser shows notifications.
-  const off = permission !== 'granted';
-  const n = prefs.notifications;
-  const alert = (a: Alert, name: string, help?: string | undefined) => (
-    <SwitchSetting label={name} help={help} checked={n[a]} disabled={off} onChange={(on) => save(name, { notifications: { [a]: on } })} />
-  );
-  return (
-    <SettingsPart id="notifications" title="Notifications">
-      <BrowserNotifications permission={permission} />
-      <Setting wide off={off} label="Before a call starts" help="For calls you organize."
-        control={<Segmented<Remind> label="Remind me before a call" value={remindOf(n.beforeCall)} disabled={off}
-          onChange={(r) => save('Before a call starts', { notifications: { beforeCall: minutesOf(r) } })}
-          options={[{ value: '1', label: '1 min' }, { value: '5', label: '5 min' }, { value: 'off', label: 'Off' }]} />} />
-      {alert('notesReady', 'When notes are ready')}
-      {alert('sharedWithYou', 'When someone shares notes with you')}
-      {alert('notesRequested', 'When someone asks for notes', 'In calls you organize, while you’re in another tab or app.')}
-      {alert('followUpDue', 'A follow-up is due', 'At 9:00 on the due day.')}
-      {alert('tagged', 'When someone tags you', 'In a document you can open, while you’re somewhere else.')}
     </SettingsPart>
   );
 }
