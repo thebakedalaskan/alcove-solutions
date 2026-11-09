@@ -7,13 +7,13 @@ import { ChatComposer, MentionText, useReadMentions, type ChatDraft, type Mentio
 import { type ReplyJump } from '../session/replyAlerts';
 import { useReadChatMessages } from './chatRead';
 
-export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, mentionPeople, unreadMentionIds = [], readIds, onRead, onSend, onRetry, onReact, visible = true, privateWith, delivery, jump }: {
+export function ChatView({ chat, missed, ready, moving, place, here, placeName, who, me, draft, mentionPeople, unreadMentionIds = [], readIds, onRead, onSend, onRetry, onReact, visible = true, privateWith, delivery, jump, readable }: {
   chat: CallChatMessage[]; missed: boolean; ready: boolean; moving: boolean; place: string; here: string | null;
   placeName: (place: string) => string; who: (id: string) => Person; me: string; draft: ChatDraft; mentionPeople: readonly MentionPerson[];
   unreadMentionIds?: readonly string[] | undefined; readIds: readonly string[]; onRead: (ids: readonly string[]) => void;
   onSend: (text: string, mentions?: readonly CallChatMention[], thread?: CallChatThread | null) => Promise<void>;
   onRetry: (messageId: string) => Promise<void>; onReact?: ((messageId: string, reaction: CallReaction, on: boolean) => Promise<void>) | undefined;
-  jump?: ReplyJump | undefined; visible?: boolean | undefined; privateWith?: string | undefined; delivery?: ((id: string) => string) | undefined;
+  readable?: boolean | undefined; jump?: ReplyJump | undefined; visible?: boolean | undefined; privateWith?: string | undefined; delivery?: ((id: string) => string) | undefined;
 }) {
   const toast = useToast();
   const [thread, setThread] = useState(draft.threadRoot ?? null);
@@ -24,6 +24,10 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   const bottom = useRef(true);
   const focus = useRef<string | null>(null);
   const read = useMemo(() => new Set(readIds), [readIds]);
+  const mentioned = useMemo(() => new Set(unreadMentionIds), [unreadMentionIds]);
+  const byMessage = useMemo(() => new Map(chat.map((m) => [`${m.place}:${m.id}`, m])), [chat]);
+  const roots = useMemo(() => chat.filter((m) => m.thread === null), [chat]);
+  const rootIds = useMemo(() => new Set(roots.map((m) => `${m.place}:${m.id}`)), [roots]);
   const grouped = useMemo(() => {
     const groups = new Map<string, CallChatMessage[]>();
     for (const message of chat) if (message.thread) {
@@ -33,13 +37,13 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     }
     return groups;
   }, [chat]);
-  const original = thread ? chat.find((m) => m.id === thread && m.place === threadPlace && m.thread === null) : null;
+  const root = thread ? byMessage.get(`${threadPlace}:${thread}`) : null;
+  const original = root?.thread === null ? root : null;
   const replies = thread ? grouped.get(`${threadPlace}:${thread}`) ?? [] : [];
   const context = original ?? replies[0] ?? null;
-  const roots = chat.filter((m) => m.thread === null);
   const missing = [...grouped.entries()].flatMap(([key, rows]) => {
     const first = rows[0];
-    return first?.thread && !roots.some((m) => m.id === first.thread?.root && m.place === first.place)
+    return first?.thread && !rootIds.has(`${first.place}:${first.thread.root}`)
       ? [{ key, first, rows }] : [];
   });
   const shown = thread ? replies : roots;
@@ -52,11 +56,12 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     draft.threads.set(thread, created);
     return created;
   }, [draft, thread]);
+  const historyReady = readable ?? ready;
   const displayed = original ? [original, ...shown] : shown;
   const displayedIds = new Set(displayed.map((m) => m.id));
-  const visibleMentions = visible && ready ? unreadMentionIds.filter((id) => displayedIds.has(id)) : [];
+  const visibleMentions = visible && historyReady ? unreadMentionIds.filter((id) => displayedIds.has(id)) : [];
   useReadMentions(scroll, visibleMentions, onRead);
-  const visibleUnread = displayed.filter((m) => visible && ready && !m.isMe && !m.sending && !m.failed && !read.has(m.id)
+  const visibleUnread = displayed.filter((m) => visible && historyReady && !m.isMe && !m.sending && !m.failed && !read.has(m.id)
     && !m.mentions.some((mention) => mention.identity === me)).map((m) => m.id);
   useReadChatMessages(scroll, visibleUnread, onRead);
   useLayoutEffect(() => {
@@ -98,7 +103,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   };
   const unreadIn = (messages: readonly CallChatMessage[]) => messages.filter((m) => !m.isMe && !m.sending && !m.failed && !read.has(m.id));
   const openMention = () => {
-    const target = chat.find((m) => unreadMentionIds.includes(m.id));
+    const target = chat.find((m) => mentioned.has(m.id));
     if (!target) return;
     focus.current = target.id;
     choose(target.thread?.root ?? null, target.thread?.root ?? null, target.place);
@@ -116,9 +121,9 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     const canAct = ready && !message.sending && !message.failed && message.place === place;
     const nested = grouped.get(`${message.place}:${message.id}`) ?? [];
     const fresh = unreadIn(nested);
-    const parent = message.thread && message.thread.replyTo !== message.thread.root ? chat.find((m) => m.id === message.thread?.replyTo && m.place === message.place) : null;
+    const parent = message.thread && message.thread.replyTo !== message.thread.root ? byMessage.get(`${message.place}:${message.thread.replyTo}`) : null;
     return <CallChatMessageView key={message.id} message={message} person={from} name={callName(from)}
-      unreadMention={unreadMentionIds.includes(message.id)} canReply={canAct} canRetry={ready && message.place === place} canReact={canAct && Boolean(onReact)} reactions={reactions}
+      unreadMention={mentioned.has(message.id)} canReply={canAct} canRetry={ready && message.place === place} canReact={canAct && Boolean(onReact)} reactions={reactions}
       parent={parent ? { name: callName(who(parent.from)), text: parent.text } : undefined} me={me}
       threadSelected={thread !== null} replyCount={nested.length} unreadReplies={fresh.length}
       delivery={message.isMe ? delivery?.(message.id) : undefined} privateMessage={Boolean(privateWith)}
@@ -129,7 +134,7 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
   const marked = new Set(chat.filter((m) => m.thread === null).map((m) => m.place)).size > 1;
   const destination = privateWith ? `only ${privateWith}${thread ? ' in this thread' : ''}` : thread && context ? `this thread in ${placeName(context.place)}` : here ?? 'everyone';
   const canSend = ready && (!thread || context?.place === place);
-  const addressed = thread && replyTo ? chat.find((m) => m.id === replyTo && m.place === threadPlace) : null;
+  const addressed = thread && replyTo ? byMessage.get(`${threadPlace}:${replyTo}`) : null;
   return <>
     {thread && <div className="ic-thread-head"><IconButton icon="left" label="Back to chat" onClick={back} /><div><b>Thread</b><small>{privateWith ? `Only you and ${privateWith}` : context ? `In ${placeName(context.place)}` : 'Original message unavailable'}</small></div></div>}
     {!!unreadMentionIds.length && <div className="ic-mention-unread" role="status"><Icon name="chat" size={16} /><span>{unreadMentionIds.length} unread {unreadMentionIds.length === 1 ? 'mention' : 'mentions'}</span><Button variant="quiet" size="sm" onClick={openMention}>Open mention</Button></div>}
@@ -148,8 +153,8 @@ export function ChatView({ chat, missed, ready, moving, place, here, placeName, 
     </div>
     {thread && context?.place !== place && <Notice icon="lock">Return to this conversation’s room to reply.</Notice>}
     {privateWith && <div className="ac-private-audience ic-private-audience"><Icon name="lock" size={14} /><span>Only you and {privateWith}</span></div>}
-    {addressed && <div className="ic-replying"><Icon name="reply" size={14} /><span className="ac-clamp-1">Replying to {callName(who(addressed.from))}: {addressed.text}</span>{replyTo !== thread && <IconButton icon="x" size={14} label="Reply to the original instead" onClick={() => { draft.replyTo = thread; setReplyTo(thread); }} />}</div>}
-    <ChatComposer focusRequest={composerFocus} privateWith={privateWith} key={thread ?? 'room'} draft={activeDraft} people={mentionPeople} ready={canSend} moving={moving} to={destination}
+    {addressed && <div className="ic-replying"><Icon name="reply" size={14} /><span className="ac-clamp-1">Replying to {callName(who(addressed.from))}: {addressed.text}</span>{original && replyTo !== thread && <IconButton icon="x" size={14} label="Reply to the original instead" onClick={() => { draft.replyTo = thread; setReplyTo(thread); }} />}</div>}
+    <ChatComposer disabledReason={privateWith && !ready ? 'This conversation is unavailable' : thread && context?.place !== place ? 'Return to this conversation’s room to reply' : undefined} focusRequest={composerFocus} privateWith={privateWith} key={thread ?? 'room'} draft={activeDraft} people={mentionPeople} ready={canSend} moving={moving} to={destination}
       onSend={(text, mentions) => onSend(text, mentions, thread ? { root: thread, replyTo: replyTo ?? thread } : null)} />
   </>;
 }

@@ -71,3 +71,16 @@ export const ReplyAlert = inCall({ scenario: 'call-soon', call: REVIEW, script: 
   await screen.findByRole('button', { name: 'Open reply' }, { timeout: 10000 });
 } });
 export const ReplyAlertPhone = phone(ReplyAlert);
+
+export const DepartedPrivateHistory = inCall({ scenario: 'call-soon', call: REVIEW, script: {
+  here: [{ who: PRIYA }, { who: KOFI }], notes: 'off',
+  privateMessages: [{ from: PRIYA, text: 'The checklist is ready for review.', after: .2 }],
+  cues: at(.4, { do: 'leave', who: PRIYA })
+} }, { play: async (c) => {
+  await openChat(c);
+  await c.userEvent.click(await screen.findByRole('button', { name: /^Chat audience:/ }));
+  await c.userEvent.click(await screen.findByRole('option', { name: /Private.*Unavailable/ }));
+  await screen.findByText('Unavailable in this room. Your draft stays here.');
+} });
+export const DepartedPrivateHistoryLight = light(DepartedPrivateHistory);
+export const DepartedPrivateHistoryPhone = phone(DepartedPrivateHistory);

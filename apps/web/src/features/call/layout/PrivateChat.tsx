@@ -68,7 +68,7 @@ function PrivateThread({ session, state, audience, draft, available, who, visibl
     <div className="ac-private-heading"><Avatar person={person} size={36} /><div><b>{person.name}</b><span><Icon name="lock" size={12} />Private conversation · This call only</span></div></div>
     {!available && <Notice icon="lock">Unavailable in this room. Your draft stays here.</Notice>}
     {!state.ready ? <div className="ic-scroll ic-pad"><EmptyState art={null} title="Reconnecting privately">Messages return once your place in the call is checked.</EmptyState></div>
-      : <ChatView chat={chat} missed={false} ready={available} moving={false} place={audience.place} here={null}
+      : <ChatView readable={state.ready} chat={chat} missed={false} ready={available} moving={false} place={audience.place} here={null}
         placeName={() => 'your private conversation'} who={who} me={session.ticket.identity} draft={draft} mentionPeople={mentionPeople} unreadMentionIds={unreadMentions}
         jump={jump} privateWith={person.name} visible={visible} readIds={readIds}
         onRead={(ids) => session.direct.read(ids)} onSend={(text, mentions, thread) => session.direct.send(audience.identity, text, mentions, thread)}
