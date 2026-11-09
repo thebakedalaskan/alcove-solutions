@@ -1,3 +1,4 @@
+import { DriveConnectResultSchema } from '@alcove/api';
 /*
  * Settings: change one thing and leave. You stand on the horizon, in the last of the light, with the tour and Sign out
  * beside you. Under the water the page is one long sheet with an index beside it, which on a narrow screen is a strip
@@ -10,6 +11,7 @@ import { createFileRoute, useNavigate, useRouterState } from '@tanstack/react-ro
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { arrival } from '~/features/onboarding/store';
 import { AgentsPart } from '~/features/agents/Settings';
+import { DriveExportsPart } from '~/features/settings/DriveExports';
 import { SoundsPart } from '~/features/settings/Sounds';
 import { DevicesPart } from '~/features/settings/Devices';
 import { AppearancePart, CalendarPart, NotesPart, NotificationsPart, PlanPart, ProfilePart, RecordingPart, Unloaded } from '~/features/settings/parts';
@@ -19,6 +21,10 @@ import { useSignOutStep } from '~/features/settings/SignOut';
 import { q } from '~/lib/queries';
 
 export const Route = createFileRoute('/_app/settings')({
+  validateSearch: (search: Record<string, unknown>): { drive?: 'connected' | 'cancelled' | 'failed' | undefined } => {
+    const drive = DriveConnectResultSchema.safeParse(search['drive']);
+    return { drive: drive.success ? drive.data : undefined };
+  },
   // A part that doesn't load leaves the rest of the page (and Sign out) usable. Google can be slow: the calendar gets a
   // moment, so the page doesn't move under the reader, and no longer.
   loader: async ({ context: { queryClient: qc } }) => {
@@ -34,6 +40,7 @@ const PARTS: readonly Part[] = [
   { id: 'notes', label: 'Notes', needs: 'prefs' },
   { id: 'recording', label: 'Recording', needs: 'prefs' },
   { id: 'calendar', label: 'Calendar', needs: 'prefs' },
+  { id: 'google-drive', label: 'Google Drive' },
   { id: 'devices', label: 'Devices' },
   { id: 'agents', label: 'Agents' },
   { id: 'sounds', label: 'Sounds', needs: 'prefs' },
@@ -152,6 +159,7 @@ function useTopBar(): number {
 const readAgain = (read: () => Promise<unknown>, id: string) => void read().then(() => requestAnimationFrame(() => document.getElementById(id)?.focus({ preventScroll: true })));
 
 function Settings() {
+  const { drive } = Route.useSearch();
   const session = useQuery(q.session()).data;
   const prefs = useQuery(q.prefs());
   const credits = useQuery(q.balance());
@@ -194,6 +202,7 @@ function Settings() {
                 <CalendarPart prefs={prefs.data} />
               </>
             ) : prefs.isError && <Unloaded id="notes" title="Notes, recording, calendar and notifications" busy={prefs.isFetching} onRetry={() => readAgain(prefs.refetch, 'notes')} />}
+            <DriveExportsPart result={drive} />
             <DevicesPart />
             <AgentsPart />
             {prefs.data && <SoundsPart prefs={prefs.data} />}

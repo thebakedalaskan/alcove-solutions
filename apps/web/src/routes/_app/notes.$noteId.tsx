@@ -8,6 +8,7 @@ import { createFileRoute, type ErrorComponentProps } from '@tanstack/react-route
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { NoteBoardCards, NoteRoomBoardCards, type RoomBoard } from '~/features/notes/Boards';
 import { CallLine, marksOf } from '~/features/notes/CallLine';
+import { NoteDriveExports } from '~/features/notes/DriveExports';
 import { Provenance } from '~/features/notes/Evidence';
 import { GonePage, NoteMenu, PageHead } from '~/features/notes/Head';
 import { Propose, useNoteReader, type Seed } from '~/features/notes/entries';
@@ -402,6 +403,7 @@ function NoteView({ note, me, at, room, onGone }: { note: Note; me: string | und
           <Additions note={note} me={me} mine={mine} shown={onScreen} onSeek={seek} />
           <Recipients recipients={note.recipients} me={me} fresh={sharedTo} />
           {!going && <SeriesCard note={note} />}
+          {!going && note.kind === 'call' && note.id !== 'example' && <NoteDriveExports noteId={note.id} recordingAllowed={mine && note.kept.recording} recordingKept={note.kept.recording} />}
         </aside>
       </div>
       <ScreenViewer noteId={note.id} screens={note.screens} open={viewer.open} me={me} onOpen={viewer.show} onClose={viewer.close} onSeek={seek} marks={yours.screens} />

@@ -1,4 +1,5 @@
 import { type FollowUpReview } from './follow-ups';
+import type { DriveCallExports, DriveExportInput, DriveExportJob, DriveFolder, DriveSettings } from './drive';
 import { type ID } from '../shared/ids';
 import { type PersonalApi, type PromoteBody, type PromotionPreview } from './personal';
 import { type NoteProgress } from './progress';
@@ -92,4 +93,18 @@ export interface SeriesApi {
    * calls' dates are read in it, so they're the days the asker sees.
    */
   ask(id: ID, question: string, timeZone: string): AsyncIterable<SeriesAnswerPart>;
+}
+
+/** Explicitly authorized readable copies in a person's chosen Google Drive folder. */
+export interface DriveApi {
+  get(): Promise<DriveSettings>;
+  connect(): Promise<{ url: string }>;
+  pickFolder(): Promise<{ url: string }>;
+  disconnect(): Promise<DriveSettings>;
+  folders(): Promise<DriveFolder[]>;
+  update(input: DriveExportInput): Promise<DriveSettings>;
+  jobs(): Promise<DriveExportJob[]>;
+  forNote(noteId: ID): Promise<DriveCallExports>;
+  setForNote(noteId: ID, input: DriveExportInput | null): Promise<DriveCallExports>;
+  retry(jobId: ID): Promise<DriveExportJob>;
 }

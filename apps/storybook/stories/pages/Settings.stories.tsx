@@ -3,6 +3,7 @@ import type { Meta } from '@storybook/react-vite';
 import { screen, within } from 'storybook/test';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { withDriveReconnect } from '../../src/world/drive-exports';
 import { keptHere, noCalendar, sharedDemo, troubled } from './changes';
 
 const meta = { title: 'Pages/Settings', ...pages } satisfies Meta<PageArgs>;
@@ -105,3 +106,20 @@ export const SoundsNight = page('/settings#sounds', 'busy', { globals: { theme: 
 export const SoundsPhone = phone(Sounds);
 export const QuietSounds = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, quiet: true } }; }) });
 export const SoundsOff = page('/settings#sounds', 'busy', { beforeEach: changing((w) => { w.prefs = { ...w.prefs, sounds: { ...w.prefs.sounds, enabled: false } }; }) });
+
+/** Drive connects independently of ordinary sign-in and never exposes a provider credential. */
+export const GoogleDriveDisconnected = page('/settings#google-drive', 'busy');
+export const GoogleDriveExports = page('/settings#google-drive', 'drive-connected');
+export const GoogleDriveExportsNight = page('/settings#google-drive', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveExportsPhone = phone(GoogleDriveExports);
+export const GoogleDriveReconnect = page('/settings#google-drive', 'busy', { beforeEach: changing(withDriveReconnect) });
+export const GoogleDriveUnavailable = page('/settings#google-drive', 'busy', { beforeEach: changing(troubled({ 'drive.get': 'failed' })) });
+export const GoogleDriveLoading = page('/settings#google-drive', 'busy', { beforeEach: changing(troubled({ 'drive.get': 'hold' })) });
+export const GoogleDriveFolderPicker = page('/settings#google-drive', 'drive-connected', { play: pressing('Choose default Google Drive folder', 'Open the folder picker with the current destination and authorized shared-drive folders') });
+export const GoogleDriveFolderUnavailable = page('/settings#google-drive', 'drive-connected', {
+  beforeEach: changing(troubled({ 'drive.folders': 'failed' })),
+  play: pressing('Choose default Google Drive folder', 'The folder list cannot be loaded; the selected destination remains unchanged')
+});
+
+export const GoogleDriveConsentCancelled = page('/settings?drive=cancelled#google-drive', 'busy');
+export const GoogleDriveConsentFailed = page('/settings?drive=failed#google-drive', 'drive-connected');

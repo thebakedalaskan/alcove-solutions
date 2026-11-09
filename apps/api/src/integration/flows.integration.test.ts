@@ -2839,6 +2839,7 @@ describe('deleting an account', () => {
     // scheduled, on her calendar; her own pins and a group.
     const ended = await b.api.calls.join((await b.api.calls.startNow({ notes: 'on', guests: [guest.session.user.email] })).code, { mic: true, cam: false });
     await ended.appendAudio(piece(audioBytes('leaving-call'), 0, 0));
+    await ended.transcribe(speech('We agreed to send the checklist on Friday.', 0, 0), ended.ticket.identity);
     const callNote = (await ended.leave())?.pendingNoteId ?? '';
     await written(b.api, callNote);
     await guest.api.account.updatePreferences({ pinned: [callNote] });
@@ -2898,10 +2899,21 @@ describe('deleting an account', () => {
 
     // Her named agent goes with the account, too, including its hashed credential.
     await b.api.agents.createToken({ name: 'Lena’s assistant', scopes: ['notes:read'], expiresInDays: 30 });
+    // Her independent Drive credentials, explicit call choice and queued export go with her as well.
+    const driveFolder = `leaving_${ownerId}`;
+    h.google.drive.folder(lena.sub, { id: driveFolder, name: 'Leaving call exports' });
+    h.google.drive.pick(lena.sub, driveFolder);
+    h.google.next(lena);
+    const driveConsent = await fetch((await b.api.drive.connect()).url, { redirect: 'manual' });
+    const driveCallback = driveConsent.headers.get('location');
+    if (!driveCallback) throw new Error('Drive consent did not return to Alcove.');
+    await b.fetch(driveCallback, { redirect: 'manual' });
+    await b.api.drive.update({ enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
+    await b.api.drive.setForNote(callNote, { enabled: true, destinationId: driveFolder, formats: ['notes-markdown'] });
     // Every table that keeps an account's rows has some of hers.
     const tables = (await h.pool.query<{ table_name: string }>("SELECT table_name FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'owner_id' ORDER BY table_name")).rows.map((r) => r.table_name);
     expect(tables).toEqual([
-      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
+      'agent_codes', 'agent_grants', 'agent_operations', 'agent_tokens', 'billing_accounts', 'call_attention', 'call_codes', 'call_mls', 'call_moves', 'call_notes', 'call_rings', 'calls', 'content_jobs', 'document_access', 'document_clients', 'document_snapshots', 'document_updates', 'document_version_parts', 'document_versions', 'documents', 'drive_call_exports', 'drive_connections', 'drive_export_jobs', 'identities', 'items', 'media_upload_days', 'meeting_access', 'note_access', 'note_additions',
       'object_gc', 'operations', 'owners', 'personal_notes', 'presenter_frame_notes', 'presenter_notes', 'recording_pieces', 'recordings', 'revisions', 'screen_frames', 'sessions', 'transcript_clips', 'transcript_translations', 'workspace_authors',
       'workspace_media', 'workspace_media_pieces', 'workspace_media_previews', 'workspace_media_uses', 'workspace_members', 'workspace_mentions', 'workspaces'
     ]);

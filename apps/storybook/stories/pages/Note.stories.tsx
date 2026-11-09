@@ -4,6 +4,7 @@ import { screen } from 'storybook/test';
 import { RETRO_NOTE, afterTheRetro } from '../../src/api/scenarios';
 import { phone } from '../../src/call';
 import { changing, page, pages, type PageArgs, type PageStory } from '../../src/page';
+import { withDriveExports, withSharedCallExports } from '../../src/world/drive-exports';
 import { FOLLOW_UP_NOTE, withFollowUpProposals } from '../../src/world/follow-ups';
 import { STATES, inEveryState } from '../../src/world/states';
 import { troubled } from './changes';
@@ -168,3 +169,27 @@ export const ReviewingFollowUpProposals = page(`/notes/${FOLLOW_UP_NOTE}`, 'busy
     });
   }
 });
+
+/** The call's own export destination and files, next to who has the source notes. */
+export const GoogleDriveExports = page('/notes/n2', 'drive-connected');
+export const GoogleDriveExportsPhone = phone(GoogleDriveExports);
+export const GoogleDriveExportsNight = page('/notes/n2', 'drive-connected', { globals: { theme: 'dark' } });
+export const GoogleDriveCustomSettings = page('/notes/n2', 'busy', { beforeEach: changing((w) => {
+  withDriveExports(w);
+  const destination = w.drive.folders[1];
+  if (destination) w.drive.overrides['n2'] = { enabled: true, destination, formats: ['notes-markdown'] };
+}) });
+
+/** A shared reader can choose their own Drive exports, while original audio stays organizer-only. */
+export const GoogleDriveSharedReader = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports) });
+export const GoogleDriveSharedReaderNight = page('/notes/n3', 'busy', { beforeEach: changing(withSharedCallExports), globals: { theme: 'dark' } });
+export const GoogleDriveSharedReaderPhone = phone(GoogleDriveSharedReader);
+export const GoogleDriveSharedReaderChoices = page('/notes/n3', 'busy', { beforeEach: changing((w) => {
+  withSharedCallExports(w);
+  w.drive.overrides['n3'] = { enabled: true, destination: w.drive.settings.destination, formats: ['notes-markdown', 'transcript-text'] };
+}) });
+export const GoogleDriveAudioNotRetained = page(`/notes/${STATES.unkept}`, 'busy', { beforeEach: changing((w) => {
+  inEveryState(w);
+  withDriveExports(w);
+  w.drive.overrides[STATES.unkept] = { enabled: true, destination: w.drive.settings.destination, formats: ['notes-markdown'] };
+}) });

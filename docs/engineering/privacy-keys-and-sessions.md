@@ -9,8 +9,9 @@ object store, logs and network edge see ciphertext, opaque IDs, keyed hashes, si
 Cloud transcribes speech and writes notes, but only in confidential VMs whose hardware evidence Alcove checks
 first, with everything sealed to the key that evidence vouches for
 ([Notes and inference › Verified private inference](notes-and-inference.md#verified-private-inference)).
-One outside service is handed content as it is: Google Calendar carries the calls an organizer schedules
-([What is still visible](#what-is-still-visible)).
+Google Calendar carries the calls an organizer schedules. With separate, explicit consent, Google Drive receives
+readable copies of selected finalized call artifacts in a chosen folder; that folder's permissions apply to those
+copies ([Drive exports](drive-exports.md), [What is still visible](#what-is-still-visible)).
 
 **Trust model.** The API process is the trusted plaintext endpoint (`C01`). It holds the master key
 `KMASTER`, which opens every account's root key, so it can open any account at any time without that person
@@ -87,6 +88,8 @@ piece of a file is sealed on the one core every call runs on. A `media-piece` is
 | `personal-notes` | the author's state key `personal:<noteId>` | the author (`ownerId`), the note and its organizer |
 | `note-addition` | state key `note-additions:<noteId>` | note, addition |
 | `job` | state key `job:<noteId>` | note |
+| `drive-export` | state key `drive:<scope>` under the exporting account | connection, call or export job's exact scope; credentials, destinations and private export metadata |
+| `drive-oauth-attempt` | sign-in attempt key | independent Drive authorization attempt; the sealed body binds the owner, state, PKCE verifier and expiry |
 | `workspace-state` | state key `workspace` | workspace (its name and tree) |
 | `workspace-member` | state key `workspace` | workspace, member (who someone in it is) |
 | `document-access` | state key `workspace` | workspace, document, entry (who a document is shared with) |

@@ -530,3 +530,49 @@
 .ac-follow-status, .ac-follow-waiting { margin: 0; }
 .ac-follow-waiting { padding: var(--space-3) 0; border-top: 1px solid var(--line); }
 .ac-follow-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin-top: var(--space-1); }
+
+/* Google Drive exports: compact choices and one quiet list, in Settings and beside a saved call. */
+.ac-drive-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ac-drive-format { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 14px 12px; border: 1px solid var(--line-control); border-radius: var(--radius-md); text-align: left; color: var(--ink-2); background: transparent; cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
+.ac-drive-format:hover { background: var(--surface-raised); }
+.ac-drive-format:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ac-drive-format:disabled { opacity: .5; cursor: default; }
+.ac-drive-format.is-on { border-color: var(--horizon); background: var(--horizon-soft); color: var(--ink); }
+.ac-drive-format > .ac-i { flex: none; color: var(--horizon); }
+.ac-drive-format > span:not(.ac-drive-tick) { min-width: 0; flex: 1; }
+.ac-drive-format b, .ac-drive-format small { display: block; }
+.ac-drive-format b { font: 500 14px/20px var(--font-sans); }
+.ac-drive-format small { margin-top: 2px; font: 400 12px/17px var(--font-sans); color: var(--ink-2); }
+.ac-drive-tick { width: 17px; height: 17px; flex: none; border: 1px solid var(--line-control); border-radius: 5px; display: grid; place-items: center; }
+.ac-drive-tick .ac-i { opacity: 0; }
+.ac-drive-format.is-on .ac-drive-tick { border-color: var(--horizon); color: var(--horizon); }
+.ac-drive-format.is-on .ac-drive-tick .ac-i { opacity: 1; }
+.ac-drive-disclosure { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 9px; color: var(--ink-2); font: 400 13px/20px var(--font-sans); }
+.ac-drive-disclosure > .ac-i { margin-top: 2px; color: var(--horizon); }
+.ac-drive-disclosure p { margin: 0; text-wrap: pretty; }
+.ac-drive-location { display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; }
+.ac-drive-location > .ac-i { flex: none; color: var(--horizon); }
+.ac-drive-location > span { min-width: 0; }
+.ac-drive-location b { font: 500 14px/20px var(--font-sans); }
+.ac-drive-location small { display: block; color: var(--ink-2); font: 400 12px/17px var(--font-sans); }
+.ac-drive-jobs { margin: 0; padding: 0; list-style: none; }
+.ac-drive-job { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 13px 0; border-top: 1px solid var(--line); font: 400 13px/19px var(--font-sans); }
+.ac-drive-job-mark { width: 26px; flex: none; display: grid; place-items: center; color: var(--ink-2); }
+.ac-drive-job.is-problem .ac-drive-job-mark { color: var(--caution); }
+.ac-drive-job-copy { flex: 1; min-width: 0; }
+.ac-drive-job-copy > b { display: block; font-weight: 500; font-size: 14px; color: var(--ink); }
+.ac-drive-job-copy > span { color: var(--ink-2); }
+.ac-drive-job-copy > p { margin: 4px 0 0; color: var(--caution); text-wrap: pretty; }
+.ac-drive-open { display: flex; align-items: center; gap: 4px; flex: none; color: var(--horizon); font-weight: 500; }
+.ac-drive-open:hover { text-decoration: underline; }
+.ac-drive-empty.ac-empty { padding: 22px 12px; gap: 5px; text-align: center; border-top: 1px solid var(--line); }
+.ac-drive-empty.ac-empty b { font-size: 14px; }
+.ac-drive-empty.ac-empty p { max-width: 430px; font-size: 13px; line-height: 20px; }
+@media (max-width: 620px) { .ac-drive-formats { grid-template-columns: minmax(0, 1fr); } .ac-drive-format { padding: 12px; } }
+
+.ac-drive-source { margin-block: 1px; color: var(--horizon); font: 400 12px/18px var(--font-sans); }
+.ac-drive-source a:hover { text-decoration: underline; }
+
+.ac-drive-format.is-unavailable:disabled { opacity: 1; color: var(--ink-2); }
+.ac-drive-format.is-unavailable > .ac-i { color: var(--ink-3); }
+.ac-drive-format small.ac-drive-format-reason { margin-top: 6px; font-size: 12px; line-height: 18px; }

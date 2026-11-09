@@ -1656,3 +1656,40 @@ does not disconnect an agent; Disconnect, expiry and account deletion end its ac
 
 Storybook's journeys use these numbers: **14.1 Create a personal token**, **14.2 Disconnect an agent**, and **14.3 Sign in
 and review requested access**. The OAuth journey plays up to the external-client hand-off; it does not open another app.
+
+## 15. Google Drive exports
+
+Google Drive is a separate connection in **Settings → Google Drive**. Connect the Google account that should own exported
+files and consent to access only files and folders selected for Alcove. Connecting or disconnecting Drive leaves ordinary
+Alcove sign-in and Calendar settings alone. Google’s pages are outside Alcove; returning after cancellation or failure says
+what happened and leaves the existing settings in place.
+
+1. **Choose default files.** Select finalized notes as Markdown, transcripts as plain text, or retained original audio
+   pieces as a ZIP. Each is an explicit choice. **Automatic exports** stays unavailable until a destination and at least
+   one type are chosen. Every setting saves as it changes. Pausing exports keeps the choices. Only finalized, retained
+   material the exporting account can still access is eligible; a call ending does not promise an export exists.
+2. **Choose a shared-drive folder.** The destination opens a folder picker, showing authorized folders and whether each
+   belongs to a shared drive. **Choose in Google** grants access to another folder and returns to Settings. Choosing a
+   folder checks current write permission before it is saved. An unavailable destination is refused, with no fallback to
+   another folder. The selected folder’s existing sharing rules apply to the readable exported copy; Alcove never adds
+   people, makes public links or exports another person’s private notes.
+3. **Override one call.** On a call’s saved notes, your **Google Drive** part says whether it follows the
+   defaults. **Use custom settings** gives this call its own authorized destination, file choices and on/off switch.
+   Returning to defaults removes the override. This changes only that person’s export settings for the call.
+4. **Retry an export.** Recent exports name their source call and show **Pending**, **Uploading**, **Uploaded** with **Open**,
+   or an actionable failure. **Retry** rechecks permission and, with the same destination, keeps the same export identity
+   so an uncertain response does not create a second file. Choosing another destination and retrying a failed export
+   intentionally creates a new copy there; existing copies stay in their original folder. Revoked Google access asks
+   for reconnection instead. Regenerated
+   finalized material updates its export according to the documented export version policy.
+5. **Disconnect Google Drive.** Disconnect stops further queued exports and forgets this connection. Deleting a source or
+   losing permission also stops further exports. Copies already in Drive remain governed by that folder and must be
+   removed in Drive; deleting them from Alcove does not delete the exported copies.
+
+6. **Export shared call notes.** Anyone who can read a call’s notes can manage their own exports and destination. These
+   choices do not affect the organizer or other readers. Original audio is available only to the organizer and only
+   when the call retained it; unavailable audio is disabled with the reason beside the format. Global defaults may
+   still select retained audio for future calls the person organizes.
+
+Storybook’s journeys use **15.1–15.6** above. The account, folders and file links in the preview are made-up; real Google
+consent and the provider’s own folder-selection page require manual verification with a supported Google account.

@@ -7,6 +7,8 @@
  *
  * A method nothing renders yet answers with something sensible and empty. When the contract grows, this grows with it.
  */
+import { DriveExportInputSchema, type DriveCallExports, type DriveExportInput } from '@alcove/api';
+import { disconnectedDrive } from '../world/drive-exports';
 import type { BoardSortBody, DocAskBody, DocAskPart } from '@alcove/api';
 import {
   ACCEPTED_FOLLOW_UP, AlcoveApiError, type FollowUpReview, type FollowUpTarget, type NoteAction, AgentAuthorizationIdSchema, AgentConnectionIdSchema, AgentDecisionInputSchema, AgentTokenInputSchema, DEFAULT_NOTES_CHOICES, searchOf, termsIn, type ActionPatch, type ActionProposal, type AlcoveApi, type AgentConnection, type AnswerPart, type Busy, type CallCard,
@@ -78,6 +80,20 @@ function newCode(): string {
   return `${letters(3)}-${letters(4)}-${letters(3)}`;
 }
 const addMinutes = (at: string, minutes: number) => new Date(Date.parse(at) + minutes * 60_000).toISOString();
+
+function driveChoice(w: World, input: DriveExportInput) {
+  const parsed = DriveExportInputSchema.parse(input);
+  const destination = parsed.destinationId === null ? null : w.drive.folders.find((folder) => folder.id === parsed.destinationId);
+  if (destination === undefined) throw refused('invalid', 'Choose a folder you can write to.');
+  if (parsed.enabled && (!destination || !parsed.formats.length)) throw refused('invalid', 'Choose a folder and a file type first.');
+  return { enabled: parsed.enabled, destination, formats: parsed.formats };
+}
+function driveForNote(w: World, id: string): DriveCallExports {
+  noteIn(w, id);
+  const override = w.drive.overrides[id] ?? null;
+  const effective = override ?? { enabled: w.drive.settings.enabled, destination: w.drive.settings.destination, formats: w.drive.settings.formats };
+  return { noteId: id, override, effective, jobs: w.drive.jobs.filter((job) => job.noteId === id) };
+}
 
 /* ---------- what's waiting on you, worked out from the notes ---------- */
 
@@ -314,6 +330,24 @@ export const standIn: AlcoveApi = {
       return w.prefs;
     }),
     delete: () => answer((w) => { forgetAgents(w); w.session = null; w.notes = []; w.meetings = []; })
+  },
+  drive: {
+    get: () => answer((w) => w.drive.settings),
+    connect: () => answer(() => ({ url: new URL('#google-drive-consent', location.href).href })),
+    pickFolder: () => answer(() => ({ url: new URL('#google-drive-folder-selection', location.href).href })),
+    disconnect: () => answer((w) => { w.drive = disconnectedDrive(); return w.drive.settings; }),
+    folders: () => answer((w) => w.drive.folders),
+    update: (input) => answer((w) => { w.drive.settings = { ...w.drive.settings, ...driveChoice(w, input) }; return w.drive.settings; }),
+    jobs: () => answer((w) => w.drive.jobs),
+    forNote: (id) => answer((w) => driveForNote(w, id)),
+    setForNote: (id, input) => answer((w) => { noteIn(w, id); if (input === null) delete w.drive.overrides[id]; else w.drive.overrides[id] = driveChoice(w, input); return driveForNote(w, id); }),
+    retry: (id) => answer((w) => {
+      const job = w.drive.jobs.find((j) => j.id === id);
+      if (!job) throw refused('not-found', 'That export is no longer there.');
+      if (w.drive.settings.connection.status !== 'connected') throw refused('conflict', 'Reconnect Google Drive first.');
+      const next = { ...job, status: 'pending' as const, reason: null, updatedAt: new Date().toISOString() };
+      w.drive.jobs = w.drive.jobs.map((j) => j.id === id ? next : j); return next;
+    })
   },
   agents: {
     list: () => answer((w) => agentsFor(w).connections.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id))),
